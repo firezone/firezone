@@ -11,7 +11,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     Changes.Change,
     PubSub,
     Resource,
-    Presence
+    Presence,
+    SchemaHelpers
   }
 
   require Logger
@@ -822,6 +823,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
          },
          socket
        ) do
+    account = SchemaHelpers.merge_broadcast(socket.assigns.account, account)
     socket = assign(socket, :account, account)
 
     if old_slug != slug do
@@ -861,7 +863,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
            assigns: %{gateway: %{id: gateway_id} = current_gateway}
          } = socket
        ) do
-    gateway = %{gateway | site: current_gateway.site}
+    gateway = Device.merge_broadcast(current_gateway, gateway)
     socket = assign(socket, :gateway, gateway)
 
     socket =

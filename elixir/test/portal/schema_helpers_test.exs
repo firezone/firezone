@@ -325,4 +325,65 @@ defmodule Portal.SchemaHelpersTest do
       assert datetime.time_zone == "Etc/UTC"
     end
   end
+
+  describe "merge_broadcast/3" do
+    # Portal.Device is used over a local schema because it has virtual fields
+    # and associations; the function itself touches no repo.
+    setup do
+      site = %Portal.Site{id: Ecto.UUID.generate(), name: "Site"}
+
+      current = %Portal.Device{
+        id: Ecto.UUID.generate(),
+        name: "Before",
+        public_key: "the-connection's-key",
+        firezone_id_merged?: true,
+        site: site
+      }
+
+      broadcast =
+        SchemaHelpers.struct_from_params(Portal.Device, %{
+          "id" => current.id,
+          "name" => "After",
+          "public_key" => nil
+        })
+
+      %{current: current, broadcast: broadcast, site: site}
+    end
+
+    test "takes persisted columns from the broadcast", %{current: current, broadcast: broadcast} do
+      assert SchemaHelpers.merge_broadcast(current, broadcast).name == "After"
+    end
+
+    test "keeps virtual fields, which the broadcast never carries", %{
+      current: current,
+      broadcast: broadcast
+    } do
+      refute broadcast.firezone_id_merged?
+
+      assert SchemaHelpers.merge_broadcast(current, broadcast).firezone_id_merged?
+    end
+
+    test "keeps loaded associations and leaves unloaded ones alone", %{
+      current: current,
+      broadcast: broadcast,
+      site: site
+    } do
+      merged = SchemaHelpers.merge_broadcast(current, broadcast)
+
+      assert merged.site == site
+      assert %Ecto.Association.NotLoaded{} = merged.actor
+    end
+
+    test "keeps only the persisted columns named in preserve", %{
+      current: current,
+      broadcast: broadcast
+    } do
+      assert SchemaHelpers.merge_broadcast(current, broadcast).public_key == nil
+
+      merged = SchemaHelpers.merge_broadcast(current, broadcast, [:public_key])
+
+      assert merged.public_key == current.public_key
+      assert merged.name == "After"
+    end
+  end
 end

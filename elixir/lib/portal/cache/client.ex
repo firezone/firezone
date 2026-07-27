@@ -501,22 +501,7 @@ defmodule Portal.Cache.Client do
 
     if Map.has_key?(cache.resources, resource.id) do
       cached_resource = Map.get(cache.resources, resource.id)
-      site_id_bytes = if changed_resource.site_id, do: Ecto.UUID.dump!(changed_resource.site_id)
-
-      # Check if we can reuse the cached site or need to fetch from DB.
-      # site_id can be nil when site is deleted (ON DELETE SET NULL).
-      # cached site can be nil if hydration failed to load it.
-      {site, site_changed?} =
-        cond do
-          is_nil(site_id_bytes) ->
-            {nil, not is_nil(cached_resource.site)}
-
-          cached_resource.site && cached_resource.site.id == site_id_bytes ->
-            {cached_resource.site, false}
-
-          true ->
-            {fetch_site_for_resource(site_id_bytes, subject), not is_nil(cached_resource.site)}
-        end
+      {site, site_changed?} = resolve_site(cached_resource, changed_resource, subject)
 
       resource = %{resource | site: site}
 
@@ -530,6 +515,36 @@ defmodule Portal.Cache.Client do
       recompute_connectable_resources(cache, client, subject, toggle: toggle)
     else
       {:ok, [], [], cache}
+    end
+  end
+
+  # Cached gateway-backed resources must carry a resolved site: the client view
+  # renders it and has no clause for nil. `to_cache/1` only carries one over
+  # when the source resource has its site association loaded, which a struct
+  # rebuilt from the WAL never does, so every cache writer fed by a change
+  # broadcast has to resolve it here rather than take what `to_cache/1` produced.
+  #
+  # Nil is the steady state for device pools, which connect without a gateway
+  # and have their site_id forced to nil by `Portal.Resource.changeset/1`;
+  # `adapted_resources/3` keeps those and their render clauses never ask for a
+  # site. For every other type nil means the site was deleted (`ON DELETE SET
+  # NULL`) or hydration missed it, and `adapted_resources/3` drops the resource
+  # before anything renders it.
+  #
+  # Returns whether the site changed as well, because older clients cannot
+  # handle a resource moving between sites and need a delete/create instead.
+  defp resolve_site(cached_resource, %Portal.Resource{} = changed_resource, subject) do
+    site_id_bytes = if changed_resource.site_id, do: Ecto.UUID.dump!(changed_resource.site_id)
+
+    cond do
+      is_nil(site_id_bytes) ->
+        {nil, not is_nil(cached_resource.site)}
+
+      cached_resource.site && cached_resource.site.id == site_id_bytes ->
+        {cached_resource.site, false}
+
+      true ->
+        {fetch_site_for_resource(site_id_bytes, subject), not is_nil(cached_resource.site)}
     end
   end
 

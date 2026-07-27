@@ -13,7 +13,7 @@ defmodule Portal.Device do
 
   # Columns rewritten by the connect flush; WAL consumers skip device updates
   # that touch nothing else so connects don't flood audit logs and broadcasts.
-  @latest_session_columns ~w[
+  @latest_session_fields ~w[
     public_key
     last_seen_user_agent
     last_seen_remote_ip
@@ -25,7 +25,9 @@ defmodule Portal.Device do
     last_seen_at
     client_token_id
     gateway_token_id
-  ]
+  ]a
+
+  @latest_session_columns Enum.map(@latest_session_fields, &Atom.to_string/1)
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
@@ -151,6 +153,20 @@ defmodule Portal.Device do
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
     |> unique_constraint(:hostname, name: :devices_account_id_hostname_index)
     |> check_constraint(:hostname, name: :devices_hostname_length)
+  end
+
+  @doc """
+    Folds a device update broadcast from the WAL onto the copy a socket holds.
+
+    On top of what `Portal.SchemaHelpers.merge_broadcast/3` keeps, the
+    latest-session columns are preserved: they are written by the batched
+    connect flush, so the WAL row still carries the previous session's values
+    (or NULL) for the seconds between connect and flush. Taking the broadcast
+    struct wholesale would drop this connection's public key, silently breaking
+    every payload derived from it.
+  """
+  def merge_broadcast(%__MODULE__{id: id} = current, %__MODULE__{id: id} = broadcast) do
+    Portal.SchemaHelpers.merge_broadcast(current, broadcast, @latest_session_fields)
   end
 
   def reserved_ipv4_cidr, do: @reserved_ipv4_cidr
