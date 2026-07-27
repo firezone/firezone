@@ -1,5 +1,3 @@
-// Proptest strategies for connlib's domain types, used by this crate's unit tests.
-// Strategy helpers are test-only code; `unwrap` is idiomatic here.
 #![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 
 use connlib_model::{ClientId, GatewayId, IpStack, ResourceId, Site, SiteId};
@@ -83,23 +81,6 @@ pub fn filters() -> impl Strategy<Value = Vec<Filter>> {
     collection::vec(filter(), 0..3)
 }
 
-fn filter() -> impl Strategy<Value = Filter> {
-    prop_oneof![
-        Just(Filter::Icmp),
-        port_range().prop_map(Filter::Udp),
-        port_range().prop_map(Filter::Tcp)
-    ]
-}
-
-fn port_range() -> impl Strategy<Value = PortRange> {
-    any::<u16>().prop_flat_map(|s| {
-        (s..=u16::MAX).prop_map(move |d| PortRange {
-            port_range_start: s,
-            port_range_end: d,
-        })
-    })
-}
-
 pub fn address_description() -> impl Strategy<Value = Option<String>> {
     prop_oneof![
         any_with::<String>("[a-z]{4,10}".into())
@@ -155,7 +136,6 @@ pub fn domain_name(depth: Range<usize>) -> impl Strategy<Value = DomainName> {
         .prop_map(|d| d.parse().unwrap())
 }
 
-/// A strategy of IP networks, configurable by the size of the host mask.
 pub fn any_ip_network(host_mask_bits: usize) -> impl Strategy<Value = IpNetwork> {
     any::<IpAddr>().prop_flat_map(move |ip| ip_network(ip, host_mask_bits))
 }
@@ -175,6 +155,40 @@ pub fn ip_network(network: IpAddr, host_mask_bits: usize) -> impl Strategy<Value
     })
 }
 
+pub fn host_v4(ip: Ipv4Network) -> impl Strategy<Value = Ipv4Addr> + Clone {
+    (0u32..=number_of_hosts_ipv4(ip.netmask()))
+        .prop_map(move |n| (u32::from(ip.network_address()) + n).into())
+}
+
+pub fn host_v6(ip: Ipv6Network) -> impl Strategy<Value = Ipv6Addr> + Clone {
+    (0u128..=number_of_hosts_ipv6(ip.netmask()))
+        .prop_map(move |n| (u128::from(ip.network_address()) + n).into())
+}
+
+pub fn host(ip: IpNetwork) -> impl Strategy<Value = IpAddr> {
+    match ip {
+        IpNetwork::V4(ip) => host_v4(ip).prop_map_into().boxed(),
+        IpNetwork::V6(ip) => host_v6(ip).prop_map_into().boxed(),
+    }
+}
+
+fn filter() -> impl Strategy<Value = Filter> {
+    prop_oneof![
+        Just(Filter::Icmp),
+        port_range().prop_map(Filter::Udp),
+        port_range().prop_map(Filter::Tcp)
+    ]
+}
+
+fn port_range() -> impl Strategy<Value = PortRange> {
+    any::<u16>().prop_flat_map(|s| {
+        (s..=u16::MAX).prop_map(move |d| PortRange {
+            port_range_start: s,
+            port_range_end: d,
+        })
+    })
+}
+
 fn number_of_hosts_ipv4(mask: u8) -> u32 {
     2u32.checked_pow(32 - mask as u32)
         .map(|i| i - 1)
@@ -186,27 +200,4 @@ fn number_of_hosts_ipv6(mask: u8) -> u128 {
         .checked_pow(128 - mask as u32)
         .map(|i| i - 1)
         .unwrap_or(u128::MAX)
-}
-
-// Note: for these tests we don't really care that it's a valid host
-// we only need a host.
-// If we filter valid hosts it generates too many rejects
-pub fn host_v4(ip: Ipv4Network) -> impl Strategy<Value = Ipv4Addr> + Clone {
-    (0u32..=number_of_hosts_ipv4(ip.netmask()))
-        .prop_map(move |n| (u32::from(ip.network_address()) + n).into())
-}
-
-// Note: for these tests we don't really care that it's a valid host
-// we only need a host.
-// If we filter valid hosts it generates too many rejects
-pub fn host_v6(ip: Ipv6Network) -> impl Strategy<Value = Ipv6Addr> + Clone {
-    (0u128..=number_of_hosts_ipv6(ip.netmask()))
-        .prop_map(move |n| (u128::from(ip.network_address()) + n).into())
-}
-
-pub fn host(ip: IpNetwork) -> impl Strategy<Value = IpAddr> {
-    match ip {
-        IpNetwork::V4(ip) => host_v4(ip).prop_map_into().boxed(),
-        IpNetwork::V6(ip) => host_v6(ip).prop_map_into().boxed(),
-    }
 }

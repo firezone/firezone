@@ -190,7 +190,7 @@ impl Nat {
     }
 
     fn ingress(&self, src: SocketAddr, dst: SocketAddr) -> Result<SocketAddr> {
-        match dst.ip() {
+        let destination = match dst.ip() {
             IpAddr::V4(ip) => {
                 if ip != self.ip4 {
                     bail!("IPv4 address behind NAT is not routable");
@@ -205,16 +205,18 @@ impl Nat {
                     bail!("sender not in NAT filter state");
                 }
 
-                Ok(binding.internal)
+                binding.internal
             }
             IpAddr::V6(_) => {
                 if !self.filter.accepts(&self.sent_to6, src) {
                     bail!("sender not in NAT filter state");
                 }
 
-                Ok(dst)
+                dst
             }
-        }
+        };
+
+        Ok(destination)
     }
 
     /// Moves this NAT to a new public address, e.g. because the host roamed to a different network.
@@ -340,10 +342,12 @@ impl<T> Host<T> {
             bail!("host is offline");
         }
 
-        match &mut self.edge {
-            Edge::Open => Ok(src),
-            Edge::Nat(nat) => Ok(nat.egress(src, dst)),
-        }
+        let source = match &mut self.edge {
+            Edge::Open => src,
+            Edge::Nat(nat) => nat.egress(src, dst),
+        };
+
+        Ok(source)
     }
 
     /// Passes an inbound wire packet through this host's edge, returning the address it is delivered to.
@@ -352,10 +356,12 @@ impl<T> Host<T> {
             bail!("host is offline");
         }
 
-        match &self.edge {
-            Edge::Open => Ok(dst),
-            Edge::Nat(nat) => nat.ingress(src, dst),
-        }
+        let destination = match &self.edge {
+            Edge::Open => dst,
+            Edge::Nat(nat) => nat.ingress(src, dst)?,
+        };
+
+        Ok(destination)
     }
 
     pub(crate) fn latency(&self) -> Duration {
@@ -474,7 +480,8 @@ impl RoutingTable {
 
         for ip in &nat_ips {
             match self.host_by_ip(*ip) {
-                None | Some(HostId::Stale) => {}
+                None => {}
+                Some(HostId::Stale) => {}
                 Some(existing) if existing == id => {}
                 Some(_) => return false,
             }

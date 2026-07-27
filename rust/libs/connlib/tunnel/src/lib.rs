@@ -76,7 +76,9 @@ impl<TRoleState> Tunnel<TRoleState> {
     }
 
     pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<(), TunnelError> {
-        self.io.rebind_dns(sockets)
+        self.io.rebind_dns(sockets)?;
+
+        Ok(())
     }
 }
 

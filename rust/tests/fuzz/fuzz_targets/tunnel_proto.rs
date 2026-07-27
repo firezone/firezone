@@ -1,11 +1,6 @@
 #![no_main]
 
-//! Coverage-guided fuzz target for the connlib tunnel state machine.
-//!
-//! Each input drives one run of the tunnel reference-model/system-under-test
-//! harness. The bytes are decoded positionally through
-//! `arbitrary::Unstructured` so that libFuzzer mutations and minimization map
-//! to individual scenario decisions.
+//! Exercises the connlib tunnel state machine with coverage-guided fuzzing.
 
 use std::time::Instant;
 

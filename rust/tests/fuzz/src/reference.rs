@@ -143,8 +143,8 @@ impl ReferenceState {
                         client::Resource::Internet(_) => {
                             tracing::error!("Internet Resource cannot move site");
                         }
-                        client::Resource::StaticDevicePool(_)
-                        | client::Resource::DynamicDevicePool(_) => {}
+                        client::Resource::StaticDevicePool(_) => {}
+                        client::Resource::DynamicDevicePool(_) => {}
                     })
                 }
             }
@@ -165,9 +165,8 @@ impl ReferenceState {
                         client::Resource::StaticDevicePool(r) => {
                             c.add_static_device_pool_resource(r.clone());
                         }
-                        client::Resource::Internet(_) | client::Resource::DynamicDevicePool(_) => {
-                            unreachable!()
-                        }
+                        client::Resource::Internet(_) => unreachable!(),
+                        client::Resource::DynamicDevicePool(_) => unreachable!(),
                     })
                 }
             }
@@ -194,8 +193,12 @@ impl ReferenceState {
                             client::Resource::StaticDevicePool(resource) => {
                                 client.add_static_device_pool_resource(resource.clone())
                             }
-                            client::Resource::Internet(_)
-                            | client::Resource::DynamicDevicePool(_) => {
+                            client::Resource::Internet(_) => {
+                                unreachable!(
+                                    "only user-editable resource types can replace one another"
+                                )
+                            }
+                            client::Resource::DynamicDevicePool(_) => {
                                 unreachable!(
                                     "only user-editable resource types can replace one another"
                                 )
@@ -460,18 +463,6 @@ impl ReferenceState {
             .collect()
     }
 
-    /// Map of every client's tunnel IPs (v4 and v6) to its `ClientId`.
-    fn client_ip_to_id(&self) -> BTreeMap<IpAddr, ClientId> {
-        self.clients
-            .iter()
-            .flat_map(|(id, c)| {
-                let ip4 = IpAddr::V4(c.inner().tunnel_ip4);
-                let ip6 = IpAddr::V6(c.inner().tunnel_ip6);
-                [(ip4, *id), (ip6, *id)]
-            })
-            .collect()
-    }
-
     pub(crate) fn route_for_packet(
         &self,
         client_id: ClientId,
@@ -693,15 +684,19 @@ impl ReferenceState {
             .all_resources()
             .into_iter()
             .filter(|resource| {
-                matches!(
-                    resource,
-                    client::Resource::Cidr(_)
-                        | client::Resource::Dns(_)
-                        | client::Resource::StaticDevicePool(_)
-                ) && self
-                    .clients
-                    .values()
-                    .any(|client| client.inner().has_resource(resource.id()))
+                let has_filters = match resource {
+                    client::Resource::Cidr(_) => true,
+                    client::Resource::Dns(_) => true,
+                    client::Resource::StaticDevicePool(_) => true,
+                    client::Resource::Internet(_) => false,
+                    client::Resource::DynamicDevicePool(_) => false,
+                };
+
+                has_filters
+                    && self
+                        .clients
+                        .values()
+                        .any(|client| client.inner().has_resource(resource.id()))
             })
             .collect()
     }
@@ -715,13 +710,19 @@ impl ReferenceState {
             .all_resources()
             .into_iter()
             .filter(|resource| {
-                matches!(
-                    resource,
-                    client::Resource::Cidr(_) | client::Resource::Dns(_)
-                ) && self
-                    .clients
-                    .values()
-                    .any(|client| client.inner().has_resource(resource.id()))
+                let is_cidr_or_dns = match resource {
+                    client::Resource::Cidr(_) => true,
+                    client::Resource::Dns(_) => true,
+                    client::Resource::Internet(_) => false,
+                    client::Resource::StaticDevicePool(_) => false,
+                    client::Resource::DynamicDevicePool(_) => false,
+                };
+
+                is_cidr_or_dns
+                    && self
+                        .clients
+                        .values()
+                        .any(|client| client.inner().has_resource(resource.id()))
             })
             .collect()
     }
@@ -732,10 +733,10 @@ impl ReferenceState {
             .into_iter()
             .filter_map(|r| match r {
                 client::Resource::Cidr(r) => Some(r),
-                client::Resource::Dns(_)
-                | client::Resource::Internet(_)
-                | client::Resource::StaticDevicePool(_)
-                | client::Resource::DynamicDevicePool(_) => None,
+                client::Resource::Dns(_) => None,
+                client::Resource::Internet(_) => None,
+                client::Resource::StaticDevicePool(_) => None,
+                client::Resource::DynamicDevicePool(_) => None,
             })
             .filter(|resource| {
                 self.clients
@@ -746,19 +747,19 @@ impl ReferenceState {
     }
 
     pub(crate) fn wildcard_dns_resources(&self) -> Vec<(ClientId, client::DnsResource)> {
-        let wildcard_resources: Vec<_> = self
+        let wildcard_resources = self
             .portal
             .all_resources()
             .into_iter()
             .filter_map(|r| match r {
                 client::Resource::Dns(r) if r.address.starts_with("*.") => Some(r),
-                client::Resource::Dns(_)
-                | client::Resource::Cidr(_)
-                | client::Resource::Internet(_)
-                | client::Resource::StaticDevicePool(_)
-                | client::Resource::DynamicDevicePool(_) => None,
+                client::Resource::Dns(_) => None,
+                client::Resource::Cidr(_) => None,
+                client::Resource::Internet(_) => None,
+                client::Resource::StaticDevicePool(_) => None,
+                client::Resource::DynamicDevicePool(_) => None,
             })
-            .collect();
+            .collect::<Vec<_>>();
 
         self.clients
             .iter()
@@ -824,41 +825,14 @@ impl ReferenceState {
             .into_iter()
             .filter_map(|r| match r {
                 client::Resource::StaticDevicePool(p) => Some(p),
-                client::Resource::Dns(_)
-                | client::Resource::Cidr(_)
-                | client::Resource::Internet(_)
-                | client::Resource::DynamicDevicePool(_) => None,
+                client::Resource::Dns(_) => None,
+                client::Resource::Cidr(_) => None,
+                client::Resource::Internet(_) => None,
+                client::Resource::DynamicDevicePool(_) => None,
             });
 
         pools
             .filter(|p| self.clients.values().any(|c| c.inner().has_resource(p.id)))
-            .collect()
-    }
-
-    fn device_pool_resources_on_client(
-        &self,
-    ) -> Vec<(ClientId, client::DynamicDevicePoolResource)> {
-        let device_pool_resources = self
-            .portal
-            .all_resources()
-            .into_iter()
-            .filter_map(|r| match r {
-                client::Resource::DynamicDevicePool(r) => Some(r),
-                client::Resource::Dns(_)
-                | client::Resource::Cidr(_)
-                | client::Resource::Internet(_)
-                | client::Resource::StaticDevicePool(_) => None,
-            })
-            .collect::<Vec<_>>();
-
-        self.clients
-            .iter()
-            .flat_map(|(client_id, client)| {
-                device_pool_resources
-                    .iter()
-                    .filter(|r| client.inner().has_resource(r.id))
-                    .map(move |r| (*client_id, r.clone()))
-            })
             .collect()
     }
 
@@ -889,7 +863,7 @@ impl ReferenceState {
     /// client reachable from `src_client_id` via a static device pool, paired with the pool
     /// filters that authorize the route.
     pub(crate) fn pool_routed_other_client_tun_ips(&self) -> Vec<(ClientId, IpAddr, Vec<Filter>)> {
-        let online_ips_by_id: BTreeMap<ClientId, (IpAddr, IpAddr)> = self
+        let online_ips_by_id = self
             .clients
             .iter()
             .map(|(id, c)| {
@@ -899,7 +873,7 @@ impl ReferenceState {
                     (IpAddr::V4(inner.tunnel_ip4), IpAddr::V6(inner.tunnel_ip6)),
                 )
             })
-            .collect();
+            .collect::<BTreeMap<_, _>>();
 
         self.clients
             .iter()
@@ -913,10 +887,10 @@ impl ReferenceState {
                     .into_iter()
                     .filter_map(|r| match r {
                         client::Resource::StaticDevicePool(p) => Some(p),
-                        client::Resource::Dns(_)
-                        | client::Resource::Cidr(_)
-                        | client::Resource::Internet(_)
-                        | client::Resource::DynamicDevicePool(_) => None,
+                        client::Resource::Dns(_) => None,
+                        client::Resource::Cidr(_) => None,
+                        client::Resource::Internet(_) => None,
+                        client::Resource::DynamicDevicePool(_) => None,
                     })
                     .filter(|pool| pool_filters_allow_icmp_or_udp(&pool.filters))
                     .flat_map(|pool| {
@@ -932,6 +906,45 @@ impl ReferenceState {
                             [(src_id, v4, filters.clone()), (src_id, v6, filters.clone())]
                         })
                     })
+            })
+            .collect()
+    }
+
+    /// Returns every client's tunnel IPs mapped to its identifier.
+    fn client_ip_to_id(&self) -> BTreeMap<IpAddr, ClientId> {
+        self.clients
+            .iter()
+            .flat_map(|(id, c)| {
+                let ip4 = IpAddr::V4(c.inner().tunnel_ip4);
+                let ip6 = IpAddr::V6(c.inner().tunnel_ip6);
+                [(ip4, *id), (ip6, *id)]
+            })
+            .collect()
+    }
+
+    fn device_pool_resources_on_client(
+        &self,
+    ) -> Vec<(ClientId, client::DynamicDevicePoolResource)> {
+        let device_pool_resources = self
+            .portal
+            .all_resources()
+            .into_iter()
+            .filter_map(|r| match r {
+                client::Resource::DynamicDevicePool(r) => Some(r),
+                client::Resource::Dns(_) => None,
+                client::Resource::Cidr(_) => None,
+                client::Resource::Internet(_) => None,
+                client::Resource::StaticDevicePool(_) => None,
+            })
+            .collect::<Vec<_>>();
+
+        self.clients
+            .iter()
+            .flat_map(|(client_id, client)| {
+                device_pool_resources
+                    .iter()
+                    .filter(|r| client.inner().has_resource(r.id))
+                    .map(move |r| (*client_id, r.clone()))
             })
             .collect()
     }
@@ -970,7 +983,9 @@ impl fmt::Debug for PrivateKey {
 
 fn pool_filters_allow_icmp_or_udp(filters: &[Filter]) -> bool {
     filters.is_empty()
-        || filters
-            .iter()
-            .any(|f| matches!(f, Filter::Icmp | Filter::Udp(_)))
+        || filters.iter().any(|filter| match filter {
+            Filter::Icmp => true,
+            Filter::Udp(_) => true,
+            Filter::Tcp(_) => false,
+        })
 }

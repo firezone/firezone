@@ -344,7 +344,8 @@ impl ClientOnGateway {
         match packet.source() {
             IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(packet),
             IpAddr::V6(src) if src == self.gateway_tun.v6 => return Ok(packet),
-            IpAddr::V4(_) | IpAddr::V6(_) => {}
+            IpAddr::V4(_) => {}
+            IpAddr::V6(_) => {}
         }
 
         let packet = self.transform_tun_to_network(packet, now)?;

@@ -1,9 +1,4 @@
-//! Fuzz harness for connlib's tunnel state machine.
-//!
-//! The reference model and system-under-test wrapper live with their only
-//! consumer while remaining a library so their focused unit tests stay
-//! runnable. Like the test code they grew out of, they lean on `unwrap` and
-//! stdout.
+//! Provides the fuzz harness for connlib's tunnel state machine.
 #![allow(dead_code)]
 #![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 #![allow(clippy::print_stdout, clippy::print_stderr)]
@@ -31,7 +26,7 @@ mod transition;
 
 type QueryId = u16;
 
-/// The tunnel-proto target's reference-model harness.
+/// Provides the tunnel-proto target's reference-model harness.
 pub mod tunnel_proto {
     use tracing_subscriber::{
         EnvFilter, Layer, layer::SubscriberExt as _, util::SubscriberInitExt as _,
@@ -45,7 +40,7 @@ pub mod tunnel_proto {
     pub use super::sut::TunnelTest;
     pub use super::transition::Transition;
 
-    /// Scope an error-detecting subscriber to the current fuzz case.
+    /// Initializes an error-detecting subscriber for the current fuzz case.
     ///
     /// Mass fuzzing writes no logs; setting `RUST_LOG` additionally writes a
     /// trace to stderr when reproducing a saved crash.

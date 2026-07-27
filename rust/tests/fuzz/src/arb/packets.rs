@@ -15,12 +15,7 @@ use crate::reference::ReferenceState;
 use crate::resource::StaticDevicePoolResource;
 use crate::transition::{Destination, Transition};
 
-/// The semantic destination selected by the state-aware grammar.
-///
-/// This deliberately remains more structured than an arbitrary IP packet. The
-/// SUT still has to classify the materialized destination, while the generator
-/// and reference model retain enough intent to reason about the action without
-/// reproducing all of the production classifier's inputs from raw bytes.
+/// Represents a semantic destination selected by the state-aware grammar.
 #[derive(Clone)]
 pub(super) enum PacketTarget {
     Cidr {
@@ -163,19 +158,6 @@ pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<PacketTarget>
         .collect::<Vec<_>>()
 }
 
-fn tcp_service_ports(state: &ReferenceState, domain: &DomainName, ipv4: bool) -> Vec<u16> {
-    state
-        .tcp_resources
-        .get(domain)
-        .into_iter()
-        .flatten()
-        .filter(|address| address.is_ipv4() == ipv4)
-        .map(SocketAddr::port)
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>()
-}
-
 pub(super) fn generate(
     g: &mut Generator,
     state: &ReferenceState,
@@ -199,9 +181,11 @@ pub(super) fn generate(
             tcp_service_ports,
         } => {
             let can_connect_tcp = filters.is_empty()
-                || filters
-                    .iter()
-                    .any(|filter| matches!(filter, Filter::Tcp(_)));
+                || filters.iter().any(|filter| match filter {
+                    Filter::Tcp(_) => true,
+                    Filter::Icmp => false,
+                    Filter::Udp(_) => false,
+                });
 
             if can_connect_tcp && !tcp_service_ports.is_empty() && g.bool() {
                 arb_tcp_connection(
@@ -239,13 +223,6 @@ pub(super) fn generate(
     }
 }
 
-fn host_in_network(g: &mut Generator, network: IpNetwork) -> IpAddr {
-    match network {
-        IpNetwork::V4(network) => IpAddr::V4(host_in_v4(g, network)),
-        IpNetwork::V6(network) => IpAddr::V6(host_in_v6(g, network)),
-    }
-}
-
 pub(super) fn host_in_v4(g: &mut Generator, network: Ipv4Network) -> Ipv4Addr {
     let host_bits = 32 - network.netmask();
     let base = u32::from(network.network_address());
@@ -277,8 +254,57 @@ pub(super) fn host_in_v6(g: &mut Generator, network: Ipv6Network) -> Ipv6Addr {
     Ipv6Addr::from(base.wrapping_add(off))
 }
 
-/// Generate a packet for a resource-like destination. Most draws use a filter
-/// that admits the packet; the remainder deliberately exercise the drop path.
+/// Selects online clients as `/32` and `/128` device members.
+pub(super) fn arb_static_pool_members(
+    g: &mut Generator,
+    state: &ReferenceState,
+    pool: &StaticDevicePoolResource,
+) -> Vec<DevicePoolMember> {
+    arb_online_static_pool_members(g, state)
+        .into_iter()
+        .chain(offline_static_pool_members(state, pool))
+        .collect()
+}
+
+pub(super) fn arb_online_static_pool_members(
+    g: &mut Generator,
+    state: &ReferenceState,
+) -> Vec<DevicePoolMember> {
+    state
+        .clients
+        .iter()
+        .filter(|_| g.bool())
+        .map(|(id, client)| {
+            let client = client.inner();
+            DevicePoolMember {
+                id: *id,
+                ipv4: Ipv4Network::new(client.tunnel_ip4, 32).unwrap(),
+                ipv6: Ipv6Network::new(client.tunnel_ip6, 128).unwrap(),
+            }
+        })
+        .collect()
+}
+
+fn host_in_network(g: &mut Generator, network: IpNetwork) -> IpAddr {
+    match network {
+        IpNetwork::V4(network) => IpAddr::V4(host_in_v4(g, network)),
+        IpNetwork::V6(network) => IpAddr::V6(host_in_v6(g, network)),
+    }
+}
+
+fn tcp_service_ports(state: &ReferenceState, domain: &DomainName, ipv4: bool) -> Vec<u16> {
+    state
+        .tcp_resources
+        .get(domain)
+        .into_iter()
+        .flatten()
+        .filter(|address| address.is_ipv4() == ipv4)
+        .map(SocketAddr::port)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+}
+
 fn arb_filtered_packet(
     g: &mut Generator,
     state: &ReferenceState,
@@ -289,15 +315,19 @@ fn arb_filtered_packet(
 ) -> Transition {
     let usable = filters
         .iter()
-        .filter(|f| !matches!(f, Filter::Tcp(_)))
-        .filter(|f| {
-            !matches!(
-                f,
-                Filter::Udp(PortRange {
-                    port_range_start: 53,
-                    port_range_end: 53,
-                })
-            )
+        .filter(|filter| match filter {
+            Filter::Tcp(_) => false,
+            Filter::Icmp => true,
+            Filter::Udp(_) => true,
+        })
+        .filter(|f| match f {
+            Filter::Udp(PortRange {
+                port_range_start: 53,
+                port_range_end: 53,
+            }) => false,
+            Filter::Icmp => true,
+            Filter::Tcp(_) => true,
+            Filter::Udp(_) => true,
         })
         .copied()
         .collect::<Vec<_>>();
@@ -340,7 +370,8 @@ fn arb_tcp_connection(
         .iter()
         .filter_map(|f| match f {
             Filter::Tcp(r) => Some(*r),
-            Filter::Udp(_) | Filter::Icmp => None,
+            Filter::Udp(_) => None,
+            Filter::Icmp => None,
         })
         .collect::<Vec<_>>();
 
@@ -396,38 +427,6 @@ fn arb_unfiltered_packet(
         arb_udp_packet(g, state, client_id, src, DstSpec::Ip(dst), dport)
     }
 }
-/// Select any subset of online clients (as `/32` + `/128` device members) and
-/// preserve every offline member already in the pool.
-pub(super) fn arb_static_pool_members(
-    g: &mut Generator,
-    state: &ReferenceState,
-    pool: &StaticDevicePoolResource,
-) -> Vec<DevicePoolMember> {
-    arb_online_static_pool_members(g, state)
-        .into_iter()
-        .chain(offline_static_pool_members(state, pool))
-        .collect()
-}
-
-pub(super) fn arb_online_static_pool_members(
-    g: &mut Generator,
-    state: &ReferenceState,
-) -> Vec<DevicePoolMember> {
-    state
-        .clients
-        .iter()
-        .filter(|_| g.bool())
-        .map(|(id, client)| {
-            let client = client.inner();
-            DevicePoolMember {
-                id: *id,
-                ipv4: Ipv4Network::new(client.tunnel_ip4, 32).unwrap(),
-                ipv6: Ipv6Network::new(client.tunnel_ip6, 128).unwrap(),
-            }
-        })
-        .collect()
-}
-
 fn offline_static_pool_members(
     state: &ReferenceState,
     pool: &StaticDevicePoolResource,
@@ -499,13 +498,6 @@ fn into_destination(dst: DstSpec, resolved_ip: u32) -> Destination {
     }
 }
 
-/// A port that is not 53 or 53535, as a total bijection over the allowed set.
-///
-/// There are `u16::MAX + 1 = 65536` ports and two holes (53, 53535), leaving
-/// `65534` allowed values. We draw an index in `0..=65533` and shift it past
-/// each hole. The second threshold is expressed in the *original* index space
-/// (53535 - 1 = 53534, because the hole at 53 already shifted everything below
-/// it down by one).
 fn arb_non_dns_port(g: &mut Generator) -> u16 {
     non_dns_port(g.u32_in(0..=65533))
 }

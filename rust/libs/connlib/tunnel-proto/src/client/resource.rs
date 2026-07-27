@@ -161,7 +161,8 @@ impl Resource {
             Resource::Dns(d) => Some(d.address.clone()),
             Resource::Cidr(c) => Some(c.address.to_string()),
             Resource::DynamicDevicePool(r) => Some(r.address.clone()),
-            Resource::Internet(_) | Resource::StaticDevicePool(_) => None,
+            Resource::Internet(_) => None,
+            Resource::StaticDevicePool(_) => None,
         }
     }
 
@@ -188,7 +189,8 @@ impl Resource {
             Resource::Dns(r) => BTreeSet::from_iter(r.sites.iter()),
             Resource::Cidr(r) => BTreeSet::from_iter(r.sites.iter()),
             Resource::Internet(r) => BTreeSet::from_iter(r.sites.iter()),
-            Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => BTreeSet::new(),
+            Resource::StaticDevicePool(_) => BTreeSet::new(),
+            Resource::DynamicDevicePool(_) => BTreeSet::new(),
         }
     }
 
@@ -197,11 +199,12 @@ impl Resource {
             Resource::Dns(r) => &r.filters,
             Resource::Cidr(r) => &r.filters,
             Resource::StaticDevicePool(r) => &r.filters,
-            Resource::Internet(_) | Resource::DynamicDevicePool(_) => &[],
+            Resource::Internet(_) => &[],
+            Resource::DynamicDevicePool(_) => &[],
         }
     }
 
-    /// What the GUI clients should show as the user-friendly display name, e.g. `Firezone GitHub`
+    /// Returns the user-facing display name.
     pub fn name(&self) -> &str {
         match self {
             Resource::Dns(r) => &r.name,
@@ -244,9 +247,9 @@ impl Resource {
 
     pub fn addresses(&self) -> Vec<IpNetwork> {
         match self {
-            Resource::Dns(_) | Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => {
-                vec![]
-            }
+            Resource::Dns(_) => vec![],
+            Resource::StaticDevicePool(_) => vec![],
+            Resource::DynamicDevicePool(_) => vec![],
             Resource::Cidr(c) => vec![c.address],
             Resource::Internet(_) => vec![
                 Ipv4Network::DEFAULT_ROUTE.into(),
@@ -263,7 +266,8 @@ impl Resource {
             Resource::Dns(r) => Some(ResourceView::Dns(r.with_status(status))),
             Resource::Cidr(r) => Some(ResourceView::Cidr(r.with_status(status))),
             Resource::Internet(r) => Some(ResourceView::Internet(r.with_status(status))),
-            Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => None,
+            Resource::StaticDevicePool(_) => None,
+            Resource::DynamicDevicePool(_) => None,
         }
     }
 }

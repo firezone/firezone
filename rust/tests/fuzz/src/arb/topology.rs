@@ -30,17 +30,10 @@ use crate::sim_net::{EdgeConfig, FilterMode, Host, Mapping, RoutingTable};
 use crate::stub_portal::StubPortal;
 
 pub(super) fn generate(g: &mut Generator, start: Instant) -> ReferenceState {
-    // 1. Portal layout. Tunnel IPs come from the generator's shared cursors, so
-    //    clients, gateways, and offline static-pool members cannot collide.
     let portal = arb_stub_portal(g);
-
-    // 2. Materialize hosts. Socket IPs come from cursors (unique by
-    //    construction), keys from the keyed counter.
     let clients = arb_clients(g, &portal);
     let gateways = arb_gateways(g, &portal, start);
     let relays = arb_relays(g);
-
-    // 3. Staged DNS dependency chain, preserved in order.
     let dns_resource_records = arb_dns_resource_records(g, &portal, start);
     let icmp_error_hosts = arb_icmp_error_hosts(g, &dns_resource_records, start);
     let tcp_resources = arb_tcp_resources(g, &dns_resource_records, &icmp_error_hosts, start);
@@ -48,8 +41,6 @@ pub(super) fn generate(g: &mut Generator, start: Instant) -> ReferenceState {
     let global_dns_records =
         merge_dns_records(arb_global_dns_records(g, start), dns_resource_records);
 
-    // Rebuild the routing table. Uniqueness is structural, so this never rejects;
-    // debug assertions guard against accidental collisions.
     let network = clients
         .iter()
         .fold(RoutingTable::default(), |mut network, (id, host)| {
@@ -78,6 +69,62 @@ pub(super) fn generate(g: &mut Generator, start: Instant) -> ReferenceState {
         icmp_error_hosts,
         network,
     )
+}
+
+pub(super) fn pick_site<'a>(g: &mut Generator, sites: &'a [Site]) -> &'a Site {
+    &sites[g.choose_index(sites.len())]
+}
+
+pub(super) fn arb_relays(g: &mut Generator) -> BTreeMap<RelayId, Host<u64>> {
+    let n = g.count(1, 2);
+
+    (0..n)
+        .map(|_| {
+            let id = g.fresh_relay_id();
+            let seed = g.u64();
+            let latency = g.latency(50);
+            let host = Host::new(seed, latency, 3478, EdgeConfig::Open, g.nat_ip4());
+            let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
+            (id, host)
+        })
+        .collect::<BTreeMap<_, _>>()
+}
+
+pub(super) fn with_interface<T>(
+    mut host: Host<T>,
+    ip4: Option<Ipv4Addr>,
+    ip6: Option<Ipv6Addr>,
+) -> Host<T> {
+    host.update_interface(ip4, ip6);
+
+    host
+}
+
+pub(super) fn arb_socket_ip_stack(g: &mut Generator) -> (Option<Ipv4Addr>, Option<Ipv6Addr>) {
+    match g.choose_index(3) {
+        0 => (Some(g.socket_ip4()), None),
+        1 => (None, Some(g.socket_ip6())),
+        _ => (Some(g.socket_ip4()), Some(g.socket_ip6())),
+    }
+}
+
+pub(super) fn arb_dns_record_set(g: &mut Generator) -> BTreeSet<OwnedRecordData> {
+    let n = g.count(1, 5);
+
+    (0..n)
+        .map(|_| {
+            if g.flip(75) {
+                return dns_types::records::ip(arb_dns_resource_ip(g));
+            }
+
+            let sections = g.count(6, 10);
+            let content = (0..sections)
+                .flat_map(|_| std::iter::once(255u8).chain(std::iter::repeat_n(b'a', 255)))
+                .collect::<Vec<_>>();
+            dns_types::records::txt(content)
+                .unwrap_or_else(|_| dns_types::records::ip(arb_dns_resource_ip(g)))
+        })
+        .collect::<BTreeSet<_>>()
 }
 
 fn arb_stub_portal(g: &mut Generator) -> StubPortal {
@@ -136,17 +183,8 @@ fn arb_stub_portal(g: &mut Generator) -> StubPortal {
         upstream_do53,
         upstream_doh,
     )
-    // Mirror `strategies::stub_portal`: sample the portal-wide ICE-less toggle.
     .with_iceless(g.bool())
 }
-
-pub(super) fn pick_site<'a>(g: &mut Generator, sites: &'a [Site]) -> &'a Site {
-    &sites[g.choose_index(sites.len())]
-}
-
-// ---------------------------------------------------------------------------
-// Resources
-// ---------------------------------------------------------------------------
 
 fn arb_cidr_resource(g: &mut Generator, site: &Site) -> CidrResource {
     CidrResource {
@@ -346,10 +384,6 @@ fn arb_search_domain(g: &mut Generator, dns_resources: &[DnsResource]) -> Option
     candidates().nth(index)
 }
 
-// ---------------------------------------------------------------------------
-// Hosts
-// ---------------------------------------------------------------------------
-
 fn arb_clients(g: &mut Generator, portal: &StubPortal) -> BTreeMap<ClientId, Host<RefClient>> {
     portal
         .client_tunnel_ips()
@@ -380,7 +414,6 @@ fn arb_client_host(
         },
     );
 
-    // Socket IP *shape* is byte-driven; the addresses come from the cursors.
     let (ip4, ip6) = arb_socket_ip_stack(g);
     let port = arb_listening_port(g);
     let latency = g.latency(250);
@@ -396,7 +429,6 @@ fn arb_gateways(
     portal
         .gateway_tunnel_ips()
         .map(|(id, tun4, tun6, site_id)| {
-            // Gateways are always dual-stack on a fixed listening port.
             let site_specific = arb_site_specific_dns_records(g, portal, site_id, start);
             let inner = RefGateway::from_parts(g.fresh_private_key(), tun4, tun6, site_specific);
             let latency = g.latency(200);
@@ -408,30 +440,6 @@ fn arb_gateways(
         .collect::<BTreeMap<_, _>>()
 }
 
-pub(super) fn arb_relays(g: &mut Generator) -> BTreeMap<RelayId, Host<u64>> {
-    let n = g.count(1, 2);
-    (0..n)
-        .map(|_| {
-            let id = g.fresh_relay_id();
-            let seed = g.u64();
-            let latency = g.latency(50);
-            let host = Host::new(seed, latency, 3478, EdgeConfig::Open, g.nat_ip4());
-            let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
-            (id, host)
-        })
-        .collect::<BTreeMap<_, _>>()
-}
-
-pub(super) fn with_interface<T>(
-    mut host: Host<T>,
-    ip4: Option<Ipv4Addr>,
-    ip6: Option<Ipv6Addr>,
-) -> Host<T> {
-    host.update_interface(ip4, ip6);
-    host
-}
-
-/// Network edge configurations worth varying in the system-level harness.
 fn arb_edge_config(g: &mut Generator) -> EdgeConfig {
     match g.choose_index(3) {
         0 => EdgeConfig::Open,
@@ -448,29 +456,13 @@ fn arb_edge_config(g: &mut Generator) -> EdgeConfig {
     }
 }
 
-/// V4 / V6 / Dual socket shape, addresses from the cursors so they never collide.
-pub(super) fn arb_socket_ip_stack(g: &mut Generator) -> (Option<Ipv4Addr>, Option<Ipv6Addr>) {
-    match g.choose_index(3) {
-        0 => (Some(g.socket_ip4()), None),
-        1 => (None, Some(g.socket_ip6())),
-        _ => (Some(g.socket_ip4()), Some(g.socket_ip6())),
-    }
-}
-
 fn arb_listening_port(g: &mut Generator) -> u16 {
     match g.choose_index(3) {
         0 => 52625,
         1 => 3478,
-        _ => {
-            // NonZeroU16
-            g.u16_in(1..=u16::MAX)
-        }
+        _ => g.u16_in(1..=u16::MAX),
     }
 }
-
-// ---------------------------------------------------------------------------
-// DNS records
-// ---------------------------------------------------------------------------
 
 fn arb_dns_resource_records(g: &mut Generator, portal: &StubPortal, at: Instant) -> DnsRecords {
     portal
@@ -479,8 +471,6 @@ fn arb_dns_resource_records(g: &mut Generator, portal: &StubPortal, at: Instant)
         .fold(DnsRecords::default(), merge_dns_records)
 }
 
-/// Site-specific DNS records for a gateway: records for the DNS resources in
-/// `site`, plus (when non-empty) some site-specific TXT/SRV records.
 fn arb_site_specific_dns_records(
     g: &mut Generator,
     portal: &StubPortal,
@@ -496,7 +486,8 @@ fn arb_site_specific_dns_records(
 
 fn arb_records_for_dns_resource(g: &mut Generator, address: &str, at: Instant) -> DnsRecords {
     match address.split_once('.') {
-        Some(("*" | "**", base)) => arb_subdomain_records(g, base.to_owned(), at),
+        Some(("*", base)) => arb_subdomain_records(g, base.to_owned(), at),
+        Some(("**", base)) => arb_subdomain_records(g, base.to_owned(), at),
         _ => DnsRecords::from([(
             address.parse::<DomainName>().unwrap(),
             BTreeMap::from([(at, arb_resolved_ips(g))]),
@@ -520,10 +511,9 @@ fn arb_subdomain_records(g: &mut Generator, base: String, at: Instant) -> DnsRec
         .collect::<DnsRecords>()
 }
 
-/// 1..=5 "real" IP records drawn from the small documentation ranges (kept small
-/// on purpose so two domains can share an IP).
 fn arb_resolved_ips(g: &mut Generator) -> BTreeSet<OwnedRecordData> {
     let n = g.count(1, 5);
+
     (0..n)
         .map(|_| dns_types::records::ip(arb_dns_resource_ip(g)))
         .collect::<BTreeSet<_>>()
@@ -531,17 +521,15 @@ fn arb_resolved_ips(g: &mut Generator) -> BTreeSet<OwnedRecordData> {
 
 fn arb_dns_resource_ip(g: &mut Generator) -> IpAddr {
     if g.bool() {
-        // TEST-NET-2 198.51.100.0/24 (256 addrs, small => overlap likely).
         let last = g.u8();
+
         IpAddr::V4(Ipv4Addr::new(198, 51, 100, last))
     } else {
-        // Subnet of 2001:db8::/32.
         let n = g.u16();
+
         IpAddr::V6(Ipv6Addr::new(0x2001, 0xDB80, 0x2020, 0x2020, 0, 0, 0, n))
     }
 }
-
-/// Global DNS records: 0..=4 domains, each with 1..=5 records (IP or TXT).
 fn arb_global_dns_records(g: &mut Generator, at: Instant) -> DnsRecords {
     let n = g.count(0, 4);
     (0..n)
@@ -554,39 +542,6 @@ fn arb_global_dns_records(g: &mut Generator, at: Instant) -> DnsRecords {
         .collect::<DnsRecords>()
 }
 
-/// 1..=5 records, weighted 3:1 IP:TXT (matching `dns_record`).
-///
-/// IP records are confined to the same documentation ranges as DNS *resource*
-/// records (`arb_dns_resource_ip`). This is load-bearing: a domain's resolved IP
-/// must never fall inside a CIDR/Internet resource's address range, or the
-/// reference (which routes a `Destination::DomainName` by domain) and the SUT
-/// (which routes by the resolved IP) would pick different gateways. CIDR resource
-/// addresses correspondingly exclude these ranges (see `arb_cidr_resource_address`).
-pub(super) fn arb_dns_record_set(g: &mut Generator) -> BTreeSet<OwnedRecordData> {
-    let n = g.count(1, 5);
-    (0..n)
-        .map(|_| {
-            if g.flip(75) {
-                return dns_types::records::ip(arb_dns_resource_ip(g));
-            }
-
-            // TXT: 6..=10 sections of 255 'a's.
-            let sections = g.count(6, 10);
-            let content = (0..sections)
-                .flat_map(|_| std::iter::once(255u8).chain(std::iter::repeat_n(b'a', 255)))
-                .collect::<Vec<_>>();
-            dns_types::records::txt(content)
-                .unwrap_or_else(|_| dns_types::records::ip(arb_dns_resource_ip(g)))
-        })
-        .collect::<BTreeSet<_>>()
-}
-
-// ---------------------------------------------------------------------------
-// ICMP error hosts (H1) + TCP resources
-// ---------------------------------------------------------------------------
-
-/// Pick exactly half of the deduplicated record IPs and assign each an ICMP
-/// error. A partial Fisher-Yates shuffle selects a uniform subset.
 fn arb_icmp_error_hosts(g: &mut Generator, records: &DnsRecords, now: Instant) -> IcmpErrorHosts {
     let mut ips = records
         .ips_iter(now)
@@ -624,8 +579,6 @@ fn arb_icmp_error(g: &mut Generator) -> crate::icmp_error_hosts::IcmpError {
     }
 }
 
-/// Sample TCP resource addresses from the DNS records (1..=all domains), one
-/// `SocketAddr` per resolved IP, dropping domains that have an ICMP-error IP.
 fn arb_tcp_resources(
     g: &mut Generator,
     records: &DnsRecords,

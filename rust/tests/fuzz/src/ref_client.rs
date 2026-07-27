@@ -636,8 +636,13 @@ impl RefClient {
         dport: DPort,
     ) {
         match expected_route {
-            PacketRoute::Drop | PacketRoute::Gateway(_) | PacketRoute::Peer(_) => {}
-            PacketRoute::RejectedByClient | PacketRoute::PeerRejectedByPeer(_) => {
+            PacketRoute::Drop => {}
+            PacketRoute::Gateway(_) => {}
+            PacketRoute::Peer(_) => {}
+            PacketRoute::RejectedByClient => {
+                self.expected_tcp_rejections.insert((sport, dport));
+            }
+            PacketRoute::PeerRejectedByPeer(_) => {
                 self.expected_tcp_rejections.insert((sport, dport));
             }
             PacketRoute::Resource {
@@ -824,8 +829,12 @@ impl RefClient {
     }
 
     fn is_dynamic_device_pool_dns_query(&mut self, query: &DnsQuery) -> bool {
-        self.resources.iter().any(|r| {
-            matches!(r, Resource::DynamicDevicePool(dp) if dns::is_subdomain(&query.domain, &dp.address))
+        self.resources.iter().any(|resource| match resource {
+            Resource::DynamicDevicePool(pool) => dns::is_subdomain(&query.domain, &pool.address),
+            Resource::Dns(_) => false,
+            Resource::Cidr(_) => false,
+            Resource::Internet(_) => false,
+            Resource::StaticDevicePool(_) => false,
         })
     }
 
@@ -966,7 +975,8 @@ impl RefClient {
             .filter(|r| dns::is_subdomain(domain, &r.address))
             .max_by(|r1, r2| {
                 let by_predicate = match (predicate(r1), predicate(r2)) {
-                    (true, true) | (false, false) => Ordering::Equal,
+                    (true, true) => Ordering::Equal,
+                    (false, false) => Ordering::Equal,
                     (true, false) => Ordering::Greater,
                     (false, true) => Ordering::Less,
                 };
@@ -1084,7 +1094,8 @@ impl RefClient {
             .filter(|c| c.address.contains(ip))
             .sorted_by(|r1, r2| {
                 let by_predicate = match (predicate(r1), predicate(r2)) {
-                    (true, true) | (false, false) => Ordering::Equal,
+                    (true, true) => Ordering::Equal,
+                    (false, false) => Ordering::Equal,
                     (true, false) => Ordering::Greater,
                     (false, true) => Ordering::Less,
                 };
@@ -1156,12 +1167,14 @@ impl RefClient {
     }
 
     fn is_local_dns_resource_query(&self, query: &DnsQuery) -> bool {
-        matches!(
-            query.r_type,
-            RecordType::A | RecordType::AAAA | RecordType::PTR
-        ) && self
-            .dns_resource_by_domain(&query.domain, |_| true)
-            .is_some()
+        let is_local_record = query.r_type == RecordType::A
+            || query.r_type == RecordType::AAAA
+            || query.r_type == RecordType::PTR;
+
+        is_local_record
+            && self
+                .dns_resource_by_domain(&query.domain, |_| true)
+                .is_some()
     }
 
     pub(crate) fn upstream_dns_server_via_resource(
@@ -1184,7 +1197,10 @@ impl RefClient {
     }
 
     pub(crate) fn is_site_specific_dns_query(&self, query: &DnsQuery) -> Option<ResourceId> {
-        if !matches!(query.r_type, RecordType::SRV | RecordType::TXT) {
+        let is_site_specific_record =
+            query.r_type == RecordType::SRV || query.r_type == RecordType::TXT;
+
+        if !is_site_specific_record {
             return None;
         }
 
@@ -1215,10 +1231,10 @@ impl RefClient {
 
     fn internet_resource(&self) -> Option<ResourceId> {
         self.resources.iter().find_map(|r| match r {
-            Resource::Dns(_)
-            | Resource::Cidr(_)
-            | Resource::StaticDevicePool(_)
-            | Resource::DynamicDevicePool(_) => None,
+            Resource::Dns(_) => None,
+            Resource::Cidr(_) => None,
+            Resource::StaticDevicePool(_) => None,
+            Resource::DynamicDevicePool(_) => None,
             Resource::Internet(internet_resource) => Some(internet_resource.id),
         })
     }
@@ -1300,12 +1316,10 @@ fn protocol_filter_allows(filters: &[Filter], protocol: Protocol) -> bool {
 /// Checks if a set of [`Filter`]s allows the given TCP port.
 fn tcp_filter_allows(filters: &[Filter], dport: u16) -> bool {
     filters.is_empty()
-        || filters.iter().any(|f| {
-            matches!(
-                f,
-                Filter::Tcp(range)
-                    if range.port_range_start <= dport && dport <= range.port_range_end
-            )
+        || filters.iter().any(|filter| match filter {
+            Filter::Tcp(range) => range.port_range_start <= dport && dport <= range.port_range_end,
+            Filter::Icmp => false,
+            Filter::Udp(_) => false,
         })
 }
 
@@ -1317,12 +1331,10 @@ fn icmp_filter_allows(filters: &[Filter]) -> bool {
 /// Checks if a set of [`Filter`]s allows the given UDP port.
 fn udp_filter_allows(filters: &[Filter], dport: u16) -> bool {
     filters.is_empty()
-        || filters.iter().any(|f| {
-            matches!(
-                f,
-                Filter::Udp(range)
-                    if range.port_range_start <= dport && dport <= range.port_range_end
-            )
+        || filters.iter().any(|filter| match filter {
+            Filter::Udp(range) => range.port_range_start <= dport && dport <= range.port_range_end,
+            Filter::Icmp => false,
+            Filter::Tcp(_) => false,
         })
 }
 

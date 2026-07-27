@@ -69,20 +69,20 @@ impl Resource {
     pub(crate) fn into_dns(self) -> Option<DnsResource> {
         match self {
             Resource::Dns(resource) => Some(resource),
-            Resource::Cidr(_)
-            | Resource::Internet(_)
-            | Resource::StaticDevicePool(_)
-            | Resource::DynamicDevicePool(_) => None,
+            Resource::Cidr(_) => None,
+            Resource::Internet(_) => None,
+            Resource::StaticDevicePool(_) => None,
+            Resource::DynamicDevicePool(_) => None,
         }
     }
 
     pub(crate) fn into_cidr(self) -> Option<CidrResource> {
         match self {
             Resource::Cidr(resource) => Some(resource),
-            Resource::Dns(_)
-            | Resource::Internet(_)
-            | Resource::StaticDevicePool(_)
-            | Resource::DynamicDevicePool(_) => None,
+            Resource::Dns(_) => None,
+            Resource::Internet(_) => None,
+            Resource::StaticDevicePool(_) => None,
+            Resource::DynamicDevicePool(_) => None,
         }
     }
 
@@ -111,7 +111,8 @@ impl Resource {
             Resource::Dns(r) => &r.sites,
             Resource::Cidr(r) => &r.sites,
             Resource::Internet(r) => &r.sites,
-            Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => &[],
+            Resource::StaticDevicePool(_) => &[],
+            Resource::DynamicDevicePool(_) => &[],
         }
     }
 
@@ -124,7 +125,8 @@ impl Resource {
             Resource::Dns(r) => &r.filters,
             Resource::Cidr(r) => &r.filters,
             Resource::StaticDevicePool(r) => &r.filters,
-            Resource::Internet(_) | Resource::DynamicDevicePool(_) => &[],
+            Resource::Internet(_) => &[],
+            Resource::DynamicDevicePool(_) => &[],
         }
     }
 
@@ -132,7 +134,9 @@ impl Resource {
         &self,
     ) -> Result<&Site, itertools::ExactlyOneError<impl Iterator<Item = &Site> + std::fmt::Debug>>
     {
-        self.sites().iter().exactly_one()
+        let site = self.sites().iter().exactly_one()?;
+
+        Ok(site)
     }
 
     pub(crate) fn has_different_address(&self, other: &Resource) -> bool {
@@ -151,7 +155,10 @@ impl Resource {
     }
 
     pub(crate) fn has_different_ip_stack(&self, other: &Resource) -> bool {
-        matches!((self, other), (Resource::Dns(a), Resource::Dns(b)) if a.ip_stack != b.ip_stack)
+        match (self, other) {
+            (Resource::Dns(a), Resource::Dns(b)) => a.ip_stack != b.ip_stack,
+            _ => false,
+        }
     }
 
     pub(crate) fn has_different_site(&self, other: &Resource) -> bool {
@@ -188,11 +195,12 @@ impl Resource {
             Resource::StaticDevicePool(r) => {
                 Self::StaticDevicePool(StaticDevicePoolResource { filters, ..r })
             }
-            Resource::Internet(_) | Resource::DynamicDevicePool(_) => self,
+            Resource::Internet(_) => self,
+            Resource::DynamicDevicePool(_) => self,
         }
     }
 
-    /// Convert the reference resource into the portal message consumed by the SUT.
+    /// Converts the reference resource into the portal message consumed by the SUT.
     pub(crate) fn into_description(self) -> ResourceDescription {
         match self {
             Resource::Dns(r) => ResourceDescription::Dns(json!({

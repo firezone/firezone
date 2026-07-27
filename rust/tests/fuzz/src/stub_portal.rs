@@ -414,7 +414,10 @@ impl StubPortal {
             client::Resource::StaticDevicePool(resource) => {
                 self.static_device_pool_resources.insert(id, resource);
             }
-            client::Resource::Internet(_) | client::Resource::DynamicDevicePool(_) => {
+            client::Resource::Internet(_) => {
+                unreachable!("only user-editable resource types can replace one another")
+            }
+            client::Resource::DynamicDevicePool(_) => {
                 unreachable!("only user-editable resource types can replace one another")
             }
         }

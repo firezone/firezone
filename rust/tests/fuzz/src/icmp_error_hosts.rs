@@ -6,7 +6,7 @@ pub(crate) struct IcmpErrorHosts {
 }
 
 impl IcmpErrorHosts {
-    /// Build from a precomputed IP -> error map (used by the structured generator).
+    /// Builds from a precomputed IP-to-error map.
     pub(crate) fn from_entries(inner: BTreeMap<IpAddr, IcmpError>) -> Self {
         Self { inner }
     }
@@ -16,7 +16,6 @@ impl IcmpErrorHosts {
     }
 }
 
-/// Enumerates all possible ICMP errors we may generate for IPs on a particular domain.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IcmpError {
     Network,

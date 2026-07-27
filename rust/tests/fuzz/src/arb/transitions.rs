@@ -52,88 +52,6 @@ enum TransitionKind {
     UpdateStaticDevicePool,
 }
 
-fn move_resource_candidates(state: &ReferenceState) -> Vec<(Resource, Site)> {
-    let sites = state.regular_sites();
-
-    state
-        .cidr_and_dns_resources_on_any_client()
-        .into_iter()
-        .flat_map(|resource| {
-            let candidate = resource.clone();
-            sites
-                .iter()
-                .filter(move |site| !candidate.is_exclusively_at(site))
-                .map(move |site| (resource.clone(), site.clone()))
-        })
-        .collect::<Vec<_>>()
-}
-
-fn arb_resource_with_different_type(
-    g: &mut Generator,
-    state: &ReferenceState,
-    resource: &Resource,
-) -> Resource {
-    #[derive(Clone, Copy)]
-    enum ResourceType {
-        Cidr,
-        Dns,
-        StaticDevicePool,
-    }
-
-    let resource_type = match resource {
-        Resource::Cidr(_) => [ResourceType::Dns, ResourceType::StaticDevicePool][g.choose_index(2)],
-        Resource::Dns(_) => [ResourceType::Cidr, ResourceType::StaticDevicePool][g.choose_index(2)],
-        Resource::StaticDevicePool(_) => [ResourceType::Cidr, ResourceType::Dns][g.choose_index(2)],
-        Resource::Internet(_) | Resource::DynamicDevicePool(_) => {
-            unreachable!("only user-editable resource types can replace one another")
-        }
-    };
-
-    let site = resource
-        .sites()
-        .first()
-        .cloned()
-        .unwrap_or_else(|| pick_site(g, state.regular_sites()).clone());
-    let id = resource.id();
-    let name = resource.name().to_owned();
-    let filters = resource.filters().to_vec();
-
-    match resource_type {
-        ResourceType::Cidr => Resource::Cidr(CidrResource {
-            id,
-            address: arb_cidr_resource_address(g),
-            name,
-            address_description: arb_address_description(g),
-            sites: vec![site],
-            filters,
-        }),
-        ResourceType::Dns => {
-            let base = arb_domain_name_string(g, 2, 3);
-            let address = match g.choose_index(3) {
-                0 => base,
-                1 => format!("*.{base}"),
-                _ => format!("**.{base}"),
-            };
-
-            Resource::Dns(DnsResource {
-                id,
-                address,
-                name,
-                address_description: arb_address_description(g),
-                sites: vec![site],
-                ip_stack: arb_ip_stack_kind(g),
-                filters,
-            })
-        }
-        ResourceType::StaticDevicePool => Resource::StaticDevicePool(StaticDevicePoolResource {
-            id,
-            name,
-            devices: packets::arb_online_static_pool_members(g, state),
-            filters,
-        }),
-    }
-}
-
 pub(super) fn generate(
     g: &mut Generator,
     state: &ReferenceState,
@@ -329,6 +247,91 @@ pub(super) fn generate(
     };
 
     Some(transition)
+}
+
+fn move_resource_candidates(state: &ReferenceState) -> Vec<(Resource, Site)> {
+    let sites = state.regular_sites();
+
+    state
+        .cidr_and_dns_resources_on_any_client()
+        .into_iter()
+        .flat_map(|resource| {
+            let candidate = resource.clone();
+            sites
+                .iter()
+                .filter(move |site| !candidate.is_exclusively_at(site))
+                .map(move |site| (resource.clone(), site.clone()))
+        })
+        .collect::<Vec<_>>()
+}
+
+fn arb_resource_with_different_type(
+    g: &mut Generator,
+    state: &ReferenceState,
+    resource: &Resource,
+) -> Resource {
+    #[derive(Clone, Copy)]
+    enum ResourceType {
+        Cidr,
+        Dns,
+        StaticDevicePool,
+    }
+
+    let resource_type = match resource {
+        Resource::Cidr(_) => [ResourceType::Dns, ResourceType::StaticDevicePool][g.choose_index(2)],
+        Resource::Dns(_) => [ResourceType::Cidr, ResourceType::StaticDevicePool][g.choose_index(2)],
+        Resource::StaticDevicePool(_) => [ResourceType::Cidr, ResourceType::Dns][g.choose_index(2)],
+        Resource::Internet(_) => {
+            unreachable!("only user-editable resource types can replace one another")
+        }
+        Resource::DynamicDevicePool(_) => {
+            unreachable!("only user-editable resource types can replace one another")
+        }
+    };
+
+    let site = resource
+        .sites()
+        .first()
+        .cloned()
+        .unwrap_or_else(|| pick_site(g, state.regular_sites()).clone());
+    let id = resource.id();
+    let name = resource.name().to_owned();
+    let filters = resource.filters().to_vec();
+
+    match resource_type {
+        ResourceType::Cidr => Resource::Cidr(CidrResource {
+            id,
+            address: arb_cidr_resource_address(g),
+            name,
+            address_description: arb_address_description(g),
+            sites: vec![site],
+            filters,
+        }),
+        ResourceType::Dns => {
+            let base = arb_domain_name_string(g, 2, 3);
+            let address = match g.choose_index(3) {
+                0 => base,
+                1 => format!("*.{base}"),
+                _ => format!("**.{base}"),
+            };
+
+            Resource::Dns(DnsResource {
+                id,
+                address,
+                name,
+                address_description: arb_address_description(g),
+                sites: vec![site],
+                ip_stack: arb_ip_stack_kind(g),
+                filters,
+            })
+        }
+        ResourceType::StaticDevicePool => Resource::StaticDevicePool(StaticDevicePoolResource {
+            id,
+            name,
+            devices: packets::arb_online_static_pool_members(g, state),
+            filters,
+        }),
+    }
 }
 
 /// Reproduces `Union::new_weighted`: partition `int_in_range` over the summed

@@ -173,10 +173,10 @@ impl TunnelTest {
                                     true
                                 });
                             }
-                            client::Resource::Cidr(_)
-                            | client::Resource::Internet(_)
-                            | client::Resource::StaticDevicePool(_)
-                            | client::Resource::DynamicDevicePool(_) => {}
+                            client::Resource::Cidr(_) => {}
+                            client::Resource::Internet(_) => {}
+                            client::Resource::StaticDevicePool(_) => {}
+                            client::Resource::DynamicDevicePool(_) => {}
                         }
 
                         c.sut.add_resource(resource.clone().into_description(), now);
@@ -269,11 +269,11 @@ impl TunnelTest {
                         .into_iter()
                         .find_map(|r| match r {
                             client::Resource::StaticDevicePool(p) if p.id == pool_id => Some(p),
-                            client::Resource::Dns(_)
-                            | client::Resource::Cidr(_)
-                            | client::Resource::Internet(_)
-                            | client::Resource::DynamicDevicePool(_)
-                            | client::Resource::StaticDevicePool(_) => None,
+                            client::Resource::Dns(_) => None,
+                            client::Resource::Cidr(_) => None,
+                            client::Resource::Internet(_) => None,
+                            client::Resource::DynamicDevicePool(_) => None,
+                            client::Resource::StaticDevicePool(_) => None,
                         })
                 else {
                     panic!("UpdateStaticDevicePool for unknown pool {pool_id}");
@@ -1113,14 +1113,7 @@ impl TunnelTest {
         let portal_unreachable = self
             .client_portal_offline_until
             .is_some_and(|(cid, until)| cid == src && now < until);
-        let is_portal_bound = matches!(
-            event,
-            ClientEvent::AddedIceCandidates { .. }
-                | ClientEvent::RemovedIceCandidates { .. }
-                | ClientEvent::ResourceConnectionIntent { .. }
-                | ClientEvent::DevicePoolDomainQueried { .. }
-                | ClientEvent::NoRelays
-        );
+        let is_portal_bound = is_portal_bound_event(&event);
         if portal_unreachable && is_portal_bound {
             tracing::trace!(%src, ?event, "Dropping portal-bound client event during roam outage");
 
@@ -1602,5 +1595,20 @@ fn on_gateway_event(
             gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), now));
         }
         GatewayEvent::Error(_) => unreachable!("GatewayState never emits `TunnelError`"),
+    }
+}
+
+#[allow(clippy::match_like_matches_macro)]
+fn is_portal_bound_event(event: &ClientEvent) -> bool {
+    match event {
+        ClientEvent::AddedIceCandidates { .. } => true,
+        ClientEvent::RemovedIceCandidates { .. } => true,
+        ClientEvent::ResourceConnectionIntent { .. } => true,
+        ClientEvent::DevicePoolDomainQueried { .. } => true,
+        ClientEvent::ResourcesChanged { .. } => false,
+        ClientEvent::DnsRecordsChanged { .. } => false,
+        ClientEvent::TunInterfaceUpdated(_) => false,
+        ClientEvent::NoRelays => true,
+        ClientEvent::Error(_) => false,
     }
 }
