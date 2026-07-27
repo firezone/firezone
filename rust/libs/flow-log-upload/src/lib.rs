@@ -8,8 +8,8 @@
 //! `<flow_start>` is the flow's start time as zero-padded unix seconds, so lexical
 //! name order is oldest-first. Each pass uploads one batch per
 //! authorization over the caller's tunnel-bypassing [`SocketFactory`] and deletes
-//! what it sent; submits are idempotent (the portal upserts by flow identity), so
-//! ambiguous failures retry the whole batch.
+//! what the portal stored; submits are idempotent (the portal upserts by flow
+//! identity), so ambiguous failures retry the whole batch.
 //!
 //! [`spawn`] runs a thread that uploads on the portal's interval, for as long
 //! as flows are being produced: process lifetime on the gateway and desktop
@@ -562,9 +562,11 @@ async fn upload_authz_batch(
         return Ok(false);
     };
 
-    submit(client, &token, &batch).await?;
+    let outcome = submit(client, &token, &batch).await?;
 
-    Ok(backlog)
+    // Coming straight back to a batch the portal just refused would only be
+    // refused again; the next pass is soon enough.
+    Ok(backlog && outcome == BatchOutcome::Stored)
 }
 
 /// Reads one authorization's token and up to `batch_size` flows (oldest first), or
@@ -689,9 +691,9 @@ fn read_report(path: &Path) -> Result<Option<serde_json::Value>> {
 
 /// Submits one batch with response-specific handling. Idempotent, so transient
 /// failures retry the whole batch.
-async fn submit(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Result<()> {
+async fn submit(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Result<BatchOutcome> {
     if batch.is_empty() {
-        return Ok(());
+        return Ok(BatchOutcome::Stored);
     }
 
     let payloads = batch.iter().map(|flow| &flow.payload).collect::<Vec<_>>();
@@ -710,7 +712,7 @@ async fn submit(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Re
                 tracing::info!("Flow-log upload request failed: {e:#}");
                 // A closed connection won't recover by retrying; defer to the next pass.
                 if client.is_closed() || !sleep_backoff(&mut backoff).await {
-                    return Ok(()); // the files remain on disk
+                    return Ok(BatchOutcome::Spooled);
                 }
                 continue;
             }
@@ -721,7 +723,7 @@ async fn submit(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Re
             ResponseAction::Delete => {
                 tracing::debug!(flows = batch.len(), "Uploaded flow-log batch");
                 delete_all(batch).await;
-                return Ok(());
+                return Ok(BatchOutcome::Stored);
             }
             ResponseAction::Partition => {
                 return partition(client, token, batch).await;
@@ -735,22 +737,26 @@ async fn submit(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Re
             ResponseAction::Retry => {
                 tracing::info!(%status, "Flow-log upload transient failure; backing off");
                 if !sleep_backoff(&mut backoff).await {
-                    return Ok(());
+                    return Ok(BatchOutcome::Spooled);
                 }
             }
             ResponseAction::Redirect => client.follow_redirect(&response).await?,
             ResponseAction::Defer => {
-                tracing::warn!(%status, "Flow-log upload redirected somewhere we cannot follow");
-                return Ok(()); // the files remain on disk
-            }
-            ResponseAction::Drop => {
                 let body = body_string(&response);
-                tracing::info!(%status, %body, "Flow-log upload rejected; dropping batch");
-                delete_all(batch).await;
-                return Ok(());
+                tracing::info!(%status, %body, "Flow-log upload rejected; keeping the batch");
+                return Ok(BatchOutcome::Spooled);
             }
         }
     }
+}
+
+/// Where a batch ended up once [`submit`] returned.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum BatchOutcome {
+    /// The portal stored the batch and its files are deleted.
+    Stored,
+    /// The batch is still spooled for a later pass to retry.
+    Spooled,
 }
 
 /// What to do with a batch after a POST, decided from the response status.
@@ -766,15 +772,16 @@ enum ResponseAction {
     Retry,
     /// Redirected (301 / 302 / 307 / 308); reconnect if needed and replay the POST.
     Redirect,
-    /// A redirect we cannot follow (303 and other 3xx); keep the batch on disk.
-    /// The portal never stored it, and replaying the POST would only be redirected
-    /// again, so a later pass tries afresh.
+    /// Rejected (4xx) or redirected somewhere a POST cannot follow (303); keep the
+    /// batch on disk. Nothing was stored, and the reason is as likely to be a
+    /// portal bug or a middlebox as a batch the portal can never accept, so a
+    /// later pass tries afresh. Its token bounds the wait: [`prune`] deletes the
+    /// directory once that expires.
     Defer,
-    /// Permanently rejected (422 / other 4xx); log and drop the batch. The portal
-    /// upserts by flow identity, so a dropped batch is never a partial write.
-    Drop,
 }
 
+/// Only a response the portal answered with is classified here; a 2xx is the sole
+/// status that lets a batch be deleted.
 fn classify_response(status: StatusCode) -> ResponseAction {
     match status {
         s if s.is_success() => ResponseAction::Delete,
@@ -787,24 +794,29 @@ fn classify_response(status: StatusCode) -> ResponseAction {
         | StatusCode::FOUND
         | StatusCode::TEMPORARY_REDIRECT
         | StatusCode::PERMANENT_REDIRECT => ResponseAction::Redirect,
-        s if s.is_redirection() => ResponseAction::Defer,
-        _ => ResponseAction::Drop,
+        _ => ResponseAction::Defer,
     }
 }
 
 /// Splits an over-sized batch in half and submits each.
-async fn partition(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Result<()> {
+async fn partition(
+    client: &mut IngestClient,
+    token: &str,
+    batch: &[Pending],
+) -> Result<BatchOutcome> {
     if batch.len() <= 1 {
-        tracing::error!("A single flow exceeds the upload size limit; dropping");
-        delete_all(batch).await;
-        return Ok(());
+        tracing::warn!("A single flow exceeds the upload size limit; keeping it");
+        return Ok(BatchOutcome::Spooled);
     }
 
     let mid = batch.len() / 2;
-    Box::pin(submit(client, token, &batch[..mid])).await?;
-    Box::pin(submit(client, token, &batch[mid..])).await?;
+    let first = Box::pin(submit(client, token, &batch[..mid])).await?;
+    let second = Box::pin(submit(client, token, &batch[mid..])).await?;
 
-    Ok(())
+    Ok(match (first, second) {
+        (BatchOutcome::Stored, BatchOutcome::Stored) => BatchOutcome::Stored,
+        _ => BatchOutcome::Spooled,
+    })
 }
 
 async fn delete_all(batch: &[Pending]) {
@@ -1106,10 +1118,11 @@ mod tests {
         assert_eq!(classify_response(StatusCode::PERMANENT_REDIRECT), Redirect);
         assert_eq!(classify_response(StatusCode::SEE_OTHER), Defer);
         assert_eq!(classify_response(StatusCode::NOT_MODIFIED), Defer);
-        assert_eq!(classify_response(StatusCode::UNPROCESSABLE_ENTITY), Drop);
-        assert_eq!(classify_response(StatusCode::BAD_REQUEST), Drop);
-        assert_eq!(classify_response(StatusCode::UNAUTHORIZED), Drop);
-        assert_eq!(classify_response(StatusCode::FORBIDDEN), Drop);
+        assert_eq!(classify_response(StatusCode::UNPROCESSABLE_ENTITY), Defer);
+        assert_eq!(classify_response(StatusCode::BAD_REQUEST), Defer);
+        assert_eq!(classify_response(StatusCode::UNAUTHORIZED), Defer);
+        assert_eq!(classify_response(StatusCode::FORBIDDEN), Defer);
+        assert_eq!(classify_response(StatusCode::NOT_FOUND), Defer);
     }
 
     #[test]
