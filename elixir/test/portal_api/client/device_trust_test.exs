@@ -16,7 +16,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
     end
 
     test "returns no anchors when the feature is disabled", %{account: account} do
-      trust_anchor_fixture(account: account, certs: [ca_der()])
+      trust_anchor_fixture(account: account, certs: [pki().ca_der])
       assert DeviceTrust.fetch_enabled_anchors(account.id) == []
     end
 
@@ -27,7 +27,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
 
     test "returns anchors when the feature is enabled and the account has one", %{account: account} do
       enable_feature(:trust_anchors)
-      trust_anchor_fixture(account: account, certs: [ca_der()])
+      trust_anchor_fixture(account: account, certs: [pki().ca_der])
       assert [_anchor | _rest] = DeviceTrust.fetch_enabled_anchors(account.id)
     end
   end
@@ -36,13 +36,18 @@ defmodule PortalAPI.Client.DeviceTrustTest do
     setup do
       account = account_fixture()
       enable_feature(:trust_anchors)
-      trust_anchor_fixture(account: account, certs: [ca_der()])
+      pki = pki()
+      trust_anchor_fixture(account: account, certs: [pki.ca_der])
       anchors = DeviceTrust.fetch_enabled_anchors(account.id)
-      %{account: account, nonce: DeviceTrust.nonce(), anchors: anchors}
+      %{account: account, pki: pki, nonce: DeviceTrust.nonce(), anchors: anchors}
     end
 
-    test "verifies an RSA leaf and extracts typed identifiers", %{nonce: nonce, anchors: anchors} do
-      entry = response_entry(:rsa, nonce)
+    test "verifies an RSA leaf and extracts typed identifiers", %{
+      pki: pki,
+      nonce: nonce,
+      anchors: anchors
+    } do
+      entry = response_entry(pki, :rsa, nonce)
 
       assert {:ok, verified} = DeviceTrust.verify_response([entry], nonce, anchors)
       assert verified.identifiers.last_attested_device_serial == "C02XK1ZGJGH5"
@@ -52,42 +57,76 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert is_binary(verified.last_attested_cert_serial)
     end
 
-    test "verifies an EC P-256 leaf", %{nonce: nonce, anchors: anchors} do
-      entry = response_entry(:ec, nonce)
+    test "verifies an EC P-256 leaf", %{pki: pki, nonce: nonce, anchors: anchors} do
+      entry = response_entry(pki, :ec, nonce)
       assert {:ok, verified} = DeviceTrust.verify_response([entry], nonce, anchors)
       assert verified.identifiers.last_attested_device_serial == "C02XK1ZGJGH5"
     end
 
-    test "accepts an intermediate supplied by the client", %{nonce: nonce, anchors: anchors} do
-      entry = response_entry(:via_intermediate, nonce, intermediates: [intermediate_der()])
+    test "accepts an intermediate supplied by the client", %{
+      pki: pki,
+      nonce: nonce,
+      anchors: anchors
+    } do
+      entry = response_entry(pki, :via_intermediate, nonce, intermediates: [pki.intermediate_der])
       assert {:ok, verified} = DeviceTrust.verify_response([entry], nonce, anchors)
       assert verified.identifiers.last_attested_device_serial == "DMPXK1ZGXYZ9"
     end
 
-    test "rejects a leaf without client-auth EKU", %{nonce: nonce, anchors: anchors} do
-      entry = response_entry(:no_eku, nonce)
+    test "rejects a leaf without client-auth EKU", %{pki: pki, nonce: nonce, anchors: anchors} do
+      entry = response_entry(pki, :no_eku, nonce)
       assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)
     end
 
     test "rejects a leaf whose key usage omits digitalSignature", %{
-      account: account,
-      nonce: nonce
+      pki: pki,
+      nonce: nonce,
+      anchors: anchors
     } do
-      trust_anchor_fixture(account: account, certs: [key_usage_ca_der()])
-      anchors = DeviceTrust.fetch_enabled_anchors(account.id)
-      entry = response_entry(:no_digital_signature, nonce)
-
+      entry = response_entry(pki, :no_digital_signature, nonce)
       assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)
     end
 
-    test "rejects a leaf that does not chain to an anchor", %{nonce: nonce, anchors: anchors} do
-      entry = response_entry(:untrusted, nonce)
+    test "rejects an expired leaf", %{pki: pki, nonce: nonce, anchors: anchors} do
+      entry = response_entry(pki, :expired, nonce)
       assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)
     end
 
-    test "rejects a signature over the wrong nonce", %{nonce: nonce, anchors: anchors} do
-      entry = response_entry(:rsa, :crypto.strong_rand_bytes(32))
+    test "rejects a not-yet-valid leaf", %{pki: pki, nonce: nonce, anchors: anchors} do
+      entry = response_entry(pki, :not_yet_valid, nonce)
       assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)
+    end
+
+    test "rejects a leaf that does not chain to an anchor", %{
+      pki: pki,
+      nonce: nonce,
+      anchors: anchors
+    } do
+      entry = response_entry(pki, :untrusted, nonce)
+      assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)
+    end
+
+    test "rejects a signature over the wrong nonce", %{pki: pki, nonce: nonce, anchors: anchors} do
+      entry = response_entry(pki, :rsa, :crypto.strong_rand_bytes(32))
+      assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)
+    end
+
+    test "rejects an oversized certificate without decoding it", %{
+      nonce: nonce,
+      anchors: anchors
+    } do
+      huge = Base.encode64(:crypto.strong_rand_bytes(64_000))
+      entry = %{"certs" => [huge], "signed_challenge" => Base.encode64(<<1>>)}
+      assert {:error, :no_usable_cert} = DeviceTrust.verify_response([entry], nonce, anchors)
+    end
+
+    test "rejects an oversized signature", %{pki: pki, nonce: nonce, anchors: anchors} do
+      entry =
+        pki
+        |> response_entry(:rsa, nonce)
+        |> Map.put("signed_challenge", Base.encode64(:crypto.strong_rand_bytes(8_000)))
+
+      assert {:error, :no_usable_cert} = DeviceTrust.verify_response([entry], nonce, anchors)
     end
 
     test "returns no_usable_cert for an empty or garbage payload", %{nonce: nonce, anchors: anchors} do
@@ -98,7 +137,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
 
   describe "extract_identifiers/1" do
     defp otp(leaf_name) do
-      {der, _key} = leaf(leaf_name)
+      {der, _key} = leaf(pki(), leaf_name)
       {:ok, otp} = X509.decode_der_certificate(der, :otp)
       otp
     end
