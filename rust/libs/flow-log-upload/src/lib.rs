@@ -33,12 +33,14 @@ use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use base64::Engine as _;
 use bytes::Bytes;
 use flow_log_spool::deserialize;
-use http::{StatusCode, header};
-use http_client::HttpClient;
+use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationSeconds, serde_as};
 use socket_factory::{SocketFactory, TcpSocket};
-use url::Url;
+
+mod ingest;
+
+use ingest::{IngestClient, body_string, ingest_endpoint, retry_after};
 
 /// Default flows per upload when the portal doesn't specify one.
 const DEFAULT_BATCH_SIZE: usize = 1_000;
@@ -51,7 +53,6 @@ const DISABLED_POLL: Duration = Duration::from_secs(30);
 /// Total time spent retrying one batch on transient failures before deferring it
 /// to the next pass.
 const MAX_UPLOAD_RETRY: Duration = Duration::from_secs(5 * 60);
-const INGEST_PATH: &str = "/ingestion/flow_logs";
 const CONFIG_FILE: &str = "upload.json";
 const START_SUFFIX: &str = ".start.json";
 const END_SUFFIX: &str = ".end.json";
@@ -450,33 +451,6 @@ fn apply_dacl(path: &Path, dacl: &windows_security::pipe_dacl::PipeDacl) -> std:
         .map_err(|e| std::io::Error::other(format!("{e:#}")))
 }
 
-fn ingest_endpoint(base_url: &str) -> Result<String> {
-    let url = Url::parse(base_url)
-        .and_then(|base| base.join(INGEST_PATH))
-        .with_context(|| format!("Invalid flow-log API URL `{base_url}`"))?;
-
-    Ok(url.to_string())
-}
-
-/// Opens a tunnel-bypassing HTTP client to the ingest host, re-resolved each pass
-/// so address changes are picked up.
-///
-/// Resolution goes through [`tunnel_bypass_resolver`]: while a session owns
-/// the system resolver, `getaddrinfo` would loop back through connlib.
-async fn connect(
-    ingest_url: &str,
-    socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-) -> Result<HttpClient> {
-    let url = Url::parse(ingest_url).context("Invalid ingest URL")?;
-    let host = url.host_str().context("Ingest URL has no host")?.to_owned();
-
-    let addresses = tunnel_bypass_resolver::resolve(&host).await?;
-
-    HttpClient::new(host, addresses, socket_factory)
-        .await
-        .context("Failed to connect to ingest host")
-}
-
 /// One flow to upload: the record to send and the files to delete once it lands.
 struct Pending {
     payload: serde_json::Value,
@@ -504,7 +478,7 @@ async fn upload_pending(
     }
 
     // Routine while the device is offline or roaming; try again next pass.
-    let client = match connect(&url, socket_factory).await {
+    let mut client = match IngestClient::connect(url, socket_factory).await {
         Ok(client) => client,
         Err(e) => {
             tracing::info!("Failed to open flow-log ingest connection: {e:#}");
@@ -532,7 +506,7 @@ async fn upload_pending(
             return Ok(true);
         }
 
-        match upload_authz_batch(&client, &dir, &url, config.batch_size).await {
+        match upload_authz_batch(&mut client, &dir, config.batch_size).await {
             Ok(more) => backlog |= more,
             // One broken directory must not block the others.
             Err(e) => tracing::warn!(?dir, "Failed to upload flow-log batch: {e:#}"),
@@ -574,9 +548,8 @@ fn read_dir_or_empty(dir: &Path) -> Result<Vec<PathBuf>> {
 /// Uploads one batch from one authorization's spool. Returns whether more than one
 /// batch was pending (a backlog).
 async fn upload_authz_batch(
-    client: &HttpClient,
+    client: &mut IngestClient,
     dir: &Path,
-    url: &str,
     batch_size: usize,
 ) -> Result<bool> {
     let collected = {
@@ -589,7 +562,7 @@ async fn upload_authz_batch(
         return Ok(false);
     };
 
-    submit(client, url, &token, &batch).await?;
+    submit(client, &token, &batch).await?;
 
     Ok(backlog)
 }
@@ -716,7 +689,7 @@ fn read_report(path: &Path) -> Result<Option<serde_json::Value>> {
 
 /// Submits one batch with response-specific handling. Idempotent, so transient
 /// failures retry the whole batch.
-async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) -> Result<()> {
+async fn submit(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Result<()> {
     if batch.is_empty() {
         return Ok(());
     }
@@ -731,7 +704,7 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
     let mut backoff = upload_backoff();
 
     loop {
-        let response = match send(client, url, token, body.clone()).await {
+        let response = match client.send(token, body.clone()).await {
             Ok(response) => response,
             Err(e) => {
                 tracing::info!("Flow-log upload request failed: {e:#}");
@@ -751,7 +724,7 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
                 return Ok(());
             }
             ResponseAction::Partition => {
-                return partition(client, url, token, batch).await;
+                return partition(client, token, batch).await;
             }
             ResponseAction::RateLimited => {
                 let wait = retry_after(&response).unwrap_or(CATCHUP_POLL);
@@ -764,6 +737,11 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
                 if !sleep_backoff(&mut backoff).await {
                     return Ok(());
                 }
+            }
+            ResponseAction::Redirect => client.follow_redirect(&response).await?,
+            ResponseAction::Defer => {
+                tracing::warn!(%status, "Flow-log upload redirected somewhere we cannot follow");
+                return Ok(()); // the files remain on disk
             }
             ResponseAction::Drop => {
                 let body = body_string(&response);
@@ -786,6 +764,12 @@ enum ResponseAction {
     RateLimited,
     /// Transient failure (408 / 5xx); back off, then retry the same batch.
     Retry,
+    /// Redirected (301 / 302 / 307 / 308); reconnect if needed and replay the POST.
+    Redirect,
+    /// A redirect we cannot follow (303 and other 3xx); keep the batch on disk.
+    /// The portal never stored it, and replaying the POST would only be redirected
+    /// again, so a later pass tries afresh.
+    Defer,
     /// Permanently rejected (422 / other 4xx); log and drop the batch. The portal
     /// upserts by flow identity, so a dropped batch is never a partial write.
     Drop,
@@ -798,33 +782,18 @@ fn classify_response(status: StatusCode) -> ResponseAction {
         StatusCode::TOO_MANY_REQUESTS => ResponseAction::RateLimited,
         StatusCode::REQUEST_TIMEOUT => ResponseAction::Retry,
         s if s.is_server_error() => ResponseAction::Retry,
+        // 303 is absent: it mandates a GET, which cannot carry the batch.
+        StatusCode::MOVED_PERMANENTLY
+        | StatusCode::FOUND
+        | StatusCode::TEMPORARY_REDIRECT
+        | StatusCode::PERMANENT_REDIRECT => ResponseAction::Redirect,
+        s if s.is_redirection() => ResponseAction::Defer,
         _ => ResponseAction::Drop,
     }
 }
 
-async fn send(
-    client: &HttpClient,
-    url: &str,
-    token: &str,
-    body: Bytes,
-) -> Result<http::Response<Bytes>> {
-    let request = http::Request::builder()
-        .method(http::Method::POST)
-        .uri(url)
-        .header(header::AUTHORIZATION, format!("Bearer {token}"))
-        .header(header::CONTENT_TYPE, "application/json")
-        .body(body)
-        .context("Failed to build flow-log request")?;
-
-    client.send_request(request)?.await
-}
-
-fn body_string(response: &http::Response<Bytes>) -> String {
-    String::from_utf8_lossy(response.body()).into_owned()
-}
-
 /// Splits an over-sized batch in half and submits each.
-async fn partition(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) -> Result<()> {
+async fn partition(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Result<()> {
     if batch.len() <= 1 {
         tracing::error!("A single flow exceeds the upload size limit; dropping");
         delete_all(batch).await;
@@ -832,8 +801,8 @@ async fn partition(client: &HttpClient, url: &str, token: &str, batch: &[Pending
     }
 
     let mid = batch.len() / 2;
-    Box::pin(submit(client, url, token, &batch[..mid])).await?;
-    Box::pin(submit(client, url, token, &batch[mid..])).await?;
+    Box::pin(submit(client, token, &batch[..mid])).await?;
+    Box::pin(submit(client, token, &batch[mid..])).await?;
 
     Ok(())
 }
@@ -862,18 +831,6 @@ fn delete_files(files: Vec<PathBuf>) {
     }
 
     tracing::debug!(count, "Deleted uploaded flow-log reports");
-}
-
-fn retry_after(response: &http::Response<Bytes>) -> Option<Duration> {
-    let seconds = response
-        .headers()
-        .get(header::RETRY_AFTER)?
-        .to_str()
-        .ok()?
-        .parse::<u64>()
-        .ok()?;
-
-    Some(Duration::from_secs(seconds))
 }
 
 fn upload_backoff() -> ExponentialBackoff {
@@ -934,15 +891,6 @@ mod tests {
         assert_eq!(config.api_url, "https://flow-api.firezone.dev/");
         assert_eq!(config.interval, Duration::from_secs(90));
         assert_eq!(config.batch_size, 500);
-    }
-
-    #[test]
-    fn ingest_endpoint_appends_the_ingest_path() {
-        assert_eq!(
-            ingest_endpoint("https://flow-api.firezone.dev/").unwrap(),
-            "https://flow-api.firezone.dev/ingestion/flow_logs"
-        );
-        assert!(ingest_endpoint("not a url").is_err());
     }
 
     #[test]
@@ -1152,6 +1100,12 @@ mod tests {
         assert_eq!(classify_response(StatusCode::REQUEST_TIMEOUT), Retry);
         assert_eq!(classify_response(StatusCode::INTERNAL_SERVER_ERROR), Retry);
         assert_eq!(classify_response(StatusCode::SERVICE_UNAVAILABLE), Retry);
+        assert_eq!(classify_response(StatusCode::MOVED_PERMANENTLY), Redirect);
+        assert_eq!(classify_response(StatusCode::FOUND), Redirect);
+        assert_eq!(classify_response(StatusCode::TEMPORARY_REDIRECT), Redirect);
+        assert_eq!(classify_response(StatusCode::PERMANENT_REDIRECT), Redirect);
+        assert_eq!(classify_response(StatusCode::SEE_OTHER), Defer);
+        assert_eq!(classify_response(StatusCode::NOT_MODIFIED), Defer);
         assert_eq!(classify_response(StatusCode::UNPROCESSABLE_ENTITY), Drop);
         assert_eq!(classify_response(StatusCode::BAD_REQUEST), Drop);
         assert_eq!(classify_response(StatusCode::UNAUTHORIZED), Drop);
@@ -1191,23 +1145,5 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(10));
         }
-    }
-
-    #[test]
-    fn retry_after_parses_the_seconds_header() {
-        let with_header = http::Response::builder()
-            .header(header::RETRY_AFTER, "30")
-            .body(Bytes::new())
-            .unwrap();
-        assert_eq!(retry_after(&with_header), Some(Duration::from_secs(30)));
-
-        let no_header = http::Response::builder().body(Bytes::new()).unwrap();
-        assert_eq!(retry_after(&no_header), None);
-
-        let non_numeric = http::Response::builder()
-            .header(header::RETRY_AFTER, "soon")
-            .body(Bytes::new())
-            .unwrap();
-        assert_eq!(retry_after(&non_numeric), None);
     }
 }
