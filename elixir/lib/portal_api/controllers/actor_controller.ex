@@ -250,8 +250,7 @@ defmodule PortalAPI.ActorController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, actor} <- Database.fetch_actor(id, subject),
-         {:ok, actor} <- Database.delete_actor(actor, subject) do
+    with {:ok, actor} <- Database.delete_actor_by_id(id, subject) do
       render(conn, :show, actor: actor)
     else
       error -> Error.handle(conn, error)
@@ -289,13 +288,12 @@ defmodule PortalAPI.ActorController do
   def disable(conn, %{"actor_id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, actor} <- Database.fetch_actor(id, subject),
-         :ok <- ensure_not_self(actor, subject),
-         {:ok, actor} <- Database.set_disabled_at(actor, DateTime.utc_now(), subject) do
+    with :ok <- ensure_not_self(id, subject),
+         {:ok, actor} <- Database.set_disabled_at_by_id(id, DateTime.utc_now(), subject) do
       render(conn, :show, actor: actor)
     else
       {:error, :self_operation} ->
-        Error.handle(conn, {:error, :forbidden, reason: "You cannot disable yourself"})
+        Error.handle(conn, {:error, :forbidden, reason: "You cannot disable the API client used to make this request"})
 
       error ->
         Error.handle(conn, error)
@@ -323,16 +321,15 @@ defmodule PortalAPI.ActorController do
   def enable(conn, %{"actor_id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, actor} <- Database.fetch_actor(id, subject),
-         {:ok, actor} <- Database.set_disabled_at(actor, nil, subject) do
+    with {:ok, actor} <- Database.set_disabled_at_by_id(id, nil, subject) do
       render(conn, :show, actor: actor)
     else
       error -> Error.handle(conn, error)
     end
   end
 
-  defp ensure_not_self(actor, subject) do
-    if actor.id == subject.actor.id, do: {:error, :self_operation}, else: :ok
+  defp ensure_not_self(id, subject) do
+    if id == subject.actor.id, do: {:error, :self_operation}, else: :ok
   end
 
   defp create_actor_changeset(account, attrs) do
@@ -453,18 +450,44 @@ defmodule PortalAPI.ActorController do
       end
     end
 
-    def delete_actor(actor, subject) do
-      actor
-      |> Safe.scoped(subject)
-      |> Safe.delete()
+    # Single-query delete, same shape as set_disabled_at_by_id/3: Safe.delete_all/2
+    # already applies the account filter automatically (unlike Safe.update_all/2),
+    # and a plain delete has no changeset to bypass, so there's no fetch to save
+    # by skipping.
+    def delete_actor_by_id(id, subject) do
+      result =
+        from(a in Actor, where: a.id == ^id, select: a)
+        |> Safe.scoped(subject)
+        |> Safe.delete_all()
+
+      case result do
+        {0, _} -> {:error, :not_found}
+        {1, [actor]} -> {:ok, actor}
+      end
     end
 
-    def set_disabled_at(actor, disabled_at, subject) do
-      actor
-      |> Ecto.Changeset.change()
-      |> Ecto.Changeset.put_change(:disabled_at, disabled_at)
-      |> Safe.scoped(subject)
-      |> Safe.update()
+    # Single-query disable/enable: goes through Repo.update_all instead of
+    # a fetch + Ecto.Changeset, so there's no separate SELECT before the
+    # UPDATE. This deliberately bypasses Actor.changeset/1 entirely -
+    # update_all never runs changesets - which is only safe because
+    # disabled_at has no validation of its own. Do not copy this pattern
+    # for a field Actor.changeset/1 actually validates (e.g. name, email):
+    # validate_required(~w[name type]a) would spuriously fail here, since
+    # a changeset built this way never has those fields loaded.
+    #
+    # Safe.update_all/2 does not apply an automatic account filter the way
+    # Safe.one/Safe.list/etc. do (see Portal.Safe's apply_account_filter/3
+    # call sites) - account_id is included in this query explicitly.
+    def set_disabled_at_by_id(id, disabled_at, subject) do
+      result =
+        from(a in Actor, where: a.id == ^id and a.account_id == ^subject.account.id, select: a)
+        |> Safe.scoped(subject)
+        |> Safe.update_all(set: [disabled_at: disabled_at, updated_at: DateTime.utc_now()])
+
+      case result do
+        {0, _} -> {:error, :not_found}
+        {1, [actor]} -> {:ok, actor}
+      end
     end
 
     defp update_actor_changeset(changeset, subject) do

@@ -18,11 +18,11 @@ defmodule PortalAPI.Schemas.Gateway do
         },
         ipv4: %Schema{
           type: :string,
-          description: "IPv4 Address of Gateway"
+          description: "Tunnel IPv4 address (see last_seen_remote_ip for the public IP)"
         },
         ipv6: %Schema{
           type: :string,
-          description: "IPv6 Address of Gateway"
+          description: "Tunnel IPv6 address (see last_seen_remote_ip for the public IP)"
         },
         online: %Schema{
           type: :boolean,

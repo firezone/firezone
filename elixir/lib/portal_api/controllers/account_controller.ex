@@ -40,7 +40,7 @@ defmodule PortalAPI.AccountController do
 
       case result do
         nil -> {:error, :not_found}
-        account -> {:ok, account}
+        %Account{} = account -> {:ok, account}
       end
     end
   end

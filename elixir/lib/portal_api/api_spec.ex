@@ -16,12 +16,10 @@ defmodule PortalAPI.ApiSpec do
         A REST API for configuring your Firezone account.
         """
       },
-      # Populate the paths from a phoenix router. The router also serves an
-      # unversioned copy of every route as a deprecated compatibility shim
-      # (see router.ex) - that surface isn't documented going forward, so
-      # only the /v1 paths are included here, with the /v1 prefix stripped
-      # (the server URL below carries it instead).
-      paths: v1_paths(),
+      # Populate the paths from a phoenix router, excluding the non-API
+      # scopes (ingestion, third-party integration webhooks, and the
+      # spec/UI routes themselves) - see router.ex.
+      paths: api_paths(),
       components: %Components{
         securitySchemes: %{"authorization" => %SecurityScheme{type: "http", scheme: "bearer"}}
       },
@@ -32,15 +30,23 @@ defmodule PortalAPI.ApiSpec do
     |> remove_private_paths()
   end
 
-  defp v1_paths do
+  @excluded_prefixes ["/openapi", "/swaggerui", "/ingestion", "/integrations"]
+
+  defp api_paths do
     Router
     |> Paths.from_router()
-    |> Enum.filter(fn {path, _item} -> String.starts_with?(path, "/v1/") end)
-    |> Map.new(fn {path, item} -> {String.trim_leading(path, "/v1"), item} end)
+    |> Enum.reject(fn {path, _item} -> String.starts_with?(path, @excluded_prefixes) end)
+    |> Map.new()
   end
 
   # Private operations are resolved first so their schemas remain available as
   # contracts without advertising the operations as customer-facing API routes.
+  #
+  # @excluded_prefixes above already drops all of /ingestion, so this is
+  # currently a no-op. It stays because the two serve different purposes:
+  # the prefix list excludes whole non-API scopes, while this drops
+  # individual operations whose schemas still need resolving. Narrowing
+  # the prefix list would make this load-bearing again.
   defp remove_private_paths(spec) do
     %{spec | paths: Map.drop(spec.paths, @private_paths)}
   end

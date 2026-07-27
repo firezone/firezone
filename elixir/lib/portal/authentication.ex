@@ -102,9 +102,8 @@ defmodule Portal.Authentication do
 
   # Gateway Tokens
 
-  def create_gateway_token(%Portal.Site{} = site, %Subject{} = subject) do
+  def build_gateway_token(%Portal.Site{} = site) do
     {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
-
     %Portal.GatewayToken{
       account_id: site.account_id,
       site_id: site.id,
@@ -112,6 +111,10 @@ defmodule Portal.Authentication do
       secret_salt: secret_salt,
       secret_hash: secret_hash
     }
+  end
+
+  def create_gateway_token(%Portal.Site{} = site, %Subject{} = subject) do
+    build_gateway_token(site)
     |> Database.insert_gateway_token(subject)
   end
 

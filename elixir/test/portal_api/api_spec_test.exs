@@ -43,20 +43,16 @@ defmodule PortalAPI.ApiSpecTest do
       %{spec: PortalAPI.ApiSpec.spec()}
     end
 
-    test "the document version is independent of the URL path version", %{spec: spec} do
+    test "sets the document version", %{spec: spec} do
       assert spec.info.version == "1.0.0"
     end
 
-    test "the server URL carries the /v1 prefix", %{spec: spec} do
-      assert [%{url: url}] = spec.servers
-      assert String.ends_with?(url, "/v1")
+    test "excludes non-API scopes (ingestion, integrations, spec/UI routes)", %{spec: spec} do
+      refute Map.has_key?(spec.paths, "/ingestion/flow_logs")
+      refute Enum.any?(Map.keys(spec.paths), &String.starts_with?(&1, "/integrations"))
     end
 
-    test "no emitted path retains a /v1 prefix", %{spec: spec} do
-      refute Enum.any?(Map.keys(spec.paths), &String.starts_with?(&1, "/v1"))
-    end
-
-    test "emits paths for the versioned surface", %{spec: spec} do
+    test "emits paths for the API surface", %{spec: spec} do
       assert Map.has_key?(spec.paths, "/actors")
       assert Map.has_key?(spec.paths, "/actors/{id}")
     end

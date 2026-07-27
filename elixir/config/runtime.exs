@@ -534,11 +534,6 @@ if config_env() == :prod do
       mtls_external_url: env_var_to_config!(:mtls_external_url)
   end
 
-  if legacy_api_sunset_date = System.get_env("LEGACY_API_SUNSET_DATE") do
-    config :portal, PortalAPI.Plugs.LegacyDeprecation,
-      sunset_at: Date.from_iso8601!(legacy_api_sunset_date)
-  end
-
   ###############################
   ##### PortalOps Endpoint ######
   ###############################

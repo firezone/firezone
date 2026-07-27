@@ -107,30 +107,6 @@ defmodule PortalAPI.ActorControllerTest do
       assert %{"type" => "about:blank", "status" => 400} = json_response(conn, 400)
     end
 
-    test "the /v1 route returns the same body as the legacy route", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      actor_fixture(account: account)
-
-      legacy_conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> get("/actors")
-
-      v1_conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> get("/v1/actors")
-
-      assert json_response(legacy_conn, 200) == json_response(v1_conn, 200)
-      assert get_resp_header(legacy_conn, "deprecation") == ["true"]
-      assert get_resp_header(v1_conn, "deprecation") == []
-    end
-
     test "filters by exact name match", %{conn: conn, account: account, actor: actor} do
       target = actor_fixture(account: account, name: "alice", type: :account_user)
       _other = actor_fixture(account: account, name: "bob", type: :account_user)
