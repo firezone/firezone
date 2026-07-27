@@ -10,7 +10,7 @@ Rules for all Rust code in this repository.
   If possible, write code where the compiler can infer the type.
 - Prefer early-returns to keep the indentation of the happy-path minimal, i.e. use `let-else` instead of `if let`.
 - Write one match-arm per distinct case, even if the bodies are identical or create slight duplication.
-  Separate arms format better and read clearer than combined `A | B` patterns or `matches!` guards.
+  Separate arms format better and are easier to read than combined `A | B` patterns or `matches!` guards.
 - Order functions within a module from high to low priority: Public API first, then sorted roughly in order of how they are called.
   Scrolling further down should be roughly equivalent to drilling down into details as to how the module works.
   This also applies to test modules:
