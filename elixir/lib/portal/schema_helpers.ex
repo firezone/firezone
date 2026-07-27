@@ -22,6 +22,30 @@ defmodule Portal.SchemaHelpers do
     |> Ecto.Changeset.apply_changes()
   end
 
+  @doc """
+  Folds a struct rebuilt from the WAL onto the copy a process already holds,
+  keeping the state that only lives in that process.
+
+  `struct_from_params/2` casts persisted fields and embeds, so a broadcast
+  struct carries neither virtual fields (which are not in `__schema__(:fields)`)
+  nor associations (which arrive `NotLoaded`). Assigning one wholesale silently
+  resets both. `preserve` names any persisted columns the holder also owns, for
+  values written to the database later than they are known in memory.
+  """
+  def merge_broadcast(%module{} = current, %module{} = broadcast, preserve \\ []) do
+    broadcast =
+      Enum.reduce(module.__schema__(:virtual_fields) ++ preserve, broadcast, fn field, struct ->
+        Map.replace!(struct, field, Map.fetch!(current, field))
+      end)
+
+    Enum.reduce(module.__schema__(:associations), broadcast, fn assoc, struct ->
+      case Map.fetch!(current, assoc) do
+        %Ecto.Association.NotLoaded{} -> struct
+        loaded -> Map.replace!(struct, assoc, loaded)
+      end
+    end)
+  end
+
   # Cast all embedded fields
   defp cast_all_embeds(changeset, schema_module, embeds) do
     Enum.reduce(embeds, changeset, fn embed_field, acc ->

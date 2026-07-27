@@ -156,27 +156,17 @@ defmodule Portal.Device do
   end
 
   @doc """
-    Folds a device update broadcast from the WAL onto the copy a socket holds,
-    keeping the state that only exists in that socket.
+    Folds a device update broadcast from the WAL onto the copy a socket holds.
 
-    The latest-session columns are written by the batched connect flush, so the
-    WAL row still carries the previous session's values (or NULL) for the
-    seconds between connect and flush. Virtual fields and associations are never
-    in the WAL row at all. Taking the broadcast struct wholesale would drop this
-    connection's public key, silently breaking every payload derived from it.
+    On top of what `Portal.SchemaHelpers.merge_broadcast/3` keeps, the
+    latest-session columns are preserved: they are written by the batched
+    connect flush, so the WAL row still carries the previous session's values
+    (or NULL) for the seconds between connect and flush. Taking the broadcast
+    struct wholesale would drop this connection's public key, silently breaking
+    every payload derived from it.
   """
   def merge_broadcast(%__MODULE__{id: id} = current, %__MODULE__{id: id} = broadcast) do
-    broadcast =
-      Enum.reduce(@latest_session_fields ++ __schema__(:virtual_fields), broadcast, fn field, device ->
-        Map.replace!(device, field, Map.fetch!(current, field))
-      end)
-
-    Enum.reduce(__schema__(:associations), broadcast, fn assoc, device ->
-      case Map.fetch!(current, assoc) do
-        %Ecto.Association.NotLoaded{} -> device
-        loaded -> Map.replace!(device, assoc, loaded)
-      end
-    end)
+    Portal.SchemaHelpers.merge_broadcast(current, broadcast, @latest_session_fields)
   end
 
   def reserved_ipv4_cidr, do: @reserved_ipv4_cidr

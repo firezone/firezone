@@ -11,6 +11,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     Features,
     PubSub,
     Presence,
+    SchemaHelpers,
     Authentication
   }
 
@@ -1843,6 +1844,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          socket
        ) do
     # Update our subject's account
+    account = SchemaHelpers.merge_broadcast(socket.assigns.subject.account, account)
     subject = %{socket.assigns.subject | account: account}
     socket = assign(socket, subject: subject)
 
