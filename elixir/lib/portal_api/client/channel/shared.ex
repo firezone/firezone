@@ -1898,12 +1898,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          %{assigns: %{client: %{id: id} = current_client}} = socket
        )
        when id == client_id do
-    # Update socket with the new client state, preserving associations from the current socket.
-    updated_client = %{
-      client
-      | account: current_client.account,
-        actor: current_client.actor
-    }
+    updated_client = Device.merge_broadcast(current_client, client)
 
     socket = assign(socket, :client, updated_client)
 

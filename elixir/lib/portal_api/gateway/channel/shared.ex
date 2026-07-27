@@ -861,7 +861,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
            assigns: %{gateway: %{id: gateway_id} = current_gateway}
          } = socket
        ) do
-    gateway = %{gateway | site: current_gateway.site}
+    gateway = Device.merge_broadcast(current_gateway, gateway)
     socket = assign(socket, :gateway, gateway)
 
     socket =

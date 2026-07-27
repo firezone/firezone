@@ -67,6 +67,16 @@ defmodule PortalAPI.Client.ChannelTest do
     socket
   end
 
+  # Mirrors what Portal.Changes.Hooks.Devices builds from a WAL row: the
+  # latest-session columns still hold what the last flush persisted, and virtual
+  # fields and associations are not in the row at all.
+  defp broadcast_struct(client) do
+    Portal.SchemaHelpers.struct_from_params(
+      Portal.Device,
+      Map.from_struct(%{client | public_key: nil, client_token_id: nil, last_seen_version: nil})
+    )
+  end
+
   # Mirrors Socket.connect's apply_session: the connection snapshot lives on
   # the Device struct.
   defp with_session(client, subject, version) do
@@ -2068,6 +2078,36 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert client_id == client.id
       assert ipv4 == new_ipv4.address
+    end
+
+    test "for client updates keeps this connection's session state", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      %{assigns: %{client: connected}} = :sys.get_state(socket.channel_pid)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :update,
+        old_struct: broadcast_struct(client),
+        struct: broadcast_struct(%{client | name: "Updated Name"})
+      })
+
+      assert %{assigns: %{client: updated}} = :sys.get_state(socket.channel_pid)
+
+      assert updated.name == "Updated Name"
+      assert updated.public_key == connected.public_key
+      assert updated.client_token_id == connected.client_token_id
+      assert updated.last_seen_version == connected.last_seen_version
+      assert updated.last_seen_user_agent == connected.last_seen_user_agent
+      assert updated.last_seen_remote_ip == connected.last_seen_remote_ip
+      assert updated.last_seen_at == connected.last_seen_at
+      assert updated.firezone_id_merged? == connected.firezone_id_merged?
+      assert updated.account == connected.account
+      assert updated.actor == connected.actor
     end
 
     test "for client deletions disconnects socket", %{

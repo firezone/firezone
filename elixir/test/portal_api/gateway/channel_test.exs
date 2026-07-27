@@ -107,6 +107,16 @@ defmodule PortalAPI.Gateway.ChannelTest do
     }
   end
 
+  # Mirrors what Portal.Changes.Hooks.Devices builds from a WAL row: the
+  # latest-session columns still hold what the last flush persisted, and virtual
+  # fields and associations are not in the row at all.
+  defp broadcast_struct(gateway) do
+    Portal.SchemaHelpers.struct_from_params(
+      Portal.Device,
+      Map.from_struct(%{gateway | public_key: nil, gateway_token_id: nil, last_seen_version: nil})
+    )
+  end
+
   defp send_create_authorization(socket, client, subject, resource, policy_authorization_id) do
     expires_at = DateTime.add(DateTime.utc_now(), 30, :second)
     preshared_key = "PSK"
@@ -1556,6 +1566,84 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert %{assigns: %{gateway: %{name: "Renamed gateway"}}} =
                :sys.get_state(socket.channel_pid)
+    end
+
+    test "keeps this connection's session state when a device update is broadcast", %{
+      account: account,
+      actor: actor,
+      group: group,
+      client: client,
+      subject: subject,
+      resource: resource,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      %{assigns: %{gateway: connected}} = :sys.get_state(socket.channel_pid)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :update,
+        old_struct: broadcast_struct(gateway),
+        struct: broadcast_struct(%{gateway | name: "Renamed gateway"})
+      })
+
+      assert %{assigns: %{gateway: updated}} = :sys.get_state(socket.channel_pid)
+
+      assert updated.name == "Renamed gateway"
+      assert updated.public_key == connected.public_key
+      assert updated.gateway_token_id == connected.gateway_token_id
+      assert updated.last_seen_version == connected.last_seen_version
+      assert updated.last_seen_user_agent == connected.last_seen_user_agent
+      assert updated.last_seen_at == connected.last_seen_at
+      assert updated.site == connected.site
+
+      channel_pid = self()
+      socket_ref = make_ref()
+
+      policy_authorization =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          resource: resource,
+          gateway: gateway,
+          group: group
+        )
+
+      send(
+        socket.channel_pid,
+        {:create_authorization, {channel_pid, socket_ref},
+         %{
+           client:
+             PortalAPI.Gateway.Views.Client.render(
+               client,
+               Portal.DeviceFixtures.generate_public_key(),
+               "PSK",
+               @test_user_agent
+             ),
+           subject: PortalAPI.Gateway.Views.Subject.render(subject),
+           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
+           resource_id: to_cache(resource).id,
+           policy_authorization_id: policy_authorization.id,
+           authorization_expires_at: DateTime.add(DateTime.utc_now(), 30, :second),
+           ice_credentials: %{
+             initiator: %{username: "A", password: "B"},
+             receiver: %{username: "C", password: "D"}
+           },
+           preshared_key: "PSK"
+         }}
+      )
+
+      assert_push "authorize_flow", %{ref: ref}
+      push_ref = push(socket, "flow_authorized", %{"ref" => ref})
+      assert_reply push_ref, :ok
+
+      assert_receive {:connect, ^socket_ref, _, _, _, gateway_public_key, _, _, _, _, _}
+      assert gateway_public_key == connected.public_key
     end
 
     test "ignores DOWN messages from unrelated processes", %{
