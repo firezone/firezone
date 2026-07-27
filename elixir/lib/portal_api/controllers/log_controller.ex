@@ -501,15 +501,17 @@ defmodule PortalAPI.LogController do
          )}
       end
 
+      # The `actor_id` / `actor_email` filter names are shared across all four
+      # log types. A flow log only ever records the initiating Client's actor,
+      # so matching them against the initiator columns is unambiguous.
       defp filter_by_actor_id(queryable, actor_id) do
-        {queryable, dynamic([logs: l], l.actor_id == ^actor_id)}
+        {queryable, dynamic([logs: l], l.initiator_actor_id == ^actor_id)}
       end
 
-      # Flow logs snapshot the actor email at ingestion (reported by the
-      # gateway's accounting), so the filter matches the email at flow time
-      # and survives actor deletion.
+      # Flow logs snapshot the actor email at authorization time, so the filter
+      # matches the email at flow time and survives actor deletion.
       defp filter_by_actor_email(queryable, actor_email) do
-        {queryable, dynamic([logs: l], l.actor_email == ^actor_email)}
+        {queryable, dynamic([logs: l], l.initiator_actor_email == ^actor_email)}
       end
     end
 

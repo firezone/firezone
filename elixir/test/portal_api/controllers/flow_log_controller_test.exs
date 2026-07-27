@@ -223,23 +223,23 @@ defmodule PortalAPI.FlowLogControllerTest do
 
   describe "create/2 persistence" do
     test "returns 200 and persists attribution from the token", %{conn: conn, account: account} do
-      device_id = Ecto.UUID.generate()
+      initiator_device_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
       policy_id = Ecto.UUID.generate()
-      actor_id = Ecto.UUID.generate()
-      auth_provider_id = Ecto.UUID.generate()
+      initiator_actor_id = Ecto.UUID.generate()
+      initiator_auth_provider_id = Ecto.UUID.generate()
 
       conn =
         authorize(conn, account, %{
-          "device_id" => device_id,
+          "initiator_device_id" => initiator_device_id,
           "resource_id" => resource_id,
           "policy_id" => policy_id,
-          "actor_id" => actor_id,
-          "auth_provider_id" => auth_provider_id,
+          "initiator_actor_id" => initiator_actor_id,
+          "initiator_auth_provider_id" => initiator_auth_provider_id,
           "resource_name" => "prod-db",
           "resource_address" => "10.0.0.5",
-          "actor_email" => "user@example.com",
-          "actor_name" => "Some User"
+          "initiator_actor_email" => "user@example.com",
+          "initiator_actor_name" => "Some User"
         })
 
       conn = post_logs(conn, [build_record()])
@@ -248,16 +248,16 @@ defmodule PortalAPI.FlowLogControllerTest do
 
       [log] = Repo.all(FlowLog)
       assert log.account_id == account.id
-      assert log.device_id == device_id
+      assert log.initiator_device_id == initiator_device_id
       assert log.role == :initiator
       assert log.resource_id == resource_id
       assert log.policy_id == policy_id
-      assert log.auth_provider_id == auth_provider_id
+      assert log.initiator_auth_provider_id == initiator_auth_provider_id
       assert log.resource_name == "prod-db"
       assert log.resource_address == "10.0.0.5"
-      assert log.actor_id == actor_id
-      assert log.actor_email == "user@example.com"
-      assert log.actor_name == "Some User"
+      assert log.initiator_actor_id == initiator_actor_id
+      assert log.initiator_actor_email == "user@example.com"
+      assert log.initiator_actor_name == "Some User"
       assert log.protocol == :tcp
       assert log.inner_dst_port == 443
     end
@@ -279,41 +279,41 @@ defmodule PortalAPI.FlowLogControllerTest do
       conn: conn,
       account: account
     } do
-      device_uuid = Ecto.UUID.generate()
+      initiator_device_uuid = Ecto.UUID.generate()
       identifier_for_vendor = Ecto.UUID.generate()
 
       conn =
         authorize(conn, account, %{
-          "client_version" => "1.5.1",
-          "device_os_name" => "Android",
-          "device_os_version" => "14",
-          "device_serial" => "SN-9000",
-          "device_uuid" => device_uuid,
-          "device_identifier_for_vendor" => identifier_for_vendor,
-          "device_firebase_installation_id" => "fId-xyz789"
+          "initiator_client_version" => "1.5.1",
+          "initiator_device_os_name" => "Android",
+          "initiator_device_os_version" => "14",
+          "initiator_device_serial" => "SN-9000",
+          "initiator_device_uuid" => initiator_device_uuid,
+          "initiator_device_identifier_for_vendor" => identifier_for_vendor,
+          "initiator_device_firebase_installation_id" => "fId-xyz789"
         })
 
       post_logs(conn, [build_record()])
 
       [log] = Repo.all(FlowLog)
-      assert log.client_version == "1.5.1"
-      assert log.device_os_name == "Android"
-      assert log.device_os_version == "14"
-      assert log.device_serial == "SN-9000"
-      assert log.device_uuid == device_uuid
-      assert log.device_identifier_for_vendor == identifier_for_vendor
-      assert log.device_firebase_installation_id == "fId-xyz789"
+      assert log.initiator_client_version == "1.5.1"
+      assert log.initiator_device_os_name == "Android"
+      assert log.initiator_device_os_version == "14"
+      assert log.initiator_device_serial == "SN-9000"
+      assert log.initiator_device_uuid == initiator_device_uuid
+      assert log.initiator_device_identifier_for_vendor == identifier_for_vendor
+      assert log.initiator_device_firebase_installation_id == "fId-xyz789"
     end
 
     test "the body cannot override the token's attribution", %{conn: conn, account: account} do
-      device_id = Ecto.UUID.generate()
+      initiator_device_id = Ecto.UUID.generate()
 
-      conn = authorize(conn, account, %{"device_id" => device_id})
+      conn = authorize(conn, account, %{"initiator_device_id" => initiator_device_id})
 
       record =
         build_record(%{
           # These body keys must be ignored; attribution comes from the token.
-          "device_id" => Ecto.UUID.generate(),
+          "initiator_device_id" => Ecto.UUID.generate(),
           "role" => "responder",
           "account_id" => Ecto.UUID.generate()
         })
@@ -321,7 +321,7 @@ defmodule PortalAPI.FlowLogControllerTest do
       post_logs(conn, [record])
 
       [log] = Repo.all(FlowLog)
-      assert log.device_id == device_id
+      assert log.initiator_device_id == initiator_device_id
       assert log.role == :initiator
       assert log.account_id == account.id
     end
@@ -367,14 +367,14 @@ defmodule PortalAPI.FlowLogControllerTest do
       conn: _conn,
       account: account
     } do
-      device_id = Ecto.UUID.generate()
+      initiator_device_id = Ecto.UUID.generate()
 
       build_conn()
-      |> authorize(account, %{"device_id" => device_id, "role" => "initiator"})
+      |> authorize(account, %{"initiator_device_id" => initiator_device_id, "role" => "initiator"})
       |> post_logs([build_record()])
 
       build_conn()
-      |> authorize(account, %{"device_id" => device_id, "role" => "responder"})
+      |> authorize(account, %{"initiator_device_id" => initiator_device_id, "role" => "responder"})
       |> post_logs([build_record()])
 
       logs = Repo.all(FlowLog)
@@ -384,11 +384,11 @@ defmodule PortalAPI.FlowLogControllerTest do
 
     test "two devices reporting the same flow create two rows", %{conn: _conn, account: account} do
       build_conn()
-      |> authorize(account, %{"device_id" => Ecto.UUID.generate(), "role" => "initiator"})
+      |> authorize(account, %{"initiator_device_id" => Ecto.UUID.generate(), "role" => "initiator"})
       |> post_logs([build_record()])
 
       build_conn()
-      |> authorize(account, %{"device_id" => Ecto.UUID.generate(), "role" => "responder"})
+      |> authorize(account, %{"initiator_device_id" => Ecto.UUID.generate(), "role" => "responder"})
       |> post_logs([build_record()])
 
       assert length(Repo.all(FlowLog)) == 2
@@ -400,9 +400,9 @@ defmodule PortalAPI.FlowLogControllerTest do
       conn: _conn,
       account: account
     } do
-      device_id = Ecto.UUID.generate()
+      initiator_device_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
-      claims = %{"device_id" => device_id, "resource_id" => resource_id}
+      claims = %{"initiator_device_id" => initiator_device_id, "resource_id" => resource_id}
 
       open = build_record(%{"flow_end" => nil, "tx_bytes" => 100})
 
@@ -427,9 +427,9 @@ defmodule PortalAPI.FlowLogControllerTest do
     end
 
     test "replaying a closed record is idempotent", %{conn: _conn, account: account} do
-      device_id = Ecto.UUID.generate()
+      initiator_device_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
-      claims = %{"device_id" => device_id, "resource_id" => resource_id}
+      claims = %{"initiator_device_id" => initiator_device_id, "resource_id" => resource_id}
       record = build_record()
 
       assert build_conn() |> authorize(account, claims) |> post_logs([record]) |> json_response(200)
@@ -441,9 +441,9 @@ defmodule PortalAPI.FlowLogControllerTest do
     end
 
     test "a late open does not wipe an existing close", %{conn: _conn, account: account} do
-      device_id = Ecto.UUID.generate()
+      initiator_device_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
-      claims = %{"device_id" => device_id, "resource_id" => resource_id}
+      claims = %{"initiator_device_id" => initiator_device_id, "resource_id" => resource_id}
 
       close = build_record(%{"flow_end" => "2026-03-20T10:05:00.000000Z"})
       build_conn() |> authorize(account, claims) |> post_logs([close])
@@ -461,9 +461,9 @@ defmodule PortalAPI.FlowLogControllerTest do
       conn: _conn,
       account: account
     } do
-      device_id = Ecto.UUID.generate()
+      initiator_device_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
-      claims = %{"device_id" => device_id, "resource_id" => resource_id}
+      claims = %{"initiator_device_id" => initiator_device_id, "resource_id" => resource_id}
 
       first = build_record(%{"inner_dst_port" => 443})
       build_conn() |> authorize(account, claims) |> post_logs([first])

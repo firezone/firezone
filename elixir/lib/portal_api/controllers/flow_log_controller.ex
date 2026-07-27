@@ -9,8 +9,9 @@ defmodule PortalAPI.FlowLogController do
   # The request carries a single per-authorization ingest token (see
   # `Portal.FlowLogToken`) in the `Authorization: Bearer` header. It both
   # authenticates the request and supplies the authoritative attribution fields
-  # (account, policy authorization, policy, resource, actor, reporting device +
-  # role) for every record. Because the token names one policy authorization, a
+  # (account, policy authorization, policy, resource, actor, both endpoint
+  # devices + which of them is reporting) for every record. Because the token
+  # names one policy authorization, a
   # request may only carry flow logs for that authorization: a record declaring
   # a different `policy_authorization_id` fails the whole request with 422. The
   # body supplies the network fields: the inner tunnel tuple, the outer
@@ -27,13 +28,16 @@ defmodule PortalAPI.FlowLogController do
   # fresh flow_log log_id is minted here, not trusted from the body); on a
   # slot conflict the existing row keeps its own log_id. Attribution fields
   # come from the token; the rest are reported in the body.
-  @cast_fields ~w[account_id log_id device_id role policy_authorization_id policy_id
-                  auth_provider_id resource_id
-                  resource_name resource_address actor_id actor_email actor_name authorized_at
+  @cast_fields ~w[account_id log_id initiator_device_id responder_device_id role
+                  policy_authorization_id policy_id
+                  initiator_auth_provider_id resource_id
+                  resource_name resource_address initiator_actor_id initiator_actor_email
+                  initiator_actor_name authorized_at
                   authorization_expires_at
-                  client_version
-                  device_os_name device_os_version device_serial device_uuid
-                  device_identifier_for_vendor device_firebase_installation_id protocol
+                  initiator_client_version
+                  initiator_device_os_name initiator_device_os_version initiator_device_serial
+                  initiator_device_uuid initiator_device_identifier_for_vendor
+                  initiator_device_firebase_installation_id protocol
                   inner_src_ip inner_dst_ip inner_src_port inner_dst_port domain
                   outer_src_ip outer_dst_ip outer_src_port outer_dst_port flow_start flow_end
                   last_packet rx_packets tx_packets rx_bytes tx_bytes inserted_at]a
@@ -195,34 +199,39 @@ defmodule PortalAPI.FlowLogController do
   # Attribution comes from the verified token (authoritative); the network
   # fields, flow window, and counters come from the body. Taking the body fields
   # as an explicit whitelist means a record can never supply its own attribution
-  # (account, device, role, policy, resource, actor) or the server-assigned
-  # log_id, regardless of what keys it sends.
+  # (account, either endpoint device, role, policy, resource, actor) or the
+  # server-assigned log_id, regardless of what keys it sends. Both endpoint
+  # devices come from the token, so the two rows of a flow name the same pair
+  # and only `role` says which side wrote which.
   defp to_attrs(record, claims, now) do
     record
     |> Map.take(@body_fields)
     |> Map.merge(%{
       "account_id" => claims["account_id"],
       "log_id" => LogId.build_flow_log(),
-      "device_id" => claims["device_id"],
+      "initiator_device_id" => claims["initiator_device_id"],
+      "responder_device_id" => claims["responder_device_id"],
       "role" => claims["role"],
       "policy_authorization_id" => claims["policy_authorization_id"],
       "policy_id" => claims["policy_id"],
-      "auth_provider_id" => claims["auth_provider_id"],
       "resource_id" => claims["resource_id"],
       "resource_name" => claims["resource_name"],
       "resource_address" => claims["resource_address"],
-      "actor_id" => claims["actor_id"],
-      "actor_email" => claims["actor_email"],
-      "actor_name" => claims["actor_name"],
       "authorized_at" => claims["authorized_at"],
       "authorization_expires_at" => claims["authorization_expires_at"],
-      "client_version" => claims["client_version"],
-      "device_os_name" => claims["device_os_name"],
-      "device_os_version" => claims["device_os_version"],
-      "device_serial" => claims["device_serial"],
-      "device_uuid" => claims["device_uuid"],
-      "device_identifier_for_vendor" => claims["device_identifier_for_vendor"],
-      "device_firebase_installation_id" => claims["device_firebase_installation_id"],
+      "initiator_actor_id" => claims["initiator_actor_id"],
+      "initiator_actor_email" => claims["initiator_actor_email"],
+      "initiator_actor_name" => claims["initiator_actor_name"],
+      "initiator_auth_provider_id" => claims["initiator_auth_provider_id"],
+      "initiator_client_version" => claims["initiator_client_version"],
+      "initiator_device_os_name" => claims["initiator_device_os_name"],
+      "initiator_device_os_version" => claims["initiator_device_os_version"],
+      "initiator_device_serial" => claims["initiator_device_serial"],
+      "initiator_device_uuid" => claims["initiator_device_uuid"],
+      "initiator_device_identifier_for_vendor" =>
+        claims["initiator_device_identifier_for_vendor"],
+      "initiator_device_firebase_installation_id" =>
+        claims["initiator_device_firebase_installation_id"],
       "inserted_at" => now
     })
   end
@@ -234,7 +243,7 @@ defmodule PortalAPI.FlowLogController do
 
     @identity_columns [
       :account_id,
-      :device_id,
+      :initiator_device_id,
       :role,
       :flow_start,
       :protocol,
@@ -296,7 +305,7 @@ defmodule PortalAPI.FlowLogController do
     end
 
     defp identity(e) do
-      {e.account_id, e.device_id, e.role, e.flow_start, e.protocol, e.inner_src_ip,
+      {e.account_id, e.initiator_device_id, e.role, e.flow_start, e.protocol, e.inner_src_ip,
        e.inner_src_port, e.inner_dst_ip, e.inner_dst_port, e.resource_id}
     end
   end

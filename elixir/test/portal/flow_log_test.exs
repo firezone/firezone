@@ -9,16 +9,17 @@ defmodule Portal.FlowLogTest do
       %{
         account_id: Ecto.UUID.generate(),
         log_id: Portal.Types.LogId.build_flow_log(),
-        device_id: Ecto.UUID.generate(),
+        initiator_device_id: Ecto.UUID.generate(),
+        responder_device_id: Ecto.UUID.generate(),
         role: :initiator,
         policy_authorization_id: Ecto.UUID.generate(),
         policy_id: Ecto.UUID.generate(),
-        auth_provider_id: Ecto.UUID.generate(),
+        initiator_auth_provider_id: Ecto.UUID.generate(),
         resource_id: Ecto.UUID.generate(),
         resource_name: "prod-db",
         resource_address: "10.0.0.5",
-        actor_id: Ecto.UUID.generate(),
-        actor_name: "Some User",
+        initiator_actor_id: Ecto.UUID.generate(),
+        initiator_actor_name: "Some User",
         authorized_at: ~U[2026-03-20 09:59:00.000000Z],
         authorization_expires_at: ~U[2026-03-20 19:59:00.000000Z],
         protocol: :tcp,
@@ -74,14 +75,15 @@ defmodule Portal.FlowLogTest do
 
       for field <- [
             :account_id,
-            :device_id,
+            :initiator_device_id,
+            :responder_device_id,
             :role,
             :policy_authorization_id,
             :policy_id,
             :resource_id,
             :resource_name,
-            :actor_id,
-            :actor_name,
+            :initiator_actor_id,
+            :initiator_actor_name,
             :authorized_at,
             :authorization_expires_at,
             :protocol,
@@ -113,10 +115,10 @@ defmodule Portal.FlowLogTest do
       assert Map.has_key?(errors_on(cs), :inner_dst_port)
     end
 
-    test "invalid with non-UUID device_id" do
-      cs = changeset(%{device_id: "not-a-uuid"})
+    test "invalid with non-UUID initiator_device_id" do
+      cs = changeset(%{initiator_device_id: "not-a-uuid"})
       refute cs.valid?
-      assert Map.has_key?(errors_on(cs), :device_id)
+      assert Map.has_key?(errors_on(cs), :initiator_device_id)
     end
 
     test "valid with a skewed flow_start before authorized_at" do
