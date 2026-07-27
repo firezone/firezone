@@ -885,9 +885,9 @@ impl ReferenceState {
             .collect()
     }
 
-    /// Generates a list of `(src_client_id, dst_ipv4)` tuples where `dst_ipv4` is the tunnel
-    /// IPv4 of an online client reachable from `src_client_id` via a static device pool whose
-    /// filters allow ICMP, paired with the pool filters that authorize the route.
+    /// Generates `(src_client_id, dst_ip)` tuples for both tunnel IP families of every online
+    /// client reachable from `src_client_id` via a static device pool, paired with the pool
+    /// filters that authorize the route.
     pub(crate) fn pool_routed_other_client_tun_ips(&self) -> Vec<(ClientId, IpAddr, Vec<Filter>)> {
         let online_ips_by_id: BTreeMap<ClientId, (IpAddr, IpAddr)> = self
             .clients
