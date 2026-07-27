@@ -126,20 +126,34 @@ tar -xzf "$archive" --no-same-owner --no-same-permissions -C "$corpus"
 
 [tasks.tmin]
 description = "Reduce a crashing input of a fuzz target"
+shell = "bash -c"
 depends = ["install-toolchain"]
-run = 'cargo fuzz tmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target {{arg(name="target")}} {{arg(name="testcase")}}'
+usage = '''
+arg "<target>"
+arg "<testcase>"
+'''
+raw = true
+run = 'cargo fuzz tmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target" "$usage_testcase"'
 
 [tasks.repro]
-description = "Replay one fuzz input with tracing, so a crash/reduced case prints its scenario to stderr. Override RUST_LOG for more detail."
+description = "Replay one fuzz input with tracing; override RUST_LOG for more detail"
+shell = "bash -c"
 depends = ["install-toolchain"]
+usage = '''
+arg "<target>"
+arg "<testcase>"
+'''
 raw = true
-run = 'RUST_LOG="${RUST_LOG:-debug}" cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target {{arg(name="target")}} {{arg(name="testcase")}}'
+run = 'RUST_LOG="${RUST_LOG:-debug}" cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target" "$usage_testcase"'
 
 [tasks.replay-crashes]
-description = "Replay all crash artifacts for a fuzz target through its existing binary with tracing"
+description = "Replay all crash artifacts for a fuzz target with tracing"
+shell = "bash -c"
 usage = 'arg "<target>"'
 raw = true
 run = '''
+set -euo pipefail
+
 target="$usage_target"
 bin="../../target/x86_64-unknown-linux-gnu/release/$target"
 found=false
