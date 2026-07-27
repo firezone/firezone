@@ -139,6 +139,18 @@ mod tests {
     }
 
     #[test]
+    fn any_downcast_ref_works_for_custom_error_inside_io_error() {
+        let error = Result::<(), _>::Err(io::Error::other(FooError))
+            .context("Foobar")
+            .unwrap_err();
+
+        assert_eq!(
+            error.any_downcast_ref::<FooError>().unwrap().to_string(),
+            "Foo"
+        )
+    }
+
+    #[test]
     fn any_downcast_ref_works_for_custom_error_with_source() {
         let error = Result::<(), _>::Err(BazError(BarError(FooError)))
             .context("Foobar")
