@@ -1,22 +1,6 @@
 # AI agent rules for Firezone Rust code
 
-## Code style
-
-- Do not generate excessive comments
-- Document the code, not the change that introduced it. A comment should read the
-  same a year later to someone who never saw the diff: describe what the code does
-  and why it must work that way, not how it differs from what it replaced. Avoid
-  change-relative wording like "instead of", "now", "no longer", or "previously".
-  The reason a change is made belongs in the commit message — and, at a high level,
-  in the PR description, which becomes the squash-merge commit message — not in a
-  code comment.
-- Prefer a functional style (i.e. Iterators) over imperative code
-- Prefer turbofish over explicit type-hints
-- Prefer early-returns in functions to keep the indentation of the happy-path minimal, i.e. use `let-else` instead of `if let`
-- When writing tests, focus on the public API of the module
-- Follow the arrange - act - assert pattern
-- Order functions within a module from high to low priority: Public API first, then sorted roughly in order of how they are called.
-  Scrolling further down should be roughly equivalent to drilling down into details as to how the module works.
+Follow the [Rust coding guidelines](CODING_GUIDELINES.md).
 
 ## Use of log levels
 
