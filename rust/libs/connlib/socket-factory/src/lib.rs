@@ -48,16 +48,6 @@ impl RoutingLoopPreventionFailed {
             cause: cause.into(),
         }
     }
-
-    /// Returns whether `error` carries a [`RoutingLoopPreventionFailed`].
-    ///
-    /// For a bare [`io::Error`]; once one is wrapped in an [`anyhow::Error`], `any_is`
-    /// finds it.
-    pub fn is_cause_of(error: &io::Error) -> bool {
-        error
-            .get_ref()
-            .is_some_and(|e| e.is::<RoutingLoopPreventionFailed>())
-    }
 }
 
 impl From<RoutingLoopPreventionFailed> for io::Error {
@@ -1078,18 +1068,6 @@ mod tests {
     use gat_lending_iterator::LendingIterator as _;
     use quinn_udp::RecvMeta;
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
-
-    #[test]
-    fn only_routing_loop_failures_are_recognised() {
-        let error = io::Error::from(RoutingLoopPreventionFailed::new(io::Error::from(
-            io::ErrorKind::PermissionDenied,
-        )));
-
-        assert!(RoutingLoopPreventionFailed::is_cause_of(&error));
-        assert!(!RoutingLoopPreventionFailed::is_cause_of(&io::Error::from(
-            io::ErrorKind::AddrNotAvailable
-        )));
-    }
 
     /// Consumers see bind failures as a wrapped, contextualised [`anyhow::Error`], so this has
     /// to stay recognisable through those layers.

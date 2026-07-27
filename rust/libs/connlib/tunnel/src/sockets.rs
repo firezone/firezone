@@ -2,9 +2,7 @@ use crate::otel;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use futures::{SinkExt, ready};
 use gat_lending_iterator::LendingIterator;
-use socket_factory::{
-    DatagramIn, DatagramSegmentIter, RoutingLoopPreventionFailed, SocketFactory, UdpSocket,
-};
+use socket_factory::{DatagramIn, DatagramSegmentIter, SocketFactory, UdpSocket};
 use socket_factory::{DatagramOut, PerfUdpSocket};
 use std::collections::VecDeque;
 use std::env::VarError;
@@ -564,8 +562,6 @@ fn listen(
     for addr in addresses {
         match sf.bind(*addr).and_then(|s| s.into_perf()) {
             Ok(s) => return Ok(s),
-            // Another port cannot fix a failure that isn't about the address.
-            Err(e) if RoutingLoopPreventionFailed::is_cause_of(&e) => return Err(e),
             Err(e) => {
                 tracing::debug!(%addr, "Failed to listen on UDP socket: {e}");
 
