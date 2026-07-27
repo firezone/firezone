@@ -54,8 +54,14 @@ jobs:
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
 
+      - uses: ./.github/actions/setup-rust-binary-cache
+        id: binary-cache
+        with:
+          path: rust/target/${{ matrix.target }}/release/${{ matrix.binary }}
+          key: firezone-loadtest-${{ matrix.target }}-release
+
       - name: Install dependencies (Linux)
-        if: matrix.os == 'linux'
+        if: matrix.os == 'linux' && steps.binary-cache.outputs.cache-hit != 'true'
         uses: ./.github/actions/apt-install
         with:
           packages: musl-tools
@@ -72,6 +78,7 @@ jobs:
           Write-Host "Event Log source 'FirezoneLoadtest' registered (or already exists)"
 
       - name: Build loadtest binary
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -e
@@ -80,7 +87,9 @@ jobs:
             --target ${{ matrix.target }} \
             --package firezone-loadtest
 
-          cp target/${{ matrix.target }}/release/${{ matrix.binary }} ${{ matrix.binary }}
+      - name: Package binary
+        shell: bash
+        run: cp target/${{ matrix.target }}/release/${{ matrix.binary }} ${{ matrix.binary }}
 
       - name: Generate checksum (Linux/Windows)
         if: matrix.os != 'macos'

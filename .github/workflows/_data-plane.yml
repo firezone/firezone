@@ -262,6 +262,14 @@ jobs:
         with:
           path: rust/target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }}
           key: ${{ matrix.name.package }}-${{ matrix.arch.target }}-${{ inputs.profile }}
+      # `firezone-cli` ships as an asset of the gateway's `.deb`, so it is built
+      # separately below and needs its own entry.
+      - uses: ./.github/actions/setup-rust-binary-cache
+        id: cli-binary-cache
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
+        with:
+          path: rust/target/${{ matrix.arch.target }}/release/firezone-cli
+          key: firezone-cli-${{ matrix.arch.target }}-release
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust
@@ -336,10 +344,12 @@ jobs:
             --auth-mode login \
             --account-name firezoneartifacts
 
+      - name: Build firezone-cli
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' && steps.cli-binary-cache.outputs.cache-hit != 'true' }}
+        run: cargo build --bin firezone-cli --release --target ${{ matrix.arch.target }}
       - name: Create Firezone Gateway .deb package
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
         run: |
-          cargo build --bin firezone-cli --release --target ${{ matrix.arch.target }}
           cargo deb --package firezone-gateway --target ${{ matrix.arch.target }} --no-build --no-strip
           cp target/debian/*.deb "$BINARY_DEST_PATH".deb
       - name: Upload Release Assets
