@@ -39,8 +39,8 @@ impl ErrorExt for anyhow::Error {
 
 /// Returns the custom error `error` carries, if it is an [`std::io::Error`] built from one.
 ///
-/// [`std::io::Error::source`] reports the source of its custom error rather than that error
-/// itself, so walking sources alone never observes it.
+/// [`std::error::Error::source`] on an [`std::io::Error`] reports the source of its custom
+/// error rather than that error itself, so walking sources alone never observes it.
 fn custom_io_error<'a>(
     error: &'a (dyn std::error::Error + 'static),
 ) -> Option<&'a (dyn std::error::Error + Send + Sync + 'static)> {
