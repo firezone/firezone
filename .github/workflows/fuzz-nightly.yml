@@ -1,0 +1,120 @@
+---
+name: Fuzz corpora (nightly)
+run-name: Triggered from ${{ github.event_name }}
+# Grows and minimizes every committed fuzz corpus, then opens one bot PR with
+# the results and refreshed uncovered-region ceilings. Pull-request CI only
+# replays these inputs; coverage discovery happens here, from main.
+"on":
+  schedule:
+    - cron: "0 4 * * *" # daily, 04:00 UTC
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: ./rust
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-nightly
+  cancel-in-progress: true
+
+jobs:
+  targets:
+    name: fuzz-targets
+    runs-on: ubuntu-24.04
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: targets
+        run: echo "targets=$(jq -c . tests/fuzz/targets.json)" >> "$GITHUB_OUTPUT"
+
+  discover:
+    name: discover-${{ matrix.fuzz-target }}
+    needs: [targets]
+    strategy:
+      fail-fast: false
+      matrix:
+        fuzz-target: ${{ fromJSON(needs.targets.outputs.targets) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust-sccache
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust/tests/fuzz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/free-disk-space
+      - name: Discover new coverage
+        run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} "-fork=$(nproc)" -max_total_time=1800
+      - name: Minimize corpus
+        run: mise run //rust/tests/fuzz:cmin ${{ matrix.fuzz-target }}
+      - name: Refresh coverage baseline
+        run: |
+          mise run //rust/tests/fuzz:pack-corpus ${{ matrix.fuzz-target }}
+          mise run //rust/tests/fuzz:coverage ${{ matrix.fuzz-target }}
+          mkdir -p rust/tests/fuzz/expected-coverage
+          mise run -q //rust/tests/fuzz:coverage-summary ${{ matrix.fuzz-target }} > rust/tests/fuzz/expected-coverage/${{ matrix.fuzz-target }}.json
+          cat tests/fuzz/expected-coverage/${{ matrix.fuzz-target }}.json
+      - name: Save corpus and coverage baseline
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-${{ matrix.fuzz-target }}
+          path: |
+            rust/tests/fuzz/corpora/${{ matrix.fuzz-target }}.tar.gz
+            rust/tests/fuzz/expected-coverage/${{ matrix.fuzz-target }}.json
+          if-no-files-found: error
+
+  propose:
+    name: propose-corpus-update
+    needs: [discover]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: fuzz-*
+          path: rust/tests/fuzz
+          merge-multiple: true
+      - name: Set up GnuPG for the corpus commit
+        uses: ./.github/actions/setup-gpg
+        id: setup-gpg
+        with:
+          key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
+          email: github-bot@firezone.dev
+      - name: Open corpus update PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git config --local user.email "github-bot@firezone.dev"
+          git config --local user.name "Firezone Bot"
+          git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
+          git config --local commit.gpgsign true
+
+          branch="chore/fuzz-corpora"
+          git checkout -B "$branch"
+          git add -A tests/fuzz/corpora tests/fuzz/expected-coverage
+          if git diff --cached --quiet; then
+            echo "Corpora unchanged; nothing to open a PR for."
+            exit 0
+          fi
+          git commit -m "chore(fuzz): grow committed corpora"
+
+          # Do not use checkout's GITHUB_TOKEN for the push: pushes made with
+          # it do not trigger the pull request's workflows.
+          git config --local http.https://github.com/.extraheader ""
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -u origin HEAD --force
+
+          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            gh pr create \
+              --title "chore(fuzz): grow committed corpora" \
+              --body "The nightly fuzz jobs discovered new coverage and refreshed each target's uncovered-region ceiling." \
+              --reviewer firezone/engineering
+          fi

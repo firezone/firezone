@@ -8,7 +8,7 @@ license = { workspace = true }
 cargo-fuzz = true
 
 [[bin]]
-name = "ip_packet"
+name = "ip-packet"
 path = "fuzz_targets/ip_packet.rs"
 test = false
 doc = false
