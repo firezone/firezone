@@ -38,6 +38,8 @@ To maximize your chances of getting your pull request approved, please abide by
 the following general guidelines:
 
 1. Please adhere to our [code of conduct](CODE_OF_CONDUCT.md).
+1. For Rust code, follow the
+   [Rust coding guidelines](../rust/CODING_GUIDELINES.md).
 1. Please test your code and include unit tests when possible.
 1. It is up to you, the contributor, to make a case for why your change is a
    good idea.
