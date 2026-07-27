@@ -31,7 +31,8 @@ defmodule PortalAPI.Client.V3.ChannelTest do
 
     account = account_fixture()
     enable_feature(:trust_anchors)
-    trust_anchor_fixture(account: account, certs: [ca_der()])
+    pki = pki()
+    trust_anchor_fixture(account: account, certs: [pki.ca_der])
 
     actor = actor_fixture(type: :account_admin_user, account: account)
     token = client_token_fixture(account: account, actor: actor)
@@ -47,7 +48,7 @@ defmodule PortalAPI.Client.V3.ChannelTest do
 
     client = client_fixture(account: account, actor: actor, firezone_id: "fz-existing")
 
-    %{account: account, actor: actor, subject: subject, client: client, token: token}
+    %{account: account, actor: actor, subject: subject, client: client, token: token, pki: pki}
   end
 
   # Builds a socket in the deferred (pending_device) state, as V3.Socket.connect
@@ -101,7 +102,7 @@ defmodule PortalAPI.Client.V3.ChannelTest do
       {:ok, _reply, socket} = join_v3(context)
       assert_push "device_trust_request", %{nonce: nonce}
 
-      entry = response_entry(:rsa, Base.decode64!(nonce))
+      entry = response_entry(context.pki, :rsa, Base.decode64!(nonce))
       push(socket, "device_trust_response", [entry])
 
       assert_push "init", _payload, 2_000
