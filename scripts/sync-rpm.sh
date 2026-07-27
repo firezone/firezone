@@ -10,11 +10,13 @@
 #
 # Every imported package is signed with the Firezone package-signing key so that clients work with DNF's default `gpgcheck=1`.
 # The armoured public key is published at the repository root (`firezone.gpg`) for use as the `gpgkey` in the client `.repo` file.
+# Ready-made `.repo` files (`firezone.repo`, `firezone-preview.repo`) are published at the repository root too, so a channel can be added by downloading a single file.
 
 set -euo pipefail
 shopt -s globstar
 
 WORK_DIR="$(mktemp -d)"
+PUBLIC_URL="https://artifacts.firezone.dev/rpm"
 
 if [ -z "${AZURE_STORAGE_ACCOUNT:-}" ]; then
     echo "Error: AZURE_STORAGE_ACCOUNT not set"
@@ -146,6 +148,38 @@ az storage blob upload \
     --account-name "${AZURE_STORAGE_ACCOUNT}" \
     --overwrite \
     --output table
+
+echo "Uploading .repo files..."
+cat >"${WORK_DIR}/firezone.repo" <<EOF
+[firezone]
+name=Firezone
+baseurl=${PUBLIC_URL}/stable
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=${PUBLIC_URL}/firezone.gpg
+EOF
+
+cat >"${WORK_DIR}/firezone-preview.repo" <<EOF
+[firezone-preview]
+name=Firezone Preview
+baseurl=${PUBLIC_URL}/preview
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=${PUBLIC_URL}/firezone.gpg
+EOF
+
+for REPO_FILE in firezone.repo firezone-preview.repo; do
+    az storage blob upload \
+        --container-name rpm \
+        --name "${REPO_FILE}" \
+        --file "${WORK_DIR}/${REPO_FILE}" \
+        --auth-mode login \
+        --account-name "${AZURE_STORAGE_ACCOUNT}" \
+        --overwrite \
+        --output table
+done
 
 # Delete import files
 az storage blob delete-batch \
