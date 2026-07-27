@@ -143,8 +143,8 @@ impl ReferenceState {
                         client::Resource::Internet(_) => {
                             tracing::error!("Internet Resource cannot move site");
                         }
-                        client::Resource::StaticDevicePool(_) => {}
-                        client::Resource::DynamicDevicePool(_) => {}
+                        client::Resource::StaticDevicePool(_)
+                        | client::Resource::DynamicDevicePool(_) => {}
                     })
                 }
             }

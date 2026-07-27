@@ -636,9 +636,7 @@ impl RefClient {
         dport: DPort,
     ) {
         match expected_route {
-            PacketRoute::Drop => {}
-            PacketRoute::Gateway(_) => {}
-            PacketRoute::Peer(_) => {}
+            PacketRoute::Drop | PacketRoute::Gateway(_) | PacketRoute::Peer(_) => {}
             PacketRoute::RejectedByClient => {
                 self.expected_tcp_rejections.insert((sport, dport));
             }

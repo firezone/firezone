@@ -173,10 +173,10 @@ impl TunnelTest {
                                     true
                                 });
                             }
-                            client::Resource::Cidr(_) => {}
-                            client::Resource::Internet(_) => {}
-                            client::Resource::StaticDevicePool(_) => {}
-                            client::Resource::DynamicDevicePool(_) => {}
+                            client::Resource::Cidr(_)
+                            | client::Resource::Internet(_)
+                            | client::Resource::StaticDevicePool(_)
+                            | client::Resource::DynamicDevicePool(_) => {}
                         }
 
                         c.sut.add_resource(resource.clone().into_description(), now);
@@ -865,8 +865,8 @@ impl TunnelTest {
                         relay.deallocate_port(port.value(), family);
                         relay.exec_mut(|r| r.allocations.remove(&(family, port)));
                     }
-                    firezone_relay::Command::CreateChannelBinding { .. } => {}
-                    firezone_relay::Command::DeleteChannelBinding { .. } => {}
+                    firezone_relay::Command::CreateChannelBinding { .. }
+                    | firezone_relay::Command::DeleteChannelBinding { .. } => {}
                 }
 
                 continue 'outer;

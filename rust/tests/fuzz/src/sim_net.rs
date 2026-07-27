@@ -480,8 +480,7 @@ impl RoutingTable {
 
         for ip in &nat_ips {
             match self.host_by_ip(*ip) {
-                None => {}
-                Some(HostId::Stale) => {}
+                None | Some(HostId::Stale) => {}
                 Some(existing) if existing == id => {}
                 Some(_) => return false,
             }

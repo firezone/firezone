@@ -1104,8 +1104,7 @@ impl ClientState {
             Resource::Dns(_) => {
                 self.update_dns_resource_nat(now, buffered_resource_packets.into_iter())
             }
-            Resource::StaticDevicePool(_) => {}
-            Resource::DynamicDevicePool(_) => {}
+            Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => {}
         }
 
         // 2. Buffered UDP DNS queries for the Gateway

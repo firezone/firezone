@@ -440,9 +440,9 @@ mod tests {
 
             match res {
                 TranslateIncomingResult::Ok { proto, src } => (proto, src),
-                TranslateIncomingResult::NoNatSession => panic!("Wrong result"),
-                TranslateIncomingResult::ExpiredNatSession => panic!("Wrong result"),
-                TranslateIncomingResult::IcmpError(_) => panic!("Wrong result"),
+                TranslateIncomingResult::NoNatSession
+                | TranslateIncomingResult::ExpiredNatSession
+                | TranslateIncomingResult::IcmpError(_) => panic!("Wrong result"),
             }
         });
 
@@ -477,11 +477,9 @@ mod tests {
 
         match table.translate_incoming(&response, now).unwrap() {
             TranslateIncomingResult::Ok { .. } => {}
-            result @ TranslateIncomingResult::NoNatSession => panic!("Wrong result: {result:?}"),
-            result @ TranslateIncomingResult::ExpiredNatSession => {
-                panic!("Wrong result: {result:?}")
-            }
-            result @ TranslateIncomingResult::IcmpError(_) => panic!("Wrong result: {result:?}"),
+            result @ (TranslateIncomingResult::NoNatSession
+            | TranslateIncomingResult::ExpiredNatSession
+            | TranslateIncomingResult::IcmpError(_)) => panic!("Wrong result: {result:?}"),
         };
 
         now += Duration::from_secs(1);
@@ -493,9 +491,9 @@ mod tests {
 
         match table.translate_incoming(&response, now).unwrap() {
             TranslateIncomingResult::ExpiredNatSession => {}
-            result @ TranslateIncomingResult::NoNatSession => panic!("Wrong result: {result:?}"),
-            result @ TranslateIncomingResult::Ok { .. } => panic!("Wrong result: {result:?}"),
-            result @ TranslateIncomingResult::IcmpError(_) => panic!("Wrong result: {result:?}"),
+            result @ (TranslateIncomingResult::NoNatSession
+            | TranslateIncomingResult::Ok { .. }
+            | TranslateIncomingResult::IcmpError(_)) => panic!("Wrong result: {result:?}"),
         };
     }
 }
