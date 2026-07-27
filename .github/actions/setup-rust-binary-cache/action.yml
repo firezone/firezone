@@ -11,7 +11,7 @@ inputs:
 outputs:
   cache-hit:
     description: "'true' when the exact binary was restored and the build can be skipped."
-    value: ${{ steps.cache.outputs.cache-hit }}
+    value: ${{ steps.read-write.outputs.cache-hit || steps.read-only.outputs.cache-hit }}
 runs:
   using: "composite"
   steps:
@@ -19,8 +19,29 @@ runs:
     # after the build (see the relay patch task), so it is deliberately excluded.
     # `mise.toml` pins the eBPF nightly + bpf-linker compiled into the relay, and
     # `src/wintun/` holds the DLL embedded into the Windows client via `include_bytes!`.
-    - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-      id: cache
+    - name: Compute cache key
+      id: key
+      shell: bash
+      run: echo "value=v1-binary-${{ inputs.key }}-${{ hashFiles('rust/**/*.rs', 'rust/**/Cargo.toml', 'rust/Cargo.lock', 'rust/rust-toolchain.toml', 'rust/**/.cargo/config.toml', 'rust/mise.toml', 'rust/libs/bin-shared/src/wintun/**') }}" >> "$GITHUB_OUTPUT"
+
+    # Only `main` writes. A cache saved from a PR or merge-queue branch lives in
+    # that branch's own scope, so no other run can ever restore it, yet it still
+    # counts against the repository's cache quota and evicts the `main` entries
+    # that every run does read. Writing from all ~13 binary jobs of every CI run
+    # also exhausts the Actions cache API rate limit, which made the saves on
+    # `main` fail too.
+    - name: Restore & save binary (main)
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      id: read-write
+      if: github.ref == 'refs/heads/main'
       with:
         path: ${{ inputs.path }}
-        key: v1-binary-${{ inputs.key }}-${{ hashFiles('rust/**/*.rs', 'rust/**/Cargo.toml', 'rust/Cargo.lock', 'rust/rust-toolchain.toml', 'rust/**/.cargo/config.toml', 'rust/mise.toml', 'rust/libs/bin-shared/src/wintun/**') }}
+        key: ${{ steps.key.outputs.value }}
+
+    - name: Restore binary
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      id: read-only
+      if: github.ref != 'refs/heads/main'
+      with:
+        path: ${{ inputs.path }}
+        key: ${{ steps.key.outputs.value }}
