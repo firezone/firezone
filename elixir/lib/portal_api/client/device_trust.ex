@@ -27,6 +27,7 @@ defmodule PortalAPI.Client.DeviceTrust do
   @max_entries 8
   @max_certs_per_entry 4
   @max_cert_bytes 16_384
+  @max_signature_bytes 1_024
   @max_chain_depth 4
 
   # Typed URI SAN idtypes: firezone://<idtype>/<value>
@@ -152,7 +153,7 @@ defmodule PortalAPI.Client.DeviceTrust do
 
   defp verify_entry(entry, nonce, anchors) when is_map(entry) do
     with {:ok, [leaf_der | intermediate_ders]} <- decode_certs(entry),
-         {:ok, signature} <- decode_base64(entry["signed_challenge"]),
+         {:ok, signature} <- decode_base64(entry["signed_challenge"], @max_signature_bytes),
          {:ok, leaf_otp} <- X509.decode_der_certificate(leaf_der, :otp) do
       cond do
         not X509.client_auth_eku?(leaf_otp) ->
@@ -191,8 +192,8 @@ defmodule PortalAPI.Client.DeviceTrust do
     certs
     |> Enum.take(@max_certs_per_entry)
     |> Enum.reduce_while({:ok, []}, fn cert_b64, {:ok, acc} ->
-      case decode_base64(cert_b64) do
-        {:ok, der} when byte_size(der) <= @max_cert_bytes -> {:cont, {:ok, [der | acc]}}
+      case decode_base64(cert_b64, @max_cert_bytes) do
+        {:ok, der} -> {:cont, {:ok, [der | acc]}}
         _other -> {:halt, :error}
       end
     end)
@@ -208,14 +209,19 @@ defmodule PortalAPI.Client.DeviceTrust do
 
   defp decode_certs(_entry), do: :error
 
-  defp decode_base64(value) when is_binary(value) do
+  # Bound the encoded input before decoding: base64 is 4 characters per 3 bytes.
+  defp decode_base64(value, max_decoded_bytes)
+       when is_binary(value) and byte_size(value) <= div(max_decoded_bytes + 2, 3) * 4 do
     case Base.decode64(value) do
-      {:ok, decoded} when decoded != "" -> {:ok, decoded}
-      _other -> :error
+      {:ok, decoded} when decoded != "" and byte_size(decoded) <= max_decoded_bytes ->
+        {:ok, decoded}
+
+      _other ->
+        :error
     end
   end
 
-  defp decode_base64(_value), do: :error
+  defp decode_base64(_value, _max_decoded_bytes), do: :error
 
   defp within_validity_window?(leaf_otp) do
     now = DateTime.utc_now()
