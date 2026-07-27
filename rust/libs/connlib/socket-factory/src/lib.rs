@@ -29,6 +29,32 @@ pub trait SocketFactory<S>: Send + Sync + 'static {
     fn reset(&self);
 }
 
+/// Marks `error` as an unrecoverable bind failure, i.e. binding again will fail the same way.
+///
+/// Most bind failures say something about the network: a family that isn't available, an
+/// address that isn't up yet. Retrying those is how a session survives roaming. Some say
+/// something about the process instead - Android's `protect` callback failing means every
+/// socket we make would route back into our own tunnel - and no amount of retrying fixes
+/// them. [`SocketFactory`] implementations mark the latter so consumers can give up rather
+/// than rebind forever, which they detect with [`is_fatal`].
+pub fn fatal(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
+    io::Error::other(Fatal {
+        source: error.into(),
+    })
+}
+
+/// Returns whether `error` was marked unrecoverable by [`fatal`].
+pub fn is_fatal(error: &io::Error) -> bool {
+    error.get_ref().is_some_and(|e| e.is::<Fatal>())
+}
+
+/// The marker [`fatal`] attaches. Named `source` so the underlying cause stays in the chain.
+#[derive(thiserror::Error, Debug)]
+#[error("{source}")]
+struct Fatal {
+    source: Box<dyn std::error::Error + Send + Sync>,
+}
+
 /// How many times we at most try to re-send a packet if we encounter ENOBUFS on MacOS / iOS or 10055 on Windows.
 #[cfg(any(apple, target_os = "windows"))]
 const MAX_ENOBUFS_RETRIES: u32 = 24;
@@ -1037,9 +1063,28 @@ where
 
 #[cfg(test)]
 mod tests {
+    use anyhow::ErrorExt as _;
     use gat_lending_iterator::LendingIterator as _;
     use quinn_udp::RecvMeta;
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+
+    #[test]
+    fn only_marked_bind_errors_are_fatal() {
+        assert!(is_fatal(&fatal(io::Error::from(
+            io::ErrorKind::PermissionDenied
+        ))));
+        assert!(!is_fatal(&io::Error::from(io::ErrorKind::AddrNotAvailable)));
+    }
+
+    /// Consumers see bind failures as a wrapped, contextualised [`anyhow::Error`], so the
+    /// marker has to stay discoverable through those layers.
+    #[test]
+    fn fatal_bind_errors_stay_fatal_once_wrapped() {
+        let error = anyhow::Error::new(fatal(io::Error::from(io::ErrorKind::PermissionDenied)))
+            .context("Failed to bind UDP socket on 0.0.0.0:1234");
+
+        assert!(error.any_downcast_ref::<io::Error>().is_some_and(is_fatal));
+    }
 
     #[test]
     fn datagram_out_max_len_is_whole_segments_of_one_gso_send() {

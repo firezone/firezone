@@ -23,7 +23,7 @@ use std::{
     future,
     net::{IpAddr, SocketAddr},
     sync::Arc,
-    task::{Context, Poll, ready},
+    task::{Context, Poll},
     time::{Duration, Instant, SystemTime},
 };
 use tun::Tun;
@@ -186,8 +186,6 @@ impl ClientTunnel {
                 self.role_state.handle_timeout(now);
                 tick.want_continue();
             }
-
-            ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
             // Pass up existing events.
             if let Some(event) = self.role_state.poll_event() {
@@ -383,8 +381,6 @@ impl GatewayTunnel {
                 self.role_state.handle_timeout(now);
                 tick.want_continue();
             }
-
-            ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
             // Pass up existing events.
             if let Some(other) = self.role_state.poll_event() {

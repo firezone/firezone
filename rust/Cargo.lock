@@ -6961,6 +6961,7 @@ dependencies = [
  "quinn-udp",
  "smallvec",
  "socket2",
+ "thiserror 2.0.19",
  "tokio",
  "tracing",
 ]

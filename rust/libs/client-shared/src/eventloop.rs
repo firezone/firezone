@@ -451,6 +451,8 @@ impl Eventloop {
 
             if e.any_is::<tunnel::UdpSocketThreadStopped>()
                 || e.any_is::<tunnel::TunChannelClosed>()
+                || e.any_downcast_ref::<io::Error>()
+                    .is_some_and(socket_factory::is_fatal)
             {
                 return Err(e);
             }

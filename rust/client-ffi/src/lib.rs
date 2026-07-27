@@ -674,7 +674,7 @@ fn protected_tcp_socket_factory(callback: Arc<dyn ProtectSocket>) -> impl Socket
         use std::os::fd::AsRawFd;
         callback
             .protect_socket(socket.as_raw_fd())
-            .map_err(std::io::Error::other)?;
+            .map_err(socket_factory::fatal)?;
 
         Ok(socket)
     }
@@ -687,7 +687,7 @@ fn protected_udp_socket_factory(callback: Arc<dyn ProtectSocket>) -> impl Socket
         use std::os::fd::AsRawFd;
         callback
             .protect_socket(socket.as_raw_fd())
-            .map_err(std::io::Error::other)?;
+            .map_err(socket_factory::fatal)?;
 
         Ok(socket)
     }
