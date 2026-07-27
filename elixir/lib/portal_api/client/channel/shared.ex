@@ -2381,8 +2381,8 @@ defmodule PortalAPI.Client.Channel.Shared do
   # Mints the pair of per-flow ingest tokens for an authorization: one for the
   # initiator (the client) and one for the responder (the gateway or receiving
   # client). Each token snapshots the attribution the corresponding device must
-  # report and is the sole authenticator for its flow-log uploads. The reporting
-  # `device_id` and `role` differ between the two; everything else is shared.
+  # report and is the sole authenticator for its flow-log uploads. Both tokens
+  # name both endpoint devices, so only `role` differs between them.
   defp mint_ingest_tokens(
          %Authentication.Subject{account: account, actor: actor, credential: credential} = subject,
          {resource_id, resource_name, resource_address},
@@ -2401,6 +2401,11 @@ defmodule PortalAPI.Client.Channel.Shared do
       # endpoint rejects a request whose records mix more than one of these.
       "policy_authorization_id" => policy_authorization_id,
       "policy_id" => policy_id,
+      # The same pair as the authorization's initiating_device_id /
+      # receiving_device_id. Shared by both tokens so either side's row names
+      # the pair without a join; `role` says which of the two wrote it.
+      "initiator_device_id" => initiator_client.id,
+      "responder_device_id" => responder_device_id,
       # Whether the authorizing policy allows this flow's logs to be uploaded
       # (policies.flow_log_uploads_enabled AND the global flow_logs feature).
       # Devices honor it and the ingest endpoint enforces it, so the token can
@@ -2410,10 +2415,12 @@ defmodule PortalAPI.Client.Channel.Shared do
       "resource_id" => resource_id,
       "resource_name" => resource_name,
       "resource_address" => resource_address,
-      "actor_id" => actor.id,
-      "actor_email" => actor.email,
-      "actor_name" => actor.name,
-      "auth_provider_id" => credential.auth_provider_id,
+      # For client-to-client flows the receiving client's own owner is
+      # deliberately not part of this snapshot.
+      "initiator_actor_id" => actor.id,
+      "initiator_actor_email" => actor.email,
+      "initiator_actor_name" => actor.name,
+      "initiator_auth_provider_id" => credential.auth_provider_id,
       # The authorization happens now; both tokens share the same authorized_at
       # so the two sides of the flow agree on the trusted flow_start floor.
       "authorized_at" => DateTime.to_iso8601(DateTime.utc_now()),
@@ -2421,37 +2428,23 @@ defmodule PortalAPI.Client.Channel.Shared do
       # which adds a reporting grace window on top). Stamped so the flow_log row
       # records the actual authorization lifetime.
       "authorization_expires_at" => DateTime.to_iso8601(expires_at),
-      # The connecting (initiator) client's device telemetry. It describes the
-      # initiating client on both sides of the flow, so it is shared by both
-      # tokens, matching what the gateway flow tracker stamps onto each flow.
-      "client_version" => client_version,
-      "device_os_name" => os_name,
-      "device_os_version" => os_version,
-      "device_serial" => initiator_client.device_serial,
-      "device_uuid" => initiator_client.device_uuid,
-      "device_identifier_for_vendor" => initiator_client.identifier_for_vendor,
-      "device_firebase_installation_id" => initiator_client.firebase_installation_id
+      # The connecting client's device telemetry. It describes the initiating
+      # client on both sides of the flow, so it is shared by both tokens and
+      # named for the side it describes rather than for the reporter.
+      "initiator_client_version" => client_version,
+      "initiator_device_os_name" => os_name,
+      "initiator_device_os_version" => os_version,
+      "initiator_device_serial" => initiator_client.device_serial,
+      "initiator_device_uuid" => initiator_client.device_uuid,
+      "initiator_device_identifier_for_vendor" => initiator_client.identifier_for_vendor,
+      "initiator_device_firebase_installation_id" => initiator_client.firebase_installation_id
     }
 
     initiator_token =
-      FlowLogToken.mint(
-        account,
-        Map.merge(attribution, %{
-          "role" => "initiator",
-          "device_id" => initiator_client.id
-        }),
-        expires_at
-      )
+      FlowLogToken.mint(account, Map.put(attribution, "role", "initiator"), expires_at)
 
     responder_token =
-      FlowLogToken.mint(
-        account,
-        Map.merge(attribution, %{
-          "role" => "responder",
-          "device_id" => responder_device_id
-        }),
-        expires_at
-      )
+      FlowLogToken.mint(account, Map.put(attribution, "role", "responder"), expires_at)
 
     {initiator_token, responder_token}
   end

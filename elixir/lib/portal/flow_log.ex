@@ -11,26 +11,27 @@ defmodule Portal.FlowLog do
           account_id: Ecto.UUID.t(),
           log_id: Portal.Types.LogId.t(),
           seq: pos_integer(),
-          device_id: Ecto.UUID.t(),
+          initiator_device_id: Ecto.UUID.t(),
+          responder_device_id: Ecto.UUID.t(),
           role: :initiator | :responder,
           policy_authorization_id: Ecto.UUID.t(),
           policy_id: Ecto.UUID.t(),
-          auth_provider_id: Ecto.UUID.t() | nil,
+          initiator_auth_provider_id: Ecto.UUID.t() | nil,
           resource_id: Ecto.UUID.t(),
           resource_name: String.t(),
           resource_address: String.t() | nil,
-          actor_id: Ecto.UUID.t(),
-          actor_email: String.t() | nil,
-          actor_name: String.t(),
+          initiator_actor_id: Ecto.UUID.t(),
+          initiator_actor_email: String.t() | nil,
+          initiator_actor_name: String.t(),
           authorized_at: DateTime.t(),
           authorization_expires_at: DateTime.t(),
-          client_version: String.t() | nil,
-          device_os_name: String.t() | nil,
-          device_os_version: String.t() | nil,
-          device_serial: String.t() | nil,
-          device_uuid: String.t() | nil,
-          device_identifier_for_vendor: String.t() | nil,
-          device_firebase_installation_id: String.t() | nil,
+          initiator_client_version: String.t() | nil,
+          initiator_device_os_name: String.t() | nil,
+          initiator_device_os_version: String.t() | nil,
+          initiator_device_serial: String.t() | nil,
+          initiator_device_uuid: String.t() | nil,
+          initiator_device_identifier_for_vendor: String.t() | nil,
+          initiator_device_firebase_installation_id: String.t() | nil,
           protocol: :tcp | :udp,
           inner_src_ip: Portal.Types.IP.t(),
           inner_dst_ip: Portal.Types.IP.t(),
@@ -54,40 +55,51 @@ defmodule Portal.FlowLog do
   @roles [:initiator, :responder]
   @protocols [:tcp, :udp]
 
+  # No column is relative to the side that reported the row: connlib orients
+  # both tunnel tuples to (initiator-src, responder-dst) and counts tx as
+  # initiator-to-responder on both sides, so a flow's two rows differ only in
+  # `role` and in the counters each side observed independently.
+  #
   # The primary key is the natural flow identity, tagged primary_key: true
-  # field-by-field below: the reporting side (account_id, device_id, role), the
-  # inner tunnel 6-tuple (protocol, inner src/dst ip+port), the resource, and
-  # flow_start. log_id is a random public handle, not part of the key.
-  # flow_start is included partly because Postgres requires the
-  # partition key in every key on a partitioned table. See the partition migration.
+  # field-by-field below: the account, the initiating device, the reporting
+  # role, the inner tunnel 6-tuple (protocol, inner src/dst ip+port), the
+  # resource, and flow_start. responder_device_id stays out of it because the
+  # authorization already determines it. log_id is a random public handle, not
+  # part of the key. flow_start is included partly because Postgres requires
+  # the partition key in every key on a partitioned table. See the partition
+  # migration.
   schema "flow_logs" do
     belongs_to :account, Portal.Account, primary_key: true
     field :log_id, Portal.Types.LogId
     field :seq, :integer, read_after_writes: true
     field :start_seq, :integer
 
-    field :device_id, :binary_id, primary_key: true
+    field :initiator_device_id, :binary_id, primary_key: true
+    field :responder_device_id, :binary_id
     field :role, Ecto.Enum, values: @roles, primary_key: true
 
     field :policy_authorization_id, :binary_id
     field :policy_id, :binary_id
-    field :auth_provider_id, :binary_id
     field :resource_id, :binary_id, primary_key: true
     field :resource_name, :string
     field :resource_address, :string
-    field :actor_id, :binary_id
-    field :actor_email, :string
-    field :actor_name, :string
     field :authorized_at, :utc_datetime_usec
     field :authorization_expires_at, :utc_datetime_usec
 
-    field :client_version, :string
-    field :device_os_name, :string
-    field :device_os_version, :string
-    field :device_serial, :string
-    field :device_uuid, :string
-    field :device_identifier_for_vendor, :string
-    field :device_firebase_installation_id, :string
+    # For device-to-device flows the receiving client has an owner of its own
+    # that these do not record.
+    field :initiator_actor_id, :binary_id
+    field :initiator_actor_email, :string
+    field :initiator_actor_name, :string
+    field :initiator_auth_provider_id, :binary_id
+
+    field :initiator_client_version, :string
+    field :initiator_device_os_name, :string
+    field :initiator_device_os_version, :string
+    field :initiator_device_serial, :string
+    field :initiator_device_uuid, :string
+    field :initiator_device_identifier_for_vendor, :string
+    field :initiator_device_firebase_installation_id, :string
 
     field :protocol, Ecto.Enum, values: @protocols, primary_key: true
 
@@ -117,13 +129,16 @@ defmodule Portal.FlowLog do
   # Postgres bigint is a signed 64-bit integer.
   @bigint_max 9_223_372_036_854_775_807
 
-  @uuid_fields ~w[account_id device_id policy_authorization_id policy_id auth_provider_id resource_id actor_id]a
+  @uuid_fields ~w[account_id initiator_device_id responder_device_id policy_authorization_id
+                  policy_id initiator_auth_provider_id resource_id initiator_actor_id]a
   @port_fields ~w[inner_src_port inner_dst_port outer_src_port outer_dst_port]a
   @counter_fields ~w[rx_packets tx_packets rx_bytes tx_bytes]a
-  @bounded_string_fields ~w[resource_name resource_address actor_name actor_email
-                            client_version device_os_name device_os_version device_serial
-                            device_uuid device_identifier_for_vendor
-                            device_firebase_installation_id domain]a
+  @bounded_string_fields ~w[resource_name resource_address initiator_actor_name
+                            initiator_actor_email initiator_client_version
+                            initiator_device_os_name initiator_device_os_version
+                            initiator_device_serial initiator_device_uuid
+                            initiator_device_identifier_for_vendor
+                            initiator_device_firebase_installation_id domain]a
 
   # The attribution snapshot, both tunnel tuples, protocol, and flow_start are
   # all known when a flow side opens, so they are required. Only the fields that
@@ -131,20 +146,22 @@ defmodule Portal.FlowLog do
   # byte/packet counters) are left nullable to support open-then-close
   # reporting; domain is nullable because only DNS resources carry one,
   # resource_address because internet and device-pool resources have none, and
-  # actor_email / auth_provider_id because not every actor or credential has one.
+  # initiator_actor_email / initiator_auth_provider_id because not every actor
+  # or credential has one.
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_required([
       :account_id,
       :log_id,
-      :device_id,
+      :initiator_device_id,
+      :responder_device_id,
       :role,
       :policy_authorization_id,
       :policy_id,
       :resource_id,
       :resource_name,
-      :actor_id,
-      :actor_name,
+      :initiator_actor_id,
+      :initiator_actor_name,
       :authorized_at,
       :authorization_expires_at,
       :protocol,
@@ -212,7 +229,8 @@ defmodule Portal.FlowLog do
         value when is_integer(value) and value > @bigint_max ->
           Logger.error("flow_log #{field} exceeds the bigint maximum, rejecting record",
             account_id: get_field(cs, :account_id),
-            device_id: get_field(cs, :device_id),
+            initiator_device_id: get_field(cs, :initiator_device_id),
+            role: get_field(cs, :role),
             value: value
           )
 

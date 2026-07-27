@@ -368,11 +368,12 @@ defmodule PortalAPI.LogControllerTest do
 
       assert %{"data" => [data]} = json_response(conn, 200)
       assert data["log_id"] == flow_log.log_id
-      assert data["device_id"] == flow_log.device_id
+      assert data["initiator_device_id"] == flow_log.initiator_device_id
+      assert data["responder_device_id"] == flow_log.responder_device_id
       assert data["role"] == "responder"
       assert data["protocol"] == "tcp"
-      assert data["actor_id"] == flow_log.actor_id
-      assert data["actor_email"] == "user@example.com"
+      assert data["initiator_actor_id"] == flow_log.initiator_actor_id
+      assert data["initiator_actor_email"] == "user@example.com"
       assert data["resource_id"] == flow_log.resource_id
       assert data["resource_name"] == "GitLab"
       assert data["resource_address"] == "gitlab.company.com"
@@ -390,7 +391,7 @@ defmodule PortalAPI.LogControllerTest do
 
     test "filters by actor_id", %{conn: conn, account: account, actor: actor} do
       actor_id = Ecto.UUID.generate()
-      matching = flow_log_fixture(account: account, actor_id: actor_id)
+      matching = flow_log_fixture(account: account, initiator_actor_id: actor_id)
       flow_log_fixture(account: account)
 
       conn =
@@ -407,7 +408,7 @@ defmodule PortalAPI.LogControllerTest do
       account: account,
       actor: actor
     } do
-      matching = flow_log_fixture(account: account, actor_email: "target@example.com")
+      matching = flow_log_fixture(account: account, initiator_actor_email: "target@example.com")
       flow_log_fixture(account: account)
 
       conn =

@@ -25,7 +25,8 @@ defmodule Portal.FlowLogFixtures do
       |> Map.drop([:account])
       |> Map.put_new(:account_id, account.id)
       |> Map.put_new(:log_id, LogId.build_flow_log())
-      |> Map.put_new(:device_id, Ecto.UUID.generate())
+      |> Map.put_new(:initiator_device_id, Ecto.UUID.generate())
+      |> Map.put_new(:responder_device_id, Ecto.UUID.generate())
       |> Map.put_new(:role, :responder)
       |> Map.put_new(:protocol, :tcp)
       |> Map.put_new(:flow_start, DateTime.add(now, -60, :second))
@@ -35,9 +36,9 @@ defmodule Portal.FlowLogFixtures do
       |> Map.put_new(:policy_authorization_id, Ecto.UUID.generate())
       |> Map.put_new(:authorized_at, DateTime.add(now, -3600, :second))
       |> Map.put_new(:authorization_expires_at, DateTime.add(now, 3600, :second))
-      |> Map.put_new(:actor_id, Ecto.UUID.generate())
-      |> Map.put_new(:actor_name, "Some User")
-      |> Map.put_new(:actor_email, "user@example.com")
+      |> Map.put_new(:initiator_actor_id, Ecto.UUID.generate())
+      |> Map.put_new(:initiator_actor_name, "Some User")
+      |> Map.put_new(:initiator_actor_email, "user@example.com")
       |> Map.put_new(:resource_id, Ecto.UUID.generate())
       |> Map.put_new(:resource_name, "GitLab")
       |> Map.put_new(:resource_address, "gitlab.company.com")
@@ -69,26 +70,27 @@ defmodule Portal.FlowLogFixtures do
     Map.merge(
       %{
         "role" => "initiator",
-        "device_id" => Ecto.UUID.generate(),
+        "initiator_device_id" => Ecto.UUID.generate(),
+        "responder_device_id" => Ecto.UUID.generate(),
         "policy_authorization_id" => Ecto.UUID.generate(),
         "policy_id" => Ecto.UUID.generate(),
         "uploads_enabled" => true,
         "resource_id" => Ecto.UUID.generate(),
         "resource_name" => "prod-db",
         "resource_address" => "10.0.0.5",
-        "actor_id" => Ecto.UUID.generate(),
-        "actor_email" => "user@example.com",
-        "actor_name" => "Some User",
-        "auth_provider_id" => Ecto.UUID.generate(),
+        "initiator_actor_id" => Ecto.UUID.generate(),
+        "initiator_actor_email" => "user@example.com",
+        "initiator_actor_name" => "Some User",
+        "initiator_auth_provider_id" => Ecto.UUID.generate(),
         "authorized_at" => "2026-03-20T09:59:00.000000Z",
         "authorization_expires_at" => "2026-03-20T19:59:00.000000Z",
-        "client_version" => "1.4.0",
-        "device_os_name" => "iOS",
-        "device_os_version" => "17.4",
-        "device_serial" => "C02ABC123",
-        "device_uuid" => Ecto.UUID.generate(),
-        "device_identifier_for_vendor" => Ecto.UUID.generate(),
-        "device_firebase_installation_id" => "fId-abc123"
+        "initiator_client_version" => "1.4.0",
+        "initiator_device_os_name" => "iOS",
+        "initiator_device_os_version" => "17.4",
+        "initiator_device_serial" => "C02ABC123",
+        "initiator_device_uuid" => Ecto.UUID.generate(),
+        "initiator_device_identifier_for_vendor" => Ecto.UUID.generate(),
+        "initiator_device_firebase_installation_id" => "fId-abc123"
       },
       overrides
     )

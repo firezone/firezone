@@ -60,7 +60,7 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
     assert_eq!(payload["outer_dst_port"], record.outer_dst_port);
     assert_eq!(payload["flow_start"], format!("{:?}", record.flow_start));
     // Attribution rides the token, not the spooled record.
-    assert!(payload.get("actor_id").is_none());
+    assert!(payload.get("initiator_actor_id").is_none());
 
     let close = record.close.as_ref().unwrap();
     assert_eq!(payload["flow_end"], format!("{:?}", close.flow_end));
@@ -370,7 +370,7 @@ fn packet_counts(flows: &[serde_json::Value]) -> Vec<(u64, u64)> {
 /// A JWT payload carrying every claim the portal guarantees on a token.
 fn required_claims(policy_authorization_id: &str, role: &str) -> String {
     format!(
-        r#"{{"account_id":"c1e296cd-b8ff-4565-8a4c-b6023a4a4b10","iat":1782756000,"exp":1785434400,"uploads_enabled":true,"role":"{role}","device_id":"d-1","policy_authorization_id":"{policy_authorization_id}","policy_id":"p-1","resource_id":"r-1","resource_name":"web","actor_id":"a-1","actor_name":"Alice","authorized_at":"2026-07-01T00:00:00Z","authorization_expires_at":"2026-07-02T00:00:00Z"}}"#
+        r#"{{"account_id":"c1e296cd-b8ff-4565-8a4c-b6023a4a4b10","iat":1782756000,"exp":1785434400,"uploads_enabled":true,"role":"{role}","initiator_device_id":"d-1","responder_device_id":"d-2","policy_authorization_id":"{policy_authorization_id}","policy_id":"p-1","resource_id":"r-1","resource_name":"web","initiator_actor_id":"a-1","initiator_actor_name":"Alice","authorized_at":"2026-07-01T00:00:00Z","authorization_expires_at":"2026-07-02T00:00:00Z"}}"#
     )
 }
 

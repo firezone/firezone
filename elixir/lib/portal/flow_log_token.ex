@@ -4,8 +4,10 @@ defmodule Portal.FlowLogToken do
 
   A token is a standard HS256 JWT signed with the reporting account's symmetric
   `ingest_signing_key`. It carries an attribution snapshot (account, policy
-  authorization, policy, resource, actor and the reporting device + role)
-  captured when a flow is authorized. The token is the sole authenticator for
+  authorization, policy, resource, actor, both endpoint devices, and which of
+  them this token reports as) captured when a flow is authorized. Both
+  endpoints are named so that a flow log row identifies the pair without a
+  join, and `role` alone distinguishes the two sides' tokens. The token is the sole authenticator for
   `POST /ingestion/flow_logs`: it is sent once per request in the
   `Authorization: Bearer` header (not per record), so every record in a request
   is attributed to the single policy authorization the token names and there is
@@ -30,12 +32,16 @@ defmodule Portal.FlowLogToken do
   # Attribution claims copied verbatim into the flow_logs row on ingest, plus
   # `uploads_enabled` (the policy's flow_log_uploads_enabled AND the global
   # flow_logs feature), which gates ingestion instead of being stored.
-  @attribution_claims ~w[role device_id policy_authorization_id policy_id uploads_enabled
+  @attribution_claims ~w[role initiator_device_id responder_device_id
+                         policy_authorization_id policy_id uploads_enabled
                          resource_id resource_name
-                         resource_address actor_id actor_email actor_name auth_provider_id
+                         resource_address initiator_actor_id initiator_actor_email
+                         initiator_actor_name initiator_auth_provider_id
                          authorized_at authorization_expires_at
-                         client_version device_os_name device_os_version device_serial device_uuid
-                         device_identifier_for_vendor device_firebase_installation_id]
+                         initiator_client_version initiator_device_os_name
+                         initiator_device_os_version initiator_device_serial
+                         initiator_device_uuid initiator_device_identifier_for_vendor
+                         initiator_device_firebase_installation_id]
 
   @type claims :: %{optional(String.t()) => term()}
 

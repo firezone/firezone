@@ -139,8 +139,16 @@ defmodule PortalAPI.Schemas.Log do
     OpenApiSpex.schema(%{
       title: "FlowLog",
       description: """
-      A single Flow Log entry, recording one completed network flow as
-      accounted by the Gateway.
+      A single Flow Log entry, recording one network flow as accounted by one
+      of its two endpoints.
+
+      Both endpoints of a flow report it independently, so a flow yields up to
+      two entries that differ only in `role` and in the counters each side
+      observed. Every other field is oriented from the initiator regardless of
+      which side reported the entry: `inner_src_*` and `outer_src_*` are always
+      the initiator, `inner_dst_*` and `outer_dst_*` always the responder, and
+      `tx_*` always counts initiator-to-responder traffic. Comparing the two
+      entries of a flow is how reported traffic is cross-checked.
       """,
       type: :object,
       properties: %{
@@ -158,16 +166,25 @@ defmodule PortalAPI.Schemas.Log do
           format: :"date-time",
           description: "RFC 3339 timestamp identifying when the flow was ingested."
         },
-        device_id: %Schema{
+        initiator_device_id: %Schema{
           type: :string,
-          description: "ID of the Client or Gateway that reported this side of the flow."
+          description: "ID of the Client that opened the flow. Always a Client."
+        },
+        responder_device_id: %Schema{
+          type: :string,
+          description: """
+          ID of the device the flow was opened to: the Gateway serving the
+          Resource, or the receiving Client for device-to-device flows.
+          """
         },
         role: %Schema{
           type: :string,
           enum: ["initiator", "responder"],
           description: """
-          Whether the reporting device initiated or responded to the flow.
-          Gateways always report `responder`; Clients report either role.
+          Which of the two endpoints reported this entry: `initiator` means
+          `initiator_device_id` wrote it, `responder` means
+          `responder_device_id` did. Gateways always report `responder`;
+          Clients report either role.
           """
         },
         protocol: %Schema{
@@ -194,24 +211,34 @@ defmodule PortalAPI.Schemas.Log do
           format: :"date-time",
           description: "When the last packet of the flow was seen."
         },
-        auth_provider_id: %Schema{
+        initiator_auth_provider_id: %Schema{
           type: :string,
           nullable: true,
-          description: "ID of the Auth Provider the Client authenticated with."
+          description: """
+          ID of the Auth Provider the initiating Client authenticated with.
+          """
         },
-        actor_id: %Schema{type: :string, nullable: true, description: "ID of the Actor."},
-        actor_name: %Schema{type: :string, nullable: true},
-        actor_email: %Schema{type: :string, nullable: true},
+        initiator_actor_id: %Schema{
+          type: :string,
+          nullable: true,
+          description: """
+          ID of the Actor who opened the flow. This is always the initiating
+          Client's Actor. A Gateway has no Actor, and for device-to-device
+          flows the receiving Client's own Actor is not recorded here.
+          """
+        },
+        initiator_actor_name: %Schema{type: :string, nullable: true},
+        initiator_actor_email: %Schema{type: :string, nullable: true},
         resource_id: %Schema{type: :string, description: "ID of the Resource accessed."},
         resource_name: %Schema{type: :string},
         resource_address: %Schema{type: :string},
         inner_src_ip: %Schema{
           type: :string,
-          description: "Tunnel source IP of the flow."
+          description: "Tunnel IP of the initiator, on both entries of the flow."
         },
         inner_dst_ip: %Schema{
           type: :string,
-          description: "Tunnel destination IP of the flow."
+          description: "Tunnel IP of the responder, on both entries of the flow."
         },
         inner_src_port: %Schema{type: :integer},
         inner_dst_port: %Schema{type: :integer},
@@ -222,24 +249,41 @@ defmodule PortalAPI.Schemas.Log do
         },
         outer_src_ip: %Schema{
           type: :string,
-          description: "Network source IP of the WireGuard packets."
+          description: """
+          WireGuard endpoint IP of the initiator, on both entries of the flow.
+          """
         },
         outer_dst_ip: %Schema{
           type: :string,
-          description: "Network destination IP of the WireGuard packets."
+          description: """
+          WireGuard endpoint IP of the responder, on both entries of the flow.
+          """
         },
         outer_src_port: %Schema{type: :integer},
         outer_dst_port: %Schema{type: :integer},
-        rx_packets: %Schema{type: :integer},
-        tx_packets: %Schema{type: :integer},
-        rx_bytes: %Schema{type: :integer},
-        tx_bytes: %Schema{type: :integer}
+        rx_packets: %Schema{
+          type: :integer,
+          description: "Packets sent responder-to-initiator, as counted by the reporting side."
+        },
+        tx_packets: %Schema{
+          type: :integer,
+          description: "Packets sent initiator-to-responder, as counted by the reporting side."
+        },
+        rx_bytes: %Schema{
+          type: :integer,
+          description: "Bytes sent responder-to-initiator, as counted by the reporting side."
+        },
+        tx_bytes: %Schema{
+          type: :integer,
+          description: "Bytes sent initiator-to-responder, as counted by the reporting side."
+        }
       },
       required: [
         :type,
         :log_id,
         :timestamp,
-        :device_id,
+        :initiator_device_id,
+        :responder_device_id,
         :role,
         :protocol,
         :flow_start,
@@ -265,13 +309,14 @@ defmodule PortalAPI.Schemas.Log do
         "type" => "flow",
         "log_id" => "f00060db0c2c8eb400000000",
         "timestamp" => "2026-05-26T12:34:56.789Z",
-        "device_id" => "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+        "initiator_device_id" => "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+        "responder_device_id" => "9d3a1c40-5f2b-4c8e-9a71-0b6d4e2f8c13",
         "role" => "responder",
         "protocol" => "tcp",
         "flow_start" => "2026-05-26T12:30:00.000Z",
         "flow_end" => "2026-05-26T12:34:00.000Z",
         "last_packet" => "2026-05-26T12:33:58.000Z",
-        "actor_email" => "user@example.com",
+        "initiator_actor_email" => "user@example.com",
         "resource_id" => "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "resource_name" => "GitLab",
         "resource_address" => "gitlab.company.com",

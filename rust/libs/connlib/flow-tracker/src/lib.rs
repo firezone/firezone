@@ -1061,7 +1061,8 @@ pub fn emit(record: &Record) {
                 protocol = record.protocol.as_str(),
 
                 role = attr.role.as_str(),
-                device_id = attr.device_id.as_str(),
+                initiator_device_id = attr.initiator_device_id.as_str(),
+                responder_device_id = attr.responder_device_id.as_str(),
                 policy_authorization_id = attr.policy_authorization_id.as_str(),
                 policy_id = attr.policy_id.as_str(),
 
@@ -1069,21 +1070,23 @@ pub fn emit(record: &Record) {
                 resource_name = attr.resource_name.as_str(),
                 resource_address = attr.resource_address.as_deref(),
 
-                actor_id = attr.actor_id.as_str(),
-                actor_email = attr.actor_email.as_deref(),
-                actor_name = attr.actor_name.as_str(),
-                auth_provider_id = attr.auth_provider_id.as_deref(),
+                initiator_actor_id = attr.initiator_actor_id.as_str(),
+                initiator_actor_email = attr.initiator_actor_email.as_deref(),
+                initiator_actor_name = attr.initiator_actor_name.as_str(),
+                initiator_auth_provider_id = attr.initiator_auth_provider_id.as_deref(),
 
                 authorized_at = attr.authorized_at.as_str(),
                 authorization_expires_at = attr.authorization_expires_at.as_str(),
 
-                client_version = attr.client_version.as_deref(),
-                device_os_name = attr.device_os_name.as_deref(),
-                device_os_version = attr.device_os_version.as_deref(),
-                device_serial = attr.device_serial.as_deref(),
-                device_uuid = attr.device_uuid.as_deref(),
-                device_identifier_for_vendor = attr.device_identifier_for_vendor.as_deref(),
-                device_firebase_installation_id = attr.device_firebase_installation_id.as_deref(),
+                initiator_client_version = attr.initiator_client_version.as_deref(),
+                initiator_device_os_name = attr.initiator_device_os_name.as_deref(),
+                initiator_device_os_version = attr.initiator_device_os_version.as_deref(),
+                initiator_device_serial = attr.initiator_device_serial.as_deref(),
+                initiator_device_uuid = attr.initiator_device_uuid.as_deref(),
+                initiator_device_identifier_for_vendor =
+                    attr.initiator_device_identifier_for_vendor.as_deref(),
+                initiator_device_firebase_installation_id =
+                    attr.initiator_device_firebase_installation_id.as_deref(),
 
                 inner_src_ip = %record.inner_src_ip,
                 inner_src_port = record.inner_src_port,
