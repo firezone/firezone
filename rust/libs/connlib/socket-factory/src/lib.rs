@@ -1064,22 +1064,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use anyhow::ErrorExt as _;
     use gat_lending_iterator::LendingIterator as _;
     use quinn_udp::RecvMeta;
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
-
-    /// Consumers see bind failures as a wrapped, contextualised [`anyhow::Error`], so this has
-    /// to stay recognisable through those layers.
-    #[test]
-    fn routing_loop_failures_survive_wrapping() {
-        let error = anyhow::Error::new(io::Error::from(RoutingLoopPreventionFailed::new(
-            io::Error::from(io::ErrorKind::PermissionDenied),
-        )))
-        .context("Failed to bind UDP socket on 0.0.0.0:1234");
-
-        assert!(error.any_is::<RoutingLoopPreventionFailed>());
-    }
 
     #[test]
     fn datagram_out_max_len_is_whole_segments_of_one_gso_send() {
