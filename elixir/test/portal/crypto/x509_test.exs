@@ -290,6 +290,23 @@ defmodule Portal.Crypto.X509Test do
     end
   end
 
+  describe "digital_signature_allowed?/1" do
+    test "allows signing when the key usage extension is absent" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_no_key_usage_ca_der())
+      assert X509.digital_signature_allowed?(cert)
+    end
+
+    test "allows signing when key usage includes digitalSignature" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_leaf_cert_der())
+      assert X509.digital_signature_allowed?(cert)
+    end
+
+    test "rejects signing when key usage omits digitalSignature" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_ed25519_ca_der())
+      refute X509.digital_signature_allowed?(cert)
+    end
+  end
+
   describe "subject_public_key/1" do
     test "returns EC keys with their curve parameters" do
       assert {:ok, cert} = X509.decode_der_certificate(sample_p384_leaf_der())

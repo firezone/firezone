@@ -179,6 +179,22 @@ defmodule Portal.Crypto.X509 do
   end
 
   @doc """
+  Returns true when the decoded OTP certificate either omits `Key Usage` or
+  explicitly includes `digitalSignature`.
+  """
+  @spec digital_signature_allowed?(tuple()) :: boolean()
+  def digital_signature_allowed?(
+        {:OTPCertificate,
+         {:OTPTBSCertificate, _version, _serial, _signature, _issuer, _validity, _subject, _spki,
+          _issuer_id, _subject_id, extensions}, _sig_alg, _sig}
+      ) do
+    case find_extension(extensions, @key_usage_oid) do
+      nil -> true
+      {:Extension, @key_usage_oid, _critical, usages} -> :digitalSignature in List.wrap(usages)
+    end
+  end
+
+  @doc """
   Returns the certificate's subject Common Name (CN), or `nil` if absent.
   """
   @spec subject_common_name(tuple()) :: String.t() | nil
