@@ -4,7 +4,7 @@
 //! opened grant a return-traffic exemption from the inbound filter, so
 //! revoking or expiring an authorization cuts off peer-opened flows.
 
-use ip_packet::{FailedPacket, IpPacket, Protocol};
+use ip_packet::{IpPacket, Protocol};
 use std::collections::BTreeMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -119,10 +119,16 @@ impl ConnTrack {
         self.initiated.contains_key(&key) || self.received.contains_key(&key)
     }
 
-    /// Returns `true` if the packet that failed belongs to a flow of ours.
+    /// Returns `true` if the packet is an ICMP error referring to an existing flow.
     ///
-    /// The failed packet travelled towards us, so its destination is our own endpoint.
-    pub(crate) fn tracks_flow_of(&self, failed: &FailedPacket) -> bool {
+    /// Unlike [`ConnTrack::is_known_flow`], this is for an error we are about to
+    /// send: the packet it refers to travelled towards us, so its destination is
+    /// our own endpoint rather than the peer's.
+    pub(crate) fn is_error_for_known_flow(&self, packet: &IpPacket) -> bool {
+        let Ok(Some((failed, _))) = packet.icmp_error() else {
+            return false;
+        };
+
         self.contains(Key {
             local: failed.dst_proto(),
             peer: failed.src_proto(),
