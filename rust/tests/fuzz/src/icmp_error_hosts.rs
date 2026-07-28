@@ -30,9 +30,14 @@ pub(crate) enum IcmpError {
 pub(crate) fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<IpPacket> {
     use ip_packet::{icmpv4, icmpv6};
 
+    // An ICMP error quotes the offending datagram but must itself fit into the minimum
+    // MTU (RFC 4443), leaving room for an IPv6 header and the ICMP header.
+    const MAX_QUOTED_LEN: usize = ip_packet::MAX_IP_SIZE - 40 - 8;
+
     let src = packet.destination();
     let dst = packet.source();
-    let payload = packet.packet();
+    let quoted = packet.packet();
+    let payload = &quoted[..quoted.len().min(MAX_QUOTED_LEN)];
 
     let reply = match (src, dst) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
