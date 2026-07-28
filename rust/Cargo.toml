@@ -291,10 +291,6 @@ tracing = "0.1.41"
 # Full link-time optimization. Reduces binaries by up to 3x on some platforms.
 lto = "fat"
 
-# Increases the compiler's ability to produce smaller, optimized code
-# at the expense of compilation time
-codegen-units = 1
-
 [profile.release.package.firezone-gui-client]
 debug = "full"
 split-debuginfo = "packed"
