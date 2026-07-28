@@ -47,7 +47,8 @@
         ".credo/check/warning/action_fallback_usage.ex",
         ".credo/check/warning/missing_changeset_function.ex",
         ".credo/check/warning/unsafe_template_html.ex",
-        ".credo/check/warning/missing_handle_info_catch_all.ex"
+        ".credo/check/warning/missing_handle_info_catch_all.ex",
+        ".credo/check/warning/missing_account_id_in_join.ex"
       ],
       #
       # If you want to enforce a style guide and need a more traditional linting
@@ -169,7 +170,8 @@
           {Credo.Check.Warning.MissingDatabaseAlias, []},
           {Credo.Check.Warning.CrossModuleDatabaseCall, []},
           {Credo.Check.Warning.UnsafeTemplateHTML, []},
-          {Credo.Check.Warning.MissingHandleInfoCatchAll, []}
+          {Credo.Check.Warning.MissingHandleInfoCatchAll, []},
+          {Credo.Check.Warning.MissingAccountIdInJoin, []}
         ],
         disabled: [
           {Credo.Check.Readability.AliasOrder, []},

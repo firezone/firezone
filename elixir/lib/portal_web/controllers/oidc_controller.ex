@@ -1415,8 +1415,11 @@ defmodule PortalWeb.OIDCController do
 
       base_query =
         from(d in fragment("SELECT 1"),
+          # Both CTEs return at most one row and are already scoped by account_id.
+          # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
           left_join: al in "actor_lookup",
           on: true,
+          # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
           left_join: ei in "existing_identity",
           on: true,
           where: not is_nil(al.id) or not is_nil(ei.actor_id),

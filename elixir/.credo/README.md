@@ -55,6 +55,12 @@ Ensures proper Portal.Safe aliasing in modules that need it.
 
 Prevents cross-module database operations to maintain proper boundaries.
 
+### Warning.MissingAccountIdInJoin
+
+Requires Ecto join conditions to reference `account_id`, because `Portal.Safe`
+scopes only the root query binding. Joins to `Portal.Account` and
+`assoc(..., :account)` are exempt.
+
 ## Running Checks
 
 ```bash
