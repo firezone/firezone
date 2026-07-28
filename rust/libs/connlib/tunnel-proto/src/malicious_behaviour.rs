@@ -5,9 +5,15 @@ pub fn ignore_resource_filter() -> bool {
     FEATURES.with(|f| f.get().ignore_resource_filters)
 }
 
+/// Returns `true` if the current thread is configured to ignore its own flow tracking.
+pub fn ignore_flow_tracking() -> bool {
+    FEATURES.with(|f| f.get().ignore_flow_tracking)
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MaliciousBehaviour {
     pub ignore_resource_filters: bool,
+    pub ignore_flow_tracking: bool,
 }
 
 impl MaliciousBehaviour {

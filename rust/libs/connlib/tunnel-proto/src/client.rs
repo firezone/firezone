@@ -607,9 +607,10 @@ impl ClientState {
             .resolve(dst, dst_proto, internet_resource);
 
         let direct_gateway = self.gateways.peer_by_ip(dst).map(|(gid, _)| gid);
-        let peer_originated_client_flow = self.clients.peer_by_ip(dst).and_then(|(cid, peer)| {
-            (peer.outbound_flow_originator(&packet) == Some(Originator::Peer)).then_some(cid)
-        });
+        let peer_originated_client_flow = self
+            .clients
+            .peer_by_ip(dst)
+            .and_then(|(cid, peer)| flow_allows_outbound(peer, &packet).then_some(cid));
 
         let (packet, peer) = match (direct_gateway, peer_originated_client_flow, route) {
             (Some(gid), _, _) => {
@@ -2686,6 +2687,25 @@ fn is_llmnr(dst: IpAddr) -> bool {
         IpAddr::V4(ip) => ip == LLMNR_IPV4,
         IpAddr::V6(ip) => ip == LLMNR_IPV6,
     }
+}
+
+/// Whether a flow the peer opened permits sending this packet back to them.
+///
+/// In tests, a malicious client can be configured to ignore its own flow tracking,
+/// keeping the target Client's inbound path exercised with traffic that an honest
+/// build would never emit.
+fn flow_allows_outbound(peer: &ClientOnClient, packet: &IpPacket) -> bool {
+    if peer.outbound_flow_originator(packet) == Some(Originator::Peer) {
+        return true;
+    }
+
+    #[cfg(any(test, feature = "malicious-behaviour"))]
+    if crate::malicious_behaviour::ignore_flow_tracking() {
+        tracing::debug!("Malicious client: ignoring flow tracking");
+        return true;
+    }
+
+    false
 }
 
 /// Whether `filter` permits a packet with the given protocol.

@@ -1403,9 +1403,7 @@ mod tests {
             "fd00:2021:1111:8000::1".parse().unwrap(),
             Vec::new(),
             false,
-            MaliciousBehaviour {
-                ignore_resource_filters: false,
-            },
+            MaliciousBehaviour::default(),
         );
         client.add_cidr_resource(CidrResource {
             id: broad_id,
