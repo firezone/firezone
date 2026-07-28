@@ -298,6 +298,9 @@ split-debuginfo = "packed"
 [profile.release.package.ebpf-turn-router]
 debug = 2
 
+# Anything above 1 makes `handle_turn` exceed the 512-byte BPF stack limit.
+codegen-units = 1
+
 # Override build settings just for the GUI client, so we get a pdb/dwp
 # Cargo ignores profile settings if they're not in the workspace's Cargo.toml
 [profile.dev.package.firezone-gui-client]
