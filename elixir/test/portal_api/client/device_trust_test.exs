@@ -79,6 +79,31 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert verified.identifiers.last_attested_device_serial == "DMPXK1ZGXYZ9"
     end
 
+    test "backtracks across intermediates sharing a subject DN", %{
+      pki: pki,
+      nonce: nonce,
+      anchors: anchors
+    } do
+      decoy = decoy_intermediate_der(pki)
+
+      entry =
+        response_entry(pki, :via_intermediate, nonce,
+          intermediates: [decoy, pki.intermediate_der]
+        )
+
+      assert {:ok, verified} = DeviceTrust.verify_response([entry], nonce, anchors)
+      assert verified.identifiers.last_attested_device_serial == "DMPXK1ZGXYZ9"
+    end
+
+    test "rejects a verified cert carrying no device identifiers", %{
+      pki: pki,
+      nonce: nonce,
+      anchors: anchors
+    } do
+      entry = response_entry(pki, :no_identifiers, nonce)
+      assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)
+    end
+
     test "rejects a leaf without client-auth EKU", %{pki: pki, nonce: nonce, anchors: anchors} do
       entry = response_entry(pki, :no_eku, nonce)
       assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)
@@ -154,6 +179,26 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert identifiers.last_attested_device_uuid == "7a461ff9-0be2-64a9-a418-539d9a21827b"
       assert identifiers.last_attested_mdm_device_id == "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
     end
+
+    test "falls back past garbage typed values to usable SAN identifiers" do
+      identifiers =
+        DeviceTrust.extract_identifiers(
+          otp(
+            sans: [
+              {:uniformResourceIdentifier, ~c"firezone://smbios-uuid/IDNotPresentButSettable"},
+              {:dNSName, ~c"SERIAL=C02TEST12345"}
+            ]
+          )
+        )
+
+      assert identifiers == %{last_attested_device_serial: "C02TEST12345"}
+    end
+
+    test "never consults the subject" do
+      assert DeviceTrust.extract_identifiers(
+               otp(cn: "FVFHF246Q72X", ous: ["Engineering"], sans: [])
+             ) == %{}
+    end
   end
 
   describe "normalize_identifier/2" do
@@ -193,6 +238,13 @@ defmodule PortalAPI.Client.DeviceTrustTest do
                :last_attested_device_uuid,
                "IDNotPresentButSettable"
              ) == nil
+    end
+
+    test "keeps small numeric MDM device ids" do
+      assert DeviceTrust.normalize_identifier(:last_attested_mdm_device_id, "1") == "1"
+      assert DeviceTrust.normalize_identifier(:last_attested_mdm_device_id, "10") == "10"
+      assert DeviceTrust.normalize_identifier(:last_attested_mdm_device_id, "22") == "22"
+      assert DeviceTrust.normalize_identifier(:last_attested_mdm_device_id, "0") == nil
     end
 
     test "trims and rejects empty values" do

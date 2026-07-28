@@ -24,6 +24,7 @@ defmodule Portal.DeviceTrustChallengeFixtures do
   )
 
   @cn_oid {2, 5, 4, 3}
+  @ou_oid {2, 5, 4, 11}
   @basic_constraints_oid {2, 5, 29, 19}
   @key_usage_oid {2, 5, 29, 15}
   @extended_key_usage_oid {2, 5, 29, 37}
@@ -67,9 +68,13 @@ defmodule Portal.DeviceTrustChallengeFixtures do
   given PKI. `private_key` is decoded and ready for `:public_key.sign/3`.
 
   Profiles: `:rsa`, `:ec`, `:via_intermediate`, `:no_eku`, `:untrusted`,
-  `:no_digital_signature` (keyAgreement-only Key Usage), `:expired`, and
-  `:not_yet_valid`.
+  `:no_digital_signature` (keyAgreement-only Key Usage), `:expired`,
+  `:not_yet_valid`, and `:no_identifiers` (SAN-less, subject-only). A keyword
+  list mints a custom leaf under the trusted CA (`:cn`, `:ous`, `:sans`,
+  `:eku`, `:key_usage`, `:validity`, `:key`).
   """
+  def leaf(pki, opts) when is_list(opts), do: issue_leaf(pki.ca, opts)
+
   def leaf(pki, :rsa), do: issue_leaf(pki.ca, key: gen_rsa_key(), sans: @typed_sans)
 
   def leaf(pki, :ec), do: issue_leaf(pki.ca, sans: @typed_sans)
@@ -90,6 +95,16 @@ defmodule Portal.DeviceTrustChallengeFixtures do
   def leaf(pki, :expired), do: issue_leaf(pki.ca, validity: {-730, -1}, sans: @typed_sans)
 
   def leaf(pki, :not_yet_valid), do: issue_leaf(pki.ca, validity: {1, 730}, sans: @typed_sans)
+
+  def leaf(pki, :no_identifiers), do: issue_leaf(pki.ca, sans: [], ous: ["Engineering"])
+
+  @doc """
+  Mints a second intermediate sharing the trusted intermediate's subject DN
+  but holding a different key, for chain-building backtracking tests.
+  """
+  def decoy_intermediate_der(pki) do
+    new_intermediate(pki.ca, "Firezone Device Trust Test Intermediate CA").cert_der
+  end
 
   @doc """
   Builds a `device_trust_response` entry (base64 leaf + optional
@@ -128,20 +143,20 @@ defmodule Portal.DeviceTrustChallengeFixtures do
   defp issue_leaf(issuer, opts) do
     key = Keyword.get(opts, :key) || gen_ec_key()
     validity = Keyword.get(opts, :validity, {-1, 365})
+    subject = rdn(Keyword.get(opts, :cn, @leaf_cn), Keyword.get(opts, :ous, []))
 
     extensions =
-      [
-        {:Extension, @extended_key_usage_oid, false, Keyword.get(opts, :eku, [@client_auth_oid])},
-        {:Extension, @subject_alt_name_oid, false, Keyword.fetch!(opts, :sans)}
-      ] ++
+      [{:Extension, @extended_key_usage_oid, false, Keyword.get(opts, :eku, [@client_auth_oid])}] ++
+        case Keyword.get(opts, :sans, []) do
+          [] -> []
+          sans -> [{:Extension, @subject_alt_name_oid, false, sans}]
+        end ++
         case Keyword.get(opts, :key_usage) do
           nil -> []
           usages -> [{:Extension, @key_usage_oid, true, usages}]
         end
 
-    cert_der =
-      sign_cert(issuer.subject, issuer.key, rdn(@leaf_cn), spki(key), extensions, validity)
-
+    cert_der = sign_cert(issuer.subject, issuer.key, subject, spki(key), extensions, validity)
     {cert_der, key}
   end
 
@@ -179,8 +194,11 @@ defmodule Portal.DeviceTrustChallengeFixtures do
      {:RSAPublicKey, modulus, exponent}}
   end
 
-  defp rdn(common_name) do
-    {:rdnSequence, [[{:AttributeTypeAndValue, @cn_oid, {:utf8String, common_name}}]]}
+  defp rdn(common_name, organizational_units \\ []) do
+    ou_rdns =
+      Enum.map(organizational_units, &[{:AttributeTypeAndValue, @ou_oid, {:utf8String, &1}}])
+
+    {:rdnSequence, [[{:AttributeTypeAndValue, @cn_oid, {:utf8String, common_name}}] | ou_rdns]}
   end
 
   defp utc_time(datetime) do

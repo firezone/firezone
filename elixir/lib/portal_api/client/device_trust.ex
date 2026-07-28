@@ -7,12 +7,15 @@ defmodule PortalAPI.Client.DeviceTrust do
   a signature over the nonce. A response entry is trusted when its leaf allows
   TLS client authentication, permits digital signatures (Key Usage absent or
   including `digitalSignature`), is within its validity window, chains to one
-  of the account's trust anchors, and its key verifies the signature.
+  of the account's trust anchors, its key verifies the signature, and its
+  SANs yield at least one device identifier.
 
-  Verified leaves yield device identifiers extracted from typed
-  `firezone://<idtype>/<value>` URI SANs (with fallbacks for common MDM
-  conventions), normalized and screened against well-known garbage values
-  before they ever reach an indexed column.
+  Device identifiers come from SANs only: typed `firezone://<idtype>/<value>`
+  URIs (with fallbacks for common MDM SAN conventions), normalized and
+  screened against well-known garbage values before they ever reach an
+  indexed column. A certificate without SAN-borne identifiers proves only
+  that the holder has some certificate from the anchor CA, not which device
+  it is, so it cannot attest anything.
 
   Failure never blocks the connection: the caller falls back to the plain
   `firezone_id` resolution path.
@@ -183,12 +186,7 @@ defmodule PortalAPI.Client.DeviceTrust do
           {:error, :invalid_signature}
 
         true ->
-          {:ok,
-           %{
-             identifiers: extract_identifiers(leaf_otp),
-             last_attested_cert_serial: leaf_otp |> X509.serial_number() |> Integer.to_string(16),
-             last_attested_cert_fingerprint: sha256_hex(leaf_der)
-           }}
+          verified_result(leaf_der, leaf_otp)
       end
     else
       _other -> {:error, :invalid_entry}
@@ -196,6 +194,21 @@ defmodule PortalAPI.Client.DeviceTrust do
   end
 
   defp verify_entry(_entry, _nonce, _anchors), do: {:error, :invalid_entry}
+
+  defp verified_result(leaf_der, leaf_otp) do
+    case extract_identifiers(leaf_otp) do
+      identifiers when map_size(identifiers) == 0 ->
+        {:error, :no_device_identifiers}
+
+      identifiers ->
+        {:ok,
+         %{
+           identifiers: identifiers,
+           last_attested_cert_serial: leaf_otp |> X509.serial_number() |> Integer.to_string(16),
+           last_attested_cert_fingerprint: sha256_hex(leaf_der)
+         }}
+    end
+  end
 
   # Accepts the flexible `"certs"` list (leaf first, optional intermediates)
   # as well as the single-cert `"cert"` shape.
@@ -252,47 +265,42 @@ defmodule PortalAPI.Client.DeviceTrust do
     pool = Enum.uniq(intermediate_ders ++ anchor_ders)
 
     Enum.any?(anchor_ders, fn anchor_der ->
-      case build_chain(leaf_der, anchor_der, List.delete(pool, anchor_der)) do
-        {:ok, chain} ->
-          match?({:ok, _result}, :public_key.pkix_path_validation(anchor_der, chain, []))
-
-        :error ->
-          false
-      end
+      leaf_der
+      |> candidate_chains(anchor_der, List.delete(pool, anchor_der), [leaf_der], @max_chain_depth)
+      |> Enum.any?(fn chain ->
+        match?({:ok, _result}, :public_key.pkix_path_validation(anchor_der, chain, []))
+      end)
     end)
   rescue
     _error -> false
   end
 
-  # Walks issuer links from the leaf up to the anchor, returning the chain in
-  # the trust order `:public_key.pkix_path_validation/3` expects: the anchor's
-  # direct child first, the leaf last. The accumulator is built by prepending
-  # each discovered issuer to a list seeded with the leaf, which yields exactly
-  # that order.
-  defp build_chain(leaf_der, anchor_der, pool) do
-    do_build_chain(leaf_der, anchor_der, pool, [leaf_der], @max_chain_depth)
+  # Walks issuer links from the leaf up to the anchor, returning every
+  # candidate chain in the trust order `:public_key.pkix_path_validation/3`
+  # expects: the anchor's direct child first, the leaf last. `issued_by?`
+  # compares names only, and renewed or cross-signed CAs share a subject DN,
+  # so each ambiguous link is explored rather than committing to one issuer.
+  defp candidate_chains(current_der, anchor_der, pool, acc, depth) when depth > 0 do
+    direct = if issued_by?(current_der, anchor_der), do: [acc], else: []
+
+    nested =
+      for issuer_der <- pool,
+          issued_by?(current_der, issuer_der),
+          chain <-
+            candidate_chains(
+              issuer_der,
+              anchor_der,
+              List.delete(pool, issuer_der),
+              [issuer_der | acc],
+              depth - 1
+            ) do
+        chain
+      end
+
+    direct ++ nested
   end
 
-  defp do_build_chain(current_der, anchor_der, pool, acc, depth) when depth > 0 do
-    cond do
-      issued_by?(current_der, anchor_der) ->
-        {:ok, acc}
-
-      issuer_der = Enum.find(pool, &issued_by?(current_der, &1)) ->
-        do_build_chain(
-          issuer_der,
-          anchor_der,
-          List.delete(pool, issuer_der),
-          [issuer_der | acc],
-          depth - 1
-        )
-
-      true ->
-        :error
-    end
-  end
-
-  defp do_build_chain(_current, _anchor, _pool, _acc, _depth), do: :error
+  defp candidate_chains(_current, _anchor, _pool, _acc, _depth), do: []
 
   defp issued_by?(cert_der, issuer_der) do
     cert_der != issuer_der and :public_key.pkix_is_issuer(cert_der, issuer_der)
@@ -323,9 +331,11 @@ defmodule PortalAPI.Client.DeviceTrust do
   `firezone://udid/...`, `firezone://intune-id/...`, ...) — a certificate
   should carry every identifier the MDM can assert. When no typed URI is
   present, falls back to bare recognized identifiers in URI SANs, then
-  WS1-style `UDID=`/`SERIAL=` DNS SANs, then a subject CN/OU scan. Values are
-  normalized and screened; user identity fields (rfc822Name/UPN) are never
-  consulted.
+  WS1-style `UDID=`/`SERIAL=` DNS SANs. The subject is never consulted:
+  CN/OU values are profile-wide labels, not per-device identity. Values are
+  normalized and screened per source, so a garbage value in one source never
+  shadows a usable identifier in another; user identity fields
+  (rfc822Name/UPN) are never consulted.
   """
   @spec extract_identifiers(tuple()) :: identifiers()
   def extract_identifiers(leaf_otp) do
@@ -336,30 +346,19 @@ defmodule PortalAPI.Client.DeviceTrust do
 
     typed = extract_typed_uris(uris)
 
-    identifiers =
-      if map_size(typed) > 0 do
-        typed
-      else
-        fallback_identifiers(leaf_otp, uris)
-      end
-
-    identifiers
-    |> Enum.flat_map(fn {column, value} ->
-      case normalize_identifier(column, value) do
-        nil -> []
-        normalized -> [{column, normalized}]
-      end
-    end)
-    |> Map.new()
+    if map_size(typed) > 0 do
+      typed
+    else
+      fallback_identifiers(leaf_otp, uris)
+    end
   end
 
   # Fallback ladder when no firezone:// typed URI is present: the first
-  # extractor that yields anything wins.
+  # extractor that yields a usable (post-normalization) identifier wins.
   defp fallback_identifiers(leaf_otp, uris) do
     [
       fn -> extract_bare_uris(uris) end,
-      fn -> extract_dns_identifiers(X509.san_dns_names(leaf_otp)) end,
-      fn -> extract_subject_identifiers(leaf_otp) end
+      fn -> extract_dns_identifiers(X509.san_dns_names(leaf_otp)) end
     ]
     |> Enum.reduce_while(%{}, fn extract, _acc ->
       case extract.() do
@@ -375,34 +374,26 @@ defmodule PortalAPI.Client.DeviceTrust do
         column = Map.get(@idtype_columns, String.downcase(idtype)),
         not is_nil(column),
         reduce: %{} do
-      acc -> Map.put_new(acc, column, value)
+      acc -> put_normalized(acc, column, value)
     end
   end
 
   defp extract_bare_uris(uris) do
-    for uri <- uris, {column, value} <- classify_bare(uri, guids: true), reduce: %{} do
-      acc -> Map.put_new(acc, column, value)
+    for uri <- uris, {column, value} <- classify_bare(uri), reduce: %{} do
+      acc -> put_normalized(acc, column, value)
     end
   end
 
   defp extract_dns_identifiers(dns_names) do
     for dns <- dns_names, {column, value} <- classify_dns(dns), reduce: %{} do
-      acc -> Map.put_new(acc, column, value)
+      acc -> put_normalized(acc, column, value)
     end
   end
 
-  # Subject scan accepts only serial- and UDID-shaped values: bare GUIDs in
-  # OUs are overwhelmingly renewal artifacts (e.g. Jamf profile identifiers),
-  # not device identity.
-  defp extract_subject_identifiers(leaf_otp) do
-    values =
-      case X509.subject_common_name(leaf_otp) do
-        nil -> []
-        cn -> [cn]
-      end ++ X509.subject_organizational_units(leaf_otp)
-
-    for value <- values, {column, extracted} <- classify_bare(value, guids: false), reduce: %{} do
-      acc -> Map.put_new(acc, column, extracted)
+  defp put_normalized(acc, column, value) do
+    case normalize_identifier(column, value) do
+      nil -> acc
+      normalized -> Map.put_new(acc, column, normalized)
     end
   end
 
@@ -419,16 +410,15 @@ defmodule PortalAPI.Client.DeviceTrust do
     end
   end
 
-  # Bare GUIDs are accepted only from URI SANs (MDM cloud device ids, e.g.
-  # Intune {{DeviceId}}); typed URIs are the recommended way to disambiguate.
-  defp classify_bare(value, guids: accept_guids?) do
+  # Bare GUIDs from URI SANs are MDM cloud device ids (e.g. Intune
+  # {{DeviceId}}); typed URIs are the recommended way to disambiguate.
+  defp classify_bare(value) do
     value = String.trim(value)
 
     cond do
       Regex.match?(@classic_udid_regex, value) -> [{:last_attested_device_uuid, value}]
       Regex.match?(@modern_udid_regex, value) -> [{:last_attested_device_uuid, value}]
-      Regex.match?(@guid_regex, value) and accept_guids? -> [{:last_attested_mdm_device_id, value}]
-      Regex.match?(@guid_regex, value) -> []
+      Regex.match?(@guid_regex, value) -> [{:last_attested_mdm_device_id, value}]
       Regex.match?(@apple_serial_regex, value) -> [{:last_attested_device_serial, value}]
       true -> []
     end
@@ -446,7 +436,8 @@ defmodule PortalAPI.Client.DeviceTrust do
     cond do
       not Regex.match?(@printable_ascii_regex, value) -> nil
       column == :last_attested_device_serial -> normalize_serial(value)
-      column in [:last_attested_device_uuid, :last_attested_mdm_device_id] -> normalize_uuid(value)
+      column == :last_attested_device_uuid -> normalize_uuid(value)
+      column == :last_attested_mdm_device_id -> normalize_mdm_id(value)
       true -> nil
     end
   end
@@ -475,6 +466,21 @@ defmodule PortalAPI.Client.DeviceTrust do
     if MapSet.member?(@uuid_sentinels, String.downcase(normalized)) or
          Regex.match?(@binary_run_regex, normalized) or
          Regex.match?(@repeated_char_regex, normalized) do
+      nil
+    else
+      normalized
+    end
+  end
+
+  # MDM ids may be small numeric values (Jamf device ids), so the
+  # placeholder-run screens for serials/UUIDs do not apply; a bare "0" is
+  # still a placeholder (Jamf ids start at 1).
+  defp normalize_mdm_id("0"), do: nil
+
+  defp normalize_mdm_id(value) do
+    normalized = String.downcase(value)
+
+    if MapSet.member?(@uuid_sentinels, normalized) do
       nil
     else
       normalized
