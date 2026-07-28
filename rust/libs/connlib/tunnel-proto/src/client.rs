@@ -2725,7 +2725,7 @@ fn peer_for_icmp_error(
 
     let (cid, peer) = clients.peer_by_ip(packet.destination())?;
 
-    if peer.is_error_for_known_flow(packet) {
+    if peer.is_known_outbound_error(packet) {
         return Some(cid);
     }
 

@@ -87,10 +87,12 @@ impl ConnTrack {
         })
     }
 
-    /// Returns `true` if the packet belongs to an existing flow in either direction.
+    /// Returns `true` if a packet arriving from the peer belongs to an existing flow,
+    /// opened by either side.
     ///
-    /// An ICMP error belongs to the flow of the failed packet it references.
-    pub(crate) fn is_known_flow(&self, packet: &IpPacket) -> bool {
+    /// An ICMP error belongs to the flow of the packet it refers to. That packet was
+    /// travelling away from us, so its source is our own endpoint.
+    pub(crate) fn is_known_inbound_flow(&self, packet: &IpPacket) -> bool {
         if let Ok(Some((failed, _))) = packet.icmp_error() {
             return self.contains(Key {
                 local: failed.src_proto(),
@@ -119,12 +121,12 @@ impl ConnTrack {
         self.initiated.contains_key(&key) || self.received.contains_key(&key)
     }
 
-    /// Returns `true` if the packet is an ICMP error referring to an existing flow.
+    /// Returns `true` if an ICMP error we are about to send refers to an existing flow.
     ///
-    /// Unlike [`ConnTrack::is_known_flow`], this is for an error we are about to
-    /// send: the packet it refers to travelled towards us, so its destination is
-    /// our own endpoint rather than the peer's.
-    pub(crate) fn is_error_for_known_flow(&self, packet: &IpPacket) -> bool {
+    /// The direction matters: unlike [`ConnTrack::is_known_inbound_flow`], the packet
+    /// it refers to was travelling towards us, so our own endpoint is its destination.
+    /// The same error is therefore legitimate to send and illegitimate to accept.
+    pub(crate) fn is_known_outbound_error(&self, packet: &IpPacket) -> bool {
         let Ok(Some((failed, _))) = packet.icmp_error() else {
             return false;
         };
@@ -248,7 +250,7 @@ mod tests {
 
         let reply = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 80, 40000, &[])
             .expect("valid packet");
-        assert!(ct.is_known_flow(&reply));
+        assert!(ct.is_known_inbound_flow(&reply));
     }
 
     /// The same error is legitimate to send and illegitimate to accept, which is why
@@ -266,8 +268,8 @@ mod tests {
 
         let error = make::icmp_dest_unreachable_network(&inbound).expect("valid packet");
 
-        assert!(ct.is_error_for_known_flow(&error));
-        assert!(!ct.is_known_flow(&error));
+        assert!(ct.is_known_outbound_error(&error));
+        assert!(!ct.is_known_inbound_flow(&error));
     }
 
     #[test]
