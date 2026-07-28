@@ -299,12 +299,33 @@ exit 1
 '''
 
 [tasks.lcov]
-description = "Export an existing fuzz coverage profile as lcov"
+description = "Export an existing fuzz coverage profile as lcov, restricted to our own sources"
 shell = "bash -c"
 depends = ["install-toolchain"]
 usage = 'arg "<crate>"'
 raw = true
-run = '"$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov" export -format=lcov -instr-profile=coverage/$usage_crate/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/$usage_crate'
+run = '''
+set -euo pipefail
+
+crate="$usage_crate"
+profile="coverage/$crate/coverage.profdata"
+binary="../../target/x86_64-unknown-linux-gnu/release/$crate"
+llvm_cov="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov"
+
+if [ ! -f "$profile" ]; then
+  echo "error: coverage profile is missing; run mise run //rust/tests/fuzz:coverage $crate first" >&2
+  exit 1
+fi
+
+# Fuzz builds instrument every dependency, including a from-source standard
+# library. Their regions would otherwise dominate what we report to Coveralls.
+"$llvm_cov" export \
+  -format=lcov \
+  -instr-profile="$profile" \
+  -ignore-filename-regex="^${CARGO_HOME:-$HOME/.cargo}/" \
+  -ignore-filename-regex="^${RUSTUP_HOME:-$HOME/.rustup}/" \
+  "$binary"
+'''
 
 [tasks.llvm-cov]
 description = "Run the nightly toolchain's llvm-cov, e.g. to post-process coverage.profdata"
