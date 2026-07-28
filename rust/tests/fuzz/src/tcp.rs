@@ -70,9 +70,10 @@ impl Client {
             return false;
         };
 
+        let local = SocketAddr::new(packet.destination(), tcp.destination_port());
         let remote = SocketAddr::new(packet.source(), tcp.source_port());
 
-        self.sockets_by_conn.keys().any(|(_local, r)| *r == remote)
+        self.sockets_by_conn.contains_key(&(local, remote))
     }
 
     pub fn handle_inbound(&mut self, packet: IpPacket) {
@@ -113,6 +114,7 @@ impl Client {
 
     pub fn reset(&mut self) {
         self.sockets = l3_tcp::SocketSet::new(Vec::default());
+        self.sockets_by_conn.clear();
         self.device.clear();
     }
 }
