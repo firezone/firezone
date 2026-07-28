@@ -695,15 +695,6 @@ impl RefClient {
                     .unwrap_or(PacketRoute::Drop);
             }
 
-            // A Client that ignores its own flow tracking puts the packet on the wire
-            // without a pool routing there. Nothing authorises the peer to accept it,
-            // so its inbound filter rejects and answers with an ICMP error.
-            if self.malicious_behaviour.ignore_flow_tracking
-                && let Some(cid) = client_by_ip(ip)
-            {
-                return PacketRoute::PeerRejectedByPeer(cid);
-            }
-
             return gateway_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Gateway);
         }
 
