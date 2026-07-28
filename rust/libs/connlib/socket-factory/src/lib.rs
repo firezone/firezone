@@ -438,20 +438,19 @@ impl PerfUdpSocket {
             }
         })?;
 
+        let iter = DatagramSegmentIter::new(batch.buffers, batch.metas, self.port, len);
+
+        // `len` only counts the buffers the syscall filled; with GRO a single buffer holds
+        // several datagrams, so the segments across all buffers are what we want here.
         self.batch_histogram.record(
-            len as u64,
+            iter.num_packets() as u64,
             &[
                 KeyValue::new("network.transport", "udp"),
                 KeyValue::new("network.io.direction", "receive"),
             ],
         );
 
-        Ok(DatagramSegmentIter::new(
-            batch.buffers,
-            batch.metas,
-            self.port,
-            len,
-        ))
+        Ok(iter)
     }
 
     pub async fn send(&self, datagram: DatagramOut) -> Result<()> {
@@ -950,7 +949,7 @@ pub struct DatagramSegmentIter<B = Buffer<Vec<u8>>> {
     segment_index: usize,
 
     _total_bytes: usize,
-    _num_packets: usize,
+    num_packets: usize,
 }
 
 impl<B> DatagramSegmentIter<B> {
@@ -965,16 +964,7 @@ impl<B> DatagramSegmentIter<B> {
         metas.truncate(len);
 
         let total_bytes = metas.iter().map(|m| m.len).sum::<usize>();
-        let num_packets = metas
-            .iter()
-            .map(|meta| {
-                if meta.len == 0 {
-                    return 0;
-                }
-
-                meta.len / meta.stride
-            })
-            .sum::<usize>();
+        let num_packets = metas.iter().map(num_segments).sum::<usize>();
 
         Self {
             buffers,
@@ -983,9 +973,23 @@ impl<B> DatagramSegmentIter<B> {
             buf_index: 0,
             segment_index: 0,
             _total_bytes: total_bytes,
-            _num_packets: num_packets,
+            num_packets,
         }
     }
+
+    /// How many datagrams this batch carries in total.
+    pub(crate) fn num_packets(&self) -> usize {
+        self.num_packets
+    }
+}
+
+/// The number of datagrams packed into a single received buffer.
+///
+/// Without offloads, the buffer holds exactly one datagram (`stride` equals `len`). With GRO
+/// (Linux) or URO (Windows) the kernel coalesces several into one buffer at `stride` increments,
+/// the last of which may be short.
+fn num_segments(meta: &quinn_udp::RecvMeta) -> usize {
+    meta.len.div_ceil(meta.stride.max(1))
 }
 
 impl<B> LendingIterator for DatagramSegmentIter<B>
@@ -1040,7 +1044,7 @@ where
             let segment_size = meta.stride;
 
             #[cfg(debug_assertions)]
-            tracing::trace!(target: "wire::net::recv", num_p = %self._num_packets, tot_b = %self._total_bytes, src = %meta.addr, dst = %local, ecn = ?meta.ecn, len = %segment_size);
+            tracing::trace!(target: "wire::net::recv", num_p = %self.num_packets, tot_b = %self._total_bytes, src = %meta.addr, dst = %local, ecn = ?meta.ecn, len = %segment_size);
 
             let segment_start = self.segment_index;
             let segment_end = std::cmp::min(segment_start + segment_size, meta.len);
@@ -1150,6 +1154,21 @@ mod tests {
         assert_eq!(iter.next().unwrap().packet, b"baz5");
         assert_eq!(iter.next().unwrap().packet, b"foo");
         assert!(iter.next().is_none());
+    }
+
+    /// Both buffers end in a segment shorter than their stride, so counting whole strides
+    /// would miss one datagram each.
+    #[test]
+    fn num_packets_counts_segments_across_buffers() {
+        let localhost = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
+
+        let metas = [
+            recv_meta(localhost, IpAddr::V4(Ipv4Addr::LOCALHOST), 38, 7),
+            recv_meta(localhost, IpAddr::V4(Ipv4Addr::LOCALHOST), 23, 4),
+            quinn_udp::RecvMeta::default(),
+        ];
+
+        assert_eq!(metas.iter().map(num_segments).sum::<usize>(), 12);
     }
 
     #[test]
