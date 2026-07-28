@@ -353,8 +353,8 @@ impl SimClient {
             }
         }
 
-        // Only used to answer a fresh request from a peer; the branches handling replies
-        // to our own requests all return before reaching that point.
+        // Only answers a fresh UDP request from a peer: a port that nothing listens on
+        // is meaningless for an ICMP echo, which has no port to be unreachable.
         let icmp_error = icmp_error_hosts
             .icmp_error_for_ip(packet.destination())
             .map(|error| icmp_error_reply(&packet, error).unwrap());
@@ -423,8 +423,7 @@ impl SimClient {
             tracing::debug!(%packet_id, "Received ICMP request");
             self.received_icmp_requests
                 .insert(packet_id, (now, packet.clone()));
-            let transmit =
-                self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now)?;
+            let transmit = self.handle_icmp_request(&packet, echo, icmp.payload(), now)?;
 
             return Some(transmit);
         }
@@ -436,8 +435,7 @@ impl SimClient {
             tracing::debug!(%packet_id, "Received ICMP request");
             self.received_icmp_requests
                 .insert(packet_id, (now, packet.clone()));
-            let transmit =
-                self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now)?;
+            let transmit = self.handle_icmp_request(&packet, echo, icmp.payload(), now)?;
 
             return Some(transmit);
         }
@@ -535,19 +533,16 @@ impl SimClient {
         packet: &IpPacket,
         echo: IcmpEchoHeader,
         payload: &[u8],
-        icmp_error: Option<IpPacket>,
         now: Instant,
     ) -> Option<Transmit> {
-        let reply = icmp_error.unwrap_or_else(|| {
-            ip_packet::make::icmp_reply_packet(
-                packet.destination(),
-                packet.source(),
-                echo.seq,
-                echo.id,
-                payload,
-            )
-            .expect("src and dst are taken from incoming packet")
-        });
+        let reply = ip_packet::make::icmp_reply_packet(
+            packet.destination(),
+            packet.source(),
+            echo.seq,
+            echo.id,
+            payload,
+        )
+        .expect("src and dst are taken from incoming packet");
 
         let transmit = self.handle_tun_input(reply, now).unwrap()?;
 
