@@ -27,6 +27,13 @@
 //!   runtime crashes) + the `register-sparse.log` file the install
 //!   canary captures.
 
+// Console-subsystem binaries get a console window allocated on every
+// `CreateProcess`, so each MSI custom action flashes a terminal at the
+// user during install and uninstall. Release builds are only ever run
+// by MSI, which discards their stdout anyway; debug builds keep the
+// console for manual runs.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use anyhow::{Context, ErrorExt, Result};
 use clap::Parser;
 use firezone_gui_client::PACKAGE_FAMILY_NAME;
@@ -111,8 +118,9 @@ fn run() -> ExitCode {
 ///   (and a `latest` link). This is the authoritative source during
 ///   MSI installs, because MSI discards stdout/stderr from deferred
 ///   EXE custom actions — they don't land in `install.log`.
-/// - Stdout: useful only when invoking `register-sparse.exe`
-///   manually for diagnosis.
+/// - Stdout: reaches a terminal only in debug builds, where the
+///   binary still has a console. Release builds are
+///   `windows_subsystem = "windows"` and have nowhere to write.
 /// - Sentry: `tracing::error!` events propagate to Sentry via the
 ///   `sentry-tracing` layer that `setup_global_subscriber` installs.
 ///
