@@ -2166,7 +2166,10 @@ defmodule PortalWeb.Resources.Components do
       query =
         from(c in Device, as: :clients)
         |> where([clients: c], c.type == :client)
-        |> join(:inner, [clients: c], a in assoc(c, :actor), as: :actors)
+        |> join(:inner, [clients: c], a in assoc(c, :actor),
+          on: a.account_id == c.account_id,
+          as: :actors
+        )
         |> where([clients: c], c.id not in ^selected_ids)
         |> where(^client_search_filter(pattern))
         |> order_by([clients: c], desc: c.id in ^online_ids)

@@ -1178,17 +1178,20 @@ defmodule PortalWeb.Policies do
       row =
         from(g in Group, as: :groups)
         |> where([groups: g], g.id == ^id)
-        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+        |> join(:left, [groups: g], d in assoc(g, :directory),
+          on: d.account_id == g.account_id,
+          as: :directory
+        )
         |> join(:left, [directory: d], gd in Portal.Google.Directory,
-          on: gd.id == d.id and d.type == :google,
+          on: gd.id == d.id and gd.account_id == d.account_id and d.type == :google,
           as: :google_directory
         )
         |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-          on: ed.id == d.id and d.type == :entra,
+          on: ed.id == d.id and ed.account_id == d.account_id and d.type == :entra,
           as: :entra_directory
         )
         |> join(:left, [directory: d], od in Portal.Okta.Directory,
-          on: od.id == d.id and d.type == :okta,
+          on: od.id == d.id and od.account_id == d.account_id and d.type == :okta,
           as: :okta_directory
         )
         |> select(
@@ -1208,17 +1211,20 @@ defmodule PortalWeb.Policies do
     def list_group_options(search_query_or_nil, subject) do
       query =
         from(g in Group, as: :groups)
-        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+        |> join(:left, [groups: g], d in assoc(g, :directory),
+          on: d.account_id == g.account_id,
+          as: :directory
+        )
         |> join(:left, [directory: d], gd in Portal.Google.Directory,
-          on: gd.id == d.id and d.type == :google,
+          on: gd.id == d.id and gd.account_id == d.account_id and d.type == :google,
           as: :google_directory
         )
         |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-          on: ed.id == d.id and d.type == :entra,
+          on: ed.id == d.id and ed.account_id == d.account_id and d.type == :entra,
           as: :entra_directory
         )
         |> join(:left, [directory: d], od in Portal.Okta.Directory,
-          on: od.id == d.id and d.type == :okta,
+          on: od.id == d.id and od.account_id == d.account_id and d.type == :okta,
           as: :okta_directory
         )
         |> select(
@@ -1403,7 +1409,10 @@ defmodule PortalWeb.Policies do
       if has_named_binding?(queryable, :group) do
         queryable
       else
-        join(queryable, :left, [policies: p], g in assoc(p, :group), as: :group)
+        join(queryable, :left, [policies: p], g in assoc(p, :group),
+          on: g.account_id == p.account_id,
+          as: :group
+        )
       end
     end
 
@@ -1411,7 +1420,10 @@ defmodule PortalWeb.Policies do
       if has_named_binding?(queryable, :resource) do
         queryable
       else
-        join(queryable, :inner, [policies: p], r in assoc(p, :resource), as: :resource)
+        join(queryable, :inner, [policies: p], r in assoc(p, :resource),
+          on: r.account_id == p.account_id,
+          as: :resource
+        )
       end
     end
 
@@ -1428,19 +1440,19 @@ defmodule PortalWeb.Policies do
       from(pa in PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: pa], pa.policy_id == ^policy.id)
       |> join(:inner, [policy_authorizations: pa], t in ClientToken,
-        on: t.id == pa.token_id,
+        on: t.id == pa.token_id and t.account_id == pa.account_id,
         as: :tokens
       )
       |> join(:left, [tokens: t], a in Actor,
-        on: a.id == t.actor_id,
+        on: a.id == t.actor_id and a.account_id == t.account_id,
         as: :actors
       )
       |> join(:left, [policy_authorizations: pa], id in Device,
-        on: id.id == pa.initiating_device_id,
+        on: id.id == pa.initiating_device_id and id.account_id == pa.account_id,
         as: :initiating_devices
       )
       |> join(:left, [policy_authorizations: pa], rd in Device,
-        on: rd.id == pa.receiving_device_id,
+        on: rd.id == pa.receiving_device_id and rd.account_id == pa.account_id,
         as: :receiving_devices
       )
       |> select(

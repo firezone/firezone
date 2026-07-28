@@ -3,6 +3,7 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.SubjectFixtures
   import Portal.TokenFixtures
 
   alias Portal.Actor
@@ -55,6 +56,44 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
   end
 
   describe "index (default action)" do
+    test "does not join tokens from another account when actor IDs match", %{
+      account: account,
+      actor: admin_actor
+    } do
+      shared_id = Ecto.UUID.generate()
+
+      Repo.insert!(%Actor{
+        id: shared_id,
+        account_id: account.id,
+        type: :api_client,
+        name: "Local API Client"
+      })
+
+      other_account = account_fixture()
+
+      other_actor =
+        Repo.insert!(%Actor{
+          id: shared_id,
+          account_id: other_account.id,
+          type: :api_client,
+          name: "Other API Client"
+        })
+
+      _other_token = api_token_fixture(account: other_account, actor: other_actor)
+      subject = subject_fixture(account: account, actor: admin_actor)
+
+      assert [
+               {%Actor{
+                  id: ^shared_id,
+                  account_id: account_id,
+                  name: "Local API Client"
+                }, nil}
+             ] =
+               PortalWeb.Settings.ApiClients.Index.Database.list_actors_with_token(subject)
+
+      assert account_id == account.id
+    end
+
     test "redirects to beta page when rest api is disabled", %{conn: conn} do
       account = account_fixture(features: %{rest_api: false})
       actor = admin_actor_fixture(account: account)

@@ -1389,11 +1389,11 @@ defmodule PortalWeb.Actors do
         from(d in Directory,
           where: d.account_id == ^subject.account.id,
           left_join: google in Portal.Google.Directory,
-          on: google.id == d.id and d.type == :google,
+          on: google.id == d.id and google.account_id == d.account_id and d.type == :google,
           left_join: entra in Portal.Entra.Directory,
-          on: entra.id == d.id and d.type == :entra,
+          on: entra.id == d.id and entra.account_id == d.account_id and d.type == :entra,
           left_join: okta in Portal.Okta.Directory,
-          on: okta.id == d.id and d.type == :okta,
+          on: okta.id == d.id and okta.account_id == d.account_id and d.type == :okta,
           select: %{
             id: d.id,
             name: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name),
@@ -1539,17 +1539,20 @@ defmodule PortalWeb.Actors do
     def get_identities_for_actor(actor_id, subject) do
       from(i in ExternalIdentity, as: :identities)
       |> where([identities: i], i.actor_id == ^actor_id)
-      |> join(:left, [identities: i], d in assoc(i, :directory), as: :directory)
+      |> join(:left, [identities: i], d in assoc(i, :directory),
+        on: d.account_id == i.account_id,
+        as: :directory
+      )
       |> join(:left, [directory: d], gd in Portal.Google.Directory,
-        on: gd.id == d.id and d.type == :google,
+        on: gd.id == d.id and gd.account_id == d.account_id and d.type == :google,
         as: :google_directory
       )
       |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-        on: ed.id == d.id and d.type == :entra,
+        on: ed.id == d.id and ed.account_id == d.account_id and d.type == :entra,
         as: :entra_directory
       )
       |> join(:left, [directory: d], od in Portal.Okta.Directory,
-        on: od.id == d.id and d.type == :okta,
+        on: od.id == d.id and od.account_id == d.account_id and d.type == :okta,
         as: :okta_directory
       )
       |> join(:left, [identities: i], ss in Portal.ExternalIdentitySyncState,
@@ -1633,7 +1636,10 @@ defmodule PortalWeb.Actors do
     def get_portal_sessions_for_actor(actor_id, subject) do
       from(ps in PortalSession, as: :portal_sessions)
       |> where([portal_sessions: ps], ps.actor_id == ^actor_id)
-      |> join(:left, [portal_sessions: ps], ap in assoc(ps, :auth_provider), as: :auth_provider)
+      |> join(:left, [portal_sessions: ps], ap in assoc(ps, :auth_provider),
+        on: ap.account_id == ps.account_id,
+        as: :auth_provider
+      )
       |> select_merge([auth_provider: ap], %{
         auth_provider_type: type(ap.type, :string),
         auth_provider_name:
@@ -1677,17 +1683,20 @@ defmodule PortalWeb.Actors do
         on: m.group_id == g.id and m.account_id == g.account_id,
         as: :membership
       )
-      |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+      |> join(:left, [groups: g], d in assoc(g, :directory),
+        on: d.account_id == g.account_id,
+        as: :directory
+      )
       |> join(:left, [directory: d], gd in Portal.Google.Directory,
-        on: gd.id == d.id and d.type == :google,
+        on: gd.id == d.id and gd.account_id == d.account_id and d.type == :google,
         as: :google_directory
       )
       |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-        on: ed.id == d.id and d.type == :entra,
+        on: ed.id == d.id and ed.account_id == d.account_id and d.type == :entra,
         as: :entra_directory
       )
       |> join(:left, [directory: d], od in Portal.Okta.Directory,
-        on: od.id == d.id and d.type == :okta,
+        on: od.id == d.id and od.account_id == d.account_id and d.type == :okta,
         as: :okta_directory
       )
       |> where([membership: m], m.actor_id == ^actor_id)

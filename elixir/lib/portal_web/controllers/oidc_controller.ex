@@ -1162,6 +1162,7 @@ defmodule PortalWeb.OIDCController do
     def fetch_active_identity_by_idp(account_id, issuer, idp_id) do
       from(identity in ExternalIdentity,
         join: actor in assoc(identity, :actor),
+        on: actor.account_id == identity.account_id,
         where: identity.account_id == ^account_id,
         where: identity.issuer == ^issuer,
         where: identity.idp_id == ^idp_id,
@@ -1398,7 +1399,7 @@ defmodule PortalWeb.OIDCController do
       existing_identity_cte =
         from(ei in "external_identities",
           join: a in "actors",
-          on: a.id == ei.actor_id,
+          on: a.id == ei.actor_id and a.account_id == ei.account_id,
           where:
             ei.account_id == ^account_id_bytes and
               ei.issuer == ^issuer and
@@ -1414,8 +1415,11 @@ defmodule PortalWeb.OIDCController do
 
       base_query =
         from(d in fragment("SELECT 1"),
+          # Both CTEs return at most one row and are already scoped by account_id.
+          # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
           left_join: al in "actor_lookup",
           on: true,
+          # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
           left_join: ei in "existing_identity",
           on: true,
           where: not is_nil(al.id) or not is_nil(ei.actor_id),
@@ -1519,6 +1523,7 @@ defmodule PortalWeb.OIDCController do
     defp fetch_pending_passcode_for_update(%PendingIdentity{} = pending_identity) do
       from(passcode in OneTimePasscode,
         join: actor in assoc(passcode, :actor),
+        on: actor.account_id == passcode.account_id,
         where: passcode.account_id == ^pending_identity.account_id,
         where: passcode.actor_id == ^pending_identity.actor_id,
         where: passcode.id == ^pending_identity.one_time_passcode_id,

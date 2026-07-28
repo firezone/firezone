@@ -780,7 +780,10 @@ defmodule PortalWeb.Clients do
         if has_named_binding?(queryable, :actors) do
           queryable
         else
-          join(queryable, :inner, [devices: d], a in assoc(d, :actor), as: :actors)
+          join(queryable, :inner, [devices: d], a in assoc(d, :actor),
+            on: a.account_id == d.account_id,
+            as: :actors
+          )
         end
 
       {queryable,
@@ -822,23 +825,23 @@ defmodule PortalWeb.Clients do
         pa.initiating_device_id == ^client.id or pa.receiving_device_id == ^client.id
       )
       |> join(:inner, [policy_authorizations: pa], p in Policy,
-        on: p.id == pa.policy_id,
+        on: p.id == pa.policy_id and p.account_id == pa.account_id,
         as: :policies
       )
       |> join(:left, [policies: p], g in Group,
-        on: g.id == p.group_id,
+        on: g.id == p.group_id and g.account_id == p.account_id,
         as: :groups
       )
       |> join(:inner, [policies: p], r in Resource,
-        on: r.id == p.resource_id,
+        on: r.id == p.resource_id and r.account_id == p.account_id,
         as: :resources
       )
       |> join(:left, [policy_authorizations: pa], id in Device,
-        on: id.id == pa.initiating_device_id,
+        on: id.id == pa.initiating_device_id and id.account_id == pa.account_id,
         as: :initiating_devices
       )
       |> join(:left, [policy_authorizations: pa], rd in Device,
-        on: rd.id == pa.receiving_device_id,
+        on: rd.id == pa.receiving_device_id and rd.account_id == pa.account_id,
         as: :receiving_devices
       )
       |> select(

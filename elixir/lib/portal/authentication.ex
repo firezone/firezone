@@ -644,7 +644,10 @@ defmodule Portal.Authentication do
 
       from(tokens in ClientToken, as: :tokens)
       |> join(:inner, [tokens: tokens], account in assoc(tokens, :account), as: :account)
-      |> join(:inner, [tokens: tokens], actor in assoc(tokens, :actor), as: :actor)
+      |> join(:inner, [tokens: tokens], actor in assoc(tokens, :actor),
+        on: actor.account_id == tokens.account_id,
+        as: :actor
+      )
       |> where([tokens: tokens], tokens.expires_at > ^now or is_nil(tokens.expires_at))
       |> where([tokens: tokens], tokens.id == ^token_id)
       |> where([tokens: tokens], tokens.account_id == ^account_id)
@@ -665,7 +668,10 @@ defmodule Portal.Authentication do
 
       from(tokens in Portal.APIToken, as: :tokens)
       |> join(:inner, [tokens: tokens], account in assoc(tokens, :account), as: :account)
-      |> join(:inner, [tokens: tokens], actor in assoc(tokens, :actor), as: :actor)
+      |> join(:inner, [tokens: tokens], actor in assoc(tokens, :actor),
+        on: actor.account_id == tokens.account_id,
+        as: :actor
+      )
       |> where([tokens: tokens], tokens.expires_at > ^now or is_nil(tokens.expires_at))
       |> where([tokens: tokens], tokens.id == ^token_id)
       |> where([tokens: tokens], tokens.account_id == ^account_id)
@@ -702,6 +708,7 @@ defmodule Portal.Authentication do
     def consume_one_time_passcode_attempt(account_id, actor_id, id) do
       from(otp in OneTimePasscode,
         join: a in assoc(otp, :actor),
+        on: a.account_id == otp.account_id,
         where: otp.account_id == ^account_id,
         where: otp.actor_id == ^actor_id,
         where: otp.id == ^id,
@@ -777,6 +784,7 @@ defmodule Portal.Authentication do
 
       from(ps in PortalSession,
         join: a in assoc(ps, :actor),
+        on: a.account_id == ps.account_id,
         where: ps.account_id == ^account_id,
         where: ps.id == ^id,
         where: ps.expires_at > ^DateTime.utc_now(),

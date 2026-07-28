@@ -1355,8 +1355,9 @@ defmodule PortalWeb.Groups do
     defp joined_group_query(query) do
       member_counts_query =
         from(m in Portal.Membership,
-          group_by: m.group_id,
+          group_by: [m.account_id, m.group_id],
           select: %{
+            account_id: m.account_id,
             group_id: m.group_id,
             count: count(m.actor_id)
           }
@@ -1365,8 +1366,9 @@ defmodule PortalWeb.Groups do
       policy_counts_query =
         from(p in Portal.Policy,
           where: is_nil(p.disabled_at),
-          group_by: p.group_id,
+          group_by: [p.account_id, p.group_id],
           select: %{
+            account_id: p.account_id,
             group_id: p.group_id,
             count: count(p.id)
           }
@@ -1374,11 +1376,11 @@ defmodule PortalWeb.Groups do
 
       query
       |> join(:left, [groups: g], mc in subquery(member_counts_query),
-        on: mc.group_id == g.id,
+        on: mc.group_id == g.id and mc.account_id == g.account_id,
         as: :member_counts
       )
       |> join(:left, [groups: g], pc in subquery(policy_counts_query),
-        on: pc.group_id == g.id,
+        on: pc.group_id == g.id and pc.account_id == g.account_id,
         as: :policy_counts
       )
       |> join(:left, [groups: g], d in Directory,
@@ -1386,15 +1388,15 @@ defmodule PortalWeb.Groups do
         as: :directory
       )
       |> join(:left, [directory: d], gd in Portal.Google.Directory,
-        on: gd.id == d.id and d.type == :google,
+        on: gd.id == d.id and gd.account_id == d.account_id and d.type == :google,
         as: :google_directory
       )
       |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-        on: ed.id == d.id and d.type == :entra,
+        on: ed.id == d.id and ed.account_id == d.account_id and d.type == :entra,
         as: :entra_directory
       )
       |> join(:left, [directory: d], od in Portal.Okta.Directory,
-        on: od.id == d.id and d.type == :okta,
+        on: od.id == d.id and od.account_id == d.account_id and d.type == :okta,
         as: :okta_directory
       )
     end
@@ -1506,13 +1508,13 @@ defmodule PortalWeb.Groups do
     def count_total_members(subject) do
       member_counts_query =
         from(m in Portal.Membership,
-          group_by: m.group_id,
-          select: %{group_id: m.group_id, count: count(m.actor_id)}
+          group_by: [m.account_id, m.group_id],
+          select: %{account_id: m.account_id, group_id: m.group_id, count: count(m.actor_id)}
         )
 
       from(g in Portal.Group, as: :groups)
       |> join(:left, [groups: g], mc in subquery(member_counts_query),
-        on: mc.group_id == g.id,
+        on: mc.group_id == g.id and mc.account_id == g.account_id,
         as: :member_counts
       )
       |> where(
@@ -1564,11 +1566,11 @@ defmodule PortalWeb.Groups do
         from(d in Directory,
           where: d.account_id == ^subject.account.id,
           left_join: google in Portal.Google.Directory,
-          on: google.id == d.id and d.type == :google,
+          on: google.id == d.id and google.account_id == d.account_id and d.type == :google,
           left_join: entra in Portal.Entra.Directory,
-          on: entra.id == d.id and d.type == :entra,
+          on: entra.id == d.id and entra.account_id == d.account_id and d.type == :entra,
           left_join: okta in Portal.Okta.Directory,
-          on: okta.id == d.id and d.type == :okta,
+          on: okta.id == d.id and okta.account_id == d.account_id and d.type == :okta,
           select: %{
             id: d.id,
             name: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name),
@@ -1664,7 +1666,9 @@ defmodule PortalWeb.Groups do
       base =
         from(a in Portal.Actor, as: :actors)
         |> join(:inner, [actors: a], m in Portal.Membership,
-          on: m.actor_id == a.id and m.group_id == ^group.id,
+          on:
+            m.actor_id == a.id and m.account_id == a.account_id and
+              m.group_id == ^group.id,
           as: :memberships
         )
         |> order_by([actors: a], asc: a.name)
@@ -1773,7 +1777,9 @@ defmodule PortalWeb.Groups do
     def list_resources_for_group(group, subject, repo \\ :replica) do
       from(r in Portal.Resource, as: :resources)
       |> join(:inner, [resources: r], p in Portal.Policy,
-        on: p.resource_id == r.id and p.group_id == ^group.id,
+        on:
+          p.resource_id == r.id and p.account_id == r.account_id and
+            p.group_id == ^group.id,
         as: :policies
       )
       |> select([resources: r, policies: p], %{
@@ -1796,21 +1802,30 @@ defmodule PortalWeb.Groups do
       query =
         from(g in Portal.Group, as: :groups)
         |> where([groups: groups], groups.id == ^id)
-        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+        |> join(:left, [groups: g], d in assoc(g, :directory),
+          on: d.account_id == g.account_id,
+          as: :directory
+        )
         |> join(:left, [directory: d], gd in Portal.Google.Directory,
-          on: gd.id == d.id and d.type == :google,
+          on: gd.id == d.id and gd.account_id == d.account_id and d.type == :google,
           as: :google_directory
         )
         |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-          on: ed.id == d.id and d.type == :entra,
+          on: ed.id == d.id and ed.account_id == d.account_id and d.type == :entra,
           as: :entra_directory
         )
         |> join(:left, [directory: d], od in Portal.Okta.Directory,
-          on: od.id == d.id and d.type == :okta,
+          on: od.id == d.id and od.account_id == d.account_id and d.type == :okta,
           as: :okta_directory
         )
-        |> join(:left, [groups: g], m in assoc(g, :memberships), as: :memberships)
-        |> join(:left, [memberships: m], a in assoc(m, :actor), as: :actors)
+        |> join(:left, [groups: g], m in assoc(g, :memberships),
+          on: m.account_id == g.account_id,
+          as: :memberships
+        )
+        |> join(:left, [memberships: m], a in assoc(m, :actor),
+          on: a.account_id == m.account_id,
+          as: :actors
+        )
         |> join(:left, [groups: g], gss in Portal.GroupSyncState,
           on: gss.group_id == g.id and gss.account_id == g.account_id,
           as: :sync_state
