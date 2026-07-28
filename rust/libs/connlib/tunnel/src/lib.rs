@@ -20,7 +20,7 @@ use io::Io;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
-    future,
+    future, mem,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll},
@@ -49,6 +49,48 @@ const MAX_EVENTLOOP_ITERS: u32 = 5000;
 
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
+
+/// A collection of errors that occurred during a single event-loop tick.
+///
+/// This type purposely doesn't provide a `From` implementation for any errors.
+/// We want compile-time safety inside the event-loop that we don't abort processing in the middle of a packet batch.
+#[derive(Debug, Default)]
+pub struct TunnelError {
+    errors: Vec<anyhow::Error>,
+}
+
+impl TunnelError {
+    pub fn single(e: impl Into<anyhow::Error>) -> Self {
+        Self {
+            errors: vec![e.into()],
+        }
+    }
+
+    pub fn push(&mut self, e: impl Into<anyhow::Error>) {
+        self.errors.push(e.into());
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.errors.is_empty()
+    }
+
+    pub fn drain(&mut self) -> impl Iterator<Item = anyhow::Error> {
+        mem::take(&mut self.errors).into_iter()
+    }
+}
+
+impl Drop for TunnelError {
+    fn drop(&mut self) {
+        debug_assert!(
+            self.errors.is_empty(),
+            "should never drop `TunnelError` without consuming errors"
+        );
+
+        if !self.errors.is_empty() {
+            tracing::error!("should never drop `TunnelError` without consuming errors")
+        }
+    }
+}
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
@@ -158,7 +200,11 @@ impl ClientTunnel {
         .boxed()
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>, now: Instant) -> Poll<ClientEvent> {
+    pub fn poll_next_event(
+        &mut self,
+        cx: &mut Context<'_>,
+        now: Instant,
+    ) -> Poll<Result<ClientEvent, TunnelError>> {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "client-tunnel");
 
         while let Some(mut tick) = budget.next() {
@@ -183,7 +229,7 @@ impl ClientTunnel {
                     }
                 }
 
-                return Poll::Ready(event);
+                return Poll::Ready(Ok(event));
             }
 
             // Drain all buffered IP packets.
@@ -289,7 +335,7 @@ impl ClientTunnel {
                 }
 
                 if !error.is_empty() {
-                    return Poll::Ready(ClientEvent::Error(error));
+                    return Poll::Ready(Err(error));
                 }
             }
         }
@@ -353,7 +399,11 @@ impl GatewayTunnel {
         .boxed()
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>, now: Instant) -> Poll<GatewayEvent> {
+    pub fn poll_next_event(
+        &mut self,
+        cx: &mut Context<'_>,
+        now: Instant,
+    ) -> Poll<Result<GatewayEvent, TunnelError>> {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "gateway-tunnel");
 
         while let Some(mut tick) = budget.next() {
@@ -368,7 +418,7 @@ impl GatewayTunnel {
 
             // Pass up existing events.
             if let Some(other) = self.role_state.poll_event() {
-                return Poll::Ready(other);
+                return Poll::Ready(Ok(other));
             }
 
             // Drain all buffered transmits.
@@ -556,7 +606,7 @@ impl GatewayTunnel {
                 }
 
                 if !error.is_empty() {
-                    return Poll::Ready(GatewayEvent::Error(error));
+                    return Poll::Ready(Err(error));
                 }
             }
         }

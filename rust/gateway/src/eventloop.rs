@@ -120,7 +120,7 @@ impl Eventloop {
 
 enum CombinedEvent {
     SigIntTerm,
-    Tunnel(GatewayEvent),
+    Tunnel(Result<GatewayEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
 }
@@ -241,12 +241,15 @@ impl Eventloop {
         Ok(())
     }
 
-    async fn handle_tunnel_event(&mut self, event: tunnel::GatewayEvent) -> Result<()> {
+    async fn handle_tunnel_event(
+        &mut self,
+        event: Result<GatewayEvent, TunnelError>,
+    ) -> Result<()> {
         match event {
-            tunnel::GatewayEvent::AddedIceCandidates {
+            Ok(GatewayEvent::AddedIceCandidates {
                 conn_id: client,
                 candidates,
-            } => {
+            }) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::BroadcastIceCandidates(
                         ClientsIceCandidates {
@@ -256,10 +259,10 @@ impl Eventloop {
                     )))
                     .await?;
             }
-            tunnel::GatewayEvent::RemovedIceCandidates {
+            Ok(GatewayEvent::RemovedIceCandidates {
                 conn_id: client,
                 candidates,
-            } => {
+            }) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(
                         EgressMessages::BroadcastInvalidatedIceCandidates(ClientsIceCandidates {
@@ -269,7 +272,7 @@ impl Eventloop {
                     ))
                     .await?;
             }
-            tunnel::GatewayEvent::ResolveDns(setup_nat) => {
+            Ok(GatewayEvent::ResolveDns(setup_nat)) => {
                 if self
                     .resolve_tasks
                     .try_push(self.resolve(setup_nat.domain().clone()), setup_nat)
@@ -278,13 +281,13 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
-            tunnel::GatewayEvent::NoRelays => {
+            Ok(GatewayEvent::NoRelays) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::NoRelays {}))
                     .await
                     .context("Failed to send message to portal")?;
             }
-            GatewayEvent::Error(error) => self.handle_tunnel_error(error)?,
+            Err(error) => self.handle_tunnel_error(error)?,
         }
 
         Ok(())
