@@ -2,6 +2,7 @@ use crate::TUNNEL_NAME;
 use anyhow::Result;
 use dashmap::DashMap;
 use logging::err_with_src;
+use socket_factory::RoutingLoopPreventionFailed;
 use socket_factory::SocketFactory;
 use socket_factory::{TcpSocket, UdpSocket};
 use std::{
@@ -100,7 +101,8 @@ pub fn tcp_socket_factory(addr: SocketAddr) -> io::Result<TcpSocket> {
     // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
     // Additionally, we add a dedicated route for the given address to route via the default interface.
     socket.bind((route.addr, 0).into())?;
-    let entry = RoutingTableEntry::create(addr.ip(), route.original)?;
+    let entry = RoutingTableEntry::create(addr.ip(), route.original)
+        .map_err(RoutingLoopPreventionFailed::new)?;
 
     socket.pack(entry);
 

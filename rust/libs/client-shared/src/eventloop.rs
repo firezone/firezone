@@ -451,6 +451,7 @@ impl Eventloop {
 
             if e.any_is::<tunnel::UdpSocketThreadStopped>()
                 || e.any_is::<tunnel::TunChannelClosed>()
+                || e.any_is::<socket_factory::RoutingLoopPreventionFailed>()
             {
                 return Err(e);
             }

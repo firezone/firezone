@@ -218,10 +218,6 @@ impl Io {
         )
     }
 
-    pub fn poll_has_sockets(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        self.sockets.poll_has_sockets(cx)
-    }
-
     pub fn fastest_nameserver(&self) -> Option<IpAddr> {
         self.nameservers.fastest()
     }

@@ -4,13 +4,14 @@ use futures::{SinkExt, ready};
 use gat_lending_iterator::LendingIterator;
 use socket_factory::{DatagramIn, DatagramSegmentIter, SocketFactory, UdpSocket};
 use socket_factory::{DatagramOut, PerfUdpSocket};
+use std::collections::VecDeque;
 use std::env::VarError;
 use std::time::{Duration, Instant};
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     sync::Arc,
-    task::{Context, Poll, Waker},
+    task::{Context, Poll},
 };
 use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
@@ -53,10 +54,11 @@ const UNSPECIFIED_V6_SOCKET: SocketAddrV6 =
 
 #[derive(Default)]
 pub(crate) struct Sockets {
-    waker: Option<Waker>,
-
     socket_v4: Option<ThreadedUdpSocket>,
     socket_v6: Option<ThreadedUdpSocket>,
+
+    /// Bind failures, surfaced through [`Sockets::poll_error`] alongside runtime socket errors.
+    bind_errors: VecDeque<anyhow::Error>,
 }
 
 impl Sockets {
@@ -64,35 +66,27 @@ impl Sockets {
         self.socket_v4 = None;
         self.socket_v6 = None;
 
-        self.socket_v4 = ThreadedUdpSocket::new(
-            socket_factory.clone(),
-            SocketAddr::V4(UNSPECIFIED_V4_SOCKET),
-        )
-        .inspect_err(|e| tracing::info!("Failed to bind IPv4 socket: {e}"))
-        .ok();
-        self.socket_v6 =
-            ThreadedUdpSocket::new(socket_factory, SocketAddr::V6(UNSPECIFIED_V6_SOCKET))
-                .inspect_err(|e| tracing::info!("Failed to bind IPv6 socket: {e}"))
-                .ok();
-
-        if let Some(waker) = self.waker.take() {
-            waker.wake();
-        }
+        self.socket_v4 = self.bind(&socket_factory, SocketAddr::V4(UNSPECIFIED_V4_SOCKET));
+        self.socket_v6 = self.bind(&socket_factory, SocketAddr::V6(UNSPECIFIED_V6_SOCKET));
     }
 
-    pub fn poll_has_sockets(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        if self.socket_v4.is_none() && self.socket_v6.is_none() {
-            let previous = self.waker.replace(cx.waker().clone());
+    fn bind(
+        &mut self,
+        socket_factory: &Arc<dyn SocketFactory<UdpSocket>>,
+        addr: SocketAddr,
+    ) -> Option<ThreadedUdpSocket> {
+        match ThreadedUdpSocket::new(socket_factory.clone(), addr) {
+            Ok(socket) => Some(socket),
+            Err(e) => {
+                // A family we cannot bind is survivable on its own - the other one carries the
+                // session - so the event-loop decides what a failure means instead of us.
+                self.bind_errors.push_back(
+                    anyhow::Error::new(e).context(format!("Failed to bind UDP socket on {addr}")),
+                );
 
-            if previous.is_none() {
-                // If we didn't have a waker yet, it means we just lost our sockets. Let the user know everything will be suspended.
-                tracing::error!("No available UDP sockets")
+                None
             }
-
-            return Poll::Pending;
         }
-
-        Poll::Ready(())
     }
 
     pub fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
@@ -149,6 +143,10 @@ impl Sockets {
     }
 
     pub fn poll_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {
+        if let Some(error) = self.bind_errors.pop_front() {
+            return Poll::Ready(error);
+        }
+
         if let Some(socket) = self.socket_v4.as_mut()
             && let Poll::Ready(e) = socket.poll_error(cx)
         {

@@ -29,6 +29,33 @@ pub trait SocketFactory<S>: Send + Sync + 'static {
     fn reset(&self);
 }
 
+/// A socket could not be excluded from our own tunnel, so its traffic would loop back into it.
+///
+/// Platforms that route their own traffic around the tunnel - Android's `VpnService.protect`,
+/// and anything equivalent elsewhere - report a failure of that mechanism this way. Unlike a
+/// family that won't bind or an address that isn't up yet, this does not pass: every socket
+/// bound afterwards loops the same way, so consumers give up instead of rebinding forever.
+#[derive(thiserror::Error, Debug)]
+#[error("Failed to prevent a routing loop")]
+pub struct RoutingLoopPreventionFailed {
+    #[source]
+    cause: Box<dyn std::error::Error + Send + Sync>,
+}
+
+impl RoutingLoopPreventionFailed {
+    pub fn new(cause: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+        Self {
+            cause: cause.into(),
+        }
+    }
+}
+
+impl From<RoutingLoopPreventionFailed> for io::Error {
+    fn from(value: RoutingLoopPreventionFailed) -> Self {
+        io::Error::other(value)
+    }
+}
+
 /// How many times we at most try to re-send a packet if we encounter ENOBUFS on MacOS / iOS or 10055 on Windows.
 #[cfg(any(apple, target_os = "windows"))]
 const MAX_ENOBUFS_RETRIES: u32 = 24;

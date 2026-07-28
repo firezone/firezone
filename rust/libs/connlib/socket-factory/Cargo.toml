@@ -15,6 +15,7 @@ otel-instruments = { workspace = true }
 quinn-udp = { workspace = true }
 smallvec = { workspace = true, features = ["const_generics"] }
 socket2 = { workspace = true, features = ["all"] }
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["net", "rt", "time"] }
 tracing = { workspace = true }
 
