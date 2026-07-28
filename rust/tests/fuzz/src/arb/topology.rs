@@ -401,7 +401,7 @@ fn arb_client_host(
     let system_dns = arb_system_dns_servers(g);
     let internet_resource_active = g.bool();
     let ignore_resource_filters = g.bool();
-    let ignore_flow_tracking = g.bool();
+    let send_untracked_icmp_errors = g.bool();
 
     let inner = RefClient::new(
         id,
@@ -412,7 +412,7 @@ fn arb_client_host(
         internet_resource_active,
         MaliciousBehaviour {
             ignore_resource_filters,
-            ignore_flow_tracking,
+            send_untracked_icmp_errors,
         },
     );
 
@@ -581,7 +581,7 @@ fn arb_icmp_error_hosts(
     for client in clients.values() {
         let client = client.inner();
 
-        if !client.malicious_behaviour.ignore_flow_tracking {
+        if !client.malicious_behaviour.send_untracked_icmp_errors {
             continue;
         }
 
