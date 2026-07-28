@@ -500,6 +500,8 @@ defmodule PortalAPI.Client.DeviceTrust do
     # check and verification material come from the same query.
     def fetch_enabled_anchors(subject) do
       from(c in Portal.TrustAnchorCertificate,
+        # Portal.Features is global and has no account_id.
+        # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
         join: f in Portal.Features,
         on: f.feature == :trust_anchors and f.enabled == true,
         select: c.pem
