@@ -291,8 +291,14 @@ tracing = "0.1.41"
 # Full link-time optimization. Reduces binaries by up to 3x on some platforms.
 lto = "fat"
 
-# Increases the compiler's ability to produce smaller, optimized code
-# at the expense of compilation time
+# Combined with `lto = "fat"`, this is not the usual smaller-code-for-compile-time
+# trade-off: every extra codegen unit is another bitcode module the LTO step has to
+# merge. Measured on `firezone-gateway` and `firezone-headless-client`, raising this
+# from 1 to 16 grew peak `rustc` memory by 27-34% and the stripped binaries by ~10%,
+# with no build time saved.
+#
+# `ebpf-turn-router` does not link at all above 1, because `handle_turn` then exceeds
+# the 512-byte BPF stack limit.
 codegen-units = 1
 
 [profile.release.package.firezone-gui-client]
