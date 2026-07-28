@@ -14,6 +14,7 @@ use std::sync::Weak;
 use std::time::{Duration, Instant};
 use std::{
     collections::HashSet,
+    env::VarError,
     io::{self, Read as _},
     net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
     path::{Path, PathBuf},
@@ -35,16 +36,41 @@ use windows::Win32::{
 };
 use wintun::Adapter;
 
-/// The ring buffer size used for Wintun.
+/// Capacity of each of Wintun's two ring buffers.
 ///
-/// Must be a power of two within a certain range <https://docs.rs/wintun/latest/wintun/struct.Adapter.html#method.start_session>
-/// 0x10_0000 is 1 MiB, which performs decently on the Cloudflare speed test.
-/// At 1 Gbps that's about 8 ms, so any delay where Firezone isn't scheduled by the OS
-/// onto a core for more than 8 ms would result in packet drops.
+/// Must be a power of two between [`wintun::MIN_RING_CAPACITY`] and [`wintun::MAX_RING_CAPACITY`];
+/// a session allocates one ring per direction, so the figure is charged twice.
 ///
-/// We think 1 MiB is similar to the buffer size on Linux / macOS but we're not sure
-/// where that is configured.
-const RING_BUFFER_SIZE: u32 = 0x10_0000;
+/// Sized like the UDP socket buffers (see [`socket_factory::RECV_BUFFER_SIZE`]): a ring bridges the
+/// gap between two turns of the thread draining it. The receive ring sets the requirement, because
+/// Wintun keeps filling it while our recv thread is descheduled or blocked on a full channel.
+/// [`MAX_EXPECTED_TUN_BITS_PER_SECOND`] for one [`RING_SERVICE_GAP`] is 12.5 MB, which rounds up to
+/// 16 MiB: about 13,000 packets at the 1280-byte TUN MTU, and therefore also more than the outbound
+/// TUN channel can hand to the send ring while the Windows network stack is not draining it.
+const RING_BUFFER_SIZE: u32 = ring_capacity_for_service_gap(RING_SERVICE_GAP);
+
+/// Largest traffic rate in either direction for which we size the ring buffers.
+///
+/// Matches the rate the UDP socket buffers are sized for: the TUN device carries the same traffic,
+/// only decrypted.
+const MAX_EXPECTED_TUN_BITS_PER_SECOND: u64 = 10_000_000_000;
+
+/// How long a normally-scheduled TUN worker thread may reasonably go without servicing its ring.
+const RING_SERVICE_GAP: Duration = Duration::from_millis(10);
+
+const fn ring_capacity_for_service_gap(service_gap: Duration) -> u32 {
+    const BITS_PER_BYTE: u128 = 8;
+    const NANOS_PER_SECOND: u128 = 1_000_000_000;
+
+    let bytes = (MAX_EXPECTED_TUN_BITS_PER_SECOND as u128 * service_gap.as_nanos())
+        .div_ceil(BITS_PER_BYTE * NANOS_PER_SECOND) as u32;
+
+    bytes.next_power_of_two()
+}
+
+const _: () = assert!(RING_BUFFER_SIZE.is_power_of_two());
+const _: () = assert!(RING_BUFFER_SIZE >= wintun::MIN_RING_CAPACITY);
+const _: () = assert!(RING_BUFFER_SIZE <= wintun::MAX_RING_CAPACITY);
 
 pub struct TunDeviceManager {
     mtu: u32,
@@ -290,15 +316,19 @@ impl Tun {
 
         set_iface_config(luid, mtu).context("Failed to set interface config")?;
 
-        let capacity = std::env::var("FIREZONE_WINTUN_RINGBUFFER_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
+        let capacity = ring_capacity_override()
+            .inspect_err(|e| {
+                tracing::warn!("Ignoring `{RING_CAPACITY_ENV_VAR}`: {e:#}");
+            })
+            .unwrap_or_default()
             .unwrap_or(RING_BUFFER_SIZE);
+
+        tracing::debug!(%capacity, "Wintun ring buffer capacity");
 
         let session = Arc::new(
             adapter
                 .start_session(capacity)
-                .context("Failed to start session")?,
+                .with_context(|| format!("Failed to start session with capacity {capacity}"))?,
         );
         let (outbound_tx, outbound_rx) = tun::outbound_channel();
         let (inbound_tx, inbound_rx) = tun::inbound_channel();
@@ -361,6 +391,47 @@ impl tun::Tun for Tun {
     fn name(&self) -> &str {
         TUNNEL_NAME
     }
+}
+
+const RING_CAPACITY_ENV_VAR: &str = "FIREZONE_WINTUN_RINGBUFFER_SIZE";
+
+/// Reads the ring buffer capacity that [`RING_CAPACITY_ENV_VAR`] asks for, if any.
+///
+/// # Errors
+///
+/// Errors if the variable is set to something Wintun would reject, so the caller can say so instead
+/// of failing to start the session.
+fn ring_capacity_override() -> Result<Option<u32>> {
+    let var = match std::env::var(RING_CAPACITY_ENV_VAR) {
+        Ok(var) => var,
+        Err(VarError::NotPresent) => return Ok(None),
+        Err(e @ VarError::NotUnicode(_)) => return Err(anyhow::Error::new(e)),
+    };
+
+    let capacity = parse_ring_capacity(&var)?;
+
+    Ok(Some(capacity))
+}
+
+fn parse_ring_capacity(var: &str) -> Result<u32> {
+    let capacity = var.parse::<u32>().context("Failed to parse as u32")?;
+
+    anyhow::ensure!(
+        capacity.is_power_of_two(),
+        "{capacity} is not a power of two"
+    );
+    anyhow::ensure!(
+        capacity >= wintun::MIN_RING_CAPACITY,
+        "{capacity} is below the minimum of {}",
+        wintun::MIN_RING_CAPACITY
+    );
+    anyhow::ensure!(
+        capacity <= wintun::MAX_RING_CAPACITY,
+        "{capacity} is above the maximum of {}",
+        wintun::MAX_RING_CAPACITY
+    );
+
+    Ok(capacity)
 }
 
 /// How many times we at most try to re-write a packet if the WinTUN ring buffer is full.
@@ -819,5 +890,36 @@ fn wintun_bytes() -> DllBytes {
         expected_sha256: hex_literal::hex!(
             "f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80"
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ring_capacity_tracks_line_rate_and_service_gap() {
+        const MIB: u32 = 1024 * 1024;
+
+        assert_eq!(
+            ring_capacity_for_service_gap(Duration::from_millis(1)),
+            2 * MIB
+        );
+        assert_eq!(
+            ring_capacity_for_service_gap(Duration::from_millis(10)),
+            16 * MIB
+        );
+
+        assert_eq!(RING_BUFFER_SIZE, 16 * MIB);
+    }
+
+    #[test]
+    fn ring_capacity_override_must_satisfy_wintun_constraints() {
+        assert!(parse_ring_capacity("2097152").is_ok());
+
+        assert!(parse_ring_capacity("banana").is_err());
+        assert!(parse_ring_capacity("3145728").is_err()); // Not a power of two.
+        assert!(parse_ring_capacity("65536").is_err()); // Below `wintun::MIN_RING_CAPACITY`.
+        assert!(parse_ring_capacity("134217728").is_err()); // Above `wintun::MAX_RING_CAPACITY`.
     }
 }
