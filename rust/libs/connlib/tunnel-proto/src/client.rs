@@ -598,29 +598,31 @@ impl ClientState {
         }
 
         let dst = packet.destination();
+        let dst_proto = match packet.destination_protocol() {
+            Ok(dst_proto) => dst_proto,
+            // An ICMP error has no port or echo identifier of its own and so fails to
+            // classify. It belongs to the flow of the packet that failed, and that
+            // flow decides where it goes.
+            Err(e) => {
+                let Some(cid) = peer_for_icmp_error(&self.clients, &packet) else {
+                    return Err(e.into());
+                };
 
-        // An ICMP error has no port or echo identifier of its own, so it cannot be
-        // classified like a fresh packet. It belongs to the flow of the packet that
-        // failed, and that flow decides where it goes.
-        let icmp_error_peer = peer_for_icmp_error(&self.clients, &packet);
+                // The peer opened the flow the error refers to, so we are its responder.
+                flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
-        if let Some(cid) = icmp_error_peer {
-            // The peer opened the flow the error refers to, so we are its responder.
-            flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
+                encapsulate_or_buffer(
+                    packet,
+                    cid.into(),
+                    now,
+                    &mut self.node,
+                    provider,
+                    &mut self.pending_routed_packets,
+                )?;
 
-            encapsulate_or_buffer(
-                packet,
-                cid.into(),
-                now,
-                &mut self.node,
-                provider,
-                &mut self.pending_routed_packets,
-            )?;
-
-            return Ok(());
-        }
-
-        let dst_proto = packet.destination_protocol()?;
+                return Ok(());
+            }
+        };
         let pending_authorizations = &mut self.pending_authorizations;
         let resources = &self.resources_by_id;
 
