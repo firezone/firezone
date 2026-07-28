@@ -4,7 +4,7 @@
 //! opened grant a return-traffic exemption from the inbound filter, so
 //! revoking or expiring an authorization cuts off peer-opened flows.
 
-use ip_packet::{IpPacket, Protocol};
+use ip_packet::{FailedPacket, IpPacket, Protocol};
 use std::collections::BTreeMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -117,6 +117,18 @@ impl ConnTrack {
 
     fn contains(&self, key: Key) -> bool {
         self.initiated.contains_key(&key) || self.received.contains_key(&key)
+    }
+
+    /// Returns `true` if the packet that failed belongs to a flow of ours.
+    ///
+    /// The failed packet travelled towards us, so its destination is our own endpoint.
+    pub(crate) fn tracks_flow_of(&self, failed: &FailedPacket) -> bool {
+        self.contains(Key {
+            local: failed.dst_proto(),
+            peer: failed.src_proto(),
+            local_ip: failed.dst(),
+            peer_ip: failed.src(),
+        })
     }
 
     /// Who opened the flow this *outbound* packet belongs to, if it is tracked.

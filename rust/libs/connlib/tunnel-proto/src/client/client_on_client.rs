@@ -6,7 +6,7 @@ use crate::messages::{Filter, IngestToken};
 use crate::routing_table::{RouteEntry, RoutingTable};
 use anyhow::{Context, Result};
 use connlib_model::{ClientId, ResourceId};
-use ip_packet::IpPacket;
+use ip_packet::{FailedPacket, IpPacket};
 use smallvec::SmallVec;
 use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
@@ -245,6 +245,11 @@ impl ClientOnClient {
     /// the connection is already established.
     pub(crate) fn outbound_flow_originator(&self, packet: &IpPacket) -> Option<Originator> {
         self.conn_track.outbound_flow_originator(packet)
+    }
+
+    /// Whether the packet an ICMP error refers to belongs to a flow with this peer.
+    pub(crate) fn tracks_flow_of(&self, failed: &FailedPacket) -> bool {
+        self.conn_track.tracks_flow_of(failed)
     }
 
     /// Decide whether an inbound packet from this peer is admitted.
