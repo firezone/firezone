@@ -125,6 +125,40 @@ defmodule PortalAPI.Client.V3.ChannelTest do
       assert %{metas: [%{attested?: true}]} = Map.fetch!(presence, device.id)
     end
 
+    test "a response conflicting with another device's identity connects unattested", context do
+      client_fixture(
+        account: context.account,
+        actor: context.actor,
+        firezone_id: "fz-conflicting",
+        last_attested_device_serial: "C02XK1ZGJGH5",
+        last_attested_device_uuid: "11111111-2222-4333-8444-555555555555"
+      )
+
+      {:ok, _reply, socket} = join_v3(context)
+      assert_push "device_trust_request", %{nonce: nonce}
+
+      entry = response_entry(context.pki, :rsa, Base.decode64!(nonce))
+      push(socket, "device_trust_response", [entry])
+
+      assert_push "init", _payload, 2_000
+
+      Portal.Queue.flush(:client_session_queue)
+
+      # The proven identity conflicts with the other row's, so adoption is
+      # refused: the session lands on the firezone_id row unattested.
+      device =
+        Portal.Repo.get_by!(Portal.Device,
+          id: context.client.id,
+          account_id: context.account.id
+        )
+
+      assert is_nil(device.last_attested_device_serial)
+      assert is_nil(device.last_attested_at)
+
+      presence = Portal.Presence.Clients.Account.list(context.account.id)
+      assert %{metas: [%{attested?: false}]} = Map.fetch!(presence, device.id)
+    end
+
     test "a response with no usable certificate connects unverified", context do
       {:ok, _reply, socket} = join_v3(context)
       assert_push "device_trust_request", _payload

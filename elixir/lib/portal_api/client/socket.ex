@@ -50,6 +50,9 @@ defmodule PortalAPI.Client.Socket do
   # Resolves a deferred device after the challenge round trip (or its
   # timeout). `verified` is the DeviceTrust verification result or nil when
   # the challenge failed, timed out, or produced no usable certificate.
+  # The `:attested?` assign (live connection state, rides presence metadata)
+  # is true only when the resolved row adopted the proven identity: possession
+  # alone does not vouch for a row whose adoption was refused as a conflict.
   def resolve_deferred_client(socket, verified) do
     %{
       changeset: changeset,
@@ -66,6 +69,7 @@ defmodule PortalAPI.Client.Socket do
       socket =
         socket
         |> assign(:client, client)
+        |> assign(:attested?, identity_adopted?(client, verified))
         |> assign(:pending_device, nil)
 
       {:ok, socket}
@@ -154,6 +158,12 @@ defmodule PortalAPI.Client.Socket do
           {:ok, {:resolved, client}}
         end
     end
+  end
+
+  defp identity_adopted?(_client, nil), do: false
+
+  defp identity_adopted?(client, verified) do
+    client.last_attested_cert_fingerprint == verified.last_attested_cert_fingerprint
   end
 
   # The connection snapshot lives directly on the device struct: these are the

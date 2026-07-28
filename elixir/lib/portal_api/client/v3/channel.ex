@@ -109,11 +109,6 @@ defmodule PortalAPI.Client.V3.Channel do
   def authorization_creation_failed_event, do: "authorization_creation_failed"
 
   defp resolve_and_continue(socket, verified) do
-    # Whether THIS session proved possession is live connection state, not row
-    # state: it rides the socket assigns and the presence metadata, while the
-    # last_attested_* columns record durable history.
-    socket = assign(socket, :attested?, not is_nil(verified))
-
     case Socket.resolve_deferred_client(socket, verified) do
       {:ok, socket} ->
         send(self(), :after_join)
