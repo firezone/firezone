@@ -18,7 +18,7 @@ use super::values::{
     arb_upstream_doh_servers,
 };
 use crate::dns_records::DnsRecords;
-use crate::icmp_error_hosts::IcmpErrorHosts;
+use crate::icmp_error_hosts::{IcmpError, IcmpErrorHosts};
 use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::reference::ReferenceState;
@@ -35,7 +35,7 @@ pub(super) fn generate(g: &mut Generator, start: Instant) -> ReferenceState {
     let gateways = arb_gateways(g, &portal, start);
     let relays = arb_relays(g);
     let dns_resource_records = arb_dns_resource_records(g, &portal, start);
-    let icmp_error_hosts = arb_icmp_error_hosts(g, &dns_resource_records, start);
+    let icmp_error_hosts = arb_icmp_error_hosts(g, &portal, &dns_resource_records, start);
     let tcp_resources = arb_tcp_resources(g, &dns_resource_records, &icmp_error_hosts, start);
 
     let global_dns_records =
@@ -542,7 +542,12 @@ fn arb_global_dns_records(g: &mut Generator, at: Instant) -> DnsRecords {
         .collect::<DnsRecords>()
 }
 
-fn arb_icmp_error_hosts(g: &mut Generator, records: &DnsRecords, now: Instant) -> IcmpErrorHosts {
+fn arb_icmp_error_hosts(
+    g: &mut Generator,
+    portal: &StubPortal,
+    records: &DnsRecords,
+    now: Instant,
+) -> IcmpErrorHosts {
     let mut ips = records
         .ips_iter(now)
         .collect::<BTreeSet<_>>()
@@ -560,16 +565,26 @@ fn arb_icmp_error_hosts(g: &mut Generator, records: &DnsRecords, now: Instant) -
         })
         .collect::<Vec<_>>();
 
-    let entries = chosen
+    let mut entries = chosen
         .into_iter()
         .map(|ip| (ip, arb_icmp_error(g)))
         .collect::<BTreeMap<_, _>>();
 
+    // Traffic to a Client terminates at its TUN IP; nothing is routed beyond it.
+    // A port that nothing listens on is therefore the only error it can originate.
+    for (_, tun4, tun6) in portal.client_tunnel_ips() {
+        if !g.bool() {
+            continue;
+        }
+
+        entries.insert(tun4.into(), IcmpError::Port);
+        entries.insert(tun6.into(), IcmpError::Port);
+    }
+
     IcmpErrorHosts::from_entries(entries)
 }
 
-fn arb_icmp_error(g: &mut Generator) -> crate::icmp_error_hosts::IcmpError {
-    use crate::icmp_error_hosts::IcmpError;
+fn arb_icmp_error(g: &mut Generator) -> IcmpError {
     match g.choose_index(5) {
         0 => IcmpError::Network,
         1 => IcmpError::Host,

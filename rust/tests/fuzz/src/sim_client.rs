@@ -1,6 +1,7 @@
 use super::{
     QueryId,
     echo::echo_reply,
+    icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
@@ -295,7 +296,12 @@ impl SimClient {
         }
     }
 
-    pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) -> Option<Transmit> {
+    pub(crate) fn receive(
+        &mut self,
+        transmit: Transmit,
+        icmp_error_hosts: &IcmpErrorHosts,
+        now: Instant,
+    ) -> Option<Transmit> {
         let Some(packet) = self
             .sut
             .handle_network_input(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
@@ -307,7 +313,7 @@ impl SimClient {
             return None;
         };
 
-        let transmit = self.on_received_packet(packet, now)?;
+        let transmit = self.on_received_packet(packet, icmp_error_hosts, now)?;
 
         Some(transmit)
     }
@@ -316,6 +322,7 @@ impl SimClient {
     pub(crate) fn on_received_packet(
         &mut self,
         packet: IpPacket,
+        icmp_error_hosts: &IcmpErrorHosts,
         now: Instant,
     ) -> Option<snownet::Transmit> {
         match packet.icmp_error() {
@@ -345,6 +352,12 @@ impl SimClient {
                 tracing::error!("Failed to extract ICMP unreachable destination: {e:#}")
             }
         }
+
+        // Only used to answer a fresh request from a peer; the branches handling replies
+        // to our own requests all return before reaching that point.
+        let icmp_error = icmp_error_hosts
+            .icmp_error_for_ip(packet.destination())
+            .map(|error| icmp_error_reply(&packet, error).unwrap());
 
         if let Some(udp) = packet.as_udp() {
             if udp.source_port() == 53 {
@@ -389,7 +402,7 @@ impl SimClient {
             self.received_udp_requests
                 .insert(packet_id, (now, packet.clone()));
 
-            let reply = echo_reply(packet)?;
+            let reply = icmp_error.or_else(|| echo_reply(packet))?;
             return self.handle_tun_input(reply, now).ok().flatten();
         }
 
@@ -410,7 +423,8 @@ impl SimClient {
             tracing::debug!(%packet_id, "Received ICMP request");
             self.received_icmp_requests
                 .insert(packet_id, (now, packet.clone()));
-            let transmit = self.handle_icmp_request(&packet, echo, icmp.payload(), now)?;
+            let transmit =
+                self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now)?;
 
             return Some(transmit);
         }
@@ -422,7 +436,8 @@ impl SimClient {
             tracing::debug!(%packet_id, "Received ICMP request");
             self.received_icmp_requests
                 .insert(packet_id, (now, packet.clone()));
-            let transmit = self.handle_icmp_request(&packet, echo, icmp.payload(), now)?;
+            let transmit =
+                self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now)?;
 
             return Some(transmit);
         }
@@ -520,16 +535,19 @@ impl SimClient {
         packet: &IpPacket,
         echo: IcmpEchoHeader,
         payload: &[u8],
+        icmp_error: Option<IpPacket>,
         now: Instant,
     ) -> Option<Transmit> {
-        let reply = ip_packet::make::icmp_reply_packet(
-            packet.destination(),
-            packet.source(),
-            echo.seq,
-            echo.id,
-            payload,
-        )
-        .expect("src and dst are taken from incoming packet");
+        let reply = icmp_error.unwrap_or_else(|| {
+            ip_packet::make::icmp_reply_packet(
+                packet.destination(),
+                packet.source(),
+                echo.seq,
+                echo.id,
+                payload,
+            )
+            .expect("src and dst are taken from incoming packet")
+        });
 
         let transmit = self.handle_tun_input(reply, now).unwrap()?;
 
