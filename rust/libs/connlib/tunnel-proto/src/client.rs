@@ -2691,19 +2691,17 @@ fn is_llmnr(dst: IpAddr) -> bool {
 
 /// Whether a flow the peer opened permits sending this packet back to them.
 ///
-/// In tests, a malicious client can be configured to answer a peer with an ICMP error
-/// that no flow of its own covers, keeping the target Client's check for errors
-/// referencing an unknown flow exercised.
+/// In tests, a malicious client can be configured to ignore its own flow tracking,
+/// keeping the target Client's inbound path exercised with traffic no flow of ours
+/// covers, such as an ICMP error for a flow we were never part of.
 fn flow_allows_outbound(peer: &ClientOnClient, packet: &IpPacket) -> bool {
     if peer.outbound_flow_originator(packet) == Some(Originator::Peer) {
         return true;
     }
 
     #[cfg(any(test, feature = "malicious-behaviour"))]
-    if crate::malicious_behaviour::send_untracked_icmp_errors()
-        && packet.icmp_error().is_ok_and(|error| error.is_some())
-    {
-        tracing::debug!("Malicious client: sending ICMP error for an untracked flow");
+    if crate::malicious_behaviour::ignore_flow_tracking() {
+        tracing::debug!("Malicious client: ignoring flow tracking");
         return true;
     }
 
