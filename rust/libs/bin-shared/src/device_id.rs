@@ -219,7 +219,7 @@ fn set_id_permissions(_: &Path) -> Result<()> {
 
 #[cfg(target_os = "linux")]
 fn compute_from_hardware_id(app_id: &str) -> Result<DeviceId> {
-    use hmac::Mac;
+    use hmac::{KeyInit as _, Mac};
 
     let machine_id =
         fs::read_to_string("/etc/machine-id").context("Failed to read `/etc/machine-id`")?;
