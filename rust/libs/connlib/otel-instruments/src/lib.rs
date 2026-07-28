@@ -63,14 +63,14 @@ pub fn network_packets_batch_count() -> Histogram<u64> {
         .u64_histogram("connlib.network.packets.batch_count")
         .with_description("How many packets we have processed in a single syscall.")
         .with_unit("{packet}")
-        // Unit steps while batches are small, where the "are we batching at all" signal sits,
-        // then a doubling ladder with midpoints up to the largest batch our IO paths produce:
-        // a Linux `recvmmsg` fills up to 32 buffers, each holding a full GRO list of 64 datagrams.
+        // Small batches are by far the most common, so keep unit steps over the range a single
+        // GRO list can produce, coarsen through the mid range and fall back to a doubling ladder
+        // for the tail. The top is the largest batch our IO paths produce: a Linux `recvmmsg`
+        // fills up to 32 buffers, each holding a full GRO list of 64 datagrams.
         .with_boundaries(
-            (1..=8_u64)
-                .chain([
-                    12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048,
-                ])
+            (1..=16_u64)
+                .chain((20..=32).step_by(4))
+                .chain([48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048])
                 .map(|i| i as f64)
                 .collect(),
         )
