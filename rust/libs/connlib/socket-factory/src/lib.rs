@@ -19,6 +19,8 @@ use tokio::io::Interest;
 
 mod buffer_sizes;
 mod pool;
+#[cfg(windows)]
+pub mod uro;
 
 pub use buffer_sizes::{MAX_RECV_BATCH_MEMORY, RECV_BUFFER_SIZE, SEND_BUFFER_SIZE};
 
@@ -437,6 +439,9 @@ impl PerfUdpSocket {
                 }
             }
         })?;
+
+        #[cfg(windows)]
+        enforce_uro_invariant(&socket, batch.metas.iter().take(len));
 
         let iter = DatagramSegmentIter::new(batch.buffers, batch.metas, self.port, len);
 
@@ -859,6 +864,35 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
     let _ = tokio::time::timeout(timeout, socket.writable()).await;
 }
 
+/// Disables URO for the process once a receive proves that datagram coalescing is broken.
+///
+/// Correct coalescing reports the size of the original datagrams as the segment size, and no
+/// Firezone peer sends a datagram larger than [`ip_packet::MAX_FZ_PAYLOAD`], so a segment above
+/// that bound means datagrams were merged without split metadata (see [`crate::uro`]).
+///
+/// Sockets shed URO lazily: each one opts out when it processes its first batch after the trip.
+/// The oversized receives themselves are dropped by [`DatagramSegmentIter`].
+#[cfg(windows)]
+fn enforce_uro_invariant<'a>(
+    socket: &Socket<'_>,
+    mut metas: impl Iterator<Item = &'a quinn_udp::RecvMeta>,
+) {
+    if let Some(meta) = metas.find(|meta| meta.stride > ip_packet::MAX_FZ_PAYLOAD)
+        && uro::trip()
+    {
+        tracing::warn!(
+            stride = %meta.stride,
+            len = %meta.len,
+            interface_index = ?meta.interface_index,
+            "Received a datagram segment larger than any Firezone peer sends; disabling URO to work around broken receive coalescing"
+        );
+    }
+
+    if uro::is_tripped() {
+        socket.disable_gro();
+    }
+}
+
 /// The pools backing a batched receive: scratch space for the datagrams themselves
 /// plus containers for the buffers and metas that make up one batch.
 ///
@@ -1033,6 +1067,15 @@ where
                 }
             }
 
+            // No Firezone peer sends a datagram this large; the receive is either broken
+            // coalescing (see `uro`) or junk from an unrelated sender.
+            if meta.stride > ip_packet::MAX_FZ_PAYLOAD {
+                tracing::trace!(stride = %meta.stride, len = %meta.len, "Dropping receive with an impossibly large segment size");
+
+                self.buf_index += 1;
+                continue;
+            }
+
             if self.segment_index >= meta.len {
                 self.buf_index += 1;
                 self.segment_index = 0;
@@ -1169,6 +1212,41 @@ mod tests {
         ];
 
         assert_eq!(metas.iter().map(num_segments).sum::<usize>(), 12);
+    }
+
+    #[test]
+    fn datagram_iter_drops_segments_larger_than_max_fz_payload() {
+        let buffer_pool = BufferPool::<VecBuf<DummyBuffer>>::new(2, "test");
+        let meta_pool = BufferPool::<VecBuf<quinn_udp::RecvMeta>>::new(2, "test");
+
+        let oversized = 2 * ip_packet::MAX_FZ_PAYLOAD;
+
+        let mut buffers = buffer_pool.pull();
+        buffers.extend([
+            DummyBuffer(vec![0; oversized]),
+            DummyBuffer(b"foobar1".to_vec()),
+        ]);
+
+        let mut metas = meta_pool.pull();
+        metas.extend([
+            recv_meta(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                oversized,
+                oversized,
+            ),
+            recv_meta(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                7,
+                7,
+            ),
+        ]);
+
+        let mut iter = DatagramSegmentIter::new(buffers, metas, 0, 2);
+
+        assert_eq!(iter.next().unwrap().packet, b"foobar1");
+        assert!(iter.next().is_none());
     }
 
     #[test]
