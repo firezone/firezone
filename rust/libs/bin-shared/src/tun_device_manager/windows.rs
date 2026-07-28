@@ -458,8 +458,8 @@ fn start_send_thread(
     std::thread::Builder::new()
         .name("TUN send".into())
         .spawn(move || {
-            let mut tcp_coalescer = tun::coalesce::PacketCoalescer::tcp();
-            let mut passthrough = tun::coalesce::PacketCoalescer::passthrough();
+            let mut tcp_coalescer = packet_coalescer::PacketCoalescer::tcp();
+            let mut passthrough = packet_coalescer::PacketCoalescer::passthrough();
 
             while let Some(mut batch) = packet_rx.blocking_recv() {
                 let coalesce_tcp = telemetry::feature_flags::wintun_tcp_coalescing();

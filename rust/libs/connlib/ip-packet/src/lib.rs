@@ -1,8 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+pub mod checksum;
 pub mod make;
 
-mod checksum;
 mod fz_p2p_control;
 mod fz_p2p_control_slice;
 mod icmp;
@@ -701,12 +701,12 @@ impl IpPacket {
         ))
     }
 
-    fn pseudo_header_sum(&self, protocol: IpProtocol) -> u32 {
+    fn pseudo_header_sum(&self, protocol: IpProtocol) -> u64 {
         match self.version {
             IpVersion::V4 => {
                 let header = self.ipv4_header_unchecked();
 
-                checksum::pseudo_header_v4(
+                checksum::pseudo_header_sum_v4(
                     header.source().into(),
                     header.destination().into(),
                     protocol,
@@ -716,7 +716,7 @@ impl IpPacket {
             IpVersion::V6 => {
                 let header = self.ipv6_header_unchecked();
 
-                checksum::pseudo_header_v6(
+                checksum::pseudo_header_sum_v6(
                     header.source().into(),
                     header.destination().into(),
                     protocol,

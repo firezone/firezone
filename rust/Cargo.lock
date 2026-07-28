@@ -708,6 +708,7 @@ dependencies = [
  "nix 0.31.3",
  "opentelemetry",
  "otel-instruments",
+ "packet-coalescer",
  "resolv-conf",
  "ring",
  "rtnetlink",
@@ -5346,6 +5347,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "packet-coalescer"
+version = "0.1.0"
+dependencies = [
+ "bufferpool",
+ "ingot",
+ "ip-packet",
+]
+
+[[package]]
 name = "pango"
 version = "0.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8433,6 +8443,7 @@ dependencies = [
  "libc",
  "opentelemetry",
  "otel-instruments",
+ "packet-coalescer",
  "smallvec",
  "tokio",
  "tracing",

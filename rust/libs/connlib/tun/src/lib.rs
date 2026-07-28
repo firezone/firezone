@@ -5,9 +5,6 @@ use ip_packet::IpPacket;
 use std::sync::LazyLock;
 use tokio::sync::mpsc;
 
-mod checksum;
-pub mod coalesce;
-
 #[cfg(target_family = "unix")]
 pub mod ioctl;
 #[cfg(target_os = "linux")]

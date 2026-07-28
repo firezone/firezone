@@ -6,18 +6,18 @@ use ingot::types::{Emit, HeaderLen as _};
 use ingot::udp::Udp;
 use ip_packet::{IpPacket, IpPacketBuf};
 
-use super::coalesce::TunGsoQueue;
 use super::split::split;
 use super::virtio;
 use super::virtio::*;
-use crate::checksum;
+use ip_packet::checksum;
+use packet_coalescer::{CoalescedPacket, PacketCoalescer};
 
 const SRC: [u8; 4] = [10, 0, 0, 1];
 const DST: [u8; 4] = [10, 0, 0, 2];
 
 #[test]
 fn coalesces_sequential_tcp_segments() {
-    let mut queue = TunGsoQueue::new();
+    let mut queue = PacketCoalescer::gso();
 
     queue.enqueue(tcp4(1000, &[1; 100]));
     queue.enqueue(tcp4(1100, &[2; 100]));
@@ -30,7 +30,7 @@ fn coalesces_sequential_tcp_segments() {
     };
     assert_eq!(super_packet.num_segments(), 3);
 
-    let buf = super_packet.bufs().concat();
+    let buf = tun_write(super_packet);
     let (hdr, packet) = VirtioNetHdr::parse(&buf).unwrap();
 
     assert_eq!(hdr.flags, VIRTIO_NET_HDR_F_NEEDS_CSUM);
@@ -55,7 +55,7 @@ fn coalesces_sequential_tcp_segments() {
 
 #[test]
 fn coalesced_tcp_packet_splits_back_into_segments() {
-    let mut queue = TunGsoQueue::new();
+    let mut queue = PacketCoalescer::gso();
 
     let segments = [
         tcp4_id(10, 1000, &[1; 100]),
@@ -72,7 +72,7 @@ fn coalesced_tcp_packet_splits_back_into_segments() {
         panic!("Expected a single super packet");
     };
 
-    let roundtripped = split(&super_packet.bufs().concat()).unwrap();
+    let roundtripped = split(&tun_write(super_packet)).unwrap();
 
     assert_eq!(roundtripped.len(), 3);
 
@@ -83,7 +83,7 @@ fn coalesced_tcp_packet_splits_back_into_segments() {
 
 #[test]
 fn does_not_coalesce_across_flows() {
-    let mut queue = TunGsoQueue::new();
+    let mut queue = PacketCoalescer::gso();
 
     queue.enqueue(tcp4(1000, &[1; 100]));
     queue.enqueue(tcp4_ports(7000, 8000, 9999, &[9; 100]));
@@ -98,7 +98,7 @@ fn does_not_coalesce_across_flows() {
 
 #[test]
 fn out_of_order_segment_starts_new_batch() {
-    let mut queue = TunGsoQueue::new();
+    let mut queue = PacketCoalescer::gso();
 
     queue.enqueue(tcp4(1000, &[1; 100]));
     queue.enqueue(tcp4(1500, &[2; 100])); // Gap in sequence numbers.
@@ -112,7 +112,7 @@ fn out_of_order_segment_starts_new_batch() {
 
 #[test]
 fn psh_closes_the_batch() {
-    let mut queue = TunGsoQueue::new();
+    let mut queue = PacketCoalescer::gso();
 
     queue.enqueue(tcp4(1000, &[1; 100]));
     queue.enqueue(tcp4_psh(1100, &[2; 100]));
@@ -126,7 +126,7 @@ fn psh_closes_the_batch() {
     assert_eq!(super_packet.num_segments(), 2);
     assert_eq!(segment.num_segments(), 1);
 
-    let buf = super_packet.bufs().concat();
+    let buf = tun_write(super_packet);
     let (_, packet) = VirtioNetHdr::parse(&buf).unwrap();
     assert_eq!(
         packet[33] & 0x08,
@@ -137,7 +137,7 @@ fn psh_closes_the_batch() {
 
 #[test]
 fn short_segment_closes_the_batch() {
-    let mut queue = TunGsoQueue::new();
+    let mut queue = PacketCoalescer::gso();
 
     queue.enqueue(tcp4(1000, &[1; 100]));
     queue.enqueue(tcp4(1100, &[2; 40]));
@@ -152,7 +152,7 @@ fn short_segment_closes_the_batch() {
 
 #[test]
 fn non_candidate_flushes_same_flow_first() {
-    let mut queue = TunGsoQueue::new();
+    let mut queue = PacketCoalescer::gso();
 
     queue.enqueue(tcp4(1000, &[1; 100]));
     queue.enqueue(tcp4(1100, &[2; 100]));
@@ -168,7 +168,7 @@ fn non_candidate_flushes_same_flow_first() {
 
 #[test]
 fn coalesces_udp_datagrams() {
-    let mut queue = TunGsoQueue::new();
+    let mut queue = PacketCoalescer::gso();
 
     let datagrams = [
         udp4_id(20, &[1; 100]),
@@ -186,7 +186,7 @@ fn coalesces_udp_datagrams() {
     };
     assert_eq!(super_packet.num_segments(), 3);
 
-    let buf = super_packet.bufs().concat();
+    let buf = tun_write(super_packet);
     let (hdr, _) = VirtioNetHdr::parse(&buf).unwrap();
     assert_eq!(hdr.gso_type, VIRTIO_NET_HDR_GSO_UDP_L4);
     assert_eq!(hdr.gso_size, 100);
@@ -226,7 +226,7 @@ fn completes_partial_checksum_of_non_gso_packet() {
     let pseudo = checksum::fold(checksum::pseudo_header_sum_v4(
         Ipv4Addr::from(SRC),
         Ipv4Addr::from(DST),
-        17,
+        IpProtocol::UDP,
         l4_len,
     ));
     buf[virtio::VNET_HDR_LEN + 26..virtio::VNET_HDR_LEN + 28]
@@ -334,4 +334,12 @@ fn packet_from_bytes(bytes: &[u8]) -> IpPacket {
     buf.buf()[..bytes.len()].copy_from_slice(bytes);
 
     IpPacket::new(buf, bytes.len()).unwrap()
+}
+
+fn tun_write(packet: &CoalescedPacket) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(VNET_HDR_LEN + packet.packet().len());
+    buf.extend_from_slice(&virtio::header_for(packet));
+    buf.extend_from_slice(packet.packet());
+
+    buf
 }

@@ -50,6 +50,7 @@ dashmap = { workspace = true }
 ipconfig = "0.3.4"
 itertools = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
+packet-coalescer = { workspace = true }
 ring = "0.17"
 uuid = { workspace = true, features = ["v4"] }
 windows-core = { workspace = true }

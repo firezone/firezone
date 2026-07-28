@@ -11,7 +11,7 @@ use bufferpool::{Buffer, BufferPool};
 use ip_packet::{IpNumber, IpPacket, IpVersion, Ipv6HeaderSlice, TcpSlice, UdpSlice};
 use std::net::IpAddr;
 
-use crate::checksum;
+use ip_packet::checksum;
 
 /// The maximum size of a coalesced packet.
 ///
@@ -27,7 +27,6 @@ const TCP_FLAG_PSH: u8 = 0x08;
 
 /// How transport checksums are represented in a coalesced packet.
 #[derive(Clone, Copy)]
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 enum ChecksumMode {
     /// Store the uncomplemented pseudo-header checksum for a kernel GSO write.
     Partial,
@@ -44,7 +43,6 @@ pub struct PacketCoalescer {
     /// by construction.
     items: Vec<Item>,
     buffer_pool: BufferPool<Vec<u8>>,
-    headroom: usize,
     coalesce_tcp: bool,
     coalesce_udp: bool,
     checksum_mode: ChecksumMode,
@@ -62,28 +60,25 @@ impl PacketCoalescer {
     /// This representation is suitable for packet-oriented TUN APIs such as
     /// Wintun, which do not accept segmentation-offload metadata.
     pub fn tcp() -> Self {
-        Self::new(0, true, false, ChecksumMode::Complete, "tun-tcp-coalescer")
+        Self::new(true, false, ChecksumMode::Complete, "packet-coalescer-tcp")
     }
 
     /// Builds a queue that preserves packet boundaries.
     pub fn passthrough() -> Self {
         Self::new(
-            0,
             false,
             false,
             ChecksumMode::Complete,
-            "tun-passthrough-queue",
+            "packet-coalescer-passthrough",
         )
     }
 
     /// Builds a TCP/UDP coalescer for a backend that supplies GSO metadata.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn gso(headroom: usize) -> Self {
-        Self::new(headroom, true, true, ChecksumMode::Partial, "tun-gso-queue")
+    pub fn gso() -> Self {
+        Self::new(true, true, ChecksumMode::Partial, "packet-coalescer-gso")
     }
 
     fn new(
-        headroom: usize,
         coalesce_tcp: bool,
         coalesce_udp: bool,
         checksum_mode: ChecksumMode,
@@ -91,8 +86,7 @@ impl PacketCoalescer {
     ) -> Self {
         Self {
             items: Vec::new(),
-            buffer_pool: BufferPool::new(headroom + MAX_COALESCED_PACKET, pool_name),
-            headroom,
+            buffer_pool: BufferPool::new(MAX_COALESCED_PACKET, pool_name),
             coalesce_tcp,
             coalesce_udp,
             checksum_mode,
@@ -118,7 +112,7 @@ impl PacketCoalescer {
             Some(Item::Batch(batch))
                 if batch.key == candidate.key && batch.can_append(&candidate, &packet) =>
             {
-                batch.append(&candidate, &packet, &self.buffer_pool, self.headroom)
+                batch.append(&candidate, &packet, &self.buffer_pool)
             }
             _ => self.items.push(Item::Batch(Batch::new(candidate, packet))),
         }
@@ -126,12 +120,11 @@ impl PacketCoalescer {
 
     /// Drains all queued packets, in write order.
     pub fn drain(&mut self) -> impl Iterator<Item = CoalescedPacket> + '_ {
-        let headroom = self.headroom;
         let checksum_mode = self.checksum_mode;
 
         self.items
             .drain(..)
-            .map(move |item| item.into_outgoing(headroom, checksum_mode))
+            .map(move |item| item.into_outgoing(checksum_mode))
     }
 }
 
@@ -141,13 +134,11 @@ pub struct CoalescedPacket(Inner);
 enum Inner {
     /// An individual IP packet, passed through unchanged.
     Packet(IpPacket),
-    /// A coalesced batch with optional platform headroom.
+    /// A coalesced batch.
     Batch {
         buf: Buffer<Vec<u8>>,
-        headroom: usize,
         num_segments: usize,
-        #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-        offload: Offload,
+        offload: Option<Offload>,
     },
 }
 
@@ -164,31 +155,15 @@ impl CoalescedPacket {
     pub fn packet(&self) -> &[u8] {
         match &self.0 {
             Inner::Packet(packet) => packet.packet(),
-            Inner::Batch { buf, headroom, .. } => &buf[*headroom..],
+            Inner::Batch { buf, .. } => buf,
         }
     }
 
-    #[cfg(target_os = "linux")]
-    pub(crate) fn headroom(&self) -> &[u8] {
-        match &self.0 {
-            Inner::Packet(_) => &[],
-            Inner::Batch { buf, headroom, .. } => &buf[..*headroom],
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    pub(crate) fn headroom_mut(&mut self) -> &mut [u8] {
-        match &mut self.0 {
-            Inner::Packet(_) => &mut [],
-            Inner::Batch { buf, headroom, .. } => &mut buf[..*headroom],
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    pub(crate) fn offload(&self) -> Option<Offload> {
+    /// Segmentation metadata for a coalesced GSO packet.
+    pub fn offload(&self) -> Option<Offload> {
         match &self.0 {
             Inner::Packet(_) => None,
-            Inner::Batch { offload, .. } => Some(*offload),
+            Inner::Batch { offload, .. } => *offload,
         }
     }
 }
@@ -199,7 +174,7 @@ impl From<IpPacket> for CoalescedPacket {
     }
 }
 
-/// An entry in the [`TunGsoQueue`].
+/// An entry in a [`PacketCoalescer`].
 enum Item {
     /// A packet that cannot participate in coalescing, passed through as-is.
     Packet(IpPacket),
@@ -216,10 +191,10 @@ impl Item {
         }
     }
 
-    fn into_outgoing(self, headroom: usize, checksum_mode: ChecksumMode) -> CoalescedPacket {
+    fn into_outgoing(self, checksum_mode: ChecksumMode) -> CoalescedPacket {
         match self {
             Item::Packet(packet) => CoalescedPacket::from(packet),
-            Item::Batch(batch) => batch.into_outgoing(headroom, checksum_mode),
+            Item::Batch(batch) => batch.into_outgoing(checksum_mode),
         }
     }
 }
@@ -421,17 +396,16 @@ struct Batch {
 enum BatchState {
     /// A single packet; not copied anywhere yet.
     Single(IpPacket),
-    /// Two or more segments coalesced into a buffer, prefixed by space for the [`VirtioNetHdr`].
+    /// Two or more segments coalesced into a buffer.
     Coalesced(Buffer<Vec<u8>>),
 }
 
 impl BatchState {
     /// The coalescing buffer, converting from [`BatchState::Single`] on first use.
-    fn coalesced(&mut self, pool: &BufferPool<Vec<u8>>, headroom: usize) -> &mut Buffer<Vec<u8>> {
+    fn coalesced(&mut self, pool: &BufferPool<Vec<u8>>) -> &mut Buffer<Vec<u8>> {
         if let BatchState::Single(first) = &*self {
             let mut buf = pool.pull();
             buf.clear();
-            buf.resize(headroom, 0);
             buf.extend_from_slice(first.packet());
 
             *self = BatchState::Coalesced(buf);
@@ -460,19 +434,11 @@ impl Batch {
     }
 
     /// Appends the packet's payload to this batch.
-    fn append(
-        &mut self,
-        candidate: &Candidate,
-        packet: &IpPacket,
-        pool: &BufferPool<Vec<u8>>,
-        headroom: usize,
-    ) {
+    fn append(&mut self, candidate: &Candidate, packet: &IpPacket, pool: &BufferPool<Vec<u8>>) {
         let bytes = packet.packet();
         let payload = &bytes[candidate.ip_hdr_len + candidate.l4_hdr_len..];
 
-        self.state
-            .coalesced(pool, headroom)
-            .extend_from_slice(payload);
+        self.state.coalesced(pool).extend_from_slice(payload);
 
         self.total_len += payload.len();
         self.next_seq = self.next_seq.wrapping_add(payload.len() as u32);
@@ -490,7 +456,7 @@ impl Batch {
         !self.psh && payload_len == self.num_segs * self.seg_size
     }
 
-    fn into_outgoing(self, headroom: usize, checksum_mode: ChecksumMode) -> CoalescedPacket {
+    fn into_outgoing(self, checksum_mode: ChecksumMode) -> CoalescedPacket {
         let Batch {
             key,
             state,
@@ -507,7 +473,6 @@ impl Batch {
             BatchState::Coalesced(mut buf) => {
                 let offload = finalize(
                     &mut buf,
-                    headroom,
                     &key,
                     ip_hdr_len,
                     l4_hdr_len,
@@ -515,10 +480,10 @@ impl Batch {
                     psh,
                     checksum_mode,
                 );
+                let offload = matches!(checksum_mode, ChecksumMode::Partial).then_some(offload);
 
                 CoalescedPacket(Inner::Batch {
                     buf,
-                    headroom,
                     num_segments: num_segs,
                     offload,
                 })
@@ -578,10 +543,7 @@ impl Batch {
     fn template(&self) -> &[u8] {
         match &self.state {
             BatchState::Single(packet) => packet.packet(),
-            BatchState::Coalesced(buf) => {
-                let packet_len = self.total_len;
-                &buf[buf.len() - packet_len..]
-            }
+            BatchState::Coalesced(buf) => buf,
         }
     }
 }
@@ -627,8 +589,7 @@ fn tcp_headers_compatible(
 
 /// Segmentation metadata needed by backends that support kernel GSO.
 #[derive(Clone, Copy)]
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-pub(crate) struct Offload {
+pub struct Offload {
     pub protocol: IpNumber,
     pub version: IpVersion,
     pub ip_hdr_len: usize,
@@ -639,7 +600,6 @@ pub(crate) struct Offload {
 /// Fixes up the IP and transport headers of a coalesced packet.
 fn finalize(
     buf: &mut [u8],
-    headroom: usize,
     key: &FlowKey,
     ip_hdr_len: usize,
     l4_hdr_len: usize,
@@ -647,9 +607,9 @@ fn finalize(
     psh: bool,
     checksum_mode: ChecksumMode,
 ) -> Offload {
-    let total_len = buf.len() - headroom;
+    let total_len = buf.len();
     let l4_len = total_len - ip_hdr_len;
-    let packet = &mut buf[headroom..];
+    let packet = buf;
 
     match key.version() {
         IpVersion::V4 => {
@@ -669,10 +629,10 @@ fn finalize(
 
     let pseudo_sum = match (key.src, key.dst) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            checksum::pseudo_header_sum_v4(src, dst, key.protocol.0, l4_len)
+            checksum::pseudo_header_sum_v4(src, dst, key.protocol, l4_len)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            checksum::pseudo_header_sum_v6(src, dst, key.protocol.0, l4_len)
+            checksum::pseudo_header_sum_v6(src, dst, key.protocol, l4_len)
         }
         _ => unreachable!("src and dst are always the same IP version"),
     };
@@ -751,6 +711,7 @@ mod tests {
         };
 
         assert_eq!(packet.num_segments(), 3);
+        assert!(packet.offload().is_none());
         assert_eq!(packet.packet().len(), 20 + 20 + 250);
         assert_eq!(&packet.packet()[40..140], &[1; 100]);
         assert_eq!(&packet.packet()[140..240], &[2; 100]);
@@ -763,9 +724,35 @@ mod tests {
         assert_eq!(ip_sum, u16::MAX, "IPv4 checksum must be complete");
 
         let tcp = &packet.packet()[20..];
-        let pseudo = checksum::pseudo_header_sum_v4(SRC, DST, IpNumber::TCP.0, tcp.len());
+        let pseudo = checksum::pseudo_header_sum_v4(SRC, DST, IpNumber::TCP, tcp.len());
         let tcp_sum = checksum::fold(checksum::sum(tcp, pseudo));
         assert_eq!(tcp_sum, u16::MAX, "TCP checksum must be complete");
+    }
+
+    #[test]
+    fn gso_mode_emits_partial_checksum_and_offload_metadata() {
+        let mut queue = PacketCoalescer::gso();
+
+        queue.enqueue(tcp4(1000, &[1; 100]));
+        queue.enqueue(tcp4(1100, &[2; 100]));
+
+        let out = queue.drain().collect::<Vec<_>>();
+        let [packet] = out.as_slice() else {
+            panic!("expected one coalesced packet")
+        };
+        let offload = packet.offload().expect("GSO packet needs metadata");
+
+        assert_eq!(offload.protocol, IpNumber::TCP);
+        assert!(offload.version == IpVersion::V4);
+        assert_eq!(offload.ip_hdr_len, 20);
+        assert_eq!(offload.l4_hdr_len, 20);
+        assert_eq!(offload.seg_size, 100);
+
+        let tcp = &packet.packet()[offload.ip_hdr_len..];
+        let checksum = u16::from_be_bytes([tcp[16], tcp[17]]);
+        let pseudo = checksum::pseudo_header_sum_v4(SRC, DST, IpNumber::TCP, tcp.len());
+
+        assert_eq!(checksum, checksum::fold(pseudo));
     }
 
     #[test]
@@ -823,7 +810,8 @@ mod tests {
 
         let mut buf = IpPacketBuf::new();
         buf.buf()[..bytes.len()].copy_from_slice(&bytes);
-        let mut packet = IpPacket::new(buf, bytes.len()).unwrap();
+        let mut packet =
+            IpPacket::new(buf, bytes.len()).expect("constructed test packet must be valid");
         packet.compute_checksums();
 
         packet

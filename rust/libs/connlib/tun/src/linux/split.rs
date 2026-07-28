@@ -12,7 +12,7 @@ use smallvec::SmallVec;
 use std::net::IpAddr;
 
 use super::virtio::*;
-use crate::checksum;
+use ip_packet::checksum;
 
 /// The most segments a single super packet can split into.
 ///
@@ -222,10 +222,10 @@ fn write_l4_checksum(
 
     let pseudo_sum = match (src, dst) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            checksum::pseudo_header_sum_v4(src, dst, protocol.0, l4_len)
+            checksum::pseudo_header_sum_v4(src, dst, protocol, l4_len)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            checksum::pseudo_header_sum_v6(src, dst, protocol.0, l4_len)
+            checksum::pseudo_header_sum_v6(src, dst, protocol, l4_len)
         }
         _ => bail!("Mismatched IP versions"),
     };

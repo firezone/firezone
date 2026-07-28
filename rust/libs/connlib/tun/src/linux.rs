@@ -5,13 +5,11 @@
 //! - Reads may return a single TSO / USO packet that we split into MTU-sized [`IpPacket`](ip_packet::IpPacket)s
 //!   before handing them to the main thread ([`split`]).
 //! - Writes may combine multiple same-flow packets into one GSO write that traverses the
-//!   kernel's network stack as a single skb ([`coalesce`]).
+//!   kernel's network stack as a single skb ([`packet_coalescer`]).
 //!
 //! Each item on the outbound channel is one batch of packets that arrived together
 //! upstream; coalescing extends across exactly that batch.
 
-mod checksum;
-mod coalesce;
 mod split;
 mod virtio;
 
@@ -19,7 +17,6 @@ mod virtio;
 mod tests;
 
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
-use coalesce::{Outgoing, TunGsoQueue};
 use opentelemetry::KeyValue;
 use std::collections::VecDeque;
 use std::io;
@@ -30,6 +27,7 @@ use tokio::io::unix::AsyncFd;
 use virtio::VNET_HDR_LEN;
 
 use crate::{InboundTx, OutboundRx, PacketBatch};
+use packet_coalescer::{CoalescedPacket, PacketCoalescer};
 
 /// Size of the buffer for reading super packets: a `virtio_net_hdr` plus the largest
 /// possible IP packet.
@@ -70,21 +68,21 @@ where
             let mut ready = Vec::new();
             // `None` when the kernel does not support GSO writes or rejected one at
             // runtime; packets then pass through 1:1.
-            let mut queue = tun_fd.offloads.then(TunGsoQueue::new);
+            let mut coalescer = tun_fd.offloads.then(PacketCoalescer::gso);
 
             while let Some(mut batch) = outbound_rx.recv().await {
                 for packet in batch.drain() {
                     #[cfg(debug_assertions)]
                     tracing::trace!(target: "wire::dev::send", ?packet);
 
-                    match &mut queue {
-                        Some(queue) => queue.enqueue(packet),
-                        None => ready.push(Outgoing::from(packet)),
+                    match &mut coalescer {
+                        Some(coalescer) => coalescer.enqueue(packet),
+                        None => ready.push(CoalescedPacket::from(packet)),
                     }
                 }
 
-                if let Some(queue) = &mut queue {
-                    ready.extend(queue.drain());
+                if let Some(coalescer) = &mut coalescer {
+                    ready.extend(coalescer.drain());
                 }
 
                 let gso_failed = write_all(
@@ -101,7 +99,7 @@ where
                     // the dropped segments are re-sent by the endpoints.
                     tracing::info!("Kernel rejected GSO write; disabling TUN segmentation offload");
 
-                    queue = None;
+                    coalescer = None;
                 }
             }
 
@@ -116,7 +114,7 @@ where
 /// Writes out all ready packets; returns `true` if the kernel rejected a GSO write.
 async fn write_all<T>(
     fd: &AsyncFd<T>,
-    ready: &mut Vec<Outgoing>,
+    ready: &mut Vec<CoalescedPacket>,
     batch_size_histogram: &opentelemetry::metrics::Histogram<u64>,
     dropped_packets_counter: &opentelemetry::metrics::Counter<u64>,
 ) -> bool
@@ -149,12 +147,13 @@ where
     gso_failed
 }
 
-/// Writes a single [`Outgoing`] (its `virtio_net_hdr` plus packet bytes) to the TUN device.
-async fn write<T>(fd: &AsyncFd<T>, outgoing: &Outgoing) -> io::Result<usize>
+/// Writes a single packet and its `virtio_net_hdr` to the TUN device.
+async fn write<T>(fd: &AsyncFd<T>, outgoing: &CoalescedPacket) -> io::Result<usize>
 where
     T: AsRawFd,
 {
-    let [hdr, packet] = outgoing.bufs();
+    let hdr = virtio::header_for(outgoing);
+    let packet = outgoing.packet();
 
     let iov = [
         libc::iovec {

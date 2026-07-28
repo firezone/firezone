@@ -18,6 +18,9 @@ opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
 tracing = { workspace = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+packet-coalescer = { workspace = true }
+
 [dev-dependencies]
 ingot = { workspace = true }
 
