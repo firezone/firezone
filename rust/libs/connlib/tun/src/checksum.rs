@@ -1,4 +1,4 @@
-//! Internet checksum (RFC 1071) helpers for fixing up split / coalesced segments.
+//! Internet checksum (RFC 1071) helpers for fixing up split and coalesced segments.
 
 use std::net::{Ipv4Addr, Ipv6Addr};
 

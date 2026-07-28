@@ -394,6 +394,7 @@ impl tun::Tun for Tun {
 }
 
 const RING_CAPACITY_ENV_VAR: &str = "FIREZONE_WINTUN_RINGBUFFER_SIZE";
+const TCP_COALESCE_ENV_VAR: &str = "FIREZONE_WINTUN_TCP_COALESCE";
 
 /// Reads the ring buffer capacity that [`RING_CAPACITY_ENV_VAR`] asks for, if any.
 ///
@@ -451,18 +452,36 @@ fn start_send_thread(
     mut packet_rx: tun::OutboundRx,
     session: Weak<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
+    let coalesce_tcp = tcp_coalescing_enabled();
+    let batch_size_histogram = otel_instruments::network_packets_batch_count();
     let write_retry_histogram = otel_instruments::network_retries();
     let dropped_packets_counter = otel_instruments::network_packet_dropped();
 
     std::thread::Builder::new()
         .name("TUN send".into())
         .spawn(move || {
+            let mut coalescer = if coalesce_tcp {
+                tun::coalesce::PacketCoalescer::tcp()
+            } else {
+                tun::coalesce::PacketCoalescer::passthrough()
+            };
+
             while let Some(mut batch) = packet_rx.blocking_recv() {
-                'next_packet: for packet in batch.drain() {
+                for packet in batch.drain() {
+                    #[cfg(debug_assertions)]
+                    tracing::trace!(target: "wire::dev::send", ?packet);
+
+                    coalescer.enqueue(packet);
+                }
+
+                'next_packet: for packet in coalescer.drain() {
                     let bytes = packet.packet();
+                    let num_segments = packet.num_segments();
 
                     let Ok(len) = bytes.len().try_into() else {
                         tracing::warn!("Packet too large; length does not fit into u16");
+                        dropped_packets_counter
+                            .add(num_segments as u64, &drop_attributes_without_error());
                         continue 'next_packet;
                     };
 
@@ -481,10 +500,12 @@ fn start_send_thread(
                                 pkt.bytes_mut().copy_from_slice(bytes);
                                 // `send_packet` cannot fail to enqueue the packet, since we already allocated
                                 // space in the ring buffer.
-                                #[cfg(debug_assertions)]
-                                tracing::trace!(target: "wire::dev::send", ?packet);
                                 session.send_packet(pkt);
 
+                                if num_segments > 1 {
+                                    batch_size_histogram
+                                        .record(num_segments as u64, &metric_attributes());
+                                }
                                 record_write_retries(&write_retry_histogram, attempt);
 
                                 continue 'next_packet;
@@ -500,7 +521,8 @@ fn start_send_thread(
                             }
                             Err(e) => {
                                 record_write_retries(&write_retry_histogram, attempt);
-                                dropped_packets_counter.add(1, &drop_attributes(&e));
+                                dropped_packets_counter
+                                    .add(num_segments as u64, &drop_attributes(&e));
 
                                 if is_ring_full(&e) {
                                     // The ring buffer is still full after all retries; dropping is by design, like for any congested network device.
@@ -518,6 +540,23 @@ fn start_send_thread(
 
             tracing::debug!("Stopping TUN send worker thread because the packet channel closed");
         })
+}
+
+fn tcp_coalescing_enabled() -> bool {
+    match std::env::var(TCP_COALESCE_ENV_VAR) {
+        Ok(value) if value == "0" || value.eq_ignore_ascii_case("false") => {
+            tracing::info!("WinTUN TCP receive coalescing disabled");
+            false
+        }
+        Ok(_) | Err(VarError::NotPresent) => true,
+        Err(VarError::NotUnicode(_)) => {
+            tracing::warn!(
+                env_var = TCP_COALESCE_ENV_VAR,
+                "Ignoring non-Unicode environment variable"
+            );
+            true
+        }
+    }
 }
 
 /// Whether the write failed because the WinTUN ring buffer is full.
@@ -575,6 +614,14 @@ fn drop_attributes(e: &wintun::Error) -> [KeyValue; 3] {
         KeyValue::new("system.device", "tun"),
         KeyValue::new("network.io.direction", "transmit"),
         KeyValue::new("error.code", error_code),
+    ]
+}
+
+fn drop_attributes_without_error() -> [KeyValue; 3] {
+    [
+        KeyValue::new("system.device", "tun"),
+        KeyValue::new("network.io.direction", "transmit"),
+        KeyValue::new("error.code", 0),
     ]
 }
 

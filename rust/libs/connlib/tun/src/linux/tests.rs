@@ -8,8 +8,9 @@ use ip_packet::{IpPacket, IpPacketBuf};
 
 use super::coalesce::TunGsoQueue;
 use super::split::split;
+use super::virtio;
 use super::virtio::*;
-use super::{checksum, virtio};
+use crate::checksum;
 
 const SRC: [u8; 4] = [10, 0, 0, 1];
 const DST: [u8; 4] = [10, 0, 0, 2];

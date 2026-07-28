@@ -11,8 +11,8 @@ use ip_packet::{IpNumber, IpPacket, IpPacketBuf, IpVersion};
 use smallvec::SmallVec;
 use std::net::IpAddr;
 
-use super::checksum;
 use super::virtio::*;
+use crate::checksum;
 
 /// The most segments a single super packet can split into.
 ///
