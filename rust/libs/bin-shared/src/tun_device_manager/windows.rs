@@ -460,15 +460,9 @@ fn start_send_thread(
         .spawn(move || {
             let mut tcp_coalescer = tun::coalesce::PacketCoalescer::tcp();
             let mut passthrough = tun::coalesce::PacketCoalescer::passthrough();
-            let mut previous_coalescing_state = None;
 
             while let Some(mut batch) = packet_rx.blocking_recv() {
                 let coalesce_tcp = telemetry::feature_flags::wintun_tcp_coalescing();
-                if previous_coalescing_state != Some(coalesce_tcp) {
-                    tracing::info!(enabled = coalesce_tcp, "WinTUN TCP receive coalescing changed");
-                    previous_coalescing_state = Some(coalesce_tcp);
-                }
-
                 let coalescer = if coalesce_tcp {
                     &mut tcp_coalescer
                 } else {
