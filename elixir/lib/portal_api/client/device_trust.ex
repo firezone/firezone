@@ -58,6 +58,7 @@ defmodule PortalAPI.Client.DeviceTrust do
                       "none",
                       "n/a",
                       "not specified",
+                      "not applicable",
                       "invalid",
                       "oem_serial",
                       "systemserialnumb",
@@ -67,10 +68,18 @@ defmodule PortalAPI.Client.DeviceTrust do
   # All-zero / all-one / all-binary-digit runs are placeholders, not serials.
   @binary_run_regex ~r/^[01]+$/
 
+  # One repeated character (FFFFFFFF) is a placeholder, not an identifier.
+  @repeated_char_regex ~r/^(.)\1+$/
+
+  # Serials and hardware GUIDs are printable ASCII; anything else is corrupt.
+  @printable_ascii_regex ~r/^[\x20-\x7E]+$/
+
+  # "idnotpresentbutsettable" is SMBIOS-speak for a UUID that was never set.
   @uuid_sentinels MapSet.new([
                     "00000000-0000-0000-0000-000000000000",
                     "ffffffff-ffff-ffff-ffff-ffffffffffff",
-                    "03000200-0400-0500-0006-000700080009"
+                    "03000200-0400-0500-0006-000700080009",
+                    "idnotpresentbutsettable"
                   ])
 
   # Bare identifier shapes for the fallback paths.
@@ -435,7 +444,7 @@ defmodule PortalAPI.Client.DeviceTrust do
     value = String.trim(value)
 
     cond do
-      value == "" -> nil
+      not Regex.match?(@printable_ascii_regex, value) -> nil
       column == :last_attested_device_serial -> normalize_serial(value)
       column in [:last_attested_device_uuid, :last_attested_mdm_device_id] -> normalize_uuid(value)
       true -> nil
@@ -446,7 +455,8 @@ defmodule PortalAPI.Client.DeviceTrust do
 
   defp normalize_serial(value) do
     if MapSet.member?(@serial_blocklist, String.downcase(value)) or
-         Regex.match?(@binary_run_regex, value) do
+         Regex.match?(@binary_run_regex, value) or
+         Regex.match?(@repeated_char_regex, value) do
       nil
     else
       String.upcase(value)
@@ -463,7 +473,8 @@ defmodule PortalAPI.Client.DeviceTrust do
       end
 
     if MapSet.member?(@uuid_sentinels, String.downcase(normalized)) or
-         Regex.match?(@binary_run_regex, normalized) do
+         Regex.match?(@binary_run_regex, normalized) or
+         Regex.match?(@repeated_char_regex, normalized) do
       nil
     else
       normalized

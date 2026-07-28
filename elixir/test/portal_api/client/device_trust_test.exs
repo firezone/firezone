@@ -168,6 +168,14 @@ defmodule PortalAPI.Client.DeviceTrustTest do
                nil
 
       assert DeviceTrust.normalize_identifier(:last_attested_device_serial, "0000000000") == nil
+
+      assert DeviceTrust.normalize_identifier(:last_attested_device_serial, "Not Applicable") ==
+               nil
+
+      assert DeviceTrust.normalize_identifier(:last_attested_device_serial, "FFFFFFFF") == nil
+
+      assert DeviceTrust.normalize_identifier(:last_attested_device_serial, "ING" <> <<3>>) ==
+               nil
     end
 
     test "lowercases GUID identifiers and rejects UUID sentinels" do
@@ -179,6 +187,11 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert DeviceTrust.normalize_identifier(
                :last_attested_device_uuid,
                "00000000-0000-0000-0000-000000000000"
+             ) == nil
+
+      assert DeviceTrust.normalize_identifier(
+               :last_attested_device_uuid,
+               "IDNotPresentButSettable"
              ) == nil
     end
 
