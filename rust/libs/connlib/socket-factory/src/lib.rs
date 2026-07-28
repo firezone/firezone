@@ -20,7 +20,7 @@ use tokio::io::Interest;
 mod buffer_sizes;
 mod pool;
 #[cfg(windows)]
-pub mod uro;
+mod uro;
 
 pub use buffer_sizes::{MAX_RECV_BATCH_MEMORY, RECV_BUFFER_SIZE, SEND_BUFFER_SIZE};
 
@@ -441,7 +441,9 @@ impl PerfUdpSocket {
         })?;
 
         #[cfg(windows)]
-        enforce_uro_invariant(&socket, batch.metas.iter().take(len));
+        if uro::detect_broken_coalescing(batch.metas.iter().take(len)) {
+            socket.disable_gro();
+        }
 
         let iter = DatagramSegmentIter::new(batch.buffers, batch.metas, self.port, len);
 
@@ -862,27 +864,6 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
 
     let timeout = std::time::Duration::from_millis(10);
     let _ = tokio::time::timeout(timeout, socket.writable()).await;
-}
-
-/// Disables URO once a receive proves that datagram coalescing is broken.
-///
-/// Correct coalescing reports the size of the original datagrams as the segment size, and no
-/// Firezone peer sends a datagram larger than [`ip_packet::MAX_FZ_PAYLOAD`], so a segment above
-/// that bound means datagrams were merged without split metadata (see [`crate::uro`]).
-///
-/// A socket opts out when it observes a violation; sockets created afterwards never opt in.
-/// The oversized receives themselves are dropped by [`DatagramSegmentIter`].
-#[cfg(windows)]
-fn enforce_uro_invariant<'a>(
-    socket: &Socket<'_>,
-    mut metas: impl Iterator<Item = &'a quinn_udp::RecvMeta>,
-) {
-    let Some(meta) = metas.find(|meta| meta.stride > ip_packet::MAX_FZ_PAYLOAD) else {
-        return;
-    };
-
-    uro::trip(meta);
-    socket.disable_gro();
 }
 
 /// The pools backing a batched receive: scratch space for the datagrams themselves

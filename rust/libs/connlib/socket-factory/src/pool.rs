@@ -115,7 +115,7 @@ impl OwnedSocket {
 /// Opts a socket into URO unless broken coalescing has been observed (see [`crate::uro`]).
 #[cfg(windows)]
 fn enable_gro(socket: &tokio::net::UdpSocket, state: &quinn_udp::UdpSocketState) {
-    if crate::uro::is_tripped() {
+    if crate::uro::is_broken() {
         return;
     }
 

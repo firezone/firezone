@@ -12,19 +12,27 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-static TRIPPED: AtomicBool = AtomicBool::new(false);
+static BROKEN: AtomicBool = AtomicBool::new(false);
 
 /// Whether broken coalescing has been observed in this process.
-pub fn is_tripped() -> bool {
-    TRIPPED.load(Ordering::Relaxed)
+pub(crate) fn is_broken() -> bool {
+    BROKEN.load(Ordering::Relaxed)
 }
 
-/// Records an observation of broken coalescing.
+/// Detects receives that prove coalescing on this machine is broken.
 ///
-/// The first observation logs a warning; later ones are silent.
-pub(crate) fn trip(meta: &quinn_udp::RecvMeta) {
-    if TRIPPED.swap(true, Ordering::Relaxed) {
-        return;
+/// Returns `true` if any of the receives has a segment size above
+/// [`ip_packet::MAX_FZ_PAYLOAD`], meaning the socket should opt out of URO.
+/// The first detection logs a warning; later ones are silent.
+pub(crate) fn detect_broken_coalescing<'a>(
+    mut metas: impl Iterator<Item = &'a quinn_udp::RecvMeta>,
+) -> bool {
+    let Some(meta) = metas.find(|meta| meta.stride > ip_packet::MAX_FZ_PAYLOAD) else {
+        return false;
+    };
+
+    if BROKEN.swap(true, Ordering::Relaxed) {
+        return true;
     }
 
     tracing::warn!(
@@ -33,6 +41,8 @@ pub(crate) fn trip(meta: &quinn_udp::RecvMeta) {
         interface_index = ?meta.interface_index,
         "Received a datagram segment larger than any Firezone peer sends; disabling URO to work around broken receive coalescing"
     );
+
+    true
 }
 
 #[cfg(test)]
@@ -40,12 +50,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn trips_once() {
-        assert!(!is_tripped());
+    fn detects_broken_coalescing_from_oversized_segment() {
+        let ok = meta_with_stride(ip_packet::MAX_FZ_PAYLOAD);
+        let oversized = meta_with_stride(ip_packet::MAX_FZ_PAYLOAD + 1);
 
-        trip(&quinn_udp::RecvMeta::default());
-        trip(&quinn_udp::RecvMeta::default());
+        assert!(!detect_broken_coalescing([&ok].into_iter()));
+        assert!(!is_broken());
 
-        assert!(is_tripped());
+        assert!(detect_broken_coalescing([&ok, &oversized].into_iter()));
+        assert!(is_broken());
+    }
+
+    fn meta_with_stride(stride: usize) -> quinn_udp::RecvMeta {
+        let mut meta = quinn_udp::RecvMeta::default();
+        meta.len = stride;
+        meta.stride = stride;
+
+        meta
     }
 }
