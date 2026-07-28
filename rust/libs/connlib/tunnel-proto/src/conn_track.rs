@@ -120,7 +120,18 @@ impl ConnTrack {
     }
 
     /// Who opened the flow this *outbound* packet belongs to, if it is tracked.
+    ///
+    /// An ICMP error belongs to the flow of the failed packet it references.
     pub(crate) fn outbound_flow_originator(&self, packet: &IpPacket) -> Option<Originator> {
+        if let Ok(Some((failed, _))) = packet.icmp_error() {
+            return self.originator(Key {
+                local: failed.dst_proto(),
+                peer: failed.src_proto(),
+                local_ip: failed.dst(),
+                peer_ip: failed.src(),
+            });
+        }
+
         let Ok(local) = packet.source_protocol() else {
             return None;
         };
@@ -128,13 +139,15 @@ impl ConnTrack {
             return None;
         };
 
-        let key = Key {
+        self.originator(Key {
             local,
             peer,
             local_ip: packet.source(),
             peer_ip: packet.destination(),
-        };
+        })
+    }
 
+    fn originator(&self, key: Key) -> Option<Originator> {
         if self.initiated.contains_key(&key) {
             return Some(Originator::Us);
         }
@@ -231,6 +244,30 @@ mod tests {
         let reply = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 80, 40000, &[])
             .expect("valid packet");
         assert!(ct.is_known_flow(&reply));
+    }
+
+    #[test]
+    fn icmp_error_follows_the_flow_it_references() {
+        let mut ct = ConnTrack::default();
+        let now = Instant::now();
+
+        let inbound = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
+            .expect("valid packet");
+        ct.record_inbound(&inbound, now);
+
+        let error = make::icmp_dest_unreachable_network(&inbound).expect("valid packet");
+        assert_eq!(ct.outbound_flow_originator(&error), Some(Originator::Peer));
+    }
+
+    #[test]
+    fn icmp_error_for_untracked_flow_has_no_originator() {
+        let ct = ConnTrack::default();
+
+        let never_seen = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
+            .expect("valid packet");
+        let error = make::icmp_dest_unreachable_network(&never_seen).expect("valid packet");
+
+        assert_eq!(ct.outbound_flow_originator(&error), None);
     }
 
     #[test]
