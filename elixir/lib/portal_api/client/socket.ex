@@ -146,7 +146,7 @@ defmodule PortalAPI.Client.Socket do
   # response never re-fetches them.
   defp resolve_or_defer(changeset, attrs, subject, mode) do
     with :defer_if_enabled <- mode,
-         [_ | _] = anchors <- DeviceTrust.fetch_enabled_anchors(subject.account.id) do
+         [_ | _] = anchors <- DeviceTrust.fetch_enabled_anchors(subject) do
       {:ok, {:deferred, anchors}}
     else
       _resolve_now ->

@@ -71,7 +71,7 @@ defmodule PortalAPI.Client.V3.ChannelTest do
       token_id: token.id,
       public_key: generate_public_key(),
       version: "1.3.0",
-      anchors: DeviceTrust.fetch_enabled_anchors(account.id)
+      anchors: DeviceTrust.fetch_enabled_anchors(subject)
     }
 
     PortalAPI.Client.V3.Socket
@@ -165,7 +165,7 @@ defmodule PortalAPI.Client.V3.ChannelTest do
     test "without the feature the socket resolves at connect and does not challenge", context do
       disable_feature(:trust_anchors)
 
-      assert DeviceTrust.fetch_enabled_anchors(context.account.id) == []
+      assert DeviceTrust.fetch_enabled_anchors(context.subject) == []
     end
   end
 end
