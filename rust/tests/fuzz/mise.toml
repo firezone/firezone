@@ -12,6 +12,9 @@
 # from guessing `v0.13.2` when it looks up the release for provenance
 # verification, which `provenance_api_failures_fatal` would turn into a hard
 # failure.
+#
+# Upstream only publishes x86_64 binaries, so this does not install on arm64
+# Linux.
 "github:rust-fuzz/cargo-fuzz" = { version = "0.13.2", os = ["linux"], version_prefix = "" }
 
 [env]
