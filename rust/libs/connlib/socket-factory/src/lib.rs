@@ -535,7 +535,7 @@ impl PerfUdpSocket {
             };
 
             #[cfg(debug_assertions)]
-            tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %(contents.len() / segment_size), %segment_size, connected = %socket.connected);
+            tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %contents.len().div_ceil(segment_size), %segment_size, connected = %socket.connected);
 
             let result = if socket.connected {
                 // Connected sockets never return `EWOULDBLOCK` on Darwin; issue the syscall
