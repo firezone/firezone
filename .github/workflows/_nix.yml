@@ -76,9 +76,6 @@ jobs:
             extra-substituters = https://artifacts.firezone.dev/nix
             extra-trusted-public-keys = artifacts.firezone.dev/nix-1:T4LHdL1HeA6LE9qgu0Po0j3RIlelKZz8pzqnzEAIRfI=
       - name: Check flake
-        # Evaluation covers the whole flake regardless of what this leg
-        # builds, so one leg per system is enough.
-        if: ${{ matrix.package == 'firezone-gateway' }}
         run: nix flake check --no-build
       - name: Build package
         id: build
