@@ -394,7 +394,6 @@ impl tun::Tun for Tun {
 }
 
 const RING_CAPACITY_ENV_VAR: &str = "FIREZONE_WINTUN_RINGBUFFER_SIZE";
-const TCP_COALESCE_ENV_VAR: &str = "FIREZONE_WINTUN_TCP_COALESCE";
 
 /// Reads the ring buffer capacity that [`RING_CAPACITY_ENV_VAR`] asks for, if any.
 ///
@@ -452,7 +451,6 @@ fn start_send_thread(
     mut packet_rx: tun::OutboundRx,
     session: Weak<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
-    let coalesce_tcp = tcp_coalescing_enabled();
     let batch_size_histogram = otel_instruments::network_packets_batch_count();
     let write_retry_histogram = otel_instruments::network_retries();
     let dropped_packets_counter = otel_instruments::network_packet_dropped();
@@ -460,13 +458,23 @@ fn start_send_thread(
     std::thread::Builder::new()
         .name("TUN send".into())
         .spawn(move || {
-            let mut coalescer = if coalesce_tcp {
-                tun::coalesce::PacketCoalescer::tcp()
-            } else {
-                tun::coalesce::PacketCoalescer::passthrough()
-            };
+            let mut tcp_coalescer = tun::coalesce::PacketCoalescer::tcp();
+            let mut passthrough = tun::coalesce::PacketCoalescer::passthrough();
+            let mut previous_coalescing_state = None;
 
             while let Some(mut batch) = packet_rx.blocking_recv() {
+                let coalesce_tcp = telemetry::feature_flags::wintun_tcp_coalescing();
+                if previous_coalescing_state != Some(coalesce_tcp) {
+                    tracing::info!(enabled = coalesce_tcp, "WinTUN TCP receive coalescing changed");
+                    previous_coalescing_state = Some(coalesce_tcp);
+                }
+
+                let coalescer = if coalesce_tcp {
+                    &mut tcp_coalescer
+                } else {
+                    &mut passthrough
+                };
+
                 for packet in batch.drain() {
                     #[cfg(debug_assertions)]
                     tracing::trace!(target: "wire::dev::send", ?packet);
@@ -540,23 +548,6 @@ fn start_send_thread(
 
             tracing::debug!("Stopping TUN send worker thread because the packet channel closed");
         })
-}
-
-fn tcp_coalescing_enabled() -> bool {
-    match std::env::var(TCP_COALESCE_ENV_VAR) {
-        Ok(value) if value == "0" || value.eq_ignore_ascii_case("false") => {
-            tracing::info!("WinTUN TCP receive coalescing disabled");
-            false
-        }
-        Ok(_) | Err(VarError::NotPresent) => true,
-        Err(VarError::NotUnicode(_)) => {
-            tracing::warn!(
-                env_var = TCP_COALESCE_ENV_VAR,
-                "Ignoring non-Unicode environment variable"
-            );
-            true
-        }
-    }
 }
 
 /// Whether the write failed because the WinTUN ring buffer is full.
