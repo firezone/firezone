@@ -1016,6 +1016,7 @@ defmodule Portal.Safe do
   # TrustAnchor permissions
   def permit(_action, Portal.TrustAnchor, :account_admin_user), do: :ok
   def permit(:read, Portal.TrustAnchor, :api_client), do: :ok
+  def permit(:read, Portal.TrustAnchorCertificate, _), do: :ok
 
   # SessionLog permissions
   def permit(:read, Portal.SessionLog, :account_admin_user), do: :ok
