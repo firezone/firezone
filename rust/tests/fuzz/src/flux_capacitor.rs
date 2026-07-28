@@ -8,7 +8,7 @@ use tracing_subscriber::fmt::{format::Writer, time::FormatTime};
 
 /// A device that allows us to travel into the future.
 #[derive(Debug, Clone)]
-pub(crate) struct FluxCapacitor {
+pub struct FluxCapacitor {
     start: Instant,
     now: Arc<Mutex<(Instant, DateTime<Utc>)>>,
 }
@@ -21,7 +21,7 @@ impl FormatTime for FluxCapacitor {
 }
 
 impl FluxCapacitor {
-    pub(crate) fn new(start: Instant, utc_start: DateTime<Utc>) -> Self {
+    pub fn new(start: Instant, utc_start: DateTime<Utc>) -> Self {
         Self {
             start,
             now: Arc::new(Mutex::new((start, utc_start))),
@@ -39,6 +39,10 @@ impl FluxCapacitor {
         let (now, utc_now) = *self.now.lock().unwrap();
 
         T::pick_now(now, utc_now)
+    }
+
+    pub fn now_instant(&self) -> Instant {
+        self.now()
     }
 
     pub(crate) fn small_tick(&self) {

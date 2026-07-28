@@ -1,19 +1,14 @@
 use super::{
-    dns_records::DnsRecords,
-    reference::{PrivateKey, private_key},
-    sim_gateway::SimGateway,
-    sim_net::{ExecMutScope, Host, any_edge, dual_ip_stack, host},
-    strategies::latency,
+    dns_records::DnsRecords, reference::PrivateKey, sim_gateway::SimGateway, sim_net::ExecMutScope,
 };
-use crate::{GatewayState, IpConfig};
 use chrono::{DateTime, Utc};
 use connlib_model::GatewayId;
-use proptest::prelude::*;
 use std::{
     collections::BTreeSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
 };
+use tunnel_proto::{GatewayState, IpConfig};
 
 /// Reference state for a particular gateway.
 #[derive(Debug, Clone)]
@@ -26,6 +21,21 @@ pub struct RefGateway {
 }
 
 impl RefGateway {
+    /// Construct a [`RefGateway`] from generated parts.
+    pub(crate) fn from_parts(
+        key: PrivateKey,
+        tunnel_ip4: Ipv4Addr,
+        tunnel_ip6: Ipv6Addr,
+        site_specific_dns_records: DnsRecords,
+    ) -> Self {
+        Self {
+            key,
+            tunnel_ip4,
+            tunnel_ip6,
+            site_specific_dns_records,
+        }
+    }
+
     /// Initialize the [`GatewayState`].
     ///
     /// This simulates receiving the `init` message from the portal.
@@ -68,39 +78,4 @@ impl ExecMutScope for RefGateway {
     type Guard = ();
 
     fn enter(&self) -> Self::Guard {}
-}
-
-pub(crate) fn ref_gateway_host(
-    tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
-    tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
-    site_specific_dns_records: impl Strategy<Value = DnsRecords>,
-) -> impl Strategy<Value = Host<RefGateway>> {
-    host(
-        dual_ip_stack(),
-        Just(52625),
-        ref_gateway(tunnel_ip4s, tunnel_ip6s, site_specific_dns_records),
-        latency(200), // We assume gateways have a somewhat decent Internet connection.
-        any_edge(),   // Gateways commonly sit behind stateful edges (cloud NAT / LB).
-    )
-}
-
-fn ref_gateway(
-    tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
-    tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
-    site_specific_dns_records: impl Strategy<Value = DnsRecords>,
-) -> impl Strategy<Value = RefGateway> {
-    (
-        private_key(),
-        tunnel_ip4s,
-        tunnel_ip6s,
-        site_specific_dns_records,
-    )
-        .prop_map(
-            move |(key, tunnel_ip4, tunnel_ip6, site_specific_dns_records)| RefGateway {
-                key,
-                tunnel_ip4,
-                tunnel_ip6,
-                site_specific_dns_records,
-            },
-        )
 }

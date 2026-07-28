@@ -5,16 +5,13 @@ mod dns_cache;
 mod dns_resource_nat;
 mod gateway_on_client;
 mod pending_authorizations;
-mod resource;
+pub(crate) mod resource;
 mod routing;
 mod tracked_state;
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
-pub use resource::{
-    CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
-    StaticDevicePoolResource,
-};
+use resource::{InternetResource, Resource, StaticDevicePoolResource};
 
 use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
@@ -30,8 +27,7 @@ use crate::dns::{
 use crate::filter_engine::FilterEngine;
 use crate::messages::IngestToken;
 use crate::messages::{
-    Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
-    client::{DevicePoolMember, FailReason},
+    Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, client::FailReason,
 };
 use crate::peer_store::{Peer, PeerStore};
 use crate::portal_connection::PortalConnection;
@@ -304,10 +300,10 @@ impl ClientState {
     fn static_device_pools(&self) -> impl Iterator<Item = &StaticDevicePoolResource> + '_ {
         self.resources_by_id.values().filter_map(|r| match r {
             Resource::StaticDevicePool(p) => Some(p),
-            Resource::Dns(_)
-            | Resource::Cidr(_)
-            | Resource::Internet(_)
-            | Resource::DynamicDevicePool(_) => None,
+            Resource::Dns(_) => None,
+            Resource::Cidr(_) => None,
+            Resource::Internet(_) => None,
+            Resource::DynamicDevicePool(_) => None,
         })
     }
 
@@ -742,7 +738,9 @@ impl ClientState {
         let result = self.handle_tun_input(packet, now, &mut buffered_transmits);
         self.buffered_transmits = buffered_transmits;
 
-        result
+        result?;
+
+        Ok(())
     }
 
     /// Handles UDP packets received on the network interface.
@@ -1081,13 +1079,22 @@ impl ClientState {
 
         // 1. Buffered packets for resources
         match resource {
-            Resource::Cidr(_) | Resource::Internet(_) => {
+            Resource::Cidr(_) => {
                 for address in resource.addresses() {
                     peer.allow_ip_for_resource(address, rid);
                 }
 
-                // Send the buffered packets, or buffer them again if the connection is not yet
-                // established.
+                for packet in buffered_resource_packets {
+                    if let Err(e) = self.handle_out_of_band_ip_packet(packet, now) {
+                        tracing::debug!(%rid, %gid, "Failed to route buffered resource packet: {e:#}");
+                    }
+                }
+            }
+            Resource::Internet(_) => {
+                for address in resource.addresses() {
+                    peer.allow_ip_for_resource(address, rid);
+                }
+
                 for packet in buffered_resource_packets {
                     if let Err(e) = self.handle_out_of_band_ip_packet(packet, now) {
                         tracing::debug!(%rid, %gid, "Failed to route buffered resource packet: {e:#}");
@@ -1335,7 +1342,8 @@ impl ClientState {
         // A pool's `Direct` authorizations must survive a single member's failure.
         let disconnected_gateway = match self.authorized_resources.get(&resource) {
             Some(AccessPath::Gateway(gid)) => *gid,
-            Some(AccessPath::Direct(_)) | None => return,
+            Some(AccessPath::Direct(_)) => return,
+            None => return,
         };
 
         self.authorized_resources.remove(&resource);
@@ -1353,9 +1361,9 @@ impl ClientState {
                 let prefer_authorized = match self.authorized_resources.get(&resource) {
                     Some(AccessPath::Gateway(g)) if g == left => Ordering::Less,
                     Some(AccessPath::Gateway(g)) if g == right => Ordering::Greater,
-                    Some(AccessPath::Gateway(_)) | Some(AccessPath::Direct(_)) | None => {
-                        Ordering::Equal
-                    }
+                    Some(AccessPath::Gateway(_)) => Ordering::Equal,
+                    Some(AccessPath::Direct(_)) => Ordering::Equal,
+                    None => Ordering::Equal,
                 };
                 let prefer_connected = match (
                     self.gateways.peer_by_id(left),
@@ -2084,12 +2092,16 @@ impl ClientState {
 
         while let Some(event) = self.node.poll_event() {
             match event {
-                snownet::Event::ConnectionFailed(ClientOrGatewayId::Gateway(id))
-                | snownet::Event::ConnectionClosed(ClientOrGatewayId::Gateway(id)) => {
+                snownet::Event::ConnectionFailed(ClientOrGatewayId::Gateway(id)) => {
                     self.cleanup_connected_gateway(&id, now);
                 }
-                snownet::Event::ConnectionFailed(ClientOrGatewayId::Client(id))
-                | snownet::Event::ConnectionClosed(ClientOrGatewayId::Client(id)) => {
+                snownet::Event::ConnectionClosed(ClientOrGatewayId::Gateway(id)) => {
+                    self.cleanup_connected_gateway(&id, now);
+                }
+                snownet::Event::ConnectionFailed(ClientOrGatewayId::Client(id)) => {
+                    self.cleanup_connected_client(&id);
+                }
+                snownet::Event::ConnectionClosed(ClientOrGatewayId::Client(id)) => {
                     self.cleanup_connected_client(&id);
                 }
                 snownet::Event::NewIceCandidate {
@@ -2321,24 +2333,21 @@ impl ClientState {
         self.buffered_dns_queries.pop_front()
     }
 
-    /// Sets a new set of resources.
-    ///
-    /// This function does **not** perform a blanket "clear all and set new resources".
-    /// Instead, it diffs which resources to remove first and then adds the new ones.
-    ///
-    /// Removing a resource interrupts routing for all packets, even if the resource is added back right away because [`GatewayOnClient`] tracks the allowed IPs which has to contain the resource ID.
-    ///
-    /// TODO: Add a test that asserts the above.
-    ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resource`] and check that it did in fact not get deleted.
-    pub fn set_resources<R>(&mut self, new_resources: Vec<R>, now: Instant)
-    where
-        R: TryInto<Resource, Error: std::error::Error>,
-    {
+    /// Replaces the configured resources while retaining unchanged routes.
+    pub fn set_resources(
+        &mut self,
+        new_resources: Vec<crate::messages::client::ResourceDescription>,
+        now: Instant,
+    ) {
         let new_resources = new_resources
             .into_iter()
-            .filter_map(|r| r.try_into().inspect_err(|e| tracing::debug!("{e}")).ok())
+            .filter_map(Resource::from_description)
             .collect::<Vec<_>>();
 
+        self.replace_resources(new_resources, now);
+    }
+
+    fn replace_resources(&mut self, new_resources: Vec<Resource>, now: Instant) {
         let current_resource_ids = self
             .resources_by_id
             .keys()
@@ -2355,7 +2364,7 @@ impl ClientState {
 
         // Second, add all resources.
         for resource in new_resources {
-            self.add_resource(resource, now)
+            self.upsert_resource(resource, now)
         }
 
         self.maybe_update_tun_routes();
@@ -2364,20 +2373,28 @@ impl ClientState {
 
     pub fn add_resource(
         &mut self,
-        new_resource: impl TryInto<Resource, Error: std::error::Error>,
+        new_resource: crate::messages::client::ResourceDescription,
         now: Instant,
     ) {
-        let new_resource = match new_resource.try_into() {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::debug!("{e}");
-                return;
-            }
+        let Some(new_resource) = Resource::from_description(new_resource) else {
+            return;
         };
 
+        self.upsert_resource(new_resource, now);
+    }
+
+    fn upsert_resource(&mut self, new_resource: Resource, now: Instant) {
         // Static device pools are diffed in-place: a single member changing
         // shouldn't churn the entire pool's routing table entries.
         if let Resource::StaticDevicePool(new_pool) = new_resource {
+            if self
+                .resources_by_id
+                .get(&new_pool.id)
+                .is_some_and(|resource| !matches!(resource, Resource::StaticDevicePool(_)))
+            {
+                self.remove_resource(new_pool.id, now);
+            }
+
             self.upsert_static_device_pool(new_pool);
             return;
         }
@@ -2435,15 +2452,20 @@ impl ClientState {
 
         let old_pool = self.resources_by_id.get(&pool_id).and_then(|r| match r {
             Resource::StaticDevicePool(p) => Some(p.clone()),
-            Resource::Dns(_)
-            | Resource::Cidr(_)
-            | Resource::Internet(_)
-            | Resource::DynamicDevicePool(_) => None,
+            Resource::Dns(_) => None,
+            Resource::Cidr(_) => None,
+            Resource::Internet(_) => None,
+            Resource::DynamicDevicePool(_) => None,
         });
 
-        let old_members: HashMap<ClientId, &DevicePoolMember> = old_pool
+        let old_members = old_pool
             .as_ref()
-            .map(|p| p.devices.iter().map(|d| (d.id, d)).collect())
+            .map(|p| {
+                p.devices
+                    .iter()
+                    .map(|d| (d.id, d))
+                    .collect::<HashMap<_, _>>()
+            })
             .unwrap_or_default();
         let new_members = new_pool
             .devices
@@ -2616,10 +2638,10 @@ fn internet_resource(
     resources_by_id: &BTreeMap<ResourceId, Resource>,
 ) -> Option<&InternetResource> {
     resources_by_id.values().find_map(|r| match r {
-        Resource::Dns(_)
-        | Resource::Cidr(_)
-        | Resource::StaticDevicePool(_)
-        | Resource::DynamicDevicePool(_) => None,
+        Resource::Dns(_) => None,
+        Resource::Cidr(_) => None,
+        Resource::StaticDevicePool(_) => None,
+        Resource::DynamicDevicePool(_) => None,
         Resource::Internet(internet_resource) => Some(internet_resource),
     })
 }
@@ -2726,9 +2748,8 @@ fn encapsulate_or_buffer(
     match node.encapsulate(pid, &packet, now, provider) {
         Ok(Some(info)) => {
             flow_tracker::record_transmit(info.src, info.dst);
-            Ok(())
         }
-        Ok(None) => Ok(()),
+        Ok(None) => {}
         Err(e) if e.any_is::<snownet::StillConnecting>() => {
             pending_packets
                 .entry(pid)
@@ -2739,13 +2760,14 @@ fn encapsulate_or_buffer(
                     )
                 })
                 .push(packet);
-            Ok(())
         }
         Err(e) if e.any_is::<snownet::UnknownConnection>() => {
-            Err(e.context(UnroutablePacket::not_connected(&packet)))
+            return Err(e.context(UnroutablePacket::not_connected(&packet)));
         }
-        Err(e) => Err(e),
-    }
+        Err(e) => return Err(e),
+    };
+
+    Ok(())
 }
 
 fn gateway_by_resource_mut<'p>(
@@ -3023,7 +3045,7 @@ mod tests {
     }
 }
 
-#[cfg(all(test, feature = "proptest"))]
+#[cfg(test)]
 mod proptests {
     use std::collections::HashSet;
 
@@ -3041,8 +3063,8 @@ mod proptests {
     ) {
         let mut client_state = ClientState::for_test();
 
-        client_state.add_resource(Resource::Cidr(resource1.clone()), Instant::now());
-        client_state.add_resource(Resource::Cidr(resource2.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Cidr(resource1.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Cidr(resource2.clone()), Instant::now());
 
         assert_eq!(
             hashset(client_state.routes()),
@@ -3058,8 +3080,8 @@ mod proptests {
     ) {
         let mut client_state = ClientState::for_test();
 
-        client_state.add_resource(Resource::Cidr(resource1.clone()), Instant::now());
-        client_state.add_resource(Resource::Dns(resource2.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Cidr(resource1.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Dns(resource2.clone()), Instant::now());
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -3069,7 +3091,7 @@ mod proptests {
             ])
         );
 
-        client_state.add_resource(Resource::Cidr(resource3.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Cidr(resource3.clone()), Instant::now());
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -3087,14 +3109,14 @@ mod proptests {
         #[strategy(any_ip_network(8))] new_address: IpNetwork,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(Resource::Cidr(resource.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Cidr(resource.clone()), Instant::now());
 
         let updated_resource = CidrResource {
             address: new_address,
             ..resource
         };
 
-        client_state.add_resource(Resource::Cidr(updated_resource.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Cidr(updated_resource.clone()), Instant::now());
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -3109,44 +3131,13 @@ mod proptests {
     }
 
     #[test_strategy::proptest]
-    fn adding_cidr_resource_with_same_id_as_dns_resource_replaces_dns_resource(
-        #[strategy(dns_resource())] resource: DnsResource,
-        #[strategy(any_ip_network(8))] address: IpNetwork,
-    ) {
-        let mut client_state = ClientState::for_test();
-        client_state.add_resource(Resource::Dns(resource.clone()), Instant::now());
-
-        let dns_as_cidr_resource = CidrResource {
-            address,
-            id: resource.id,
-            name: resource.name,
-            address_description: resource.address_description,
-            sites: resource.sites,
-            filters: resource.filters,
-        };
-
-        client_state.add_resource(Resource::Cidr(dns_as_cidr_resource.clone()), Instant::now());
-
-        assert_eq!(
-            hashset(client_state.resources()),
-            hashset([ResourceView::Cidr(
-                dns_as_cidr_resource.with_status(ResourceStatus::Unknown)
-            )])
-        );
-        assert_eq!(
-            hashset(client_state.routes()),
-            expected_routes(vec![address])
-        );
-    }
-
-    #[test_strategy::proptest]
     fn resources_can_be_removed(
         #[strategy(dns_resource())] dns_resource: DnsResource,
         #[strategy(cidr_resource())] cidr_resource: CidrResource,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(Resource::Dns(dns_resource.clone()), Instant::now());
-        client_state.add_resource(Resource::Cidr(cidr_resource.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Dns(dns_resource.clone()), Instant::now());
+        client_state.upsert_resource(Resource::Cidr(cidr_resource.clone()), Instant::now());
 
         client_state.remove_resource(dns_resource.id, Instant::now());
 
@@ -3175,10 +3166,10 @@ mod proptests {
         #[strategy(cidr_resource())] cidr_resource2: CidrResource,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(Resource::Dns(dns_resource1), Instant::now());
-        client_state.add_resource(Resource::Cidr(cidr_resource1), Instant::now());
+        client_state.upsert_resource(Resource::Dns(dns_resource1), Instant::now());
+        client_state.upsert_resource(Resource::Cidr(cidr_resource1), Instant::now());
 
-        client_state.set_resources(
+        client_state.replace_resources(
             vec![
                 Resource::Dns(dns_resource2.clone()),
                 Resource::Cidr(cidr_resource2.clone()),
@@ -3208,7 +3199,7 @@ mod proptests {
         let mut client_state = ClientState::for_test();
 
         for r in resources_online.iter().chain(resources_unknown.iter()) {
-            client_state.add_resource(r.clone(), Instant::now())
+            client_state.upsert_resource(r.clone(), Instant::now())
         }
 
         let first_resource = resources_online.first().unwrap();
@@ -3248,7 +3239,7 @@ mod proptests {
     ) {
         let mut client_state = ClientState::for_test();
         for r in &resources {
-            client_state.add_resource(r.clone(), Instant::now());
+            client_state.upsert_resource(r.clone(), Instant::now());
         }
         let first_resources = resources.first().unwrap();
         client_state
@@ -3284,9 +3275,9 @@ mod proptests {
         #[strategy(resource())] single_site_resource: Resource,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(single_site_resource.clone(), Instant::now());
+        client_state.upsert_resource(single_site_resource.clone(), Instant::now());
         for r in &multi_site_resources {
-            client_state.add_resource(r.clone(), Instant::now());
+            client_state.upsert_resource(r.clone(), Instant::now());
         }
 
         client_state.set_resource_offline(single_site_resource.id(), Instant::now());

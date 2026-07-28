@@ -1,11 +1,6 @@
-// A shared toolbox of proptest strategies for connlib's domain types. Different
-// tests use different subsets, so not every strategy is exercised in every
-// build.
-#![allow(dead_code)]
-// Strategy helpers are test-only code; `unwrap` is idiomatic here.
 #![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 
-use connlib_model::{ClientId, GatewayId, IpStack, RelayId, ResourceId, Site, SiteId};
+use connlib_model::{ClientId, GatewayId, IpStack, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{
@@ -18,9 +13,7 @@ use std::{
     ops::Range,
 };
 
-use crate::client::{
-    CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
-};
+use crate::client::resource::{CidrResource, DnsResource, Resource};
 use crate::messages::{Filter, PortRange};
 
 pub fn resource(
@@ -84,82 +77,8 @@ pub fn cidr_resource(
         )
 }
 
-pub fn internet_resource(
-    sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = InternetResource> {
-    (resource_id(), sites).prop_map(move |(id, sites)| InternetResource {
-        name: "Internet Resource".to_string(),
-        id,
-        sites,
-    })
-}
-
-pub fn dynamic_device_pool_resource() -> impl Strategy<Value = DynamicDevicePoolResource> {
-    (resource_id(), resource_name(), domain_name(2..4)).prop_map(|(id, name, base_domain)| {
-        DynamicDevicePoolResource {
-            id,
-            name,
-            address: format!("*.{base_domain}"),
-        }
-    })
-}
-
-/// Number of online members and synthetic ClientIds for offline members in a sampled
-/// static device pool.
-///
-/// This is a "plan" rather than a fully-realized resource because at sample-time we don't
-/// yet know the IPs of the test clients. The plan gets materialized into a real
-/// `StaticDevicePoolResource` once the tunnel state-machine test portal has
-/// assigned tunnel IPs to clients.
-#[derive(Clone, Debug)]
-pub struct StaticDevicePoolPlan {
-    pub id: ResourceId,
-    pub name: String,
-    pub filters: Vec<Filter>,
-    pub n_online_members: usize,
-    /// Synthetic [`ClientId`]s for pool members that are not part of the test's
-    /// online clients — exercises the "device unknown / not connected" path.
-    pub offline_members: Vec<ClientId>,
-}
-
-pub fn static_device_pool_resource_plan() -> impl Strategy<Value = StaticDevicePoolPlan> {
-    (
-        resource_id(),
-        resource_name(),
-        filters(),
-        0usize..=2,
-        collection::vec(client_id(), 0..=2),
-    )
-        .prop_map(|(id, name, filters, n_online_members, offline_members)| {
-            StaticDevicePoolPlan {
-                id,
-                name,
-                filters,
-                n_online_members,
-                offline_members,
-            }
-        })
-}
-
 pub fn filters() -> impl Strategy<Value = Vec<Filter>> {
     collection::vec(filter(), 0..3)
-}
-
-fn filter() -> impl Strategy<Value = Filter> {
-    prop_oneof![
-        Just(Filter::Icmp),
-        port_range().prop_map(Filter::Udp),
-        port_range().prop_map(Filter::Tcp)
-    ]
-}
-
-fn port_range() -> impl Strategy<Value = PortRange> {
-    any::<u16>().prop_flat_map(|s| {
-        (s..=u16::MAX).prop_map(move |d| PortRange {
-            port_range_start: s,
-            port_range_end: d,
-        })
-    })
 }
 
 pub fn address_description() -> impl Strategy<Value = Option<String>> {
@@ -195,10 +114,6 @@ pub fn client_id() -> impl Strategy<Value = ClientId> {
     any::<u128>().prop_map(ClientId::from_u128).no_shrink()
 }
 
-pub fn relay_id() -> impl Strategy<Value = RelayId> {
-    any::<u128>().prop_map(RelayId::from_u128).no_shrink()
-}
-
 pub fn site_id() -> impl Strategy<Value = SiteId> + Clone {
     any::<u128>().prop_map(SiteId::from_u128).no_shrink()
 }
@@ -221,7 +136,6 @@ pub fn domain_name(depth: Range<usize>) -> impl Strategy<Value = DomainName> {
         .prop_map(|d| d.parse().unwrap())
 }
 
-/// A strategy of IP networks, configurable by the size of the host mask.
 pub fn any_ip_network(host_mask_bits: usize) -> impl Strategy<Value = IpNetwork> {
     any::<IpAddr>().prop_flat_map(move |ip| ip_network(ip, host_mask_bits))
 }
@@ -241,6 +155,40 @@ pub fn ip_network(network: IpAddr, host_mask_bits: usize) -> impl Strategy<Value
     })
 }
 
+pub fn host_v4(ip: Ipv4Network) -> impl Strategy<Value = Ipv4Addr> + Clone {
+    (0u32..=number_of_hosts_ipv4(ip.netmask()))
+        .prop_map(move |n| (u32::from(ip.network_address()) + n).into())
+}
+
+pub fn host_v6(ip: Ipv6Network) -> impl Strategy<Value = Ipv6Addr> + Clone {
+    (0u128..=number_of_hosts_ipv6(ip.netmask()))
+        .prop_map(move |n| (u128::from(ip.network_address()) + n).into())
+}
+
+pub fn host(ip: IpNetwork) -> impl Strategy<Value = IpAddr> {
+    match ip {
+        IpNetwork::V4(ip) => host_v4(ip).prop_map_into().boxed(),
+        IpNetwork::V6(ip) => host_v6(ip).prop_map_into().boxed(),
+    }
+}
+
+fn filter() -> impl Strategy<Value = Filter> {
+    prop_oneof![
+        Just(Filter::Icmp),
+        port_range().prop_map(Filter::Udp),
+        port_range().prop_map(Filter::Tcp)
+    ]
+}
+
+fn port_range() -> impl Strategy<Value = PortRange> {
+    any::<u16>().prop_flat_map(|s| {
+        (s..=u16::MAX).prop_map(move |d| PortRange {
+            port_range_start: s,
+            port_range_end: d,
+        })
+    })
+}
+
 fn number_of_hosts_ipv4(mask: u8) -> u32 {
     2u32.checked_pow(32 - mask as u32)
         .map(|i| i - 1)
@@ -252,27 +200,4 @@ fn number_of_hosts_ipv6(mask: u8) -> u128 {
         .checked_pow(128 - mask as u32)
         .map(|i| i - 1)
         .unwrap_or(u128::MAX)
-}
-
-// Note: for these tests we don't really care that it's a valid host
-// we only need a host.
-// If we filter valid hosts it generates too many rejects
-pub fn host_v4(ip: Ipv4Network) -> impl Strategy<Value = Ipv4Addr> + Clone {
-    (0u32..=number_of_hosts_ipv4(ip.netmask()))
-        .prop_map(move |n| (u32::from(ip.network_address()) + n).into())
-}
-
-// Note: for these tests we don't really care that it's a valid host
-// we only need a host.
-// If we filter valid hosts it generates too many rejects
-pub fn host_v6(ip: Ipv6Network) -> impl Strategy<Value = Ipv6Addr> + Clone {
-    (0u128..=number_of_hosts_ipv6(ip.netmask()))
-        .prop_map(move |n| (u128::from(ip.network_address()) + n).into())
-}
-
-pub fn host(ip: IpNetwork) -> impl Strategy<Value = IpAddr> {
-    match ip {
-        IpNetwork::V4(ip) => host_v4(ip).prop_map_into().boxed(),
-        IpNetwork::V6(ip) => host_v6(ip).prop_map_into().boxed(),
-    }
 }

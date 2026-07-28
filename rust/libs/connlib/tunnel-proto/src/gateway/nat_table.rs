@@ -298,19 +298,20 @@ impl IcmpErrorPrototype {
             .translate_destination(self.inside_dst, self.inside_proto)
             .context("Failed to translate unroutable packet within ICMP error")?;
 
-        // Second, generate an ICMP error that originates from the originally addressed Resource.
-        match self.inside_dst {
+        let packet = match self.inside_dst {
             IpAddr::V4(inside_dst) => {
                 let icmp_type = self.icmp_error.into_icmp_v4_type()?;
 
-                ip_packet::make::icmpv4_packet(inside_dst, dst_v4, 20, icmp_type, &original_packet)
+                ip_packet::make::icmpv4_packet(inside_dst, dst_v4, 20, icmp_type, &original_packet)?
             }
             IpAddr::V6(inside_dst) => {
                 let icmp_type = self.icmp_error.into_icmp_v6_type()?;
 
-                ip_packet::make::icmpv6_packet(inside_dst, dst_v6, 20, icmp_type, &original_packet)
+                ip_packet::make::icmpv6_packet(inside_dst, dst_v6, 20, icmp_type, &original_packet)?
             }
-        }
+        };
+
+        Ok(packet)
     }
 
     pub fn error(&self) -> &IcmpError {
@@ -334,7 +335,7 @@ pub enum TranslateIncomingResult {
     NoNatSession,
 }
 
-#[cfg(all(test, feature = "proptest"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use ip_packet::{IpPacket, make::TcpFlags, proptest::*};
@@ -478,9 +479,7 @@ mod tests {
             TranslateIncomingResult::Ok { .. } => {}
             result @ (TranslateIncomingResult::NoNatSession
             | TranslateIncomingResult::ExpiredNatSession
-            | TranslateIncomingResult::IcmpError(_)) => {
-                panic!("Wrong result: {result:?}")
-            }
+            | TranslateIncomingResult::IcmpError(_)) => panic!("Wrong result: {result:?}"),
         };
 
         now += Duration::from_secs(1);
@@ -494,9 +493,7 @@ mod tests {
             TranslateIncomingResult::ExpiredNatSession => {}
             result @ (TranslateIncomingResult::NoNatSession
             | TranslateIncomingResult::Ok { .. }
-            | TranslateIncomingResult::IcmpError(_)) => {
-                panic!("Wrong result: {result:?}")
-            }
+            | TranslateIncomingResult::IcmpError(_)) => panic!("Wrong result: {result:?}"),
         };
     }
 }

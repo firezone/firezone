@@ -6,7 +6,6 @@ use super::{
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
 };
-use crate::GatewayState;
 use anyhow::{Result, bail};
 use connlib_model::{GatewayId, RelayId};
 use dns_types::DomainName;
@@ -18,6 +17,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
+use tunnel_proto::GatewayState;
 
 /// Simulation state for a particular client.
 pub(crate) struct SimGateway {
@@ -37,7 +37,7 @@ pub(crate) struct SimGateway {
     udp_dns_server_resources: BTreeMap<SocketAddr, UdpDnsServerResource>,
     tcp_dns_server_resources: BTreeMap<SocketAddr, TcpDnsServerResource>,
 
-    tcp_resources: BTreeMap<SocketAddr, crate::tests::tcp::Server>,
+    tcp_resources: BTreeMap<SocketAddr, crate::tcp::Server>,
 
     /// Collects datagrams encapsulated via [`GatewayState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
@@ -63,7 +63,7 @@ impl SimGateway {
             tcp_resources: tcp_resources
                 .into_iter()
                 .map(|address| {
-                    let mut server = crate::tests::tcp::Server::new(now);
+                    let mut server = crate::tcp::Server::new(now);
                     if let Err(e) = server.listen(address) {
                         tracing::error!(%address, "Failed to listen on address: {e}")
                     }
@@ -174,7 +174,6 @@ impl SimGateway {
     pub(crate) fn deploy_new_dns_servers(
         &mut self,
         dns_servers: impl IntoIterator<Item = SocketAddr>,
-        now: Instant,
     ) {
         self.udp_dns_server_resources.clear();
         self.tcp_dns_server_resources.clear();
@@ -199,7 +198,7 @@ impl SimGateway {
             self.udp_dns_server_resources
                 .insert(server, UdpDnsServerResource::default());
             self.tcp_dns_server_resources
-                .insert(server, TcpDnsServerResource::new(server, now));
+                .insert(server, TcpDnsServerResource::new(server));
         }
     }
 
@@ -268,7 +267,7 @@ impl SimGateway {
 
             // NOTE: we can make this assumption because port 53 is excluded from non-dns query packets
             if let Some(server) = self.tcp_dns_server_resources.get_mut(&socket) {
-                server.handle_input(packet);
+                server.handle_input(packet, now);
                 return None;
             }
         }
@@ -346,12 +345,11 @@ impl ExecMutScope for SimGateway {
 fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<IpPacket> {
     use ip_packet::{icmpv4, icmpv6};
 
-    // We are sending a reply, so flip `src` and `dst`.
     let src = packet.destination();
     let dst = packet.source();
-    let payload = packet.packet(); // The original packet goes in the ICMP error payload.
+    let payload = packet.packet();
 
-    match (src, dst) {
+    let reply = match (src, dst) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let icmp_type = match error {
                 IcmpError::Network => {
@@ -373,7 +371,7 @@ fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<IpPacket> {
                 }
             };
 
-            ip_packet::make::icmpv4_packet(src, dst, 20, icmp_type, payload)
+            ip_packet::make::icmpv4_packet(src, dst, 20, icmp_type, payload)?
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let icmp_type = match error {
@@ -392,10 +390,11 @@ fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<IpPacket> {
                 }
             };
 
-            ip_packet::make::icmpv6_packet(src, dst, 20, icmp_type, payload)
+            ip_packet::make::icmpv6_packet(src, dst, 20, icmp_type, payload)?
         }
-        (IpAddr::V6(_), IpAddr::V4(_)) | (IpAddr::V4(_), IpAddr::V6(_)) => {
-            bail!("Invalid IP combination")
-        }
-    }
+        (IpAddr::V6(_), IpAddr::V4(_)) => bail!("Invalid IP combination"),
+        (IpAddr::V4(_), IpAddr::V6(_)) => bail!("Invalid IP combination"),
+    };
+
+    Ok(reply)
 }

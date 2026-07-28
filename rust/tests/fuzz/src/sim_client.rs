@@ -6,10 +6,6 @@ use super::{
     sim_relay::{SimRelay, map_explode},
     transition::{DPort, DnsTransport, Identifier, SPort, Seq},
 };
-use crate::{
-    ClientState, DnsMapping, DnsResourceRecord, dns,
-    malicious_behaviour::{Guard, MaliciousBehaviour},
-};
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceId, ResourceStatus};
 use dns_types::{DomainName, Query, RecordData, RecordType};
@@ -20,6 +16,10 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
+};
+use tunnel_proto::{
+    ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
+    MaliciousBehaviour, MaliciousBehaviourGuard as Guard, dns,
 };
 
 /// Simulation state for a particular client.
@@ -73,10 +73,10 @@ pub(crate) struct SimClient {
     pub(crate) tcp_dns_client: dns_over_tcp::Client,
 
     /// TCP connections to resources.
-    pub(crate) tcp_client: crate::tests::tcp::Client,
+    pub(crate) tcp_client: crate::tcp::Client,
     pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IcmpError>,
 
-    /// Collects datagrams encapsulated via [`crate::ClientState::handle_tun_input`].
+    /// Collects datagrams encapsulated via [`ClientState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
 }
 
@@ -107,7 +107,7 @@ impl SimClient {
             search_domain: Default::default(),
             resource_status: Default::default(),
             tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(15), [0u8; 32]),
-            tcp_client: crate::tests::tcp::Client::new(now),
+            tcp_client: crate::tcp::Client::new(now),
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
             transmit_buffer: snownet::TransmitBuffer::new(),
@@ -443,6 +443,28 @@ impl SimClient {
             return None;
         }
 
+        // Silently ignore TCP packets on port 53 originating from connlib's DNS
+        // sentinel range. The TCP-DNS client only `accepts` packets matching a
+        // currently-open socket, so a teardown (e.g. RST) that arrives after the
+        // query's socket has already been closed — or after the sentinel mapping
+        // changed (`UpdateSystemDnsServers` / `UpdateUpstream*`) — would otherwise
+        // fall through to the `Unhandled packet` error below. This is connlib's
+        // DNS infrastructure closing a connection, not application traffic the
+        // reference models, so it must not fail the test. We match the fixed
+        // sentinel *range* rather than the current mapping precisely because the
+        // mapping may no longer contain the (old) sentinel by the time the RST
+        // arrives.
+        if let Some(tcp) = packet.as_tcp()
+            && tcp.source_port() == 53
+            && match packet.source() {
+                IpAddr::V4(v4) => DNS_SENTINELS_V4.contains(v4),
+                IpAddr::V6(v6) => DNS_SENTINELS_V6.contains(v6),
+            }
+        {
+            tracing::debug!(?packet, "Ignoring TCP teardown from DNS sentinel");
+            return None;
+        }
+
         tracing::error!(?packet, "Unhandled packet");
 
         None
@@ -526,6 +548,7 @@ impl SimClient {
         self.sent_tcp_dns_queries.clear();
         self.received_tcp_dns_responses.clear();
         self.tcp_client.reset();
+        self.failed_tcp_packets.clear();
     }
 }
 

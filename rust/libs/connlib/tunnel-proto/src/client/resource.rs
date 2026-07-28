@@ -1,6 +1,6 @@
 //! Internal model of resources as used by connlib's client code.
 
-use std::{collections::BTreeSet, fmt};
+use std::collections::BTreeSet;
 
 use connlib_model::{
     CidrResourceView, DnsResourceView, InternetResourceView, IpStack, ResourceId, ResourceStatus,
@@ -156,32 +156,13 @@ impl Resource {
         }
     }
 
-    pub fn into_dns(self) -> Option<DnsResource> {
-        match self {
-            Resource::Dns(d) => Some(d),
-            Resource::Cidr(_)
-            | Resource::Internet(_)
-            | Resource::StaticDevicePool(_)
-            | Resource::DynamicDevicePool(_) => None,
-        }
-    }
-
-    pub fn into_cidr(self) -> Option<CidrResource> {
-        match self {
-            Resource::Cidr(c) => Some(c),
-            Resource::Dns(_)
-            | Resource::Internet(_)
-            | Resource::StaticDevicePool(_)
-            | Resource::DynamicDevicePool(_) => None,
-        }
-    }
-
     pub fn address_string(&self) -> Option<String> {
         match self {
             Resource::Dns(d) => Some(d.address.clone()),
             Resource::Cidr(c) => Some(c.address.to_string()),
             Resource::DynamicDevicePool(r) => Some(r.address.clone()),
-            Resource::Internet(_) | Resource::StaticDevicePool(_) => None,
+            Resource::Internet(_) => None,
+            Resource::StaticDevicePool(_) => None,
         }
     }
 
@@ -208,7 +189,8 @@ impl Resource {
             Resource::Dns(r) => BTreeSet::from_iter(r.sites.iter()),
             Resource::Cidr(r) => BTreeSet::from_iter(r.sites.iter()),
             Resource::Internet(r) => BTreeSet::from_iter(r.sites.iter()),
-            Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => BTreeSet::new(),
+            Resource::StaticDevicePool(_) => BTreeSet::new(),
+            Resource::DynamicDevicePool(_) => BTreeSet::new(),
         }
     }
 
@@ -217,18 +199,12 @@ impl Resource {
             Resource::Dns(r) => &r.filters,
             Resource::Cidr(r) => &r.filters,
             Resource::StaticDevicePool(r) => &r.filters,
-            Resource::Internet(_) | Resource::DynamicDevicePool(_) => &[],
+            Resource::Internet(_) => &[],
+            Resource::DynamicDevicePool(_) => &[],
         }
     }
 
-    /// Returns the [`Site`] of a [`Resource`] if there is exactly one site.
-    pub fn site(
-        &self,
-    ) -> Result<&Site, itertools::ExactlyOneError<impl Iterator<Item = &Site> + fmt::Debug>> {
-        self.sites().into_iter().exactly_one()
-    }
-
-    /// What the GUI clients should show as the user-friendly display name, e.g. `Firezone GitHub`
+    /// Returns the user-facing display name.
     pub fn name(&self) -> &str {
         match self {
             Resource::Dns(r) => &r.name,
@@ -236,16 +212,6 @@ impl Resource {
             Resource::Internet(_) => "Internet",
             Resource::StaticDevicePool(r) => &r.name,
             Resource::DynamicDevicePool(r) => &r.name,
-        }
-    }
-
-    pub fn address_description(&self) -> Option<&str> {
-        match self {
-            Resource::Dns(r) => r.address_description.as_deref(),
-            Resource::Cidr(r) => r.address_description.as_deref(),
-            Resource::Internet(_)
-            | Resource::StaticDevicePool(_)
-            | Resource::DynamicDevicePool(_) => None,
         }
     }
 
@@ -281,9 +247,9 @@ impl Resource {
 
     pub fn addresses(&self) -> Vec<IpNetwork> {
         match self {
-            Resource::Dns(_) | Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => {
-                vec![]
-            }
+            Resource::Dns(_) => vec![],
+            Resource::StaticDevicePool(_) => vec![],
+            Resource::DynamicDevicePool(_) => vec![],
             Resource::Cidr(c) => vec![c.address],
             Resource::Internet(_) => vec![
                 Ipv4Network::DEFAULT_ROUTE.into(),
@@ -300,52 +266,11 @@ impl Resource {
             Resource::Dns(r) => Some(ResourceView::Dns(r.with_status(status))),
             Resource::Cidr(r) => Some(ResourceView::Cidr(r.with_status(status))),
             Resource::Internet(r) => Some(ResourceView::Internet(r.with_status(status))),
-            Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => None,
-        }
-    }
-
-    pub fn with_new_site(self, site: Site) -> Self {
-        match self {
-            Resource::Dns(r) => Self::Dns(DnsResource {
-                sites: vec![site],
-                ..r
-            }),
-            Resource::Cidr(r) => Self::Cidr(CidrResource {
-                sites: vec![site],
-                ..r
-            }),
-            Resource::Internet(r) => Self::Internet(InternetResource {
-                sites: vec![site],
-                ..r
-            }),
-            Resource::StaticDevicePool(r) => Self::StaticDevicePool(r),
-            Resource::DynamicDevicePool(r) => Self::DynamicDevicePool(r),
-        }
-    }
-
-    pub fn with_new_filters(self, filters: Vec<Filter>) -> Self {
-        match self {
-            Resource::Dns(r) => Self::Dns(DnsResource { filters, ..r }),
-            Resource::Cidr(r) => Self::Cidr(CidrResource { filters, ..r }),
-            Resource::StaticDevicePool(r) => {
-                Self::StaticDevicePool(StaticDevicePoolResource { filters, ..r })
-            }
-            Resource::Internet(_) | Resource::DynamicDevicePool(_) => self,
+            Resource::StaticDevicePool(_) => None,
+            Resource::DynamicDevicePool(_) => None,
         }
     }
 }
-
-impl TryFrom<ResourceDescription> for Resource {
-    type Error = UnknownResourceType;
-
-    fn try_from(value: ResourceDescription) -> Result<Self, Self::Error> {
-        Self::from_description(value).ok_or(UnknownResourceType)
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("Unknown resource type")]
-pub struct UnknownResourceType;
 
 impl CidrResource {
     pub fn from_description(resource: ResourceDescriptionCidr) -> Self {

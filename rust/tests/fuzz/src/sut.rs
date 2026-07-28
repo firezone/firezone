@@ -7,14 +7,10 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::transition::{Destination, DnsQuery};
-use crate::client;
-use crate::dns::is_subdomain;
-use crate::messages::gateway::Client;
-use crate::messages::{IceCredentials, Key, SecretKey};
-use crate::tests::assertions::*;
-use crate::tests::flux_capacitor::FluxCapacitor;
-use crate::tests::transition::Transition;
-use crate::{ClientEvent, GatewayEvent, dns, messages::Interface};
+use crate::assertions::*;
+use crate::flux_capacitor::FluxCapacitor;
+use crate::resource as client;
+use crate::transition::Transition;
 use bufferpool::BufferPool;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
@@ -33,11 +29,15 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing::debug_span;
+use tunnel_proto::dns::is_subdomain;
+use tunnel_proto::messages::gateway::Client;
+use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
+use tunnel_proto::{ClientEvent, GatewayEvent, dns, messages::Interface};
 
 /// The actual system-under-test.
 ///
-/// [`proptest`] manipulates this using [`Transition`]s and we assert it against [`ReferenceState`].
-pub(crate) struct TunnelTest {
+/// The fuzzer manipulates this using [`Transition`]s and we assert it against [`ReferenceState`].
+pub struct TunnelTest {
     flux_capacitor: FluxCapacitor,
 
     clients: BTreeMap<ClientId, Host<SimClient>>,
@@ -55,7 +55,7 @@ pub(crate) struct TunnelTest {
 
 impl TunnelTest {
     // Initialize the system under test from our reference state.
-    pub(crate) fn init_test(ref_state: &ReferenceState, flux_capacitor: FluxCapacitor) -> Self {
+    pub fn init_test(ref_state: &ReferenceState, flux_capacitor: FluxCapacitor) -> Self {
         // Construct client, gateway and relay from the initial state.
         let mut clients = ref_state
             .clients
@@ -132,8 +132,7 @@ impl TunnelTest {
         for gateway in gateways.values_mut() {
             let upstream_do53_servers = upstream_do53_servers.clone();
 
-            gateway
-                .exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers, flux_capacitor.now()))
+            gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
         }
 
         let mut this = Self {
@@ -153,11 +152,7 @@ impl TunnelTest {
     }
 
     /// Apply a generated state transition to our system under test.
-    pub(crate) fn apply(
-        mut state: Self,
-        ref_state: &ReferenceState,
-        transition: Transition,
-    ) -> Self {
+    pub fn apply(mut state: Self, ref_state: &ReferenceState, transition: Transition) -> Self {
         let mut buffered_transmits = BufferedTransmits::default();
         let now = state.flux_capacitor.now();
         let utc_now = state.flux_capacitor.now();
@@ -184,7 +179,7 @@ impl TunnelTest {
                             | client::Resource::DynamicDevicePool(_) => {}
                         }
 
-                        c.sut.add_resource(resource.clone(), now);
+                        c.sut.add_resource(resource.clone().into_description(), now);
                     });
                 }
             }
@@ -206,14 +201,20 @@ impl TunnelTest {
                         gateway
                             .exec_mut(|g| g.sut.remove_access(client_id, &new_resource.id(), now))
                     }
-                    client.exec_mut(|c| c.sut.add_resource(new_resource.clone(), now));
+                    client.exec_mut(|c| {
+                        c.sut
+                            .add_resource(new_resource.clone().into_description(), now)
+                    });
                 }
             }
             Transition::MoveResourceToNewSite { resource, new_site } => {
                 let new_resource = resource.with_new_site(new_site);
 
                 for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.sut.add_resource(new_resource.clone(), now));
+                    client.exec_mut(|c| {
+                        c.sut
+                            .add_resource(new_resource.clone().into_description(), now)
+                    });
                 }
             }
             Transition::ChangeFiltersOfResource {
@@ -223,7 +224,38 @@ impl TunnelTest {
                 let new_resource = resource.with_new_filters(new_filters);
 
                 for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.sut.add_resource(new_resource.clone(), now));
+                    client.exec_mut(|c| {
+                        c.sut
+                            .add_resource(new_resource.clone().into_description(), now)
+                    });
+                }
+            }
+            Transition::ChangeResourceType {
+                old_resource,
+                new_resource,
+            } => {
+                debug_assert_eq!(old_resource.id(), new_resource.id());
+
+                for (client_id, client) in &mut state.clients {
+                    for gateway in state.gateways.values_mut() {
+                        gateway.exec_mut(|gateway| {
+                            gateway
+                                .sut
+                                .remove_access(client_id, &old_resource.id(), now)
+                        });
+                    }
+
+                    client.exec_mut(|client| {
+                        if let client::Resource::Dns(resource) = &new_resource {
+                            client
+                                .dns_records
+                                .retain(|domain, _| !is_subdomain(domain, &resource.address));
+                        }
+
+                        client
+                            .sut
+                            .add_resource(new_resource.clone().into_description(), now);
+                    });
                 }
             }
             Transition::UpdateStaticDevicePool {
@@ -237,11 +269,11 @@ impl TunnelTest {
                         .into_iter()
                         .find_map(|r| match r {
                             client::Resource::StaticDevicePool(p) if p.id == pool_id => Some(p),
-                            client::Resource::Dns(_)
-                            | client::Resource::Cidr(_)
-                            | client::Resource::Internet(_)
-                            | client::Resource::DynamicDevicePool(_)
-                            | client::Resource::StaticDevicePool(_) => None,
+                            client::Resource::Dns(_) => None,
+                            client::Resource::Cidr(_) => None,
+                            client::Resource::Internet(_) => None,
+                            client::Resource::DynamicDevicePool(_) => None,
+                            client::Resource::StaticDevicePool(_) => None,
                         })
                 else {
                     panic!("UpdateStaticDevicePool for unknown pool {pool_id}");
@@ -254,7 +286,8 @@ impl TunnelTest {
                     });
 
                 for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.sut.add_resource(resource.clone(), now));
+                    client
+                        .exec_mut(|c| c.sut.add_resource(resource.clone().into_description(), now));
                 }
             }
             Transition::RemoveResource(rid) => {
@@ -281,6 +314,7 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
+                expected_route: _,
                 seq,
                 identifier,
                 payload,
@@ -306,6 +340,7 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
+                expected_route: _,
                 sport,
                 dport,
                 payload,
@@ -325,6 +360,7 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
+                expected_route: _,
                 sport,
                 dport,
             } => {
@@ -336,9 +372,9 @@ impl TunnelTest {
                     .unwrap()
                     .exec_mut(|sim| sim.connect_tcp(src, dst, sport, dport));
             }
-            Transition::SendDnsQueries(queries) => {
-                for (
-                    client_id,
+            Transition::SendDnsQuery {
+                client_id,
+                query:
                     DnsQuery {
                         domain,
                         r_type,
@@ -346,15 +382,13 @@ impl TunnelTest {
                         query_id,
                         transport,
                     },
-                ) in queries
-                {
-                    let client = state.clients.get_mut(&client_id).unwrap();
-                    let transmit = client.exec_mut(|sim| {
-                        sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
-                    });
+            } => {
+                let client = state.clients.get_mut(&client_id).unwrap();
+                let transmit = client.exec_mut(|sim| {
+                    sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
+                });
 
-                    buffered_transmits.push_from(transmit, client, now);
-                }
+                buffered_transmits.push_from(transmit, client, now);
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in state.clients.values_mut() {
@@ -383,7 +417,7 @@ impl TunnelTest {
                 for gateway in state.gateways.values_mut() {
                     let upstream_do53_servers = upstream_do53_servers.clone();
 
-                    gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers, now))
+                    gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
                 }
             }
             Transition::UpdateUpstreamDoHServers(upstream_doh) => {
@@ -467,7 +501,8 @@ impl TunnelTest {
                 client.exec_mut(|c| {
                     c.sut.set_portal_connected(true);
                     c.update_relays(iter::empty(), state.relays.iter(), now);
-                    c.sut.set_resources(ref_client.inner().all_resources(), now);
+                    c.sut
+                        .set_resources(ref_client.inner().resource_descriptions(), now);
                 });
             }
 
@@ -476,7 +511,7 @@ impl TunnelTest {
                 let ref_client = ref_state.clients.get(&client_id).unwrap();
                 let ipv4 = client.inner().sut.tunnel_ip_config().unwrap().v4;
                 let ipv6 = client.inner().sut.tunnel_ip_config().unwrap().v6;
-                let all_resources = ref_client.inner().all_resources();
+                let all_resources = ref_client.inner().resource_descriptions();
 
                 // Simulate receiving `init`.
                 client.exec_mut(|c| {
@@ -582,7 +617,7 @@ impl TunnelTest {
                 let ipv4 = client.inner().sut.tunnel_ip_config().unwrap().v4;
                 let ipv6 = client.inner().sut.tunnel_ip_config().unwrap().v6;
                 let system_dns = ref_client.inner().system_dns_resolvers();
-                let all_resources = ref_client.inner().all_resources();
+                let all_resources = ref_client.inner().resource_descriptions();
                 let internet_resource_state = ref_client.inner().internet_resource_active;
 
                 client.exec_mut(|c| {
@@ -611,7 +646,7 @@ impl TunnelTest {
     }
 
     // Assert against the reference state machine.
-    pub(crate) fn check_invariants(state: &Self, ref_state: &ReferenceState) {
+    pub fn check_invariants(state: &Self, ref_state: &ReferenceState) {
         // Aggregate all clients for system-wide assertions
         let all_ref_clients = ref_state
             .clients
@@ -665,7 +700,7 @@ impl TunnelTest {
         }
     }
 
-    pub(crate) fn clear_packets(state: &mut TunnelTest) {
+    pub fn clear_packets(state: &mut TunnelTest) {
         for client in state.clients.values_mut() {
             client.exec_mut(|c| c.clear_packets());
         }
@@ -830,8 +865,8 @@ impl TunnelTest {
                         relay.deallocate_port(port.value(), family);
                         relay.exec_mut(|r| r.allocations.remove(&(family, port)));
                     }
-                    firezone_relay::Command::CreateChannelBinding { .. } => {}
-                    firezone_relay::Command::DeleteChannelBinding { .. } => {}
+                    firezone_relay::Command::CreateChannelBinding { .. }
+                    | firezone_relay::Command::DeleteChannelBinding { .. } => {}
                 }
 
                 continue 'outer;
@@ -1078,14 +1113,7 @@ impl TunnelTest {
         let portal_unreachable = self
             .client_portal_offline_until
             .is_some_and(|(cid, until)| cid == src && now < until);
-        let is_portal_bound = matches!(
-            event,
-            ClientEvent::AddedIceCandidates { .. }
-                | ClientEvent::RemovedIceCandidates { .. }
-                | ClientEvent::ResourceConnectionIntent { .. }
-                | ClientEvent::DevicePoolDomainQueried { .. }
-                | ClientEvent::NoRelays
-        );
+        let is_portal_bound = is_portal_bound_event(&event);
         if portal_unreachable && is_portal_bound {
             tracing::trace!(%src, ?event, "Dropping portal-bound client event during roam outage");
 
@@ -1251,11 +1279,12 @@ impl TunnelTest {
                             .static_device_pool_filters(resource_id)
                             .unwrap_or_default();
 
-                        let remote_authorization = crate::messages::client::ResourceAuthorization {
-                            resource_id,
-                            filters: pool_filters,
-                            expires_at: None,
-                        };
+                        let remote_authorization =
+                            tunnel_proto::messages::client::ResourceAuthorization {
+                                resource_id,
+                                filters: pool_filters,
+                                expires_at: None,
+                            };
                         remote_client.exec_mut(|c| {
                             c.sut
                                 .handle_client_device_access_authorized(
@@ -1265,7 +1294,7 @@ impl TunnelTest {
                                     preshared_key.clone(),
                                     remote_client_ice.clone(),
                                     local_client_ice.clone(),
-                                    crate::messages::IceRole::Controlled,
+                                    tunnel_proto::messages::IceRole::Controlled,
                                     use_iceless,
                                     "initiating client".to_owned(),
                                     Some(remote_authorization),
@@ -1292,7 +1321,7 @@ impl TunnelTest {
                                     preshared_key,
                                     local_client_ice,
                                     remote_client_ice,
-                                    crate::messages::IceRole::Controlling,
+                                    tunnel_proto::messages::IceRole::Controlling,
                                     use_iceless,
                                     "target client".to_owned(),
                                     None,
@@ -1368,7 +1397,7 @@ impl TunnelTest {
 
                 let result = portal
                     .resolve_device_pool_domain(&domain.to_string())
-                    .ok_or(crate::messages::client::FailReason::NotFound);
+                    .ok_or(tunnel_proto::messages::client::FailReason::NotFound);
                 client.exec_mut(|c| {
                     c.sut
                         .handle_device_pool_domain_resolved(resource_id, domain, result);
@@ -1385,7 +1414,13 @@ impl TunnelTest {
         global_dns_records: &DnsRecords,
         now: Instant,
     ) -> dns_types::Response {
-        const TTL: u32 = 1; // We deliberately chose a short TTL so we don't have to model the DNS cache in these tests.
+        // Long enough that a query repeated within one `advance` window is served
+        // from connlib's DNS cache, short enough that an `Idle` (minutes) expires
+        // the entry — so the corpus exercises the cache hit and expiry paths. The
+        // reference model is cache-agnostic (it expects a response per query
+        // regardless of how it is produced), so activating the cache is
+        // observationally transparent.
+        const TTL: u32 = 30;
 
         let qtype = query.qtype();
         let domain = query.domain();
@@ -1461,15 +1496,20 @@ fn address_from_destination(
                 .filter(|ip| match ip {
                     IpAddr::V4(_) => src.is_ipv4(),
                     IpAddr::V6(_) => src.is_ipv6(),
-                });
+                })
+                .copied()
+                .collect::<Vec<_>>();
 
-            *resolved_ip.select(available_ips)
+            // Select one candidate by index. The candidate set is only known here
+            // (it is filtered by source address family at apply-time), so we index
+            // with `% len`.
+            available_ips[*resolved_ip as usize % available_ips.len()]
         }
         Destination::IpAddr(addr) => *addr,
     }
 }
 
-fn test_ingest_token() -> crate::messages::IngestToken {
+fn test_ingest_token() -> tunnel_proto::messages::IngestToken {
     serde_json::from_str(&format!("\"{}\"", flow_tracker::TEST_INGEST_TOKEN)).unwrap()
 }
 
@@ -1555,5 +1595,20 @@ fn on_gateway_event(
             gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), now));
         }
         GatewayEvent::Error(_) => unreachable!("GatewayState never emits `TunnelError`"),
+    }
+}
+
+#[allow(clippy::match_like_matches_macro)]
+fn is_portal_bound_event(event: &ClientEvent) -> bool {
+    match event {
+        ClientEvent::AddedIceCandidates { .. } => true,
+        ClientEvent::RemovedIceCandidates { .. } => true,
+        ClientEvent::ResourceConnectionIntent { .. } => true,
+        ClientEvent::DevicePoolDomainQueried { .. } => true,
+        ClientEvent::ResourcesChanged { .. } => false,
+        ClientEvent::DnsRecordsChanged { .. } => false,
+        ClientEvent::TunInterfaceUpdated(_) => false,
+        ClientEvent::NoRelays => true,
+        ClientEvent::Error(_) => false,
     }
 }

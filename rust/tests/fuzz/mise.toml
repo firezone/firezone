@@ -124,6 +124,67 @@ mkdir -p "$corpus"
 tar -xzf "$archive" --no-same-owner --no-same-permissions -C "$corpus"
 '''
 
+[tasks.tmin]
+description = "Reduce a crashing input of a fuzz target"
+shell = "bash -c"
+depends = ["install-toolchain"]
+usage = '''
+arg "<target>"
+arg "<testcase>"
+'''
+raw = true
+run = 'cargo fuzz tmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target" "$usage_testcase"'
+
+[tasks.repro]
+description = "Replay one fuzz input with tracing; override RUST_LOG for more detail"
+shell = "bash -c"
+depends = ["install-toolchain"]
+usage = '''
+arg "<target>"
+arg "<testcase>"
+'''
+raw = true
+run = 'RUST_LOG="${RUST_LOG:-debug}" cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target" "$usage_testcase"'
+
+[tasks.replay-crashes]
+description = "Replay all crash artifacts for a fuzz target with tracing"
+shell = "bash -c"
+usage = 'arg "<target>"'
+raw = true
+run = '''
+set -euo pipefail
+
+target="$usage_target"
+bin="../../target/x86_64-unknown-linux-gnu/release/$target"
+found=false
+
+for artifact in \
+  "artifacts/$target"/crash-* \
+  "artifacts/$target"/timeout-* \
+  "artifacts/$target"/oom-* \
+  "artifacts/$target"/leak-* \
+  "artifacts/$target"/slow-unit-*
+do
+  [ -e "$artifact" ] || continue
+
+  if [ "$found" = false ]; then
+    if [ ! -x "$bin" ]; then
+      echo "Fuzz target binary does not exist or is not executable: $bin" >&2
+      exit 1
+    fi
+    found=true
+  fi
+
+  echo "::group::Scenario for ${artifact##*/}"
+  RUST_LOG="${RUST_LOG:-debug}" "$bin" "$artifact" || true
+  echo "::endgroup::"
+done
+
+if [ "$found" = false ]; then
+  echo "No crash artifact was written; nothing to replay."
+fi
+'''
+
 [tasks.coverage]
 description = "Replay the corpus of a fuzz target, producing coverage/<target>/coverage.profdata"
 shell = "bash -c"
@@ -140,10 +201,28 @@ set -euo pipefail
 cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target"
 '''
 
+[tasks.coverage-report]
+description = "Replay a target's corpus and generate a browsable HTML coverage report"
+shell = "bash -c"
+depends = [{ task = "coverage", args = ["{{usage.target}}"] }]
+usage = 'arg "<target>"'
+raw = true
+run = '''
+set -euo pipefail
+
+target="$usage_target"
+profile="coverage/$target/coverage.profdata"
+binary="../../target/x86_64-unknown-linux-gnu/release/$target"
+report_dir="coverage/$target/html"
+llvm_cov="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov"
+
+"$llvm_cov" show --format=html --output-dir="$report_dir" --instr-profile="$profile" "$binary"
+echo "Coverage report: $PWD/$report_dir/index.html"
+'''
+
 [tasks.coverage-summary]
 description = "Print region coverage for the crate with the same name as the fuzz target"
 shell = "bash -c"
-depends = ["install-toolchain"]
 usage = 'arg "<crate>"'
 raw = true
 run = '''
@@ -153,6 +232,12 @@ crate="$usage_crate"
 profile="coverage/$crate/coverage.profdata"
 binary="../../target/x86_64-unknown-linux-gnu/release/$crate"
 llvm_cov="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov"
+
+if [ ! -f "$profile" ]; then
+  echo "error: coverage profile is missing; run mise run //rust/tests/fuzz:coverage $crate first" >&2
+  exit 1
+fi
+
 manifest="$(
   cargo metadata --format-version=1 --no-deps |
     jq -er --arg crate "$crate" '.packages[] | select(.name == $crate) | .manifest_path'

@@ -1,8 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    net::SocketAddr,
-    time::{Duration, Instant},
-};
+use std::{collections::BTreeMap, net::SocketAddr, time::Instant};
 
 use anyhow::{Context, Result};
 use ip_packet::{IpPacket, Layer4Protocol};
@@ -10,7 +6,7 @@ use l3_tcp::Socket;
 
 pub struct Client {
     sockets: l3_tcp::SocketSet<'static>,
-    sockets_by_remote: BTreeMap<SocketAddr, l3_tcp::SocketHandle>,
+    sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), l3_tcp::SocketHandle>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
 
@@ -35,7 +31,7 @@ impl Client {
 
         Self {
             sockets: l3_tcp::SocketSet::new(Vec::default()),
-            sockets_by_remote: Default::default(),
+            sockets_by_conn: Default::default(),
             device,
             interface,
             created_at: now,
@@ -44,7 +40,12 @@ impl Client {
     }
 
     pub fn connect(&mut self, local: SocketAddr, remote: SocketAddr) -> Result<()> {
-        anyhow::ensure!(!self.sockets_by_remote.contains_key(&remote));
+        // Sockets are keyed by the full `(local, remote)` 4-tuple, so the client
+        // can hold several connections to one remote from different local ports.
+        // Re-connecting an already-open 4-tuple is a no-op.
+        if self.sockets_by_conn.contains_key(&(local, remote)) {
+            return Ok(());
+        }
 
         let mut socket = l3_tcp::create_tcp_socket();
         socket
@@ -59,7 +60,7 @@ impl Client {
 
         let handle = self.sockets.add(socket);
 
-        self.sockets_by_remote.insert(remote, handle);
+        self.sockets_by_conn.insert((local, remote), handle);
 
         Ok(())
     }
@@ -69,18 +70,21 @@ impl Client {
             return false;
         };
 
-        self.sockets_by_remote
-            .contains_key(&SocketAddr::new(packet.source(), tcp.source_port()))
+        let local = SocketAddr::new(packet.destination(), tcp.destination_port());
+        let remote = SocketAddr::new(packet.source(), tcp.source_port());
+
+        self.sockets_by_conn.contains_key(&(local, remote))
     }
 
     pub fn handle_inbound(&mut self, packet: IpPacket) {
         // TODO: Upstream ICMP error handling to `smoltcp`.
         if let Ok(Some((failed_packet, _))) = packet.icmp_error()
-            && let Layer4Protocol::Tcp { dst, .. } = failed_packet.layer4_protocol()
-            && let socket = SocketAddr::new(failed_packet.dst(), dst)
-            && let Some(handle) = self.sockets_by_remote.get(&socket)
+            && let Layer4Protocol::Tcp { src, dst } = failed_packet.layer4_protocol()
+            && let local = SocketAddr::new(failed_packet.src(), src)
+            && let remote = SocketAddr::new(failed_packet.dst(), dst)
+            && let Some(handle) = self.sockets_by_conn.get(&(local, remote))
         {
-            tracing::debug!(%socket, "Received ICMP error");
+            tracing::debug!(%local, %remote, "Received ICMP error");
 
             self.sockets.get_mut::<l3_tcp::Socket>(*handle).abort();
         }
@@ -102,14 +106,6 @@ impl Client {
         self.device.next_send()
     }
 
-    pub fn _poll_timeout(&mut self) -> Option<Instant> {
-        let now = l3_tcp::now(self.created_at, self.last_now);
-
-        let poll_in = self.interface.poll_delay(now, &self.sockets)?;
-
-        Some(self.last_now + Duration::from(poll_in))
-    }
-
     pub fn iter_sockets(&self) -> impl Iterator<Item = &Socket<'_>> {
         self.sockets.iter().map(|(_, s)| match s {
             l3_tcp::AnySocket::Tcp(socket) => socket,
@@ -118,6 +114,7 @@ impl Client {
 
     pub fn reset(&mut self) {
         self.sockets = l3_tcp::SocketSet::new(Vec::default());
+        self.sockets_by_conn.clear();
         self.device.clear();
     }
 }
