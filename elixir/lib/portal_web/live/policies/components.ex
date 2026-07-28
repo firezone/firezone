@@ -2853,17 +2853,20 @@ defmodule PortalWeb.Policies.Components do
       group =
         from(g in Portal.Group, as: :groups)
         |> where([groups: g], g.id == ^id)
-        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+        |> join(:left, [groups: g], d in assoc(g, :directory),
+          on: d.account_id == g.account_id,
+          as: :directory
+        )
         |> join(:left, [directory: d], gd in Portal.Google.Directory,
-          on: gd.id == d.id and d.type == :google,
+          on: gd.id == d.id and gd.account_id == d.account_id and d.type == :google,
           as: :google_directory
         )
         |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-          on: ed.id == d.id and d.type == :entra,
+          on: ed.id == d.id and ed.account_id == d.account_id and d.type == :entra,
           as: :entra_directory
         )
         |> join(:left, [directory: d], od in Portal.Okta.Directory,
-          on: od.id == d.id and d.type == :okta,
+          on: od.id == d.id and od.account_id == d.account_id and d.type == :okta,
           as: :okta_directory
         )
         |> select(
@@ -2889,17 +2892,20 @@ defmodule PortalWeb.Policies.Components do
     def list_group_options(search_query_or_nil, subject) do
       query =
         from(g in Portal.Group, as: :groups)
-        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+        |> join(:left, [groups: g], d in assoc(g, :directory),
+          on: d.account_id == g.account_id,
+          as: :directory
+        )
         |> join(:left, [directory: d], gd in Portal.Google.Directory,
-          on: gd.id == d.id and d.type == :google,
+          on: gd.id == d.id and gd.account_id == d.account_id and d.type == :google,
           as: :google_directory
         )
         |> join(:left, [directory: d], ed in Portal.Entra.Directory,
-          on: ed.id == d.id and d.type == :entra,
+          on: ed.id == d.id and ed.account_id == d.account_id and d.type == :entra,
           as: :entra_directory
         )
         |> join(:left, [directory: d], od in Portal.Okta.Directory,
-          on: od.id == d.id and d.type == :okta,
+          on: od.id == d.id and od.account_id == d.account_id and d.type == :okta,
           as: :okta_directory
         )
         |> select(
@@ -3169,6 +3175,7 @@ defmodule PortalWeb.Policies.Components do
           :inner,
           [policy_authorizations: policy_authorizations],
           policy in assoc(policy_authorizations, ^binding),
+          on: policy.account_id == policy_authorizations.account_id,
           as: ^binding
         )
       end)
@@ -3181,6 +3188,7 @@ defmodule PortalWeb.Policies.Components do
           :inner,
           [policy_authorizations: policy_authorizations],
           client in assoc(policy_authorizations, ^binding),
+          on: client.account_id == policy_authorizations.account_id,
           as: ^binding
         )
       end)
@@ -3190,7 +3198,10 @@ defmodule PortalWeb.Policies.Components do
       queryable
       |> with_joined_gateway()
       |> with_policy_authorization_named_binding(:site, fn queryable, binding ->
-        join(queryable, :inner, [gateway: gateway], site in assoc(gateway, :site), as: ^binding)
+        join(queryable, :inner, [gateway: gateway], site in assoc(gateway, :site),
+          on: site.account_id == gateway.account_id,
+          as: ^binding
+        )
       end)
     end
 
@@ -3201,6 +3212,7 @@ defmodule PortalWeb.Policies.Components do
           :inner,
           [policy_authorizations: policy_authorizations],
           gateway in assoc(policy_authorizations, ^binding),
+          on: gateway.account_id == policy_authorizations.account_id,
           as: ^binding
         )
       end)

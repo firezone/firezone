@@ -15,7 +15,10 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     def list_actors_with_token(subject) do
       from(a in Portal.Actor, as: :actors)
       |> where([actors: a], a.type == :api_client)
-      |> join(:left, [actors: a], t in Portal.APIToken, on: t.actor_id == a.id, as: :tokens)
+      |> join(:left, [actors: a], t in Portal.APIToken,
+        on: t.actor_id == a.id and t.account_id == a.account_id,
+        as: :tokens
+      )
       |> order_by([actors: a, tokens: t], asc: a.inserted_at, asc: a.id, desc: t.inserted_at)
       |> distinct([actors: a], a.id)
       |> select([actors: a, tokens: t], {a, t})

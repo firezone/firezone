@@ -1255,7 +1255,7 @@ defmodule Portal.Entra.Sync do
       query =
         from(m in Portal.Membership,
           join: g in Portal.Group,
-          on: m.group_id == g.id,
+          on: m.group_id == g.id and m.account_id == g.account_id,
           where: g.account_id == ^account_id,
           where: g.directory_id == ^directory_id,
           where:

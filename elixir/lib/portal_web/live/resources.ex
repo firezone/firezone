@@ -1653,7 +1653,9 @@ defmodule PortalWeb.Resources do
     def list_groups_for_resource(resource, subject, repo \\ :replica) do
       from(g in Group, as: :groups)
       |> join(:inner, [groups: g], p in Policy,
-        on: p.group_id == g.id and p.resource_id == ^resource.id,
+        on:
+          p.group_id == g.id and p.account_id == g.account_id and
+            p.resource_id == ^resource.id,
         as: :policies
       )
       |> join(:left, [groups: g], d in Directory,
@@ -1688,27 +1690,27 @@ defmodule PortalWeb.Resources do
       from(pa in PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: pa], pa.resource_id == ^resource.id)
       |> join(:inner, [policy_authorizations: pa], p in Policy,
-        on: p.id == pa.policy_id,
+        on: p.id == pa.policy_id and p.account_id == pa.account_id,
         as: :policies
       )
       |> join(:left, [policies: p], g in Group,
-        on: g.id == p.group_id,
+        on: g.id == p.group_id and g.account_id == p.account_id,
         as: :groups
       )
       |> join(:inner, [policy_authorizations: pa], t in ClientToken,
-        on: t.id == pa.token_id,
+        on: t.id == pa.token_id and t.account_id == pa.account_id,
         as: :tokens
       )
       |> join(:left, [tokens: t], a in Actor,
-        on: a.id == t.actor_id,
+        on: a.id == t.actor_id and a.account_id == t.account_id,
         as: :actors
       )
       |> join(:left, [policy_authorizations: pa], id in Device,
-        on: id.id == pa.initiating_device_id,
+        on: id.id == pa.initiating_device_id and id.account_id == pa.account_id,
         as: :initiating_devices
       )
       |> join(:left, [policy_authorizations: pa], rd in Device,
-        on: rd.id == pa.receiving_device_id,
+        on: rd.id == pa.receiving_device_id and rd.account_id == pa.account_id,
         as: :receiving_devices
       )
       |> select(

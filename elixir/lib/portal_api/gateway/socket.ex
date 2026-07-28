@@ -368,6 +368,7 @@ defmodule PortalAPI.Gateway.Socket do
           where: d.id == ^id,
           where: d.type == :gateway,
           join: s in assoc(d, :site),
+          on: s.account_id == d.account_id,
           preload: [site: s]
         )
         |> Safe.unscoped(:replica)

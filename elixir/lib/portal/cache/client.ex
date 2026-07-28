@@ -1062,8 +1062,14 @@ defmodule Portal.Cache.Client do
     def all_member_ips(resource_ids, subject) do
       from(r in Portal.Resource, as: :resources)
       |> where([resources: r], r.id in ^resource_ids)
-      |> join(:inner, [resources: r], m in assoc(r, :static_pool_members), as: :members)
-      |> join(:inner, [members: m], c in assoc(m, :client), as: :clients)
+      |> join(:inner, [resources: r], m in assoc(r, :static_pool_members),
+        on: m.account_id == r.account_id,
+        as: :members
+      )
+      |> join(:inner, [members: m], c in assoc(m, :client),
+        on: c.account_id == m.account_id,
+        as: :clients
+      )
       |> where([clients: c], c.type == :client)
       |> select(
         [resources: r, members: m, clients: c],
