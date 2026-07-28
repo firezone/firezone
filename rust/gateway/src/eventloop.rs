@@ -24,7 +24,8 @@ use tunnel::messages::gateway::{
 };
 use tunnel::messages::{self, RelaysPresence, SnownetCapabilities};
 use tunnel::{
-    GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, TunnelError,
+    GatewayTunnel, GatewayTunnelEvent, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest,
+    TunnelError,
 };
 
 use crate::RELEASE;
@@ -120,7 +121,7 @@ impl Eventloop {
 
 enum CombinedEvent {
     SigIntTerm,
-    Tunnel(GatewayEvent),
+    Tunnel(GatewayTunnelEvent),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
 }
@@ -241,7 +242,12 @@ impl Eventloop {
         Ok(())
     }
 
-    async fn handle_tunnel_event(&mut self, event: tunnel::GatewayEvent) -> Result<()> {
+    async fn handle_tunnel_event(&mut self, event: GatewayTunnelEvent) -> Result<()> {
+        let event = match event {
+            GatewayTunnelEvent::State(event) => event,
+            GatewayTunnelEvent::Error(error) => return self.handle_tunnel_error(error),
+        };
+
         match event {
             tunnel::GatewayEvent::AddedIceCandidates {
                 conn_id: client,
@@ -284,7 +290,6 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            GatewayEvent::Error(error) => self.handle_tunnel_error(error)?,
         }
 
         Ok(())

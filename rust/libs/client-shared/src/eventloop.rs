@@ -27,7 +27,10 @@ use tunnel::messages::client::{
     ResourceFiltersUpdated,
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
-use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
+use tunnel::{
+    ClientEvent, ClientTunnel, ClientTunnelEvent, DnsResourceRecord, IpConfig, TunConfig,
+    TunnelError,
+};
 
 /// In-memory cache for DNS resource records.
 ///
@@ -185,7 +188,7 @@ impl Eventloop {
 
 enum CombinedEvent {
     Command(Option<Command>),
-    Tunnel(ClientEvent),
+    Tunnel(ClientTunnelEvent),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
 }
 
@@ -306,7 +309,12 @@ impl Eventloop {
         Ok(ControlFlow::Continue(()))
     }
 
-    async fn handle_tunnel_event(&mut self, event: ClientEvent) -> Result<()> {
+    async fn handle_tunnel_event(&mut self, event: ClientTunnelEvent) -> Result<()> {
+        let event = match event {
+            ClientTunnelEvent::State(event) => event,
+            ClientTunnelEvent::Error(error) => return self.handle_tunnel_error(error),
+        };
+
         match event {
             ClientEvent::AddedIceCandidates {
                 conn_id: ClientOrGatewayId::Gateway(gid),
@@ -426,7 +434,6 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            ClientEvent::Error(error) => self.handle_tunnel_error(error)?,
         }
 
         Ok(())

@@ -16,7 +16,6 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use logging::DisplayBTreeSet;
 use std::{
     collections::BTreeSet,
-    mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
@@ -95,7 +94,6 @@ pub enum ClientEvent {
     TunInterfaceUpdated(TunConfig),
     /// We ran out of relays and need a new set from the portal.
     NoRelays,
-    Error(TunnelError),
 }
 
 #[derive(Clone, derive_more::Debug, PartialEq, Eq, Hash)]
@@ -142,49 +140,6 @@ pub enum GatewayEvent {
     ResolveDns(ResolveDnsRequest),
     /// We ran out of relays and need a new set from the portal.
     NoRelays,
-    Error(TunnelError),
-}
-
-/// A collection of errors that occurred during a single event-loop tick.
-///
-/// This type purposely doesn't provide a `From` implementation for any errors.
-/// We want compile-time safety inside the event-loop that we don't abort processing in the middle of a packet batch.
-#[derive(Debug, Default)]
-pub struct TunnelError {
-    errors: Vec<anyhow::Error>,
-}
-
-impl TunnelError {
-    pub fn single(e: impl Into<anyhow::Error>) -> Self {
-        Self {
-            errors: vec![e.into()],
-        }
-    }
-
-    pub fn push(&mut self, e: impl Into<anyhow::Error>) {
-        self.errors.push(e.into());
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.errors.is_empty()
-    }
-
-    pub fn drain(&mut self) -> impl Iterator<Item = anyhow::Error> {
-        mem::take(&mut self.errors).into_iter()
-    }
-}
-
-impl Drop for TunnelError {
-    fn drop(&mut self) {
-        debug_assert!(
-            self.errors.is_empty(),
-            "should never drop `TunnelError` without consuming errors"
-        );
-
-        if !self.errors.is_empty() {
-            tracing::error!("should never drop `TunnelError` without consuming errors")
-        }
-    }
 }
 
 #[derive(Debug, thiserror::Error)]

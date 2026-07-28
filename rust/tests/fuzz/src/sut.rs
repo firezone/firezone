@@ -1388,7 +1388,6 @@ impl TunnelTest {
 
                 Ok(())
             }
-            ClientEvent::Error(_) => unreachable!("ClientState never emits `TunnelError`"),
             ClientEvent::DevicePoolDomainQueried {
                 resource_id,
                 domain,
@@ -1594,7 +1593,6 @@ fn on_gateway_event(
             // Mimic the portal: reply with the current set of relays.
             gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), now));
         }
-        GatewayEvent::Error(_) => unreachable!("GatewayState never emits `TunnelError`"),
     }
 }
 
@@ -1609,6 +1607,5 @@ fn is_portal_bound_event(event: &ClientEvent) -> bool {
         ClientEvent::DnsRecordsChanged { .. } => false,
         ClientEvent::TunInterfaceUpdated(_) => false,
         ClientEvent::NoRelays => true,
-        ClientEvent::Error(_) => false,
     }
 }
