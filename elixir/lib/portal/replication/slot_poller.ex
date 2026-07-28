@@ -172,20 +172,19 @@ defmodule Portal.Replication.SlotPoller do
 
   # A cycle failure keeps the pre-cycle consumer state and leaves the slot
   # unadvanced, so the next cycle replays the same batch. The slot is advanced
-  # only after the batch's effects are flushed; the WHERE guard in advance/2
-  # makes racing advances harmless.
+  # only after the batch's effects are flushed and while leadership is still
+  # held, so another poller cannot peek while the advance has the slot active.
   defp poll(state) do
-    {state, drained?, ack_lsn} =
-      Database.with_leadership(lock_key(state.config), state.config.processing_timeout, fn ->
-        run_cycle(state)
-      end) ||
-        {state, true, nil}
+    Database.with_leadership(lock_key(state.config), state.config.processing_timeout, fn ->
+      {state, drained?, ack_lsn} = run_cycle(state)
 
-    if ack_lsn do
-      advance(state.config, ack_lsn)
-    end
+      if ack_lsn do
+        advance(state.config, ack_lsn)
+      end
 
-    {state, drained?}
+      {state, drained?}
+    end) ||
+      {state, true}
   rescue
     error -> handle_poll_error(state, error, __STACKTRACE__)
   end
@@ -451,8 +450,8 @@ defmodule Portal.Replication.SlotPoller do
     lsn
   end
 
-  # The WHERE clause makes both backward and no-op advances (possible under
-  # :pg leader handoff races) silently do nothing: advancing backwards raises.
+  # The WHERE clause makes both backward and no-op advances silently do
+  # nothing: advancing backwards raises.
   defp advance(config, lsn) do
     config.repo.query!(
       """

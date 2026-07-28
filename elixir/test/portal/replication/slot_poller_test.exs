@@ -73,6 +73,28 @@ defmodule Portal.Replication.SlotPollerTest do
     end
   end
 
+  defmodule TestRepo do
+    def query!(statement, params, opts \\ []) do
+      maybe_pause_before_advance(statement)
+      Portal.Repo.query!(statement, params, opts)
+    end
+
+    defp maybe_pause_before_advance(statement) do
+      control = Portal.Config.get_env(:portal, :slot_poller_test_advance_control)
+
+      if String.contains?(statement, "pg_replication_slot_advance") and
+           control &&
+           :atomics.compare_exchange(control, 1, 1, 2) == :ok do
+        test_pid = Portal.Config.get_env(:portal, :slot_poller_test_pid)
+        send(test_pid, {:before_advance, self()})
+
+        receive do
+          :continue_advance -> :ok
+        end
+      end
+    end
+  end
+
   setup do
     uid = System.unique_integer([:positive])
     slot = "test_poller_slot_#{uid}"
@@ -213,6 +235,40 @@ defmodule Portal.Replication.SlotPollerTest do
 
     assert_receive {:write, _, :insert, ^table, nil, %{"id" => "3"}}, 5000
     refute_receive {:write, _, :insert, ^table, nil, %{"id" => "3"}}, 500
+  end
+
+  test "holds leadership while advancing the slot", %{
+    aux: aux,
+    slot: slot,
+    region: region
+  } do
+    control = :atomics.new(1, [])
+    Portal.Config.put_env_override(:slot_poller_test_advance_control, control)
+
+    config =
+      Portal.Config.fetch_env!(:portal, TestConsumer)
+      |> Keyword.put(:repo, TestRepo)
+
+    Portal.Config.put_env_override(TestConsumer, config)
+
+    poller = start_poller!()
+    :atomics.put(control, 1, 1)
+
+    assert_receive {:before_advance, ^poller}, 5000
+
+    key = "#{slot}/#{region}"
+
+    %{rows: [[locked?]]} =
+      Postgrex.query!(aux, "SELECT pg_try_advisory_lock(hashtext($1))", [key])
+
+    if locked? do
+      Postgrex.query!(aux, "SELECT pg_advisory_unlock(hashtext($1))", [key])
+    end
+
+    send(poller, :continue_advance)
+
+    refute locked?
+    assert :sys.get_state(poller).consumer_state
   end
 
   test "consumer-internal transaction rollbacks do not abort the cycle", %{
