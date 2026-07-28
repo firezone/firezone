@@ -251,6 +251,25 @@ mod tests {
         assert!(ct.is_known_flow(&reply));
     }
 
+    /// The same error is legitimate to send and illegitimate to accept, which is why
+    /// the two directions cannot share one check: a peer reporting that its *own*
+    /// packet to us failed is nonsense, and accepting it would let them inject errors
+    /// into every flow they opened.
+    #[test]
+    fn an_error_we_may_send_is_not_one_we_would_accept() {
+        let mut ct = ConnTrack::default();
+        let now = Instant::now();
+
+        let inbound = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
+            .expect("valid packet");
+        ct.record_inbound(&inbound, now);
+
+        let error = make::icmp_dest_unreachable_network(&inbound).expect("valid packet");
+
+        assert!(ct.is_error_for_known_flow(&error));
+        assert!(!ct.is_known_flow(&error));
+    }
+
     #[test]
     fn continued_traffic_keeps_initiated_flow_alive() {
         let mut ct = ConnTrack::default();
