@@ -109,9 +109,11 @@ defmodule PortalAPI.Client.DeviceTrust do
   the verification material for the challenge response, so the response
   never needs a second fetch.
   """
-  @spec fetch_enabled_anchors(Ecto.UUID.t()) :: [%{der: binary(), fingerprint: String.t()}]
-  def fetch_enabled_anchors(account_id) do
-    Database.fetch_enabled_anchors(account_id)
+  @spec fetch_enabled_anchors(Portal.Authentication.Subject.t()) :: [
+          %{der: binary(), fingerprint: String.t()}
+        ]
+  def fetch_enabled_anchors(subject) do
+    Database.fetch_enabled_anchors(subject)
   end
 
   @doc """
@@ -479,14 +481,13 @@ defmodule PortalAPI.Client.DeviceTrust do
     # One round trip: the join on the global feature-flag row makes the query
     # return no anchors at all when the flag is off, so the caller's gate
     # check and verification material come from the same query.
-    def fetch_enabled_anchors(account_id) do
+    def fetch_enabled_anchors(subject) do
       from(c in Portal.TrustAnchorCertificate,
         join: f in Portal.Features,
         on: f.feature == :trust_anchors and f.enabled == true,
-        where: c.account_id == ^account_id,
         select: c.pem
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> Enum.flat_map(&decode_anchor_pem/1)
       |> Enum.uniq()

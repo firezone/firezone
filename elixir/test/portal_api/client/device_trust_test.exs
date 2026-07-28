@@ -2,6 +2,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
   use Portal.DataCase, async: true
 
   import Portal.AccountFixtures
+  import Portal.SubjectFixtures
   import Portal.TrustAnchorFixtures
   import Portal.FeaturesFixtures
   import Portal.DeviceTrustChallengeFixtures
@@ -12,23 +13,27 @@ defmodule PortalAPI.Client.DeviceTrustTest do
   describe "fetch_enabled_anchors/1" do
     setup do
       account = account_fixture()
-      %{account: account}
+      subject = subject_fixture(account: account)
+      %{account: account, subject: subject}
     end
 
-    test "returns no anchors when the feature is disabled", %{account: account} do
+    test "returns no anchors when the feature is disabled", %{account: account, subject: subject} do
       trust_anchor_fixture(account: account, certs: [pki().ca_der])
-      assert DeviceTrust.fetch_enabled_anchors(account.id) == []
+      assert DeviceTrust.fetch_enabled_anchors(subject) == []
     end
 
-    test "returns no anchors when the account has none uploaded", %{account: account} do
+    test "returns no anchors when the account has none uploaded", %{subject: subject} do
       enable_feature(:trust_anchors)
-      assert DeviceTrust.fetch_enabled_anchors(account.id) == []
+      assert DeviceTrust.fetch_enabled_anchors(subject) == []
     end
 
-    test "returns anchors when the feature is enabled and the account has one", %{account: account} do
+    test "returns anchors when the feature is enabled and the account has one", %{
+      account: account,
+      subject: subject
+    } do
       enable_feature(:trust_anchors)
       trust_anchor_fixture(account: account, certs: [pki().ca_der])
-      assert [_anchor | _rest] = DeviceTrust.fetch_enabled_anchors(account.id)
+      assert [_anchor | _rest] = DeviceTrust.fetch_enabled_anchors(subject)
     end
   end
 
@@ -38,7 +43,8 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       enable_feature(:trust_anchors)
       pki = pki()
       trust_anchor_fixture(account: account, certs: [pki.ca_der])
-      anchors = DeviceTrust.fetch_enabled_anchors(account.id)
+      subject = subject_fixture(account: account)
+      anchors = DeviceTrust.fetch_enabled_anchors(subject)
       %{account: account, pki: pki, nonce: DeviceTrust.nonce(), anchors: anchors}
     end
 
