@@ -50,20 +50,6 @@ const MAX_EVENTLOOP_ITERS: u32 = 5000;
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
-/// The events a [`ClientTunnel`] emits.
-#[derive(Debug)]
-pub enum ClientTunnelEvent {
-    State(ClientEvent),
-    Error(TunnelError),
-}
-
-/// The events a [`GatewayTunnel`] emits.
-#[derive(Debug)]
-pub enum GatewayTunnelEvent {
-    State(GatewayEvent),
-    Error(TunnelError),
-}
-
 /// A collection of errors that occurred during a single event-loop tick.
 ///
 /// This type purposely doesn't provide a `From` implementation for any errors.
@@ -218,7 +204,7 @@ impl ClientTunnel {
         &mut self,
         cx: &mut Context<'_>,
         now: Instant,
-    ) -> Poll<ClientTunnelEvent> {
+    ) -> Poll<Result<ClientEvent, TunnelError>> {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "client-tunnel");
 
         while let Some(mut tick) = budget.next() {
@@ -243,7 +229,7 @@ impl ClientTunnel {
                     }
                 }
 
-                return Poll::Ready(ClientTunnelEvent::State(event));
+                return Poll::Ready(Ok(event));
             }
 
             // Drain all buffered IP packets.
@@ -349,7 +335,7 @@ impl ClientTunnel {
                 }
 
                 if !error.is_empty() {
-                    return Poll::Ready(ClientTunnelEvent::Error(error));
+                    return Poll::Ready(Err(error));
                 }
             }
         }
@@ -417,7 +403,7 @@ impl GatewayTunnel {
         &mut self,
         cx: &mut Context<'_>,
         now: Instant,
-    ) -> Poll<GatewayTunnelEvent> {
+    ) -> Poll<Result<GatewayEvent, TunnelError>> {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "gateway-tunnel");
 
         while let Some(mut tick) = budget.next() {
@@ -432,7 +418,7 @@ impl GatewayTunnel {
 
             // Pass up existing events.
             if let Some(other) = self.role_state.poll_event() {
-                return Poll::Ready(GatewayTunnelEvent::State(other));
+                return Poll::Ready(Ok(other));
             }
 
             // Drain all buffered transmits.
@@ -620,7 +606,7 @@ impl GatewayTunnel {
                 }
 
                 if !error.is_empty() {
-                    return Poll::Ready(GatewayTunnelEvent::Error(error));
+                    return Poll::Ready(Err(error));
                 }
             }
         }

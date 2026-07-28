@@ -27,10 +27,7 @@ use tunnel::messages::client::{
     ResourceFiltersUpdated,
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
-use tunnel::{
-    ClientEvent, ClientTunnel, ClientTunnelEvent, DnsResourceRecord, IpConfig, TunConfig,
-    TunnelError,
-};
+use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
 /// In-memory cache for DNS resource records.
 ///
@@ -188,7 +185,7 @@ impl Eventloop {
 
 enum CombinedEvent {
     Command(Option<Command>),
-    Tunnel(ClientTunnelEvent),
+    Tunnel(Result<ClientEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
 }
 
@@ -309,10 +306,10 @@ impl Eventloop {
         Ok(ControlFlow::Continue(()))
     }
 
-    async fn handle_tunnel_event(&mut self, event: ClientTunnelEvent) -> Result<()> {
+    async fn handle_tunnel_event(&mut self, event: Result<ClientEvent, TunnelError>) -> Result<()> {
         let event = match event {
-            ClientTunnelEvent::State(event) => event,
-            ClientTunnelEvent::Error(error) => return self.handle_tunnel_error(error),
+            Ok(event) => event,
+            Err(error) => return self.handle_tunnel_error(error),
         };
 
         match event {
