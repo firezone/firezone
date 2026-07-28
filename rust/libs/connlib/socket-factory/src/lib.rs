@@ -864,33 +864,25 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
     let _ = tokio::time::timeout(timeout, socket.writable()).await;
 }
 
-/// Disables URO for the process once a receive proves that datagram coalescing is broken.
+/// Disables URO once a receive proves that datagram coalescing is broken.
 ///
 /// Correct coalescing reports the size of the original datagrams as the segment size, and no
 /// Firezone peer sends a datagram larger than [`ip_packet::MAX_FZ_PAYLOAD`], so a segment above
 /// that bound means datagrams were merged without split metadata (see [`crate::uro`]).
 ///
-/// Sockets shed URO lazily: each one opts out when it processes its first batch after the trip.
+/// A socket opts out when it observes a violation; sockets created afterwards never opt in.
 /// The oversized receives themselves are dropped by [`DatagramSegmentIter`].
 #[cfg(windows)]
 fn enforce_uro_invariant<'a>(
     socket: &Socket<'_>,
     mut metas: impl Iterator<Item = &'a quinn_udp::RecvMeta>,
 ) {
-    if let Some(meta) = metas.find(|meta| meta.stride > ip_packet::MAX_FZ_PAYLOAD)
-        && uro::trip()
-    {
-        tracing::warn!(
-            stride = %meta.stride,
-            len = %meta.len,
-            interface_index = ?meta.interface_index,
-            "Received a datagram segment larger than any Firezone peer sends; disabling URO to work around broken receive coalescing"
-        );
-    }
+    let Some(meta) = metas.find(|meta| meta.stride > ip_packet::MAX_FZ_PAYLOAD) else {
+        return;
+    };
 
-    if uro::is_tripped() {
-        socket.disable_gro();
-    }
+    uro::trip(meta);
+    socket.disable_gro();
 }
 
 /// The pools backing a batched receive: scratch space for the datagrams themselves

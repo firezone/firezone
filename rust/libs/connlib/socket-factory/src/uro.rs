@@ -21,9 +21,18 @@ pub fn is_tripped() -> bool {
 
 /// Records an observation of broken coalescing.
 ///
-/// Returns `true` for the observation that tripped the switch, `false` for all later ones.
-pub(crate) fn trip() -> bool {
-    !TRIPPED.swap(true, Ordering::Relaxed)
+/// The first observation logs a warning; later ones are silent.
+pub(crate) fn trip(meta: &quinn_udp::RecvMeta) {
+    if TRIPPED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+
+    tracing::warn!(
+        stride = %meta.stride,
+        len = %meta.len,
+        interface_index = ?meta.interface_index,
+        "Received a datagram segment larger than any Firezone peer sends; disabling URO to work around broken receive coalescing"
+    );
 }
 
 #[cfg(test)]
@@ -34,8 +43,8 @@ mod tests {
     fn trips_once() {
         assert!(!is_tripped());
 
-        assert!(trip());
-        assert!(!trip());
+        trip(&quinn_udp::RecvMeta::default());
+        trip(&quinn_udp::RecvMeta::default());
 
         assert!(is_tripped());
     }
