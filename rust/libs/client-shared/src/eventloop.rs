@@ -307,16 +307,11 @@ impl Eventloop {
     }
 
     async fn handle_tunnel_event(&mut self, event: Result<ClientEvent, TunnelError>) -> Result<()> {
-        let event = match event {
-            Ok(event) => event,
-            Err(error) => return self.handle_tunnel_error(error),
-        };
-
         match event {
-            ClientEvent::AddedIceCandidates {
+            Ok(ClientEvent::AddedIceCandidates {
                 conn_id: ClientOrGatewayId::Gateway(gid),
                 candidates,
-            } => {
+            }) => {
                 tracing::debug!(%gid, ?candidates, "Sending new ICE candidates to gateway");
 
                 self.portal_cmd_tx
@@ -329,10 +324,10 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            ClientEvent::RemovedIceCandidates {
+            Ok(ClientEvent::RemovedIceCandidates {
                 conn_id: ClientOrGatewayId::Gateway(gid),
                 candidates,
-            } => {
+            }) => {
                 tracing::debug!(%gid, ?candidates, "Sending invalidated ICE candidates to gateway");
 
                 self.portal_cmd_tx
@@ -345,10 +340,10 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            ClientEvent::AddedIceCandidates {
+            Ok(ClientEvent::AddedIceCandidates {
                 conn_id: ClientOrGatewayId::Client(cid),
                 candidates,
-            } => {
+            }) => {
                 tracing::debug!(%cid, ?candidates, "Sending new ICE candidates to client");
 
                 self.portal_cmd_tx
@@ -361,10 +356,10 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            ClientEvent::RemovedIceCandidates {
+            Ok(ClientEvent::RemovedIceCandidates {
                 conn_id: ClientOrGatewayId::Client(cid),
                 candidates,
-            } => {
+            }) => {
                 tracing::debug!(%cid, ?candidates, "Sending invalidated ICE candidates to client");
 
                 self.portal_cmd_tx
@@ -377,11 +372,11 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            ClientEvent::ResourceConnectionIntent {
+            Ok(ClientEvent::ResourceConnectionIntent {
                 preferred_gateways,
                 resource,
                 ip,
-            } => {
+            }) => {
                 let (ipv4, ipv6) = match ip {
                     None => (None, None),
                     Some(IpAddr::V4(v4)) => (Some(v4), None),
@@ -398,10 +393,10 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            ClientEvent::DevicePoolDomainQueried {
+            Ok(ClientEvent::DevicePoolDomainQueried {
                 resource_id,
                 domain,
-            } => {
+            }) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(
                         EgressMessages::ResolveDevicePoolDomain {
@@ -412,25 +407,26 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            ClientEvent::ResourcesChanged { resources } => {
+            Ok(ClientEvent::ResourcesChanged { resources }) => {
                 self.resource_list_sender
                     .send(resources)
                     .context("Failed to emit event")?;
             }
-            ClientEvent::TunInterfaceUpdated(config) => {
+            Ok(ClientEvent::TunInterfaceUpdated(config)) => {
                 self.tun_config_sender
                     .send(Some(config))
                     .context("Failed to emit event")?;
             }
-            ClientEvent::DnsRecordsChanged { records } => {
+            Ok(ClientEvent::DnsRecordsChanged { records }) => {
                 *DNS_RESOURCE_RECORDS_CACHE.lock() = records;
             }
-            ClientEvent::NoRelays => {
+            Ok(ClientEvent::NoRelays) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::NoRelays {}))
                     .await
                     .context("Failed to send message to portal")?;
             }
+            Err(error) => self.handle_tunnel_error(error)?,
         }
 
         Ok(())

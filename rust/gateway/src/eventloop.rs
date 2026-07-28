@@ -245,16 +245,11 @@ impl Eventloop {
         &mut self,
         event: Result<GatewayEvent, TunnelError>,
     ) -> Result<()> {
-        let event = match event {
-            Ok(event) => event,
-            Err(error) => return self.handle_tunnel_error(error),
-        };
-
         match event {
-            tunnel::GatewayEvent::AddedIceCandidates {
+            Ok(GatewayEvent::AddedIceCandidates {
                 conn_id: client,
                 candidates,
-            } => {
+            }) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::BroadcastIceCandidates(
                         ClientsIceCandidates {
@@ -264,10 +259,10 @@ impl Eventloop {
                     )))
                     .await?;
             }
-            tunnel::GatewayEvent::RemovedIceCandidates {
+            Ok(GatewayEvent::RemovedIceCandidates {
                 conn_id: client,
                 candidates,
-            } => {
+            }) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(
                         EgressMessages::BroadcastInvalidatedIceCandidates(ClientsIceCandidates {
@@ -277,7 +272,7 @@ impl Eventloop {
                     ))
                     .await?;
             }
-            tunnel::GatewayEvent::ResolveDns(setup_nat) => {
+            Ok(GatewayEvent::ResolveDns(setup_nat)) => {
                 if self
                     .resolve_tasks
                     .try_push(self.resolve(setup_nat.domain().clone()), setup_nat)
@@ -286,12 +281,13 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
-            tunnel::GatewayEvent::NoRelays => {
+            Ok(GatewayEvent::NoRelays) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::NoRelays {}))
                     .await
                     .context("Failed to send message to portal")?;
             }
+            Err(error) => self.handle_tunnel_error(error)?,
         }
 
         Ok(())
