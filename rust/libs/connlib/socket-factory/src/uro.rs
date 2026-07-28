@@ -23,7 +23,7 @@ pub(crate) fn is_broken() -> bool {
 ///
 /// Returns `true` if any of the receives has a segment size above
 /// [`ip_packet::MAX_FZ_PAYLOAD`], meaning the socket should opt out of URO.
-/// The first detection logs a warning; later ones are silent.
+/// The first detection is logged; later ones are silent.
 pub(crate) fn detect_broken_coalescing<'a>(
     mut metas: impl Iterator<Item = &'a quinn_udp::RecvMeta>,
 ) -> bool {
@@ -35,11 +35,11 @@ pub(crate) fn detect_broken_coalescing<'a>(
         return true;
     }
 
-    tracing::warn!(
+    tracing::info!(
         stride = %meta.stride,
         len = %meta.len,
         interface_index = ?meta.interface_index,
-        "Received a datagram segment larger than any Firezone peer sends; disabling URO to work around broken receive coalescing"
+        "Disabling URO"
     );
 
     true
