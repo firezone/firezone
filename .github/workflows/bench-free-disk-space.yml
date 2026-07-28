@@ -4,27 +4,14 @@ on:
     branches: [speed-up-free-disk-space]
 
 jobs:
-  inventory:
+  old:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        rep: [1, 2, 3]
     steps:
-      - name: Disk layout
-        run: df -h
-      - name: Sizes and inode counts
-        run: |
-          for p in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost; do
-            if [[ -e "$p" ]]; then
-              printf '%-40s %8s %10s inodes\n' "$p" "$(sudo du -sh "$p" | cut -f1)" "$(sudo du -s --inodes "$p" | cut -f1)"
-            else
-              printf '%-40s %8s\n' "$p" "MISSING"
-            fi
-          done
-      - name: Docker images
-        run: sudo docker system df
-
-  serial:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Current implementation
+      - name: Serial rm (old implementation)
         run: |
           start=$(date +%s)
           sudo rm -rf \
@@ -34,56 +21,48 @@ jobs:
             /usr/local/.ghcup \
             /opt/hostedtoolcache/CodeQL \
             /usr/local/share/boost
-          echo "rm: $(( $(date +%s) - start ))s"
-          start=$(date +%s)
-          sudo docker image prune --all --force || true
-          echo "docker prune: $(( $(date +%s) - start ))s"
+          sudo docker image prune --all --force >/dev/null || true
+          echo "RESULT old rep${{ matrix.rep }}: $(( $(date +%s) - start ))s"
 
-  par-roots:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: One rm per root, in parallel
-        run: |
-          start=$(date +%s)
-          for p in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost; do
-            sudo rm -rf "$p" &
-          done
-          sudo docker image prune --all --force >/dev/null 2>&1 &
-          wait
-          echo "total: $(( $(date +%s) - start ))s"
-
-  par-depth:
+  new:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        depth: [2, 3, 4]
-        procs: [8, 32]
+        rep: [1, 2, 3]
     steps:
-      - name: Parallel unlink at depth ${{ matrix.depth }} with ${{ matrix.procs }} workers
-        run: |
-          roots=()
-          for p in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost; do
-            [[ -e "$p" ]] && roots+=("$p")
-          done
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Parallel unlink (new implementation, gate forced off)
+        uses: ./.github/actions/free-disk-space
+        with:
+          required-gb: "0"
+      - name: Timing
+        run: echo "see step duration above"
 
-          start=$(date +%s)
-          sudo docker image prune --all --force >/dev/null 2>&1 &
-          sudo find "${roots[@]}" -mindepth ${{ matrix.depth }} -maxdepth ${{ matrix.depth }} -print0 |
-            sudo xargs -0 -r -P ${{ matrix.procs }} -n 1 rm -rf
-          echo "parallel unlink: $(( $(date +%s) - start ))s"
-          sudo rm -rf "${roots[@]}"
-          echo "incl. mop-up: $(( $(date +%s) - start ))s"
-          wait
-          echo "incl. docker prune: $(( $(date +%s) - start ))s"
-
-  verify-free:
+  gate:
     runs-on: ubuntu-24.04
-    needs: [inventory]
     steps:
-      - name: Space available on /mnt without deleting anything
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Default gate (should skip on a 145 GB runner)
+        uses: ./.github/actions/free-disk-space
+      - name: Confirm nothing was deleted
         run: |
-          df -h / /mnt
-          echo "--- writable? ---"
-          sudo mkdir -p /mnt/scratch && sudo chown "$(id -u):$(id -g)" /mnt/scratch
-          dd if=/dev/zero of=/mnt/scratch/probe bs=1M count=1024 status=none && ls -lh /mnt/scratch/probe
+          df -h /
+          test -d /usr/local/lib/android && echo "android intact"
+
+  gate-keep-android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: keep-android with the gate forced off
+        uses: ./.github/actions/free-disk-space
+        with:
+          keep-android: "true"
+          required-gb: "0"
+      - name: Android must survive, the rest must be gone
+        run: |
+          test -d /usr/local/lib/android/sdk || { echo "android was deleted"; exit 1; }
+          test ! -e /usr/share/dotnet || { echo "dotnet survived"; exit 1; }
+          test ! -e /usr/local/.ghcup || { echo "ghcup survived"; exit 1; }
+          test ! -e /opt/hostedtoolcache/CodeQL || { echo "CodeQL survived"; exit 1; }
+          df -h /

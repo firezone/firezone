@@ -6,22 +6,56 @@ inputs:
     description: "Keep the preinstalled Android SDK and NDK (the kotlin jobs build against them)"
     required: false
     default: "false"
+  required-gb:
+    description: "Skip the reclaim when the root filesystem already has at least this much free space"
+    required: false
+    default: "60"
 runs:
   using: "composite"
   steps:
     - name: Free up disk space
       if: runner.os == 'Linux'
       shell: bash
+      env:
+        KEEP_ANDROID: ${{ inputs.keep-android }}
+        REQUIRED_GB: ${{ inputs.required-gb }}
       run: |
-        # Reclaim ~25 GB from pre-installed toolchains we don't use, so the
-        # instrumented coverage builds have headroom on leaner hosted runners.
-        if [[ "${{ inputs.keep-android }}" != "true" ]]; then
-          sudo rm -rf /usr/local/lib/android
+        # Hosted runners now ship a 145 GB root with ~88 GB free, which is more
+        # than the instrumented coverage builds need, so the reclaim only has to
+        # run on the leaner images still in the fleet.
+        available_gb=$(df --output=avail --block-size=1G / | tail -1)
+        if (( available_gb >= REQUIRED_GB )); then
+          echo "${available_gb} GB available, skipping reclaim"
+          exit 0
         fi
-        sudo rm -rf \
-          /usr/share/dotnet \
-          /opt/ghc \
-          /usr/local/.ghcup \
-          /opt/hostedtoolcache/CodeQL \
+
+        roots=(
+          /usr/share/dotnet
+          /opt/ghc
+          /usr/local/.ghcup
+          /opt/hostedtoolcache/CodeQL
           /usr/local/share/boost
-        sudo docker image prune --all --force || true
+        )
+        if [[ "$KEEP_ANDROID" != "true" ]]; then
+          roots+=(/usr/local/lib/android)
+        fi
+
+        present=()
+        for root in "${roots[@]}"; do
+          [[ -e "$root" ]] && present+=("$root")
+        done
+
+        sudo docker image prune --all --force >/dev/null &
+
+        # Unlinking these trees is metadata-bound rather than throughput-bound,
+        # so they are split into subtrees that several `rm` workers remove
+        # concurrently. A single serial `rm -rf` over the same paths takes
+        # 40-80s and occasionally much longer.
+        if (( ${#present[@]} > 0 )); then
+          sudo find "${present[@]}" -mindepth 3 -maxdepth 3 -print0 |
+            sudo xargs -0 --no-run-if-empty -P 8 -n 1 rm -rf
+          sudo rm -rf "${present[@]}"
+        fi
+
+        wait
+        df -h /
