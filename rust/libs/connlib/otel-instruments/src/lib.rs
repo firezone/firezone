@@ -55,12 +55,14 @@ pub fn network_retries() -> Histogram<u64> {
         .build()
 }
 
-/// How many batches of packets we have processed in a single syscall.
+/// How many packets we have processed in a single syscall.
+///
+/// The batch is the syscall: one packet per record means the IO path is not batching at all.
 pub fn network_packets_batch_count() -> Histogram<u64> {
     meter()
         .u64_histogram("connlib.network.packets.batch_count")
-        .with_description("How many batches of packets we have processed in a single syscall.")
-        .with_unit("{batches}")
+        .with_description("How many packets we have processed in a single syscall.")
+        .with_unit("{packet}")
         // Unit steps while batches are small, where the "are we batching at all" signal sits,
         // then a doubling ladder with midpoints up to the largest batch our IO paths produce:
         // a Linux `recvmmsg` fills up to 32 buffers, each holding a full GRO list of 64 datagrams.
