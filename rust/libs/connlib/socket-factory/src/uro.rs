@@ -39,7 +39,7 @@ pub(crate) fn detect_broken_coalescing<'a>(
         stride = %meta.stride,
         len = %meta.len,
         interface_index = ?meta.interface_index,
-        "Disabling URO"
+        "Received a datagram segment larger than any Firezone peer sends; disabling URO"
     );
 
     true
