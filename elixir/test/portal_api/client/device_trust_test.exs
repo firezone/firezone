@@ -104,12 +104,12 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)
     end
 
-    test "drops an out-of-spec certificate serial but still verifies", %{
+    test "drops a certificate serial exceeding the column limit but still verifies", %{
       pki: pki,
       nonce: nonce,
       anchors: anchors
     } do
-      huge_serial = 64 |> :crypto.strong_rand_bytes() |> :binary.decode_unsigned()
+      huge_serial = 192 |> :crypto.strong_rand_bytes() |> :binary.decode_unsigned()
 
       entry =
         response_entry(
@@ -132,7 +132,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       nonce: nonce,
       anchors: anchors
     } do
-      long_serial = String.duplicate("AB", 40)
+      long_serial = String.duplicate("AB", 130)
 
       entry =
         response_entry(
@@ -291,9 +291,9 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert DeviceTrust.normalize_identifier(:last_attested_device_serial, "   ") == nil
     end
 
-    test "rejects identifiers longer than 64 bytes" do
-      at_bound = String.duplicate("AB", 32)
-      over_bound = String.duplicate("AB", 33)
+    test "rejects identifiers longer than the 255-char column limit" do
+      at_bound = "C" <> String.duplicate("AB", 127)
+      over_bound = String.duplicate("AB", 128)
 
       assert DeviceTrust.normalize_identifier(:last_attested_device_serial, at_bound) == at_bound
       assert DeviceTrust.normalize_identifier(:last_attested_device_serial, over_bound) == nil
