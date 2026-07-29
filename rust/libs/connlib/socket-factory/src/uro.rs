@@ -7,10 +7,10 @@
 //!
 //! Correct coalescing reports the size of the original datagrams as the segment size,
 //! so a receive that violates that proves that coalescing on this machine is broken:
-//! either a segment is larger than [`MAX_FZ_PAYLOAD`] (no Firezone peer sends a
-//! datagram that big) or a receive reported as a single datagram is provably a train
-//! of several Firezone datagrams. Once either happens, URO stays off for the
-//! remainder of the process.
+//! a segment size that is impossible (zero, or larger than [`MAX_FZ_PAYLOAD`], which
+//! no Firezone peer sends) or a receive reported as a single datagram that is
+//! provably a train of several Firezone datagrams. Once either happens, URO stays
+//! off for the remainder of the process.
 //!
 //! Firezone sockets only ever receive WireGuard messages (direct traffic) and STUN /
 //! TURN channel-data messages (relay traffic), all of which leave the datagram
@@ -82,6 +82,7 @@ struct Detection {
 #[derive(Debug, PartialEq)]
 enum Reason {
     OversizedSegment,
+    ZeroSizedSegment,
     MergedWgHandshakes,
     MergedWgDataPackets,
     MergedStunMessages,
@@ -89,18 +90,33 @@ enum Reason {
 }
 
 fn classify(datagram: &[u8], stride: usize) -> Option<Detection> {
-    // A receive with coalescing metadata (stride < len) is already split correctly;
-    // only a receive reported as a single datagram can be an unsplit train.
-    if stride == datagram.len()
+    // A receive with sane coalescing metadata (0 < stride < len) is already split
+    // correctly; only one reported as a single datagram (stride == len, which is also
+    // how quinn-udp reports the absence of metadata) or with a nonsensical zero
+    // segment size can be an unsplit train.
+    if (stride == datagram.len() || stride == 0)
         && let Some(detection) = detect_merged_datagrams(datagram)
     {
         return Some(detection);
     }
 
-    (stride > MAX_FZ_PAYLOAD).then_some(Detection {
-        reason: Reason::OversizedSegment,
-        segment_size: None,
-    })
+    if stride > MAX_FZ_PAYLOAD {
+        return Some(Detection {
+            reason: Reason::OversizedSegment,
+            segment_size: None,
+        });
+    }
+
+    if stride == 0 && !datagram.is_empty() {
+        // Boundaries are unrecoverable; reporting the whole payload as one segment
+        // delivers a plain datagram intact and leaves a blob to the upstream parsers.
+        return Some(Detection {
+            reason: Reason::ZeroSizedSegment,
+            segment_size: Some(datagram.len()),
+        });
+    }
+
+    None
 }
 
 /// Detects a receive whose payload is a train of several Firezone datagrams.
@@ -399,6 +415,35 @@ mod tests {
         let blob = merged(&[&channel_data(50), &[0, 0]]);
 
         assert_eq!(classify(&blob, blob.len()), None);
+    }
+
+    #[test]
+    fn empty_datagram_is_not_broken() {
+        assert_eq!(classify(&[], 0), None);
+    }
+
+    #[test]
+    fn zero_stride_train_is_salvaged() {
+        let blob = merged(&[&wg_data_packet(1312), &wg_data_packet(1312)]);
+
+        assert_eq!(
+            classify(&blob, 0),
+            Some(Detection {
+                reason: Reason::MergedWgDataPackets,
+                segment_size: Some(1312),
+            })
+        );
+    }
+
+    #[test]
+    fn zero_stride_junk_is_delivered_as_one_datagram() {
+        assert_eq!(
+            classify(&vec![0xFF; 100], 0),
+            Some(Detection {
+                reason: Reason::ZeroSizedSegment,
+                segment_size: Some(100),
+            })
+        );
     }
 
     #[test]

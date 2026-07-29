@@ -1047,6 +1047,15 @@ where
                 }
             }
 
+            // A zero stride would never advance past the segment below; nothing sane
+            // reports one, so drop the receive.
+            if meta.stride == 0 && meta.len > 0 {
+                tracing::warn!(len = %meta.len, "Dropping receive with a zero segment size");
+
+                self.buf_index += 1;
+                continue;
+            }
+
             // No Firezone peer sends a datagram this large; the receive is either broken
             // coalescing (see `uro`) or junk from an unrelated sender.
             if meta.stride > ip_packet::MAX_FZ_PAYLOAD {
@@ -1175,6 +1184,41 @@ mod tests {
         assert_eq!(iter.next().unwrap().packet, b"baz3");
         assert_eq!(iter.next().unwrap().packet, b"baz4");
         assert_eq!(iter.next().unwrap().packet, b"baz5");
+        assert_eq!(iter.next().unwrap().packet, b"foo");
+        assert!(iter.next().is_none());
+    }
+
+    /// A zero stride on a non-empty buffer must not stall the iterator: the receive
+    /// is dropped and iteration moves on to the next buffer.
+    #[test]
+    fn zero_stride_buffer_is_skipped() {
+        let buffer_pool = BufferPool::<VecBuf<DummyBuffer>>::new(2, "test");
+        let meta_pool = BufferPool::<VecBuf<quinn_udp::RecvMeta>>::new(2, "test");
+
+        let mut buffers = buffer_pool.pull();
+        buffers.extend([
+            DummyBuffer(b"garbage    ".to_vec()),
+            DummyBuffer(b"foo        ".to_vec()),
+        ]);
+
+        let mut metas = meta_pool.pull();
+        metas.extend([
+            recv_meta(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                7,
+                0,
+            ),
+            recv_meta(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                3,
+                3,
+            ),
+        ]);
+
+        let mut iter = DatagramSegmentIter::new(buffers, metas, 0, 2);
+
         assert_eq!(iter.next().unwrap().packet, b"foo");
         assert!(iter.next().is_none());
     }
