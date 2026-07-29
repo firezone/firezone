@@ -1,51 +1,82 @@
-import {
-  TextInputProps,
-  Tooltip,
-  TextInput,
-  ToggleSwitch,
-  ToggleSwitchProps,
-} from "flowbite-react";
-import React, { PropsWithChildren } from "react";
+import React, { InputHTMLAttributes, PropsWithChildren } from "react";
 
-export function ManagedTextInput(props: TextInputProps & { managed: boolean }) {
-  const { managed, ...inputProps } = props;
+type ManagedTextInputProps = InputHTMLAttributes<HTMLInputElement> & {
+  managed: boolean;
+};
+
+export function ManagedTextInput(props: ManagedTextInputProps) {
+  const { managed, disabled, className = "", ...inputProps } = props;
+
+  const input = (
+    <input
+      aria-disabled={managed || undefined}
+      className={`form-input ${className}`}
+      disabled={managed || disabled}
+      {...inputProps}
+    />
+  );
 
   if (managed) {
-    return (
-      <ManagedTooltip>
-        <TextInput {...inputProps} disabled={true} />
-      </ManagedTooltip>
-    );
+    return <ManagedTooltip fullWidth>{input}</ManagedTooltip>;
   } else {
-    return <TextInput {...inputProps} />;
+    return input;
   }
 }
 
-export function ManagedToggleSwitch(
-  props: ToggleSwitchProps & { managed: boolean }
+interface ManagedToggleSwitchProps {
+  checked: boolean;
+  id?: string;
+  managed: boolean;
+  name?: string;
+  onChange: (checked: boolean) => void;
+}
+
+export function ManagedToggleSwitch(props: ManagedToggleSwitchProps) {
+  const { checked, id, managed, name, onChange } = props;
+
+  const toggle = (
+    <button
+      aria-checked={checked}
+      aria-disabled={managed || undefined}
+      className={`toggle ${
+        checked ? "border-brand bg-brand" : "border-border-emphasis bg-raised"
+      } ${managed ? "cursor-not-allowed opacity-40" : ""}`}
+      disabled={managed}
+      id={id}
+      name={name}
+      onClick={() => onChange(!checked)}
+      role="switch"
+      type="button"
+    >
+      <span
+        aria-hidden="true"
+        className={`toggle-thumb ${checked ? "translate-x-2.5" : ""}`}
+      />
+    </button>
+  );
+
+  if (managed) {
+    return <ManagedTooltip>{toggle}</ManagedTooltip>;
+  } else {
+    return toggle;
+  }
+}
+
+function ManagedTooltip(
+  props: PropsWithChildren<{
+    fullWidth?: boolean;
+  }>
 ) {
-  const { managed, ...toggleSwitchProps } = props;
-
-  if (managed) {
-    return (
-      <ManagedTooltip>
-        <ToggleSwitch {...toggleSwitchProps} disabled={true} />
-      </ManagedTooltip>
-    );
-  } else {
-    return <ToggleSwitch {...toggleSwitchProps} />;
-  }
-}
-
-function ManagedTooltip(props: PropsWithChildren) {
-  const { children } = props;
+  const { children, fullWidth = false } = props;
 
   return (
-    <Tooltip
-      content="This setting is managed by your organisation."
-      clearTheme={{ target: true }}
+    <span
+      className={`group relative ${fullWidth ? "flex w-full" : "inline-flex"}`}
     >
       {children}
-    </Tooltip>
+      <span className="managed-tooltip" role="tooltip">
+        This setting is managed by your organisation.
+      </span>
+    </span>
   );
 }

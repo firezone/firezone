@@ -28,7 +28,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # when it drifts (so CI/CD never fails on a stale pin) and opens a
     # firezone-bot PR to commit the new value; run
     # scripts/nix/update-pnpm-hash.sh to refresh it by hand.
-    hash = "sha256-bD0Ea3OTb1nmOQnCbyDa4u51hyKu9IdWET4uXtcy+v8=";
+    hash = "sha256-749YoSsjcS8cq+oaPZ6Ezaqs8h2zkNeLecwouYpHX3g=";
   };
 
   # nixpkgs packages pnpm by major version only, not the exact patch in
@@ -41,7 +41,12 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
   # vite.config.ts falls back to `git rev-parse` when unset, which is
   # unavailable in the sandbox.
-  env.GITHUB_SHA = finalAttrs.version;
+  env = {
+    # pnpm must know that Nix builds are non-interactive before it refreshes
+    # node_modules from the fixed-output store.
+    CI = "true";
+    GITHUB_SHA = finalAttrs.version;
+  };
 
   buildPhase = ''
     runHook preBuild
