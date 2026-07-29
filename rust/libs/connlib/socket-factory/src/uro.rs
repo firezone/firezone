@@ -53,7 +53,7 @@ pub(crate) fn detect_broken_coalescing<'a>(
         any_broken = true;
 
         if !BROKEN.swap(true, Ordering::Relaxed) {
-            tracing::info!(
+            tracing::warn!(
                 stride = %meta.stride,
                 len = %meta.len,
                 interface_index = ?meta.interface_index,
