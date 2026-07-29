@@ -15,9 +15,9 @@ use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
-use gat_lending_iterator::LendingIterator;
 use io::Io;
-use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use ip_packet::MAX_FZ_PAYLOAD;
+use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
     future, mem,
@@ -298,8 +298,12 @@ impl ClientTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(mut packets) = network {
-                    while let Some(received) = packets.next() {
+                if let Some(mut batches) = network {
+                    for received in batches
+                        .iter_mut()
+                        .flat_map(|batch| batch.drain())
+                        .filter(is_max_wg_packet_size)
+                    {
                         self.packet_counter.add(
                             1,
                             &[
@@ -511,8 +515,12 @@ impl GatewayTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(mut packets) = network {
-                    while let Some(received) = packets.next() {
+                if let Some(mut batches) = network {
+                    for received in batches
+                        .iter_mut()
+                        .flat_map(|batch| batch.drain())
+                        .filter(is_max_wg_packet_size)
+                    {
                         self.packet_counter.add(
                             1,
                             &[
@@ -626,4 +634,13 @@ impl GatewayTunnel {
 pub struct FailedToHandleNetworkPacket {
     local: SocketAddr,
     from: SocketAddr,
+}
+
+fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
+    let len = d.packet.len();
+    if len > MAX_FZ_PAYLOAD {
+        return false;
+    }
+
+    true
 }

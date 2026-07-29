@@ -14,11 +14,10 @@ use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use dns_types::DoHUrl;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
-use gat_lending_iterator::LendingIterator;
 use http_client::HttpClient;
-use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
+use ip_packet::{Ecn, IpPacket};
 use nameserver_set::NameserverSet;
-use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{DatagramBatch, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet},
     io,
@@ -73,17 +72,17 @@ struct DnsQueryMetaData {
 ///
 /// This structure allows us to batch-process multiple ready sources rather than
 /// handling them one at a time, improving fairness and preventing starvation.
-pub struct Input<D, I> {
+pub struct Input {
     pub timeout: bool,
-    pub device: Option<D>,
-    pub network: Option<I>,
+    pub device: Option<tun::PacketBatch>,
+    pub network: Option<Vec<DatagramBatch>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
     pub dns_response: Option<dns::RecursiveResponse>,
     pub error: TunnelError,
 }
 
-impl<D, I> Input<D, I> {
+impl Input {
     fn error(e: impl Into<anyhow::Error>) -> Self {
         Self {
             timeout: false,
@@ -222,12 +221,7 @@ impl Io {
         self.nameservers.fastest()
     }
 
-    pub fn poll(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<
-        Input<tun::PacketBatch, impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>>,
-    > {
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input> {
         if let Err(e) = ready!(self.flush(cx)) {
             return Poll::Ready(Input::error(e));
         }
@@ -251,10 +245,7 @@ impl Io {
             }
         }
 
-        let network = self
-            .sockets
-            .poll_recv_from(cx)
-            .map(|network| network.filter(is_max_wg_packet_size));
+        let network = self.sockets.poll_recv_from(cx);
 
         while let Poll::Ready(e) = self.sockets.poll_error(cx) {
             error.push(e);
@@ -591,15 +582,6 @@ impl Io {
     }
 }
 
-fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
-    let len = d.packet.len();
-    if len > MAX_FZ_PAYLOAD {
-        return false;
-    }
-
-    true
-}
-
 #[cfg(test)]
 mod tests {
     use std::{future::poll_fn, net::Ipv4Addr};
@@ -737,10 +719,7 @@ mod tests {
             io
         }
 
-        async fn next(
-            &mut self,
-        ) -> Input<tun::PacketBatch, impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>>
-        {
+        async fn next(&mut self) -> Input {
             poll_fn(|cx| self.poll(cx)).await
         }
     }

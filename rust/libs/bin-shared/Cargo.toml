@@ -82,7 +82,6 @@ features = [
 
 [dev-dependencies]
 bufferpool = { workspace = true }
-gat-lending-iterator = { workspace = true }
 http = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "fs"] }

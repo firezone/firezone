@@ -1,6 +1,5 @@
 use anyhow::{Context as _, Result};
 use bufferpool::{Buffer, BufferPool, VecBuf};
-use gat_lending_iterator::LendingIterator;
 use ip_packet::{Ecn, Ipv4HeaderSlice, Ipv6HeaderSlice, UdpSlice};
 use opentelemetry::KeyValue;
 use quinn_udp::{EcnCodepoint, Transmit, UdpSockRef};
@@ -406,7 +405,7 @@ impl DatagramOut {
 
 impl PerfUdpSocket {
     /// Receives a batch of datagrams from whichever of our sockets becomes ready first.
-    pub async fn recv_from(&self) -> Result<DatagramSegmentIter> {
+    pub async fn recv_from(&self) -> Result<DatagramBatch> {
         std::future::poll_fn(|cx| {
             self.pool
                 .poll_recv(cx, |socket| self.try_recv_batch(socket))
@@ -418,7 +417,7 @@ impl PerfUdpSocket {
     ///
     /// Returns `WouldBlock` if the socket is not readable, clearing tokio's cached
     /// readiness in the process so that waiting for readiness actually suspends.
-    fn try_recv_batch(&self, socket: Socket<'_>) -> io::Result<DatagramSegmentIter> {
+    fn try_recv_batch(&self, socket: Socket<'_>) -> io::Result<DatagramBatch> {
         let mut batch = self.recv_buffers.pull_batch();
 
         let len = socket.inner.try_io(Interest::READABLE, || {
@@ -452,19 +451,19 @@ impl PerfUdpSocket {
             socket.disable_gro();
         }
 
-        let iter = DatagramSegmentIter::new(batch.buffers, batch.metas, self.port, len);
+        let batch = DatagramBatch::new(batch.buffers, batch.metas, self.port, len);
 
         // `len` only counts the buffers the syscall filled; with GRO a single buffer holds
         // several datagrams, so the segments across all buffers are what we want here.
         self.batch_histogram.record(
-            iter.num_packets() as u64,
+            batch.len() as u64,
             &[
                 KeyValue::new("network.transport", "udp"),
                 KeyValue::new("network.io.direction", "receive"),
             ],
         );
 
-        Ok(iter)
+        Ok(batch)
     }
 
     pub async fn send(&self, datagram: DatagramOut) -> Result<()> {
@@ -877,9 +876,8 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
 /// plus containers for the buffers and metas that make up one batch.
 ///
 /// The buffers and metas live in pooled, heap-allocated `Vec`s rather than inline in
-/// [`DatagramSegmentIter`]: the iterator is sent over a channel and inline storage
-/// would make every channel slot (and thus tokio's block allocations) carry the full
-/// batch size.
+/// [`DatagramBatch`]: the batch is sent over a channel and inline storage would make
+/// every channel slot (and thus tokio's block allocations) carry the full batch size.
 pub(crate) struct RecvBuffers {
     bytes: BufferPool<Vec<u8>>,
     buffers: BufferPool<VecBuf<Buffer<Vec<u8>>>>,
@@ -896,7 +894,7 @@ impl RecvBatch {
     /// The batch's datagram buffers as scatter slices, paired with the meta array the
     /// kernel fills in — the two arguments a `recvmmsg`-style read expects. Borrows the
     /// batch for the duration of the read; afterwards the buffers are handed to a
-    /// [`DatagramSegmentIter`].
+    /// [`DatagramBatch`].
     fn recv_slices(
         &mut self,
     ) -> (
@@ -934,24 +932,17 @@ impl RecvBuffers {
     }
 }
 
-/// An iterator that segments a batch of buffers into individual datagrams.
+/// A batch of datagrams, received from the socket in a single syscall and exchanged
+/// over the socket channels as a single item.
 ///
-/// This iterator is generic over its buffer type to allow easier testing without a buffer pool.
+/// The datagrams stay in the receive buffers the kernel filled; the buffers and metas
+/// live in pooled, heap-allocated `Vec`s (see [`RecvBuffers`]), so moving a batch only
+/// copies a couple of pointers. Callers consume a batch with [`DatagramBatch::drain`],
+/// which segments buffers holding several GRO / URO-coalesced datagrams apart again.
 ///
-/// This implementation might look like dark arts but it is actually quite simple.
-/// Its design is driven by two main ideas:
-///
-/// - We want the return a single `Iterator`-like type from a `recv` call on the socket.
-/// - We want to avoid copying buffers around.
-///
-/// To achieve this, this type doesn't implement `Iterator` but `LendingIterator` instead.
-/// A `LendingIterator` adds a lifetime to the `Item` type, allowing us to return a reference to something the iterator owns.
-///
-/// Composing `LendingIterator`s itself is difficult which is why we implement the entire segmentation of the buffers within a single type.
-/// When [`quinn_udp`] returns us the buffers, it will have populated the [`quinn_udp::RecvMeta`]s accordingly.
-/// Thus, our main job within this iterator is to loop over the `buffers` and `meta` pair-wise, inspect the `meta` and segment the data within the buffer accordingly.
+/// The batch is generic over its buffer type to allow easier testing without a buffer pool.
 #[derive(derive_more::Debug)]
-pub struct DatagramSegmentIter<B = Buffer<Vec<u8>>> {
+pub struct DatagramBatch<B = Buffer<Vec<u8>>> {
     #[debug(skip)]
     buffers: Buffer<VecBuf<B>>,
     #[debug(skip)]
@@ -959,14 +950,11 @@ pub struct DatagramSegmentIter<B = Buffer<Vec<u8>>> {
 
     port: u16,
 
-    buf_index: usize,
-    segment_index: usize,
-
     _total_bytes: usize,
     num_packets: usize,
 }
 
-impl<B> DatagramSegmentIter<B> {
+impl<B> DatagramBatch<B> {
     pub(crate) fn new(
         mut buffers: Buffer<VecBuf<B>>,
         mut metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
@@ -984,16 +972,36 @@ impl<B> DatagramSegmentIter<B> {
             buffers,
             metas,
             port,
-            buf_index: 0,
-            segment_index: 0,
             _total_bytes: total_bytes,
             num_packets,
         }
     }
 
     /// How many datagrams this batch carries in total.
-    pub(crate) fn num_packets(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.num_packets
+    }
+
+    /// Whether this batch carries no datagrams at all.
+    pub fn is_empty(&self) -> bool {
+        self.num_packets == 0
+    }
+
+    /// Yields all datagrams in the batch, in order.
+    ///
+    /// When [`quinn_udp`] returns us the buffers, it will have populated the
+    /// [`quinn_udp::RecvMeta`]s accordingly. Thus, our main job here is to loop over the
+    /// `buffers` and `metas` pair-wise, inspect the `meta` and segment the data within
+    /// the buffer accordingly.
+    pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn<'_>>
+    where
+        B: Deref<Target = Vec<u8>>,
+    {
+        Drain {
+            batch: self,
+            buf_index: 0,
+            segment_index: 0,
+        }
     }
 }
 
@@ -1006,20 +1014,29 @@ fn num_segments(meta: &quinn_udp::RecvMeta) -> usize {
     meta.len.div_ceil(meta.stride.max(1))
 }
 
-impl<B> LendingIterator for DatagramSegmentIter<B>
-where
-    B: Deref<Target = Vec<u8>> + 'static,
-{
-    type Item<'a> = DatagramIn<'a>;
+/// The iterator behind [`DatagramBatch::drain`].
+struct Drain<'a, B> {
+    batch: &'a DatagramBatch<B>,
+    buf_index: usize,
+    segment_index: usize,
+}
 
-    fn next(&mut self) -> Option<Self::Item<'_>> {
+impl<'a, B> Iterator for Drain<'a, B>
+where
+    B: Deref<Target = Vec<u8>>,
+{
+    type Item = DatagramIn<'a>;
+
+    fn next(&mut self) -> Option<DatagramIn<'a>> {
+        let batch = self.batch;
+
         loop {
-            if self.buf_index >= self.buffers.len() {
+            if self.buf_index >= batch.buffers.len() {
                 return None;
             }
 
-            let buf = &self.buffers[self.buf_index];
-            let meta = &self.metas[self.buf_index];
+            let buf = &batch.buffers[self.buf_index];
+            let meta = &batch.metas[self.buf_index];
 
             if meta.len == 0 {
                 self.buf_index += 1;
@@ -1071,12 +1088,12 @@ where
                 continue;
             }
 
-            let local = SocketAddr::new(local_ip, self.port);
+            let local = SocketAddr::new(local_ip, batch.port);
 
             let segment_size = meta.stride;
 
             #[cfg(debug_assertions)]
-            tracing::trace!(target: "wire::net::recv", num_p = %self.num_packets, tot_b = %self._total_bytes, src = %meta.addr, dst = %local, ecn = ?meta.ecn, len = %segment_size);
+            tracing::trace!(target: "wire::net::recv", num_p = %batch.num_packets, tot_b = %batch._total_bytes, src = %meta.addr, dst = %local, ecn = ?meta.ecn, len = %segment_size);
 
             let segment_start = self.segment_index;
             let segment_end = std::cmp::min(segment_start + segment_size, meta.len);
@@ -1100,7 +1117,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use gat_lending_iterator::LendingIterator as _;
     use quinn_udp::RecvMeta;
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 
@@ -1132,18 +1148,18 @@ mod tests {
         }
     }
 
-    /// The iterator is the item of the channel to the main thread; keeping it small is
-    /// the whole point of storing the batch in pooled `Vec`s rather than inline. tokio
+    /// The batch is the item of the channel to the main thread; keeping it small is
+    /// the whole point of storing its buffers in pooled `Vec`s rather than inline. tokio
     /// allocates channel slots in blocks, so a large item would cross musl's mmap
     /// threshold and thrash the allocator (see the pooling that produced this type).
     #[cfg(target_pointer_width = "64")]
     #[test]
-    fn iter_is_a_small_channel_item() {
-        assert_eq!(size_of::<DatagramSegmentIter>(), 104);
+    fn batch_is_a_small_channel_item() {
+        assert_eq!(size_of::<DatagramBatch>(), 88);
     }
 
     #[test]
-    fn datagram_iter_segments_buffer_correctly() {
+    fn drain_segments_buffers_correctly() {
         let buffer_pool = BufferPool::<VecBuf<DummyBuffer>>::new(3, "test");
         let meta_pool = BufferPool::<VecBuf<quinn_udp::RecvMeta>>::new(3, "test");
 
@@ -1171,7 +1187,8 @@ mod tests {
             quinn_udp::RecvMeta::default(),
         ]);
 
-        let mut iter = DatagramSegmentIter::new(buffers, metas, 0, 3);
+        let mut batch = DatagramBatch::new(buffers, metas, 0, 3);
+        let mut iter = batch.drain();
 
         assert_eq!(iter.next().unwrap().packet, b"foobar1");
         assert_eq!(iter.next().unwrap().packet, b"foobar2");
@@ -1217,7 +1234,8 @@ mod tests {
             ),
         ]);
 
-        let mut iter = DatagramSegmentIter::new(buffers, metas, 0, 2);
+        let mut batch = DatagramBatch::new(buffers, metas, 0, 2);
+        let mut iter = batch.drain();
 
         assert_eq!(iter.next().unwrap().packet, b"foo");
         assert!(iter.next().is_none());
@@ -1226,7 +1244,7 @@ mod tests {
     /// Both buffers end in a segment shorter than their stride, so counting whole strides
     /// would miss one datagram each.
     #[test]
-    fn num_packets_counts_segments_across_buffers() {
+    fn len_counts_segments_across_buffers() {
         let localhost = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
 
         let metas = [
@@ -1239,7 +1257,7 @@ mod tests {
     }
 
     #[test]
-    fn datagram_iter_drops_segments_larger_than_max_fz_payload() {
+    fn drain_drops_segments_larger_than_max_fz_payload() {
         let buffer_pool = BufferPool::<VecBuf<DummyBuffer>>::new(2, "test");
         let meta_pool = BufferPool::<VecBuf<quinn_udp::RecvMeta>>::new(2, "test");
 
@@ -1267,7 +1285,8 @@ mod tests {
             ),
         ]);
 
-        let mut iter = DatagramSegmentIter::new(buffers, metas, 0, 2);
+        let mut batch = DatagramBatch::new(buffers, metas, 0, 2);
+        let mut iter = batch.drain();
 
         assert_eq!(iter.next().unwrap().packet, b"foobar1");
         assert!(iter.next().is_none());

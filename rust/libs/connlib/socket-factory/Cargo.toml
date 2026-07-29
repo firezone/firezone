@@ -8,7 +8,6 @@ license = { workspace = true }
 anyhow = { workspace = true }
 bufferpool = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
-gat-lending-iterator = { workspace = true }
 ip-packet = { workspace = true }
 memchr = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
@@ -33,6 +32,5 @@ parking_lot = { workspace = true }
 [dev-dependencies]
 bufferpool = { workspace = true }
 derive_more = { workspace = true, features = ["deref"] }
-gat-lending-iterator = { workspace = true }
 ip-packet = { workspace = true }
 tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }

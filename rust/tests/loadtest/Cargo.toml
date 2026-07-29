@@ -17,7 +17,6 @@ bufferpool = { workspace = true }
 bytecodec = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 futures = { workspace = true }
-gat-lending-iterator = { workspace = true }
 ip-packet = { workspace = true }
 known-dirs = { workspace = true }
 logging = { workspace = true }

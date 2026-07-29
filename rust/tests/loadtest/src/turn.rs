@@ -25,7 +25,6 @@ use anyhow::{Context as _, ErrorExt as _, Result, anyhow, bail};
 use bufferpool::BufferPool;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use clap::Parser;
-use gat_lending_iterator::LendingIterator as _;
 use ip_packet::Ecn;
 use rand::random;
 use serde::Serialize;
@@ -708,15 +707,15 @@ async fn receive(
 
             () = tokio::time::sleep_until(deadline) => break,
             result = socket.recv_from() => {
-                let mut datagrams = match result {
-                    Ok(datagrams) => datagrams,
+                let mut batch = match result {
+                    Ok(batch) => batch,
                     Err(e) => {
                         tracing::warn!(error = %e, "Failed to receive on peer socket");
                         break;
                     }
                 };
 
-                while let Some(datagram) = datagrams.next() {
+                for datagram in batch.drain() {
                     record_datagram(&mut stats, &counters, datagram.packet, payload_size);
                 }
             }
@@ -1152,9 +1151,9 @@ async fn request_response(
 /// Receive the next datagram originating from `server`, copied out of the socket buffer.
 async fn recv_response(socket: &PerfUdpSocket, server: SocketAddr) -> Result<Vec<u8>> {
     loop {
-        let mut datagrams = socket.recv_from().await?;
+        let mut batch = socket.recv_from().await?;
 
-        while let Some(datagram) = datagrams.next() {
+        for datagram in batch.drain() {
             if datagram.from == server {
                 return Ok(datagram.packet.to_vec());
             }

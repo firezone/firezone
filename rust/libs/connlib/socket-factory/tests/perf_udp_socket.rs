@@ -1,7 +1,6 @@
 //! Integration tests for [`socket_factory::PerfUdpSocket`], exercising it through its public API.
 
 use bufferpool::BufferPool;
-use gat_lending_iterator::LendingIterator as _;
 use ip_packet::Ecn;
 use socket_factory::{DatagramOut, udp};
 
@@ -53,8 +52,8 @@ async fn sends_and_receives_a_datagram() {
     // The reply matches the (connected) socket's 4-tuple exactly and must be delivered via it.
     peer.send_to(b"world", from).await.unwrap();
 
-    let mut iter = socket.recv_from().await.unwrap();
-    let datagram = iter.next().unwrap();
+    let mut batch = socket.recv_from().await.unwrap();
+    let datagram = batch.drain().next().unwrap();
 
     assert_eq!(datagram.packet, b"world");
     assert_eq!(datagram.from, peer_addr);
