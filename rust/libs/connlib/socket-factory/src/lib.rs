@@ -19,6 +19,8 @@ use tokio::io::Interest;
 
 mod buffer_sizes;
 mod pool;
+#[cfg(any(windows, test))]
+mod uro;
 
 pub use buffer_sizes::{MAX_RECV_BATCH_MEMORY, RECV_BUFFER_SIZE, SEND_BUFFER_SIZE};
 
@@ -437,6 +439,18 @@ impl PerfUdpSocket {
                 }
             }
         })?;
+
+        #[cfg(windows)]
+        if uro::detect_broken_coalescing(
+            batch
+                .buffers
+                .iter()
+                .map(|b| b.as_slice())
+                .zip(batch.metas.iter_mut())
+                .take(len),
+        ) {
+            socket.disable_gro();
+        }
 
         let iter = DatagramSegmentIter::new(batch.buffers, batch.metas, self.port, len);
 
@@ -1033,6 +1047,24 @@ where
                 }
             }
 
+            // A zero stride would never advance past the segment below; nothing sane
+            // reports one, so drop the receive.
+            if meta.stride == 0 && meta.len > 0 {
+                tracing::warn!(len = %meta.len, "Dropping receive with a zero segment size");
+
+                self.buf_index += 1;
+                continue;
+            }
+
+            // No Firezone peer sends a datagram this large; the receive is either broken
+            // coalescing (see `uro`) or junk from an unrelated sender.
+            if meta.stride > ip_packet::MAX_FZ_PAYLOAD {
+                tracing::trace!(stride = %meta.stride, len = %meta.len, "Dropping receive with an impossibly large segment size");
+
+                self.buf_index += 1;
+                continue;
+            }
+
             if self.segment_index >= meta.len {
                 self.buf_index += 1;
                 self.segment_index = 0;
@@ -1156,6 +1188,41 @@ mod tests {
         assert!(iter.next().is_none());
     }
 
+    /// A zero stride on a non-empty buffer must not stall the iterator: the receive
+    /// is dropped and iteration moves on to the next buffer.
+    #[test]
+    fn zero_stride_buffer_is_skipped() {
+        let buffer_pool = BufferPool::<VecBuf<DummyBuffer>>::new(2, "test");
+        let meta_pool = BufferPool::<VecBuf<quinn_udp::RecvMeta>>::new(2, "test");
+
+        let mut buffers = buffer_pool.pull();
+        buffers.extend([
+            DummyBuffer(b"garbage    ".to_vec()),
+            DummyBuffer(b"foo        ".to_vec()),
+        ]);
+
+        let mut metas = meta_pool.pull();
+        metas.extend([
+            recv_meta(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                7,
+                0,
+            ),
+            recv_meta(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                3,
+                3,
+            ),
+        ]);
+
+        let mut iter = DatagramSegmentIter::new(buffers, metas, 0, 2);
+
+        assert_eq!(iter.next().unwrap().packet, b"foo");
+        assert!(iter.next().is_none());
+    }
+
     /// Both buffers end in a segment shorter than their stride, so counting whole strides
     /// would miss one datagram each.
     #[test]
@@ -1169,6 +1236,41 @@ mod tests {
         ];
 
         assert_eq!(metas.iter().map(num_segments).sum::<usize>(), 12);
+    }
+
+    #[test]
+    fn datagram_iter_drops_segments_larger_than_max_fz_payload() {
+        let buffer_pool = BufferPool::<VecBuf<DummyBuffer>>::new(2, "test");
+        let meta_pool = BufferPool::<VecBuf<quinn_udp::RecvMeta>>::new(2, "test");
+
+        let oversized = 2 * ip_packet::MAX_FZ_PAYLOAD;
+
+        let mut buffers = buffer_pool.pull();
+        buffers.extend([
+            DummyBuffer(vec![0; oversized]),
+            DummyBuffer(b"foobar1".to_vec()),
+        ]);
+
+        let mut metas = meta_pool.pull();
+        metas.extend([
+            recv_meta(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                oversized,
+                oversized,
+            ),
+            recv_meta(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                7,
+                7,
+            ),
+        ]);
+
+        let mut iter = DatagramSegmentIter::new(buffers, metas, 0, 2);
+
+        assert_eq!(iter.next().unwrap().packet, b"foobar1");
+        assert!(iter.next().is_none());
     }
 
     #[test]

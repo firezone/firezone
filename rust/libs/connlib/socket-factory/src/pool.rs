@@ -46,6 +46,14 @@ impl Socket<'_> {
     ) -> io::Result<usize> {
         self.state.recv(UdpSockRef::from(self.inner), bufs, meta)
     }
+
+    /// Opts the socket out of URO.
+    #[cfg(windows)]
+    pub(crate) fn disable_gro(&self) {
+        if let Err(e) = self.state.set_gro(UdpSockRef::from(self.inner), false) {
+            tracing::warn!("Failed to disable URO: {e}");
+        }
+    }
 }
 
 /// A UDP socket and its quinn state, owned. The unit a [`SocketPool`] is made of.
@@ -61,6 +69,9 @@ impl OwnedSocket {
         state: quinn_udp::UdpSocketState,
         connected: bool,
     ) -> Self {
+        #[cfg(windows)]
+        enable_gro(&socket, &state);
+
         Self {
             socket,
             state,
@@ -99,6 +110,22 @@ impl OwnedSocket {
 
         tracing::debug!(requested_send_buffer_size = %send, %send_buffer_size, requested_recv_buffer_size = %recv, %recv_buffer_size, %port, "UDP socket buffer sizes");
     }
+}
+
+/// Opts a socket into URO unless broken coalescing has been observed (see [`crate::uro`]).
+#[cfg(windows)]
+fn enable_gro(socket: &tokio::net::UdpSocket, state: &quinn_udp::UdpSocketState) {
+    if crate::uro::is_broken() {
+        return;
+    }
+
+    if let Err(e) = state.set_gro(UdpSockRef::from(socket), true) {
+        tracing::debug!("Failed to enable URO: {e}");
+
+        return;
+    }
+
+    tracing::debug!("Enabled URO");
 }
 
 /// Polls a single socket for readiness and, when ready, tries to receive a batch.
