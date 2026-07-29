@@ -2528,7 +2528,11 @@ defmodule PortalAPI.Client.Channel.Shared do
         if is_nil(current_pid) do
           Portal.Queue.enqueue(
             :client_session_queue,
-            session_attrs(socket.assigns.client, socket.assigns.session_ref),
+            session_attrs(
+              socket.assigns.client,
+              socket.assigns.session_ref,
+              socket.assigns[:attested?] || false
+            ),
             metadata: %{
               subject: Authentication.Subject.to_map(socket.assigns.subject),
               timestamp: DateTime.utc_now()
@@ -2583,7 +2587,26 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
   end
 
-  defp session_attrs(%Portal.Device{} = client, session_ref) do
+  defp session_attrs(%Portal.Device{} = client, session_ref, attested?) do
+    # The attested snapshot is carried only when THIS session proved
+    # possession (the v3 challenge sets the assign). Copying it off the row
+    # for every session would re-assert a stale snapshot and race a fresher
+    # proof flushing from another session; the flush's recency guard keeps
+    # the row's values when the entry carries none.
+    attested_attrs =
+      if attested? do
+        %{
+          last_attested_device_serial: client.last_attested_device_serial,
+          last_attested_device_uuid: client.last_attested_device_uuid,
+          last_attested_mdm_device_id: client.last_attested_mdm_device_id,
+          last_attested_cert_serial: client.last_attested_cert_serial,
+          last_attested_cert_fingerprint: client.last_attested_cert_fingerprint,
+          last_attested_at: client.last_attested_at
+        }
+      else
+        %{}
+      end
+
     %{
       session_ref: session_ref,
       account_id: client.account_id,
@@ -2593,12 +2616,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       # the flush's coalesce keeps the row's current value on nil, and the
       # conflict probe then runs only for real merges instead of every flush.
       firezone_id: if(client.firezone_id_merged?, do: client.firezone_id),
-      last_attested_device_serial: client.last_attested_device_serial,
-      last_attested_device_uuid: client.last_attested_device_uuid,
-      last_attested_mdm_device_id: client.last_attested_mdm_device_id,
-      last_attested_cert_serial: client.last_attested_cert_serial,
-      last_attested_cert_fingerprint: client.last_attested_cert_fingerprint,
-      last_attested_at: client.last_attested_at,
       client_token_id: client.client_token_id,
       public_key: client.public_key,
       user_agent: client.last_seen_user_agent,
@@ -2609,6 +2626,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       remote_ip_location_lon: client.last_seen_remote_ip_location_lon,
       version: client.last_seen_version
     }
+    |> Map.merge(attested_attrs)
   end
 
   defp abnormal_exit?(:normal), do: false

@@ -201,6 +201,225 @@ defmodule Portal.Queue.CallbacksTest do
       assert DateTime.compare(device.last_attested_at, attested_at) == :eq
     end
 
+    test "a batch keeps the attested snapshot when an unattested reconnect follows" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+      token = client_token_fixture(account: account, actor: actor)
+      ref_attested = make_ref()
+      ref_reconnect = make_ref()
+
+      :ok = PG.register(client.id)
+
+      older = DateTime.add(DateTime.utc_now(), -60, :second)
+      newer = DateTime.utc_now()
+
+      base = %{
+        account_id: account.id,
+        device_id: client.id,
+        actor_id: actor.id,
+        client_token_id: token.id,
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        version: "1.3.0"
+      }
+
+      attested_entry =
+        {Map.merge(base, %{
+           session_ref: ref_attested,
+           last_attested_device_serial: "C02XK1ZGJGH5",
+           last_attested_device_uuid: "7a461ff9-0be2-64a9-a418-539d9a21827b",
+           last_attested_cert_fingerprint:
+             "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+           last_attested_at: older,
+           version: "1.2.9",
+           inserted_at: older
+         }), %{subject: %{"actor_id" => actor.id}, timestamp: older}}
+
+      reconnect_entry =
+        {Map.merge(base, %{session_ref: ref_reconnect, inserted_at: newer}),
+         %{subject: %{"actor_id" => actor.id}, timestamp: newer}}
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+
+      assert 2 = on_flush.([attested_entry, reconnect_entry])
+
+      device = Repo.get_by!(Device, id: client.id, account_id: account.id)
+
+      # The newest entry wins the session fields, but the attested snapshot
+      # from the earlier entry is not dropped: it never reached the database,
+      # so the in-database coalesce alone could not have preserved it.
+      assert device.last_attested_device_serial == "C02XK1ZGJGH5"
+      assert device.last_attested_device_uuid == "7a461ff9-0be2-64a9-a418-539d9a21827b"
+      assert device.last_attested_cert_fingerprint
+      assert DateTime.compare(device.last_attested_at, older) == :eq
+      assert device.last_seen_version == "1.3.0"
+      assert device.last_seen_at == newer
+      assert_receive {:confirm_session_durability, ^ref_attested}
+      assert_receive {:confirm_session_durability, ^ref_reconnect}
+    end
+
+    test "a stale attested snapshot does not regress a fresher proof" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      fresh_at = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+      stale_at = DateTime.add(fresh_at, -3600, :second)
+
+      client =
+        client_fixture(account: account, actor: actor)
+        |> Ecto.Changeset.change(
+          last_attested_device_serial: "SN-FRESH",
+          last_attested_at: fresh_at
+        )
+        |> Repo.update!()
+
+      token = client_token_fixture(account: account, actor: actor)
+      session_ref = make_ref()
+
+      :ok = PG.register(client.id)
+
+      attrs = %{
+        session_ref: session_ref,
+        account_id: account.id,
+        device_id: client.id,
+        actor_id: actor.id,
+        last_attested_device_serial: "SN-STALE",
+        last_attested_at: stale_at,
+        client_token_id: token.id,
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        version: "1.3.0",
+        inserted_at: DateTime.utc_now()
+      }
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+      metadata = %{subject: %{"actor_id" => actor.id}, timestamp: DateTime.utc_now()}
+
+      # Batches can flush out of proof order across nodes; an older proof
+      # never replaces a newer one already on the row.
+      assert 1 = on_flush.([{attrs, metadata}])
+
+      device = Repo.get_by!(Device, id: client.id, account_id: account.id)
+      assert device.last_attested_device_serial == "SN-FRESH"
+      assert DateTime.compare(device.last_attested_at, fresh_at) == :eq
+    end
+
+    test "a same-batch attested identity collision skips only the losing snapshot" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client_a = client_fixture(account: account, actor: actor)
+      client_b = client_fixture(account: account, actor: actor)
+      token_a = client_token_fixture(account: account, actor: actor)
+      token_b = client_token_fixture(account: account, actor: actor)
+      ref_a = make_ref()
+      ref_b = make_ref()
+
+      :ok = PG.register(client_a.id)
+      :ok = PG.register(client_b.id)
+
+      older = DateTime.add(DateTime.utc_now(), -60, :second)
+      newer = DateTime.utc_now()
+
+      base = %{
+        account_id: account.id,
+        actor_id: actor.id,
+        # A cloned certificate: both entries prove the same serial.
+        last_attested_device_serial: "SN-CLONED",
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        version: "1.3.0"
+      }
+
+      entry_a =
+        {Map.merge(base, %{
+           session_ref: ref_a,
+           device_id: client_a.id,
+           client_token_id: token_a.id,
+           last_attested_at: older,
+           inserted_at: older
+         }), %{subject: %{"actor_id" => actor.id}, timestamp: older}}
+
+      entry_b =
+        {Map.merge(base, %{
+           session_ref: ref_b,
+           device_id: client_b.id,
+           client_token_id: token_b.id,
+           last_attested_at: newer,
+           inserted_at: newer
+         }), %{subject: %{"actor_id" => actor.id}, timestamp: newer}}
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert 2 = on_flush.([entry_a, entry_b])
+        end)
+
+      assert log =~ "another device in the same batch claims this identifier"
+
+      device_a = Repo.get_by!(Device, id: client_a.id, account_id: account.id)
+      device_b = Repo.get_by!(Device, id: client_b.id, account_id: account.id)
+
+      # The freshest proof wins the identifier; the loser keeps its session
+      # but skips the attested update.
+      assert device_b.last_attested_device_serial == "SN-CLONED"
+      assert is_nil(device_a.last_attested_device_serial)
+      assert is_nil(device_a.last_attested_at)
+      assert device_a.client_token_id == token_a.id
+      assert_receive {:confirm_session_durability, ^ref_a}
+      assert_receive {:confirm_session_durability, ^ref_b}
+    end
+
+    test "skips an attested identity another device row already holds" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+
+      _other =
+        client_fixture(account: account, actor: actor)
+        |> Ecto.Changeset.change(last_attested_device_serial: "SN-TAKEN")
+        |> Repo.update!()
+
+      token = client_token_fixture(account: account, actor: actor)
+      session_ref = make_ref()
+
+      :ok = PG.register(client.id)
+
+      attrs = %{
+        session_ref: session_ref,
+        account_id: account.id,
+        device_id: client.id,
+        actor_id: actor.id,
+        last_attested_device_serial: "SN-TAKEN",
+        last_attested_at: DateTime.utc_now(),
+        client_token_id: token.id,
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        version: "1.3.0",
+        inserted_at: DateTime.utc_now()
+      }
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+      metadata = %{subject: %{"actor_id" => actor.id}, timestamp: DateTime.utc_now()}
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert 1 = on_flush.([{attrs, metadata}])
+        end)
+
+      assert log =~ "another device row already holds this identifier"
+
+      device = Repo.get_by!(Device, id: client.id, account_id: account.id)
+      assert is_nil(device.last_attested_device_serial)
+      assert is_nil(device.last_attested_at)
+      assert device.client_token_id == token.id
+      assert_receive {:confirm_session_durability, ^session_ref}
+    end
+
     test "skips a conflicting firezone_id merge but keeps the session" do
       account = account_fixture()
       actor = actor_fixture(account: account)

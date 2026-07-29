@@ -53,18 +53,19 @@ defmodule PortalAPI.Sockets.LatestSession do
     |> Enum.group_by(fn {attrs, _metadata} -> {attrs.account_id, attrs.device_id} end)
     |> Enum.map(fn {_key, device_entries} ->
       {attrs, metadata} = Enum.max_by(device_entries, &connected_at/1, DateTime)
+      attested = latest_attested_attrs(device_entries)
 
       %{
         account_id: attrs.account_id,
         device_id: attrs.device_id,
         actor_id: attrs[:actor_id],
         firezone_id: attrs[:firezone_id],
-        last_attested_device_serial: attrs[:last_attested_device_serial],
-        last_attested_device_uuid: attrs[:last_attested_device_uuid],
-        last_attested_mdm_device_id: attrs[:last_attested_mdm_device_id],
-        last_attested_cert_serial: attrs[:last_attested_cert_serial],
-        last_attested_cert_fingerprint: attrs[:last_attested_cert_fingerprint],
-        last_attested_at: attrs[:last_attested_at],
+        last_attested_device_serial: attested[:last_attested_device_serial],
+        last_attested_device_uuid: attested[:last_attested_device_uuid],
+        last_attested_mdm_device_id: attested[:last_attested_mdm_device_id],
+        last_attested_cert_serial: attested[:last_attested_cert_serial],
+        last_attested_cert_fingerprint: attested[:last_attested_cert_fingerprint],
+        last_attested_at: attested[:last_attested_at],
         token_id: Map.fetch!(attrs, token_field),
         public_key: attrs[:public_key],
         user_agent: attrs[:user_agent],
@@ -78,6 +79,21 @@ defmodule PortalAPI.Sockets.LatestSession do
       }
     end)
     |> Enum.sort_by(&{&1.account_id, &1.device_id})
+  end
+
+  # The newest entry wins the session fields above, but the attested snapshot
+  # folds independently: an attested connect followed by an unattested
+  # reconnect in the same batch must not drop the proof, because the
+  # in-database coalesce can only preserve values that already flushed. The
+  # snapshot with the most recent proof time wins, as a unit.
+  defp latest_attested_attrs(device_entries) do
+    device_entries
+    |> Enum.map(fn {attrs, _metadata} -> attrs end)
+    |> Enum.filter(& &1[:last_attested_at])
+    |> case do
+      [] -> %{}
+      attested -> Enum.max_by(attested, & &1.last_attested_at, DateTime)
+    end
   end
 
   # Connect time from the queue entry's metadata; entries that carry none
@@ -140,6 +156,18 @@ defmodule PortalAPI.Sockets.LatestSession do
       actor_id: Ecto.UUID,
       device_id: Ecto.UUID,
       firezone_id: :string
+    }
+
+    @attested_identifier_fields ~w[last_attested_device_serial last_attested_device_uuid last_attested_mdm_device_id]a
+    @attested_fields @attested_identifier_fields ++
+                       ~w[last_attested_cert_serial last_attested_cert_fingerprint last_attested_at]a
+    @attested_probe_types %{
+      account_id: Ecto.UUID,
+      actor_id: Ecto.UUID,
+      device_id: Ecto.UUID,
+      last_attested_device_serial: :string,
+      last_attested_device_uuid: :string,
+      last_attested_mdm_device_id: :string
     }
 
     @token_schemas %{
@@ -209,6 +237,8 @@ defmodule PortalAPI.Sockets.LatestSession do
         rows
         |> dedupe_proposed_firezone_ids()
         |> strip_conflicting_firezone_ids(probe_repo)
+        |> dedupe_proposed_attested_identities()
+        |> strip_conflicting_attested_identities(probe_repo)
 
       set =
         [
@@ -216,29 +246,22 @@ defmodule PortalAPI.Sockets.LatestSession do
           # connect merges a reinstalled client (new firezone_id, same attested
           # identity) onto its existing row in memory, and this flush persists
           # the new firezone_id. Entries that carry none (gateways) keep the
-          # row's current value. The same discipline applies to the verified
-          # device-trust fields below: identity facts only ever strengthen
-          # here, clearing them is an explicit admin action.
+          # row's current value.
           firezone_id: dynamic([d, v], coalesce(v.firezone_id, d.firezone_id)),
-          last_attested_device_serial:
-            dynamic([d, v], coalesce(v.last_attested_device_serial, d.last_attested_device_serial)),
-          last_attested_device_uuid:
-            dynamic([d, v], coalesce(v.last_attested_device_uuid, d.last_attested_device_uuid)),
-          last_attested_mdm_device_id:
-            dynamic([d, v], coalesce(v.last_attested_mdm_device_id, d.last_attested_mdm_device_id)),
-          last_attested_cert_serial:
-            dynamic([d, v], coalesce(v.last_attested_cert_serial, d.last_attested_cert_serial)),
-          last_attested_cert_fingerprint:
-            dynamic(
-              [d, v],
-              coalesce(v.last_attested_cert_fingerprint, d.last_attested_cert_fingerprint)
-            ),
-          # last_attested_at records when the device last proved possession -
-          # a point-in-time fact that only ever strengthens, like the other
-          # last_attested_* columns. Whether the CURRENT session proved
+          # The attested fields move as one snapshot, keyed by
+          # last_attested_at (when the device last proved possession).
+          # Entries that carry no snapshot keep the row's current values, and
+          # a snapshot never replaces a fresher one: batches can flush out of
+          # proof order across nodes. Whether the CURRENT session proved
           # possession is live connection state (the `attested?` presence
-          # attribute), never row state.
-          last_attested_at: dynamic([d, v], coalesce(v.last_attested_at, d.last_attested_at)),
+          # attribute), never row state. Clearing the fields is an explicit
+          # admin action.
+          last_attested_device_serial: attested_field(:last_attested_device_serial),
+          last_attested_device_uuid: attested_field(:last_attested_device_uuid),
+          last_attested_mdm_device_id: attested_field(:last_attested_mdm_device_id),
+          last_attested_cert_serial: attested_field(:last_attested_cert_serial),
+          last_attested_cert_fingerprint: attested_field(:last_attested_cert_fingerprint),
+          last_attested_at: attested_field(:last_attested_at),
           public_key: dynamic([d, v], v.public_key),
           last_seen_user_agent: dynamic([d, v], v.user_agent),
           last_seen_remote_ip: dynamic([d, v], v.remote_ip),
@@ -273,6 +296,25 @@ defmodule PortalAPI.Sockets.LatestSession do
 
     defp unique_violation?(%Postgrex.Error{postgres: %{code: :unique_violation}}), do: true
     defp unique_violation?(_error), do: false
+
+    # The proposed snapshot is applied only when it is at least as fresh as
+    # the row's (v's last_attested_at is NULL when the entry carries no
+    # snapshot, so the CASE keeps the row's value, like the firezone_id
+    # coalesce).
+    defp attested_field(field) do
+      dynamic(
+        [d, v],
+        fragment(
+          "CASE WHEN ? IS NOT NULL AND (? IS NULL OR ? >= ?) THEN ? ELSE ? END",
+          v.last_attested_at,
+          d.last_attested_at,
+          v.last_attested_at,
+          d.last_attested_at,
+          field(v, ^field),
+          field(d, ^field)
+        )
+      )
+    end
 
     # Two rows in the same batch can propose the same previously unused
     # {account_id, actor_id, firezone_id}: both would pass the persisted-row
@@ -371,6 +413,102 @@ defmodule PortalAPI.Sockets.LatestSession do
       Enum.map(rows, fn row ->
         if MapSet.member?(conflicted, row.device_id) do
           %{row | firezone_id: nil}
+        else
+          row
+        end
+      end)
+    end
+
+    # Two rows in the same batch can propose the same attested identifier for
+    # different devices of one actor (a cloned certificate, or two machines
+    # whose MDM stamped the same identity), which would violate the partial
+    # unique indexes and fail every session in the batch. The snapshot with
+    # the freshest proof wins; losers keep their session but skip the
+    # attested update entirely, since the snapshot is all-or-nothing.
+    defp dedupe_proposed_attested_identities(rows) do
+      losers =
+        for field <- @attested_identifier_fields,
+            {_key, contenders} <-
+              rows
+              |> Enum.filter(&(not is_nil(Map.fetch!(&1, field)) and not is_nil(&1.actor_id)))
+              |> Enum.group_by(&{&1.account_id, &1.actor_id, Map.fetch!(&1, field)}),
+            loser <- contenders |> sort_freshest_proof_first() |> tl(),
+            uniq: true do
+          %{device_id: loser.device_id, field: field}
+        end
+
+      loser_ids = MapSet.new(losers, & &1.device_id)
+
+      for loser <- losers do
+        Logger.warning(
+          "Skipping attested identity during flush: another device in the same batch claims this identifier",
+          device_id: loser.device_id,
+          field: loser.field
+        )
+      end
+
+      strip_attested_fields(rows, loser_ids)
+    end
+
+    defp sort_freshest_proof_first(contenders) do
+      Enum.sort(contenders, fn a, b ->
+        case DateTime.compare(a.last_attested_at, b.last_attested_at) do
+          :gt -> true
+          :lt -> false
+          :eq -> a.device_id >= b.device_id
+        end
+      end)
+    end
+
+    # A proposed attested identifier can already sit on another device row of
+    # the same actor: the connect-time adoption check refuses that, but a
+    # concurrent adoption on another node can land in between. As with
+    # firezone_id, the conflicting entry keeps its session and skips the
+    # attested update; a conflict that appears between this probe and the
+    # UPDATE still raises unique_violation, which the retry (re-probing the
+    # primary) resolves at the entry level.
+    defp strip_conflicting_attested_identities(rows, probe_repo) do
+      probe_rows =
+        for row <- rows,
+            not is_nil(row.actor_id),
+            Enum.any?(@attested_identifier_fields, &(not is_nil(Map.fetch!(row, &1)))) do
+          Map.take(row, [:account_id, :actor_id, :device_id | @attested_identifier_fields])
+        end
+
+      conflicts =
+        if probe_rows == [] do
+          MapSet.new()
+        else
+          from(d in Device,
+            join: v in values(probe_rows, @attested_probe_types),
+            on: d.account_id == v.account_id and d.actor_id == v.actor_id and d.id != v.device_id,
+            where:
+              d.type == :client and
+                (d.last_attested_device_serial == v.last_attested_device_serial or
+                   d.last_attested_device_uuid == v.last_attested_device_uuid or
+                   d.last_attested_mdm_device_id == v.last_attested_mdm_device_id),
+            select: %{device_id: v.device_id, conflicting_id: d.id}
+          )
+          |> probe(probe_repo)
+        end
+
+      for conflict <- conflicts do
+        Logger.warning(
+          "Skipping attested identity during flush: another device row already holds this identifier",
+          device_id: conflict.device_id,
+          conflicting_device_id: conflict.conflicting_id
+        )
+      end
+
+      strip_attested_fields(rows, MapSet.new(conflicts, & &1.device_id))
+    end
+
+    defp strip_attested_fields(rows, device_ids) do
+      nils = Map.new(@attested_fields, &{&1, nil})
+
+      Enum.map(rows, fn row ->
+        if MapSet.member?(device_ids, row.device_id) do
+          Map.merge(row, nils)
         else
           row
         end
