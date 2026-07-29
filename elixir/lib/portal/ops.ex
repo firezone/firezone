@@ -8,14 +8,14 @@ defmodule Portal.Ops do
   @send_window_seconds 5 * 60
 
   @doc """
-  Counts presences grouped by topic prefix.
+  Counts cluster-wide presences grouped by topic prefix.
 
   Uses `Portal.Presence.list/1` to get the merged/deduplicated presence counts
   across all nodes in the cluster.
 
   ## Examples
 
-      iex> count_presences()
+      iex> count_global_presences()
       [
         {"presences:account_clients", 430},
         {"presences:account_gateways", 421},
@@ -26,7 +26,7 @@ defmodule Portal.Ops do
       ]
 
   """
-  def count_presences do
+  def count_global_presences do
     # Get unique topics from the ETS shard
     topics =
       :ets.tab2list(Portal.Presence_shard0)
@@ -41,6 +41,43 @@ defmodule Portal.Ops do
       prefix = topic |> String.split(":") |> Enum.take(2) |> Enum.join(":")
       {prefix, count}
     end)
+    |> sum_presence_counts()
+  end
+
+  @doc """
+  Counts presences hosted by the current node, grouped by topic prefix.
+
+  Presence keys are deduplicated within each topic to match the semantics of
+  `count_global_presences/0`.
+
+  ## Examples
+
+      iex> count_local_presences()
+      [
+        {"presences:account_clients", 215},
+        {"presences:account_gateways", 210},
+        {"presences:actor_clients", 215},
+        {"presences:global_relays", 17},
+        {"presences:portal_sessions", 4},
+        {"presences:sites", 210}
+      ]
+
+  """
+  def count_local_presences do
+    Portal.Presence_shard0
+    |> :ets.tab2list()
+    |> Enum.filter(fn {{_topic, pid, _id}, _meta, _clock} -> node(pid) == node() end)
+    |> Enum.map(fn {{topic, _pid, id}, _meta, _clock} -> {topic, id} end)
+    |> Enum.uniq()
+    |> Enum.map(fn {topic, _id} ->
+      prefix = topic |> String.split(":") |> Enum.take(2) |> Enum.join(":")
+      {prefix, 1}
+    end)
+    |> sum_presence_counts()
+  end
+
+  defp sum_presence_counts(presences) do
+    presences
     |> Enum.group_by(fn {prefix, _count} -> prefix end, fn {_prefix, count} -> count end)
     |> Enum.map(fn {prefix, counts} -> {prefix, Enum.sum(counts)} end)
     |> Enum.sort()
