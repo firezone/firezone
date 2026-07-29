@@ -68,6 +68,10 @@ pub fn stream_metrics() -> bool {
     FEATURE_FLAGS.stream_metrics()
 }
 
+pub fn wintun_tcp_coalescing() -> bool {
+    FEATURE_FLAGS.wintun_tcp_coalescing()
+}
+
 /// Number of raw samples retained per distribution series per flush interval,
 /// configured via the `stream_metrics` feature-flag payload.
 pub fn metrics_reservoir_size() -> usize {
@@ -83,6 +87,7 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
         stream_logs,
         icmp_error_unreachable_prohibited_create_new_flow,
         stream_metrics,
+        wintun_tcp_coalescing,
     } = &*FEATURE_FLAGS;
 
     [
@@ -100,6 +105,10 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
             icmp_error_unreachable_prohibited_create_new_flow.load(Ordering::Relaxed),
         ),
         ("stream_metrics", stream_metrics.read().enabled),
+        (
+            "wintun_tcp_coalescing",
+            wintun_tcp_coalescing.load(Ordering::Relaxed),
+        ),
     ]
 }
 
@@ -218,6 +227,8 @@ struct FeatureFlagsResponse {
     icmp_error_unreachable_prohibited_create_new_flow: bool,
     #[serde(default)]
     stream_metrics: bool,
+    #[serde(default)]
+    wintun_tcp_coalescing: bool,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -236,6 +247,7 @@ struct FeatureFlags {
     stream_logs: RwLock<LogFilter>,
     icmp_error_unreachable_prohibited_create_new_flow: AtomicBool,
     stream_metrics: RwLock<StreamMetrics>,
+    wintun_tcp_coalescing: AtomicBool,
 }
 
 /// Accessors to the actual feature flags.
@@ -253,6 +265,7 @@ impl FeatureFlags {
             stream_logs,
             icmp_error_unreachable_prohibited_create_new_flow,
             stream_metrics,
+            wintun_tcp_coalescing,
         }: FeatureFlagsResponse,
         payloads: FeatureFlagPayloadsResponse,
     ) {
@@ -265,6 +278,8 @@ impl FeatureFlags {
                 icmp_error_unreachable_prohibited_create_new_flow,
                 Ordering::Relaxed,
             );
+        self.wintun_tcp_coalescing
+            .store(wintun_tcp_coalescing, Ordering::Relaxed);
 
         *self.stream_metrics.write() = StreamMetrics {
             enabled: stream_metrics,
@@ -302,6 +317,10 @@ impl FeatureFlags {
         self.stream_metrics.read().enabled
     }
 
+    fn wintun_tcp_coalescing(&self) -> bool {
+        self.wintun_tcp_coalescing.load(Ordering::Relaxed)
+    }
+
     fn metrics_reservoir_size(&self) -> usize {
         self.stream_metrics.read().reservoir_size
     }
@@ -323,6 +342,7 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
             flags.icmp_error_unreachable_prohibited_create_new_flow,
         ),
         stream_metrics: env_or("FZFF_STREAM_METRICS", flags.stream_metrics),
+        wintun_tcp_coalescing: env_or("FZFF_WINTUN_TCP_COALESCING", flags.wintun_tcp_coalescing),
     }
 }
 
@@ -506,5 +526,31 @@ mod tests {
             },
         );
         assert!(!flags.stream_metrics());
+    }
+
+    #[test]
+    fn wintun_tcp_coalescing_defaults_to_disabled() {
+        let flags = FeatureFlags::default();
+
+        assert!(!flags.wintun_tcp_coalescing());
+
+        flags.update(
+            FeatureFlagsResponse {
+                wintun_tcp_coalescing: true,
+                ..Default::default()
+            },
+            FeatureFlagPayloadsResponse::default(),
+        );
+
+        assert!(flags.wintun_tcp_coalescing());
+    }
+
+    #[test]
+    fn parses_wintun_tcp_coalescing_from_posthog() {
+        let flags =
+            serde_json::from_str::<FeatureFlagsResponse>(r#"{"wintun-tcp-coalescing":true}"#)
+                .unwrap();
+
+        assert!(flags.wintun_tcp_coalescing);
     }
 }
