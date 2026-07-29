@@ -54,11 +54,16 @@ mod tests {
         let ok = meta_with_stride(ip_packet::MAX_FZ_PAYLOAD);
         let oversized = meta_with_stride(ip_packet::MAX_FZ_PAYLOAD + 1);
 
+        // `BROKEN` is process-global: reset it so this test neither observes nor leaks state.
+        BROKEN.store(false, Ordering::Relaxed);
+
         assert!(!detect_broken_coalescing([&ok].into_iter()));
         assert!(!is_broken());
 
         assert!(detect_broken_coalescing([&ok, &oversized].into_iter()));
         assert!(is_broken());
+
+        BROKEN.store(false, Ordering::Relaxed);
     }
 
     fn meta_with_stride(stride: usize) -> quinn_udp::RecvMeta {
