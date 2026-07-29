@@ -949,6 +949,7 @@ pub struct DatagramBatch<B = Buffer<Vec<u8>>> {
     metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
 
     port: u16,
+    drained: bool,
 
     _total_bytes: usize,
     num_packets: usize,
@@ -972,22 +973,30 @@ impl<B> DatagramBatch<B> {
             buffers,
             metas,
             port,
+            drained: false,
             _total_bytes: total_bytes,
             num_packets,
         }
     }
 
-    /// How many datagrams this batch carries in total.
+    /// How many datagrams this batch carries, as counted from the kernel's receive metadata.
+    ///
+    /// [`DatagramBatch::drain`] may yield fewer datagrams than this: receives with
+    /// nonsensical metadata are dropped during iteration. A drained batch reports zero.
     pub fn len(&self) -> usize {
+        if self.drained {
+            return 0;
+        }
+
         self.num_packets
     }
 
     /// Whether this batch carries no datagrams at all.
     pub fn is_empty(&self) -> bool {
-        self.num_packets == 0
+        self.len() == 0
     }
 
-    /// Yields all datagrams in the batch, in order.
+    /// Removes all datagrams from the batch, in order; draining again yields nothing.
     ///
     /// When [`quinn_udp`] returns us the buffers, it will have populated the
     /// [`quinn_udp::RecvMeta`]s accordingly. Thus, our main job here is to loop over the
@@ -997,9 +1006,12 @@ impl<B> DatagramBatch<B> {
     where
         B: Deref<Target = Vec<u8>>,
     {
+        let buf_index = if self.drained { self.buffers.len() } else { 0 };
+        self.drained = true;
+
         Drain {
             batch: self,
-            buf_index: 0,
+            buf_index,
             segment_index: 0,
         }
     }
@@ -1203,6 +1215,30 @@ mod tests {
         assert_eq!(iter.next().unwrap().packet, b"baz5");
         assert_eq!(iter.next().unwrap().packet, b"foo");
         assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn drained_batch_yields_nothing() {
+        let buffer_pool = BufferPool::<VecBuf<DummyBuffer>>::new(1, "test");
+        let meta_pool = BufferPool::<VecBuf<quinn_udp::RecvMeta>>::new(1, "test");
+
+        let mut buffers = buffer_pool.pull();
+        buffers.extend([DummyBuffer(b"foo".to_vec())]);
+
+        let mut metas = meta_pool.pull();
+        metas.extend([recv_meta(
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            3,
+            3,
+        )]);
+
+        let mut batch = DatagramBatch::new(buffers, metas, 0, 1);
+
+        assert_eq!(batch.drain().count(), 1);
+
+        assert_eq!(batch.drain().count(), 0);
+        assert!(batch.is_empty());
     }
 
     /// A zero stride on a non-empty buffer must not stall the iterator: the receive
