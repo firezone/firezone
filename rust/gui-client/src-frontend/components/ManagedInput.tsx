@@ -1,12 +1,15 @@
-import React, { InputHTMLAttributes, PropsWithChildren } from "react";
+import React, { InputHTMLAttributes } from "react";
 
 type ManagedTextInputProps = InputHTMLAttributes<HTMLInputElement> & {
   managed: boolean;
 };
 
-export function ManagedTextInput(props: ManagedTextInputProps) {
-  const { managed, disabled, className = "", ...inputProps } = props;
-
+export function ManagedTextInput({
+  disabled,
+  managed,
+  className = "",
+  ...inputProps
+}: ManagedTextInputProps) {
   const input = (
     <input
       aria-disabled={managed || undefined}
@@ -16,11 +19,11 @@ export function ManagedTextInput(props: ManagedTextInputProps) {
     />
   );
 
-  if (managed) {
-    return <ManagedTooltip fullWidth>{input}</ManagedTooltip>;
-  } else {
+  if (!managed) {
     return input;
   }
+
+  return <ManagedTooltip fullWidth>{input}</ManagedTooltip>;
 }
 
 interface ManagedToggleSwitchProps {
@@ -31,9 +34,13 @@ interface ManagedToggleSwitchProps {
   onChange: (checked: boolean) => void;
 }
 
-export function ManagedToggleSwitch(props: ManagedToggleSwitchProps) {
-  const { checked, id, managed, name, onChange } = props;
-
+export function ManagedToggleSwitch({
+  checked,
+  id,
+  managed,
+  name,
+  onChange,
+}: ManagedToggleSwitchProps) {
   const toggle = (
     <button
       aria-checked={checked}
@@ -55,20 +62,17 @@ export function ManagedToggleSwitch(props: ManagedToggleSwitchProps) {
     </button>
   );
 
-  if (managed) {
-    return <ManagedTooltip>{toggle}</ManagedTooltip>;
-  } else {
+  if (!managed) {
     return toggle;
   }
+
+  return <ManagedTooltip>{toggle}</ManagedTooltip>;
 }
 
-function ManagedTooltip(
-  props: PropsWithChildren<{
-    fullWidth?: boolean;
-  }>
-) {
-  const { children, fullWidth = false } = props;
-
+function ManagedTooltip({
+  children,
+  fullWidth = false,
+}: React.PropsWithChildren<{ fullWidth?: boolean }>) {
   return (
     <span
       className={`group relative ${fullWidth ? "flex w-full" : "inline-flex"}`}

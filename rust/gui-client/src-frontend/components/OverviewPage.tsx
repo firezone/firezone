@@ -1,7 +1,7 @@
 import React from "react";
+import { SessionViewModel } from "../generated/bindings";
 import logo from "../logo.png";
 import Button from "./Button";
-import { SessionViewModel } from "../generated/bindings";
 
 interface OverviewPageProps {
   session: SessionViewModel | null;
@@ -24,29 +24,21 @@ export default function Overview(props: OverviewPageProps) {
 }
 
 function Session(props: OverviewPageProps) {
-  if (!props.session) {
-    return <SignedOut {...props} />;
+  if (!props.session || props.session === "SignedOut") {
+    return <SignedOut signIn={props.signIn} />;
   }
 
-  switch (props.session) {
-    case "SignedOut": {
-      return <SignedOut {...props} />;
-    }
-    case "Loading": {
-      return <Loading />;
-    }
-    default: {
-      const { account_slug, actor_name } = props.session.SignedIn;
-
-      return (
-        <SignedIn
-          accountSlug={account_slug}
-          actorName={actor_name}
-          signOut={props.signOut}
-        />
-      );
-    }
+  if (props.session === "Loading") {
+    return <Loading />;
   }
+
+  return (
+    <SignedIn
+      accountSlug={props.session.SignedIn.account_slug}
+      actorName={props.session.SignedIn.actor_name}
+      signOut={props.signOut}
+    />
+  );
 }
 
 interface SignedOutProps {

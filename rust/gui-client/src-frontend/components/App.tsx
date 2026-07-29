@@ -2,12 +2,13 @@ import React, { useEffect, useState } from "react";
 import { Route, Routes } from "react-router";
 import About from "./AboutPage";
 import AdvancedSettingsPage from "./AdvancedSettingsPage";
-import ReactRouterSidebarItem from "./ReactRouterSidebarItem";
 import ColorPalette from "./ColorPalettePage";
 import Diagnostics from "./DiagnosticsPage";
 import GeneralSettingsPage from "./GeneralSettingsPage";
 import Overview from "./OverviewPage";
+import ReactRouterSidebarItem from "./ReactRouterSidebarItem";
 import RemixIcon from "./RemixIcon";
+import Titlebar from "./Titlebar";
 import {
   AdvancedSettingsViewModel,
   commands,
@@ -16,7 +17,6 @@ import {
   GeneralSettingsViewModel,
   SessionViewModel,
 } from "../generated/bindings";
-import Titlebar from "./Titlebar";
 
 export default function App() {
   const [session, setSession] = useState<SessionViewModel | null>(null);
@@ -28,43 +28,35 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(true);
 
   useEffect(() => {
-    const sessionChangedUnlisten = events.sessionChanged.listen((e) => {
-      const session = e.payload;
-
-      console.log("session_changed", { session });
-      setSession(session);
+    const sessionChangedUnlisten = events.sessionChanged.listen((event) => {
+      console.log("session_changed", { session: event.payload });
+      setSession(event.payload);
     });
     const generalSettingsChangedUnlisten = events.generalSettingsChanged.listen(
-      (e) => {
-        const generalSettings = e.payload;
-
-        console.log("general_settings_changed", { settings: generalSettings });
-        setGeneralSettings(generalSettings);
+      (event) => {
+        console.log("general_settings_changed", { settings: event.payload });
+        setGeneralSettings(event.payload);
       }
     );
     const advancedSettingsChangedUnlisten =
-      events.advancedSettingsChanged.listen((e) => {
-        const advancedSettings = e.payload;
-
+      events.advancedSettingsChanged.listen((event) => {
         console.log("advanced_settings_changed", {
-          settings: advancedSettings,
+          settings: event.payload,
         });
-        setAdvancedSettings(advancedSettings);
+        setAdvancedSettings(event.payload);
       });
-    const logsRecountedUnlisten = events.logsRecounted.listen((e) => {
-      const file_count = e.payload;
-
-      console.log("logs_recounted", { file_count });
-      setLogCount(file_count);
+    const logsRecountedUnlisten = events.logsRecounted.listen((event) => {
+      console.log("logs_recounted", { file_count: event.payload });
+      setLogCount(event.payload);
     });
 
-    commands.updateState(); // Let the backend know that we (re)-initialised
+    commands.updateState();
 
     return () => {
-      sessionChangedUnlisten.then((unlistenFn) => unlistenFn());
-      generalSettingsChangedUnlisten.then((unlistenFn) => unlistenFn());
-      advancedSettingsChangedUnlisten.then((unlistenFn) => unlistenFn());
-      logsRecountedUnlisten.then((unlistenFn) => unlistenFn());
+      sessionChangedUnlisten.then((unlisten) => unlisten());
+      generalSettingsChangedUnlisten.then((unlisten) => unlisten());
+      advancedSettingsChangedUnlisten.then((unlisten) => unlisten());
+      logsRecountedUnlisten.then((unlisten) => unlisten());
     };
   }, []);
 
@@ -73,23 +65,20 @@ export default function App() {
   return (
     <div className="app-shell">
       <Routes>
-        <Route path="/overview" element={<Titlebar title={"Firezone"} />} />
+        <Route path="/overview" element={<Titlebar title="Firezone" />} />
         <Route
           path="/general-settings"
-          element={<Titlebar title={"General Settings"} />}
+          element={<Titlebar title="General Settings" />}
         />
         <Route
           path="/advanced-settings"
-          element={<Titlebar title={"Advanced Settings"} />}
+          element={<Titlebar title="Advanced Settings" />}
         />
-        <Route
-          path="/diagnostics"
-          element={<Titlebar title={"Diagnostics"} />}
-        />
-        <Route path="/about" element={<Titlebar title={"About"} />} />
+        <Route path="/diagnostics" element={<Titlebar title="Diagnostics" />} />
+        <Route path="/about" element={<Titlebar title="About" />} />
         <Route
           path="/colour-palette"
-          element={<Titlebar title={"Colour Palette"} />}
+          element={<Titlebar title="Colour Palette" />}
         />
       </Routes>
 

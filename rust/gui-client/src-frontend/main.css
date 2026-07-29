@@ -1,6 +1,4 @@
 @import "tailwindcss";
-@import "flowbite-react/plugin/tailwindcss";
-@source "../.flowbite-react/class-list.json";
 @import "@fontsource-variable/roboto";
 @import "@fontsource-variable/roboto-mono";
 
