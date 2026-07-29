@@ -604,7 +604,7 @@ impl ClientState {
             // classify. It belongs to the flow of the packet that failed, and that
             // flow decides where it goes.
             Err(e) => {
-                let Some(cid) = peer_for_icmp_error(&self.clients, &packet) else {
+                let Some(cid) = client_for_icmp_error(&self.clients, &packet) else {
                     return Err(e.into());
                 };
 
@@ -2712,12 +2712,15 @@ fn is_llmnr(dst: IpAddr) -> bool {
     }
 }
 
-/// The peer an ICMP error follows, if it refers to a flow we have with them.
+/// The Client an ICMP error follows, if it refers to a flow we have with them.
+///
+/// Only Clients are considered: an error bound for a Gateway is not covered by a
+/// client-to-client flow and stays unroutable.
 ///
 /// In tests, a malicious client can be configured to send one for a flow it has no
 /// part in, keeping the target Client's check for errors referencing an unknown
 /// flow exercised.
-fn peer_for_icmp_error(
+fn client_for_icmp_error(
     clients: &PeerStore<ClientId, ClientOnClient>,
     packet: &IpPacket,
 ) -> Option<ClientId> {
