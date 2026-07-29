@@ -68,6 +68,7 @@ where
             let fd = AsyncFd::with_interest(tun_fd.fd, Interest::WRITABLE)?;
 
             let mut ready = Vec::new();
+            let mut iov = Vec::new();
             // `None` when the kernel does not support GSO writes or rejected one at
             // runtime; packets then pass through 1:1.
             let mut queue = tun_fd.offloads.then(TunGsoQueue::new);
@@ -90,6 +91,7 @@ where
                 let gso_failed = write_all(
                     &fd,
                     &mut ready,
+                    &mut iov,
                     &batch_size_histogram,
                     &dropped_packets_counter,
                 )
@@ -117,6 +119,7 @@ where
 async fn write_all<T>(
     fd: &AsyncFd<T>,
     ready: &mut Vec<Outgoing>,
+    iov: &mut Vec<libc::iovec>,
     batch_size_histogram: &opentelemetry::metrics::Histogram<u64>,
     dropped_packets_counter: &opentelemetry::metrics::Counter<u64>,
 ) -> bool
@@ -128,7 +131,7 @@ where
     for outgoing in ready.drain(..) {
         let num_segments = outgoing.num_segments();
 
-        match write(fd, &outgoing).await {
+        match write(fd, &outgoing, iov).await {
             Ok(_) => {
                 if num_segments > 1 {
                     batch_size_histogram.record(num_segments as u64, &send_metric_attributes());
@@ -149,26 +152,23 @@ where
     gso_failed
 }
 
-/// Writes a single [`Outgoing`] (its `virtio_net_hdr` plus packet bytes) to the TUN device.
-async fn write<T>(fd: &AsyncFd<T>, outgoing: &Outgoing) -> io::Result<usize>
+/// Writes a single [`Outgoing`] to the TUN device, gathering its buffers with `writev`.
+async fn write<T>(
+    fd: &AsyncFd<T>,
+    outgoing: &Outgoing,
+    iov: &mut Vec<libc::iovec>,
+) -> io::Result<usize>
 where
     T: AsRawFd,
 {
-    let [hdr, packet] = outgoing.bufs();
-
-    let iov = [
-        libc::iovec {
-            iov_base: hdr.as_ptr() as *mut _,
-            iov_len: hdr.len(),
-        },
-        libc::iovec {
-            iov_base: packet.as_ptr() as *mut _,
-            iov_len: packet.len(),
-        },
-    ];
+    iov.clear();
+    iov.extend(outgoing.bufs().map(|buf| libc::iovec {
+        iov_base: buf.as_ptr() as *mut _,
+        iov_len: buf.len(),
+    }));
 
     fd.async_io(Interest::WRITABLE, |fd| {
-        // Safety: Both iovecs point at valid memory of the given lengths.
+        // Safety: All iovecs point at valid memory of the given lengths.
         match unsafe { libc::writev(fd.as_raw_fd(), iov.as_ptr(), iov.len() as _) } {
             -1 => Err(io::Error::last_os_error()),
             n => Ok(n as usize),

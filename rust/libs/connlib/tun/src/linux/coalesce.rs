@@ -4,12 +4,21 @@
 //! entire batch traverse the kernel's network stack as a single skb, which is where the
 //! bulk of the per-packet cost lives.
 //!
+//! Super packets are not assembled in memory: a batch keeps its packets as they arrived
+//! and only prepares a small prefix, the [`VirtioNetHdr`] plus the fixed-up IP and L4
+//! headers. The vectored write to the TUN device gathers the prefix and the payload of
+//! every segment straight from the original packets, so payload bytes are copied exactly
+//! once, by the kernel.
+//!
 //! Only packets that the kernel's own GRO would merge are combined, everything else is
 //! passed through untouched.
 
-use bufferpool::{Buffer, BufferPool};
+use bufferpool::{Buffer, BufferPool, VecBuf};
 use ip_packet::{IpNumber, IpPacket, IpVersion, Ipv6HeaderSlice, TcpSlice, UdpSlice};
+use smallvec::SmallVec;
+use std::iter;
 use std::net::IpAddr;
+use std::slice;
 
 use super::checksum;
 use super::virtio::*;
@@ -24,6 +33,13 @@ const MAX_COALESCED_PACKET: usize = u16::MAX as usize;
 /// (`UDP_MAX_SEGMENTS` in `linux/udp.h`).
 const MAX_UDP_SEGMENTS: usize = 128;
 
+/// The longest possible super-packet prefix: a [`VirtioNetHdr`] followed by the largest
+/// coalescable IP header (the fixed IPv6 one; IPv4 options never coalesce) and a
+/// maximally-sized TCP header, rounded up to the next power of two so the prefix
+/// buffer never spills to the heap.
+const MAX_PREFIX_LEN: usize =
+    (VNET_HDR_LEN + Ipv6HeaderSlice::LEN + TcpSlice::HEADER_MAX_LEN).next_power_of_two();
+
 const TCP_FLAG_PSH: u8 = 0x08;
 
 const ZEROED_VNET_HDR: [u8; VNET_HDR_LEN] = [0; VNET_HDR_LEN];
@@ -36,7 +52,7 @@ pub struct TunGsoQueue {
     /// into the most recent item of its connection, so per-flow ordering is preserved
     /// by construction.
     items: Vec<Item>,
-    buffer_pool: BufferPool<Vec<u8>>,
+    segment_pool: BufferPool<VecBuf<IpPacket>>,
 }
 
 impl Default for TunGsoQueue {
@@ -49,7 +65,7 @@ impl TunGsoQueue {
     pub fn new() -> Self {
         Self {
             items: Vec::new(),
-            buffer_pool: BufferPool::new(VNET_HDR_LEN + MAX_COALESCED_PACKET, "tun-gso-queue"),
+            segment_pool: BufferPool::new(crate::MAX_BATCH_SIZE, "tun-gso-queue"),
         }
     }
 
@@ -71,9 +87,13 @@ impl TunGsoQueue {
             Some(Item::Batch(batch))
                 if batch.key == candidate.key && batch.can_append(&candidate, &packet) =>
             {
-                batch.append(&candidate, &packet, &self.buffer_pool)
+                batch.append(&candidate, packet)
             }
-            _ => self.items.push(Item::Batch(Batch::new(candidate, packet))),
+            _ => self.items.push(Item::Batch(Batch::new(
+                candidate,
+                packet,
+                &self.segment_pool,
+            ))),
         }
     }
 
@@ -89,10 +109,12 @@ pub struct Outgoing(Inner);
 enum Inner {
     /// An individual IP packet; written with a zeroed [`VirtioNetHdr`].
     Packet(IpPacket),
-    /// A coalesced batch of packets, including its [`VirtioNetHdr`].
+    /// A super packet, gathered at write time from its segments.
     Batch {
-        buf: Buffer<Vec<u8>>,
-        num_segments: usize,
+        /// The [`VirtioNetHdr`] plus the fixed-up IP and L4 headers of the super packet.
+        prefix: SmallVec<[u8; MAX_PREFIX_LEN]>,
+        /// The original packets; only their payloads are written.
+        segments: Buffer<VecBuf<IpPacket>>,
     },
 }
 
@@ -101,20 +123,29 @@ impl Outgoing {
     pub fn num_segments(&self) -> usize {
         match &self.0 {
             Inner::Packet(_) => 1,
-            Inner::Batch { num_segments, .. } => *num_segments,
+            Inner::Batch { segments, .. } => segments.len(),
         }
     }
 
-    /// The [`VirtioNetHdr`] and packet bytes of this write, ready for `writev`.
-    pub fn bufs(&self) -> [&[u8]; 2] {
-        match &self.0 {
-            Inner::Packet(packet) => [ZEROED_VNET_HDR.as_slice(), packet.packet()],
-            Inner::Batch { buf, .. } => {
-                let (hdr, packet) = buf.split_at(VNET_HDR_LEN);
+    /// The buffers of this write, in `writev` order.
+    ///
+    /// The first buffer carries the [`VirtioNetHdr`] (for super packets together with
+    /// the shared headers); every further buffer is the L4 payload of one segment.
+    pub fn bufs(&self) -> impl Iterator<Item = &[u8]> + '_ {
+        let (prefix, segments) = match &self.0 {
+            Inner::Packet(packet) => (ZEROED_VNET_HDR.as_slice(), slice::from_ref(packet)),
+            Inner::Batch { prefix, segments } => (prefix.as_slice(), segments.as_slice()),
+        };
 
-                [hdr, packet]
-            }
-        }
+        // Everything after the `VirtioNetHdr` are packet bytes; whatever the prefix
+        // does not cover is taken from each segment directly.
+        let payload_offset = prefix.len() - VNET_HDR_LEN;
+
+        iter::once(prefix).chain(
+            segments
+                .iter()
+                .map(move |segment| &segment.packet()[payload_offset..]),
+        )
     }
 }
 
@@ -190,8 +221,8 @@ impl Candidate {
             return None;
         }
 
-        // Appending copies `&bytes[ip_hdr_len + l4_hdr_len..]`, so the parsed layout
-        // must cover the buffer exactly.
+        // The write slices each segment's payload as `&bytes[ip_hdr_len + l4_hdr_len..]`,
+        // so the parsed layout must cover the buffer exactly.
         if ip_hdr_len + candidate.l4_hdr_len + candidate.payload_len != packet.packet().len() {
             return None;
         }
@@ -329,7 +360,10 @@ impl FlowKey {
 
 struct Batch {
     key: FlowKey,
-    state: BatchState,
+    /// The packets of the batch, in order.
+    ///
+    /// The first packet's headers serve as the template for the super packet.
+    segments: Buffer<VecBuf<IpPacket>>,
 
     ip_hdr_len: usize,
     l4_hdr_len: usize,
@@ -339,62 +373,35 @@ struct Batch {
     total_len: usize,
     /// The expected sequence number of the next segment (TCP only).
     next_seq: u32,
-    num_segs: usize,
     psh: bool,
 }
 
-enum BatchState {
-    /// A single packet; not copied anywhere yet.
-    Single(IpPacket),
-    /// Two or more segments coalesced into a buffer, prefixed by space for the [`VirtioNetHdr`].
-    Coalesced(Buffer<Vec<u8>>),
-}
-
-impl BatchState {
-    /// The coalescing buffer, converting from [`BatchState::Single`] on first use.
-    fn coalesced(&mut self, pool: &BufferPool<Vec<u8>>) -> &mut Buffer<Vec<u8>> {
-        if let BatchState::Single(first) = &*self {
-            let mut buf = pool.pull();
-            buf.clear();
-            buf.resize(VNET_HDR_LEN, 0);
-            buf.extend_from_slice(first.packet());
-
-            *self = BatchState::Coalesced(buf);
-        }
-
-        match self {
-            BatchState::Coalesced(buf) => buf,
-            BatchState::Single(_) => unreachable!("converted to `Coalesced` above"),
-        }
-    }
-}
-
 impl Batch {
-    fn new(candidate: Candidate, packet: IpPacket) -> Self {
+    fn new(candidate: Candidate, packet: IpPacket, pool: &BufferPool<VecBuf<IpPacket>>) -> Self {
+        let total_len = packet.packet().len();
+
+        let mut segments = pool.pull();
+        segments.push(packet);
+
         Self {
             key: candidate.key,
+            segments,
             ip_hdr_len: candidate.ip_hdr_len,
             l4_hdr_len: candidate.l4_hdr_len,
             seg_size: candidate.payload_len,
-            total_len: packet.packet().len(),
+            total_len,
             next_seq: candidate.seq.wrapping_add(candidate.payload_len as u32),
-            num_segs: 1,
             psh: candidate.psh,
-            state: BatchState::Single(packet),
         }
     }
 
-    /// Appends the packet's payload to this batch.
-    fn append(&mut self, candidate: &Candidate, packet: &IpPacket, pool: &BufferPool<Vec<u8>>) {
-        let bytes = packet.packet();
-        let payload = &bytes[candidate.ip_hdr_len + candidate.l4_hdr_len..];
-
-        self.state.coalesced(pool).extend_from_slice(payload);
-
-        self.total_len += payload.len();
-        self.next_seq = self.next_seq.wrapping_add(payload.len() as u32);
-        self.num_segs += 1;
+    /// Appends a packet to this batch.
+    fn append(&mut self, candidate: &Candidate, packet: IpPacket) {
+        self.total_len += candidate.payload_len;
+        self.next_seq = self.next_seq.wrapping_add(candidate.payload_len as u32);
         self.psh |= candidate.psh;
+
+        self.segments.push(packet);
     }
 
     /// Whether further segments may be appended.
@@ -404,36 +411,48 @@ impl Batch {
     fn is_ongoing(&self) -> bool {
         let payload_len = self.total_len - self.ip_hdr_len - self.l4_hdr_len;
 
-        !self.psh && payload_len == self.num_segs * self.seg_size
+        !self.psh && payload_len == self.segments.len() * self.seg_size
     }
 
-    fn into_outgoing(self) -> Outgoing {
-        let Batch {
-            key,
-            state,
-            ip_hdr_len,
-            l4_hdr_len,
-            seg_size,
-            num_segs,
-            psh,
-            ..
-        } = self;
+    fn into_outgoing(mut self) -> Outgoing {
+        if self.segments.len() == 1 {
+            let packet = self
+                .segments
+                .pop()
+                .expect("batch holds at least one packet");
 
-        match state {
-            BatchState::Single(packet) => Outgoing::from(packet),
-            BatchState::Coalesced(mut buf) => {
-                finalize(&mut buf, &key, ip_hdr_len, l4_hdr_len, seg_size, psh);
-
-                Outgoing(Inner::Batch {
-                    buf,
-                    num_segments: num_segs,
-                })
-            }
+            return Outgoing::from(packet);
         }
+
+        let prefix = self.prefix();
+
+        Outgoing(Inner::Batch {
+            prefix,
+            segments: self.segments,
+        })
+    }
+
+    /// Builds the write prefix of the super packet: the [`VirtioNetHdr`] followed by the
+    /// fixed-up IP and L4 headers of the first segment.
+    fn prefix(&self) -> SmallVec<[u8; MAX_PREFIX_LEN]> {
+        let headers_len = self.ip_hdr_len + self.l4_hdr_len;
+
+        let mut prefix = SmallVec::new();
+        prefix.resize(VNET_HDR_LEN + headers_len, 0);
+        prefix[VNET_HDR_LEN..].copy_from_slice(&self.template()[..headers_len]);
+
+        finalize(&mut prefix, self);
+
+        prefix
     }
 
     fn can_append(&self, candidate: &Candidate, packet: &IpPacket) -> bool {
         if !self.is_ongoing() {
+            return false;
+        }
+
+        // The pooled segments vec must not outgrow the capacity it was allocated with.
+        if self.segments.len() == crate::MAX_BATCH_SIZE {
             return false;
         }
 
@@ -458,7 +477,7 @@ impl Batch {
             return false;
         }
 
-        if candidate.key.protocol == IpNumber::UDP && self.num_segs >= MAX_UDP_SEGMENTS {
+        if candidate.key.protocol == IpNumber::UDP && self.segments.len() >= MAX_UDP_SEGMENTS {
             return false;
         }
 
@@ -482,10 +501,7 @@ impl Batch {
 
     /// The first packet of the batch; all compatibility checks compare against its headers.
     fn template(&self) -> &[u8] {
-        match &self.state {
-            BatchState::Single(packet) => packet.packet(),
-            BatchState::Coalesced(buf) => &buf[VNET_HDR_LEN..],
-        }
+        self.segments[0].packet()
     }
 }
 
@@ -528,17 +544,11 @@ fn tcp_headers_compatible(
     template[start..end] == packet[start..end]
 }
 
-/// Writes the [`VirtioNetHdr`] and fixes up the outer headers of a coalesced super packet.
-fn finalize(
-    buf: &mut [u8],
-    key: &FlowKey,
-    ip_hdr_len: usize,
-    l4_hdr_len: usize,
-    seg_size: usize,
-    psh: bool,
-) {
-    let total_len = buf.len() - VNET_HDR_LEN;
-    let l4_len = total_len - ip_hdr_len;
+/// Writes the [`VirtioNetHdr`] and fixes up the outer headers of a super packet's prefix.
+fn finalize(buf: &mut [u8], batch: &Batch) {
+    let key = &batch.key;
+    let ip_hdr_len = batch.ip_hdr_len;
+    let l4_len = batch.total_len - ip_hdr_len;
 
     let (gso_type, csum_offset) = match (key.protocol, key.version()) {
         (IpNumber::TCP, IpVersion::V4) => (VIRTIO_NET_HDR_GSO_TCPV4, 16),
@@ -550,8 +560,8 @@ fn finalize(
     VirtioNetHdr {
         flags: VIRTIO_NET_HDR_F_NEEDS_CSUM,
         gso_type,
-        hdr_len: (ip_hdr_len + l4_hdr_len) as u16,
-        gso_size: seg_size as u16,
+        hdr_len: (ip_hdr_len + batch.l4_hdr_len) as u16,
+        gso_size: batch.seg_size as u16,
         csum_start: ip_hdr_len as u16,
         csum_offset: csum_offset as u16,
     }
@@ -561,7 +571,7 @@ fn finalize(
 
     match key.version() {
         IpVersion::V4 => {
-            packet[2..4].copy_from_slice(&(total_len as u16).to_be_bytes());
+            packet[2..4].copy_from_slice(&(batch.total_len as u16).to_be_bytes());
 
             packet[10] = 0;
             packet[11] = 0;
@@ -587,7 +597,7 @@ fn finalize(
 
     match key.protocol {
         IpNumber::TCP => {
-            if psh {
+            if batch.psh {
                 l4[13] |= TCP_FLAG_PSH;
             }
 
