@@ -81,6 +81,13 @@ defmodule PortalAPI.Schemas.Client do
           readOnly: true,
           description: "SHA-256 fingerprint of the client certificate used for device verification"
         },
+        last_attested_at: %Schema{
+          type: :string,
+          nullable: true,
+          readOnly: true,
+          description:
+            "When the device last proved possession of an MDM-provisioned client certificate"
+        },
         verified_at: %Schema{
           type: :string,
           description: "Client verification timestamp"
@@ -168,6 +175,7 @@ defmodule PortalAPI.Schemas.Client do
         "last_attested_mdm_device_id" => "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
         "last_attested_cert_serial" => "4A:2F:00:8C:11:03:9E:5B",
         "last_attested_cert_fingerprint" => "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "last_attested_at" => "2025-01-01T00:00:00Z",
         "verified_at" => "2025-01-01T00:00:00Z",
         "public_key" => "WdKAyoA45xJllRUYnFhI5+Y4EjSTs50MzYYHfrIhVAc=",
         "last_seen_at" => "2025-01-01T00:00:00Z",
@@ -257,6 +265,7 @@ defmodule PortalAPI.Schemas.Client do
           "last_attested_mdm_device_id" => "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
           "last_attested_cert_serial" => "4A:2F:00:8C:11:03:9E:5B",
           "last_attested_cert_fingerprint" => "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "last_attested_at" => "2025-01-01T00:00:00Z",
           "verified_at" => "2025-01-01T00:00:00Z",
           "created_at" => "2025-01-01T00:00:00Z",
           "updated_at" => "2025-01-01T00:00:00Z"
@@ -321,6 +330,7 @@ defmodule PortalAPI.Schemas.Client do
             "last_attested_mdm_device_id" => nil,
             "last_attested_cert_serial" => nil,
             "last_attested_cert_fingerprint" => nil,
+            "last_attested_at" => nil,
             "verified_at" => nil,
             "created_at" => "2025-01-01T00:00:00Z",
             "updated_at" => "2025-01-01T00:00:00Z"
