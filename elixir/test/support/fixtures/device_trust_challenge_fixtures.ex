@@ -71,7 +71,7 @@ defmodule Portal.DeviceTrustChallengeFixtures do
   `:no_digital_signature` (keyAgreement-only Key Usage), `:expired`,
   `:not_yet_valid`, and `:no_identifiers` (SAN-less, subject-only). A keyword
   list mints a custom leaf under the trusted CA (`:cn`, `:ous`, `:sans`,
-  `:eku`, `:key_usage`, `:validity`, `:key`).
+  `:eku`, `:key_usage`, `:validity`, `:key`, `:serial`).
   """
   def leaf(pki, opts) when is_list(opts), do: issue_leaf(pki.ca, opts)
 
@@ -156,7 +156,17 @@ defmodule Portal.DeviceTrustChallengeFixtures do
           usages -> [{:Extension, @key_usage_oid, true, usages}]
         end
 
-    cert_der = sign_cert(issuer.subject, issuer.key, subject, spki(key), extensions, validity)
+    cert_der =
+      sign_cert(
+        issuer.subject,
+        issuer.key,
+        subject,
+        spki(key),
+        extensions,
+        validity,
+        Keyword.get(opts, :serial) || serial_number()
+      )
+
     {cert_der, key}
   end
 
@@ -167,11 +177,11 @@ defmodule Portal.DeviceTrustChallengeFixtures do
     ]
   end
 
-  defp sign_cert(issuer_rdn, issuer_key, subject_rdn, spki, extensions, {from_days, to_days}) do
+  defp sign_cert(issuer_rdn, issuer_key, subject_rdn, spki, extensions, {from_days, to_days}, serial \\ nil) do
     now = DateTime.utc_now()
 
     tbs =
-      {:OTPTBSCertificate, :v3, serial_number(),
+      {:OTPTBSCertificate, :v3, serial || serial_number(),
        {:SignatureAlgorithm, @ecdsa_sha256_oid, :asn1_NOVALUE}, issuer_rdn,
        {:Validity, utc_time(DateTime.add(now, from_days, :day)),
         utc_time(DateTime.add(now, to_days, :day))}, subject_rdn, spki, :asn1_NOVALUE,

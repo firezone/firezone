@@ -104,6 +104,46 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)
     end
 
+    test "drops an out-of-spec certificate serial but still verifies", %{
+      pki: pki,
+      nonce: nonce,
+      anchors: anchors
+    } do
+      huge_serial = 64 |> :crypto.strong_rand_bytes() |> :binary.decode_unsigned()
+
+      entry =
+        response_entry(
+          pki,
+          [
+            serial: huge_serial,
+            sans: [{:uniformResourceIdentifier, ~c"firezone://serial/C02XK1ZGJGH5"}]
+          ],
+          nonce
+        )
+
+      assert {:ok, verified} = DeviceTrust.verify_response([entry], nonce, anchors)
+      assert verified.identifiers.last_attested_device_serial == "C02XK1ZGJGH5"
+      assert is_nil(verified.last_attested_cert_serial)
+      assert is_binary(verified.last_attested_cert_fingerprint)
+    end
+
+    test "rejects a cert whose only identifier exceeds the length bound", %{
+      pki: pki,
+      nonce: nonce,
+      anchors: anchors
+    } do
+      long_serial = String.duplicate("AB", 40)
+
+      entry =
+        response_entry(
+          pki,
+          [sans: [{:uniformResourceIdentifier, ~c"firezone://serial/#{long_serial}"}]],
+          nonce
+        )
+
+      assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)
+    end
+
     test "rejects a leaf without client-auth EKU", %{pki: pki, nonce: nonce, anchors: anchors} do
       entry = response_entry(pki, :no_eku, nonce)
       assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)
@@ -249,6 +289,16 @@ defmodule PortalAPI.Client.DeviceTrustTest do
 
     test "trims and rejects empty values" do
       assert DeviceTrust.normalize_identifier(:last_attested_device_serial, "   ") == nil
+    end
+
+    test "rejects identifiers longer than 64 bytes" do
+      at_bound = String.duplicate("AB", 32)
+      over_bound = String.duplicate("AB", 33)
+
+      assert DeviceTrust.normalize_identifier(:last_attested_device_serial, at_bound) == at_bound
+      assert DeviceTrust.normalize_identifier(:last_attested_device_serial, over_bound) == nil
+      assert DeviceTrust.normalize_identifier(:last_attested_device_uuid, over_bound) == nil
+      assert DeviceTrust.normalize_identifier(:last_attested_mdm_device_id, over_bound) == nil
     end
   end
 end
