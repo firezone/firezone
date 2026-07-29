@@ -26,12 +26,22 @@ const MAX_UDP_SEGMENTS: usize = 128;
 const TCP_FLAG_PSH: u8 = 0x08;
 
 /// How transport checksums are represented in a coalesced packet.
-#[derive(Clone, Copy)]
-enum ChecksumMode {
-    /// Store the uncomplemented pseudo-header checksum for a kernel GSO write.
-    Partial,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChecksumMode {
     /// Compute the complete transport checksum before handing the packet to the OS.
     Complete,
+    /// Leave checksum completion to the receiver of the coalesced packet.
+    ///
+    /// The transport checksum field contains the folded, uncomplemented pseudo-header
+    /// sum described by the returned [`OffloadMetadata`].
+    Offloaded,
+}
+
+/// A transport protocol whose packets may be coalesced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Protocol {
+    Tcp,
+    Udp,
 }
 
 /// Coalesces compatible IP packets while preserving per-flow ordering.
@@ -48,49 +58,31 @@ pub struct PacketCoalescer {
     checksum_mode: ChecksumMode,
 }
 
-impl Default for PacketCoalescer {
-    fn default() -> Self {
-        Self::tcp()
-    }
-}
-
 impl PacketCoalescer {
-    /// Builds a TCP-only coalescer that emits fully checksummed IP packets.
-    ///
-    /// This representation is suitable for packet-oriented TUN APIs such as
-    /// Wintun, which do not accept segmentation-offload metadata.
-    pub fn tcp() -> Self {
-        Self::new(true, false, ChecksumMode::Complete, "packet-coalescer-tcp")
-    }
+    /// Builds a coalescer for the selected transport protocols and checksum mode.
+    pub fn new(protocols: impl IntoIterator<Item = Protocol>, checksum_mode: ChecksumMode) -> Self {
+        let mut coalesce_tcp = false;
+        let mut coalesce_udp = false;
 
-    /// Builds a queue that preserves packet boundaries.
-    pub fn passthrough() -> Self {
-        Self::new(
-            false,
-            false,
-            ChecksumMode::Complete,
-            "packet-coalescer-passthrough",
-        )
-    }
+        for protocol in protocols {
+            match protocol {
+                Protocol::Tcp => coalesce_tcp = true,
+                Protocol::Udp => coalesce_udp = true,
+            }
+        }
 
-    /// Builds a TCP/UDP coalescer for a backend that supplies GSO metadata.
-    pub fn gso() -> Self {
-        Self::new(true, true, ChecksumMode::Partial, "packet-coalescer-gso")
-    }
-
-    fn new(
-        coalesce_tcp: bool,
-        coalesce_udp: bool,
-        checksum_mode: ChecksumMode,
-        pool_name: &'static str,
-    ) -> Self {
         Self {
             items: Vec::new(),
-            buffer_pool: BufferPool::new(MAX_COALESCED_PACKET, pool_name),
+            buffer_pool: BufferPool::new(MAX_COALESCED_PACKET, "packet-coalescer"),
             coalesce_tcp,
             coalesce_udp,
             checksum_mode,
         }
+    }
+
+    /// Builds a queue that preserves packet boundaries.
+    pub fn passthrough() -> Self {
+        Self::new([], ChecksumMode::Complete)
     }
 
     /// Queues a single packet, coalescing it with already queued ones where possible.
@@ -138,7 +130,7 @@ enum Inner {
     Batch {
         buf: Buffer<Vec<u8>>,
         num_segments: usize,
-        offload: Option<Offload>,
+        offload_metadata: Option<OffloadMetadata>,
     },
 }
 
@@ -159,11 +151,13 @@ impl CoalescedPacket {
         }
     }
 
-    /// Segmentation metadata for a coalesced GSO packet.
-    pub fn offload(&self) -> Option<Offload> {
+    /// Metadata required to finish an offloaded coalesced packet.
+    pub fn offload_metadata(&self) -> Option<OffloadMetadata> {
         match &self.0 {
             Inner::Packet(_) => None,
-            Inner::Batch { offload, .. } => *offload,
+            Inner::Batch {
+                offload_metadata, ..
+            } => *offload_metadata,
         }
     }
 }
@@ -471,7 +465,7 @@ impl Batch {
         match state {
             BatchState::Single(packet) => CoalescedPacket::from(packet),
             BatchState::Coalesced(mut buf) => {
-                let offload = finalize(
+                let offload_metadata = finalize(
                     &mut buf,
                     &key,
                     ip_hdr_len,
@@ -480,12 +474,13 @@ impl Batch {
                     psh,
                     checksum_mode,
                 );
-                let offload = matches!(checksum_mode, ChecksumMode::Partial).then_some(offload);
+                let offload_metadata =
+                    matches!(checksum_mode, ChecksumMode::Offloaded).then_some(offload_metadata);
 
                 CoalescedPacket(Inner::Batch {
                     buf,
                     num_segments: num_segs,
-                    offload,
+                    offload_metadata,
                 })
             }
         }
@@ -587,14 +582,19 @@ fn tcp_headers_compatible(
     template[start..end] == packet[start..end]
 }
 
-/// Segmentation metadata needed by backends that support kernel GSO.
+/// Metadata needed to segment a coalesced packet and complete its transport checksum.
 #[derive(Clone, Copy)]
-pub struct Offload {
-    pub protocol: IpNumber,
-    pub version: IpVersion,
-    pub ip_hdr_len: usize,
-    pub l4_hdr_len: usize,
-    pub seg_size: usize,
+pub struct OffloadMetadata {
+    /// The coalesced transport protocol.
+    pub protocol: Protocol,
+    /// The packet's IP version.
+    pub ip_version: IpVersion,
+    /// The IP header length in bytes.
+    pub ip_header_len: usize,
+    /// The transport header length in bytes.
+    pub transport_header_len: usize,
+    /// The payload size of each segment except, potentially, the final segment.
+    pub segment_size: usize,
 }
 
 /// Fixes up the IP and transport headers of a coalesced packet.
@@ -606,7 +606,7 @@ fn finalize(
     seg_size: usize,
     psh: bool,
     checksum_mode: ChecksumMode,
-) -> Offload {
+) -> OffloadMetadata {
     let total_len = buf.len();
     let l4_len = total_len - ip_hdr_len;
     let packet = buf;
@@ -655,9 +655,9 @@ fn finalize(
     l4[checksum_offset..checksum_offset + 2].fill(0);
 
     let checksum = match checksum_mode {
-        ChecksumMode::Partial => {
-            // For a CHECKSUM_PARTIAL packet, the checksum field holds the folded,
-            // uncomplemented pseudo-header sum.
+        ChecksumMode::Offloaded => {
+            // For an offloaded checksum, the checksum field holds the folded,
+            // uncomplemented pseudo-header sum for the receiver to complete.
             checksum::fold(pseudo_sum)
         }
         ChecksumMode::Complete => {
@@ -673,12 +673,16 @@ fn finalize(
     };
     l4[checksum_offset..checksum_offset + 2].copy_from_slice(&checksum.to_be_bytes());
 
-    Offload {
-        protocol: key.protocol,
-        version: key.version(),
-        ip_hdr_len,
-        l4_hdr_len,
-        seg_size,
+    OffloadMetadata {
+        protocol: match key.protocol {
+            IpNumber::TCP => Protocol::Tcp,
+            IpNumber::UDP => Protocol::Udp,
+            _ => unreachable!("only TCP and UDP packets are coalesced"),
+        },
+        ip_version: key.version(),
+        ip_header_len: ip_hdr_len,
+        transport_header_len: l4_hdr_len,
+        segment_size: seg_size,
     }
 }
 
@@ -698,8 +702,8 @@ mod tests {
     const DST: Ipv4Addr = Ipv4Addr::new(10, 0, 0, 2);
 
     #[test]
-    fn tcp_mode_emits_one_fully_checksummed_packet() {
-        let mut queue = PacketCoalescer::tcp();
+    fn complete_checksum_mode_emits_one_fully_checksummed_packet() {
+        let mut queue = PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete);
 
         queue.enqueue(tcp4(1000, &[1; 100]));
         queue.enqueue(tcp4(1100, &[2; 100]));
@@ -711,7 +715,7 @@ mod tests {
         };
 
         assert_eq!(packet.num_segments(), 3);
-        assert!(packet.offload().is_none());
+        assert!(packet.offload_metadata().is_none());
         assert_eq!(packet.packet().len(), 20 + 20 + 250);
         assert_eq!(&packet.packet()[40..140], &[1; 100]);
         assert_eq!(&packet.packet()[140..240], &[2; 100]);
@@ -730,8 +734,8 @@ mod tests {
     }
 
     #[test]
-    fn gso_mode_emits_partial_checksum_and_offload_metadata() {
-        let mut queue = PacketCoalescer::gso();
+    fn offloaded_checksum_mode_emits_checksum_seed_and_metadata() {
+        let mut queue = PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Offloaded);
 
         queue.enqueue(tcp4(1000, &[1; 100]));
         queue.enqueue(tcp4(1100, &[2; 100]));
@@ -740,15 +744,17 @@ mod tests {
         let [packet] = out.as_slice() else {
             panic!("expected one coalesced packet")
         };
-        let offload = packet.offload().expect("GSO packet needs metadata");
+        let offload = packet
+            .offload_metadata()
+            .expect("offloaded packet needs metadata");
 
-        assert_eq!(offload.protocol, IpNumber::TCP);
-        assert!(offload.version == IpVersion::V4);
-        assert_eq!(offload.ip_hdr_len, 20);
-        assert_eq!(offload.l4_hdr_len, 20);
-        assert_eq!(offload.seg_size, 100);
+        assert_eq!(offload.protocol, Protocol::Tcp);
+        assert!(offload.ip_version == IpVersion::V4);
+        assert_eq!(offload.ip_header_len, 20);
+        assert_eq!(offload.transport_header_len, 20);
+        assert_eq!(offload.segment_size, 100);
 
-        let tcp = &packet.packet()[offload.ip_hdr_len..];
+        let tcp = &packet.packet()[offload.ip_header_len..];
         let checksum = u16::from_be_bytes([tcp[16], tcp[17]]);
         let pseudo = checksum::pseudo_header_sum_v4(SRC, DST, IpNumber::TCP, tcp.len());
 
@@ -756,8 +762,8 @@ mod tests {
     }
 
     #[test]
-    fn tcp_mode_does_not_change_udp_datagram_boundaries() {
-        let mut queue = PacketCoalescer::tcp();
+    fn disabled_protocol_does_not_change_packet_boundaries() {
+        let mut queue = PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete);
 
         queue.enqueue(udp4(&[1; 100]));
         queue.enqueue(udp4(&[2; 100]));
@@ -768,18 +774,152 @@ mod tests {
         assert!(out.iter().all(|packet| packet.num_segments() == 1));
     }
 
-    fn tcp4(seq: u32, payload: &[u8]) -> IpPacket {
-        let tcp = Tcp {
-            source: 5000,
-            destination: 6000,
-            sequence: seq,
-            acknowledgement: 42,
-            flags: TcpFlags::ACK,
-            window_size: 64000,
-            ..Default::default()
+    #[test]
+    fn passthrough_preserves_packet_boundaries() {
+        let mut queue = PacketCoalescer::passthrough();
+
+        queue.enqueue(tcp4(1000, &[1; 100]));
+        queue.enqueue(tcp4(1100, &[2; 100]));
+
+        let out = queue.drain().collect::<Vec<_>>();
+
+        assert_eq!(out.len(), 2);
+        assert!(out.iter().all(|packet| packet.num_segments() == 1));
+    }
+
+    #[test]
+    fn coalesces_enabled_udp_datagrams() {
+        let mut queue =
+            PacketCoalescer::new([Protocol::Tcp, Protocol::Udp], ChecksumMode::Offloaded);
+
+        queue.enqueue(udp4(&[1; 100]));
+        queue.enqueue(udp4(&[2; 100]));
+        queue.enqueue(udp4(&[3; 30]));
+
+        let out = queue.drain().collect::<Vec<_>>();
+        let [packet] = out.as_slice() else {
+            panic!("expected one coalesced packet")
         };
 
-        ipv4_packet(IpProtocol::TCP, tcp, payload)
+        assert_eq!(packet.num_segments(), 3);
+        assert_eq!(packet.packet().len(), 20 + 8 + 230);
+
+        let metadata = packet
+            .offload_metadata()
+            .expect("offloaded packet needs metadata");
+        assert_eq!(metadata.protocol, Protocol::Udp);
+        assert_eq!(metadata.segment_size, 100);
+    }
+
+    #[test]
+    fn coalesces_interleaved_flows_independently() {
+        let mut queue = PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete);
+
+        queue.enqueue(tcp4(1000, &[1; 100]));
+        queue.enqueue(tcp4_ports(7000, 8000, 9999, &[9; 100]));
+        queue.enqueue(tcp4(1100, &[2; 100]));
+
+        let out = queue.drain().collect::<Vec<_>>();
+
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].num_segments(), 2);
+        assert_eq!(out[1].num_segments(), 1);
+    }
+
+    #[test]
+    fn out_of_order_segment_starts_new_batch() {
+        let mut queue = PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete);
+
+        queue.enqueue(tcp4(1000, &[1; 100]));
+        queue.enqueue(tcp4(1500, &[2; 100]));
+
+        let out = queue.drain().collect::<Vec<_>>();
+
+        assert_eq!(out.len(), 2);
+        assert!(out.iter().all(|packet| packet.num_segments() == 1));
+    }
+
+    #[test]
+    fn psh_closes_the_batch() {
+        let mut queue = PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete);
+
+        queue.enqueue(tcp4(1000, &[1; 100]));
+        queue.enqueue(tcp4_psh(1100, &[2; 100]));
+        queue.enqueue(tcp4(1200, &[3; 100]));
+
+        let out = queue.drain().collect::<Vec<_>>();
+        let [super_packet, segment] = out.as_slice() else {
+            panic!("expected a super packet followed by the post-PSH segment")
+        };
+
+        assert_eq!(super_packet.num_segments(), 2);
+        assert_eq!(segment.num_segments(), 1);
+        assert_eq!(
+            super_packet.packet()[33] & TCP_FLAG_PSH,
+            TCP_FLAG_PSH,
+            "PSH must be set on the super packet"
+        );
+    }
+
+    #[test]
+    fn short_segment_closes_the_batch() {
+        let mut queue = PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete);
+
+        queue.enqueue(tcp4(1000, &[1; 100]));
+        queue.enqueue(tcp4(1100, &[2; 40]));
+        queue.enqueue(tcp4(1140, &[3; 100]));
+
+        let out = queue.drain().collect::<Vec<_>>();
+
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].num_segments(), 2);
+        assert_eq!(out[1].num_segments(), 1);
+    }
+
+    #[test]
+    fn non_candidate_preserves_same_flow_order() {
+        let mut queue = PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete);
+
+        queue.enqueue(tcp4(1000, &[1; 100]));
+        queue.enqueue(tcp4(1100, &[2; 100]));
+        queue.enqueue(tcp4(1200, &[]));
+
+        let out = queue.drain().collect::<Vec<_>>();
+
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].num_segments(), 2);
+        assert_eq!(out[1].num_segments(), 1);
+    }
+
+    fn tcp4(seq: u32, payload: &[u8]) -> IpPacket {
+        tcp4_ports(5000, 6000, seq, payload)
+    }
+
+    fn tcp4_ports(source: u16, destination: u16, seq: u32, payload: &[u8]) -> IpPacket {
+        ipv4_packet(
+            IpProtocol::TCP,
+            tcp_header(source, destination, seq, false),
+            payload,
+        )
+    }
+
+    fn tcp4_psh(seq: u32, payload: &[u8]) -> IpPacket {
+        ipv4_packet(IpProtocol::TCP, tcp_header(5000, 6000, seq, true), payload)
+    }
+
+    fn tcp_header(source: u16, destination: u16, seq: u32, psh: bool) -> Tcp {
+        let mut flags = TcpFlags::ACK;
+        flags.set(TcpFlags::PSH, psh);
+
+        Tcp {
+            source,
+            destination,
+            sequence: seq,
+            acknowledgement: 42,
+            flags,
+            window_size: 64000,
+            ..Default::default()
+        }
     }
 
     fn udp4(payload: &[u8]) -> IpPacket {

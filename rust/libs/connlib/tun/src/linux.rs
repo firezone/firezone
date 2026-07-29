@@ -27,7 +27,7 @@ use tokio::io::unix::AsyncFd;
 use virtio::VNET_HDR_LEN;
 
 use crate::{InboundTx, OutboundRx, PacketBatch};
-use packet_coalescer::{CoalescedPacket, PacketCoalescer};
+use packet_coalescer::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
 
 /// Size of the buffer for reading super packets: a `virtio_net_hdr` plus the largest
 /// possible IP packet.
@@ -68,7 +68,9 @@ where
             let mut ready = Vec::new();
             // `None` when the kernel does not support GSO writes or rejected one at
             // runtime; packets then pass through 1:1.
-            let mut coalescer = tun_fd.offloads.then(PacketCoalescer::gso);
+            let mut coalescer = tun_fd.offloads.then(|| {
+                PacketCoalescer::new([Protocol::Tcp, Protocol::Udp], ChecksumMode::Offloaded)
+            });
 
             while let Some(mut batch) = outbound_rx.recv().await {
                 for packet in batch.drain() {

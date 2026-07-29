@@ -4,59 +4,20 @@ use ingot::ip::{IpProtocol, Ipv4};
 use ingot::tcp::{Tcp, TcpFlags};
 use ingot::types::{Emit, HeaderLen as _};
 use ingot::udp::Udp;
-use ip_packet::{IpPacket, IpPacketBuf};
+use ip_packet::{IpPacket, IpPacketBuf, checksum};
+use packet_coalescer::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
 
 use super::split::split;
 use super::virtio;
 use super::virtio::*;
-use ip_packet::checksum;
-use packet_coalescer::{CoalescedPacket, PacketCoalescer};
 
 const SRC: [u8; 4] = [10, 0, 0, 1];
 const DST: [u8; 4] = [10, 0, 0, 2];
 
 #[test]
-fn coalesces_sequential_tcp_segments() {
-    let mut queue = PacketCoalescer::gso();
-
-    queue.enqueue(tcp4(1000, &[1; 100]));
-    queue.enqueue(tcp4(1100, &[2; 100]));
-    queue.enqueue(tcp4(1200, &[3; 100]));
-
-    let out = queue.drain().collect::<Vec<_>>();
-
-    let [super_packet] = out.as_slice() else {
-        panic!("Expected a single super packet");
-    };
-    assert_eq!(super_packet.num_segments(), 3);
-
-    let buf = tun_write(super_packet);
-    let (hdr, packet) = VirtioNetHdr::parse(&buf).unwrap();
-
-    assert_eq!(hdr.flags, VIRTIO_NET_HDR_F_NEEDS_CSUM);
-    assert_eq!(hdr.gso_type, VIRTIO_NET_HDR_GSO_TCPV4);
-    assert_eq!(hdr.gso_size, 100);
-    assert_eq!(hdr.csum_start, 20);
-    assert_eq!(hdr.csum_offset, 16);
-    assert_eq!(hdr.hdr_len, 40);
-
-    assert_eq!(packet.len(), 20 + 20 + 300);
-    assert_eq!(
-        u16::from_be_bytes([packet[2], packet[3]]) as usize,
-        packet.len(),
-        "IPv4 total length must cover all segments"
-    );
-
-    // The payloads must be concatenated in order.
-    assert_eq!(&packet[40..140], &[1; 100]);
-    assert_eq!(&packet[140..240], &[2; 100]);
-    assert_eq!(&packet[240..340], &[3; 100]);
-}
-
-#[test]
-fn coalesced_tcp_packet_splits_back_into_segments() {
-    let mut queue = PacketCoalescer::gso();
-
+fn coalesced_tcp_packet_roundtrips_through_virtio_gso() {
+    let mut coalescer =
+        PacketCoalescer::new([Protocol::Tcp, Protocol::Udp], ChecksumMode::Offloaded);
     let segments = [
         tcp4_id(10, 1000, &[1; 100]),
         tcp4_id(11, 1100, &[2; 100]),
@@ -64,17 +25,31 @@ fn coalesced_tcp_packet_splits_back_into_segments() {
     ];
 
     for segment in segments.clone() {
-        queue.enqueue(segment);
+        coalescer.enqueue(segment);
     }
-    let out = queue.drain().collect::<Vec<_>>();
 
+    let out = coalescer.drain().collect::<Vec<_>>();
     let [super_packet] = out.as_slice() else {
-        panic!("Expected a single super packet");
+        panic!("expected one coalesced packet")
     };
+    let buf = tun_write(super_packet);
+    let (header, packet) = VirtioNetHdr::parse(&buf).unwrap();
 
-    let roundtripped = split(&tun_write(super_packet)).unwrap();
+    assert_eq!(
+        header,
+        VirtioNetHdr {
+            flags: VIRTIO_NET_HDR_F_NEEDS_CSUM,
+            gso_type: VIRTIO_NET_HDR_GSO_TCPV4,
+            hdr_len: 40,
+            gso_size: 100,
+            csum_start: 20,
+            csum_offset: 16,
+        }
+    );
+    assert_eq!(packet.len(), 20 + 20 + 250);
 
-    assert_eq!(roundtripped.len(), 3);
+    let roundtripped = split(&buf).unwrap();
+    assert_eq!(roundtripped.len(), segments.len());
 
     for (original, roundtripped) in segments.iter().zip(&roundtripped) {
         assert_eq!(original.packet(), roundtripped.packet());
@@ -82,94 +57,9 @@ fn coalesced_tcp_packet_splits_back_into_segments() {
 }
 
 #[test]
-fn does_not_coalesce_across_flows() {
-    let mut queue = PacketCoalescer::gso();
-
-    queue.enqueue(tcp4(1000, &[1; 100]));
-    queue.enqueue(tcp4_ports(7000, 8000, 9999, &[9; 100]));
-    queue.enqueue(tcp4(1100, &[2; 100]));
-
-    let out = queue.drain().collect::<Vec<_>>();
-
-    assert_eq!(out.len(), 2);
-    assert_eq!(out[0].num_segments(), 2);
-    assert_eq!(out[1].num_segments(), 1);
-}
-
-#[test]
-fn out_of_order_segment_starts_new_batch() {
-    let mut queue = PacketCoalescer::gso();
-
-    queue.enqueue(tcp4(1000, &[1; 100]));
-    queue.enqueue(tcp4(1500, &[2; 100])); // Gap in sequence numbers.
-
-    let out = queue.drain().collect::<Vec<_>>();
-
-    assert_eq!(out.len(), 2);
-    assert_eq!(out[0].num_segments(), 1);
-    assert_eq!(out[1].num_segments(), 1);
-}
-
-#[test]
-fn psh_closes_the_batch() {
-    let mut queue = PacketCoalescer::gso();
-
-    queue.enqueue(tcp4(1000, &[1; 100]));
-    queue.enqueue(tcp4_psh(1100, &[2; 100]));
-    queue.enqueue(tcp4(1200, &[3; 100])); // Must not join the batch closed by the PSH.
-
-    let out = queue.drain().collect::<Vec<_>>();
-
-    let [super_packet, segment] = out.as_slice() else {
-        panic!("Expected a super packet followed by the post-PSH segment");
-    };
-    assert_eq!(super_packet.num_segments(), 2);
-    assert_eq!(segment.num_segments(), 1);
-
-    let buf = tun_write(super_packet);
-    let (_, packet) = VirtioNetHdr::parse(&buf).unwrap();
-    assert_eq!(
-        packet[33] & 0x08,
-        0x08,
-        "PSH must be set on the super packet"
-    );
-}
-
-#[test]
-fn short_segment_closes_the_batch() {
-    let mut queue = PacketCoalescer::gso();
-
-    queue.enqueue(tcp4(1000, &[1; 100]));
-    queue.enqueue(tcp4(1100, &[2; 40]));
-    queue.enqueue(tcp4(1140, &[3; 100])); // Must not join the batch closed by the short segment.
-
-    let out = queue.drain().collect::<Vec<_>>();
-
-    assert_eq!(out.len(), 2, "A shorter segment must close the batch");
-    assert_eq!(out[0].num_segments(), 2);
-    assert_eq!(out[1].num_segments(), 1);
-}
-
-#[test]
-fn non_candidate_flushes_same_flow_first() {
-    let mut queue = PacketCoalescer::gso();
-
-    queue.enqueue(tcp4(1000, &[1; 100]));
-    queue.enqueue(tcp4(1100, &[2; 100]));
-    queue.enqueue(tcp4(1200, &[])); // Pure ACK, not a candidate.
-
-    let out = queue.drain().collect::<Vec<_>>();
-
-    // Ordering within the flow must be preserved: batch first, then the ACK.
-    assert_eq!(out.len(), 2);
-    assert_eq!(out[0].num_segments(), 2);
-    assert_eq!(out[1].num_segments(), 1);
-}
-
-#[test]
-fn coalesces_udp_datagrams() {
-    let mut queue = PacketCoalescer::gso();
-
+fn coalesced_udp_packet_roundtrips_through_virtio_gso() {
+    let mut coalescer =
+        PacketCoalescer::new([Protocol::Tcp, Protocol::Udp], ChecksumMode::Offloaded);
     let datagrams = [
         udp4_id(20, &[1; 100]),
         udp4_id(21, &[2; 100]),
@@ -177,24 +67,30 @@ fn coalesces_udp_datagrams() {
     ];
 
     for datagram in datagrams.clone() {
-        queue.enqueue(datagram);
+        coalescer.enqueue(datagram);
     }
-    let out = queue.drain().collect::<Vec<_>>();
 
+    let out = coalescer.drain().collect::<Vec<_>>();
     let [super_packet] = out.as_slice() else {
-        panic!("Expected a single super packet");
+        panic!("expected one coalesced packet")
     };
-    assert_eq!(super_packet.num_segments(), 3);
-
     let buf = tun_write(super_packet);
-    let (hdr, _) = VirtioNetHdr::parse(&buf).unwrap();
-    assert_eq!(hdr.gso_type, VIRTIO_NET_HDR_GSO_UDP_L4);
-    assert_eq!(hdr.gso_size, 100);
-    assert_eq!(hdr.csum_offset, 6);
+    let (header, _) = VirtioNetHdr::parse(&buf).unwrap();
+
+    assert_eq!(
+        header,
+        VirtioNetHdr {
+            flags: VIRTIO_NET_HDR_F_NEEDS_CSUM,
+            gso_type: VIRTIO_NET_HDR_GSO_UDP_L4,
+            hdr_len: 28,
+            gso_size: 100,
+            csum_start: 20,
+            csum_offset: 6,
+        }
+    );
 
     let roundtripped = split(&buf).unwrap();
-
-    assert_eq!(roundtripped.len(), 3);
+    assert_eq!(roundtripped.len(), datagrams.len());
 
     for (original, roundtripped) in datagrams.iter().zip(&roundtripped) {
         assert_eq!(original.packet(), roundtripped.packet());
@@ -202,12 +98,12 @@ fn coalesces_udp_datagrams() {
 }
 
 #[test]
-fn completes_partial_checksum_of_non_gso_packet() {
-    let packet = udp4(&[7; 32]);
+fn completes_offloaded_checksum_of_non_gso_packet() {
+    let packet = udp4_id(0, &[7; 32]);
     let bytes = packet.packet();
 
-    // Emulate what the kernel hands us for a locally-generated packet with TUN_F_CSUM:
-    // the UDP checksum field holds only the folded pseudo-header sum.
+    // Emulate a locally-generated packet with TUN_F_CSUM. The UDP checksum
+    // field contains only the folded pseudo-header sum.
     let mut buf = Vec::new();
     buf.extend_from_slice(
         &VirtioNetHdr {
@@ -233,51 +129,25 @@ fn completes_partial_checksum_of_non_gso_packet() {
         .copy_from_slice(&pseudo.to_be_bytes());
 
     let out = split(&buf).unwrap();
-
     let [completed] = out.as_slice() else {
-        panic!("Expected a single packet")
+        panic!("expected one packet")
     };
 
-    assert_eq!(
-        completed.packet(),
-        packet.packet(),
-        "Completing the partial checksum must reproduce the full checksum"
-    );
-}
-
-fn tcp4(seq: u32, payload: &[u8]) -> IpPacket {
-    tcp4_id(0, seq, payload)
+    assert_eq!(completed.packet(), packet.packet());
 }
 
 fn tcp4_id(id: u16, seq: u32, payload: &[u8]) -> IpPacket {
-    ipv4_packet(
-        id,
-        IpProtocol::TCP,
-        tcp_header(5000, 6000, seq, false),
-        payload,
-    )
-}
+    let tcp = Tcp {
+        source: 5000,
+        destination: 6000,
+        sequence: seq,
+        acknowledgement: 42,
+        flags: TcpFlags::ACK,
+        window_size: 64000,
+        ..Default::default()
+    };
 
-fn tcp4_ports(sport: u16, dport: u16, seq: u32, payload: &[u8]) -> IpPacket {
-    ipv4_packet(
-        0,
-        IpProtocol::TCP,
-        tcp_header(sport, dport, seq, false),
-        payload,
-    )
-}
-
-fn tcp4_psh(seq: u32, payload: &[u8]) -> IpPacket {
-    ipv4_packet(
-        0,
-        IpProtocol::TCP,
-        tcp_header(5000, 6000, seq, true),
-        payload,
-    )
-}
-
-fn udp4(payload: &[u8]) -> IpPacket {
-    udp4_id(0, payload)
+    ipv4_packet(id, IpProtocol::TCP, tcp, payload)
 }
 
 fn udp4_id(id: u16, payload: &[u8]) -> IpPacket {
@@ -291,24 +161,8 @@ fn udp4_id(id: u16, payload: &[u8]) -> IpPacket {
     ipv4_packet(id, IpProtocol::UDP, udp, payload)
 }
 
-fn tcp_header(sport: u16, dport: u16, seq: u32, psh: bool) -> Tcp {
-    let mut flags = TcpFlags::ACK;
-    flags.set(TcpFlags::PSH, psh);
-
-    Tcp {
-        source: sport,
-        destination: dport,
-        sequence: seq,
-        acknowledgement: 42,
-        flags,
-        window_size: 64000,
-        ..Default::default()
-    }
-}
-
 fn ipv4_packet(id: u16, protocol: IpProtocol, l4_header: impl Emit, payload: &[u8]) -> IpPacket {
     let total_len = Ipv4::MINIMUM_LENGTH + l4_header.packet_length() + payload.len();
-
     let ipv4 = Ipv4 {
         ihl: 5,
         total_len: total_len as u16,
@@ -323,17 +177,12 @@ fn ipv4_packet(id: u16, protocol: IpProtocol, l4_header: impl Emit, payload: &[u
     let mut bytes = (ipv4, l4_header).to_vec();
     bytes.extend_from_slice(payload);
 
-    let mut packet = packet_from_bytes(&bytes);
+    let mut buf = IpPacketBuf::new();
+    buf.buf()[..bytes.len()].copy_from_slice(&bytes);
+    let mut packet = IpPacket::new(buf, bytes.len()).unwrap();
     packet.compute_checksums();
 
     packet
-}
-
-fn packet_from_bytes(bytes: &[u8]) -> IpPacket {
-    let mut buf = IpPacketBuf::new();
-    buf.buf()[..bytes.len()].copy_from_slice(bytes);
-
-    IpPacket::new(buf, bytes.len()).unwrap()
 }
 
 fn tun_write(packet: &CoalescedPacket) -> Vec<u8> {

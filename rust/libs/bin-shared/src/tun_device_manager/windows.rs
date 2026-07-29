@@ -458,7 +458,10 @@ fn start_send_thread(
     std::thread::Builder::new()
         .name("TUN send".into())
         .spawn(move || {
-            let mut tcp_coalescer = packet_coalescer::PacketCoalescer::tcp();
+            let mut tcp_coalescer = packet_coalescer::PacketCoalescer::new(
+                [packet_coalescer::Protocol::Tcp],
+                packet_coalescer::ChecksumMode::Complete,
+            );
             let mut passthrough = packet_coalescer::PacketCoalescer::passthrough();
 
             while let Some(mut batch) = packet_rx.blocking_recv() {

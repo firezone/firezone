@@ -3,8 +3,8 @@
 //!
 //! See `include/uapi/linux/virtio_net.h` and `include/linux/virtio_net.h` in the kernel sources.
 
-use ip_packet::{IpNumber, IpVersion};
-use packet_coalescer::CoalescedPacket;
+use ip_packet::IpVersion;
+use packet_coalescer::{CoalescedPacket, Protocol};
 
 /// `virtio_net_hdr` is 10 bytes; the TUN driver defaults to this size for `IFF_VNET_HDR`
 /// unless changed via `TUNSETVNETHDRSZ`.
@@ -68,28 +68,26 @@ impl VirtioNetHdr {
 }
 
 pub fn header_for(packet: &CoalescedPacket) -> [u8; VNET_HDR_LEN] {
-    let Some(offload) = packet.offload() else {
+    let Some(offload) = packet.offload_metadata() else {
         return [0; VNET_HDR_LEN];
     };
 
-    let gso_type = match (offload.protocol, offload.version) {
-        (IpNumber::TCP, IpVersion::V4) => VIRTIO_NET_HDR_GSO_TCPV4,
-        (IpNumber::TCP, IpVersion::V6) => VIRTIO_NET_HDR_GSO_TCPV6,
-        (IpNumber::UDP, _) => VIRTIO_NET_HDR_GSO_UDP_L4,
-        _ => unreachable!("only TCP and UDP packets are coalesced"),
+    let gso_type = match (offload.protocol, offload.ip_version) {
+        (Protocol::Tcp, IpVersion::V4) => VIRTIO_NET_HDR_GSO_TCPV4,
+        (Protocol::Tcp, IpVersion::V6) => VIRTIO_NET_HDR_GSO_TCPV6,
+        (Protocol::Udp, _) => VIRTIO_NET_HDR_GSO_UDP_L4,
     };
     let csum_offset = match offload.protocol {
-        IpNumber::TCP => 16,
-        IpNumber::UDP => 6,
-        _ => unreachable!("only TCP and UDP packets are coalesced"),
+        Protocol::Tcp => 16,
+        Protocol::Udp => 6,
     };
 
     VirtioNetHdr {
         flags: VIRTIO_NET_HDR_F_NEEDS_CSUM,
         gso_type,
-        hdr_len: (offload.ip_hdr_len + offload.l4_hdr_len) as u16,
-        gso_size: offload.seg_size as u16,
-        csum_start: offload.ip_hdr_len as u16,
+        hdr_len: (offload.ip_header_len + offload.transport_header_len) as u16,
+        gso_size: offload.segment_size as u16,
+        csum_start: offload.ip_header_len as u16,
         csum_offset,
     }
     .to_bytes()
