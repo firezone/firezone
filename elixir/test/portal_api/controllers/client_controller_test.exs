@@ -155,6 +155,7 @@ defmodule PortalAPI.ClientControllerTest do
 
     test "renders device trust fields", %{conn: conn, actor: actor, account: account} do
       client_actor = actor_fixture(account: account)
+      attested_at = DateTime.utc_now() |> DateTime.truncate(:microsecond)
 
       client =
         client_fixture(
@@ -164,7 +165,8 @@ defmodule PortalAPI.ClientControllerTest do
           last_attested_device_uuid: "7A461FF9-0BE2-64A9-A418-539D9A21827B",
           last_attested_mdm_device_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
           last_attested_cert_serial: "4A:2F:00:8C",
-          last_attested_cert_fingerprint: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          last_attested_cert_fingerprint: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          last_attested_at: attested_at
         )
 
       conn =
@@ -180,6 +182,8 @@ defmodule PortalAPI.ClientControllerTest do
       assert data["last_attested_cert_serial"] == "4A:2F:00:8C"
       assert data["last_attested_cert_fingerprint"] ==
                "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+
+      assert data["last_attested_at"] == DateTime.to_iso8601(attested_at)
     end
 
     test "renders hostname when set", %{conn: conn, actor: actor, account: account} do

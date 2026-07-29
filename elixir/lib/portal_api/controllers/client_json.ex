@@ -38,6 +38,7 @@ defmodule PortalAPI.ClientJSON do
       last_attested_mdm_device_id: device.last_attested_mdm_device_id,
       last_attested_cert_serial: device.last_attested_cert_serial,
       last_attested_cert_fingerprint: device.last_attested_cert_fingerprint,
+      last_attested_at: device.last_attested_at,
       verified_at: device.verified_at,
       public_key: device.public_key,
       last_seen_at: device.last_seen_at,

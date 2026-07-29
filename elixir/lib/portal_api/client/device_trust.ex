@@ -32,6 +32,11 @@ defmodule PortalAPI.Client.DeviceTrust do
   @max_cert_bytes 16_384
   @max_signature_bytes 1_024
   @max_chain_depth 4
+  # Matches the varchar(255) device columns: the bulk session flush bypasses
+  # changeset validation, so an oversized value would abort the whole batch.
+  # This bound only protects the columns; garbage screening is the
+  # blocklists' job.
+  @max_identifier_bytes 255
 
   # Typed URI SAN idtypes: firezone://<idtype>/<value>
   @idtype_columns %{
@@ -204,9 +209,22 @@ defmodule PortalAPI.Client.DeviceTrust do
         {:ok,
          %{
            identifiers: identifiers,
-           last_attested_cert_serial: leaf_otp |> X509.serial_number() |> Integer.to_string(16),
+           last_attested_cert_serial: format_cert_serial(leaf_otp),
            last_attested_cert_fingerprint: sha256_hex(leaf_der)
          }}
+    end
+  end
+
+  # A conforming serial is at most 20 octets (RFC 5280), but the column is
+  # the real bound: a serial that cannot fit varchar(255) is dropped rather
+  # than aborting the bulk session flush. The fingerprint remains the pin.
+  defp format_cert_serial(leaf_otp) do
+    serial = leaf_otp |> X509.serial_number() |> Integer.to_string(16)
+
+    if byte_size(serial) <= @max_identifier_bytes do
+      serial
+    else
+      nil
     end
   end
 
@@ -434,6 +452,7 @@ defmodule PortalAPI.Client.DeviceTrust do
     value = String.trim(value)
 
     cond do
+      byte_size(value) > @max_identifier_bytes -> nil
       not Regex.match?(@printable_ascii_regex, value) -> nil
       column == :last_attested_device_serial -> normalize_serial(value)
       column == :last_attested_device_uuid -> normalize_uuid(value)
