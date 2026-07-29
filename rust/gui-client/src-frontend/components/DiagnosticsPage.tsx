@@ -1,7 +1,7 @@
 import React from "react";
+import { FileCount } from "../generated/bindings";
 import Button from "./Button";
 import RemixIcon from "./RemixIcon";
-import { FileCount } from "../generated/bindings";
 
 interface DiagnosticsPageProps {
   logCount: FileCount | null;
@@ -16,8 +16,7 @@ export default function Diagnostics({
 }: DiagnosticsPageProps) {
   const bytes = logCount?.bytes ?? 0;
   const files = logCount?.files ?? 0;
-
-  const megabytes = Math.round(Number(bytes / 100000)) / 10;
+  const megabytes = Math.round((bytes / 1_000_000) * 10) / 10;
 
   return (
     <div className="page">

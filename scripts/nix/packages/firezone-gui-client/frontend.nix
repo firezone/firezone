@@ -28,7 +28,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # when it drifts (so CI/CD never fails on a stale pin) and opens a
     # firezone-bot PR to commit the new value; run
     # scripts/nix/update-pnpm-hash.sh to refresh it by hand.
-    hash = "sha256-749YoSsjcS8cq+oaPZ6Ezaqs8h2zkNeLecwouYpHX3g=";
+    hash = "sha256-J+gnldY/7u45X4ZMYilwpmR6xvSB7k/RnDhbAuQ7Xfo=";
   };
 
   # nixpkgs packages pnpm by major version only, not the exact patch in
@@ -51,9 +51,6 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   buildPhase = ''
     runHook preBuild
 
-    # pnpm.configHook installs with --ignore-scripts; replicate the
-    # `postinstall` script from package.json before bundling.
-    pnpm exec flowbite-react build
     pnpm exec vite build
 
     runHook postBuild

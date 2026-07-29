@@ -54,7 +54,7 @@ export default function ColorPalettePage() {
 function ColorSwatch({ colorClass }: { colorClass: string }) {
   return (
     <div className="overflow-hidden rounded border border-border bg-surface">
-      <div className={`h-14 border-b border-border ${colorClass}`}></div>
+      <div className={`h-14 border-b border-border ${colorClass}`} />
       <div className="p-3 font-mono text-xs text-body">{colorClass}</div>
     </div>
   );

@@ -1,8 +1,8 @@
 import React, { useEffect, useId, useState } from "react";
+import { AdvancedSettingsViewModel } from "../generated/bindings";
 import Button from "./Button";
 import { ManagedTextInput } from "./ManagedInput";
 import RemixIcon from "./RemixIcon";
-import { AdvancedSettingsViewModel } from "../generated/bindings";
 
 interface Props {
   settings: AdvancedSettingsViewModel | null;
@@ -10,39 +10,31 @@ interface Props {
   resetSettings: () => void;
 }
 
+const defaultSettings: AdvancedSettingsViewModel = {
+  api_url: "",
+  api_url_is_managed: false,
+  auth_url: "",
+  auth_url_is_managed: false,
+  log_filter: "",
+  log_filter_is_managed: false,
+};
+
 export default function AdvancedSettingsPage({
   settings,
   saveSettings,
   resetSettings,
 }: Props) {
-  // Local settings can be edited without affecting the global state.
   const [localSettings, setLocalSettings] = useState<AdvancedSettingsViewModel>(
-    settings ?? {
-      api_url: "",
-      api_url_is_managed: false,
-      auth_url: "",
-      auth_url_is_managed: false,
-      log_filter: "",
-      log_filter_is_managed: false,
-    }
+    settings ?? defaultSettings
   );
 
   useEffect(() => {
-    setLocalSettings(
-      settings ?? {
-        api_url: "",
-        api_url_is_managed: false,
-        auth_url: "",
-        auth_url_is_managed: false,
-        log_filter: "",
-        log_filter_is_managed: false,
-      }
-    );
+    setLocalSettings(settings ?? defaultSettings);
   }, [settings]);
 
   const authBaseUrlId = useId();
   const apiUrlId = useId();
-  const logFilterInput = useId();
+  const logFilterInputId = useId();
 
   return (
     <div className="page">
@@ -56,28 +48,28 @@ export default function AdvancedSettingsPage({
       </div>
 
       <form
-        onSubmit={(e) => {
-          e.preventDefault();
+        className="max-w-xl space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
           saveSettings(localSettings);
         }}
-        className="max-w-xl space-y-3"
       >
         <div>
           <label className="form-label" htmlFor={authBaseUrlId}>
             Auth Base URL
           </label>
           <ManagedTextInput
-            name="auth_base_url"
             id={authBaseUrlId}
             managed={localSettings.auth_url_is_managed}
-            value={localSettings.auth_url}
-            onChange={(e) =>
+            name="auth_base_url"
+            onChange={(event) =>
               setLocalSettings({
                 ...localSettings,
-                auth_url: e.target.value,
+                auth_url: event.target.value,
               })
             }
             required
+            value={localSettings.auth_url}
           />
         </div>
 
@@ -86,42 +78,42 @@ export default function AdvancedSettingsPage({
             API URL
           </label>
           <ManagedTextInput
-            name="api_url"
             id={apiUrlId}
             managed={localSettings.api_url_is_managed}
-            value={localSettings.api_url}
-            onChange={(e) =>
+            name="api_url"
+            onChange={(event) =>
               setLocalSettings({
                 ...localSettings,
-                api_url: e.target.value,
+                api_url: event.target.value,
               })
             }
             required
+            value={localSettings.api_url}
           />
         </div>
 
         <div>
-          <label className="form-label" htmlFor={logFilterInput}>
+          <label className="form-label" htmlFor={logFilterInputId}>
             Log Filter
           </label>
           <ManagedTextInput
-            name="log_filter"
-            id={logFilterInput}
-            managed={localSettings.log_filter_is_managed}
-            value={localSettings.log_filter}
             className="font-mono text-xs"
-            onChange={(e) =>
+            id={logFilterInputId}
+            managed={localSettings.log_filter_is_managed}
+            name="log_filter"
+            onChange={(event) =>
               setLocalSettings({
                 ...localSettings,
-                log_filter: e.target.value,
+                log_filter: event.target.value,
               })
             }
             required
+            value={localSettings.log_filter}
           />
         </div>
 
         <div className="flex justify-end gap-2 border-t border-border pt-3">
-          <Button type="reset" onClick={resetSettings}>
+          <Button onClick={resetSettings} type="reset">
             Reset to Defaults
           </Button>
           <Button type="submit" variant="primary">

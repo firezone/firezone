@@ -1,20 +1,22 @@
 import React from "react";
-import { useNavigate, useLocation } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import RemixIcon, { RemixIconName } from "./RemixIcon";
 
-export default function ReactRouterSidebarItem({
-  href,
-  icon,
-  children,
-}: {
+interface Props {
   href: string;
   icon: RemixIconName;
   children: React.ReactNode;
-}) {
+}
+
+export default function ReactRouterSidebarItem({
+  href,
+  icon: Icon,
+  children,
+}: Props) {
   const location = useLocation();
   const navigate = useNavigate();
+  const active = location.pathname.startsWith(href);
 
-  // Custom navigation handler for SidebarItems to avoid full page reloads
   const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     navigate(href);
@@ -22,14 +24,12 @@ export default function ReactRouterSidebarItem({
 
   return (
     <a
-      aria-current={location.pathname.startsWith(href) ? "page" : undefined}
-      className={`nav-item ${
-        location.pathname.startsWith(href) ? "nav-item-active" : ""
-      }`}
+      aria-current={active ? "page" : undefined}
+      className={`nav-item ${active ? "nav-item-active" : ""}`}
       href={href}
       onClick={handleClick}
     >
-      <RemixIcon className="h-4 w-4" name={icon} />
+      <RemixIcon className="h-4 w-4" name={Icon} />
       <span>{children}</span>
     </a>
   );

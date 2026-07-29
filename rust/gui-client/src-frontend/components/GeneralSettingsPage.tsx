@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useState } from "react";
-import Button from "./Button";
-import { ManagedToggleSwitch, ManagedTextInput } from "./ManagedInput";
 import { GeneralSettingsViewModel } from "../generated/bindings";
+import Button from "./Button";
+import { ManagedTextInput, ManagedToggleSwitch } from "./ManagedInput";
 
 interface Props {
   settings: GeneralSettingsViewModel | null;
@@ -9,78 +9,71 @@ interface Props {
   resetSettings: () => void;
 }
 
+const defaultSettings: GeneralSettingsViewModel = {
+  start_minimized: true,
+  account_slug: "",
+  connect_on_start: false,
+  start_on_login: false,
+  account_slug_is_managed: false,
+  connect_on_start_is_managed: false,
+};
+
 export default function GeneralSettingsPage({
   settings,
   saveSettings,
   resetSettings,
 }: Props) {
-  // Local settings can be edited without affecting the global state.
   const [localSettings, setLocalSettings] = useState<GeneralSettingsViewModel>(
-    settings ?? {
-      start_minimized: true,
-      account_slug: "",
-      connect_on_start: false,
-      start_on_login: false,
-      account_slug_is_managed: false,
-      connect_on_start_is_managed: false,
-    }
+    settings ?? defaultSettings
   );
 
   useEffect(() => {
-    setLocalSettings(
-      settings ?? {
-        start_minimized: true,
-        account_slug: "",
-        connect_on_start: false,
-        start_on_login: false,
-        account_slug_is_managed: false,
-        connect_on_start_is_managed: false,
-      }
-    );
+    setLocalSettings(settings ?? defaultSettings);
   }, [settings]);
 
   const accountSlugInputId = useId();
   const startMinimizedInputId = useId();
   const startOnLoginInputId = useId();
   const connectOnStartInputId = useId();
+
   return (
     <div className="page">
       <form
-        onSubmit={(e) => {
-          e.preventDefault();
+        className="max-w-xl space-y-5"
+        onSubmit={(event) => {
+          event.preventDefault();
           saveSettings(localSettings);
         }}
-        className="max-w-xl space-y-5"
       >
         <div>
           <label className="form-label" htmlFor={accountSlugInputId}>
             Account slug
           </label>
           <ManagedTextInput
-            name="account_slug"
             id={accountSlugInputId}
             managed={localSettings.account_slug_is_managed}
-            value={localSettings.account_slug}
-            onChange={(e) =>
+            name="account_slug"
+            onChange={(event) =>
               setLocalSettings({
                 ...localSettings,
-                account_slug: e.target.value,
+                account_slug: event.target.value,
               })
             }
+            value={localSettings.account_slug}
           />
         </div>
 
         <div className="panel divide-y divide-border">
           <SettingRow inputId={startMinimizedInputId} label="Start minimized">
             <ManagedToggleSwitch
-              name="start_minimized"
+              checked={localSettings.start_minimized}
               id={startMinimizedInputId}
               managed={false}
-              checked={localSettings.start_minimized}
-              onChange={(e) =>
+              name="start_minimized"
+              onChange={(checked) =>
                 setLocalSettings({
                   ...localSettings,
-                  start_minimized: e,
+                  start_minimized: checked,
                 })
               }
             />
@@ -88,14 +81,14 @@ export default function GeneralSettingsPage({
 
           <SettingRow inputId={startOnLoginInputId} label="Start on login">
             <ManagedToggleSwitch
-              name="start_on_login"
+              checked={localSettings.start_on_login}
               id={startOnLoginInputId}
               managed={false}
-              checked={localSettings.start_on_login}
-              onChange={(e) =>
+              name="start_on_login"
+              onChange={(checked) =>
                 setLocalSettings({
                   ...localSettings,
-                  start_on_login: e,
+                  start_on_login: checked,
                 })
               }
             />
@@ -103,14 +96,14 @@ export default function GeneralSettingsPage({
 
           <SettingRow inputId={connectOnStartInputId} label="Connect on start">
             <ManagedToggleSwitch
-              name="connect-on-start"
+              checked={localSettings.connect_on_start}
               id={connectOnStartInputId}
               managed={localSettings.connect_on_start_is_managed}
-              checked={localSettings.connect_on_start}
-              onChange={(e) =>
+              name="connect-on-start"
+              onChange={(checked) =>
                 setLocalSettings({
                   ...localSettings,
-                  connect_on_start: e,
+                  connect_on_start: checked,
                 })
               }
             />
@@ -118,7 +111,7 @@ export default function GeneralSettingsPage({
         </div>
 
         <div className="flex justify-end gap-2 border-t border-border pt-4">
-          <Button type="reset" onClick={resetSettings}>
+          <Button onClick={resetSettings} type="reset">
             Reset to Defaults
           </Button>
           <Button type="submit" variant="primary">
