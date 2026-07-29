@@ -936,7 +936,7 @@ impl RecvBuffers {
 /// over the socket channels as a single item.
 ///
 /// The datagrams stay in the receive buffers the kernel filled; the buffers and metas
-/// live in pooled, heap-allocated `Vec`s (see [`RecvBuffers`]), so moving a batch only
+/// live in pooled, heap-allocated `Vec`s (see `RecvBuffers`), so moving a batch only
 /// copies a couple of pointers. Callers consume a batch with [`DatagramBatch::drain`],
 /// which segments buffers holding several GRO / URO-coalesced datagrams apart again.
 ///
