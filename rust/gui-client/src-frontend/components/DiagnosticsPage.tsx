@@ -1,6 +1,6 @@
 import React from "react";
-import { ShareIcon, TrashIcon } from "@heroicons/react/16/solid";
-import { Button } from "flowbite-react";
+import Button from "./Button";
+import RemixIcon from "./RemixIcon";
 import { FileCount } from "../generated/bindings";
 
 interface DiagnosticsPageProps {
@@ -20,21 +20,25 @@ export default function Diagnostics({
   const megabytes = Math.round(Number(bytes / 100000)) / 10;
 
   return (
-    <div className="container mx-auto p-4">
-      <div className="p-4 rounded-lg">
-        <div className="mt-8 flex justify-center">
-          <p className="mr-1">Log directory size:</p>
-          <p>{`${files} files, ${megabytes} MB`}</p>
+    <div className="page">
+      <div className="panel max-w-xl p-4">
+        <div className="mt-8 flex justify-center text-sm text-body">
+          <div className="flex items-center gap-2.5">
+            <RemixIcon className="h-4 w-4 text-subtle" name="database" />
+            <p className="mr-1">Log directory size:</p>
+            <p className="font-mono tabular-nums">
+              {`${files} files, ${megabytes} MB`}
+            </p>
+          </div>
         </div>
 
         <div className="mt-8 flex justify-center gap-4">
-          <Button onClick={exportLogs} color="alternative">
-            <ShareIcon className="mr-2 h-5 w-5" />
+          <Button onClick={exportLogs}>
+            <RemixIcon className="h-3.5 w-3.5" name="share-forward" />
             Export Logs
           </Button>
-
-          <Button onClick={clearLogs} color="alternative">
-            <TrashIcon className="mr-2 h-5 w-5" />
+          <Button onClick={clearLogs}>
+            <RemixIcon className="h-3.5 w-3.5" name="delete-bin" />
             Clear Logs
           </Button>
         </div>

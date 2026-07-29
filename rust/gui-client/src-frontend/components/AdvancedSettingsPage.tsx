@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useState } from "react";
-import { Button, Label } from "flowbite-react";
+import Button from "./Button";
 import { ManagedTextInput } from "./ManagedInput";
+import RemixIcon from "./RemixIcon";
 import { AdvancedSettingsViewModel } from "../generated/bindings";
 
 interface Props {
@@ -44,24 +45,27 @@ export default function AdvancedSettingsPage({
   const logFilterInput = useId();
 
   return (
-    <div className="container p-4">
-      <p className="text-neutral-900 mb-6">
-        <strong>WARNING</strong>: These settings are intended for internal debug
-        purposes <strong>only</strong>. Changing these is not supported and will
-        disrupt access to your resources.
-      </p>
+    <div className="page">
+      <div className="mb-4 flex max-w-xl gap-2.5 rounded border border-warning/30 bg-warning-light p-3 text-sm text-warning">
+        <RemixIcon className="mt-0.5 h-4 w-4" name="alert" />
+        <p>
+          <strong>WARNING</strong>: These settings are intended for internal
+          debug purposes <strong>only</strong>. Changing these is not supported
+          and will disrupt access to your resources.
+        </p>
+      </div>
 
       <form
         onSubmit={(e) => {
           e.preventDefault();
           saveSettings(localSettings);
         }}
-        className="max-w flex flex-col gap-2"
+        className="max-w-xl space-y-3"
       >
         <div>
-          <Label className="text-neutral-600" htmlFor={authBaseUrlId}>
+          <label className="form-label" htmlFor={authBaseUrlId}>
             Auth Base URL
-          </Label>
+          </label>
           <ManagedTextInput
             name="auth_base_url"
             id={authBaseUrlId}
@@ -78,9 +82,9 @@ export default function AdvancedSettingsPage({
         </div>
 
         <div>
-          <Label className="text-neutral-600" htmlFor={apiUrlId}>
+          <label className="form-label" htmlFor={apiUrlId}>
             API URL
-          </Label>
+          </label>
           <ManagedTextInput
             name="api_url"
             id={apiUrlId}
@@ -97,14 +101,15 @@ export default function AdvancedSettingsPage({
         </div>
 
         <div>
-          <Label className="text-neutral-600" htmlFor={logFilterInput}>
+          <label className="form-label" htmlFor={logFilterInput}>
             Log Filter
-          </Label>
+          </label>
           <ManagedTextInput
             name="log_filter"
             id={logFilterInput}
             managed={localSettings.log_filter_is_managed}
             value={localSettings.log_filter}
+            className="font-mono text-xs"
             onChange={(e) =>
               setLocalSettings({
                 ...localSettings,
@@ -115,11 +120,13 @@ export default function AdvancedSettingsPage({
           />
         </div>
 
-        <div className="flex justify-end gap-4 mt-4">
-          <Button type="reset" onClick={resetSettings} color="alternative">
+        <div className="flex justify-end gap-2 border-t border-border pt-3">
+          <Button type="reset" onClick={resetSettings}>
             Reset to Defaults
           </Button>
-          <Button type="submit">Apply</Button>
+          <Button type="submit" variant="primary">
+            Apply
+          </Button>
         </div>
       </form>
     </div>

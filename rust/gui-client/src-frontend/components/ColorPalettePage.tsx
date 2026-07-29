@@ -43,7 +43,7 @@ const neutralColors = [
 
 export default function ColorPalettePage() {
   return (
-    <div className="p-6 max-w-full mx-auto">
+    <div className="page">
       <ColorSection title="Primary Colors" colors={primaryColors} />
       <ColorSection title="Accent Colors" colors={accentColors} />
       <ColorSection title="Neutral Colors" colors={neutralColors} />
@@ -53,9 +53,9 @@ export default function ColorPalettePage() {
 
 function ColorSwatch({ colorClass }: { colorClass: string }) {
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden border border-neutral-200">
-      <div className={`h-14 ${colorClass}`}></div>
-      <div className="p-3 text-xs">{colorClass}</div>
+    <div className="overflow-hidden rounded border border-border bg-surface">
+      <div className={`h-14 border-b border-border ${colorClass}`}></div>
+      <div className="p-3 font-mono text-xs text-body">{colorClass}</div>
     </div>
   );
 }
@@ -63,10 +63,10 @@ function ColorSwatch({ colorClass }: { colorClass: string }) {
 function ColorSection({ title, colors }: { title: string; colors: string[] }) {
   return (
     <div className="mb-8">
-      <h2 className="text-xl font-semibold mb-4 pb-2 border-b border-neutral-200">
+      <h2 className="mb-4 border-b border-border pb-2 text-xl font-semibold text-heading">
         {title}
       </h2>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {colors.map((color) => (
           <ColorSwatch key={color} colorClass={color} />
         ))}

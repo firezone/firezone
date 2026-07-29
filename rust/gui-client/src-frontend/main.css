@@ -1,14 +1,62 @@
 @import "tailwindcss";
-@import "@fontsource-variable/source-sans-3";
-
 @import "flowbite-react/plugin/tailwindcss";
-@plugin 'flowbite/plugin';
-
 @source "../.flowbite-react/class-list.json";
-
-@custom-variant dark (&:where(.dark, .dark *));
+@import "@fontsource-variable/roboto";
+@import "@fontsource-variable/roboto-mono";
 
 @theme {
+  /* Brand */
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-hover);
+  --color-brand-light: var(--brand-secondary);
+  --color-brand-subtle: var(--brand-tertiary);
+  --color-brand-muted: var(--brand-muted);
+
+  /* Accent */
+  --color-accent: var(--accent);
+  --color-accent-dark: var(--accent-hover);
+  --color-accent-light: var(--accent-secondary);
+  --color-accent-subtle: var(--accent-tertiary);
+  --color-accent-muted: var(--accent-muted);
+
+  /* Text */
+  --color-heading: var(--text-primary);
+  --color-body: var(--text-secondary);
+  --color-subtle: var(--text-tertiary);
+  --color-muted: var(--text-muted);
+  --color-inverse: var(--text-inverse);
+
+  /* Background */
+  --color-page: var(--canvas);
+  --color-surface: var(--surface);
+  --color-elevated: var(--surface-overlay);
+  --color-raised: var(--surface-raised);
+
+  /* Border */
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-emphasis: var(--border-emphasis);
+  --color-border-focus: var(--control-focus);
+
+  /* Status */
+  --color-success: var(--success);
+  --color-success-light: var(--success-light);
+  --color-warning: var(--warning);
+  --color-warning-light: var(--warning-light);
+  --color-error: var(--error);
+  --color-error-light: var(--error-light);
+  --color-info: var(--info);
+  --color-info-light: var(--info-light);
+  --color-danger: var(--danger);
+  --color-danger-light: var(--danger-light);
+  --color-neutral-status: var(--neutral-status);
+  --color-neutral-status-light: var(--neutral-status-light);
+
+  /* Controls */
+  --color-input: var(--control-bg);
+  --color-input-border: var(--control-border);
+
+  /* Legacy palette utilities used by the development color palette. */
   --color-primary-50: #fff9f5;
   --color-primary-100: #fff1e5;
   --color-primary-200: #ffddc2;
@@ -33,34 +81,310 @@
   --color-accent-800: #28005c;
   --color-accent-900: #160033;
 
-  --color-neutral-50: #fcfcfc;
-  --color-neutral-100: #f8f7f7;
-  --color-neutral-200: #ebebea;
-  --color-neutral-300: #dfdedd;
-  --color-neutral-400: #c7c4c2;
-  --color-neutral-500: #a7a3a0;
-  --color-neutral-600: #90867f;
-  --color-neutral-700: #766a60;
-  --color-neutral-800: #4c3e33;
-  --color-neutral-900: #1b140e;
+  --color-neutral-50: #f6f6f6;
+  --color-neutral-100: #e7e7e7;
+  --color-neutral-200: #d1d1d1;
+  --color-neutral-300: #b0b0b0;
+  --color-neutral-400: #888888;
+  --color-neutral-500: #6d6d6d;
+  --color-neutral-600: #575757;
+  --color-neutral-700: #4f4f4f;
+  --color-neutral-800: #454545;
+  --color-neutral-900: #3d3d3d;
 
-  --default-font-family: "Source Sans 3 Variable", sans-serif;
+  --font-sans:
+    "Roboto Variable", "Roboto", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-mono:
+    "Roboto Mono Variable", "Roboto Mono", ui-monospace, SFMono-Regular, Menlo,
+    Monaco, Consolas, monospace;
+  --default-font-family: var(--font-sans);
+  --default-mono-font-family: var(--font-mono);
 }
 
-/*
-  The default border color has changed to `currentColor` in Tailwind CSS v4,
-  so we've added these compatibility styles to make sure everything still
-  looks the same as it did with Tailwind CSS v3.
+:root {
+  color-scheme: light dark;
 
-  If we ever want to remove these styles, we need to add an explicit border
-  color utility to any element that depends on these defaults.
-*/
+  /* Brand — identical to the portal */
+  --brand: oklch(71.74% 0.192 48.75);
+  --brand-secondary: oklch(77.69% 0.154 56.87);
+  --brand-tertiary: oklch(96.59% 0.022 63.21);
+  --brand-muted: oklch(98.56% 0.0084 56.32);
+  --brand-hover: oklch(58.23% 0.1574 48.48);
+
+  /* Accent */
+  --accent: oklch(48.06% 0.2976 276);
+  --accent-secondary: oklch(81.3% 0.295 276);
+  --accent-tertiary: oklch(91.9% 0.193 276);
+  --accent-muted: oklch(97.9% 0.193 276);
+  --accent-hover: oklch(30.98% 0.1931 276);
+
+  /* Surfaces */
+  --canvas: oklch(95.73% 0.0074 260.73);
+  --surface: oklch(100% 0 0);
+  --surface-raised: oklch(98.14% 0.0045 258.32);
+  --surface-overlay: oklch(100% 0 0);
+
+  /* Borders */
+  --border: oklch(20.77% 0.0398 265.75 / 8%);
+  --border-strong: oklch(20.77% 0.0398 265.75 / 16%);
+  --border-emphasis: oklch(20.77% 0.0398 265.75 / 28%);
+
+  /* Text */
+  --text-primary: oklch(20.77% 0.0398 265.75);
+  --text-secondary: oklch(44.55% 0.0374 257.28);
+  --text-tertiary: oklch(59.6% 0.0404 252.26);
+  --text-muted: oklch(75.17% 0.019 245.46);
+  --text-inverse: oklch(98.42% 0.0034 247.86);
+
+  /* Status */
+  --success: oklch(62.71% 0.1699 149.21);
+  --success-light: oklch(62.71% 0.1699 149.21 / 10%);
+  --info: oklch(54.61% 0.2152 262.88);
+  --info-light: oklch(54.61% 0.2152 262.88 / 8%);
+  --warning: oklch(66.58% 0.1574 58.32);
+  --warning-light: oklch(66.58% 0.1574 58.32 / 10%);
+  --neutral-status: oklch(55.44% 0.0407 257.42);
+  --neutral-status-light: oklch(55.44% 0.0407 257.42 / 12%);
+  --danger: oklch(57.71% 0.2152 27.33);
+  --danger-light: oklch(57.71% 0.2152 27.33 / 10%);
+  --error: oklch(57.71% 0.2152 27.33);
+  --error-light: oklch(93.56% 0.0309 17.72);
+
+  /* Controls */
+  --control-bg: oklch(100% 0 0);
+  --control-border: oklch(20.77% 0.0398 265.75 / 16%);
+  --control-focus: oklch(71.74% 0.192 48.75);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Surfaces */
+    --canvas: oklch(15.42% 0.0185 263.23);
+    --surface: oklch(20.01% 0.0284 262.33);
+    --surface-raised: oklch(24.42% 0.037 263.53);
+    --surface-overlay: oklch(28.45% 0.0423 261.22);
+
+    /* Borders */
+    --border: oklch(96.83% 0.0069 247.9 / 7%);
+    --border-strong: oklch(96.83% 0.0069 247.9 / 12%);
+    --border-emphasis: oklch(96.83% 0.0069 247.9 / 22%);
+
+    /* Text */
+    --text-primary: oklch(96.83% 0.0069 247.9);
+    --text-secondary: oklch(71.07% 0.0351 256.79);
+    --text-tertiary: oklch(49.17% 0.045 251.05);
+    --text-muted: oklch(36.07% 0.0404 250.33);
+    --text-inverse: oklch(20.77% 0.0398 265.75);
+
+    /* Brand */
+    --brand: oklch(77.69% 0.154 56.87);
+    --brand-secondary: oklch(71.74% 0.192 48.75 / 60%);
+    --brand-tertiary: oklch(71.74% 0.192 48.75 / 30%);
+    --brand-muted: oklch(71.74% 0.192 48.75 / 12%);
+    --brand-hover: oklch(82.64% 0.1259 64.15);
+
+    /* Status */
+    --success-light: oklch(80.03% 0.1821 151.71 / 10%);
+    --info: oklch(71.37% 0.1434 254.62);
+    --info-light: oklch(71.37% 0.1434 254.62 / 10%);
+    --warning-light: oklch(83.69% 0.1644 84.43 / 10%);
+    --neutral-status-light: oklch(55.44% 0.0407 257.42 / 16%);
+    --danger-light: oklch(57.71% 0.2152 27.33 / 12%);
+    --error: oklch(71.06% 0.1661 22.22);
+    --error-light: oklch(71.06% 0.1661 22.22 / 10%);
+
+    /* Controls */
+    --control-bg: oklch(24.42% 0.037 263.53);
+    --control-border: oklch(96.83% 0.0069 247.9 / 12%);
+    --control-focus: oklch(77.69% 0.154 56.87);
+  }
+}
+
 @layer base {
   *,
-  ::after,
   ::before,
-  ::backdrop,
-  ::file-selector-button {
-    border-color: var(--color-gray-200, currentColor);
+  ::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    background: transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-variant-ligatures: common-ligatures contextual;
+    text-rendering: optimizeLegibility;
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    overflow: hidden;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+  }
+
+  button,
+  input {
+    font: inherit;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  code,
+  kbd,
+  samp,
+  pre,
+  .font-mono {
+    font-family: var(--font-mono);
+    font-variant-ligatures: common-ligatures;
+  }
+
+  ::selection {
+    color: var(--text-primary);
+    background: var(--brand-tertiary);
+  }
+}
+
+@layer components {
+  .app-shell {
+    @apply flex h-screen flex-col overflow-hidden rounded-lg border border-border-strong bg-surface text-sm text-body;
+  }
+
+  .page {
+    @apply min-h-full bg-page p-5;
+  }
+
+  .page-header {
+    @apply mb-5;
+  }
+
+  .page-title {
+    @apply text-base font-semibold tracking-tight text-heading;
+  }
+
+  .page-description {
+    @apply mt-1 text-sm text-body;
+  }
+
+  .panel {
+    @apply rounded border border-border bg-surface;
+  }
+
+  .form-label {
+    @apply mb-1.5 block text-xs font-semibold text-body;
+  }
+
+  .form-input {
+    @apply block h-9 w-full rounded border border-input-border bg-input px-3 py-2 text-sm text-heading outline-none transition-colors;
+  }
+
+  .form-input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .form-input:hover:not(:disabled) {
+    border-color: var(--border-emphasis);
+  }
+
+  .form-input:focus {
+    border-color: var(--control-focus);
+    box-shadow: 0 0 0 1px
+      color-mix(in oklch, var(--control-focus) 30%, transparent);
+  }
+
+  .form-input:disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
+
+  .button {
+    @apply inline-flex items-center justify-center gap-1.5 rounded border px-3 py-2 text-sm font-medium leading-5 transition-colors;
+  }
+
+  .button:focus-visible,
+  .icon-button:focus-visible,
+  .nav-item:focus-visible,
+  .toggle:focus-visible {
+    outline: 2px solid var(--control-focus);
+    outline-offset: 2px;
+  }
+
+  .button-primary {
+    @apply border-brand bg-brand text-white;
+  }
+
+  .button-primary:hover {
+    @apply border-brand-dark bg-brand-dark;
+  }
+
+  .button-secondary {
+    @apply border-border-strong bg-surface text-body;
+  }
+
+  .button-secondary:hover {
+    @apply bg-raised text-heading;
+  }
+
+  .button-danger {
+    @apply border-danger/40 bg-surface text-danger;
+  }
+
+  .button-danger:hover {
+    @apply bg-danger-light;
+  }
+
+  .button:disabled {
+    @apply cursor-not-allowed border-border bg-transparent text-muted;
+  }
+
+  .icon-button {
+    @apply flex h-8 w-8 items-center justify-center rounded text-body transition-colors;
+  }
+
+  .icon-button:hover {
+    @apply bg-raised text-heading;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-2.5 rounded px-2 py-1.5 text-sm text-body transition-colors;
+  }
+
+  .nav-item:hover {
+    @apply bg-raised text-heading;
+  }
+
+  .nav-item-active {
+    @apply bg-brand-muted font-medium text-brand;
+  }
+
+  .nav-item-active:hover {
+    @apply bg-brand-muted text-brand;
+  }
+
+  .toggle {
+    @apply relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border px-0.5 transition-colors;
+  }
+
+  .toggle-thumb {
+    @apply h-3 w-3 rounded-full bg-white shadow-sm transition-transform;
+  }
+
+  .managed-tooltip {
+    @apply pointer-events-none absolute right-0 top-full z-20 mt-2 w-max max-w-56 translate-y-1 rounded border border-border bg-elevated px-2.5 py-1.5 text-xs text-body opacity-0 shadow-sm transition-all;
+  }
+
+  .group:hover > .managed-tooltip,
+  .group:focus-within > .managed-tooltip {
+    @apply translate-y-0 opacity-100;
   }
 }

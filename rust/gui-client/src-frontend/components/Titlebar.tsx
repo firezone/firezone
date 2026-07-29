@@ -1,7 +1,6 @@
-import { XMarkIcon } from "@heroicons/react/16/solid";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Navbar } from "flowbite-react";
 import React from "react";
+import RemixIcon from "./RemixIcon";
 
 export interface TitlebarProps {
   title?: string;
@@ -15,31 +14,21 @@ export default function Titlebar({ title }: TitlebarProps) {
   };
 
   return (
-    <div onMouseDown={handleMouseDown} className="select-none">
-      <Navbar
-        clearTheme={{
-          root: {
-            base: true,
-          },
-        }}
-        theme={{
-          root: {
-            base: "py-1 px-2 bg-gray-100 flex flex-row space-between",
-            inner: {
-              base: "max-w-full",
-            },
-          },
-        }}
+    <header
+      onMouseDown={handleMouseDown}
+      className="flex h-14 shrink-0 select-none items-center justify-between border-b border-border bg-surface px-4"
+    >
+      <h1 className="truncate text-sm font-semibold text-heading">{title}</h1>
+      <button
+        className="icon-button -mr-1"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={() => getCurrentWindow().close()}
+        aria-label="Close window"
+        title="Close"
+        type="button"
       >
-        <h2 className="text-xl font-semibold">{title}</h2>
-        <div
-          className="justify-self-end"
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={() => getCurrentWindow().close()}
-        >
-          <XMarkIcon className="h-6 p-1 rounded-full hover:text-gray-700 hover:bg-gray-200" />
-        </div>
-      </Navbar>
-    </div>
+        <RemixIcon className="h-4 w-4" name="close" />
+      </button>
+    </header>
   );
 }

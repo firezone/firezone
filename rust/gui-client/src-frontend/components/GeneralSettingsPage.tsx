@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useState } from "react";
-import { Button, Label, ToggleSwitch } from "flowbite-react";
+import Button from "./Button";
 import { ManagedToggleSwitch, ManagedTextInput } from "./ManagedInput";
 import { GeneralSettingsViewModel } from "../generated/bindings";
 
@@ -44,18 +44,18 @@ export default function GeneralSettingsPage({
   const startOnLoginInputId = useId();
   const connectOnStartInputId = useId();
   return (
-    <div className="container p-4">
+    <div className="page">
       <form
         onSubmit={(e) => {
           e.preventDefault();
           saveSettings(localSettings);
         }}
-        className="max-w flex flex-col gap-2"
+        className="max-w-xl space-y-5"
       >
         <div>
-          <Label className="text-neutral-600" htmlFor={accountSlugInputId}>
+          <label className="form-label" htmlFor={accountSlugInputId}>
             Account slug
-          </Label>
+          </label>
           <ManagedTextInput
             name="account_slug"
             id={accountSlugInputId}
@@ -70,14 +70,12 @@ export default function GeneralSettingsPage({
           />
         </div>
 
-        <div className="flex flex-col max-w-1/2 gap-4 mt-4">
-          <div className="flex justify-between items-center">
-            <Label className="text-neutral-600" htmlFor={startMinimizedInputId}>
-              Start minimized
-            </Label>
-            <ToggleSwitch
+        <div className="panel divide-y divide-border">
+          <SettingRow inputId={startMinimizedInputId} label="Start minimized">
+            <ManagedToggleSwitch
               name="start_minimized"
               id={startMinimizedInputId}
+              managed={false}
               checked={localSettings.start_minimized}
               onChange={(e) =>
                 setLocalSettings({
@@ -86,15 +84,13 @@ export default function GeneralSettingsPage({
                 })
               }
             />
-          </div>
+          </SettingRow>
 
-          <div className="flex justify-between items-center">
-            <Label className="text-neutral-600" htmlFor={startOnLoginInputId}>
-              Start on login
-            </Label>
-            <ToggleSwitch
+          <SettingRow inputId={startOnLoginInputId} label="Start on login">
+            <ManagedToggleSwitch
               name="start_on_login"
               id={startOnLoginInputId}
+              managed={false}
               checked={localSettings.start_on_login}
               onChange={(e) =>
                 setLocalSettings({
@@ -103,12 +99,9 @@ export default function GeneralSettingsPage({
                 })
               }
             />
-          </div>
+          </SettingRow>
 
-          <div className="flex justify-between items-center">
-            <Label className="text-neutral-600" htmlFor={connectOnStartInputId}>
-              Connect on start
-            </Label>
+          <SettingRow inputId={connectOnStartInputId} label="Connect on start">
             <ManagedToggleSwitch
               name="connect-on-start"
               id={connectOnStartInputId}
@@ -121,16 +114,37 @@ export default function GeneralSettingsPage({
                 })
               }
             />
-          </div>
+          </SettingRow>
         </div>
 
-        <div className="flex justify-end gap-4 mt-4">
-          <Button type="reset" onClick={resetSettings} color="alternative">
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
+          <Button type="reset" onClick={resetSettings}>
             Reset to Defaults
           </Button>
-          <Button type="submit">Apply</Button>
+          <Button type="submit" variant="primary">
+            Apply
+          </Button>
         </div>
       </form>
+    </div>
+  );
+}
+
+interface SettingRowProps extends React.PropsWithChildren {
+  inputId: string;
+  label: string;
+}
+
+function SettingRow({ children, inputId, label }: SettingRowProps) {
+  return (
+    <div className="flex items-center justify-between gap-6 px-4 py-3">
+      <label
+        className="block text-sm font-medium text-heading"
+        htmlFor={inputId}
+      >
+        {label}
+      </label>
+      {children}
     </div>
   );
 }
