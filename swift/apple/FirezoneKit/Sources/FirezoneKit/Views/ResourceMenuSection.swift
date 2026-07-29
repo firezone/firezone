@@ -69,15 +69,15 @@
             store.configuration.internetResourceEnabled.toggle()
           }
         } else {
-          if let address = resource.address {
+          if let address = resource.address, !address.isEmpty {
             Button("Copy address") {
               Clipboard.copy(address)
             }
           }
 
-          Button(favoriteToggleTitle) {
-            toggleFavorite()
-          }
+          // A checkable item, ticked while the Resource is a favorite, like
+          // on Windows and Linux.
+          Toggle(favoriteToggleTitle, isOn: isFavorite)
         }
       }
     }
@@ -123,12 +123,17 @@
       store.favorites.contains(resource.id) ? "Remove from favorites" : "Add to favorites"
     }
 
-    func toggleFavorite() {
-      if store.favorites.contains(resource.id) {
-        store.favorites.remove(resource.id)
-      } else {
-        store.favorites.add(resource.id)
-      }
+    private var isFavorite: Binding<Bool> {
+      Binding(
+        get: { store.favorites.contains(resource.id) },
+        set: { isFavorite in
+          if isFavorite {
+            store.favorites.add(resource.id)
+          } else {
+            store.favorites.remove(resource.id)
+          }
+        }
+      )
     }
   }
 
@@ -136,14 +141,15 @@
   struct ResourcesSection: View {
     @EnvironmentObject var store: Store
 
-    /// Partitioned resources for display.
+    /// Partitioned resources for display, in the order they were received.
     /// If no resources are favorited, all resources show directly in the menu.
-    /// Otherwise, favorites show directly and others go in the "Other Resources" submenu.
+    /// Otherwise, favorites and the Internet Resource show directly and the
+    /// rest move to the "Other Resources" submenu.
     private var partitionedResources:
       (
-        internetResource: Resource?,
         directlyShown: [Resource],
-        others: [Resource]
+        others: [Resource],
+        hasAnyFavorites: Bool
       )
     {
       let allResources = store.resourceList.asArray()
@@ -153,22 +159,16 @@
         !$0.isInternetResource() && store.favorites.contains($0.id)
       }
 
-      return allResources.reduce(
-        into: (internetResource: nil, directlyShown: [], others: [])
-      ) { result, resource in
-        if resource.isInternetResource() {
-          result.internetResource = resource
-        } else if !hasAnyFavorites {
-          // No favorites: show all resources directly
-          result.directlyShown.append(resource)
-        } else if store.favorites.contains(resource.id) {
-          // Has favorites: show only favorites directly
-          result.directlyShown.append(resource)
-        } else {
-          // Has favorites: non-favorites go to submenu
-          result.others.append(resource)
-        }
+      guard hasAnyFavorites else {
+        // No favorites: show all resources directly
+        return (allResources, [], false)
       }
+
+      return (
+        allResources.filter { $0.isInternetResource() || store.favorites.contains($0.id) },
+        allResources.filter { !$0.isInternetResource() && !store.favorites.contains($0.id) },
+        true
+      )
     }
 
     var body: some View {
@@ -176,21 +176,18 @@
 
       Group {
         // Header text
-        Text(resourcesHeaderText)
+        Text(resourcesHeaderText(hasAnyFavorites: resources.hasAnyFavorites))
           .foregroundStyle(.secondary)
-
-        // Internet resource (always first if present)
-        if let internet = resources.internetResource {
-          ResourceMenuItem(resource: internet)
-        }
 
         // Directly shown resources (favorites, or all if no favorites)
         ForEach(resources.directlyShown) { resource in
           ResourceMenuItem(resource: resource)
         }
 
-        // Other Resources submenu (only when favorites exist and there are non-favorites)
-        if !resources.others.isEmpty {
+        // Other Resources submenu (whenever favorites exist)
+        if resources.hasAnyFavorites {
+          Divider()
+
           Menu("Other Resources") {
             ForEach(resources.others) { resource in
               ResourceMenuItem(resource: resource)
@@ -200,12 +197,16 @@
       }
     }
 
-    var resourcesHeaderText: String {
+    func resourcesHeaderText(hasAnyFavorites: Bool) -> String {
       switch store.resourceList {
       case .loading:
         return "Loading Resources..."
       case .loaded(let list):
-        return list.isEmpty ? "No Resources" : "Resources"
+        if list.isEmpty {
+          return "No Resources"
+        }
+
+        return hasAnyFavorites ? "Favorite Resources" : "Resources"
       }
     }
   }
