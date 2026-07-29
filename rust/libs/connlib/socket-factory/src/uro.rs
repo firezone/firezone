@@ -438,7 +438,7 @@ mod tests {
     #[test]
     fn zero_stride_junk_is_delivered_as_one_datagram() {
         assert_eq!(
-            classify(&vec![0xFF; 100], 0),
+            classify(&[0xFF; 100], 0),
             Some(Detection {
                 reason: Reason::ZeroSizedSegment,
                 segment_size: Some(100),
