@@ -9,7 +9,7 @@ defmodule PortalAPI.Client.V3.Channel do
   # the client is challenged to prove possession of an MDM-provisioned
   # certificate first, and the device is resolved (attested-first) only after
   # the response or the timeout. Failure never blocks the connect - it falls
-  # back to the plain firezone_id path, unverified.
+  # back to the plain firezone_id path, unattested.
 
   @impl true
   def join(topic, payload, socket) do
@@ -68,16 +68,16 @@ defmodule PortalAPI.Client.V3.Channel do
         account_id = socket.assigns.subject.account.id
         anchors = socket.assigns.pending_device.anchors
 
-        verified =
+        proof =
           case DeviceTrust.verify_response(payload, nonce, anchors) do
-            {:ok, verified} ->
+            {:ok, proof} ->
               Logger.info("Device trust challenge succeeded",
                 account_id: account_id,
-                last_attested_cert_fingerprint: verified.last_attested_cert_fingerprint,
-                identifiers: inspect(verified.identifiers)
+                last_attested_cert_fingerprint: proof.last_attested_cert_fingerprint,
+                identifiers: inspect(proof.identifiers)
               )
 
-              verified
+              proof
 
             {:error, :no_usable_cert} ->
               Logger.info(
@@ -96,7 +96,7 @@ defmodule PortalAPI.Client.V3.Channel do
               nil
           end
 
-        resolve_and_continue(socket, verified)
+        resolve_and_continue(socket, proof)
     end
   end
 
@@ -108,8 +108,8 @@ defmodule PortalAPI.Client.V3.Channel do
   @doc false
   def authorization_creation_failed_event, do: "authorization_creation_failed"
 
-  defp resolve_and_continue(socket, verified) do
-    case Socket.resolve_deferred_client(socket, verified) do
+  defp resolve_and_continue(socket, proof) do
+    case Socket.resolve_deferred_client(socket, proof) do
       {:ok, socket} ->
         send(self(), :after_join)
         {:noreply, socket}

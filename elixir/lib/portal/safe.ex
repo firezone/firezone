@@ -966,13 +966,16 @@ defmodule Portal.Safe do
   # Oban.Job permissions - admin only
   def permit(:read, Oban.Job, :account_admin_user), do: :ok
 
-  # Device permissions (union of Client + Gateway)
+  # Device permissions (union of Client + Gateway); non-admin actors can
+  # insert because clients create their own device row at first connect
   def permit(_action, Portal.Device, :account_admin_user), do: :ok
   def permit(_action, Portal.Device, :api_client), do: :ok
   def permit(:read, Portal.Device, :account_user), do: :ok
   def permit(:update, Portal.Device, :account_user), do: :ok
+  def permit(:insert, Portal.Device, :account_user), do: :ok
   def permit(:read, Portal.Device, :service_account), do: :ok
   def permit(:update, Portal.Device, :service_account), do: :ok
+  def permit(:insert, Portal.Device, :service_account), do: :ok
 
   # PolicyAuthorization permissions - all actor types can read and create policy_authorizations
   def permit(:read, Portal.PolicyAuthorization, _), do: :ok

@@ -159,7 +159,7 @@ defmodule PortalAPI.Client.V3.ChannelTest do
       assert %{metas: [%{attested?: false}]} = Map.fetch!(presence, device.id)
     end
 
-    test "a response with no usable certificate connects unverified", context do
+    test "a response with no usable certificate connects unattested", context do
       {:ok, _reply, socket} = join_v3(context)
       assert_push "device_trust_request", _payload
 
@@ -183,7 +183,7 @@ defmodule PortalAPI.Client.V3.ChannelTest do
       assert %{metas: [%{attested?: false}]} = Map.fetch!(presence, device.id)
     end
 
-    test "the challenge times out and connects unverified", context do
+    test "the challenge times out and connects unattested", context do
       Application.put_env(:portal, :device_trust_challenge_timeout_ms, 50)
       on_exit(fn -> Application.delete_env(:portal, :device_trust_challenge_timeout_ms) end)
 
