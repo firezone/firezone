@@ -16,8 +16,8 @@ defmodule Portal.OpsTest do
   alias Portal.Mocks.Stripe
   alias Portal.Workers.DeleteAccount
 
-  describe "count_presences/0" do
-    test "returns presence counts grouped by topic prefix" do
+  describe "count_global_presences/0" do
+    test "returns cluster-wide presence counts grouped by topic prefix" do
       # Use unique topic names to avoid collisions with parallel tests
       unique_id = Ecto.UUID.generate()
 
@@ -34,7 +34,31 @@ defmodule Portal.OpsTest do
       {:ok, _} =
         Portal.Presence.track(self(), "presences:test_relays:#{unique_id}", "relay1", %{})
 
-      result = count_presences()
+      result = count_global_presences()
+
+      assert {"presences:test_clients", 2} in result
+      assert {"presences:test_gateways", 1} in result
+      assert {"presences:test_relays", 1} in result
+    end
+  end
+
+  describe "count_local_presences/0" do
+    test "returns local presence counts grouped by topic prefix" do
+      unique_id = Ecto.UUID.generate()
+
+      {:ok, _} =
+        Portal.Presence.track(self(), "presences:test_clients:#{unique_id}", "client1", %{})
+
+      {:ok, _} =
+        Portal.Presence.track(self(), "presences:test_clients:#{unique_id}", "client2", %{})
+
+      {:ok, _} =
+        Portal.Presence.track(self(), "presences:test_gateways:#{unique_id}", "gw1", %{})
+
+      {:ok, _} =
+        Portal.Presence.track(self(), "presences:test_relays:#{unique_id}", "relay1", %{})
+
+      result = count_local_presences()
 
       assert {"presences:test_clients", 2} in result
       assert {"presences:test_gateways", 1} in result
