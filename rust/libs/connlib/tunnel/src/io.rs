@@ -12,6 +12,7 @@ pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
+use bufferpool::{Buffer, VecBuf};
 use dns_types::DoHUrl;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
 use http_client::HttpClient;
@@ -75,7 +76,7 @@ struct DnsQueryMetaData {
 pub struct Input {
     pub timeout: bool,
     pub device: Option<tun::PacketBatch>,
-    pub network: Option<Vec<DatagramBatch>>,
+    pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
     pub dns_response: Option<dns::RecursiveResponse>,

@@ -941,7 +941,7 @@ impl RecvBuffers {
 /// which segments buffers holding several GRO / URO-coalesced datagrams apart again.
 ///
 /// The batch is generic over its buffer type to allow easier testing without a buffer pool.
-#[derive(derive_more::Debug)]
+#[derive(Clone, derive_more::Debug)]
 pub struct DatagramBatch<B = Buffer<Vec<u8>>> {
     #[debug(skip)]
     buffers: Buffer<VecBuf<B>>,
