@@ -184,8 +184,8 @@
           ResourceMenuItem(resource: resource)
         }
 
-        // Other Resources submenu (whenever favorites exist)
-        if resources.hasAnyFavorites {
+        // Other Resources submenu (only when there are non-favorites to list)
+        if !resources.others.isEmpty {
           Divider()
 
           Menu("Other Resources") {

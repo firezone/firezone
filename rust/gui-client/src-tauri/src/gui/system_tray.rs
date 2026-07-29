@@ -324,7 +324,9 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         {
             submenu = submenu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
-        menu = menu.separator().add_submenu(OTHER_RESOURCES, submenu);
+        if !submenu.entries.is_empty() {
+            menu = menu.separator().add_submenu(OTHER_RESOURCES, submenu);
+        }
     }
 
     if !connected_devices.is_empty() {
@@ -744,6 +746,56 @@ mod tests {
                     ),
                 ),
             )
+            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual)?
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn all_resources_favorited_hides_other_resources() -> Result<()> {
+        let actual = signed_in(
+            resources(),
+            HashSet::from([
+                ResourceId::from_str("73037362-715d-4a83-a749-f18eadd970e6")?,
+                ResourceId::from_str("03000143-e25e-45c7-aafb-144990e57dcd")?,
+            ]),
+            None,
+        )
+        .into_menu();
+
+        let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, SIGN_OUT)
+            .separator()
+            .disabled(FAVORITE_RESOURCES)
+            .add_submenu(
+                "172.172.0.0/16",
+                cidr_submenu(
+                    Event::RemoveFavorite(ResourceId::from_str(
+                        "73037362-715d-4a83-a749-f18eadd970e6",
+                    )?),
+                    REMOVE_FAVORITE,
+                    true,
+                ),
+            )
+            .add_submenu(
+                "MyCorp GitLab",
+                gitlab_submenu(
+                    Event::RemoveFavorite(ResourceId::from_str(
+                        "03000143-e25e-45c7-aafb-144990e57dcd",
+                    )?),
+                    REMOVE_FAVORITE,
+                    true,
+                ),
+            )
+            .add_submenu("— Internet Resource", internet_submenu())
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
