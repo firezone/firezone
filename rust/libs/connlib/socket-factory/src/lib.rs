@@ -19,7 +19,7 @@ use tokio::io::Interest;
 
 mod buffer_sizes;
 mod pool;
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 mod uro;
 
 pub use buffer_sizes::{MAX_RECV_BATCH_MEMORY, RECV_BUFFER_SIZE, SEND_BUFFER_SIZE};
@@ -441,7 +441,14 @@ impl PerfUdpSocket {
         })?;
 
         #[cfg(windows)]
-        if uro::detect_broken_coalescing(batch.metas.iter().take(len)) {
+        if uro::detect_broken_coalescing(
+            batch
+                .buffers
+                .iter()
+                .map(|b| b.as_slice())
+                .zip(batch.metas.iter_mut())
+                .take(len),
+        ) {
             socket.disable_gro();
         }
 

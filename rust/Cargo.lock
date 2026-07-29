@@ -6972,6 +6972,7 @@ dependencies = [
  "gat-lending-iterator",
  "ip-packet",
  "libc",
+ "memchr",
  "opentelemetry",
  "otel-instruments",
  "parking_lot",
