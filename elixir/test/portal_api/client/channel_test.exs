@@ -1,5 +1,8 @@
 defmodule PortalAPI.Client.ChannelTest do
-  use PortalAPI.ChannelCase, async: true
+  # Grouped with PortalAPI.Client.V3.ChannelTest: both register the globally
+  # named client session/policy-authorization queues, so the modules must
+  # not run concurrently with each other.
+  use PortalAPI.ChannelCase, async: true, group: :client_queues
   import Ecto.Query, only: [from: 2]
   import ExUnit.CaptureLog
   alias Portal.Changes

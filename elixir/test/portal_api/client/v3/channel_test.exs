@@ -1,5 +1,8 @@
 defmodule PortalAPI.Client.V3.ChannelTest do
-  use PortalAPI.ChannelCase, async: true
+  # Grouped with PortalAPI.Client.ChannelTest: both register the globally
+  # named client session/policy-authorization queues, so the modules must
+  # not run concurrently with each other.
+  use PortalAPI.ChannelCase, async: true, group: :client_queues
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
