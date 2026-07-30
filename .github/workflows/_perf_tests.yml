@@ -57,7 +57,7 @@ jobs:
         run: |
           if [ "${{ matrix.flavour }}" = "relayed" ]; then
             echo "CLIENT_MASQUERADE=random" >> "$GITHUB_ENV"
-            echo "UDP_BITRATE=300M" >> "$GITHUB_ENV"
+            echo "UDP_BITRATE=500M" >> "$GITHUB_ENV"
           fi
 
           docker compose build client-1-router gateway-router relay-1-router relay-2-router portal-router
