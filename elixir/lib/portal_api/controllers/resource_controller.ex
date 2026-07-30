@@ -200,6 +200,7 @@ defmodule PortalAPI.ResourceController do
 
     changeset
     |> Ecto.Changeset.validate_required(required)
+    |> Portal.Resource.validate_site_matches_type(subject)
     |> Database.validate_static_device_pool_feature_enabled(subject.account)
     |> Database.validate_traffic_filters_feature_enabled(subject.account)
   end
@@ -299,6 +300,7 @@ defmodule PortalAPI.ResourceController do
 
       changeset
       |> Ecto.Changeset.validate_required(required_fields)
+      |> Portal.Resource.validate_site_matches_type(subject)
       |> validate_static_device_pool_feature_enabled(subject.account)
       |> validate_traffic_filters_feature_enabled(subject.account)
     end

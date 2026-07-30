@@ -404,6 +404,34 @@ defmodule PortalWeb.SitesTest do
       refute has_element?(lv, "button", "Delete site")
       refute has_element?(lv, "button", "Add resource")
     end
+
+    test "refuses to add resources to system-managed sites", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = system_site_fixture(%{account: account, name: "Internet"})
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      html = render_click(lv, "add_resource")
+      refute html =~ "Create Resource"
+
+      html =
+        render_submit(lv, "resource_submit", %{
+          "resource" => %{
+            "type" => "dns",
+            "address" => "grafana.internal",
+            "name" => "Grafana"
+          }
+        })
+
+      refute html =~ "created successfully"
+      assert Repo.aggregate(Resource, :count) == 0
+    end
   end
 
   describe "select_site event" do

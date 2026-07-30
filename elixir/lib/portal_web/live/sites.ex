@@ -921,8 +921,16 @@ defmodule PortalWeb.Sites do
      |> put_state(:site_deploy, base_site_deploy_state())}
   end
 
+  def handle_event(
+        "add_resource",
+        _params,
+        %{assigns: %{selected_site: %{managed_by: :system}}} = socket
+      ) do
+    {:noreply, socket}
+  end
+
   def handle_event("add_resource", _params, socket) do
-    changeset = Database.new_resource_changeset(socket.assigns.account)
+    changeset = Database.new_resource_changeset(socket.assigns.subject)
 
     {:noreply,
      socket
@@ -947,7 +955,7 @@ defmodule PortalWeb.Sites do
       |> Map.put("site_id", socket.assigns.selected_site.id)
 
     changeset =
-      Database.new_resource_changeset(socket.assigns.account, attrs)
+      Database.new_resource_changeset(socket.assigns.subject, attrs)
       |> Map.put(:action, :validate)
 
     {:noreply,
@@ -1399,19 +1407,20 @@ defmodule PortalWeb.Sites do
       |> Map.new()
     end
 
-    @spec new_resource_changeset(Portal.Account.t(), map()) :: Ecto.Changeset.t()
-    def new_resource_changeset(account, attrs \\ %{}) do
+    @spec new_resource_changeset(Portal.Authentication.Subject.t(), map()) :: Ecto.Changeset.t()
+    def new_resource_changeset(subject, attrs \\ %{}) do
       %Resource{}
       |> cast(attrs, [:name, :address, :address_description, :type, :ip_stack, :site_id])
       |> validate_required([:name, :address])
-      |> put_change(:account_id, account.id)
+      |> put_change(:account_id, subject.account.id)
       |> Resource.changeset()
+      |> Resource.validate_site_matches_type(subject)
     end
 
     @spec create_resource(map(), Portal.Authentication.Subject.t()) ::
             {:ok, Resource.t()} | {:error, Ecto.Changeset.t()}
     def create_resource(attrs, subject) do
-      new_resource_changeset(subject.account, attrs)
+      new_resource_changeset(subject, attrs)
       |> validate_required([:site_id])
       |> Safe.scoped(subject)
       |> Safe.insert()
