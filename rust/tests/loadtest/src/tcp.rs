@@ -23,9 +23,6 @@ const DEFAULT_CONCURRENT: usize = 10;
 /// Default connection hold duration.
 const DEFAULT_HOLD_DURATION: Duration = Duration::from_secs(30);
 
-/// Default connection timeout.
-const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-
 /// Default timeout for reading echo responses.
 const DEFAULT_ECHO_READ_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -38,8 +35,6 @@ pub struct TestConfig {
     pub concurrent: usize,
     /// How long to hold each connection open
     pub hold_duration: Duration,
-    /// Connection timeout
-    pub connect_timeout: Duration,
     /// Enable echo mode: send timestamped payloads and verify responses
     pub echo_mode: bool,
     /// Size of echo payload in bytes (minimum 16 for header)
@@ -122,10 +117,6 @@ pub struct Args {
     #[arg(short = 'd', long, value_parser = crate::cli::parse_duration)]
     duration: Option<Duration>,
 
-    /// Connection timeout for establishing connections
-    #[arg(long, value_parser = crate::cli::parse_duration)]
-    timeout: Option<Duration>,
-
     /// Enable echo mode: send timestamped payloads and verify responses
     #[arg(long)]
     echo: bool,
@@ -161,10 +152,6 @@ pub fn merge(args: Args, base: Option<TestConfig>) -> Result<TestConfig> {
         .duration
         .or_else(|| base.map(|b| b.hold_duration))
         .unwrap_or(DEFAULT_HOLD_DURATION);
-    let connect_timeout = args
-        .timeout
-        .or_else(|| base.map(|b| b.connect_timeout))
-        .unwrap_or(DEFAULT_CONNECT_TIMEOUT);
     let echo_mode = args.echo || base.is_some_and(|b| b.echo_mode);
     let echo_payload_size = args
         .echo_payload_size
@@ -182,7 +169,6 @@ pub fn merge(args: Args, base: Option<TestConfig>) -> Result<TestConfig> {
         target,
         concurrent,
         hold_duration,
-        connect_timeout,
         echo_mode,
         echo_payload_size,
         echo_interval,
@@ -348,8 +334,8 @@ async fn run_single_connection(
 ) -> ConnectionResult {
     let connect_start = Instant::now();
 
-    match timeout(config.connect_timeout, TcpStream::connect(&config.target)).await {
-        Ok(Ok(stream)) => {
+    match TcpStream::connect(&config.target).await {
+        Ok(stream) => {
             let connect_latency = connect_start.elapsed();
             let current = active.fetch_add(1, Ordering::SeqCst) + 1;
             // Update peak if this is a new high water mark
@@ -379,17 +365,8 @@ async fn run_single_connection(
                 echo_stats,
             }
         }
-        Ok(Err(e)) => {
+        Err(e) => {
             tracing::debug!(connection = connection_id, target = %config.target, error = %e, "TCP connection failed");
-            ConnectionResult {
-                success: false,
-                connect_latency: connect_start.elapsed(),
-                held_duration: Duration::ZERO,
-                echo_stats: EchoStats::default(),
-            }
-        }
-        Err(_) => {
-            tracing::debug!(connection = connection_id, target = %config.target, "TCP connection timed out");
             ConnectionResult {
                 success: false,
                 connect_latency: connect_start.elapsed(),

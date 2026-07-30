@@ -132,8 +132,6 @@ pub struct TcpConfig {
     pub concurrent: Range,
     /// How long to hold connections in seconds.
     pub duration_secs: Range,
-    /// Connection timeout in seconds.
-    pub timeout_secs: Range,
     /// Enable echo mode for payload verification.
     pub echo_mode: bool,
     /// Echo payload size in bytes.
