@@ -64,9 +64,43 @@ defmodule Portal.Ops do
 
   """
   def count_local_presences do
+    count_presences_on_nodes([node()])
+  end
+
+  @doc """
+  Counts presences hosted by nodes in `region`, grouped by topic prefix.
+
+  The region is read from each connected node's runtime configuration.
+
+  ## Examples
+
+      iex> count_regional_presences("centralus")
+      [
+        {"presences:account_clients", 215},
+        {"presences:account_gateways", 210},
+        {"presences:actor_clients", 215},
+        {"presences:global_relays", 17},
+        {"presences:portal_sessions", 4},
+        {"presences:sites", 210}
+      ]
+
+  """
+  def count_regional_presences(region) when is_binary(region) do
+    nodes =
+      [node() | Node.list()]
+      |> Enum.filter(&(node_region(&1) == region))
+
+    count_presences_on_nodes(nodes)
+  end
+
+  defp count_presences_on_nodes(nodes) do
+    nodes = MapSet.new(nodes)
+
     Portal.Presence_shard0
     |> :ets.tab2list()
-    |> Enum.filter(fn {{_topic, pid, _id}, _meta, _clock} -> node(pid) == node() end)
+    |> Enum.filter(fn {{_topic, pid, _id}, _meta, _clock} ->
+      MapSet.member?(nodes, node(pid))
+    end)
     |> Enum.map(fn {{topic, _pid, id}, _meta, _clock} -> {topic, id} end)
     |> Enum.uniq()
     |> Enum.map(fn {topic, _id} ->
@@ -74,6 +108,17 @@ defmodule Portal.Ops do
       {prefix, 1}
     end)
     |> sum_presence_counts()
+  end
+
+  defp node_region(node) do
+    if node == node() do
+      Portal.Config.get_env(:portal, :region)
+    else
+      case :rpc.call(node, Portal.Config, :get_env, [:portal, :region], 1_000) do
+        {:badrpc, _reason} -> nil
+        region -> region
+      end
+    end
   end
 
   defp sum_presence_counts(presences) do

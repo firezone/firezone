@@ -66,6 +66,21 @@ defmodule Portal.OpsTest do
     end
   end
 
+  describe "count_regional_presences/1" do
+    test "returns presence counts for nodes in the requested region" do
+      unique_id = Ecto.UUID.generate()
+      region = "centralus-#{unique_id}"
+      prefix = "presences:regional_clients_#{unique_id}"
+      Portal.Config.put_env_override(:portal, :region, region)
+
+      {:ok, _} = Portal.Presence.track(self(), "#{prefix}:account", "client1", %{})
+      {:ok, _} = Portal.Presence.track(self(), "#{prefix}:account", "client2", %{})
+
+      assert {prefix, 2} in count_regional_presences(region)
+      refute {prefix, 2} in count_regional_presences("another-region")
+    end
+  end
+
   describe "sync_pricing_plans/0" do
     test "applies current Stripe product features and limits to accounts" do
       account =
