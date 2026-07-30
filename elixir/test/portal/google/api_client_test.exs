@@ -959,7 +959,10 @@ defmodule Portal.Google.APIClientTest do
                APIClient.batch_get_users(@test_access_token, ["user1"])
     end
 
-    test "skips 403 parts for users outside the customer" do
+    test "returns error for a 403 part rather than skipping it" do
+      # 403 is ambiguous: the Directory API uses it for userRateLimitExceeded and
+      # quotaExceeded as well as for permission failures. Skipping the user would
+      # leave them unstamped and delete_unsynced/2 would then delete them.
       Req.Test.expect(APIClient, fn conn ->
         boundary = "forbidden_part_boundary"
 
@@ -969,7 +972,8 @@ defmodule Portal.Google.APIClientTest do
              JSON.encode!(
                active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
              )},
-            {"HTTP/1.1 403 Forbidden", JSON.encode!(%{"error" => %{"message" => "forbidden"}})}
+            {"HTTP/1.1 403 Forbidden",
+             JSON.encode!(%{"error" => %{"message" => "userRateLimitExceeded"}})}
           ])
 
         conn
@@ -977,7 +981,7 @@ defmodule Portal.Google.APIClientTest do
         |> Plug.Conn.send_resp(200, body)
       end)
 
-      assert {:ok, [%{"id" => "user1"}]} =
+      assert {:error, %Req.Response{status: 403}} =
                APIClient.batch_get_users(@test_access_token, ["user1", "extuser"])
     end
 

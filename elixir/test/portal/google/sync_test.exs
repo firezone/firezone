@@ -5,6 +5,7 @@ defmodule Portal.Google.SyncTest do
   import Ecto.Query
   import Portal.AccountFixtures
   import Portal.GoogleDirectoryFixtures
+  import Portal.IdentityFixtures
   import Portal.ResourceFixtures
   import ExUnit.CaptureLog
 
@@ -1135,8 +1136,22 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"organizationUnits" => []})
       end)
 
-      # 4. Group members: a primary-domain user, a secondary-domain user in the same
-      #    customer, an external user Google reports as type=USER, and one with the
+      # 4. Customer user list, spanning every domain and excluding outsiders.
+      Req.Test.expect(APIClient, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        assert conn.query_params["customer"] == "my_customer"
+        refute Map.has_key?(conn.query_params, "domain")
+
+        Req.Test.json(conn, %{
+          "users" => [
+            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
+            active_google_user(%{"id" => "user2", "primaryEmail" => "user2@example.co.nz"})
+          ]
+        })
+      end)
+
+      # 5. Group members: two of the customer's own users across different domains,
+      #    an external user Google reports as type=USER, and one with the
       #    documented-but-unused EXTERNAL type.
       Req.Test.expect(APIClient, fn conn ->
         assert String.contains?(conn.request_path, "/groups/group1/members")
@@ -1151,8 +1166,7 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      # 5. batch_get_users — every type=USER member is looked up; Google answers 403
-      #    for the one outside the customer.
+      # 6. batch_get_users — outsiders never reach it, so a 403 here stays fatal.
       Req.Test.expect(APIClient, fn conn ->
         assert conn.method == "POST"
         assert String.contains?(conn.request_path, "/batch")
@@ -1160,23 +1174,19 @@ defmodule Portal.Google.SyncTest do
         {:ok, body, _conn} = Plug.Conn.read_body(conn)
         assert String.contains?(body, "user1")
         assert String.contains?(body, "user2")
-        assert String.contains?(body, "extuser")
-        refute String.contains?(body, "extuser2")
+        refute String.contains?(body, "extuser")
 
-        respond_with_batch_parts(conn, [
-          {:ok,
-           %{
-             "id" => "user1",
-             "primaryEmail" => "user1@example.com",
-             "name" => %{"fullName" => "User One"}
-           }},
-          {:ok,
-           %{
-             "id" => "user2",
-             "primaryEmail" => "user2@example.co.nz",
-             "name" => %{"fullName" => "User Two"}
-           }},
-          {:error, 403}
+        respond_with_batch_users(conn, [
+          %{
+            "id" => "user1",
+            "primaryEmail" => "user1@example.com",
+            "name" => %{"fullName" => "User One"}
+          },
+          %{
+            "id" => "user2",
+            "primaryEmail" => "user2@example.co.nz",
+            "name" => %{"fullName" => "User Two"}
+          }
         ])
       end)
 
@@ -1187,6 +1197,55 @@ defmodule Portal.Google.SyncTest do
 
       memberships = Repo.all(Portal.Membership)
       assert length(memberships) == 2
+    end
+
+    test "keeps identities when the customer user list is throttled" do
+      account = account_fixture()
+
+      directory =
+        google_directory_fixture(
+          account: account,
+          domain: "example.com",
+          sync_all_domains: true
+        )
+
+      identity =
+        synced_identity_fixture(
+          account: account,
+          directory:
+            Repo.get_by!(Portal.Directory, id: directory.id, account_id: directory.account_id)
+        )
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [
+            %{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      # The Directory API reports throttling as 403 userRateLimitExceeded.
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{
+          "error" => %{"code" => 403, "errors" => [%{"reason" => "userRateLimitExceeded"}]}
+        })
+      end)
+
+      assert_raise Portal.Google.SyncError, fn ->
+        perform_job(Sync, %{"directory_id" => directory.id})
+      end
+
+      assert Repo.get_by(Portal.ExternalIdentity, id: identity.id, account_id: account.id)
     end
 
     test "skips members outside the primary domain when sync_all_domains is off" do
