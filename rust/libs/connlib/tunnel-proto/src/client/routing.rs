@@ -98,6 +98,14 @@ impl RoutingTables {
             });
         }
 
+        // Firezone's tunnel range holds Clients and Gateways, so the Internet Resource must
+        // not claim it: only the Client table consulted by `resolve` routes there. Letting
+        // the catch-all below match would send Client-to-Client traffic to a Gateway, which
+        // hair-pins it back out of its TUN device.
+        if crate::is_peer(destination) {
+            return None;
+        }
+
         let resource_id = internet_resource?;
 
         tracing::trace!(
@@ -264,5 +272,52 @@ impl RouteEntry for DnsEntry {
     /// A more specific (i.e. *greater*) pattern wins over a less specific one.
     fn specificity(&self, other: &Self) -> Ordering {
         self.pattern.cmp(&other.pattern).reverse()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    #[test]
+    fn internet_resource_does_not_route_to_another_client() {
+        let mut tables = RoutingTables::default();
+
+        let route = tables.resolve(
+            other_client_tun_ip(),
+            Protocol::Tcp(80),
+            Some(internet_resource_id()),
+        );
+
+        assert!(route.is_none());
+    }
+
+    #[test]
+    fn device_pool_routes_to_another_client() {
+        let mut tables = RoutingTables::default();
+        let client_id = ClientId::from_u128(3);
+        tables.upsert_client(
+            IpNetwork::from(other_client_tun_ip()),
+            ResourceId::from_u128(2),
+            client_id,
+            FilterEngine::PermitAll,
+        );
+
+        let route = tables.resolve(
+            other_client_tun_ip(),
+            Protocol::Tcp(80),
+            Some(internet_resource_id()),
+        );
+
+        assert!(matches!(route, Some(Route::Client { client_id: c, .. }) if c == client_id));
+    }
+
+    fn other_client_tun_ip() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(100, 64, 0, 3))
+    }
+
+    fn internet_resource_id() -> ResourceId {
+        ResourceId::from_u128(1)
     }
 }
