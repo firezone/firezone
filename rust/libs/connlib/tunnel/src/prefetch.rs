@@ -9,6 +9,9 @@
 use ip_packet::IpPacket;
 use socket_factory::DatagramIn;
 
+/// How many items ahead of consumption to prefetch.
+pub(crate) const LOOKAHEAD: usize = 2;
+
 /// An item whose backing memory can be pulled into cache ahead of use.
 pub(crate) trait Prefetch {
     /// Requests the item's payload to be loaded into cache; returns without waiting.

@@ -9,6 +9,7 @@ mod udp_gso_queue;
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
+use crate::prefetch::{LOOKAHEAD, PrefetchExt as _};
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
@@ -18,7 +19,7 @@ use futures_bounded::{FuturesMap, FuturesTupleSet};
 use http_client::HttpClient;
 use ip_packet::{Ecn, IpPacket};
 use nameserver_set::NameserverSet;
-use socket_factory::{DatagramBatch, SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{DatagramBatch, DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet},
     io,
@@ -75,12 +76,41 @@ struct DnsQueryMetaData {
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input {
     pub timeout: bool,
-    pub device: Option<tun::PacketBatch>,
-    pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
+    pub device: Option<DevicePackets>,
+    pub network: Option<NetworkDatagrams>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
     pub dns_response: Option<dns::RecursiveResponse>,
     pub error: TunnelError,
+}
+
+/// The IP packets read from the TUN device during one poll.
+pub struct DevicePackets {
+    batch: tun::PacketBatch,
+}
+
+impl DevicePackets {
+    /// Removes all packets, in order, prefetching their payloads ahead of the
+    /// caller's processing.
+    pub fn drain(&mut self) -> impl Iterator<Item = IpPacket> + '_ {
+        self.batch.drain().prefetch_ahead::<LOOKAHEAD>()
+    }
+}
+
+/// The UDP datagrams received from the network during one poll.
+pub struct NetworkDatagrams {
+    batches: Buffer<VecBuf<DatagramBatch>>,
+}
+
+impl NetworkDatagrams {
+    /// Removes all datagrams across all batches, in order, prefetching their
+    /// payloads ahead of the caller's processing.
+    pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn<'_>> {
+        self.batches
+            .iter_mut()
+            .flat_map(|batch| batch.drain())
+            .prefetch_ahead::<LOOKAHEAD>()
+    }
 }
 
 impl Input {
@@ -246,7 +276,10 @@ impl Io {
             }
         }
 
-        let network = self.sockets.poll_recv_from(cx);
+        let network = self
+            .sockets
+            .poll_recv_from(cx)
+            .map(|batches| NetworkDatagrams { batches });
 
         while let Poll::Ready(e) = self.sockets.poll_error(cx) {
             error.push(e);
@@ -271,7 +304,7 @@ impl Io {
                 ],
             );
 
-            batch
+            DevicePackets { batch }
         });
 
         let udp_dns_queries = self

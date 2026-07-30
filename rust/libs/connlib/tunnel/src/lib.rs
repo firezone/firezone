@@ -16,7 +16,6 @@ use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use io::Io;
-use prefetch::PrefetchExt as _;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
@@ -278,7 +277,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut packets) = device {
-                    for packet in packets.drain().prefetch_ahead::<2>() {
+                    for packet in packets.drain() {
                         match self
                             .role_state
                             .handle_tun_input(packet, now, self.io.gso_queue_mut())
@@ -299,12 +298,8 @@ impl ClientTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(mut batches) = network {
-                    for received in batches
-                        .iter_mut()
-                        .flat_map(|batch| batch.drain())
-                        .prefetch_ahead::<2>()
-                    {
+                if let Some(mut datagrams) = network {
+                    for received in datagrams.drain() {
                         self.packet_counter.add(
                             1,
                             &[
@@ -482,7 +477,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut packets) = device {
-                    for packet in packets.drain().prefetch_ahead::<2>() {
+                    for packet in packets.drain() {
                         match self
                             .role_state
                             .handle_tun_input(packet, now, self.io.gso_queue_mut())
@@ -516,12 +511,8 @@ impl GatewayTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(mut batches) = network {
-                    for received in batches
-                        .iter_mut()
-                        .flat_map(|batch| batch.drain())
-                        .prefetch_ahead::<2>()
-                    {
+                if let Some(mut datagrams) = network {
+                    for received in datagrams.drain() {
                         self.packet_counter.add(
                             1,
                             &[
