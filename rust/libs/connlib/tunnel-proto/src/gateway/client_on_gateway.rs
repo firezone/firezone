@@ -986,6 +986,50 @@ mod tests {
     }
 
     #[test]
+    fn internet_resource_does_not_allow_unique_local_ipv6_traffic() {
+        let now = Instant::now();
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        peer.add_resource(internet_resource(), None, now);
+        let unique_local = "fc00::1".parse::<Ipv6Addr>().unwrap();
+
+        let outbound =
+            ip_packet::make::udp_packet(client_tun_ipv6(), unique_local, 5401, 80, &[0u8; 8])
+                .unwrap();
+
+        assert!(matches!(
+            peer.translate_outbound(outbound, now).unwrap(),
+            TranslateOutboundResult::Filtered(_)
+        ));
+
+        let inbound =
+            ip_packet::make::udp_packet(unique_local, client_tun_ipv6(), 80, 5401, &[0u8; 8])
+                .unwrap();
+
+        #[expect(clippy::disallowed_methods, reason = "This is a test.")]
+        let error = peer
+            .translate_inbound(inbound, now)
+            .unwrap_err()
+            .downcast::<UnroutablePacket>()
+            .unwrap();
+
+        assert_eq!(error.reason(), RoutingError::NotAllowed);
+    }
+
+    #[test]
+    fn normal_resource_gateway_allows_private_ips() {
+        let peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+
+        assert!(
+            peer.ensure_resource_ip_is_allowed("10.0.0.1".parse().unwrap())
+                .is_ok()
+        );
+        assert!(
+            peer.ensure_resource_ip_is_allowed("fc00::1".parse().unwrap())
+                .is_ok()
+        );
+    }
+
+    #[test]
     fn internet_resource_blocks_private_cidr_resource_traffic() {
         let now = Instant::now();
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());

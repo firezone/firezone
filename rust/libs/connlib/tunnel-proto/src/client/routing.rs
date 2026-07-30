@@ -312,7 +312,7 @@ mod tests {
         IpAddr::V4(Ipv4Addr::new(100, 64, 0, 3))
     }
 
-    fn excluded_internet_resource_ips() -> [IpAddr; 6] {
+    fn excluded_internet_resource_ips() -> [IpAddr; 7] {
         [
             other_client_tun_ip(),
             "100.96.0.1".parse().unwrap(),
@@ -320,6 +320,7 @@ mod tests {
             "172.16.0.1".parse().unwrap(),
             "192.168.0.1".parse().unwrap(),
             "240.0.0.1".parse().unwrap(),
+            "fc00::1".parse().unwrap(),
         ]
     }
 
