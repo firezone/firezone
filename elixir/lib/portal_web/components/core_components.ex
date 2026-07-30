@@ -1637,6 +1637,8 @@ defmodule PortalWeb.CoreComponents do
   attr :checked, :boolean, default: false
   attr :label, :string, default: nil
   attr :disabled, :boolean, default: false
+  attr :size, :string, default: "md", values: ~w[sm md]
+  attr :label_position, :string, default: "after", values: ~w[before after]
   attr :name, :string, default: nil
   attr :value, :string, default: nil
   attr :class, :string, default: nil
@@ -1644,7 +1646,15 @@ defmodule PortalWeb.CoreComponents do
 
   def toggle(assigns) do
     ~H"""
-    <label class={["inline-flex items-center cursor-pointer", @class]}>
+    <label class={[
+      "inline-flex items-center shrink-0",
+      @disabled && "opacity-50 cursor-not-allowed",
+      not @disabled && "cursor-pointer",
+      @class
+    ]}>
+      <span :if={@label && @label_position == "before"} class="me-2 text-sm font-medium text-heading">
+        {@label}
+      </span>
       <input
         type="checkbox"
         id={@id}
@@ -1655,23 +1665,26 @@ defmodule PortalWeb.CoreComponents do
         class="sr-only peer"
         {@rest}
       />
-      <div class={[
-        "relative w-11 h-6 bg-gray-200 rounded-full peer",
-        "peer-focus:outline-hidden peer-focus:ring-4 peer-focus:ring-accent-300",
+      <span class={[
+        "relative rounded-full border transition-colors shrink-0",
+        "bg-input border-input-border",
+        "peer-checked:bg-brand peer-checked:border-brand",
+        "peer-focus-visible:ring-2 peer-focus-visible:ring-border-focus",
+        "after:content-[''] after:absolute after:top-[1px] after:start-[1px]",
+        "after:bg-white after:rounded-full after:shadow-sm after:transition-transform",
         "peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full",
-        "peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px]",
-        "after:start-[2px] after:bg-white after:border-neutral-300 after:border",
-        "after:rounded-full after:h-5 after:w-5 after:transition-all",
-        "peer-checked:bg-accent-600",
-        @disabled && "opacity-50 cursor-not-allowed"
+        toggle_size(@size)
       ]}>
-      </div>
-      <span :if={@label} class="ms-3 text-sm font-medium text-gray-900">
+      </span>
+      <span :if={@label && @label_position == "after"} class="ms-2 text-sm font-medium text-heading">
         {@label}
       </span>
     </label>
     """
   end
+
+  defp toggle_size("sm"), do: "w-7 h-4 after:h-3 after:w-3"
+  defp toggle_size(_md), do: "w-9 h-5 after:h-4 after:w-4"
 
   @doc """
   Renders a status badge pill.
