@@ -231,6 +231,7 @@ defmodule PortalWeb.PoliciesTest do
         |> live(~p"/#{account}/policies/new")
 
       assert html =~ "Flow log reporting"
+      assert has_element?(lv, "[data-flow-logs-new-badge]", "NEW")
 
       html =
         lv

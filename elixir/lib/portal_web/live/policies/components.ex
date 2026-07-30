@@ -537,7 +537,15 @@ defmodule PortalWeb.Policies.Components do
     <div>
       <div class="flex items-center justify-between py-1">
         <div>
-          <p class="text-sm font-medium text-body">Flow log reporting</p>
+          <div class="flex items-center gap-2">
+            <p class="text-sm font-medium text-body">Flow log reporting</p>
+            <span
+              data-flow-logs-new-badge="true"
+              class="px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
+            >
+              NEW
+            </span>
+          </div>
           <p class="text-[11px] text-subtle">
             Report flow logs for connections created by this Policy
           </p>
