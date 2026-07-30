@@ -1019,10 +1019,22 @@ defmodule PortalWeb.FormComponents do
       ]
   end
 
-  def action_button_style(nil), do: action_button_base() ++ ["text-body", "hover:text-heading", "hover:bg-raised"]
-  def action_button_style("info"), do: action_button_base() ++ ["text-info", "hover:bg-raised"]
-  def action_button_style("success"), do: action_button_base() ++ ["text-success", "hover:bg-raised"]
-  def action_button_style("warning"), do: action_button_base() ++ ["text-warning", "hover:bg-raised"]
+  def action_button_style(nil) do
+    action_button_base() ++
+      ["text-body", "border border-border-strong", "hover:text-heading", "hover:bg-raised"]
+  end
+
+  def action_button_style("info") do
+    action_button_base() ++ ["text-info", "border border-info", "hover:bg-raised"]
+  end
+
+  def action_button_style("success") do
+    action_button_base() ++ ["text-success", "border border-success", "hover:bg-raised"]
+  end
+
+  def action_button_style("warning") do
+    action_button_base() ++ ["text-warning", "border border-warning", "hover:bg-raised"]
+  end
 
   def action_button_style(style) when style in ["error", "danger"] do
     action_button_base() ++ ["text-error", "border", "border-error/20", "hover:bg-error-light"]
