@@ -159,15 +159,16 @@ defmodule Portal.Google.Sync do
       )
 
     # Phase 4: BFS group member sync.
-    # For each group: fetch direct members → batch_get_users only for unseen users
-    # → upsert identities → discover GROUP-type sub-groups → recurse.
+    # For each group: fetch direct members → resolve unseen users, from the
+    # customer user list when syncing every domain and via batch_get_users
+    # otherwise → upsert identities → discover GROUP-type sub-groups → recurse.
     sync_group_members_bfs(
       directory,
       access_token,
       synced_at,
       group_idp_ids,
       synced_user_ids,
-      customer_user_ids(directory, access_token)
+      customer_users(directory, access_token)
     )
 
     :ok
@@ -306,7 +307,7 @@ defmodule Portal.Google.Sync do
          synced_at,
          seed_group_idp_ids,
          synced_user_ids,
-         customer_user_ids
+         customer_users
        ) do
     visited = MapSet.new(seed_group_idp_ids)
     queue = :queue.from_list(seed_group_idp_ids)
@@ -316,7 +317,7 @@ defmodule Portal.Google.Sync do
       synced_user_ids: synced_user_ids,
       direct_users_by_group: %{},
       children_by_group: %{},
-      customer_user_ids: customer_user_ids
+      customer_users: customer_users
     }
 
     final_state = do_bfs(directory, access_token, synced_at, queue, visited, initial_state)
@@ -362,7 +363,7 @@ defmodule Portal.Google.Sync do
          state
        ) do
     {user_tuples, sub_group_ids} =
-      fetch_group_members(directory, access_token, group_idp_id, state.customer_user_ids)
+      fetch_group_members(directory, access_token, group_idp_id, state.customer_users)
     direct_user_ids = user_ids_set_from_memberships(user_tuples)
 
     {next_fetched_user_ids, next_synced_user_ids, synced_direct_user_ids} =
@@ -372,7 +373,8 @@ defmodule Portal.Google.Sync do
         synced_at,
         direct_user_ids,
         state.fetched_user_ids,
-        state.synced_user_ids
+        state.synced_user_ids,
+        state.customer_users
       )
 
     next_state =
@@ -567,7 +569,7 @@ defmodule Portal.Google.Sync do
   # Returns {user_membership_tuples, sub_group_idp_ids}:
   # - user_membership_tuples: [{group_idp_id, user_idp_id}] for type=USER members
   # - sub_group_idp_ids: [idp_id] for type=GROUP members (to be discovered via BFS)
-  defp fetch_group_members(directory, access_token, group_idp_id, customer_user_ids) do
+  defp fetch_group_members(directory, access_token, group_idp_id, customer_users) do
     Logger.debug("Streaming members for group",
       google_directory_id: directory.id,
       group_key: group_idp_id
@@ -596,7 +598,7 @@ defmodule Portal.Google.Sync do
 
         user_members =
           Enum.filter(members, fn m ->
-            m["type"] == "USER" and member_of_customer?(m, directory, customer_user_ids)
+            m["type"] == "USER" and member_of_customer?(m, directory, customer_users)
           end)
 
         group_members = Enum.filter(members, fn m -> m["type"] == "GROUP" end)
@@ -671,8 +673,8 @@ defmodule Portal.Google.Sync do
   # batch_get_users makes Google answer 403, which aborts the sync, so they have
   # to be dropped first. Matching the primary domain only works while we sync a
   # single domain; otherwise membership comes from the customer's own user list.
-  defp member_of_customer?(member, _directory, %MapSet{} = customer_user_ids) do
-    MapSet.member?(customer_user_ids, member["id"])
+  defp member_of_customer?(member, _directory, customer_users) when is_map(customer_users) do
+    Map.has_key?(customer_users, member["id"])
   end
 
   defp member_of_customer?(member, directory, nil) do
@@ -688,9 +690,9 @@ defmodule Portal.Google.Sync do
   # Enumerating users is customer-wide, so it spans every domain. A failure here
   # raises rather than yielding a short list, because a short list would make
   # delete_unsynced/2 treat the missing users as departed and delete them.
-  defp customer_user_ids(%{sync_all_domains: true} = directory, access_token) do
+  defp customer_users(%{sync_all_domains: true} = directory, access_token) do
     Google.APIClient.stream_users(access_token)
-    |> Enum.reduce(MapSet.new(), fn
+    |> Enum.reduce(%{}, fn
       {:error, error}, _acc ->
         raise Google.SyncError,
           error: error,
@@ -698,11 +700,11 @@ defmodule Portal.Google.Sync do
           step: :stream_users
 
       users, acc when is_list(users) ->
-        Enum.reduce(users, acc, fn user, ids -> MapSet.put(ids, user["id"]) end)
+        Enum.reduce(users, acc, fn user, by_id -> Map.put(by_id, user["id"], user) end)
     end)
   end
 
-  defp customer_user_ids(_directory, _access_token), do: nil
+  defp customer_users(_directory, _access_token), do: nil
 
   defp validate_ou_member!(user, ou_idp_id, directory) do
     unless user["id"] do
@@ -814,7 +816,8 @@ defmodule Portal.Google.Sync do
          synced_at,
          user_ids,
          fetched_user_ids,
-         synced_user_ids
+         synced_user_ids,
+         customer_users
        ) do
     already_synced_user_ids = MapSet.intersection(user_ids, synced_user_ids)
 
@@ -822,7 +825,8 @@ defmodule Portal.Google.Sync do
       user_ids
       |> Enum.reject(&MapSet.member?(fetched_user_ids, &1))
 
-    syncable_users = fetch_syncable_users(directory, access_token, new_user_idp_ids)
+    syncable_users =
+      fetch_syncable_users(directory, access_token, new_user_idp_ids, customer_users)
     sync_identities_for_user_payloads(directory, synced_at, syncable_users)
 
     newly_synced_user_ids =
@@ -854,9 +858,18 @@ defmodule Portal.Google.Sync do
     |> Enum.each(&batch_upsert_memberships(directory, synced_at, &1))
   end
 
-  defp fetch_syncable_users(_directory, _access_token, []), do: []
+  defp fetch_syncable_users(_directory, _access_token, [], _customer_users), do: []
 
-  defp fetch_syncable_users(directory, access_token, user_idp_ids) do
+  # The customer user list already carries full payloads, so members resolved
+  # from it need no second round-trip.
+  defp fetch_syncable_users(directory, _access_token, user_idp_ids, customer_users)
+       when is_map(customer_users) do
+    user_idp_ids
+    |> Enum.flat_map(&(customer_users |> Map.get(&1) |> List.wrap()))
+    |> Enum.filter(&syncable_user?(&1, directory.id))
+  end
+
+  defp fetch_syncable_users(directory, access_token, user_idp_ids, nil) do
     users =
       case Google.APIClient.batch_get_users(access_token, user_idp_ids) do
         {:ok, users} ->

@@ -1166,34 +1166,17 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      # 6. batch_get_users — outsiders never reach it, so a 403 here stays fatal.
+      # 6. Nothing else: identities come from the payloads listed in step 4, so
+      #    there is no batch lookup to make.
       Req.Test.expect(APIClient, fn conn ->
-        assert conn.method == "POST"
-        assert String.contains?(conn.request_path, "/batch")
-
-        {:ok, body, _conn} = Plug.Conn.read_body(conn)
-        assert String.contains?(body, "user1")
-        assert String.contains?(body, "user2")
-        refute String.contains?(body, "extuser")
-
-        respond_with_batch_users(conn, [
-          %{
-            "id" => "user1",
-            "primaryEmail" => "user1@example.com",
-            "name" => %{"fullName" => "User One"}
-          },
-          %{
-            "id" => "user2",
-            "primaryEmail" => "user2@example.co.nz",
-            "name" => %{"fullName" => "User Two"}
-          }
-        ])
+        flunk("unexpected extra request to #{conn.request_path}")
       end)
 
       assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
 
       identities = Repo.all(Portal.ExternalIdentity)
       assert Enum.map(identities, & &1.idp_id) |> Enum.sort() == ["user1", "user2"]
+      assert Enum.map(identities, & &1.email) |> Enum.sort() == ["user1@example.com", "user2@example.co.nz"]
 
       memberships = Repo.all(Portal.Membership)
       assert length(memberships) == 2
