@@ -269,12 +269,7 @@ defmodule PortalWeb.Clients.Components do
 
   def client_edit_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
-      <div class="flex items-center justify-between gap-3">
-        <h2 class="text-sm font-semibold text-heading">Edit Client</h2>
-        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_client_edit_form" />
-      </div>
-    </div>
+    <.panel_header title="Edit Client" close_event="cancel_client_edit_form" />
     """
   end
 

@@ -1019,6 +1019,7 @@ defmodule PortalWeb.Actors.Components do
       |> assign(assigns.group_membership_state)
 
     ~H"""
+    <.panel_header title={"Edit #{@actor.name}"} close_event="cancel_actor_edit_form" />
     <.form
       id="actor-edit-form"
       for={@form}

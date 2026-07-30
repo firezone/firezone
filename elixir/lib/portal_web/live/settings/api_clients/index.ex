@@ -298,13 +298,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           :if={@live_action == :edit && @selected_actor && @form}
           class="flex flex-col h-full overflow-hidden"
         >
-          <!-- Panel header -->
-          <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
-            <div class="flex items-center justify-between gap-3">
-              <h2 class="text-sm font-semibold text-heading">Edit API Token</h2>
-              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
-            </div>
-          </div>
+          <.panel_header title="Edit API Token" />
 
           <.form
             id="api-token-edit-form"

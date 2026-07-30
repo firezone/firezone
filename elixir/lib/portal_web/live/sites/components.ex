@@ -1767,12 +1767,7 @@ defmodule PortalWeb.Sites.Components do
   def site_edit_view(assigns) do
     ~H"""
     <div class="flex flex-1 min-h-0 flex-col overflow-hidden">
-      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
-        <div class="flex items-center justify-between gap-3">
-          <h2 class="text-sm font-semibold text-heading">Edit Site</h2>
-          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_site_edit_form" />
-        </div>
-      </div>
+      <.panel_header title="Edit Site" close_event="cancel_site_edit_form" />
       <.form
         :if={@form}
         id="site-edit-form"

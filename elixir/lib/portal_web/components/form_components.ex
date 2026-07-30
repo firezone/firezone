@@ -722,6 +722,51 @@ defmodule PortalWeb.FormComponents do
     """
   end
 
+  @doc """
+  Renders the header row of a slide-over panel: a title on the left and a close
+  button on the right.
+
+  Use `"elevated"` for entity panels (clients, sites, actors) and `"plain"` for
+  settings panels.
+
+  ## Examples
+
+      <.panel_header title="Edit Client" close_event="cancel_client_edit_form" />
+
+      <.panel_header title={"Edit \#{@provider_name}"} variant="plain">
+        <:leading><.provider_icon provider={@type} size="md" /></:leading>
+        <:adornment><.docs_action path={"/authenticate/\#{@type}"} /></:adornment>
+      </.panel_header>
+  """
+  attr :title, :string, required: true
+  attr :variant, :string, default: "elevated", values: ~w[elevated plain]
+  attr :close_event, :string, default: "close_panel"
+  attr :class, :string, default: nil
+  slot :leading, doc: "Rendered before the title, e.g. a provider icon"
+  slot :adornment, doc: "Rendered after the title, e.g. a docs link"
+  slot :actions, doc: "Rendered before the close button"
+
+  def panel_header(assigns) do
+    ~H"""
+    <div class={[
+      "shrink-0 flex items-center justify-between gap-3 border-b border-border",
+      @variant == "elevated" && "px-5 pt-4 pb-3 bg-elevated",
+      @variant == "plain" && "px-5 py-4",
+      @class
+    ]}>
+      <div class="flex items-center gap-2 min-w-0">
+        {render_slot(@leading)}
+        <h2 class="text-sm font-semibold text-heading truncate">{@title}</h2>
+        {render_slot(@adornment)}
+      </div>
+      <div class="flex items-center gap-1.5 shrink-0">
+        {render_slot(@actions)}
+        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click={@close_event} />
+      </div>
+    </div>
+    """
+  end
+
   defp icon_button_style(nil) do
     ["text-subtle hover:text-heading hover:bg-raised"]
   end
