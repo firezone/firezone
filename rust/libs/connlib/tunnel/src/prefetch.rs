@@ -91,13 +91,17 @@ where
     }
 }
 
-/// Issues a prefetch for every cacheline of `bytes`.
+/// The stride between prefetch hints.
 ///
-/// A 64-byte stride is correct on x86-64 and common ARM cores; Apple Silicon uses
-/// 128-byte lines, where it merely issues one redundant hint per line.
-fn prefetch_slice(bytes: &[u8]) {
-    const CACHE_LINE: usize = 64;
+/// Apple Silicon uses 128-byte cachelines; everything else we target, including
+/// Intel Macs and Android's Cortex cores, uses 64 bytes.
+const CACHE_LINE: usize = cfg_select! {
+    all(target_arch = "aarch64", target_vendor = "apple") => { 128 }
+    _ => { 64 }
+};
 
+/// Issues a prefetch for every cacheline of `bytes`.
+fn prefetch_slice(bytes: &[u8]) {
     for line_start in (0..bytes.len()).step_by(CACHE_LINE) {
         prefetch_addr(&bytes[line_start]);
     }
