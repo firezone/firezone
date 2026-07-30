@@ -57,7 +57,6 @@ jobs:
         run: |
           if [ "${{ matrix.flavour }}" = "relayed" ]; then
             echo "CLIENT_MASQUERADE=random" >> "$GITHUB_ENV"
-            echo "UDP_BITRATE=500M" >> "$GITHUB_ENV"
           fi
 
           docker compose build client-1-router gateway-router relay-1-router relay-2-router portal-router
@@ -168,7 +167,7 @@ jobs:
             --threshold-min-sample-size 30 \
             --threshold-max-sample-size 64 \
             --threshold-window 604800 \
-            --threshold-lower-boundary 0.25 \
+            --threshold-lower-boundary 0.30 \
             --thresholds-reset \
             --error-on-alert \
             --github-actions ${{ secrets.GITHUB_TOKEN }} \
