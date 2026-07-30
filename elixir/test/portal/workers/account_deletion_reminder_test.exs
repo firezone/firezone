@@ -15,7 +15,7 @@ defmodule Portal.Workers.AccountDeletionReminderTest do
 
       account =
         update_account(account_fixture(),
-          disabled_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 
@@ -49,7 +49,7 @@ defmodule Portal.Workers.AccountDeletionReminderTest do
 
       account =
         update_account(account_fixture(),
-          disabled_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 

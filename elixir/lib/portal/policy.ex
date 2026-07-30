@@ -17,7 +17,7 @@ defmodule Portal.Policy do
           resource_id: Ecto.UUID.t(),
           account_id: Ecto.UUID.t(),
           flow_log_uploads_enabled: boolean(),
-          disabled_at: DateTime.t() | nil,
+          is_disabled: boolean(),
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -36,7 +36,7 @@ defmodule Portal.Policy do
 
     field :flow_log_uploads_enabled, :boolean, default: true
 
-    field :disabled_at, :utc_datetime_usec
+    field :is_disabled, :boolean, default: false, read_after_writes: true
 
     timestamps()
   end

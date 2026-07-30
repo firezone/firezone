@@ -15,9 +15,9 @@ defmodule Portal.Accounts.DeletionTest do
       actor = admin_actor_fixture(account: account)
       subject = subject_fixture(account: account, actor: actor)
 
-      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
-      attrs = %{disabled_at: disabled_at, scheduled_deletion_at: scheduled_deletion_at}
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
+      attrs = %{is_disabled: true, scheduled_deletion_at: scheduled_deletion_at}
 
       assert {:ok, _account} = Deletion.schedule_account_deletion(account, attrs, subject)
 
@@ -37,9 +37,9 @@ defmodule Portal.Accounts.DeletionTest do
       actor = admin_actor_fixture(account: account)
       subject = subject_fixture(account: account, actor: actor)
 
-      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 1, :hour)
-      attrs = %{disabled_at: disabled_at, scheduled_deletion_at: scheduled_deletion_at}
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 1, :hour)
+      attrs = %{is_disabled: true, scheduled_deletion_at: scheduled_deletion_at}
 
       assert {:ok, _account} = Deletion.schedule_account_deletion(account, attrs, subject)
 
@@ -59,13 +59,13 @@ defmodule Portal.Accounts.DeletionTest do
       actor = admin_actor_fixture(account: account)
       subject = subject_fixture(account: account, actor: actor)
 
-      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
       reminder_at = DateTime.add(scheduled_deletion_at, -48, :hour)
 
       account =
         update_account(account,
-          disabled_at: disabled_at,
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 

@@ -14,10 +14,9 @@ defmodule Portal.Changes.Hooks.Accounts do
   # Account disabled - process as a delete
   def on_update(
         lsn,
-        %{"disabled_at" => nil} = old_data,
-        %{"disabled_at" => disabled_at}
-      )
-      when not is_nil(disabled_at) do
+        %{"is_disabled" => false} = old_data,
+        %{"is_disabled" => true}
+      ) do
     account = struct_from_params(Portal.Account, old_data)
     Database.delete_policy_authorizations_for_account(account)
     Database.delete_client_tokens_for_account(account)

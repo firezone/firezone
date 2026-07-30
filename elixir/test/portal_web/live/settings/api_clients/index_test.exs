@@ -325,12 +325,12 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
       request_confirm(lv, "toggle", api_client.id)
       html = render_click(lv, "disable", %{"id" => api_client.id})
       assert html =~ "Disabled"
-      refute is_nil(Repo.get_by!(Actor, account_id: account.id, id: api_client.id).disabled_at)
+      assert Repo.get_by!(Actor, account_id: account.id, id: api_client.id).is_disabled
 
       request_confirm(lv, "toggle", api_client.id)
       html = render_click(lv, "enable", %{"id" => api_client.id})
       assert html =~ "Active"
-      assert is_nil(Repo.get_by!(Actor, account_id: account.id, id: api_client.id).disabled_at)
+      refute Repo.get_by!(Actor, account_id: account.id, id: api_client.id).is_disabled
     end
 
     test "does not re-enable an API client when the billing limit is reached", %{

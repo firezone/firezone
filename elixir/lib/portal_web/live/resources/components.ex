@@ -1388,7 +1388,7 @@ defmodule PortalWeb.Resources.Components do
             :if={@confirm_remove_group_id != row.group.id}
             class={[
               "flex items-center gap-1 pr-4 hover:bg-raised group/item",
-              if(not is_nil(row.policy_disabled_at),
+              if(row.policy_is_disabled,
                 do: "opacity-50 hover:opacity-75",
                 else: ""
               )
@@ -1404,7 +1404,7 @@ defmodule PortalWeb.Resources.Components do
                   {row.group.name}
                 </p>
                 <span
-                  :if={not is_nil(row.policy_disabled_at)}
+                  :if={row.policy_is_disabled}
                   class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-status-light text-subtle"
                 >
                   disabled
@@ -1427,7 +1427,7 @@ defmodule PortalWeb.Resources.Components do
                 class="absolute right-0 top-full mt-1 w-40 rounded-md border border-border bg-elevated shadow-lg z-10 py-1"
               >
                 <button
-                  :if={is_nil(row.policy_disabled_at)}
+                  :if={!row.policy_is_disabled}
                   type="button"
                   phx-click="disable_policy"
                   phx-value-group_id={row.group.id}
@@ -1436,7 +1436,7 @@ defmodule PortalWeb.Resources.Components do
                   <.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable Access
                 </button>
                 <button
-                  :if={not is_nil(row.policy_disabled_at)}
+                  :if={row.policy_is_disabled}
                   type="button"
                   phx-click="enable_policy"
                   phx-value-group_id={row.group.id}

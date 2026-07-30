@@ -499,7 +499,7 @@ defmodule PortalWeb.Actors do
          {:ok, updated_actor} <-
            actor
            |> change()
-           |> put_change(:disabled_at, DateTime.utc_now())
+           |> put_change(:is_disabled, true)
            |> Database.update(socket.assigns.subject) do
       socket =
         socket
@@ -528,7 +528,7 @@ defmodule PortalWeb.Actors do
          :ok <- Portal.Billing.check_actor_enable_limits(socket.assigns.account, actor) do
       case actor
            |> change()
-           |> put_change(:disabled_at, nil)
+           |> put_change(:is_disabled, false)
            |> Database.update(socket.assigns.subject) do
         {:ok, updated_actor} ->
           socket =
@@ -1107,7 +1107,7 @@ defmodule PortalWeb.Actors do
             </span>
           </:col>
           <:col :let={actor} label="status" class="w-32">
-            <.actor_status_badge disabled_at={actor.disabled_at} />
+            <.actor_status_badge is_disabled={actor.is_disabled} />
           </:col>
           <:empty>
             <span class="text-sm text-subtle">No people to display.</span>
@@ -1419,11 +1419,11 @@ defmodule PortalWeb.Actors do
     end
 
     def filter_by_status(queryable, "active") do
-      {queryable, dynamic([actors: actors], is_nil(actors.disabled_at))}
+      {queryable, dynamic([actors: actors], actors.is_disabled == false)}
     end
 
     def filter_by_status(queryable, "disabled") do
-      {queryable, dynamic([actors: actors], not is_nil(actors.disabled_at))}
+      {queryable, dynamic([actors: actors], actors.is_disabled == true)}
     end
 
     def filter_by_type(queryable, "admin") do
@@ -1582,7 +1582,7 @@ defmodule PortalWeb.Actors do
         where: a.account_id == ^account_id,
         where: a.type == :account_admin_user,
         where: a.id != ^actor_id,
-        where: is_nil(a.disabled_at)
+        where: a.is_disabled == false
       )
       |> Safe.scoped(subject, :replica)
       |> Safe.exists?(fallback_to_primary: true)

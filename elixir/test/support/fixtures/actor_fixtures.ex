@@ -114,7 +114,7 @@ defmodule Portal.ActorFixtures do
     actor = actor_fixture(attrs)
 
     actor
-    |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+    |> Ecto.Changeset.change(is_disabled: true)
     |> Portal.Repo.update!()
   end
 end

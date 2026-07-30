@@ -79,7 +79,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
 
       # Disable the actor
       actor
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Repo.update!()
 
       assert OutdatedGateways.Database.count_incompatible_for(account, "1.3.0") == 0

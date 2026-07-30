@@ -76,7 +76,7 @@ defmodule Portal.Account do
     field :warning_last_sent_at, :utc_datetime_usec
 
     field :disabled_reason, :string
-    field :disabled_at, :utc_datetime_usec
+    field :is_disabled, :boolean, default: false, read_after_writes: true
 
     field :scheduled_deletion_at, :utc_datetime_usec
 
@@ -121,7 +121,7 @@ defmodule Portal.Account do
   end
 
   @spec active?(t()) :: boolean()
-  def active?(%__MODULE__{disabled_at: nil}), do: true
+  def active?(%__MODULE__{is_disabled: false}), do: true
   def active?(%__MODULE__{}), do: false
 
   @spec pending_deletion?(t()) :: boolean()

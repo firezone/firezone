@@ -103,7 +103,7 @@ defmodule Portal.Accounts.Deletion do
         with {:ok, transition} <-
                transition_account_deletion(
                  account,
-                 %{disabled_at: nil, scheduled_deletion_at: nil},
+                 %{is_disabled: false, scheduled_deletion_at: nil},
                  :cancel,
                  subject
                ),
@@ -142,7 +142,7 @@ defmodule Portal.Accounts.Deletion do
 
       updates =
         attrs
-        |> Map.take([:disabled_at, :scheduled_deletion_at])
+        |> Map.take([:is_disabled, :scheduled_deletion_at])
         |> Map.put(:updated_at, now)
 
       case query |> Safe.scoped(subject) |> Safe.update_all(set: Map.to_list(updates)) do
@@ -205,7 +205,7 @@ defmodule Portal.Accounts.Deletion do
       from(a in Actor,
         where: a.account_id == ^account_id,
         where: a.type == :account_admin_user,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         select: a.email
       )
       |> Safe.scoped(subject)

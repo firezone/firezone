@@ -21,12 +21,12 @@ defmodule Portal.Changes.Hooks.AccountsTest do
 
       old_data = %{
         "id" => account_id,
-        "disabled_at" => nil
+        "is_disabled" => false
       }
 
       data = %{
         "id" => account_id,
-        "disabled_at" => "2023-10-01T00:00:00Z"
+        "is_disabled" => true
       }
 
       assert :ok == on_update(0, old_data, data)
@@ -41,12 +41,12 @@ defmodule Portal.Changes.Hooks.AccountsTest do
 
       old_data = %{
         "id" => account.id,
-        "disabled_at" => nil
+        "is_disabled" => false
       }
 
       data = %{
         "id" => account.id,
-        "disabled_at" => "2023-10-01T00:00:00Z"
+        "is_disabled" => true
       }
 
       assert :ok == on_update(0, old_data, data)
@@ -59,12 +59,12 @@ defmodule Portal.Changes.Hooks.AccountsTest do
 
       old_data = %{
         "id" => account.id,
-        "disabled_at" => nil
+        "is_disabled" => false
       }
 
       data = %{
         "id" => account.id,
-        "disabled_at" => "2023-10-01T00:00:00Z"
+        "is_disabled" => true
       }
 
       assert :ok == on_update(0, old_data, data)

@@ -849,7 +849,7 @@ defmodule PortalWeb.Groups.Components do
               navigate={~p"/#{@account}/resources/#{row.resource.id}"}
               class={[
                 "flex items-center gap-3 px-5 py-3 flex-1 min-w-0",
-                not is_nil(row.policy_disabled_at) && "opacity-50 hover:opacity-75"
+                row.policy_is_disabled && "opacity-50 hover:opacity-75"
               ]}
             >
               <div class="w-14 shrink-0 flex">
@@ -863,7 +863,7 @@ defmodule PortalWeb.Groups.Components do
                     {row.resource.name}
                   </p>
                   <span
-                    :if={not is_nil(row.policy_disabled_at)}
+                    :if={row.policy_is_disabled}
                     class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-status-light text-subtle shrink-0"
                   >
                     disabled
@@ -884,7 +884,7 @@ defmodule PortalWeb.Groups.Components do
               title="More actions"
             >
               <button
-                :if={is_nil(row.policy_disabled_at)}
+                :if={!row.policy_is_disabled}
                 type="button"
                 phx-click="disable_resource_access"
                 phx-value-resource_id={row.resource.id}
@@ -893,7 +893,7 @@ defmodule PortalWeb.Groups.Components do
                 <.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable
               </button>
               <button
-                :if={not is_nil(row.policy_disabled_at)}
+                :if={row.policy_is_disabled}
                 type="button"
                 phx-click="enable_resource_access"
                 phx-value-resource_id={row.resource.id}

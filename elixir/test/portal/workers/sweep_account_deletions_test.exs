@@ -9,12 +9,12 @@ defmodule Portal.Workers.SweepAccountDeletionsTest do
 
   describe "perform/1" do
     test "enqueues DeleteAccount jobs for accounts due for deletion" do
-      disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+      now = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
 
       account =
         update_account(account_fixture(),
-          disabled_at: disabled_at,
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 
@@ -26,7 +26,7 @@ defmodule Portal.Workers.SweepAccountDeletionsTest do
     test "skips accounts not yet due (scheduled_deletion_at in future)" do
       account =
         update_account(account_fixture(),
-          disabled_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          is_disabled: true,
           scheduled_deletion_at: DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
         )
 
@@ -35,10 +35,10 @@ defmodule Portal.Workers.SweepAccountDeletionsTest do
       refute_enqueued(worker: DeleteAccount, args: %{"account_id" => account.id})
     end
 
-    test "skips accounts not disabled (disabled_at is nil)" do
+    test "skips accounts not disabled (is_disabled is false)" do
       account =
         update_account(account_fixture(),
-          disabled_at: nil,
+          is_disabled: false,
           scheduled_deletion_at: DateTime.utc_now() |> DateTime.add(-1, :hour) |> DateTime.truncate(:second)
         )
 
@@ -50,7 +50,7 @@ defmodule Portal.Workers.SweepAccountDeletionsTest do
     test "skips accounts with no scheduled_deletion_at" do
       account =
         update_account(account_fixture(),
-          disabled_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          is_disabled: true,
           scheduled_deletion_at: nil
         )
 

@@ -21,7 +21,7 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
         "account_id" => account.id,
         "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
-        "disabled_at" => nil
+        "is_disabled" => false
       }
 
       assert :ok == on_insert(0, data)
@@ -46,10 +46,10 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
         "account_id" => account.id,
         "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
-        "disabled_at" => nil
+        "is_disabled" => false
       }
 
-      data = Map.put(old_data, "disabled_at", "2023-10-01T00:00:00Z")
+      data = Map.put(old_data, "is_disabled", true)
 
       policy_authorization =
         policy_authorization_fixture(policy: policy, resource: resource, account: account)
@@ -78,10 +78,10 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
         "account_id" => account.id,
         "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
-        "disabled_at" => "2023-09-01T00:00:00Z"
+        "is_disabled" => true
       }
 
-      data = Map.put(old_data, "disabled_at", nil)
+      data = Map.put(old_data, "is_disabled", false)
 
       assert :ok == on_update(0, old_data, data)
       assert_receive %Change{op: :insert, struct: %Policy{} = broadcast_policy, lsn: 0}
@@ -103,7 +103,7 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
         "account_id" => account.id,
         "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
-        "disabled_at" => nil
+        "is_disabled" => false
       }
 
       data = Map.put(old_data, "description", "Updated description")

@@ -1000,7 +1000,7 @@ defmodule Portal.Google.Sync do
         on: a.id == d.account_id,
         where: d.id == ^id,
         where: d.is_disabled == false,
-        where: is_nil(a.disabled_at)
+        where: a.is_disabled == false
       )
       |> Safe.unscoped(:replica)
       |> Safe.one(fallback_to_primary: true)

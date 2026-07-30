@@ -365,7 +365,7 @@ defmodule Portal.AuthenticationTest do
       encoded = encode_token(client_token_fixture(account: account, actor: actor))
 
       actor
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       context = build_context(type: :client)
@@ -378,7 +378,7 @@ defmodule Portal.AuthenticationTest do
       encoded = encode_token(client_token_fixture(account: account, actor: actor))
 
       account
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       context = build_context(type: :client)
@@ -847,7 +847,7 @@ defmodule Portal.AuthenticationTest do
       actor = actor_fixture(account: account)
 
       account
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       assert {:ok, passcode} = create_one_time_passcode(account, actor)
@@ -1089,7 +1089,7 @@ defmodule Portal.AuthenticationTest do
       expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
 
       account
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       assert {:ok, session} =
@@ -1240,7 +1240,7 @@ defmodule Portal.AuthenticationTest do
       encoded = encode_gateway_token(token)
 
       account
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       assert {:ok, verified_token} = verify_gateway_token(encoded)
@@ -1386,7 +1386,7 @@ defmodule Portal.AuthenticationTest do
       token = client_token_fixture(account: account, actor: actor)
 
       actor
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       context = build_context(type: :client)

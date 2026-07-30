@@ -23,7 +23,7 @@ defmodule Portal.S3.Scheduler do
           join: a in Portal.Account,
           on: a.id == s.account_id,
           where: s.is_disabled == false,
-          where: is_nil(a.disabled_at),
+          where: a.is_disabled == false,
           where: fragment("(?)->>'log_sinks' = 'true'", a.features)
         )
         |> Safe.unscoped()

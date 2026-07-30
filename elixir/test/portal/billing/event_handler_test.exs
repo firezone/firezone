@@ -125,7 +125,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       updated_account = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated_account.disabled_at != nil
+      assert updated_account.is_disabled == true
       assert updated_account.disabled_reason == "Stripe subscription deleted"
     end
   end
@@ -256,7 +256,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       updated = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated.disabled_at == nil
+      assert updated.is_disabled == false
     end
 
     test "processes plan product and ignores adhoc device product", %{
@@ -280,7 +280,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       updated = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated.disabled_at == nil
+      assert updated.is_disabled == false
     end
 
     test "processes plan product and warns on unrecognized product", %{
@@ -304,7 +304,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       updated = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated.disabled_at == nil
+      assert updated.is_disabled == false
     end
 
     test "returns error when subscription has multiple plan products", %{
@@ -436,7 +436,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       updated_account = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated_account.disabled_at != nil
+      assert updated_account.is_disabled == true
       assert updated_account.disabled_reason == "Stripe subscription paused"
     end
   end
@@ -475,7 +475,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       updated_account = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated_account.disabled_at != nil
+      assert updated_account.is_disabled == true
       assert updated_account.disabled_reason == "Stripe subscription paused"
     end
   end
@@ -841,7 +841,7 @@ defmodule Portal.Billing.EventHandlerTest do
               customer_id: "cus_existing123"
             }
           },
-          disabled_at: DateTime.utc_now(),
+          is_disabled: true,
           disabled_reason: "Stripe subscription paused"
         })
 
@@ -874,7 +874,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       updated_account = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated_account.disabled_at == nil
+      assert updated_account.is_disabled == false
       assert updated_account.disabled_reason == nil
     end
   end
@@ -973,7 +973,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert :ok = EventHandler.handle_customer_deleted(customer)
 
       updated_account = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated_account.disabled_at != nil
+      assert updated_account.is_disabled == true
       assert updated_account.disabled_reason == "Stripe customer deleted"
     end
   end

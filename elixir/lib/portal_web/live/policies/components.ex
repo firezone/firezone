@@ -866,7 +866,7 @@ defmodule PortalWeb.Policies.Components do
                 <span class="text-amber-600">(Group deleted)</span> — {@policy.resource.name}
               <% end %>
             </h2>
-            <.policy_status_badge disabled_at={@policy.disabled_at} />
+            <.policy_status_badge is_disabled={@policy.is_disabled} />
           </div>
           <p class="font-mono text-xs text-subtle mt-0.5 truncate">{@policy.id}</p>
         </div>
@@ -1265,7 +1265,7 @@ defmodule PortalWeb.Policies.Components do
       </h3>
       <div class="space-y-2">
         <.action_button
-          :if={is_nil(@policy.disabled_at) and not @confirm_disable_policy}
+          :if={!@policy.is_disabled and not @confirm_disable_policy}
           phx-click="confirm_disable_policy"
           style="warning"
           icon="ri-pause-line"
@@ -1273,7 +1273,7 @@ defmodule PortalWeb.Policies.Components do
           Disable policy
         </.action_button>
         <div
-          :if={is_nil(@policy.disabled_at) and @confirm_disable_policy}
+          :if={!@policy.is_disabled and @confirm_disable_policy}
           class="px-3 py-2.5 rounded border border-border bg-raised"
         >
           <p class="text-xs font-medium text-heading mb-1">
@@ -1292,7 +1292,7 @@ defmodule PortalWeb.Policies.Components do
           </div>
         </div>
         <.action_button
-          :if={not is_nil(@policy.disabled_at)}
+          :if={@policy.is_disabled}
           phx-click="enable_policy"
           style="success"
           icon="ri-play-line"
@@ -3241,12 +3241,12 @@ defmodule PortalWeb.Policies.Components do
       ]
   end
 
-  attr :disabled_at, :any, required: true
+  attr :is_disabled, :boolean, required: true
 
   def policy_status_badge(assigns) do
     ~H"""
-    <.status_badge style={if is_nil(@disabled_at), do: :success, else: :danger}>
-      {if is_nil(@disabled_at), do: "Active", else: "Disabled"}
+    <.status_badge style={if @is_disabled, do: :danger, else: :success}>
+      {if @is_disabled, do: "Disabled", else: "Active"}
     </.status_badge>
     """
   end

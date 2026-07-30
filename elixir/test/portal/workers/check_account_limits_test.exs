@@ -222,7 +222,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
 
       # Disable the account
       account
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now(), disabled_reason: "Test")
+      |> Ecto.Changeset.change(is_disabled: true, disabled_reason: "Test")
       |> Repo.update!()
 
       assert :ok = perform_job(CheckAccountLimits, %{})
@@ -268,7 +268,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       disabled_admin = admin_actor_fixture(account: account)
 
       disabled_admin
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Repo.update!()
 
       # Create another enabled admin

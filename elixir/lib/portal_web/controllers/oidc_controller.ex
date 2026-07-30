@@ -1166,7 +1166,7 @@ defmodule PortalWeb.OIDCController do
         where: identity.account_id == ^account_id,
         where: identity.issuer == ^issuer,
         where: identity.idp_id == ^idp_id,
-        where: is_nil(actor.disabled_at),
+        where: actor.is_disabled == false,
         preload: [:account, actor: actor]
       )
       |> Safe.unscoped(:replica)
@@ -1183,7 +1183,7 @@ defmodule PortalWeb.OIDCController do
       from(actor in Portal.Actor,
         where: actor.account_id == ^account.id,
         where: actor.type in [:account_admin_user, :account_user],
-        where: is_nil(actor.disabled_at),
+        where: actor.is_disabled == false,
         where: actor.email == ^email,
         preload: [:account],
         limit: 1
@@ -1379,7 +1379,7 @@ defmodule PortalWeb.OIDCController do
           where:
             a.account_id == ^account_id_bytes and
               a.email == ^email and
-              is_nil(a.disabled_at),
+              a.is_disabled == false,
           select: %{id: a.id},
           limit: 1
         )
@@ -1403,7 +1403,7 @@ defmodule PortalWeb.OIDCController do
           where:
             ei.account_id == ^account_id_bytes and
               ei.issuer == ^issuer and
-              is_nil(a.disabled_at) and
+              a.is_disabled == false and
               (ei.idp_id == ^idp_id or a.email == ^email),
           order_by: [
             desc: fragment("(? = ?)", ei.idp_id, ^idp_id),
@@ -1529,7 +1529,7 @@ defmodule PortalWeb.OIDCController do
         where: passcode.id == ^pending_identity.one_time_passcode_id,
         where: passcode.expires_at > ^DateTime.utc_now(),
         where: passcode.attempts < ^OneTimePasscode.max_attempts(),
-        where: is_nil(actor.disabled_at),
+        where: actor.is_disabled == false,
         lock: "FOR UPDATE"
       )
       |> Safe.unscoped()

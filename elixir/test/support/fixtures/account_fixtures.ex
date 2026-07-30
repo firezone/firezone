@@ -108,8 +108,8 @@ defmodule Portal.AccountFixtures do
     account = account_fixture(attrs)
 
     account
-    |> cast(%{disabled_at: DateTime.utc_now(), disabled_reason: "Testing"}, [
-      :disabled_at,
+    |> cast(%{is_disabled: true, disabled_reason: "Testing"}, [
+      :is_disabled,
       :disabled_reason
     ])
     |> Repo.update!()
@@ -127,7 +127,7 @@ defmodule Portal.AccountFixtures do
       :legal_name,
       :slug,
       :key,
-      :disabled_at,
+      :is_disabled,
       :scheduled_deletion_at,
       :disabled_reason,
       :users_limit_exceeded,

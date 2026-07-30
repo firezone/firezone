@@ -147,7 +147,7 @@ defmodule Portal.OpsTest do
       api_token_fixture(account: account)
 
       account =
-        update_account(account, %{disabled_at: DateTime.utc_now(), disabled_reason: "Testing"})
+        update_account(account, %{is_disabled: true, disabled_reason: "Testing"})
 
       assert delete_disabled_account(account.id) == :ok
 
@@ -161,12 +161,12 @@ defmodule Portal.OpsTest do
 
   describe "schedule_missing_account_deletion_jobs/0" do
     test "enqueues a delete job for accounts already pending deletion without a job" do
-      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
 
       account =
         update_account(account_fixture(),
-          disabled_at: disabled_at,
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 
@@ -185,12 +185,12 @@ defmodule Portal.OpsTest do
     end
 
     test "does not enqueue duplicate delete jobs for accounts that already have one" do
-      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
 
       account =
         update_account(account_fixture(),
-          disabled_at: disabled_at,
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 
@@ -249,7 +249,7 @@ defmodule Portal.OpsTest do
       admin2 = admin_actor_fixture(account: account2)
 
       disabled_admin
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Repo.update!()
 
       capture_io("y\n", fn ->
@@ -291,7 +291,7 @@ defmodule Portal.OpsTest do
       _disabled_admin = admin_actor_fixture(account: disabled_account)
 
       update_account(disabled_account, %{
-        disabled_at: DateTime.utc_now(),
+        is_disabled: true,
         disabled_reason: "Testing"
       })
 

@@ -132,7 +132,7 @@ defmodule Portal.Google.SyncTest do
 
       # Disable the account
       account
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Repo.update!()
 
       directory = google_directory_fixture(account: account)

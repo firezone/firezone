@@ -365,7 +365,7 @@ defmodule PortalWeb.GroupsTest do
       render_click(lv, "disable_resource_access", %{"resource_id" => resource.id})
 
       policy = Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id)
-      assert policy.disabled_at
+      assert policy.is_disabled
 
       assert render_click(lv, "toggle_resource_access_actions", %{"resource_id" => resource.id}) =~
                "Enable"
@@ -373,7 +373,7 @@ defmodule PortalWeb.GroupsTest do
       render_click(lv, "enable_resource_access", %{"resource_id" => resource.id})
 
       policy = Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id)
-      assert is_nil(policy.disabled_at)
+      refute policy.is_disabled
 
       assert render_click(lv, "toggle_resource_access_actions", %{"resource_id" => resource.id}) =~
                "Remove access"
@@ -442,7 +442,7 @@ defmodule PortalWeb.GroupsTest do
           account: account,
           group: group,
           resource: resource,
-          disabled_at: DateTime.utc_now()
+          is_disabled: true
         )
 
       {:ok, lv, _html} =

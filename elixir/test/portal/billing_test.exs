@@ -338,7 +338,7 @@ defmodule Portal.BillingTest do
 
       # Disable the enabled one
       api_client
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       # Now we can create more

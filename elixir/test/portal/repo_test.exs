@@ -182,16 +182,16 @@ defmodule Portal.RepoTest do
       t2 = ~U[2000-01-02 00:00:00.000000Z]
 
       actor_fixture(account: account)
-      |> Portal.Fixture.update!(disabled_at: t1)
+      |> Portal.Fixture.update!(updated_at: t1)
 
       actor_fixture(account: account)
-      |> Portal.Fixture.update!(disabled_at: t2)
+      |> Portal.Fixture.update!(updated_at: t2)
 
-      assert {:ok, [%{disabled_at: ^t1}, %{disabled_at: ^t2}], _metadata} =
-               list(queryable, query_module, order_by: [{:actors, :asc, :disabled_at}])
+      assert {:ok, [%{updated_at: ^t1}, %{updated_at: ^t2}], _metadata} =
+               list(queryable, query_module, order_by: [{:actors, :asc, :updated_at}])
 
-      assert {:ok, [%{disabled_at: ^t2}, %{disabled_at: ^t1}], _metadata} =
-               list(queryable, query_module, order_by: [{:actors, :desc, :disabled_at}])
+      assert {:ok, [%{updated_at: ^t2}, %{updated_at: ^t1}], _metadata} =
+               list(queryable, query_module, order_by: [{:actors, :desc, :updated_at}])
     end
 
     test "allows to filter results" do

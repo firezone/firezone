@@ -118,7 +118,7 @@ defmodule PortalWeb.Actors.Components do
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <h2 class="text-sm font-semibold text-heading truncate">{@actor.name}</h2>
-              <.actor_status_badge disabled_at={@actor.disabled_at} />
+              <.actor_status_badge is_disabled={@actor.is_disabled} />
             </div>
             <p :if={@actor.email} class="text-xs text-subtle truncate mt-0.5">
               {@actor.email}
@@ -922,7 +922,7 @@ defmodule PortalWeb.Actors.Components do
           </div>
           <.action_button
             :if={
-              is_nil(@actor.disabled_at) and @actor.id != @subject.actor.id and
+              !@actor.is_disabled and @actor.id != @subject.actor.id and
                 not @confirm_disable_actor
             }
             style="warning"
@@ -933,7 +933,7 @@ defmodule PortalWeb.Actors.Components do
           </.action_button>
           <div
             :if={
-              is_nil(@actor.disabled_at) and @actor.id != @subject.actor.id and @confirm_disable_actor
+              !@actor.is_disabled and @actor.id != @subject.actor.id and @confirm_disable_actor
             }
             class="px-3 py-2.5 rounded border border-border bg-raised"
           >
@@ -951,7 +951,7 @@ defmodule PortalWeb.Actors.Components do
             </div>
           </div>
           <.action_button
-            :if={not is_nil(@actor.disabled_at)}
+            :if={@actor.is_disabled}
             style="success"
             icon="ri-play-line"
             phx-click="enable"
@@ -1790,12 +1790,12 @@ defmodule PortalWeb.Actors.Components do
     end
   end
 
-  attr :disabled_at, :any, required: true
+  attr :is_disabled, :boolean, required: true
 
   def actor_status_badge(assigns) do
     ~H"""
-    <.status_badge style={if is_nil(@disabled_at), do: :success, else: :danger}>
-      {if is_nil(@disabled_at), do: "Active", else: "Disabled"}
+    <.status_badge style={if @is_disabled, do: :danger, else: :success}>
+      {if @is_disabled, do: "Disabled", else: "Active"}
     </.status_badge>
     """
   end

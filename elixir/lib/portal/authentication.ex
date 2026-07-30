@@ -493,7 +493,7 @@ defmodule Portal.Authentication do
     end
 
     def fetch_active_actor_by_id(id) do
-      from(a in Actor, where: a.id == ^id, where: is_nil(a.disabled_at))
+      from(a in Actor, where: a.id == ^id, where: a.is_disabled == false)
       |> Safe.unscoped(:replica)
       |> Safe.one(fallback_to_primary: true)
       |> case do
@@ -651,8 +651,8 @@ defmodule Portal.Authentication do
       |> where([tokens: tokens], tokens.expires_at > ^now or is_nil(tokens.expires_at))
       |> where([tokens: tokens], tokens.id == ^token_id)
       |> where([tokens: tokens], tokens.account_id == ^account_id)
-      |> where([account: account], is_nil(account.disabled_at))
-      |> where([actor: actor], is_nil(actor.disabled_at))
+      |> where([account: account], account.is_disabled == false)
+      |> where([actor: actor], actor.is_disabled == false)
       |> select([tokens: tokens], tokens)
       |> Safe.unscoped(:replica)
       |> Safe.one(fallback_to_primary: true)
@@ -675,8 +675,8 @@ defmodule Portal.Authentication do
       |> where([tokens: tokens], tokens.expires_at > ^now or is_nil(tokens.expires_at))
       |> where([tokens: tokens], tokens.id == ^token_id)
       |> where([tokens: tokens], tokens.account_id == ^account_id)
-      |> where([account: account], is_nil(account.disabled_at))
-      |> where([actor: actor], is_nil(actor.disabled_at))
+      |> where([account: account], account.is_disabled == false)
+      |> where([actor: actor], actor.is_disabled == false)
       |> update([tokens: tokens],
         set: [
           last_seen_at: ^now,
@@ -714,7 +714,7 @@ defmodule Portal.Authentication do
         where: otp.id == ^id,
         where: otp.expires_at > ^DateTime.utc_now(),
         where: otp.attempts < ^OneTimePasscode.max_attempts(),
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         where: a.allow_email_otp_sign_in == true,
         update: [inc: [attempts: 1]],
         select: otp
@@ -788,7 +788,7 @@ defmodule Portal.Authentication do
         where: ps.account_id == ^account_id,
         where: ps.id == ^id,
         where: ps.expires_at > ^DateTime.utc_now(),
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         where: ps.auth_provider_id in subquery(enabled_provider_ids),
         preload: [actor: a]
       )

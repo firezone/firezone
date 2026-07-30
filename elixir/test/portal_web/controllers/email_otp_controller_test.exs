@@ -325,7 +325,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
 
       # Disable the actor
       actor
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       # Try to verify

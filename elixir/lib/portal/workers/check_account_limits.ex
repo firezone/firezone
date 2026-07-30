@@ -223,7 +223,7 @@ defmodule Portal.Workers.CheckAccountLimits do
 
     def fetch_active_accounts_batch(cursor, limit) do
       from(a in Account,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         order_by: [asc: a.id],
         limit: ^limit
       )
@@ -245,7 +245,7 @@ defmodule Portal.Workers.CheckAccountLimits do
     defp count_users_by_account(account_ids) do
       from(a in Actor,
         where: a.account_id in ^account_ids,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         where: a.type in [:account_admin_user, :account_user],
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}
@@ -258,7 +258,7 @@ defmodule Portal.Workers.CheckAccountLimits do
     defp count_service_accounts_by_account(account_ids) do
       from(a in Actor,
         where: a.account_id in ^account_ids,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         where: a.type == :service_account,
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}
@@ -271,7 +271,7 @@ defmodule Portal.Workers.CheckAccountLimits do
     defp count_admins_by_account(account_ids) do
       from(a in Actor,
         where: a.account_id in ^account_ids,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         where: a.type == :account_admin_user,
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}
@@ -289,7 +289,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         on: c.actor_id == a.id and c.account_id == a.account_id,
         as: :actor
       )
-      |> where([actor: a], is_nil(a.disabled_at))
+      |> where([actor: a], a.is_disabled == false)
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> where([clients: c], c.last_seen_at > ago(1, "month"))
       |> group_by([clients: c], c.account_id)
@@ -315,7 +315,7 @@ defmodule Portal.Workers.CheckAccountLimits do
       from(a in Actor,
         where: a.account_id == ^account_id,
         where: a.type == :account_admin_user,
-        where: is_nil(a.disabled_at)
+        where: a.is_disabled == false
       )
       |> Safe.unscoped(:replica)
       |> Safe.all()

@@ -705,7 +705,7 @@ defmodule Portal.Billing do
     def count_users_for_account(%Account{} = account, repo \\ :replica) do
       from(a in Actor,
         where: a.account_id == ^account.id,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         where: a.type in [:account_admin_user, :account_user]
       )
       |> Safe.unscoped(repo)
@@ -715,7 +715,7 @@ defmodule Portal.Billing do
     def count_service_accounts_for_account(%Account{} = account, repo \\ :replica) do
       from(a in Actor,
         where: a.account_id == ^account.id,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         where: a.type == :service_account
       )
       |> Safe.unscoped(repo)
@@ -725,7 +725,7 @@ defmodule Portal.Billing do
     def count_account_admin_users_for_account(%Account{} = account, repo \\ :replica) do
       from(a in Actor,
         where: a.account_id == ^account.id,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         where: a.type == :account_admin_user
       )
       |> Safe.unscoped(repo)
@@ -741,7 +741,7 @@ defmodule Portal.Billing do
         on: c.actor_id == a.id and c.account_id == a.account_id,
         as: :actor
       )
-      |> where([actor: a], is_nil(a.disabled_at))
+      |> where([actor: a], a.is_disabled == false)
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> select([clients: c], c.actor_id)
       |> distinct(true)
@@ -761,7 +761,7 @@ defmodule Portal.Billing do
     def count_api_clients_for_account(%Account{} = account, repo \\ :replica) do
       from(a in Actor,
         where: a.account_id == ^account.id,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         where: a.type == :api_client
       )
       |> Safe.unscoped(repo)

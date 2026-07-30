@@ -563,7 +563,7 @@ defmodule PortalWeb.Settings.Account do
 
       socket.assigns.slug_confirmation == account.slug ->
         attrs = %{
-          disabled_at: DateTime.utc_now(),
+          is_disabled: true,
           scheduled_deletion_at: DateTime.add(DateTime.utc_now(), 7, :day)
         }
 
@@ -616,7 +616,7 @@ defmodule PortalWeb.Settings.Account do
     @spec count_account_admin_users_for_account(Portal.Authentication.Subject.t()) :: integer()
     def count_account_admin_users_for_account(subject) do
       from(a in Actor,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         where: a.type == :account_admin_user
       )
       |> Safe.scoped(subject, :replica)
@@ -626,7 +626,7 @@ defmodule PortalWeb.Settings.Account do
     @spec count_service_accounts_for_account(Portal.Authentication.Subject.t()) :: integer()
     def count_service_accounts_for_account(subject) do
       from(a in Actor,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         where: a.type == :service_account
       )
       |> Safe.scoped(subject, :replica)
@@ -636,7 +636,7 @@ defmodule PortalWeb.Settings.Account do
     @spec count_users_for_account(Portal.Authentication.Subject.t()) :: integer()
     def count_users_for_account(subject) do
       from(a in Actor,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         where: a.type in [:account_admin_user, :account_user]
       )
       |> Safe.scoped(subject, :replica)
@@ -652,7 +652,7 @@ defmodule PortalWeb.Settings.Account do
         on: d.actor_id == a.id and d.account_id == a.account_id,
         as: :actor
       )
-      |> where([actor: a], is_nil(a.disabled_at))
+      |> where([actor: a], a.is_disabled == false)
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> select([devices: d], d.actor_id)
       |> distinct(true)
