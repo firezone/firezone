@@ -594,11 +594,10 @@ defmodule PortalWeb.ServiceAccounts do
     {:noreply, mark_stale_if_unreflected(socket, change)}
   end
 
-  def handle_info(%Change{struct: %Actor{}} = message, socket),
-    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
-
-  def handle_info(%Change{old_struct: %Actor{}} = message, socket),
-    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+  # The :actors topic carries every actor type, so this page also sees users and
+  # API clients, which have pages of their own and change nothing here.
+  def handle_info(%Change{struct: %Actor{}}, socket), do: {:noreply, socket}
+  def handle_info(%Change{old_struct: %Actor{}}, socket), do: {:noreply, socket}
 
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic}, socket) do
     actor = socket.assigns.selected_actor

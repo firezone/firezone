@@ -776,18 +776,11 @@ defmodule PortalWeb.Actors do
      end)}
   end
 
-  # User-actor updates are broadcast on the shared :actors topic but the table
-  # is not auto-refreshed here, so ignore them without warning.
-  def handle_info(%Change{struct: %Actor{type: type}}, socket)
-      when type in [:account_user, :account_admin_user] do
-    {:noreply, socket}
-  end
-
-  def handle_info(%Change{struct: %Actor{}} = message, socket),
-    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
-
-  def handle_info(%Change{old_struct: %Actor{}} = message, socket),
-    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+  # The :actors topic carries every actor type, so this page also sees service
+  # accounts and API clients, which have pages of their own. Those and user
+  # updates that leave the count alone change nothing here.
+  def handle_info(%Change{struct: %Actor{}}, socket), do: {:noreply, socket}
+  def handle_info(%Change{old_struct: %Actor{}}, socket), do: {:noreply, socket}
 
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic}, socket) do
     actor = socket.assigns.selected_actor
