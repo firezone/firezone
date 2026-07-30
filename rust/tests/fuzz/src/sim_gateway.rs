@@ -94,6 +94,25 @@ impl SimGateway {
         self.on_received_packet(packet, icmp_error_hosts, now)
     }
 
+    /// The earliest deadline of the simulated resources behind this gateway.
+    ///
+    /// Their TCP stacks drive themselves off timers of their own (delayed ACKs,
+    /// retransmits), so the simulation must not advance its clock past them.
+    pub(crate) fn poll_resource_timeout(&mut self) -> Option<Instant> {
+        iter::empty()
+            .chain(
+                self.tcp_dns_server_resources
+                    .values_mut()
+                    .filter_map(TcpDnsServerResource::poll_timeout),
+            )
+            .chain(
+                self.tcp_resources
+                    .values_mut()
+                    .filter_map(crate::tcp::Server::poll_timeout),
+            )
+            .min()
+    }
+
     pub(crate) fn advance_resources(
         &mut self,
         global_dns_records: &DnsRecords,

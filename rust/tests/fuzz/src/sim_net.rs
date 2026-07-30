@@ -406,13 +406,24 @@ impl PollTimeout for SimClient {
                     .poll_timeout()
                     .map(|instant| (instant, "Application TCP DNS client")),
             )
+            .chain(
+                self.tcp_client
+                    .poll_timeout()
+                    .map(|instant| (instant, "Application TCP client")),
+            )
             .min_by_key(|(instant, _)| *instant)
     }
 }
 
 impl PollTimeout for SimGateway {
     fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
-        self.sut.poll_timeout()
+        iter::empty()
+            .chain(self.sut.poll_timeout())
+            .chain(
+                self.poll_resource_timeout()
+                    .map(|instant| (instant, "Resource")),
+            )
+            .min_by_key(|(instant, _)| *instant)
     }
 }
 

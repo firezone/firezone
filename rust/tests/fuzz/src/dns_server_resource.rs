@@ -61,6 +61,12 @@ impl TcpDnsServerResource {
             .as_mut()
             .and_then(dns_over_tcp::Server::poll_outbound)
     }
+
+    pub fn poll_timeout(&mut self) -> Option<Instant> {
+        self.server
+            .as_mut()
+            .and_then(dns_over_tcp::Server::poll_timeout)
+    }
 }
 
 impl UdpDnsServerResource {
