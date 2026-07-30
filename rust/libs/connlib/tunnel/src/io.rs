@@ -9,7 +9,7 @@ mod udp_gso_queue;
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
-use crate::prefetch::{LOOKAHEAD, PrefetchExt as _};
+use crate::prefetch::PrefetchExt as _;
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
@@ -84,6 +84,12 @@ pub struct Input {
     pub error: TunnelError,
 }
 
+/// How many items ahead of consumption to prefetch.
+///
+/// Processing one packet takes several times longer than fetching one from another
+/// core's cache, so two items hide the fetch latency entirely.
+const PREFETCH_LOOKAHEAD: usize = 2;
+
 /// The IP packets read from the TUN device during one poll.
 pub struct DevicePackets {
     batch: tun::PacketBatch,
@@ -93,7 +99,7 @@ impl DevicePackets {
     /// Removes all packets, in order, prefetching their payloads ahead of the
     /// caller's processing.
     pub fn drain(&mut self) -> impl Iterator<Item = IpPacket> + '_ {
-        self.batch.drain().prefetch_ahead::<LOOKAHEAD>()
+        self.batch.drain().prefetch_ahead::<PREFETCH_LOOKAHEAD>()
     }
 }
 
@@ -109,7 +115,7 @@ impl NetworkDatagrams {
         self.batches
             .iter_mut()
             .flat_map(|batch| batch.drain())
-            .prefetch_ahead::<LOOKAHEAD>()
+            .prefetch_ahead::<PREFETCH_LOOKAHEAD>()
     }
 }
 

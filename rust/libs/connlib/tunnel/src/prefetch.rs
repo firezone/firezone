@@ -2,15 +2,11 @@
 //!
 //! Packets arrive on the main thread with their payload bytes last written by an IO
 //! thread on another core, so the first access during en- / decryption stalls on a
-//! cache miss per line. Processing one packet takes several times longer than fetching
-//! one from another core's cache, so a lookahead of two items is enough to hide that
-//! latency entirely.
+//! cache miss per line. A small lookahead over the receive iterators is enough to
+//! hide that latency entirely.
 
 use ip_packet::IpPacket;
 use socket_factory::DatagramIn;
-
-/// How many items ahead of consumption to prefetch.
-pub(crate) const LOOKAHEAD: usize = 2;
 
 /// An item whose backing memory can be pulled into cache ahead of use.
 pub(crate) trait Prefetch {
