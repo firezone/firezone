@@ -383,11 +383,10 @@ defmodule Portal.Google.APIClient do
 
   defp test_endpoint(path, access_token, params) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    req_opts = config[:req_opts] || []
     query = URI.encode_query(params)
     url = "#{config[:endpoint]}#{path}?#{query}"
 
-    case Req.get(url, [headers: [Authorization: "Bearer #{access_token}"]] ++ req_opts) do
+    case Req.get(url, [headers: [Authorization: "Bearer #{access_token}"]] ++ request_opts(config)) do
       {:ok, %Req.Response{status: 200}} -> :ok
       other -> other
     end
@@ -507,7 +506,7 @@ defmodule Portal.Google.APIClient do
 
   defp do_batch_get_users(access_token, user_ids) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    req_opts = config[:req_opts] || []
+    req_opts = request_opts(config)
     batch_endpoint = config[:batch_endpoint] || @default_batch_endpoint
     boundary = "batch_#{System.unique_integer([:positive])}"
 
@@ -714,10 +713,63 @@ defmodule Portal.Google.APIClient do
 
   defp get(path, access_token) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    req_opts = config[:req_opts] || []
 
     (config[:endpoint] <> path)
-    |> Req.get([headers: [Authorization: "Bearer #{access_token}"]] ++ req_opts)
+    |> Req.get([headers: [Authorization: "Bearer #{access_token}"]] ++ request_opts(config))
+  end
+
+  # Google reports throttling as 403 with an error whose domain is "usageLimits",
+  # which Req's default :safe_transient retry does not cover. Supplying our own
+  # predicate replaces that default, so the transient cases are repeated here.
+  # https://developers.google.com/workspace/admin/directory/v1/limits
+  @usage_limits_domain "usageLimits"
+  @transient_statuses [408, 429, 500, 502, 503, 504]
+  @transient_transport_reasons [:timeout, :econnrefused, :closed]
+  @max_retries 5
+
+  defp request_opts(config) do
+    Keyword.merge(
+      [
+        retry: &retry_google_error/2,
+        retry_delay: &retry_delay/1,
+        max_retries: @max_retries
+      ],
+      config[:req_opts] || []
+    )
+  end
+
+  defp retry_google_error(_request, %Req.Response{status: 403, body: body}) do
+    usage_limits_error?(body)
+  end
+
+  defp retry_google_error(_request, %Req.Response{status: status}) do
+    status in @transient_statuses
+  end
+
+  defp retry_google_error(_request, %Req.TransportError{reason: reason}) do
+    reason in @transient_transport_reasons
+  end
+
+  defp retry_google_error(_request, _response_or_exception), do: false
+
+  # The retry step runs before the body is decoded, so this sees raw JSON.
+  defp usage_limits_error?(body) when is_binary(body) do
+    case JSON.decode(body) do
+      {:ok, decoded} -> usage_limits_error?(decoded)
+      {:error, _reason} -> false
+    end
+  end
+
+  defp usage_limits_error?(%{"error" => %{"errors" => errors}}) when is_list(errors) do
+    Enum.any?(errors, &(Map.get(&1, "domain") == @usage_limits_domain))
+  end
+
+  defp usage_limits_error?(_body), do: false
+
+  # Google documents truncated exponential backoff as (2 ^ n) seconds plus a
+  # random number of milliseconds up to 1000, with n starting at 0.
+  defp retry_delay(retry_count) do
+    Integer.pow(2, retry_count) * 1000 + :rand.uniform(1000)
   end
 
   defp stream_pages(path, query, access_token, result_key) do
@@ -736,10 +788,9 @@ defmodule Portal.Google.APIClient do
 
   defp fetch_page(current_path, current_query, access_token, result_key) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    req_opts = config[:req_opts] || []
     url = "#{config[:endpoint]}#{current_path}?#{current_query}"
 
-    case Req.get(url, [headers: [Authorization: "Bearer #{access_token}"]] ++ req_opts) do
+    case Req.get(url, [headers: [Authorization: "Bearer #{access_token}"]] ++ request_opts(config)) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         parse_page_response(body, current_path, current_query, result_key)
 
