@@ -184,9 +184,12 @@ pub(crate) fn is_internet_resource_ip(ip: IpAddr) -> bool {
 
     match ip {
         IpAddr::V4(v4) => {
-            !v4.is_private() && !IPV4_CGNAT.contains(v4) && !IPV4_RESERVED.contains(v4)
+            !v4.is_private()
+                && !v4.is_link_local()
+                && !IPV4_CGNAT.contains(v4)
+                && !IPV4_RESERVED.contains(v4)
         }
-        IpAddr::V6(v6) => !IPV6_UNIQUE_LOCAL.contains(v6),
+        IpAddr::V6(v6) => !v6.is_unicast_link_local() && !IPV6_UNIQUE_LOCAL.contains(v6),
     }
 }
 
@@ -212,17 +215,20 @@ mod unittests {
     }
 
     #[test]
-    fn private_cgnat_reserved_and_unique_local_ips_are_not_internet_resource_ips() {
+    fn private_shared_reserved_and_local_ips_are_not_internet_resource_ips() {
         for ip in [
             "10.0.0.1",
             "172.16.0.1",
             "192.168.0.1",
             "100.64.0.1",
             "100.127.255.254",
+            "169.254.169.254",
             "240.0.0.1",
             "255.255.255.255",
             "fc00::1",
             "fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+            "fe80::1",
+            "febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
             "fd00:2021:1111::3",
             "fd00:2021:1111:8000::1",
         ] {

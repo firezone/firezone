@@ -83,6 +83,14 @@ impl RoutingTables {
             });
         }
 
+        // Firezone's tunnel range holds Clients and Gateways, so the Internet Resource must
+        // not claim it: only the Client table consulted by `resolve` routes there. Letting
+        // the catch-all below match would send Client-to-Client traffic to a Gateway, which
+        // hair-pins it back out of its TUN device.
+        if crate::is_peer(destination) {
+            return None;
+        }
+
         if !crate::is_internet_resource_ip(destination) {
             return None;
         }
@@ -312,15 +320,17 @@ mod tests {
         IpAddr::V4(Ipv4Addr::new(100, 64, 0, 3))
     }
 
-    fn excluded_internet_resource_ips() -> [IpAddr; 7] {
+    fn excluded_internet_resource_ips() -> [IpAddr; 9] {
         [
             other_client_tun_ip(),
             "100.96.0.1".parse().unwrap(),
             "10.0.0.1".parse().unwrap(),
             "172.16.0.1".parse().unwrap(),
             "192.168.0.1".parse().unwrap(),
+            "169.254.169.254".parse().unwrap(),
             "240.0.0.1".parse().unwrap(),
             "fc00::1".parse().unwrap(),
+            "fe80::1".parse().unwrap(),
         ]
     }
 

@@ -350,7 +350,9 @@ impl ClientOnGateway {
         let packet = self.transform_tun_to_network(packet, now)?;
 
         self.ensure_client_ip(packet.destination())?;
-        self.ensure_resource_ip_is_allowed(packet.source())
+        ensure_not_peer_ip(packet.source())
+            .with_context(|| UnroutablePacket::not_allowed(&packet))?;
+        self.ensure_internet_resource_ip_is_allowed(packet.source())
             .with_context(|| UnroutablePacket::not_allowed(&packet))?;
 
         // Always allow ICMP errors to pass through, even in the presence of filters that don't allow ICMP.
@@ -468,7 +470,8 @@ impl ClientOnGateway {
             return Ok(());
         }
 
-        self.ensure_resource_ip_is_allowed(packet.destination())?;
+        ensure_not_peer_ip(packet.destination())?;
+        self.ensure_internet_resource_ip_is_allowed(packet.destination())?;
 
         let rid = self.classify_resource(packet.destination(), packet.destination_protocol())?;
 
@@ -490,16 +493,14 @@ impl ClientOnGateway {
         Ok(())
     }
 
-    /// Rejects Firezone tunnel addresses and addresses that the Internet Resource must not route.
+    /// Rejects addresses that the Internet Resource must not route.
     ///
     /// A Gateway serving the Internet Resource is mutually exclusive with Gateways serving
     /// DNS and CIDR resources. Checking this before classification ensures that the Internet
     /// Resource cannot authorize traffic to those excluded ranges, while normal Gateways can
     /// still serve explicit resources within them.
-    fn ensure_resource_ip_is_allowed(&self, ip: IpAddr) -> anyhow::Result<()> {
-        if crate::is_peer(ip)
-            || (self.internet_resource_enabled.is_some() && !crate::is_internet_resource_ip(ip))
-        {
+    fn ensure_internet_resource_ip_is_allowed(&self, ip: IpAddr) -> anyhow::Result<()> {
+        if self.internet_resource_enabled.is_some() && !crate::is_internet_resource_ip(ip) {
             return Err(anyhow::Error::new(NotAllowedResource(ip)));
         }
 
@@ -667,6 +668,21 @@ impl TranslationState {
 
 fn is_dns_addr(addr: IpAddr) -> bool {
     IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
+}
+
+/// Rejects addresses within Firezone's tunnel range.
+///
+/// A Client's counterpart is always a resource or this Gateway's own TUN device, never
+/// another Client. Admitting a tunnel address here would let the Internet Resource's
+/// catch-all in [`ClientOnGateway::classify_resource`] carry traffic between two Clients
+/// of this Gateway, hair-pinning through the TUN device and side-stepping the device pool
+/// authorization that governs Client-to-Client access.
+fn ensure_not_peer_ip(ip: IpAddr) -> anyhow::Result<()> {
+    if crate::is_peer(ip) {
+        return Err(anyhow::Error::new(NotAllowedResource(ip)));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -986,33 +1002,33 @@ mod tests {
     }
 
     #[test]
-    fn internet_resource_does_not_allow_unique_local_ipv6_traffic() {
+    fn internet_resource_does_not_allow_local_ipv6_traffic() {
         let now = Instant::now();
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(internet_resource(), None, now);
-        let unique_local = "fc00::1".parse::<Ipv6Addr>().unwrap();
 
-        let outbound =
-            ip_packet::make::udp_packet(client_tun_ipv6(), unique_local, 5401, 80, &[0u8; 8])
+        for local in ["fc00::1", "fe80::1"] {
+            let local = local.parse::<Ipv6Addr>().unwrap();
+            let outbound =
+                ip_packet::make::udp_packet(client_tun_ipv6(), local, 5401, 80, &[0u8; 8]).unwrap();
+
+            assert!(matches!(
+                peer.translate_outbound(outbound, now).unwrap(),
+                TranslateOutboundResult::Filtered(_)
+            ));
+
+            let inbound =
+                ip_packet::make::udp_packet(local, client_tun_ipv6(), 80, 5401, &[0u8; 8]).unwrap();
+
+            #[expect(clippy::disallowed_methods, reason = "This is a test.")]
+            let error = peer
+                .translate_inbound(inbound, now)
+                .unwrap_err()
+                .downcast::<UnroutablePacket>()
                 .unwrap();
 
-        assert!(matches!(
-            peer.translate_outbound(outbound, now).unwrap(),
-            TranslateOutboundResult::Filtered(_)
-        ));
-
-        let inbound =
-            ip_packet::make::udp_packet(unique_local, client_tun_ipv6(), 80, 5401, &[0u8; 8])
-                .unwrap();
-
-        #[expect(clippy::disallowed_methods, reason = "This is a test.")]
-        let error = peer
-            .translate_inbound(inbound, now)
-            .unwrap_err()
-            .downcast::<UnroutablePacket>()
-            .unwrap();
-
-        assert_eq!(error.reason(), RoutingError::NotAllowed);
+            assert_eq!(error.reason(), RoutingError::NotAllowed);
+        }
     }
 
     #[test]
@@ -1020,11 +1036,19 @@ mod tests {
         let peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
 
         assert!(
-            peer.ensure_resource_ip_is_allowed("10.0.0.1".parse().unwrap())
+            peer.ensure_internet_resource_ip_is_allowed("10.0.0.1".parse().unwrap())
                 .is_ok()
         );
         assert!(
-            peer.ensure_resource_ip_is_allowed("fc00::1".parse().unwrap())
+            peer.ensure_internet_resource_ip_is_allowed("169.254.169.254".parse().unwrap())
+                .is_ok()
+        );
+        assert!(
+            peer.ensure_internet_resource_ip_is_allowed("fc00::1".parse().unwrap())
+                .is_ok()
+        );
+        assert!(
+            peer.ensure_internet_resource_ip_is_allowed("fe80::1".parse().unwrap())
                 .is_ok()
         );
     }
@@ -1534,13 +1558,14 @@ mod tests {
         "100.64.0.3".parse().unwrap()
     }
 
-    fn excluded_internet_resource_ipv4s() -> [Ipv4Addr; 6] {
+    fn excluded_internet_resource_ipv4s() -> [Ipv4Addr; 7] {
         [
             other_client_tun_ipv4(),
             "100.96.0.1".parse().unwrap(),
             "10.0.0.1".parse().unwrap(),
             "172.16.0.1".parse().unwrap(),
             "192.168.0.1".parse().unwrap(),
+            "169.254.169.254".parse().unwrap(),
             "240.0.0.1".parse().unwrap(),
         ]
     }
