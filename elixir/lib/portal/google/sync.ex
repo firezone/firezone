@@ -204,7 +204,7 @@ defmodule Portal.Google.Sync do
   defp upsert_groups(directory, access_token, synced_at, opts \\ []) do
     Logger.debug("Streaming groups", google_directory_id: directory.id)
 
-    Google.APIClient.stream_groups(access_token, directory.domain, opts)
+    Google.APIClient.stream_groups(access_token, domain_opts(directory) ++ opts)
     |> Enum.reduce([], fn
       {:error, error}, _acc ->
         Logger.debug("Failed to stream groups",
@@ -592,7 +592,7 @@ defmodule Portal.Google.Sync do
 
         user_members =
           Enum.filter(members, fn m ->
-            m["type"] == "USER" and member_in_domain?(m, directory.domain)
+            m["type"] == "USER" and member_in_synced_domain?(m, directory)
           end)
 
         group_members = Enum.filter(members, fn m -> m["type"] == "GROUP" end)
@@ -660,22 +660,29 @@ defmodule Portal.Google.Sync do
     end
   end
 
+  defp domain_opts(%{sync_all_domains: true}), do: []
+  defp domain_opts(directory), do: [domain: directory.domain]
+
+  # When syncing every domain we let Google decide who belongs to the customer:
+  # batch_get_users skips the 403s it returns for outside users.
+  defp member_in_synced_domain?(_member, %{sync_all_domains: true}), do: true
+
+  defp member_in_synced_domain?(member, directory) do
+    case member["email"] do
+      email when is_binary(email) ->
+        String.ends_with?(String.downcase(email), "@#{String.downcase(directory.domain)}")
+
+      _ ->
+        false
+    end
+  end
+
   defp validate_ou_member!(user, ou_idp_id, directory) do
     unless user["id"] do
       raise Google.SyncError,
         error: {:validation, "user missing 'id' field in org unit #{ou_idp_id}"},
         directory_id: directory.id,
         step: :process_org_unit_member
-    end
-  end
-
-  defp member_in_domain?(member, domain) do
-    case member["email"] do
-      email when is_binary(email) ->
-        String.ends_with?(String.downcase(email), "@#{String.downcase(domain)}")
-
-      _ ->
-        false
     end
   end
 

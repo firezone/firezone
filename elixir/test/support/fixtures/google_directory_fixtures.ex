@@ -78,7 +78,8 @@ defmodule Portal.GoogleDirectoryFixtures do
         :error_message,
         :error_email_count,
         :group_sync_mode,
-        :orgunit_sync_enabled
+        :orgunit_sync_enabled,
+        :sync_all_domains
       ])
       |> Portal.Google.Directory.changeset()
       |> Portal.Repo.insert()

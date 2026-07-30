@@ -28,6 +28,7 @@ defmodule Portal.Google.Directory do
     field :legacy_service_account_key, :map, redact: true
     field :group_sync_mode, Ecto.Enum, values: [:all, :filtered, :disabled], default: :all
     field :orgunit_sync_enabled, :boolean, default: false
+    field :sync_all_domains, :boolean, default: false
 
     timestamps()
   end

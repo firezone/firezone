@@ -393,27 +393,7 @@ defmodule Portal.Google.APIClient do
     end
   end
 
-  @doc """
-  Streams active users from the Google Workspace directory.
-  Returns a stream that yields pages of users.
-  """
   @active_user_query "isSuspended=false isArchived=false"
-
-  def stream_users(access_token, domain) do
-    query =
-      URI.encode_query(%{
-        "customer" => "my_customer",
-        "domain" => domain,
-        "maxResults" => "500",
-        "projection" => "full",
-        "query" => @active_user_query
-      })
-
-    path = "/admin/directory/v1/users"
-
-    stream_pages(path, query, access_token, "users")
-    |> Stream.map(&filter_active_google_users_result/1)
-  end
 
   @doc """
   Streams groups from the Google Workspace directory.
@@ -423,11 +403,12 @@ defmodule Portal.Google.APIClient do
 
     * `:query` - optional query string passed directly to the API `query` parameter
       (e.g. `"email:firezone-sync*"` to filter by email prefix server-side)
+    * `:domain` - restrict to a single domain; omit to cover every domain in the
+      customer account
   """
-  def stream_groups(access_token, domain, opts \\ []) do
+  def stream_groups(access_token, opts \\ []) do
     params = %{
       "customer" => "my_customer",
-      "domain" => domain,
       "maxResults" => "200"
     }
 
@@ -435,6 +416,12 @@ defmodule Portal.Google.APIClient do
       case Keyword.get(opts, :query) do
         nil -> params
         q -> Map.put(params, "query", q)
+      end
+
+    params =
+      case Keyword.get(opts, :domain) do
+        nil -> params
+        domain -> Map.put(params, "domain", domain)
       end
 
     path = "/admin/directory/v1/groups"
@@ -479,8 +466,9 @@ defmodule Portal.Google.APIClient do
   Fetches multiple users by Google user ID using the Google API Batch endpoint.
 
   Chunks `user_ids` into groups of #{@batch_size} and issues one multipart HTTP POST
-  per chunk. Users that return 404 (deleted from Google Workspace) are silently
-  skipped. Returns `{:ok, [user_map]}` or `{:error, reason}` on transport/HTTP failure.
+  per chunk. Users that return 404 (deleted from Google Workspace) or 403 (outside
+  the customer, e.g. external group members) are silently skipped. Returns
+  `{:ok, [user_map]}` or `{:error, reason}` on transport/HTTP failure.
   """
   @spec batch_get_users(String.t(), [String.t()]) :: {:ok, [map()]} | {:error, term()}
   def batch_get_users(_access_token, []), do: {:ok, []}
@@ -585,16 +573,18 @@ defmodule Portal.Google.APIClient do
     #   HTTP/1.1 200 OK\r\n<response headers>\r\n\r\n<JSON body>
     with [_outer_headers, nested] <- String.split(part, "\r\n\r\n", parts: 2),
          [status_and_headers, json_body] <- String.split(nested, "\r\n\r\n", parts: 2),
-         status when status in [200, 404] <- extract_http_status(status_and_headers) do
+         status when status in [200, 403, 404] <- extract_http_status(status_and_headers) do
       case status do
-        404 ->
+        # 403 means the user is outside our customer, matching how get_group/2
+        # reports external sub-groups.
+        status when status in [403, 404] ->
           {:ok, []}
 
         200 ->
           decode_json_user(json_body)
       end
     else
-      status when is_integer(status) and status not in [200, 404] ->
+      status when is_integer(status) and status not in [200, 403, 404] ->
         log_batch_parse_issue("Skipping batch users response part with unexpected status",
           status: status
         )
