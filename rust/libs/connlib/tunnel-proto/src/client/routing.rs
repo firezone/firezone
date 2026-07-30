@@ -68,14 +68,6 @@ impl RoutingTables {
         internet_resource: Option<ResourceId>,
     ) -> Option<Route> {
         if let Some(entry) = self.dns.matches(destination, Ok(protocol)).cloned() {
-            tracing::trace!(
-                target: "tunnel_test_coverage",
-                %destination,
-                rid = %entry.resource_id,
-                domain = %entry.domain,
-                "Packet for DNS resource"
-            );
-
             return Some(Route::Gateway {
                 filter: entry.filter,
                 resource_id: entry.resource_id,
@@ -84,13 +76,6 @@ impl RoutingTables {
         }
 
         if let Some(entry) = self.cidr.matches(destination, Ok(protocol)).cloned() {
-            tracing::trace!(
-                target: "tunnel_test_coverage",
-                %destination,
-                rid = %entry.resource_id,
-                "Packet for CIDR resource"
-            );
-
             return Some(Route::Gateway {
                 filter: entry.filter,
                 resource_id: entry.resource_id,
@@ -99,13 +84,6 @@ impl RoutingTables {
         }
 
         let resource_id = internet_resource?;
-
-        tracing::trace!(
-            target: "tunnel_test_coverage",
-            %destination,
-            rid = %resource_id,
-            "Packet for Internet resource"
-        );
 
         Some(Route::Gateway {
             filter: FilterEngine::PermitAll,
