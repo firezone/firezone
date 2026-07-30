@@ -152,14 +152,36 @@ jobs:
         run: jq -s 'reduce .[] as $item ({}; . * $item)' ./${{ github.sha }}/*.bmf.json > bmf.json
       - name: Report results to bencher
         run: |
+          # A single threshold model applies to every benchmark that reports
+          # the measure, from the near-constant UDP series (CV ~0.1%) to the
+          # noisy relayed QUIC series (CV ~30%). A percentage test against the
+          # window mean is the only model that neither alerts on sub-percent
+          # dips of the former nor on routine swings of the latter.
           bencher run \
             --project firezone-1l75jv1z \
             --testbed github-actions \
             --file bmf.json \
             --adapter json \
             --branch "${{ env.BRANCH }}" \
+            --threshold-measure throughput \
+            --threshold-test percentage \
+            --threshold-min-sample-size 30 \
+            --threshold-max-sample-size 64 \
+            --threshold-window 604800 \
+            --threshold-lower-boundary 0.25 \
+            --thresholds-reset \
+            --error-on-alert \
             --github-actions ${{ secrets.GITHUB_TOKEN }} \
             --ci-only-on-alert
         env:
           BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
           BRANCH: "${{ github.ref_name }}"
+      - name: Notify Slack of performance alert
+        if: failure() && github.ref_name == 'main'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_PERF_ALERTS_WEBHOOK_URL }}
+        run: |
+          test -n "$SLACK_WEBHOOK_URL" || exit 0
+          curl -sS -X POST -H 'Content-Type: application/json' \
+            --data '{"text":"🐰 Bencher generated a performance alert on `main` (commit ${{ github.sha }}): https://bencher.dev/perf/firezone-1l75jv1z/alerts"}' \
+            "$SLACK_WEBHOOK_URL"
