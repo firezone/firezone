@@ -2,6 +2,8 @@ defmodule Portal.Resource do
   use Ecto.Schema
   import Ecto.Changeset
   import Portal.Changeset
+  alias Portal.Authentication
+  alias __MODULE__.Database
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -82,6 +84,47 @@ defmodule Portal.Resource do
       message: "Internet resource already exists for this account"
     )
   end
+
+  @doc """
+  Validates that the Resource type and its Site agree with each other.
+
+  The Internet Resource belongs to the system managed Internet Site, every other
+  Resource belongs to a Site managed by the account. The Site is only looked up
+  when the pairing can change, so unrelated updates do not hit the database.
+  """
+  @spec validate_site_matches_type(Ecto.Changeset.t(), Authentication.Subject.t()) ::
+          Ecto.Changeset.t()
+  def validate_site_matches_type(
+        %Ecto.Changeset{} = changeset,
+        %Authentication.Subject{} = subject
+      ) do
+    type = get_field(changeset, :type)
+    site_id = get_field(changeset, :site_id)
+
+    if is_nil(type) or is_nil(site_id) or not site_pairing_changed?(changeset) do
+      changeset
+    else
+      validate_site_pairing(changeset, type, Database.fetch_site(site_id, subject))
+    end
+  end
+
+  defp site_pairing_changed?(changeset) do
+    Map.has_key?(changeset.changes, :type) or Map.has_key?(changeset.changes, :site_id)
+  end
+
+  defp validate_site_pairing(changeset, :internet, %Portal.Site{managed_by: :system}) do
+    changeset
+  end
+
+  defp validate_site_pairing(changeset, :internet, _site) do
+    add_error(changeset, :site_id, "must be the Internet Site for an Internet Resource")
+  end
+
+  defp validate_site_pairing(changeset, _type, %Portal.Site{managed_by: :system}) do
+    add_error(changeset, :site_id, "cannot be the Internet Site")
+  end
+
+  defp validate_site_pairing(changeset, _type, _site), do: changeset
 
   defp validate_address_format(changeset) do
     if has_errors?(changeset, :type) or has_errors?(changeset, :address) do
@@ -514,5 +557,17 @@ defmodule Portal.Resource do
       end)
 
     Regex.compile!("\\A" <> body <> "\\z")
+  end
+
+  defmodule Database do
+    import Ecto.Query
+    alias Portal.Safe
+
+    @spec fetch_site(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: Portal.Site.t() | nil
+    def fetch_site(site_id, subject) do
+      from(s in Portal.Site, where: s.id == ^site_id)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one(fallback_to_primary: true)
+    end
   end
 end

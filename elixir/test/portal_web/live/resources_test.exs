@@ -296,6 +296,72 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "created successfully"
     end
 
+    test "does not offer the Internet Site", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      internet_site = internet_site_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      assert html =~ site.id
+      refute html =~ internet_site.id
+    end
+
+    test "rejects a resource submitted for the Internet Site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      internet_site = internet_site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      html =
+        render_submit(lv, "submit_resource_form", %{
+          "resource" => %{
+            "type" => "dns",
+            "name" => "App Example",
+            "address" => "app.example.com",
+            "site_id" => internet_site.id
+          }
+        })
+
+      assert html =~ "cannot be the Internet Site"
+      refute html =~ "created successfully"
+      assert Repo.aggregate(Resource, :count) == 0
+    end
+
+    test "rejects an internet resource submitted for a regular Site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      html =
+        render_submit(lv, "submit_resource_form", %{
+          "resource" => %{
+            "type" => "internet",
+            "name" => "Internet",
+            "site_id" => site.id
+          }
+        })
+
+      assert html =~ "must be the Internet Site for an Internet Resource"
+      refute html =~ "created successfully"
+      assert Repo.aggregate(Resource, :count) == 0
+    end
+
     test "manages DNS traffic restriction controls", %{
       conn: conn,
       account: account,
@@ -927,6 +993,31 @@ defmodule PortalWeb.ResourcesTest do
 
       assert html =~ "updated successfully"
       assert html =~ "Updated Resource Name"
+    end
+
+    test "rejects moving a resource to the Internet Site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      internet_site = internet_site_fixture(account: account)
+      resource = resource_fixture(account: account, site: site)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}/edit")
+
+      html =
+        render_submit(lv, "submit_resource_form", %{
+          "resource" => %{"site_id" => internet_site.id}
+        })
+
+      assert html =~ "cannot be the Internet Site"
+      refute html =~ "updated successfully"
+
+      assert Repo.get_by!(Resource, id: resource.id, account_id: account.id).site_id == site.id
     end
 
     test "shows confirm delete then deletes resource", %{

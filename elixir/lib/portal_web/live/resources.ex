@@ -110,7 +110,7 @@ defmodule PortalWeb.Resources do
 
   def handle_params(params, uri, %{assigns: %{live_action: :new}} = socket) do
     sites = Database.all_sites(socket.assigns.subject)
-    changeset = Database.new_resource(socket.assigns.account)
+    changeset = Database.new_resource(socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
 
     {:noreply,
@@ -131,7 +131,7 @@ defmodule PortalWeb.Resources do
 
       resource ->
         sites = Database.all_sites(socket.assigns.subject)
-        changeset = Database.change_resource(resource)
+        changeset = Database.change_resource(resource, socket.assigns.subject)
         selected_clients = Database.list_pool_members(resource, socket.assigns.subject)
 
         {:noreply,
@@ -712,9 +712,9 @@ defmodule PortalWeb.Resources do
 
     changeset =
       if socket.assigns.resource_panel.view == :new_form do
-        Database.new_resource(socket.assigns.account, attrs)
+        Database.new_resource(socket.assigns.subject, attrs)
       else
-        Database.change_resource(socket.assigns.selected_resource, attrs)
+        Database.change_resource(socket.assigns.selected_resource, socket.assigns.subject, attrs)
       end
       |> Map.put(:action, :validate)
 
@@ -1455,12 +1455,13 @@ defmodule PortalWeb.Resources do
       |> Safe.all()
     end
 
-    def new_resource(account, attrs \\ %{}) do
+    def new_resource(subject, attrs \\ %{}) do
       changeset =
         %Resource{}
         |> cast(attrs, [:name, :address, :address_description, :type, :ip_stack, :site_id])
-        |> put_change(:account_id, account.id)
+        |> put_change(:account_id, subject.account.id)
         |> Resource.changeset()
+        |> Resource.validate_site_matches_type(subject)
 
       if get_field(changeset, :type) == :static_device_pool do
         validate_required(changeset, [:name])
@@ -1471,7 +1472,7 @@ defmodule PortalWeb.Resources do
 
     def create_resource(attrs, selected_clients, subject) do
       changeset =
-        new_resource(subject.account, attrs)
+        new_resource(subject, attrs)
         |> maybe_validate_required_fields()
         |> Components.Database.validate_static_device_pool_feature_enabled(subject.account)
 
@@ -1501,13 +1502,14 @@ defmodule PortalWeb.Resources do
       end
     end
 
-    def change_resource(resource, attrs \\ %{}) do
+    def change_resource(resource, subject, attrs \\ %{}) do
       update_fields = ~w[address address_description name type ip_stack site_id]a
 
       changeset =
         resource
         |> cast(attrs, update_fields)
         |> Resource.changeset()
+        |> Resource.validate_site_matches_type(subject)
 
       if get_field(changeset, :type) == :static_device_pool do
         validate_required(changeset, [:name, :type])
@@ -1518,7 +1520,7 @@ defmodule PortalWeb.Resources do
 
     def update_resource(resource, attrs, selected_clients, subject) do
       changeset =
-        change_resource(resource, attrs)
+        change_resource(resource, subject, attrs)
         |> Components.Database.validate_static_device_pool_feature_enabled(subject.account)
 
       with {:ok, validated_clients} <-

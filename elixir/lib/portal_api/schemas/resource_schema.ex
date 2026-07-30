@@ -123,7 +123,8 @@ defmodule PortalAPI.Schemas.Resource do
             site_id: %Schema{
               title: "SiteID",
               description:
-                "Site to connect the Resource to. Required for all types except `static_device_pool`.",
+                "Site to connect the Resource to. Required for all types except `static_device_pool`. " <>
+                  "The Internet Site is reserved for the Internet Resource and cannot be used.",
               type: :string,
               format: :uuid,
               nullable: true
@@ -195,7 +196,8 @@ defmodule PortalAPI.Schemas.Resource do
             site_id: %Schema{
               title: "SiteID",
               description:
-                "Site to connect the Resource to. Required for all types except `static_device_pool`.",
+                "Site to connect the Resource to. Required for all types except `static_device_pool`. " <>
+                  "The Internet Site is reserved for the Internet Resource and cannot be used.",
               type: :string,
               format: :uuid,
               nullable: true
