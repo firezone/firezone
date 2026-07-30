@@ -16,6 +16,7 @@ use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use io::Io;
+use prefetch::PrefetchExt as _;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
@@ -29,6 +30,7 @@ use tun::Tun;
 use tunnel_proto::unroutable_packet::RoutingError;
 
 mod io;
+mod prefetch;
 mod sockets;
 mod utils;
 
@@ -276,7 +278,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut packets) = device {
-                    for packet in packets.drain() {
+                    for packet in packets.drain().prefetch_ahead::<2>() {
                         match self
                             .role_state
                             .handle_tun_input(packet, now, self.io.gso_queue_mut())
@@ -298,7 +300,11 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
+                    for received in batches
+                        .iter_mut()
+                        .flat_map(|batch| batch.drain())
+                        .prefetch_ahead::<2>()
+                    {
                         self.packet_counter.add(
                             1,
                             &[
@@ -476,7 +482,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut packets) = device {
-                    for packet in packets.drain() {
+                    for packet in packets.drain().prefetch_ahead::<2>() {
                         match self
                             .role_state
                             .handle_tun_input(packet, now, self.io.gso_queue_mut())
@@ -511,7 +517,11 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
+                    for received in batches
+                        .iter_mut()
+                        .flat_map(|batch| batch.drain())
+                        .prefetch_ahead::<2>()
+                    {
                         self.packet_counter.add(
                             1,
                             &[
