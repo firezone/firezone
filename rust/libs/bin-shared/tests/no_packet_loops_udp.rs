@@ -2,7 +2,6 @@
 
 use bin_shared::{TunDeviceManager, platform::UdpSocketFactory};
 use bufferpool::BufferPool;
-use gat_lending_iterator::LendingIterator as _;
 use ip_network::Ipv4Network;
 use ip_packet::Ecn;
 use socket_factory::DatagramOut;
@@ -60,7 +59,7 @@ async fn no_packet_loops_udp() {
         .unwrap();
 
     let task = async {
-        socket.recv_from().await.unwrap().next().unwrap();
+        socket.recv_from().await.unwrap().drain().next().unwrap();
     };
 
     tokio::time::timeout(Duration::from_secs(10), task)

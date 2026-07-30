@@ -15,7 +15,6 @@ use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
-use gat_lending_iterator::LendingIterator;
 use io::Io;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -298,8 +297,8 @@ impl ClientTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(mut packets) = network {
-                    while let Some(received) = packets.next() {
+                if let Some(mut batches) = network {
+                    for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
                         self.packet_counter.add(
                             1,
                             &[
@@ -511,8 +510,8 @@ impl GatewayTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(mut packets) = network {
-                    while let Some(received) = packets.next() {
+                if let Some(mut batches) = network {
+                    for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
                         self.packet_counter.add(
                             1,
                             &[

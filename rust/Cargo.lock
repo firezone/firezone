@@ -691,7 +691,6 @@ dependencies = [
  "dashmap",
  "dns-types",
  "futures",
- "gat-lending-iterator",
  "hex",
  "hex-literal",
  "hmac 0.13.0",
@@ -2531,7 +2530,6 @@ dependencies = [
  "bytecodec",
  "clap",
  "futures",
- "gat-lending-iterator",
  "ip-packet",
  "known-dirs",
  "logging",
@@ -2897,12 +2895,6 @@ dependencies = [
  "tracing-subscriber",
  "tunnel-proto",
 ]
-
-[[package]]
-name = "gat-lending-iterator"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "750117b6c895c40a8feee97fc95da9b5eb4b531ad772af2640a810ea1e4d2102"
 
 [[package]]
 name = "gdk"
@@ -6979,7 +6971,6 @@ dependencies = [
  "anyhow-ext",
  "bufferpool",
  "derive_more",
- "gat-lending-iterator",
  "ip-packet",
  "libc",
  "memchr",
@@ -8480,7 +8471,6 @@ dependencies = [
  "eventloop-budget",
  "futures",
  "futures-bounded",
- "gat-lending-iterator",
  "http-client",
  "ip-packet",
  "itertools",

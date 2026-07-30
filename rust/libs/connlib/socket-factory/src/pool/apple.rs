@@ -43,7 +43,7 @@ use anyhow::Result;
 use parking_lot::{Mutex, MutexGuard};
 use quinn_udp::UdpSockRef;
 
-use crate::{DatagramSegmentIter, RecvBuffers};
+use crate::{DatagramBatch, RecvBuffers};
 
 use super::{OwnedSocket, Socket, poll_recv_ready};
 
@@ -103,7 +103,7 @@ struct Inner {
     flow_sockets_supported: bool,
     buffer_sizes: Option<(usize, usize)>,
     /// Datagrams rescued from an evicted socket's receive buffer just before closing it.
-    drained: VecDeque<DatagramSegmentIter>,
+    drained: VecDeque<DatagramBatch>,
     /// Waker of the receive task; woken when new sockets or drained datagrams appear.
     recv_waker: Option<Waker>,
     /// Counter to rotate the polling order of sockets, ensuring receive fairness.
@@ -170,9 +170,9 @@ impl SocketPool {
         &self,
         cx: &mut Context<'_>,
         mut try_recv: F,
-    ) -> Poll<Result<DatagramSegmentIter>>
+    ) -> Poll<Result<DatagramBatch>>
     where
-        F: FnMut(Socket<'_>) -> io::Result<DatagramSegmentIter>,
+        F: FnMut(Socket<'_>) -> io::Result<DatagramBatch>,
     {
         let mut inner = self.lock();
 
@@ -184,8 +184,8 @@ impl SocketPool {
         }
 
         // Datagrams rescued from an evicted flow socket are the oldest; yield them first.
-        if let Some(iter) = inner.drained.pop_front() {
-            return Poll::Ready(Ok(iter));
+        if let Some(batch) = inner.drained.pop_front() {
+            return Poll::Ready(Ok(batch));
         }
 
         // Rotate the polling order by one slot per call so no socket can starve the others
@@ -429,12 +429,7 @@ fn eviction_rank(last_received: Option<Instant>, created_at: Instant) -> (bool, 
 /// A connected socket captures inbound for its 4-tuple; whatever is already queued would be
 /// discarded by the kernel on close. Packets arriving after the close are delivered to the
 /// catch-all socket instead.
-fn drain(
-    victim: &Flow,
-    port: u16,
-    recv_buffers: &RecvBuffers,
-    out: &mut VecDeque<DatagramSegmentIter>,
-) {
+fn drain(victim: &Flow, port: u16, recv_buffers: &RecvBuffers, out: &mut VecDeque<DatagramBatch>) {
     let socket = victim.socket.as_socket();
 
     loop {
@@ -449,12 +444,7 @@ fn drain(
             }
         };
 
-        out.push_back(DatagramSegmentIter::new(
-            batch.buffers,
-            batch.metas,
-            port,
-            len,
-        ));
+        out.push_back(DatagramBatch::new(batch.buffers, batch.metas, port, len));
     }
 }
 

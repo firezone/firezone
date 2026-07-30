@@ -1,16 +1,15 @@
 use crate::otel;
 use anyhow::{Context as _, ErrorExt as _, Result};
+use bufferpool::{Buffer, BufferPool, VecBuf};
 use futures::{SinkExt, ready};
-use gat_lending_iterator::LendingIterator;
-use socket_factory::{DatagramIn, DatagramSegmentIter, SocketFactory, UdpSocket};
-use socket_factory::{DatagramOut, PerfUdpSocket};
+use socket_factory::{DatagramBatch, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket};
 use std::collections::VecDeque;
 use std::env::VarError;
 use std::time::{Duration, Instant};
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    sync::Arc,
+    sync::{Arc, LazyLock},
     task::{Context, Poll},
 };
 use tokio::sync::mpsc;
@@ -46,6 +45,14 @@ const UDP_RECV_BATCH_LIMIT: usize = cfg_select! {
     target_os = "android" => { 1 }
     _ => { 8 }
 };
+
+/// Pool for the `Vec`s that collect one poll's worth of received datagram batches.
+///
+/// Sized to hold a full drain of both sockets, so collecting into it never reallocates.
+/// Dropping the collection after processing returns it to the pool, keeping the
+/// receive path free of allocations.
+static BATCHES_POOL: LazyLock<BufferPool<VecBuf<DatagramBatch>>> =
+    LazyLock::new(|| BufferPool::new(2 * UDP_RECV_BATCH_LIMIT, "udp-recv-batches"));
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);
@@ -121,25 +128,23 @@ impl Sockets {
         Ok(())
     }
 
-    pub fn poll_recv_from(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>> {
-        let mut iter = PacketIter::new();
+    /// Polls for batches of received UDP datagrams, at most [`UDP_RECV_BATCH_LIMIT`] per socket.
+    pub fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<Buffer<VecBuf<DatagramBatch>>> {
+        let mut batches = BATCHES_POOL.pull();
 
-        if let Some(Poll::Ready(packets)) = self.socket_v4.as_mut().map(|s| s.poll_recv_from(cx)) {
-            iter.ip4 = Some(packets);
+        if let Some(socket) = self.socket_v4.as_mut() {
+            socket.poll_recv_from(cx, &mut batches);
         }
 
-        if let Some(Poll::Ready(packets)) = self.socket_v6.as_mut().map(|s| s.poll_recv_from(cx)) {
-            iter.ip6 = Some(packets);
+        if let Some(socket) = self.socket_v6.as_mut() {
+            socket.poll_recv_from(cx, &mut batches);
         }
 
-        if iter.is_empty() {
+        if batches.is_empty() {
             return Poll::Pending;
         }
 
-        Poll::Ready(iter)
+        Poll::Ready(batches)
     }
 
     pub fn poll_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {
@@ -160,74 +165,6 @@ impl Sockets {
         }
 
         Poll::Pending
-    }
-}
-
-struct PacketIter<T4, T6> {
-    ip4: Option<T4>,
-    ip6: Option<T6>,
-}
-
-impl<T4, T6> PacketIter<T4, T6> {
-    fn new() -> Self {
-        Self {
-            ip4: None,
-            ip6: None,
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.ip4.is_none() && self.ip6.is_none()
-    }
-}
-
-impl<T4, T6> LendingIterator for PacketIter<T4, T6>
-where
-    T4: 'static + for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>,
-    T6: 'static + for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>,
-{
-    type Item<'a> = DatagramIn<'a>;
-
-    fn next(&mut self) -> Option<Self::Item<'_>> {
-        if let Some(packet) = self.ip4.as_mut().and_then(|i| i.next()) {
-            return Some(packet);
-        }
-
-        if let Some(packet) = self.ip6.as_mut().and_then(|i| i.next()) {
-            return Some(packet);
-        }
-
-        None
-    }
-}
-
-/// Chains up to [`UDP_RECV_BATCH_LIMIT`] datagram batches from a single `poll` into one iterator.
-///
-/// A linked list (not a `Vec`) so `next` can fall back from the drained `current` batch to `rest` as
-/// separate fields — the disjoint borrow that lets a runtime-length chain of lending iterators
-/// compile on stable Rust.
-struct ChainedDatagrams {
-    current: DatagramSegmentIter,
-    rest: Option<Box<ChainedDatagrams>>,
-}
-
-impl ChainedDatagrams {
-    fn new(batches: Vec<DatagramSegmentIter>) -> Option<Self> {
-        let mut rest = None;
-
-        for current in batches.into_iter().rev() {
-            rest = Some(Box::new(ChainedDatagrams { current, rest }));
-        }
-
-        rest.map(|boxed| *boxed)
-    }
-}
-
-impl LendingIterator for ChainedDatagrams {
-    type Item<'a> = DatagramIn<'a>;
-
-    fn next(&mut self) -> Option<Self::Item<'_>> {
-        self.current.next().or_else(|| self.rest.as_mut()?.next())
     }
 }
 
@@ -288,7 +225,7 @@ struct ThreadedUdpSocket {
 
 struct Channels {
     outbound_tx: PollSender<DatagramOut>,
-    inbound_rx: mpsc::Receiver<DatagramSegmentIter>,
+    inbound_rx: mpsc::Receiver<DatagramBatch>,
     /// Send/receive errors, plus a final [`UdpSocketThreadStopped`] when a thread dies.
     error_rx: mpsc::Receiver<anyhow::Error>,
 }
@@ -418,8 +355,8 @@ impl ThreadedUdpSocket {
 
                     async move {
                         loop {
-                            let datagrams = match socket.recv_from().await {
-                                Ok(datagrams) => datagrams,
+                            let batch = match socket.recv_from().await {
+                                Ok(batch) => batch,
                                 Err(e) => {
                                     if let Some(io) = e.any_downcast_ref::<io::Error>() {
                                         io_error_counter.add(
@@ -444,7 +381,7 @@ impl ThreadedUdpSocket {
                                 }
                             };
 
-                            if inbound_tx.send(datagrams).await.is_err() {
+                            if inbound_tx.send(batch).await.is_err() {
                                 tracing::debug!(
                                     "Channel for inbound datagrams closed; exiting UDP recv task"
                                 );
@@ -493,26 +430,20 @@ impl ThreadedUdpSocket {
         Ok(())
     }
 
-    fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<ChainedDatagrams> {
+    /// Appends the batches received from the socket thread to `batches`, at most
+    /// [`UDP_RECV_BATCH_LIMIT`] per call.
+    ///
+    /// Appending nothing means the channel is either empty or closed, i.e. the thread
+    /// stopped (reported via `poll_error`); no waker is registered on close, since
+    /// we'll be shutting down anyway.
+    fn poll_recv_from(&mut self, cx: &mut Context<'_>, batches: &mut Vec<DatagramBatch>) {
         let Some(channels) = self.channels.as_mut() else {
-            return Poll::Pending;
+            return;
         };
 
-        let mut batches = Vec::with_capacity(UDP_RECV_BATCH_LIMIT);
-        ready!(
-            channels
-                .inbound_rx
-                .poll_recv_many(cx, &mut batches, UDP_RECV_BATCH_LIMIT)
-        );
-
-        let Some(datagrams) = ChainedDatagrams::new(batches) else {
-            // An empty read means a closed channel, i.e. the thread stopped (reported via
-            // `poll_error`). `Pending` avoids dropping the other socket's datagrams; no waker on
-            // close, since we'll be shutting down anyway.
-            return Poll::Pending;
-        };
-
-        Poll::Ready(datagrams)
+        let _ = channels
+            .inbound_rx
+            .poll_recv_many(cx, batches, UDP_RECV_BATCH_LIMIT);
     }
 
     fn poll_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {

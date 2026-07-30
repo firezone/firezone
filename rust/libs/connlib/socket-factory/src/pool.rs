@@ -25,7 +25,7 @@ use std::{
 use anyhow::{Context as _, Result};
 use quinn_udp::UdpSockRef;
 
-use crate::{DatagramSegmentIter, apply_buffer_size};
+use crate::{DatagramBatch, apply_buffer_size};
 
 /// A borrowed handle to a UDP socket and its quinn state - the currency the send and receive
 /// paths operate on, regardless of which [`SocketPool`] member it came from.
@@ -135,9 +135,9 @@ pub(crate) fn poll_recv_ready<F>(
     cx: &mut Context<'_>,
     socket: Socket<'_>,
     try_recv: &mut F,
-) -> Poll<Result<DatagramSegmentIter>>
+) -> Poll<Result<DatagramBatch>>
 where
-    F: FnMut(Socket<'_>) -> io::Result<DatagramSegmentIter>,
+    F: FnMut(Socket<'_>) -> io::Result<DatagramBatch>,
 {
     loop {
         match socket.inner.poll_recv_ready(cx) {

@@ -13,7 +13,6 @@ dns-types = { workspace = true }
 eventloop-budget = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true, features = ["tokio"] }
-gat-lending-iterator = { workspace = true }
 http-client = { workspace = true }
 ip-packet = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }

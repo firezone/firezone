@@ -1,4 +1,4 @@
-use crate::DatagramSegmentIter;
+use crate::DatagramBatch;
 use bufferpool::Buffer;
 use std::mem::size_of;
 use std::time::Duration;
@@ -26,14 +26,14 @@ pub const RECV_BUFFER_SIZE: usize = recv_buffer_size_for_service_gap(
     RECV_SERVICE_GAP.saturating_mul(RECV_SERVICE_GAP_WINDOWS as u32),
 );
 
-/// Worst-case heap that a single received batch ([`DatagramSegmentIter`]) pins.
+/// Worst-case heap that a single received batch ([`DatagramBatch`]) pins.
 ///
 /// A batch owns [`quinn_udp::BATCH_SIZE`] receive buffers plus their handles and metadata. Each buffer
 /// is sized to hold a full coalesced batch - up to `MAX_RECV_BUFFER_SEGMENTS` datagrams of at most
 /// [`ip_packet::MAX_FZ_PAYLOAD`] bytes - so on Linux / Android and Windows a single buffer is 64x the
 /// size of the datagram it might actually carry. That factor dominates this figure even on Windows,
 /// where Quinn currently leaves URO disabled but allocates URO-capable buffers.
-pub const MAX_RECV_BATCH_MEMORY: usize = size_of::<DatagramSegmentIter>()
+pub const MAX_RECV_BATCH_MEMORY: usize = size_of::<DatagramBatch>()
     + quinn_udp::BATCH_SIZE
         * (ip_packet::MAX_FZ_PAYLOAD * MAX_RECV_BUFFER_SEGMENTS
             + size_of::<Buffer<Vec<u8>>>()
