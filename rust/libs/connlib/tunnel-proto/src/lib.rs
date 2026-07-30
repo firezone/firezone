@@ -169,4 +169,16 @@ mod unittests {
     fn mldv2_routers_are_not_peers() {
         assert!(!is_peer("ff02::16".parse().unwrap()))
     }
+
+    #[test]
+    fn tunnel_ips_of_both_families_are_peers() {
+        assert!(is_peer("100.64.0.3".parse().unwrap()));
+        assert!(is_peer("fd00:2021:1111::3".parse().unwrap()));
+    }
+
+    #[test]
+    fn addresses_outside_the_tunnel_ranges_are_not_peers() {
+        assert!(!is_peer("100.96.0.1".parse().unwrap()));
+        assert!(!is_peer("fd00:2021:1111:8000::1".parse().unwrap()));
+    }
 }
