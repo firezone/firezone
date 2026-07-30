@@ -62,6 +62,25 @@ const IPV6_UNIQUE_LOCAL: Ipv6Network =
         Ok(n) => n,
         Err(_) => unreachable!(),
     };
+const IPV6_SITE_LOCAL: Ipv6Network =
+    match Ipv6Network::new(Ipv6Addr::new(0xfec0, 0, 0, 0, 0, 0, 0, 0), 10) {
+        Ok(n) => n,
+        Err(_) => unreachable!(),
+    };
+const IPV6_IPV4_COMPATIBLE: Ipv6Network = match Ipv6Network::new(Ipv6Addr::UNSPECIFIED, 96) {
+    Ok(n) => n,
+    Err(_) => unreachable!(),
+};
+const IPV6_IPV4_MAPPED: Ipv6Network =
+    match Ipv6Network::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0, 0), 96) {
+        Ok(n) => n,
+        Err(_) => unreachable!(),
+    };
+const IPV6_IPV4_TRANSLATED: Ipv6Network =
+    match Ipv6Network::new(Ipv6Addr::new(0, 0, 0, 0, 0xffff, 0, 0, 0), 96) {
+        Ok(n) => n,
+        Err(_) => unreachable!(),
+    };
 
 pub use client::dns_config::DnsMapping;
 pub use client::{ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
@@ -189,7 +208,14 @@ pub(crate) fn is_internet_resource_ip(ip: IpAddr) -> bool {
                 && !IPV4_CGNAT.contains(v4)
                 && !IPV4_RESERVED.contains(v4)
         }
-        IpAddr::V6(v6) => !v6.is_unicast_link_local() && !IPV6_UNIQUE_LOCAL.contains(v6),
+        IpAddr::V6(v6) => {
+            !v6.is_unicast_link_local()
+                && !IPV6_UNIQUE_LOCAL.contains(v6)
+                && !IPV6_SITE_LOCAL.contains(v6)
+                && !IPV6_IPV4_COMPATIBLE.contains(v6)
+                && !IPV6_IPV4_MAPPED.contains(v6)
+                && !IPV6_IPV4_TRANSLATED.contains(v6)
+        }
     }
 }
 
@@ -215,7 +241,7 @@ mod unittests {
     }
 
     #[test]
-    fn private_shared_reserved_and_local_ips_are_not_internet_resource_ips() {
+    fn special_use_ips_are_not_internet_resource_ips() {
         for ip in [
             "10.0.0.1",
             "172.16.0.1",
@@ -229,6 +255,13 @@ mod unittests {
             "fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
             "fe80::1",
             "febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+            "fec0::1",
+            "feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+            "::",
+            "::1",
+            "::169.254.169.254",
+            "::ffff:169.254.169.254",
+            "::ffff:0:169.254.169.254",
             "fd00:2021:1111::3",
             "fd00:2021:1111:8000::1",
         ] {

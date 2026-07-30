@@ -1007,7 +1007,14 @@ mod tests {
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(internet_resource(), None, now);
 
-        for local in ["fc00::1", "fe80::1"] {
+        for local in [
+            "fc00::1",
+            "fe80::1",
+            "fec0::1",
+            "::169.254.169.254",
+            "::ffff:169.254.169.254",
+            "::ffff:0:169.254.169.254",
+        ] {
             let local = local.parse::<Ipv6Addr>().unwrap();
             let outbound =
                 ip_packet::make::udp_packet(client_tun_ipv6(), local, 5401, 80, &[0u8; 8]).unwrap();
@@ -1032,7 +1039,7 @@ mod tests {
     }
 
     #[test]
-    fn normal_resource_gateway_allows_private_ips() {
+    fn normal_resource_gateway_allows_ips_excluded_from_internet_resource() {
         let peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
 
         assert!(
@@ -1050,6 +1057,16 @@ mod tests {
         assert!(
             peer.ensure_internet_resource_ip_is_allowed("fe80::1".parse().unwrap())
                 .is_ok()
+        );
+        assert!(
+            peer.ensure_internet_resource_ip_is_allowed("fec0::1".parse().unwrap())
+                .is_ok()
+        );
+        assert!(
+            peer.ensure_internet_resource_ip_is_allowed(
+                "::ffff:0:169.254.169.254".parse().unwrap()
+            )
+            .is_ok()
         );
     }
 
