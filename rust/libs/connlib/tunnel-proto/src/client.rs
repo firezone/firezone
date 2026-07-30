@@ -598,7 +598,31 @@ impl ClientState {
         }
 
         let dst = packet.destination();
-        let dst_proto = packet.destination_protocol()?;
+        let dst_proto = match packet.destination_protocol() {
+            Ok(dst_proto) => dst_proto,
+            // An ICMP error has no port or echo identifier of its own and so fails to
+            // classify. It belongs to the flow of the packet that failed, and that
+            // flow decides where it goes.
+            Err(e) => {
+                let Some(cid) = client_for_icmp_error(&self.clients, &packet) else {
+                    return Err(e.into());
+                };
+
+                // The peer opened the flow the error refers to, so we are its responder.
+                flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
+
+                encapsulate_or_buffer(
+                    packet,
+                    cid.into(),
+                    now,
+                    &mut self.node,
+                    provider,
+                    &mut self.pending_routed_packets,
+                )?;
+
+                return Ok(());
+            }
+        };
         let pending_authorizations = &mut self.pending_authorizations;
         let resources = &self.resources_by_id;
 
@@ -2686,6 +2710,37 @@ fn is_llmnr(dst: IpAddr) -> bool {
         IpAddr::V4(ip) => ip == LLMNR_IPV4,
         IpAddr::V6(ip) => ip == LLMNR_IPV6,
     }
+}
+
+/// The Client an ICMP error follows, if it refers to a flow we have with them.
+///
+/// Only Clients are considered: an error bound for a Gateway is not covered by a
+/// client-to-client flow and stays unroutable.
+///
+/// In tests, a malicious client can be configured to send one for a flow it has no
+/// part in, keeping the target Client's check for errors referencing an unknown
+/// flow exercised.
+fn client_for_icmp_error(
+    clients: &PeerStore<ClientId, ClientOnClient>,
+    packet: &IpPacket,
+) -> Option<ClientId> {
+    if !packet.icmp_error().is_ok_and(|error| error.is_some()) {
+        return None;
+    }
+
+    let (cid, peer) = clients.peer_by_ip(packet.destination())?;
+
+    if peer.is_known_outbound_error(packet) {
+        return Some(cid);
+    }
+
+    #[cfg(any(test, feature = "malicious-behaviour"))]
+    if crate::malicious_behaviour::send_untracked_icmp_errors() {
+        tracing::debug!("Malicious client: sending ICMP error for an untracked flow");
+        return Some(cid);
+    }
+
+    None
 }
 
 /// Whether `filter` permits a packet with the given protocol.

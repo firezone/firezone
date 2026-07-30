@@ -877,8 +877,9 @@ impl TunnelTest {
                     continue;
                 };
 
-                let Some(transmit) = client.exec_mut(|sim| sim.on_received_packet(packet, now))
-                else {
+                let Some(transmit) = client.exec_mut(|sim| {
+                    sim.on_received_packet(packet, &ref_state.icmp_error_hosts, now)
+                }) else {
                     continue;
                 };
 
@@ -972,7 +973,9 @@ impl TunnelTest {
 
             // Handle the client's `Transmit`s.
             while let Some(transmit) = client.poll_inbox(now) {
-                let Some(transmit) = client.exec_mut(|c| c.receive(transmit, now)) else {
+                let Some(transmit) =
+                    client.exec_mut(|c| c.receive(transmit, icmp_error_hosts, now))
+                else {
                     continue;
                 };
 

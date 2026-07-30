@@ -247,6 +247,11 @@ impl ClientOnClient {
         self.conn_track.outbound_flow_originator(packet)
     }
 
+    /// Whether an ICMP error we are about to send refers to a flow with this peer.
+    pub(crate) fn is_known_outbound_error(&self, packet: &IpPacket) -> bool {
+        self.conn_track.is_known_outbound_error(packet)
+    }
+
     /// Decide whether an inbound packet from this peer is admitted.
     pub(crate) fn ensure_allowed_inbound(
         &mut self,
@@ -266,7 +271,7 @@ impl ClientOnClient {
 
         if packet.icmp_error().is_ok_and(|e| e.is_some()) {
             anyhow::ensure!(
-                self.conn_track.is_known_flow(&packet),
+                self.conn_track.is_known_inbound_flow(&packet),
                 "Dropping ICMP error from peer referencing an unknown flow"
             );
 

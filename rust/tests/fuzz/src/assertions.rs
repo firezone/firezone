@@ -288,10 +288,17 @@ fn assert_packets_properties<T, U>(
                 // it when the previous packet on this connection was sent at
                 // least `MIN_IDLE_FOR_REKEY_DROP` earlier.
                 //
+                // Only packets routed through `on_packet` are recorded, so a client
+                // whose connection was established by other traffic (a DNS resource
+                // query, say) has no previous packet at all. That cannot rule the
+                // dead window out either, and a genuinely new connection buffers
+                // rather than drops (`snownet::StillConnecting`), so treat a missing
+                // record the same as a long-idle one.
+                //
                 // TODO: Delete once ICEless is the default.
                 if ref_client
                     .last_packet_sent_to_gateway_before(*gateway, *sent_at)
-                    .is_some_and(|prev| sent_at.duration_since(prev) >= MIN_IDLE_FOR_REKEY_DROP)
+                    .is_none_or(|prev| sent_at.duration_since(prev) >= MIN_IDLE_FOR_REKEY_DROP)
                 {
                     tracing::debug!(target: "assertions", %cid, "Tolerating {packet_protocol} packet dropped in the WireGuard re-key window");
                     num_expected_handshakes -= 1;

@@ -2,11 +2,10 @@ use super::{
     dns_records::DnsRecords,
     dns_server_resource::{TcpDnsServerResource, UdpDnsServerResource},
     echo::echo_reply,
-    icmp_error_hosts::{IcmpError, IcmpErrorHosts},
+    icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
 };
-use anyhow::{Result, bail};
 use connlib_model::{GatewayId, RelayId};
 use dns_types::DomainName;
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
@@ -14,7 +13,7 @@ use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet},
     iter,
-    net::{IpAddr, SocketAddr},
+    net::SocketAddr,
     time::Instant,
 };
 use tunnel_proto::GatewayState;
@@ -340,61 +339,4 @@ impl ExecMutScope for SimGateway {
     type Guard = ();
 
     fn enter(&self) -> Self::Guard {}
-}
-
-fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<IpPacket> {
-    use ip_packet::{icmpv4, icmpv6};
-
-    let src = packet.destination();
-    let dst = packet.source();
-    let payload = packet.packet();
-
-    let reply = match (src, dst) {
-        (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            let icmp_type = match error {
-                IcmpError::Network => {
-                    Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Network)
-                }
-                IcmpError::Host => {
-                    Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Host)
-                }
-                IcmpError::Port => {
-                    Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Port)
-                }
-                IcmpError::PacketTooBig { mtu } => Icmpv4Type::DestinationUnreachable(
-                    icmpv4::DestUnreachableHeader::FragmentationNeeded {
-                        next_hop_mtu: u16::try_from(mtu).unwrap_or(u16::MAX),
-                    },
-                ),
-                IcmpError::TimeExceeded { code } => {
-                    Icmpv4Type::TimeExceeded(icmpv4::TimeExceededCode(code))
-                }
-            };
-
-            ip_packet::make::icmpv4_packet(src, dst, 20, icmp_type, payload)?
-        }
-        (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            let icmp_type = match error {
-                IcmpError::Network => {
-                    Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::NoRoute)
-                }
-                IcmpError::Host => {
-                    Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::NoRoute)
-                }
-                IcmpError::Port => {
-                    Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::Port)
-                }
-                IcmpError::PacketTooBig { mtu } => Icmpv6Type::PacketTooBig { mtu },
-                IcmpError::TimeExceeded { code } => {
-                    Icmpv6Type::TimeExceeded(icmpv6::TimeExceededCode(code))
-                }
-            };
-
-            ip_packet::make::icmpv6_packet(src, dst, 20, icmp_type, payload)?
-        }
-        (IpAddr::V6(_), IpAddr::V4(_)) => bail!("Invalid IP combination"),
-        (IpAddr::V4(_), IpAddr::V6(_)) => bail!("Invalid IP combination"),
-    };
-
-    Ok(reply)
 }
