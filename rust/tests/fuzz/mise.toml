@@ -60,7 +60,7 @@ if [ "$target" = "tunnel-proto" ]; then
   set -- -max_len=8192 -len_control=0 "$@"
 fi
 
-cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$target" -- "$@"
+./interruptible.sh cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$target" -- "$@"
 '''
 
 [tasks.cmin]
@@ -76,7 +76,7 @@ env = { ASAN_OPTIONS = "detect_leaks=0" }
 run = '''
 set -euo pipefail
 
-cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target"
+./interruptible.sh cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target"
 '''
 
 [tasks.pack-corpus]
@@ -140,7 +140,7 @@ arg "<target>"
 arg "<testcase>"
 '''
 raw = true
-run = 'cargo fuzz tmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target" "$usage_testcase"'
+run = './interruptible.sh cargo fuzz tmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target" "$usage_testcase"'
 
 [tasks.repro]
 description = "Replay one fuzz input with tracing; override RUST_LOG for more detail"
