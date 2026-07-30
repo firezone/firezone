@@ -1123,6 +1123,66 @@ defmodule Portal.Google.APIClientTest do
                APIClient.batch_get_users(@test_access_token, ["user1"])
     end
 
+    test "retries the whole chunk when a part is throttled" do
+      Portal.Config.put_env_override(:portal, APIClient,
+        req_opts: [retry_delay: 0, plug: {Req.Test, APIClient}]
+      )
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.expect(APIClient, 2, fn conn ->
+        :counters.add(attempts, 1, 1)
+        boundary = "throttled_part_boundary"
+
+        second_part =
+          case :counters.get(attempts, 1) do
+            1 -> {"HTTP/1.1 403 Forbidden", JSON.encode!(throttled_error())}
+            2 -> {"HTTP/1.1 200 OK", JSON.encode!(active_google_user(%{"id" => "user2"}))}
+          end
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 200 OK", JSON.encode!(active_google_user(%{"id" => "user1"}))},
+            second_part
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:ok, users} = APIClient.batch_get_users(@test_access_token, ["user1", "user2"])
+      assert Enum.map(users, & &1["id"]) == ["user1", "user2"]
+      assert :counters.get(attempts, 1) == 2
+    end
+
+    test "surfaces the error when a throttled part outlasts the retries" do
+      Portal.Config.put_env_override(:portal, APIClient,
+        req_opts: [retry_delay: 0, plug: {Req.Test, APIClient}]
+      )
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.stub(APIClient, fn conn ->
+        :counters.add(attempts, 1, 1)
+        boundary = "always_throttled_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 403 Forbidden", JSON.encode!(throttled_error())}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:error, %Req.Response{status: 403}} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+
+      assert :counters.get(attempts, 1) == 6
+    end
+
     test "returns transport error for batch request failure" do
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.transport_error(conn, :timeout)
@@ -1372,6 +1432,22 @@ defmodule Portal.Google.APIClientTest do
   end
 
   # Helper functions
+
+  defp throttled_error do
+    %{
+      "error" => %{
+        "code" => 403,
+        "message" => "Rate Limit Exceeded",
+        "errors" => [
+          %{
+            "domain" => "usageLimits",
+            "message" => "Rate Limit Exceeded",
+            "reason" => "userRateLimitExceeded"
+          }
+        ]
+      }
+    }
+  end
 
   defp build_batch_body(boundary, parts) do
     encoded_parts =
