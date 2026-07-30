@@ -20,7 +20,10 @@ defmodule Portal.GoogleDirectoryFixtures do
       name: "Google Directory #{unique_num}",
       impersonation_email: "admin#{unique_num}@example#{unique_num}.com",
       is_verified: true,
-      orgunit_sync_enabled: true
+      orgunit_sync_enabled: true,
+      # Most sync tests describe a directory created before the multi-domain
+      # option existed; the ones exercising it opt in explicitly.
+      sync_all_domains: false
     })
   end
 
