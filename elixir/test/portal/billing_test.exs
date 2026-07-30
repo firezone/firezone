@@ -785,6 +785,115 @@ defmodule Portal.BillingTest do
 
       assert url =~ "billing.stripe.com"
     end
+
+    test "uses the default configuration for non-Enterprise accounts", %{account: account} do
+      account =
+        update_account(account, %{
+          metadata: %{stripe: %{customer_id: "cus_test123", product_name: "Team"}}
+        })
+
+      subject = admin_subject(account)
+
+      Stripe.stub(Stripe.mock_create_billing_session_endpoint(account))
+
+      assert {:ok, _url} =
+               Portal.Billing.billing_portal_url(account, "https://example.com", subject)
+
+      assert_received {:stripe_request, "POST", "/v1/billing_portal/sessions", params}
+      refute Map.has_key?(params, "configuration")
+
+      refute_received {:stripe_request, "POST", "/v1/billing_portal/configurations", _params}
+    end
+
+    test "creates an increase-only configuration for Enterprise accounts", %{account: account} do
+      account = enterprise_account(account)
+      subject = admin_subject(account)
+
+      Stripe.stub(
+        Stripe.mock_fetch_subscription_endpoint(enterprise_subscription(account, 25)) ++
+          Stripe.mock_create_portal_configuration_endpoint("bpc_test123") ++
+          Stripe.mock_create_billing_session_endpoint(account)
+      )
+
+      assert {:ok, _url} =
+               Portal.Billing.billing_portal_url(account, "https://example.com", subject)
+
+      assert_received {:stripe_request, "POST", "/v1/billing_portal/configurations", params}
+
+      assert params["features[subscription_update][products][0][adjustable_quantity][minimum]"] ==
+               "25"
+
+      assert params["features[subscription_update][products][0][adjustable_quantity][enabled]"] ==
+               "true"
+
+      assert params["features[subscription_update][products][0][product]"] ==
+               "prod_test_enterprise"
+
+      assert params["features[subscription_update][default_allowed_updates][0]"] == "quantity"
+      refute params["features[subscription_update][default_allowed_updates][1]"]
+      assert params["features[subscription_cancel][enabled]"] == "false"
+
+      assert_received {:stripe_request, "POST", "/v1/billing_portal/sessions", session_params}
+      assert session_params["configuration"] == "bpc_test123"
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.metadata.stripe.portal_configuration_id == "bpc_test123"
+    end
+
+    test "reuses the stored configuration for Enterprise accounts", %{account: account} do
+      account = enterprise_account(account, %{portal_configuration_id: "bpc_existing"})
+      subject = admin_subject(account)
+
+      Stripe.stub(
+        Stripe.mock_fetch_subscription_endpoint(enterprise_subscription(account, 30)) ++
+          Stripe.mock_update_portal_configuration_endpoint("bpc_existing") ++
+          Stripe.mock_create_billing_session_endpoint(account)
+      )
+
+      assert {:ok, _url} =
+               Portal.Billing.billing_portal_url(account, "https://example.com", subject)
+
+      assert_received {:stripe_request, "POST", "/v1/billing_portal/configurations/bpc_existing",
+                       params}
+
+      assert params["features[subscription_update][products][0][adjustable_quantity][minimum]"] ==
+               "30"
+
+      refute_received {:stripe_request, "POST", "/v1/billing_portal/configurations", _params}
+
+      assert_received {:stripe_request, "POST", "/v1/billing_portal/sessions", session_params}
+      assert session_params["configuration"] == "bpc_existing"
+    end
+
+    test "recreates the configuration when Stripe no longer has it", %{account: account} do
+      account = enterprise_account(account, %{portal_configuration_id: "bpc_gone"})
+      subject = admin_subject(account)
+
+      Stripe.stub(
+        Stripe.mock_fetch_subscription_endpoint(enterprise_subscription(account, 5)) ++
+          Stripe.mock_update_portal_configuration_endpoint("bpc_gone", 404) ++
+          Stripe.mock_create_portal_configuration_endpoint("bpc_new") ++
+          Stripe.mock_create_billing_session_endpoint(account)
+      )
+
+      assert {:ok, _url} =
+               Portal.Billing.billing_portal_url(account, "https://example.com", subject)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.metadata.stripe.portal_configuration_id == "bpc_new"
+    end
+
+    test "fails when the Enterprise subscription cannot be read", %{account: account} do
+      account = enterprise_account(account)
+      subject = admin_subject(account)
+
+      Stripe.stub([{"GET", "/v1/subscriptions/sub_test123", 500, %{"error" => "Server error"}}])
+
+      assert {:error, _reason} =
+               Portal.Billing.billing_portal_url(account, "https://example.com", subject)
+
+      refute_received {:stripe_request, "POST", "/v1/billing_portal/sessions", _params}
+    end
   end
 
   describe "Database.count_users_for_account/1" do
@@ -1088,5 +1197,31 @@ defmodule Portal.BillingTest do
                assert {:error, :retry_later} = handle_events([event])
              end) =~ "Cannot fetch Stripe product"
     end
+  end
+
+  defp admin_subject(account) do
+    actor = actor_fixture(type: :account_admin_user, account: account)
+    Portal.SubjectFixtures.subject_fixture(account: account, actor: actor)
+  end
+
+  defp enterprise_account(account, stripe_metadata \\ %{}) do
+    stripe =
+      Map.merge(
+        %{
+          customer_id: "cus_test123",
+          subscription_id: "sub_test123",
+          product_name: "Enterprise"
+        },
+        stripe_metadata
+      )
+
+    update_account(account, %{metadata: %{stripe: stripe}})
+  end
+
+  defp enterprise_subscription(account, seats) do
+    {_product, _price, subscription} =
+      Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, seats)
+
+    Map.put(subscription, "id", account.metadata.stripe.subscription_id)
   end
 end

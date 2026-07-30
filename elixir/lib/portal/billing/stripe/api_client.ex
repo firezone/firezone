@@ -1,4 +1,9 @@
 defmodule Portal.Billing.Stripe.APIClient do
+  @api_version "2023-10-16"
+
+  # `adjustable_quantity` on customer portal configurations was only added in this version.
+  @portal_configuration_api_version "2025-07-30.basil"
+
   def create_customer(api_token, name, email, metadata) do
     metadata_params =
       for {key, value} <- metadata, into: %{} do
@@ -61,9 +66,41 @@ defmodule Portal.Billing.Stripe.APIClient do
     request(api_token, :get, "subscriptions?customer=#{customer_id}&status=active", "")
   end
 
-  def create_billing_portal_session(api_token, customer_id, return_url) do
-    body = URI.encode_query(%{"customer" => customer_id, "return_url" => return_url}, :www_form)
+  def fetch_subscription(api_token, subscription_id) do
+    request(api_token, :get, "subscriptions/#{subscription_id}", "")
+  end
+
+  def create_billing_portal_session(api_token, customer_id, return_url, configuration_id \\ nil) do
+    body =
+      %{"customer" => customer_id, "return_url" => return_url}
+      |> put_if_not_nil("configuration", configuration_id)
+      |> URI.encode_query(:www_form)
+
     request(api_token, :post, "billing_portal/sessions", body)
+  end
+
+  def create_billing_portal_configuration(api_token, params) do
+    body = URI.encode_query(params, :www_form)
+
+    request(
+      api_token,
+      :post,
+      "billing_portal/configurations",
+      body,
+      @portal_configuration_api_version
+    )
+  end
+
+  def update_billing_portal_configuration(api_token, configuration_id, params) do
+    body = URI.encode_query(params, :www_form)
+
+    request(
+      api_token,
+      :post,
+      "billing_portal/configurations/#{configuration_id}",
+      body,
+      @portal_configuration_api_version
+    )
   end
 
   def create_subscription(api_token, customer_id, price_id) do
@@ -83,14 +120,14 @@ defmodule Portal.Billing.Stripe.APIClient do
     request(api_token, :delete, "subscriptions/#{subscription_id}", "")
   end
 
-  def request(api_token, method, path, body) do
+  def request(api_token, method, path, body, api_version \\ @api_version) do
     endpoint = fetch_config!(:endpoint)
     url = "#{endpoint}/v1/#{path}"
 
     headers = [
       {"authorization", "Bearer #{api_token}"},
       {"content-type", "application/x-www-form-urlencoded"},
-      {"stripe-version", "2023-10-16"}
+      {"stripe-version", api_version}
     ]
 
     req_opts =

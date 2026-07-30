@@ -100,9 +100,14 @@ defmodule Portal.Billing do
   Returns the plan type for the account based on the Stripe product name.
   Returns :enterprise, :team, :starter, or :unknown.
   """
-  @spec plan_type(Portal.Account.t()) :: :enterprise | :team | :starter | :unknown
-  def plan_type(%Portal.Account{metadata: %{stripe: %{product_name: product_name}}})
-      when is_binary(product_name) do
+  @spec plan_type(Portal.Account.t() | String.t() | nil) ::
+          :enterprise | :team | :starter | :unknown
+  def plan_type(%Portal.Account{metadata: %{stripe: %{product_name: product_name}}}),
+    do: plan_type(product_name)
+
+  def plan_type(%Portal.Account{}), do: :unknown
+
+  def plan_type(product_name) when is_binary(product_name) do
     cond do
       String.starts_with?(product_name, "Enterprise") -> :enterprise
       product_name == "Team" -> :team
@@ -111,7 +116,7 @@ defmodule Portal.Billing do
     end
   end
 
-  def plan_type(%Portal.Account{}), do: :unknown
+  def plan_type(nil), do: :unknown
 
   @spec paid_plan?(Portal.Account.t()) :: boolean()
   def paid_plan?(%Portal.Account{} = account), do: plan_type(account) in [:team, :enterprise]
@@ -578,23 +583,235 @@ defmodule Portal.Billing do
         return_url,
         %Authentication.Subject{} = subject
       ) do
-    secret_key = fetch_config!(:secret_key)
-
     # Only account admins can manage billing
     case subject.actor.type do
       :account_admin_user when subject.account.id == account.id ->
-        with {:ok, %{"url" => url}} <-
-               APIClient.create_billing_portal_session(
-                 secret_key,
-                 account.metadata.stripe.customer_id,
-                 return_url
-               ) do
-          {:ok, url}
-        end
+        create_billing_portal_session(account, return_url)
 
       _ ->
         {:error, :unauthorized}
     end
+  end
+
+  @doc """
+  Finds the subscription item that carries the plan the account is on.
+  """
+  @spec fetch_plan_item([map()]) ::
+          {:ok, map()}
+          | {:error, :no_plan_product | :no_plan_quantity | :multiple_plan_products}
+  def fetch_plan_item(items) do
+    {plan_items, other_items} =
+      Enum.split_with(items, &(get_in(&1, ["price", "product"]) in plan_product_ids()))
+
+    log_non_plan_items(other_items)
+
+    case plan_items do
+      [%{"quantity" => quantity} = item] when is_integer(quantity) ->
+        {:ok, item}
+
+      [item] ->
+        Logger.error("Plan product has no seat quantity", item_id: item["id"])
+        {:error, :no_plan_quantity}
+
+      [] ->
+        {:error, :no_plan_product}
+
+      multiple ->
+        ids = Enum.map(multiple, &get_in(&1, ["price", "product"]))
+        Logger.error("Multiple plan products found in subscription", product_ids: inspect(ids))
+        {:error, :multiple_plan_products}
+    end
+  end
+
+  @doc """
+  Moves the seat floor of the account's billing portal configuration to the
+  quantity Stripe is now billing, so that seats added through the portal cannot
+  be given back through the portal.
+
+  Called after a subscription change. Best effort: the configuration is rebuilt
+  from the subscription anyway the next time the portal is opened.
+  """
+  @spec sync_billing_portal_configuration(Portal.Account.t(), map()) :: :ok
+  def sync_billing_portal_configuration(%Portal.Account{} = account, subscription_data) do
+    configuration_id = account.metadata.stripe.portal_configuration_id
+
+    if plan_type(account) == :enterprise and is_binary(configuration_id) do
+      items = get_in(subscription_data, ["items", "data"]) || []
+
+      with {:ok, item} <- fetch_plan_item(items),
+           {:ok, _configuration_id} <- update_portal_configuration(account, configuration_id, item) do
+        :ok
+      else
+        {:error, reason} ->
+          Logger.warning("Cannot sync Stripe billing portal configuration",
+            account_id: account.id,
+            reason: inspect(reason)
+          )
+
+          :ok
+      end
+    else
+      :ok
+    end
+  end
+
+  @doc """
+  Serializes work for a Stripe customer across the cluster.
+  """
+  def with_customer_lock(customer_id, fun) do
+    Database.with_customer_lock(customer_id, fun)
+  end
+
+  defp create_billing_portal_session(%Portal.Account{} = account, return_url) do
+    secret_key = fetch_config!(:secret_key)
+
+    with {:ok, configuration_id} <- billing_portal_configuration_id(account),
+         {:ok, %{"url" => url}} <-
+           APIClient.create_billing_portal_session(
+             secret_key,
+             account.metadata.stripe.customer_id,
+             return_url,
+             configuration_id
+           ) do
+      {:ok, url}
+    end
+  end
+
+  # Starter and Team accounts use the default configuration managed from the
+  # Stripe dashboard. Enterprise accounts get one of their own, rebuilt on every
+  # visit, that only lets them buy more seats.
+  defp billing_portal_configuration_id(%Portal.Account{} = account) do
+    if plan_type(account) == :enterprise do
+      put_enterprise_portal_configuration(account)
+    else
+      {:ok, nil}
+    end
+  end
+
+  defp put_enterprise_portal_configuration(%Portal.Account{} = account) do
+    with_customer_lock(account.metadata.stripe.customer_id, fn ->
+      account = Database.fetch_account_by_id!(account.id)
+
+      with {:ok, item} <- fetch_subscription_plan_item(account) do
+        put_portal_configuration(account, item)
+      end
+    end)
+  end
+
+  defp put_portal_configuration(%Portal.Account{} = account, item) do
+    case account.metadata.stripe.portal_configuration_id do
+      nil ->
+        create_portal_configuration(account, item)
+
+      configuration_id ->
+        update_portal_configuration(account, configuration_id, item)
+    end
+  end
+
+  defp fetch_subscription_plan_item(%Portal.Account{} = account) do
+    secret_key = fetch_config!(:secret_key)
+
+    case account.metadata.stripe.subscription_id do
+      nil ->
+        Logger.error("Account has no Stripe subscription", account_id: account.id)
+        {:error, :no_subscription}
+
+      subscription_id ->
+        with {:ok, %{"items" => %{"data" => items}}} <-
+               APIClient.fetch_subscription(secret_key, subscription_id) do
+          fetch_plan_item(items)
+        end
+    end
+  end
+
+  defp create_portal_configuration(%Portal.Account{} = account, item) do
+    secret_key = fetch_config!(:secret_key)
+    params = portal_configuration_params(account, item)
+
+    with {:ok, %{"id" => configuration_id}} <-
+           APIClient.create_billing_portal_configuration(secret_key, params),
+         {:ok, _account} <-
+           account
+           |> update_account_metadata_changeset(%{portal_configuration_id: configuration_id})
+           |> Database.update() do
+      {:ok, configuration_id}
+    else
+      {:error, reason} ->
+        :ok =
+          Logger.error("Cannot create Stripe billing portal configuration",
+            account_id: account.id,
+            reason: inspect(reason)
+          )
+
+        {:error, :retry_later}
+    end
+  end
+
+  defp update_portal_configuration(%Portal.Account{} = account, configuration_id, item) do
+    secret_key = fetch_config!(:secret_key)
+    params = portal_configuration_params(account, item)
+
+    case APIClient.update_billing_portal_configuration(secret_key, configuration_id, params) do
+      {:ok, %{"id" => configuration_id}} ->
+        {:ok, configuration_id}
+
+      # The stored configuration is gone, e.g. because the Stripe account changed.
+      {:error, {404, _body}} ->
+        create_portal_configuration(account, item)
+
+      {:error, reason} ->
+        :ok =
+          Logger.error("Cannot update Stripe billing portal configuration",
+            account_id: account.id,
+            configuration_id: configuration_id,
+            reason: inspect(reason)
+          )
+
+        {:error, :retry_later}
+    end
+  end
+
+  # The floor tracks the billed quantity in both directions: only the customer's
+  # self-serve path is restricted, so seats we take away for them stay removed.
+  defp portal_configuration_params(%Portal.Account{} = account, item) do
+    %{
+      "metadata[account_id]" => account.id,
+      "features[customer_update][enabled]" => "true",
+      "features[customer_update][allowed_updates][0]" => "address",
+      "features[customer_update][allowed_updates][1]" => "email",
+      "features[customer_update][allowed_updates][2]" => "name",
+      "features[customer_update][allowed_updates][3]" => "phone",
+      "features[customer_update][allowed_updates][4]" => "tax_id",
+      "features[invoice_history][enabled]" => "true",
+      "features[payment_method_update][enabled]" => "true",
+      "features[subscription_cancel][enabled]" => "false",
+      "features[subscription_update][enabled]" => "true",
+      "features[subscription_update][default_allowed_updates][0]" => "quantity",
+      "features[subscription_update][proration_behavior]" => "create_prorations",
+      "features[subscription_update][products][0][product]" =>
+        get_in(item, ["price", "product"]),
+      "features[subscription_update][products][0][prices][0]" => get_in(item, ["price", "id"]),
+      "features[subscription_update][products][0][adjustable_quantity][enabled]" => "true",
+      "features[subscription_update][products][0][adjustable_quantity][minimum]" => item["quantity"]
+    }
+  end
+
+  defp log_non_plan_items(items) do
+    adhoc_id = adhoc_device_product_id()
+
+    Enum.each(items, fn %{"price" => %{"product" => product_id}} = item ->
+      if product_id == adhoc_id do
+        Logger.info("Ignoring adhoc device product in subscription",
+          product_id: product_id,
+          item_id: item["id"]
+        )
+      else
+        Logger.warning("Ignoring unrecognized product in subscription",
+          product_id: product_id,
+          item_id: item["id"]
+        )
+      end
+    end)
   end
 
   def handle_events(events) when is_list(events) do
@@ -636,6 +853,21 @@ defmodule Portal.Billing do
     alias Portal.Account
     alias Portal.Actor
     alias Portal.Device
+
+    def with_customer_lock(customer_id, fun) do
+      hashed_id = :erlang.phash2(customer_id)
+
+      Safe.transact(fn ->
+        {:ok, _} = Safe.unscoped() |> Safe.query("SELECT pg_advisory_xact_lock($1)", [hashed_id])
+        fun.()
+      end)
+    end
+
+    def fetch_account_by_id!(id) do
+      from(a in Account, where: a.id == ^id)
+      |> Safe.unscoped()
+      |> Safe.one!()
+    end
 
     def update(changeset) do
       changeset
