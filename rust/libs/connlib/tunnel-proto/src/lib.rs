@@ -49,6 +49,14 @@ pub const IPV6_TUNNEL: Ipv6Network =
         Ok(n) => n,
         Err(_) => unreachable!(),
     };
+const IPV4_CGNAT: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 10) {
+    Ok(n) => n,
+    Err(_) => unreachable!(),
+};
+const IPV4_RESERVED: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(240, 0, 0, 0), 4) {
+    Ok(n) => n,
+    Err(_) => unreachable!(),
+};
 
 pub use client::dns_config::DnsMapping;
 pub use client::{ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
@@ -161,6 +169,22 @@ pub fn is_peer(dst: IpAddr) -> bool {
     }
 }
 
+/// Returns whether `ip` may be routed by the Internet Resource.
+///
+/// Explicit DNS and CIDR resources may still route addresses excluded here.
+pub(crate) fn is_internet_resource_ip(ip: IpAddr) -> bool {
+    if is_peer(ip) {
+        return false;
+    }
+
+    match ip {
+        IpAddr::V4(v4) => {
+            !v4.is_private() && !IPV4_CGNAT.contains(v4) && !IPV4_RESERVED.contains(v4)
+        }
+        IpAddr::V6(v6) => !IPV6_RESOURCES.contains(v6),
+    }
+}
+
 #[cfg(test)]
 mod unittests {
     use super::*;
@@ -180,5 +204,30 @@ mod unittests {
     fn addresses_outside_the_tunnel_ranges_are_not_peers() {
         assert!(!is_peer("100.96.0.1".parse().unwrap()));
         assert!(!is_peer("fd00:2021:1111:8000::1".parse().unwrap()));
+    }
+
+    #[test]
+    fn private_cgnat_reserved_and_tunnel_ips_are_not_internet_resource_ips() {
+        for ip in [
+            "10.0.0.1",
+            "172.16.0.1",
+            "192.168.0.1",
+            "100.64.0.1",
+            "100.127.255.254",
+            "240.0.0.1",
+            "255.255.255.255",
+            "fd00:2021:1111::3",
+            "fd00:2021:1111:8000::1",
+        ] {
+            assert!(!is_internet_resource_ip(ip.parse().unwrap()), "{ip}");
+        }
+    }
+
+    #[test]
+    fn public_ips_are_internet_resource_ips() {
+        assert!(is_internet_resource_ip("8.8.8.8".parse().unwrap()));
+        assert!(is_internet_resource_ip(
+            "2606:4700:4700::1111".parse().unwrap()
+        ));
     }
 }

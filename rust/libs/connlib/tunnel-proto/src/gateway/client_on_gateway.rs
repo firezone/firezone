@@ -350,7 +350,7 @@ impl ClientOnGateway {
         let packet = self.transform_tun_to_network(packet, now)?;
 
         self.ensure_client_ip(packet.destination())?;
-        ensure_not_peer_ip(packet.source())
+        self.ensure_resource_ip_is_allowed(packet.source())
             .with_context(|| UnroutablePacket::not_allowed(&packet))?;
 
         // Always allow ICMP errors to pass through, even in the presence of filters that don't allow ICMP.
@@ -468,7 +468,7 @@ impl ClientOnGateway {
             return Ok(());
         }
 
-        ensure_not_peer_ip(packet.destination())?;
+        self.ensure_resource_ip_is_allowed(packet.destination())?;
 
         let rid = self.classify_resource(packet.destination(), packet.destination_protocol())?;
 
@@ -485,6 +485,22 @@ impl ClientOnGateway {
     fn ensure_client_ip(&self, ip: IpAddr) -> anyhow::Result<()> {
         if !self.allowed_ips().contains(&ip) {
             return Err(anyhow::Error::new(NotClientIp(ip)));
+        }
+
+        Ok(())
+    }
+
+    /// Rejects Firezone tunnel addresses and addresses that the Internet Resource must not route.
+    ///
+    /// A Gateway serving the Internet Resource is mutually exclusive with Gateways serving
+    /// DNS and CIDR resources. Checking this before classification ensures that the Internet
+    /// Resource cannot authorize traffic to those excluded ranges, while normal Gateways can
+    /// still serve explicit resources within them.
+    fn ensure_resource_ip_is_allowed(&self, ip: IpAddr) -> anyhow::Result<()> {
+        if crate::is_peer(ip)
+            || (self.internet_resource_enabled.is_some() && !crate::is_internet_resource_ip(ip))
+        {
+            return Err(anyhow::Error::new(NotAllowedResource(ip)));
         }
 
         Ok(())
@@ -651,21 +667,6 @@ impl TranslationState {
 
 fn is_dns_addr(addr: IpAddr) -> bool {
     IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
-}
-
-/// Rejects addresses within Firezone's tunnel range.
-///
-/// A Client's counterpart is always a resource or this Gateway's own TUN device, never
-/// another Client. Admitting a tunnel address here would let the Internet Resource's
-/// catch-all in [`ClientOnGateway::classify_resource`] carry traffic between two Clients
-/// of this Gateway, hair-pinning through the TUN device and side-stepping the device pool
-/// authorization that governs Client-to-Client access.
-fn ensure_not_peer_ip(ip: IpAddr) -> anyhow::Result<()> {
-    if crate::is_peer(ip) {
-        return Err(anyhow::Error::new(NotAllowedResource(ip)));
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -890,7 +891,7 @@ mod tests {
     }
 
     #[test]
-    fn internet_resource_doesnt_allow_all_traffic_for_dns_resources() {
+    fn internet_resource_blocks_dns_resource_traffic() {
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(internet_resource(), None, Instant::now());
@@ -911,7 +912,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+        assert!(matches!(
+            peer.translate_outbound(pkt, Instant::now()).unwrap(),
+            TranslateOutboundResult::Filtered(_)
+        ));
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
@@ -940,48 +944,67 @@ mod tests {
     }
 
     #[test]
-    fn internet_resource_does_not_allow_traffic_to_another_client() {
+    fn internet_resource_does_not_allow_traffic_to_excluded_ips() {
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(internet_resource(), None, Instant::now());
 
+        for destination in excluded_internet_resource_ipv4s() {
+            let request =
+                ip_packet::make::udp_packet(client_tun_ipv4(), destination, 5401, 80, &[0u8; 8])
+                    .unwrap();
+
+            assert!(
+                matches!(
+                    peer.translate_outbound(request, Instant::now()).unwrap(),
+                    TranslateOutboundResult::Filtered(_)
+                ),
+                "{destination}"
+            );
+        }
+    }
+
+    #[test]
+    fn internet_resource_does_not_allow_traffic_from_excluded_ips() {
+        let now = Instant::now();
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        peer.add_resource(internet_resource(), None, now);
+
+        for source in excluded_internet_resource_ipv4s() {
+            let hairpinned =
+                ip_packet::make::udp_packet(source, client_tun_ipv4(), 80, 5401, &[0u8; 8])
+                    .unwrap();
+
+            #[expect(clippy::disallowed_methods, reason = "This is a test.")]
+            let error = peer
+                .translate_inbound(hairpinned, now)
+                .unwrap_err()
+                .downcast::<UnroutablePacket>()
+                .unwrap();
+
+            assert_eq!(error.reason(), RoutingError::NotAllowed, "{source}");
+        }
+    }
+
+    #[test]
+    fn internet_resource_blocks_private_cidr_resource_traffic() {
+        let now = Instant::now();
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        peer.add_resource(bar_cidr_resource(), None, now);
+        peer.add_resource(internet_resource(), None, now);
+
         let request = ip_packet::make::udp_packet(
             client_tun_ipv4(),
-            other_client_tun_ipv4(),
+            bar_contained_ip(),
             5401,
-            80,
+            bar_allowed_port(),
             &[0u8; 8],
         )
         .unwrap();
 
         assert!(matches!(
-            peer.translate_outbound(request, Instant::now()).unwrap(),
+            peer.translate_outbound(request, now).unwrap(),
             TranslateOutboundResult::Filtered(_)
         ));
-    }
-
-    #[test]
-    fn internet_resource_does_not_allow_traffic_from_another_client() {
-        let now = Instant::now();
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
-        peer.add_resource(internet_resource(), None, now);
-
-        let hairpinned = ip_packet::make::udp_packet(
-            other_client_tun_ipv4(),
-            client_tun_ipv4(),
-            80,
-            5401,
-            &[0u8; 8],
-        )
-        .unwrap();
-
-        #[expect(clippy::disallowed_methods, reason = "This is a test.")]
-        let error = peer
-            .translate_inbound(hairpinned, now)
-            .unwrap_err()
-            .downcast::<UnroutablePacket>()
-            .unwrap();
-
-        assert_eq!(error.reason(), RoutingError::NotAllowed);
     }
 
     #[test]
@@ -1465,6 +1488,17 @@ mod tests {
 
     fn other_client_tun_ipv4() -> Ipv4Addr {
         "100.64.0.3".parse().unwrap()
+    }
+
+    fn excluded_internet_resource_ipv4s() -> [Ipv4Addr; 6] {
+        [
+            other_client_tun_ipv4(),
+            "100.96.0.1".parse().unwrap(),
+            "10.0.0.1".parse().unwrap(),
+            "172.16.0.1".parse().unwrap(),
+            "192.168.0.1".parse().unwrap(),
+            "240.0.0.1".parse().unwrap(),
+        ]
     }
 
     pub fn gateway_tun() -> IpConfig {

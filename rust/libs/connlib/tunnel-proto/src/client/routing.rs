@@ -83,11 +83,7 @@ impl RoutingTables {
             });
         }
 
-        // Firezone's tunnel range holds Clients and Gateways, so the Internet Resource must
-        // not claim it: only the Client table consulted by `resolve` routes there. Letting
-        // the catch-all below match would send Client-to-Client traffic to a Gateway, which
-        // hair-pins it back out of its TUN device.
-        if crate::is_peer(destination) {
+        if !crate::is_internet_resource_ip(destination) {
             return None;
         }
 
@@ -259,16 +255,15 @@ mod tests {
     use std::net::Ipv4Addr;
 
     #[test]
-    fn internet_resource_does_not_route_to_another_client() {
+    fn internet_resource_does_not_route_excluded_ips() {
         let mut tables = RoutingTables::default();
 
-        let route = tables.resolve(
-            other_client_tun_ip(),
-            Protocol::Tcp(80),
-            Some(internet_resource_id()),
-        );
+        for destination in excluded_internet_resource_ips() {
+            let route =
+                tables.resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()));
 
-        assert!(route.is_none());
+            assert!(route.is_none(), "{destination}");
+        }
     }
 
     #[test]
@@ -291,8 +286,41 @@ mod tests {
         assert!(matches!(route, Some(Route::Client { client_id: c, .. }) if c == client_id));
     }
 
+    #[test]
+    fn explicit_cidr_resource_routes_private_ip() {
+        let mut tables = RoutingTables::default();
+        let cidr_resource_id = ResourceId::from_u128(2);
+        tables.upsert_cidr(
+            "10.0.0.0/8".parse().unwrap(),
+            cidr_resource_id,
+            FilterEngine::PermitAll,
+        );
+
+        let route = tables.resolve(
+            "10.0.0.1".parse().unwrap(),
+            Protocol::Tcp(80),
+            Some(internet_resource_id()),
+        );
+
+        assert!(matches!(
+            route,
+            Some(Route::Gateway { resource_id, .. }) if resource_id == cidr_resource_id
+        ));
+    }
+
     fn other_client_tun_ip() -> IpAddr {
         IpAddr::V4(Ipv4Addr::new(100, 64, 0, 3))
+    }
+
+    fn excluded_internet_resource_ips() -> [IpAddr; 6] {
+        [
+            other_client_tun_ip(),
+            "100.96.0.1".parse().unwrap(),
+            "10.0.0.1".parse().unwrap(),
+            "172.16.0.1".parse().unwrap(),
+            "192.168.0.1".parse().unwrap(),
+            "240.0.0.1".parse().unwrap(),
+        ]
     }
 
     fn internet_resource_id() -> ResourceId {
