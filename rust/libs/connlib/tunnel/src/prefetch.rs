@@ -1,25 +1,13 @@
-//! An experiment in prefetching packet payloads ahead of processing.
+//! Prefetching of packet payloads ahead of processing.
 //!
 //! Packets arrive on the main thread with their payload bytes last written by an IO
 //! thread on another core, so the first access during en- / decryption stalls on a
 //! cache miss per line. Processing one packet takes several times longer than fetching
 //! one from another core's cache, so a lookahead of two items is enough to hide that
 //! latency entirely.
-//!
-//! Disabled by default; enable per process with `FIREZONE_PREFETCH_PACKETS=1` so
-//! identical builds can be benchmarked with and without it.
-
-use std::sync::LazyLock;
 
 use ip_packet::IpPacket;
 use socket_factory::DatagramIn;
-
-static ENABLED: LazyLock<bool> = LazyLock::new(|| {
-    matches!(
-        std::env::var("FIREZONE_PREFETCH_PACKETS").as_deref(),
-        Ok("1") | Ok("true")
-    )
-});
 
 /// An item whose backing memory can be pulled into cache ahead of use.
 pub(crate) trait Prefetch {
@@ -46,7 +34,7 @@ pub(crate) trait PrefetchExt: Iterator + Sized {
     where
         Self::Item: Prefetch,
     {
-        PrefetchAhead::new(self, *ENABLED)
+        PrefetchAhead::new(self)
     }
 }
 
@@ -55,11 +43,8 @@ impl<I> PrefetchExt for I where I: Iterator + Sized {}
 pub(crate) struct PrefetchAhead<I: Iterator, const K: usize> {
     inner: I,
     /// FIFO of items pulled ahead of consumption; `head` is the oldest slot.
-    ///
-    /// Stays empty (and unused) while the experiment is disabled.
     lookahead: [Option<I::Item>; K],
     head: usize,
-    enabled: bool,
 }
 
 impl<I, const K: usize> PrefetchAhead<I, K>
@@ -67,12 +52,8 @@ where
     I: Iterator,
     I::Item: Prefetch,
 {
-    fn new(mut inner: I, enabled: bool) -> Self {
+    fn new(mut inner: I) -> Self {
         let lookahead = std::array::from_fn(|_| {
-            if !enabled {
-                return None;
-            }
-
             let item = inner.next();
 
             if let Some(item) = &item {
@@ -86,7 +67,6 @@ where
             inner,
             lookahead,
             head: 0,
-            enabled,
         }
     }
 }
@@ -99,10 +79,6 @@ where
     type Item = I::Item;
 
     fn next(&mut self) -> Option<I::Item> {
-        if !self.enabled {
-            return self.inner.next();
-        }
-
         let fresh = self.inner.next();
 
         if let Some(item) = &fresh {
@@ -159,7 +135,7 @@ mod tests {
     fn yields_all_items_in_order() {
         let items = (0..5).map(Plain);
 
-        let result = PrefetchAhead::<_, 2>::new(items, true)
+        let result = PrefetchAhead::<_, 2>::new(items)
             .map(|p| p.0)
             .collect::<Vec<_>>();
 
@@ -170,7 +146,7 @@ mod tests {
     fn yields_fewer_items_than_lookahead() {
         let items = std::iter::once(Plain(7));
 
-        let result = PrefetchAhead::<_, 2>::new(items, true)
+        let result = PrefetchAhead::<_, 2>::new(items)
             .map(|p| p.0)
             .collect::<Vec<_>>();
 
