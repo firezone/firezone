@@ -512,6 +512,8 @@ defmodule Portal.Mocks.Stripe do
       "id" => "sub_" <> random_id(),
       "object" => "subscription",
       "status" => "active",
+      "collection_method" => "charge_automatically",
+      "days_until_due" => nil,
       "customer" => "cus_" <> random_id(),
       "items" => %{
         "object" => "list",

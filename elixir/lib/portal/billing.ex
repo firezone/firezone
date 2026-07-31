@@ -5,6 +5,8 @@ defmodule Portal.Billing do
   alias __MODULE__.Database
   require Logger
 
+  @invoice_terms_days 30
+
   # Configuration helpers
 
   def enabled? do
@@ -692,7 +694,9 @@ defmodule Portal.Billing do
     with_customer_lock(account.metadata.stripe.customer_id, fn ->
       account = Database.fetch_account_by_id!(account.id)
 
-      with {:ok, item} <- fetch_subscription_plan_item(account) do
+      with {:ok, subscription} <- fetch_subscription(account),
+           {:ok, item} <- fetch_plan_item(get_in(subscription, ["items", "data"]) || []) do
+        :ok = warn_unless_net30(account, subscription)
         put_portal_configuration(account, item)
       end
     end)
@@ -708,7 +712,7 @@ defmodule Portal.Billing do
     end
   end
 
-  defp fetch_subscription_plan_item(%Portal.Account{} = account) do
+  defp fetch_subscription(%Portal.Account{} = account) do
     secret_key = fetch_config!(:secret_key)
 
     case account.metadata.stripe.subscription_id do
@@ -717,11 +721,26 @@ defmodule Portal.Billing do
         {:error, :no_subscription}
 
       subscription_id ->
-        with {:ok, %{"items" => %{"data" => items}}} <-
-               APIClient.fetch_subscription(secret_key, subscription_id) do
-          fetch_plan_item(items)
-        end
+        APIClient.fetch_subscription(secret_key, subscription_id)
     end
+  end
+
+  # Stripe copies the payment terms from the subscription onto the invoice it
+  # raises for the extra seats, and there is no way to set them per invoice.
+  defp warn_unless_net30(%Portal.Account{} = account, subscription) do
+    collection_method = subscription["collection_method"]
+    days_until_due = subscription["days_until_due"]
+
+    if collection_method != "send_invoice" or days_until_due != @invoice_terms_days do
+      Logger.warning("Enterprise subscription does not invoice seats on the expected terms",
+        account_id: account.id,
+        collection_method: collection_method,
+        days_until_due: days_until_due,
+        expected_days_until_due: @invoice_terms_days
+      )
+    end
+
+    :ok
   end
 
   defp create_portal_configuration(%Portal.Account{} = account, item) do
@@ -787,7 +806,7 @@ defmodule Portal.Billing do
       "features[subscription_cancel][enabled]" => "false",
       "features[subscription_update][enabled]" => "true",
       "features[subscription_update][default_allowed_updates][0]" => "quantity",
-      "features[subscription_update][proration_behavior]" => "create_prorations",
+      "features[subscription_update][proration_behavior]" => "always_invoice",
       "features[subscription_update][products][0][product]" =>
         get_in(item, ["price", "product"]),
       "features[subscription_update][products][0][prices][0]" => get_in(item, ["price", "id"]),

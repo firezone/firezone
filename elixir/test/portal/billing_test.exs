@@ -883,6 +883,45 @@ defmodule Portal.BillingTest do
       assert updated.metadata.stripe.portal_configuration_id == "bpc_new"
     end
 
+    test "invoices Enterprise seat upgrades immediately", %{account: account} do
+      account = enterprise_account(account)
+      subject = admin_subject(account)
+
+      Stripe.stub(
+        Stripe.mock_fetch_subscription_endpoint(enterprise_subscription(account, 25)) ++
+          Stripe.mock_create_portal_configuration_endpoint("bpc_test123") ++
+          Stripe.mock_create_billing_session_endpoint(account)
+      )
+
+      assert {:ok, _url} =
+               Portal.Billing.billing_portal_url(account, "https://example.com", subject)
+
+      assert_received {:stripe_request, "POST", "/v1/billing_portal/configurations", params}
+      assert params["features[subscription_update][proration_behavior]"] == "always_invoice"
+    end
+
+    test "warns when the Enterprise subscription is not on NET 30 terms", %{account: account} do
+      account = enterprise_account(account)
+      subject = admin_subject(account)
+
+      subscription =
+        enterprise_subscription(account, 25, %{
+          "collection_method" => "charge_automatically",
+          "days_until_due" => nil
+        })
+
+      Stripe.stub(
+        Stripe.mock_fetch_subscription_endpoint(subscription) ++
+          Stripe.mock_create_portal_configuration_endpoint("bpc_test123") ++
+          Stripe.mock_create_billing_session_endpoint(account)
+      )
+
+      assert capture_log(fn ->
+               assert {:ok, _url} =
+                        Portal.Billing.billing_portal_url(account, "https://example.com", subject)
+             end) =~ "does not invoice seats on the expected terms"
+    end
+
     test "fails when the Enterprise subscription cannot be read", %{account: account} do
       account = enterprise_account(account)
       subject = admin_subject(account)
@@ -1218,10 +1257,16 @@ defmodule Portal.BillingTest do
     update_account(account, %{metadata: %{stripe: stripe}})
   end
 
-  defp enterprise_subscription(account, seats) do
+  defp enterprise_subscription(account, seats, overrides \\ %{}) do
     {_product, _price, subscription} =
       Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, seats)
 
-    Map.put(subscription, "id", account.metadata.stripe.subscription_id)
+    subscription
+    |> Map.merge(%{
+      "id" => account.metadata.stripe.subscription_id,
+      "collection_method" => "send_invoice",
+      "days_until_due" => 30
+    })
+    |> Map.merge(overrides)
   end
 end
