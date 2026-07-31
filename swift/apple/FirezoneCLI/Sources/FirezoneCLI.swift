@@ -50,7 +50,7 @@ struct FirezoneCLI: AsyncParsableCommand {
     let apiURL =
       self.apiUrl
       ?? ProcessInfo.processInfo.environment["FIREZONE_API_URL"]
-      ?? Configuration.defaultApiURL
+      ?? ConfigurationDefaults.apiURL
 
     let internetResourceEnabled =
       self.activateInternetResource
@@ -62,44 +62,41 @@ struct FirezoneCLI: AsyncParsableCommand {
     let accountSlug =
       self.accountSlug
       ?? ProcessInfo.processInfo.environment["FIREZONE_ACCOUNT_SLUG"]
-      ?? Configuration.defaultAccountSlug
+      ?? ConfigurationDefaults.accountSlug
 
     let authBaseURL =
       self.authBaseUrl
       ?? ProcessInfo.processInfo.environment["FIREZONE_AUTH_BASE_URL"]
-      ?? Configuration.defaultAuthURL
+      ?? ConfigurationDefaults.authURL
 
     try await verifySystemExtension()
-
-    let session = try await setupVPN()
 
     Log.info("Account slug: \(accountSlug.isEmpty ? "(empty)" : accountSlug)")
 
     let logFilter =
       ProcessInfo.processInfo.environment["FIREZONE_LOG_FILTER"]
-      ?? Configuration.defaultLogFilter
+      ?? ConfigurationDefaults.logFilter
 
-    let configuration = TunnelConfiguration(
-      apiURL: apiURL,
-      accountSlug: accountSlug,
-      logFilter: logFilter,
-      internetResourceEnabled: internetResourceEnabled
-    )
+    let session = try await setupVPN { configuration in
+      configuration.apiURL = apiURL
+      configuration.accountSlug = accountSlug
+      configuration.logFilter = logFilter
+      configuration.internetResourceEnabled = internetResourceEnabled
+    }
 
     // Start tunnel: with explicit token if env var is set, otherwise let NE try keychain
     if let envToken = ProcessInfo.processInfo.environment["FIREZONE_TOKEN"],
       let token = Token(envToken)
     {
-      try IPCClient.start(session: session, token: token.description, configuration: configuration)
+      try IPCClient.start(session: session, token: token.description)
     } else {
-      try IPCClient.start(session: session, configuration: configuration)
+      try IPCClient.start(session: session)
     }
 
     Log.info("Tunnel started")
 
     try await monitorTunnel(
       session: session,
-      configuration: configuration,
       authBaseURL: authBaseURL,
       accountSlug: accountSlug
     )
@@ -107,8 +104,11 @@ struct FirezoneCLI: AsyncParsableCommand {
 
   // MARK: - VPN Setup
 
+  // Overrides must be saved before starting: the extension reads providerConfiguration at start.
   @MainActor
-  private func setupVPN() async throws -> NETunnelProviderSession {
+  private func setupVPN(
+    applyOverrides: (Configuration) -> Void
+  ) async throws -> any TunnelSessionProtocol {
     let factory = NETunnelProviderManagerFactory()
     let vpnManager: VPNConfigurationManager
     if let existing = try await VPNConfigurationManager.load(using: factory) {
@@ -118,6 +118,16 @@ struct FirezoneCLI: AsyncParsableCommand {
       vpnManager = try await VPNConfigurationManager(manager: factory.createManager())
     }
 
+    let stored = try vpnManager.providerConfiguration()
+    let configuration = Configuration()
+    configuration.loadProviderConfiguration(stored)
+    applyOverrides(configuration)
+
+    // Never claim the migration ran; the GUI would skip it and lose its settings.
+    try await vpnManager.save(
+      configuration: configuration,
+      markUserDefaultsMigrated: stored[Configuration.Keys.userDefaultsMigrated] == "true"
+    )
     try await vpnManager.enable()
 
     guard let session = vpnManager.session() else {
@@ -131,8 +141,7 @@ struct FirezoneCLI: AsyncParsableCommand {
 
   @MainActor
   private func monitorTunnel(
-    session: NETunnelProviderSession,
-    configuration: TunnelConfiguration,
+    session: any TunnelSessionProtocol,
     authBaseURL: String,
     accountSlug: String
   ) async throws {
@@ -213,14 +222,13 @@ struct FirezoneCLI: AsyncParsableCommand {
         Log.info("Restarting tunnel...")
         tunnelState.isRestarting = true
         session.stopTunnel()
-        try IPCClient.start(session: session, configuration: configuration)
+        try IPCClient.start(session: session)
         Log.info("Tunnel restarted")
       case .promptForToken:
         timeoutTask.cancel()
         tunnelState.hasPromptedForToken = true
         let token = try promptForSignIn(authBaseURL: authBaseURL, accountSlug: accountSlug)
-        try IPCClient.start(
-          session: session, token: token.description, configuration: configuration)
+        try IPCClient.start(session: session, token: token.description)
         Log.info("Tunnel started with token")
         // Restart timeout for the new connection attempt
         timeoutTask = Task {
@@ -327,7 +335,7 @@ struct FirezoneCLI: AsyncParsableCommand {
   // MARK: - Error Handling
 
   private static func fetchLastDisconnectErrorAsync(
-    session: NETunnelProviderSession
+    session: any TunnelSessionProtocol
   ) async -> (any Error)? {
     await withCheckedContinuation { continuation in
       session.fetchLastDisconnectError { error in

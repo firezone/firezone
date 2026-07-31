@@ -146,7 +146,7 @@ public final class VPNConfigurationManager {
     }
   }
 
-  func save(
+  public func save(
     configuration: Configuration,
     markUserDefaultsMigrated: Bool = true
   ) async throws {
@@ -157,7 +157,7 @@ public final class VPNConfigurationManager {
     )
   }
 
-  func providerConfiguration() throws -> [String: String] {
+  public func providerConfiguration() throws -> [String: String] {
     guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol
     else {
       throw VPNConfigurationManagerError.savedProtocolConfigurationIsInvalid
