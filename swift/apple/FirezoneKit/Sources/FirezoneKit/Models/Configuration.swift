@@ -124,15 +124,15 @@ public class Configuration: ObservableObject {
     get { effectiveString(Keys.authURL, default: ConfigurationDefaults.authURL) }
     set { setProviderValue(newValue, forKey: Keys.authURL) }
   }
-  public var apiURL: String {
+  var apiURL: String {
     get { effectiveString(Keys.apiURL, default: ConfigurationDefaults.apiURL) }
     set { setProviderValue(newValue, forKey: Keys.apiURL) }
   }
-  public var logFilter: String {
+  var logFilter: String {
     get { effectiveString(Keys.logFilter, default: ConfigurationDefaults.logFilter) }
     set { setProviderValue(newValue, forKey: Keys.logFilter) }
   }
-  public var accountSlug: String {
+  var accountSlug: String {
     get { effectiveString(Keys.accountSlug, default: ConfigurationDefaults.accountSlug) }
     set { setProviderValue(newValue, forKey: Keys.accountSlug) }
   }
@@ -148,7 +148,7 @@ public class Configuration: ObservableObject {
     get { effectiveBool(Keys.startOnLogin, default: ConfigurationDefaults.startOnLogin) }
     set { setProviderValue(newValue, forKey: Keys.startOnLogin) }
   }
-  public var internetResourceEnabled: Bool {
+  var internetResourceEnabled: Bool {
     get {
       providerBool(
         Keys.internetResourceEnabled, default: ConfigurationDefaults.internetResourceEnabled)
@@ -167,7 +167,7 @@ public class Configuration: ObservableObject {
   private var providerConfiguration: [String: String]
 
   // swiftlint:disable:next no_userdefaults_standard - DI entry point
-  public init(userDefaults: UserDefaults = UserDefaults.standard) {
+  init(userDefaults: UserDefaults = UserDefaults.standard) {
     defaults = userDefaults
     providerConfiguration = [:]
 
@@ -181,7 +181,7 @@ public class Configuration: ObservableObject {
       .store(in: &cancellables)
   }
 
-  public func loadProviderConfiguration(_ providerConfiguration: [String: String]) {
+  func loadProviderConfiguration(_ providerConfiguration: [String: String]) {
     guard self.providerConfiguration != providerConfiguration else { return }
     self.providerConfiguration = providerConfiguration
     handleConfigurationChanged()

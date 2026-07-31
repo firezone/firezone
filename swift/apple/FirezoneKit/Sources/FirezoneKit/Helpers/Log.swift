@@ -46,16 +46,24 @@ public final class Log {
     }
   }
 
-  private static let isCLI: Bool = ProcessInfo.processInfo.processName == "firezone-cli"
+  nonisolated(unsafe) private static var isCLI = false
 
-  private static let processName: String = {
+  /// Tags logs as coming from the CLI and mirrors them to stderr.
+  ///
+  /// The CLI ships inside the app bundle and shares its bundle identifier, so this
+  /// can't be inferred. Call once at startup, before logging anything.
+  public static func useCLIOutput() {
+    isCLI = true
+  }
+
+  private static var processName: String {
     if isCLI { return "cli" }
     switch Bundle.main.bundleIdentifier {
     case "dev.firezone.firezone": return "app"
     case "dev.firezone.firezone.network-extension": return "tunnel"
     default: return "unknown"
     }
-  }()
+  }
 
   private static let logger: Logger = {
     let category = processName

@@ -45,6 +45,8 @@
 		C4B08E1145E04823BC25E00D /* SessionEventLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */; };
 		CCC04BEF428B758D9BB5F842 /* connlib.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2847ACC9D73EA6F356F2DEE1 /* connlib.swift */; };
 		FZ0CLI012E80000000000001 /* FirezoneCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000010 /* FirezoneCLI.swift */; };
+		FZ0CLI012E80000000000006 /* SignInPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000014 /* SignInPrompt.swift */; };
+		FZ0CLI012E80000000000007 /* TunnelSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */; };
 		FZ0CLI012E80000000000002 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = FZ0CLI012E80000000000020 /* FirezoneKit */; };
 		FZ0CLI012E80000000000003 /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = FZ0CLI012E80000000000030 /* ArgumentParser */; };
 		FZ0CLI012E80000000000004 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */; };
@@ -159,6 +161,8 @@
 		FZ0CLI012E80000000000011 /* FirezoneCLI.app */ = {isa = PBXFileReference; explicitFileType = "wrapper.application"; includeInIndex = 0; path = "FirezoneCLI.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		FZ0CLI012E80000000000012 /* FirezoneCLI.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FirezoneCLI.entitlements; sourceTree = "<group>"; };
 		FZ0CLI012E80000000000013 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		FZ0CLI012E80000000000014 /* SignInPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInPrompt.swift; sourceTree = "<group>"; };
+		FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelSupervisor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -350,6 +354,8 @@
 			isa = PBXGroup;
 			children = (
 				FZ0CLI012E80000000000010 /* FirezoneCLI.swift */,
+				FZ0CLI012E80000000000014 /* SignInPrompt.swift */,
+				FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -717,6 +723,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				FZ0CLI012E80000000000001 /* FirezoneCLI.swift in Sources */,
+				FZ0CLI012E80000000000006 /* SignInPrompt.swift in Sources */,
+				FZ0CLI012E80000000000007 /* TunnelSupervisor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -146,7 +146,24 @@ public final class VPNConfigurationManager {
     }
   }
 
-  public func save(
+  /// Merges `overrides` into the saved provider configuration, leaving every other
+  /// stored setting as the GUI left it.
+  ///
+  /// The UserDefaults migration flag is preserved rather than set: only the GUI may
+  /// claim the migration ran, or it would skip it and lose the user's settings.
+  public func save(overrides: ProviderOverrides) async throws {
+    let stored = try providerConfiguration()
+    let configuration = Configuration()
+    configuration.loadProviderConfiguration(stored)
+    overrides.apply(to: configuration)
+
+    try await save(
+      configuration: configuration,
+      markUserDefaultsMigrated: stored[Configuration.Keys.userDefaultsMigrated] == "true"
+    )
+  }
+
+  func save(
     configuration: Configuration,
     markUserDefaultsMigrated: Bool = true
   ) async throws {
@@ -157,7 +174,7 @@ public final class VPNConfigurationManager {
     )
   }
 
-  public func providerConfiguration() throws -> [String: String] {
+  func providerConfiguration() throws -> [String: String] {
     guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol
     else {
       throw VPNConfigurationManagerError.savedProtocolConfigurationIsInvalid
