@@ -256,7 +256,6 @@
 				8DD2C4C2297B37BA00F984BF /* Packages */,
 				8DCC021B28D512AC007E12D2 /* Firezone */,
 				9A1000062F10000100BEEF01 /* KeepFirezoneRunning */,
-				FZ0CLI012E80000000000070 /* FirezoneCLI */,
 				05833DF928F73B070008FAB0 /* FirezoneNetworkExtension */,
 				8DCC021A28D512AC007E12D2 /* Products */,
 				8D3F90C328D64FAD00980124 /* Frameworks */,
@@ -283,6 +282,7 @@
 				8D1D405D2CFF6F5D00E669F9 /* Info.plist */,
 				8DDD0E8B2ADC6657001FA7E9 /* config.xcconfig */,
 				05E1505F28FF398000170F82 /* Application */,
+				FZ0CLI012E80000000000071 /* CLI */,
 				8DCC022528D512AE007E12D2 /* Assets.xcassets */,
 				8DCC022828D512AE007E12D2 /* Preview Content */,
 			);
@@ -315,15 +315,7 @@
 			path = KeepFirezoneRunning;
 			sourceTree = "<group>";
 		};
-		FZ0CLI012E80000000000070 /* FirezoneCLI */ = {
-			isa = PBXGroup;
-			children = (
-				FZ0CLI012E80000000000071 /* Sources */,
-			);
-			path = FirezoneCLI;
-			sourceTree = "<group>";
-		};
-		FZ0CLI012E80000000000071 /* Sources */ = {
+		FZ0CLI012E80000000000071 /* CLI */ = {
 			isa = PBXGroup;
 			children = (
 				FZ0CLI012E80000000000010 /* FirezoneCLI.swift */,
@@ -333,7 +325,7 @@
 				FZ0CLI012E80000000000018 /* ExtensionCommand.swift */,
 				FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */,
 			);
-			path = Sources;
+			path = CLI;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

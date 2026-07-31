@@ -50,8 +50,8 @@ public final class Log {
 
   /// Tags logs as coming from the CLI and mirrors them to stderr.
   ///
-  /// The CLI ships inside the app bundle and shares its bundle identifier, so this
-  /// can't be inferred. Call once at startup, before logging anything.
+  /// The CLI is the app's own binary under another name, so nothing about the bundle
+  /// tells them apart. Call once at startup, before logging anything.
   public static func useCLIOutput() {
     isCLI = true
   }

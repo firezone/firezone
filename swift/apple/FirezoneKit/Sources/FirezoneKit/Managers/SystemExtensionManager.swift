@@ -7,17 +7,17 @@
 #if os(macOS)
   import SystemExtensions
 
-  public enum SystemExtensionError: Error, CustomStringConvertible, LocalizedError {
+  enum SystemExtensionError: Error, CustomStringConvertible, LocalizedError {
     case unknownResult(OSSystemExtensionRequest.Result)
 
-    public var description: String {
+    var description: String {
       switch self {
       case .unknownResult(let result):
         return "Unknown result: \(result)"
       }
     }
 
-    public var errorDescription: String? { description }
+    var errorDescription: String? { description }
   }
 
   public enum SystemExtensionStatus: Equatable, Sendable {
@@ -59,7 +59,7 @@
     func tryInstall() async throws -> SystemExtensionStatus
   }
 
-  public enum SystemExtensionRequestType {
+  enum SystemExtensionRequestType {
     case install
     case check
   }
