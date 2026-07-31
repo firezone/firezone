@@ -636,6 +636,25 @@ defmodule PortalWeb.ServiceAccountsTest do
       refute Portal.Repo.get_by!(Portal.Actor, id: service_account.id, account_id: account.id).disabled_at
     end
 
+    test "does not enable when the service account limit is reached", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{service_accounts_count: 0}})
+      service_account = disabled_actor_fixture(account: account, type: :service_account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts/#{service_account}")
+
+      html = render_click(lv, "enable", %{"id" => service_account.id})
+
+      assert html =~ "Service account limit reached for your account"
+      assert Repo.get_by!(Actor, id: service_account.id, account_id: account.id).disabled_at
+    end
+
     test "confirm and cancel delete service account", %{
       conn: conn,
       account: account,

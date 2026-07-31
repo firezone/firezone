@@ -451,7 +451,8 @@ defmodule PortalWeb.ServiceAccounts do
   end
 
   def handle_event("enable", %{"id" => id}, socket) do
-    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
+    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject),
+         :ok <- Portal.Billing.check_actor_enable_limits(socket.assigns.account, actor) do
       case actor
            |> change()
            |> put_change(:disabled_at, nil)
@@ -474,6 +475,9 @@ defmodule PortalWeb.ServiceAccounts do
       {:error, :unauthorized} ->
         {:noreply,
          put_flash(socket, :error, "You are not authorized to enable this service account")}
+
+      {:error, :service_accounts_limit_reached} ->
+        {:noreply, put_flash(socket, :error, "Service account limit reached for your account")}
     end
   end
 

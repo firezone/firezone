@@ -524,7 +524,8 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("enable", %{"id" => id}, socket) do
-    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
+    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject),
+         :ok <- Portal.Billing.check_actor_enable_limits(socket.assigns.account, actor) do
       case actor
            |> change()
            |> put_change(:disabled_at, nil)
@@ -546,6 +547,12 @@ defmodule PortalWeb.Actors do
 
       {:error, :unauthorized} ->
         {:noreply, put_flash(socket, :error, "You are not authorized to enable this actor")}
+
+      {:error, :users_limit_reached} ->
+        {:noreply, put_flash(socket, :error, "User limit reached for your account")}
+
+      {:error, :admin_users_limit_reached} ->
+        {:noreply, put_flash(socket, :error, "Admin user limit reached for your account")}
     end
   end
 

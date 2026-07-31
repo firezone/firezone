@@ -647,7 +647,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       |> change()
       |> put_change(:disabled_at, nil)
 
-    with {:ok, updated} <-
+    with :ok <- Portal.Billing.check_actor_enable_limits(socket.assigns.account, actor),
+         {:ok, updated} <-
            Portal.Safe.scoped(changeset, socket.assigns.subject) |> Portal.Safe.update() do
       socket =
         socket
@@ -659,6 +660,17 @@ defmodule PortalWeb.Settings.ApiClients.Index do
         |> maybe_update_selected(updated)
 
       {:noreply, socket}
+    else
+      {:error, :api_clients_limit_reached} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "You have reached the maximum number of API tokens allowed for your account."
+         )}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to enable API token")}
     end
   end
 

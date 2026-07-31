@@ -197,6 +197,50 @@ defmodule Portal.Billing do
          api_clients_count < account.limits.api_clients_count)
   end
 
+  @type actor_enable_limit_error ::
+          :users_limit_reached
+          | :admin_users_limit_reached
+          | :service_accounts_limit_reached
+          | :api_clients_limit_reached
+
+  @doc """
+  Checks whether an actor can be enabled without exceeding its account's billing limits.
+  """
+  @spec check_actor_enable_limits(Portal.Account.t(), Portal.Actor.t()) ::
+          :ok | {:error, actor_enable_limit_error()}
+  def check_actor_enable_limits(%Portal.Account{} = account, %Portal.Actor{
+        type: :account_admin_user
+      }) do
+    cond do
+      not can_create_users?(account) ->
+        {:error, :users_limit_reached}
+
+      not can_create_admin_users?(account) ->
+        {:error, :admin_users_limit_reached}
+
+      true ->
+        :ok
+    end
+  end
+
+  def check_actor_enable_limits(%Portal.Account{} = account, %Portal.Actor{
+        type: :account_user
+      }) do
+    if can_create_users?(account), do: :ok, else: {:error, :users_limit_reached}
+  end
+
+  def check_actor_enable_limits(%Portal.Account{} = account, %Portal.Actor{
+        type: :service_account
+      }) do
+    if can_create_service_accounts?(account),
+      do: :ok,
+      else: {:error, :service_accounts_limit_reached}
+  end
+
+  def check_actor_enable_limits(%Portal.Account{} = account, %Portal.Actor{type: :api_client}) do
+    if can_create_api_clients?(account), do: :ok, else: {:error, :api_clients_limit_reached}
+  end
+
   def api_tokens_limit_exceeded?(%Portal.Account{} = account, api_tokens_count) do
     not is_nil(account.limits.api_tokens_per_client_count) and
       api_tokens_count > account.limits.api_tokens_per_client_count

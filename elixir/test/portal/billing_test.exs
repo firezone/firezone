@@ -346,6 +346,53 @@ defmodule Portal.BillingTest do
     end
   end
 
+  describe "check_actor_enable_limits/2" do
+    test "rejects a user when the user limit is reached", %{account: account} do
+      account = update_account(account, %{limits: %{users_count: 0}})
+      actor = disabled_actor_fixture(account: account, type: :account_user)
+
+      assert check_actor_enable_limits(account, actor) == {:error, :users_limit_reached}
+    end
+
+    test "rejects an admin when the user limit is reached", %{account: account} do
+      account = update_account(account, %{limits: %{users_count: 0}})
+      actor = disabled_actor_fixture(account: account, type: :account_admin_user)
+
+      assert check_actor_enable_limits(account, actor) == {:error, :users_limit_reached}
+    end
+
+    test "rejects an admin when the admin limit is reached", %{account: account} do
+      account = update_account(account, %{limits: %{account_admin_users_count: 0}})
+      actor = disabled_actor_fixture(account: account, type: :account_admin_user)
+
+      assert check_actor_enable_limits(account, actor) == {:error, :admin_users_limit_reached}
+    end
+
+    test "rejects a service account when the service account limit is reached", %{
+      account: account
+    } do
+      account = update_account(account, %{limits: %{service_accounts_count: 0}})
+      actor = disabled_actor_fixture(account: account, type: :service_account)
+
+      assert check_actor_enable_limits(account, actor) ==
+               {:error, :service_accounts_limit_reached}
+    end
+
+    test "rejects an API client when the API client limit is reached", %{account: account} do
+      account = update_account(account, %{limits: %{api_clients_count: 0}})
+      actor = disabled_actor_fixture(account: account, type: :api_client)
+
+      assert check_actor_enable_limits(account, actor) == {:error, :api_clients_limit_reached}
+    end
+
+    test "allows all actor types when limits are not reached", %{account: account} do
+      for type <- [:account_user, :account_admin_user, :service_account, :api_client] do
+        actor = disabled_actor_fixture(account: account, type: type)
+        assert check_actor_enable_limits(account, actor) == :ok
+      end
+    end
+  end
+
   describe "api_tokens_limit_exceeded?/2" do
     test "returns false when api_tokens_per_client_count limit is not exceeded", %{
       account: account
