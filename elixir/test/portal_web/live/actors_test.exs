@@ -540,6 +540,44 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ "Disable"
     end
 
+    test "does not re-enable actor when users limit is reached", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{users_count: 1}})
+      other_actor = disabled_actor_fixture(account: account, type: :account_user)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      html = render_click(lv, "enable", %{"id" => other_actor.id})
+
+      assert html =~ "User limit reached for your account"
+      assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id).disabled_at
+    end
+
+    test "does not re-enable admin when admins limit is reached", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{account_admin_users_count: 1}})
+      other_actor = disabled_actor_fixture(account: account, type: :account_admin_user)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      html = render_click(lv, "enable", %{"id" => other_actor.id})
+
+      assert html =~ "Admin user limit reached for your account"
+      assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id).disabled_at
+    end
+
     test "cancel delete actor returns to detail view", %{
       conn: conn,
       account: account,

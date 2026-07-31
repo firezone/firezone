@@ -333,6 +333,27 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
       assert is_nil(Repo.get_by!(Actor, account_id: account.id, id: api_client.id).disabled_at)
     end
 
+    test "does not re-enable an API client when the billing limit is reached", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{api_clients_count: 0}})
+      api_client = disabled_actor_fixture(account: account, type: :api_client)
+      api_token_fixture(account: account, actor: api_client)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/api_clients")
+
+      request_confirm(lv, "toggle", api_client.id)
+      html = render_click(lv, "enable", %{"id" => api_client.id})
+
+      assert html =~ "maximum number of API tokens allowed for your account"
+      assert Repo.get_by!(Actor, account_id: account.id, id: api_client.id).disabled_at
+    end
+
     test "deletes an api client after confirmation", %{conn: conn, account: account, actor: actor} do
       api_client = api_client_fixture(account: account, name: "Delete Client")
       api_token_fixture(account: account, actor: api_client)
