@@ -161,6 +161,42 @@ From the repository root:
 mise run //swift/apple:<task>   # e.g. mise run //swift/apple:build
 ```
 
+### Headless client
+
+`firezone-cli` is a macOS-only command line client. It is built as part of the
+`Firezone` scheme and ends up inside the app bundle, at
+`Firezone.app/Contents/Helpers/firezone-cli.app`. `mise run cli` finds it for
+you:
+
+```sh
+mise run cli -- --help
+mise run cli -- extension status
+mise run cli -- connect --account-slug my-account
+```
+
+`connect` is the default, so plain `firezone-cli` brings the tunnel up and stays
+in the foreground until you stop it. `sign-out` drops the stored token.
+
+It talks to the same system extension as the GUI and will not start without it.
+`extension install` puts it in place, which means a machine with no one sitting
+at it can be set up without opening the app. macOS still asks the logged-in user
+to approve the extension, so for fleets, approve it ahead of time with an MDM
+system extension policy.
+
+These environment variables are read when the matching flag is absent:
+
+| Variable                              | Flag                           |
+| ------------------------------------- | ------------------------------ |
+| `FIREZONE_TOKEN`                      | none, taken from the Keychain  |
+| `FIREZONE_ACCOUNT_SLUG`               | `--account-slug`               |
+| `FIREZONE_API_URL`                    | `--api-url`                    |
+| `FIREZONE_AUTH_BASE_URL`              | `--auth-base-url`              |
+| `FIREZONE_ACTIVATE_INTERNET_RESOURCE` | `--activate-internet-resource` |
+| `FIREZONE_LOG_FILTER`                 | none                           |
+
+Without a token it prints a sign-in URL and waits for you to paste one back.
+Logs go to stderr rather than to the log folder the app and extension share.
+
 ### Instruments
 
 `Instruments` is a powerful performance analyzer and visualizer application
