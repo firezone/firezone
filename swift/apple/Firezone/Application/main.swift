@@ -24,6 +24,23 @@ import Foundation
   if URL(fileURLWithPath: CommandLine.arguments.first ?? "").lastPathComponent
     == "firezone-cli"
   {
+    // Reached through a symlink from outside the bundle, macOS gives us no bundle at
+    // all, and with it no identity, no VPN configuration and no system extension. Say
+    // so, rather than failing later on something that reads as unrelated.
+    guard Bundle.main.bundleIdentifier != nil else {
+      FileHandle.standardError.write(
+        Data(
+          """
+          Run firezone-cli from inside Firezone.app, for example
+          /Applications/Firezone.app/Contents/MacOS/firezone-cli.
+
+          Putting that directory on your PATH works. A symlink to it from somewhere
+          else does not, because it leaves the client without the app's identity.
+
+          """.utf8))
+      exit(1)
+    }
+
     await runHeadlessClient(FirezoneCLI.self)
   }
 #endif
