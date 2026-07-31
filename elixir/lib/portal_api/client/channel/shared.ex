@@ -1981,7 +1981,7 @@ defmodule PortalAPI.Client.Channel.Shared do
              resource_id: resource_id,
              group_id: group_id,
              conditions: conditions,
-             disabled_at: disabled_at
+             is_disabled: is_disabled
            }
          } = change,
          socket
@@ -1996,10 +1996,10 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, socket} = handle_change(%{change | op: :delete}, socket)
 
     # DO NOT re-add disabled policies
-    if is_nil(disabled_at) do
-      handle_change(%{change | op: :insert}, socket)
-    else
+    if is_disabled do
       {:noreply, socket}
+    else
+      handle_change(%{change | op: :insert}, socket)
     end
   end
 

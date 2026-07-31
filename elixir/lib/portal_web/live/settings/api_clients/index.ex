@@ -400,7 +400,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           <td colspan="6" class="px-6 py-3">
             <div class="flex items-center gap-4">
               <span class="text-xs text-warning">
-                {if is_nil(@actor.disabled_at),
+                {if !@actor.is_disabled,
                   do: "Disable this API Token? It will no longer be able to authenticate.",
                   else: "Re-enable this API Token?"}
               </span>
@@ -412,12 +412,12 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                   Cancel
                 </.button>
                 <.button
-                  phx-click={if is_nil(@actor.disabled_at), do: "disable", else: "enable"}
+                  phx-click={if !@actor.is_disabled, do: "disable", else: "enable"}
                   phx-value-id={@actor.id}
                   size="xs"
                   style="warning"
                 >
-                  {if is_nil(@actor.disabled_at), do: "Disable", else: "Enable"}
+                  {if !@actor.is_disabled, do: "Disable", else: "Enable"}
                 </.button>
               </div>
             </div>
@@ -430,7 +430,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             </div>
           </td>
           <td class="px-6 py-3 w-28">
-            <%= if is_nil(@actor.disabled_at) do %>
+            <%= if !@actor.is_disabled do %>
             <.badge type="success" class="text-[10px]">
                 Active
             </.badge>
@@ -487,13 +487,13 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                 >
                   <.icon
                     name={
-                      if is_nil(@actor.disabled_at),
+                      if !@actor.is_disabled,
                         do: "ri-pause-line",
                         else: "ri-play-line"
                     }
                     class="w-3.5 h-3.5 shrink-0"
                   />
-                  {if is_nil(@actor.disabled_at), do: "Disable", else: "Enable"}
+                  {if !@actor.is_disabled, do: "Disable", else: "Enable"}
                 </button>
                 <div class="my-1 border-t border-border"></div>
                 <button
@@ -622,7 +622,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     changeset =
       actor
       |> change()
-      |> put_change(:disabled_at, DateTime.utc_now())
+      |> put_change(:is_disabled, true)
 
     with {:ok, updated} <-
            Portal.Safe.scoped(changeset, socket.assigns.subject) |> Portal.Safe.update() do
@@ -645,7 +645,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     changeset =
       actor
       |> change()
-      |> put_change(:disabled_at, nil)
+      |> put_change(:is_disabled, false)
 
     with :ok <- Portal.Billing.check_actor_enable_limits(socket.assigns.account, actor),
          {:ok, updated} <-

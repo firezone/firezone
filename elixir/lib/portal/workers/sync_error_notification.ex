@@ -187,7 +187,7 @@ defmodule Portal.Workers.SyncErrorNotification do
       from(a in Portal.Actor,
         where: a.account_id == ^account_id,
         where: a.type == :account_admin_user,
-        where: is_nil(a.disabled_at)
+        where: a.is_disabled == false
       )
       |> Safe.unscoped(:replica)
       |> Safe.all()

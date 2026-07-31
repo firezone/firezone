@@ -23,11 +23,10 @@ defmodule PortalAPI.Schemas.Actor do
           description: "Allow Email OTP Sign In",
           default: false
         },
-        disabled_at: %Schema{
-          type: :string,
-          format: :"date-time",
-          description: "When the actor was disabled",
-          nullable: true
+        is_disabled: %Schema{
+          type: :boolean,
+          description: "Whether the actor is disabled",
+          default: false
         },
         last_seen_at: %Schema{
           type: :string,
@@ -59,7 +58,7 @@ defmodule PortalAPI.Schemas.Actor do
         "type" => "account_admin_user",
         "email" => "john.doe@example.com",
         "allow_email_otp_sign_in" => false,
-        "disabled_at" => nil,
+        "is_disabled" => false,
         "last_seen_at" => "2024-01-15T10:30:00Z",
         "created_by_directory_id" => nil,
         "inserted_at" => "2024-01-01T00:00:00Z",
@@ -184,7 +183,7 @@ defmodule PortalAPI.Schemas.Actor do
           "type" => "account_admin_user",
           "email" => "john.doe@example.com",
           "allow_email_otp_sign_in" => false,
-          "disabled_at" => nil,
+          "is_disabled" => false,
           "last_seen_at" => "2024-01-15T10:30:00Z",
           "created_by_directory_id" => nil,
           "inserted_at" => "2024-01-01T00:00:00Z",
@@ -216,7 +215,7 @@ defmodule PortalAPI.Schemas.Actor do
             "type" => "account_admin_user",
             "email" => "john.doe@example.com",
             "allow_email_otp_sign_in" => false,
-            "disabled_at" => nil,
+            "is_disabled" => false,
             "last_seen_at" => "2024-01-15T10:30:00Z",
             "created_by_directory_id" => nil,
             "inserted_at" => "2024-01-01T00:00:00Z",
@@ -228,7 +227,7 @@ defmodule PortalAPI.Schemas.Actor do
             "type" => "account_user",
             "email" => "jane.smith@example.com",
             "allow_email_otp_sign_in" => true,
-            "disabled_at" => nil,
+            "is_disabled" => false,
             "last_seen_at" => "2024-01-14T15:45:00Z",
             "created_by_directory_id" => "98776234-1234-5678-9012-345678901234",
             "inserted_at" => "2024-01-02T00:00:00Z",

@@ -72,7 +72,7 @@ defmodule Portal.PolicyFixtures do
       %Portal.Policy{}
       |> Ecto.Changeset.cast(policy_attrs, [
         :description,
-        :disabled_at,
+        :is_disabled,
         :account_id,
         :group_id,
         :resource_id,
@@ -91,7 +91,7 @@ defmodule Portal.PolicyFixtures do
   Generate a disabled policy.
   """
   def disabled_policy_fixture(attrs \\ %{}) do
-    policy_fixture(Map.put(attrs, :disabled_at, DateTime.utc_now()))
+    policy_fixture(Map.put(attrs, :is_disabled, true))
   end
 
   @doc """
@@ -174,7 +174,7 @@ defmodule Portal.PolicyFixtures do
     attrs = Enum.into(attrs, %{})
 
     policy
-    |> Ecto.Changeset.cast(attrs, [:description, :disabled_at])
+    |> Ecto.Changeset.cast(attrs, [:description, :is_disabled])
     |> Ecto.Changeset.cast_embed(:conditions,
       with: &Portal.Policies.Condition.changeset(&1, &2, 0)
     )

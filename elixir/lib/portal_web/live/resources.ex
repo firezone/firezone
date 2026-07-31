@@ -1617,7 +1617,7 @@ defmodule PortalWeb.Resources do
 
       from(p in Policy, as: :policies)
       |> where([policies: p], p.resource_id in ^ids)
-      |> where([policies: p], is_nil(p.disabled_at))
+      |> where([policies: p], p.is_disabled == false)
       |> group_by([policies: p], p.resource_id)
       |> select([policies: p], {p.resource_id, count(p.id)})
       |> Safe.scoped(subject, :replica)
@@ -1668,9 +1668,9 @@ defmodule PortalWeb.Resources do
         group: g,
         directory_type: d.type,
         policy_id: p.id,
-        policy_disabled_at: p.disabled_at
+        policy_is_disabled: p.is_disabled
       })
-      |> order_by([policies: p], desc: is_nil(p.disabled_at))
+      |> order_by([policies: p], asc: p.is_disabled)
       |> Safe.scoped(subject, repo)
       |> Safe.all()
       |> case do
@@ -1784,14 +1784,14 @@ defmodule PortalWeb.Resources do
 
     def disable_policy_for_group(resource, group_id, subject) do
       with %Policy{} = policy <- fetch_policy_for_group(resource, group_id, subject, state: :enabled) do
-        set_policy_disabled_at(policy, subject, DateTime.utc_now())
+        set_policy_is_disabled(policy, subject, true)
       end
     end
 
     def enable_policy_for_group(resource, group_id, subject) do
       with %Policy{} = policy <-
              fetch_policy_for_group(resource, group_id, subject, state: :disabled) do
-        set_policy_disabled_at(policy, subject, nil)
+        set_policy_is_disabled(policy, subject, false)
       end
     end
 
@@ -1889,15 +1889,15 @@ defmodule PortalWeb.Resources do
     end
 
     defp filter_policy_state(query, :enabled),
-      do: where(query, [policies: p], is_nil(p.disabled_at))
+      do: where(query, [policies: p], p.is_disabled == false)
 
     defp filter_policy_state(query, :disabled),
-      do: where(query, [policies: p], not is_nil(p.disabled_at))
+      do: where(query, [policies: p], p.is_disabled == true)
 
     defp filter_policy_state(query, _), do: query
 
-    defp set_policy_disabled_at(policy, subject, disabled_at) do
-      Ecto.Changeset.change(policy, %{disabled_at: disabled_at})
+    defp set_policy_is_disabled(policy, subject, is_disabled) do
+      Ecto.Changeset.change(policy, %{is_disabled: is_disabled})
       |> Safe.scoped(subject)
       |> Safe.update()
     end

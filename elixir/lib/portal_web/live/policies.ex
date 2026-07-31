@@ -18,7 +18,6 @@ defmodule PortalWeb.Policies do
 
   @tod_pending_empty %{"on" => "", "off" => "", "days" => []}
   import Ecto.Changeset
-  import Portal.Changeset
 
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
@@ -276,7 +275,7 @@ defmodule PortalWeb.Policies do
             </div>
           </:col>
           <:col :let={policy} label="Status" class="w-32">
-            <.policy_status_badge disabled_at={policy.disabled_at} />
+            <.policy_status_badge is_disabled={policy.is_disabled} />
           </:col>
           <:col :let={policy} label="Group" class="w-36 lg:w-72">
             <%= if policy.group do %>
@@ -946,7 +945,7 @@ defmodule PortalWeb.Policies do
     changeset =
       policy
       |> change()
-      |> put_default_value(:disabled_at, DateTime.utc_now())
+      |> put_change(:is_disabled, true)
 
     Database.update_policy(changeset, subject)
   end
@@ -955,7 +954,7 @@ defmodule PortalWeb.Policies do
     changeset =
       policy
       |> change()
-      |> put_change(:disabled_at, nil)
+      |> put_change(:is_disabled, false)
 
     Database.update_policy(changeset, subject)
   end
@@ -1398,11 +1397,11 @@ defmodule PortalWeb.Policies do
     end
 
     def filter_by_status(queryable, "active") do
-      {queryable, dynamic([policies: p], is_nil(p.disabled_at))}
+      {queryable, dynamic([policies: p], p.is_disabled == false)}
     end
 
     def filter_by_status(queryable, "disabled") do
-      {queryable, dynamic([policies: p], not is_nil(p.disabled_at))}
+      {queryable, dynamic([policies: p], p.is_disabled == true)}
     end
 
     defp with_joined_group(queryable) do

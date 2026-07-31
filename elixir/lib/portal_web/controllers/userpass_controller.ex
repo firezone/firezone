@@ -246,7 +246,7 @@ defmodule PortalWeb.UserpassController do
 
     def get_actor_by_email(account, email) do
       from(a in Portal.Actor,
-        where: a.email == ^email and a.account_id == ^account.id and is_nil(a.disabled_at)
+        where: a.email == ^email and a.account_id == ^account.id and a.is_disabled == false
       )
       |> Safe.unscoped(:replica)
       |> Safe.one()

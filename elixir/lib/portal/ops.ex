@@ -326,7 +326,7 @@ defmodule Portal.Ops do
     def get_disabled_account!(id) do
       from(a in Account,
         where: a.id == ^id,
-        where: not is_nil(a.disabled_at)
+        where: a.is_disabled == true
       )
       |> Safe.unscoped(:replica)
       |> Safe.one!()
@@ -353,7 +353,7 @@ defmodule Portal.Ops do
     def get_account_admin_emails_by_account(account_ids_or_all) do
       Actor
       |> where([a], a.type == :account_admin_user)
-      |> where([a], is_nil(a.disabled_at))
+      |> where([a], a.is_disabled == false)
       |> maybe_filter_account_ids(account_ids_or_all)
       |> select([a], {a.account_id, a.email})
       |> Safe.unscoped(:replica)
@@ -372,7 +372,7 @@ defmodule Portal.Ops do
 
       from(a in Account,
         as: :account,
-        where: not is_nil(a.disabled_at),
+        where: a.is_disabled == true,
         where: not is_nil(a.scheduled_deletion_at),
         where: not exists(delete_jobs_query)
       )
@@ -382,7 +382,7 @@ defmodule Portal.Ops do
 
     defp maybe_filter_account_ids(query, :all) do
       join(query, :inner, [a], account in Account,
-        on: account.id == a.account_id and is_nil(account.disabled_at)
+        on: account.id == a.account_id and account.is_disabled == false
       )
     end
 

@@ -225,7 +225,7 @@ defmodule PortalWeb.Settings.AccountTest do
       account = fetch_account!(account.id)
 
       assert html =~ "Cancel deletion"
-      assert account.disabled_at
+      assert account.is_disabled
       assert account.scheduled_deletion_at
 
       queued_emails = collect_queued_emails(account.id)
@@ -253,7 +253,7 @@ defmodule PortalWeb.Settings.AccountTest do
 
       account =
         update_account(account,
-          disabled_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 
@@ -273,7 +273,7 @@ defmodule PortalWeb.Settings.AccountTest do
       [scheduled_job] =
         jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)
 
-      refute account.disabled_at
+      refute account.is_disabled
       refute account.scheduled_deletion_at
       refute html =~ "scheduled for deletion"
       assert scheduled_job.state == "cancelled"
@@ -289,11 +289,11 @@ defmodule PortalWeb.Settings.AccountTest do
 
     test "scheduling is idempotent and only queues one email", %{account: account, actor: actor} do
       subject = subject_fixture(account: account, actor: actor)
-      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
 
       attrs = %{
-        disabled_at: disabled_at,
+        is_disabled: true,
         scheduled_deletion_at: scheduled_deletion_at
       }
 
@@ -304,7 +304,7 @@ defmodule PortalWeb.Settings.AccountTest do
                Deletion.schedule_account_deletion(
                  account,
                  %{
-                   disabled_at: DateTime.add(disabled_at, 1, :day),
+                   is_disabled: true,
                    scheduled_deletion_at: DateTime.add(scheduled_deletion_at, 1, :day)
                  },
                  subject
@@ -318,18 +318,18 @@ defmodule PortalWeb.Settings.AccountTest do
     test "scheduling requires account update permission", %{account: account} do
       actor = actor_fixture(account: account, type: :account_user)
       subject = subject_fixture(account: account, actor: actor)
-      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
 
       attrs = %{
-        disabled_at: disabled_at,
-        scheduled_deletion_at: DateTime.add(disabled_at, 7, :day)
+        is_disabled: true,
+        scheduled_deletion_at: DateTime.add(now, 7, :day)
       }
 
       assert {:error, :unauthorized} =
                Deletion.schedule_account_deletion(account, attrs, subject)
 
       account = fetch_account!(account.id)
-      refute account.disabled_at
+      refute account.is_disabled
       refute account.scheduled_deletion_at
       assert jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id) == []
       assert collect_queued_emails(account.id) == []
@@ -339,30 +339,30 @@ defmodule PortalWeb.Settings.AccountTest do
       other_account = account_fixture()
       other_actor = admin_actor_fixture(account: other_account)
       subject = subject_fixture(account: other_account, actor: other_actor)
-      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
 
       attrs = %{
-        disabled_at: disabled_at,
-        scheduled_deletion_at: DateTime.add(disabled_at, 7, :day)
+        is_disabled: true,
+        scheduled_deletion_at: DateTime.add(now, 7, :day)
       }
 
       assert {:error, :unauthorized} =
                Deletion.schedule_account_deletion(account, attrs, subject)
 
       account = fetch_account!(account.id)
-      refute account.disabled_at
+      refute account.is_disabled
       refute account.scheduled_deletion_at
       assert jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id) == []
       assert collect_queued_emails(account.id) == []
     end
 
     test "cancellation is idempotent and only queues one email", %{account: account, actor: actor} do
-      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
 
       account =
         update_account(account,
-          disabled_at: disabled_at,
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 
@@ -390,12 +390,12 @@ defmodule PortalWeb.Settings.AccountTest do
 
     test "cancellation requires account update permission", %{account: account} do
       actor = actor_fixture(account: account, type: :account_user)
-      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
 
       account =
         update_account(account,
-          disabled_at: disabled_at,
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 
@@ -410,7 +410,7 @@ defmodule PortalWeb.Settings.AccountTest do
                Deletion.cancel_account_deletion(account, subject)
 
       account = fetch_account!(account.id)
-      assert account.disabled_at
+      assert account.is_disabled
       assert account.scheduled_deletion_at
 
       [scheduled_job] =
@@ -424,12 +424,12 @@ defmodule PortalWeb.Settings.AccountTest do
       other_account = account_fixture()
       other_actor = admin_actor_fixture(account: other_account)
       subject = subject_fixture(account: other_account, actor: other_actor)
-      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
 
       account =
         update_account(account,
-          disabled_at: disabled_at,
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 
@@ -442,7 +442,7 @@ defmodule PortalWeb.Settings.AccountTest do
                Deletion.cancel_account_deletion(account, subject)
 
       account = fetch_account!(account.id)
-      assert account.disabled_at
+      assert account.is_disabled
       assert account.scheduled_deletion_at
 
       [scheduled_job] =

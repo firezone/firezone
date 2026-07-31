@@ -392,7 +392,7 @@ defmodule PortalWeb.EmailOTPController do
         where:
           a.email == ^email and
             a.account_id == ^account.id and
-            is_nil(a.disabled_at) and
+            a.is_disabled == false and
             a.allow_email_otp_sign_in == true
       )
       |> preload(:account)

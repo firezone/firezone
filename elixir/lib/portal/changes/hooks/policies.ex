@@ -15,8 +15,7 @@ defmodule Portal.Changes.Hooks.Policies do
   @impl true
 
   # Disable - process as delete
-  def on_update(lsn, %{"disabled_at" => nil} = old_data, %{"disabled_at" => disabled_at})
-      when not is_nil(disabled_at) do
+  def on_update(lsn, %{"is_disabled" => false} = old_data, %{"is_disabled" => true}) do
     # TODO: Potentially revisit whether this should be handled here
     #       or handled closer to where the PubSub message is received.
     policy = struct_from_params(Policy, old_data)
@@ -26,8 +25,7 @@ defmodule Portal.Changes.Hooks.Policies do
   end
 
   # Enable - process as insert
-  def on_update(lsn, %{"disabled_at" => disabled_at}, %{"disabled_at" => nil} = data)
-      when not is_nil(disabled_at) do
+  def on_update(lsn, %{"is_disabled" => true}, %{"is_disabled" => false} = data) do
     on_insert(lsn, data)
   end
 

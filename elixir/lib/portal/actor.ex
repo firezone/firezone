@@ -39,7 +39,7 @@ defmodule Portal.Actor do
 
     field :last_seen_at, :utc_datetime_usec, virtual: true
     field :identity_count, :integer, virtual: true
-    field :disabled_at, :utc_datetime_usec
+    field :is_disabled, :boolean, default: false, read_after_writes: true
 
     belongs_to :directory, Portal.Directory, foreign_key: :created_by_directory_id
 

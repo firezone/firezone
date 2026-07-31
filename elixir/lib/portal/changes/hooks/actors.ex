@@ -31,13 +31,12 @@ defmodule Portal.Changes.Hooks.Actors do
   # Delete api_tokens, client_tokens, and portal_sessions when an actor is disabled
   defp handle_update_side_effects(
          %{
-           "disabled_at" => nil,
+           "is_disabled" => false,
            "account_id" => account_id,
            "id" => actor_id
          },
-         %{"disabled_at" => disabled_at}
-       )
-       when not is_nil(disabled_at) do
+         %{"is_disabled" => true}
+       ) do
     Database.delete_client_tokens_for_actor(account_id, actor_id)
     Database.delete_portal_sessions_for_actor(account_id, actor_id)
 
@@ -47,11 +46,11 @@ defmodule Portal.Changes.Hooks.Actors do
   # Delete portal_sessions when an active account_admin_user is changed to account_user
   defp handle_update_side_effects(
          %{
-           "disabled_at" => nil,
+           "is_disabled" => false,
            "type" => "account_admin_user"
          },
          %{
-           "disabled_at" => nil,
+           "is_disabled" => false,
            "type" => "account_user",
            "account_id" => account_id,
            "id" => actor_id

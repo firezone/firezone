@@ -597,10 +597,10 @@ defmodule PortalWeb.ServiceAccountsTest do
 
       html = render_click(lv, "cancel_disable_actor")
       refute html =~ "Service account disabled successfully"
-      refute Portal.Repo.get_by!(Portal.Actor, id: service_account.id, account_id: account.id).disabled_at
+      refute Portal.Repo.get_by!(Portal.Actor, id: service_account.id, account_id: account.id).is_disabled
     end
 
-    test "disable sets disabled_at", %{
+    test "disable sets is_disabled", %{
       conn: conn,
       account: account,
       actor: actor
@@ -616,10 +616,10 @@ defmodule PortalWeb.ServiceAccountsTest do
 
       render_click(lv, "disable", %{"id" => service_account.id})
 
-      assert Portal.Repo.get_by!(Portal.Actor, id: service_account.id, account_id: account.id).disabled_at
+      assert Portal.Repo.get_by!(Portal.Actor, id: service_account.id, account_id: account.id).is_disabled
     end
 
-    test "enable clears disabled_at", %{
+    test "enable clears is_disabled", %{
       conn: conn,
       account: account,
       actor: actor
@@ -633,7 +633,7 @@ defmodule PortalWeb.ServiceAccountsTest do
 
       render_click(lv, "enable", %{"id" => service_account.id})
 
-      refute Portal.Repo.get_by!(Portal.Actor, id: service_account.id, account_id: account.id).disabled_at
+      refute Portal.Repo.get_by!(Portal.Actor, id: service_account.id, account_id: account.id).is_disabled
     end
 
     test "does not enable when the service account limit is reached", %{
@@ -652,7 +652,7 @@ defmodule PortalWeb.ServiceAccountsTest do
       html = render_click(lv, "enable", %{"id" => service_account.id})
 
       assert html =~ "Service account limit reached for your account"
-      assert Repo.get_by!(Actor, id: service_account.id, account_id: account.id).disabled_at
+      assert Repo.get_by!(Actor, id: service_account.id, account_id: account.id).is_disabled
     end
 
     test "confirm and cancel delete service account", %{

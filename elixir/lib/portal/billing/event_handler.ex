@@ -185,7 +185,7 @@ defmodule Portal.Billing.EventHandler do
     %{"id" => customer_id} = customer_data
 
     disable_account_attrs = %{
-      disabled_at: DateTime.utc_now(),
+      is_disabled: true,
       disabled_reason: "Stripe customer deleted"
     }
 
@@ -197,7 +197,7 @@ defmodule Portal.Billing.EventHandler do
     customer_id = Map.get(subscription_data, "customer")
 
     disable_account_attrs = %{
-      disabled_at: DateTime.utc_now(),
+      is_disabled: true,
       disabled_reason: "Stripe subscription deleted"
     }
 
@@ -208,7 +208,7 @@ defmodule Portal.Billing.EventHandler do
     customer_id = Map.get(subscription_data, "customer")
 
     disable_account_attrs = %{
-      disabled_at: DateTime.utc_now(),
+      is_disabled: true,
       disabled_reason: "Stripe subscription paused"
     }
 
@@ -285,7 +285,7 @@ defmodule Portal.Billing.EventHandler do
           subscription_metadata,
           stripe_metadata
         )
-        |> Map.put(:disabled_at, nil)
+        |> Map.put(:is_disabled, false)
         |> Map.put(:disabled_reason, nil)
 
       {:ok, attrs}
@@ -721,7 +721,7 @@ defmodule Portal.Billing.EventHandler do
       |> case do
         %Account{} = account ->
           account
-          |> cast(attrs, [:name, :legal_name, :slug, :disabled_at, :disabled_reason])
+          |> cast(attrs, [:name, :legal_name, :slug, :is_disabled, :disabled_reason])
           |> cast_embed(:limits)
           |> cast_embed(:features)
           |> cast_embed(:metadata)

@@ -140,7 +140,7 @@ defmodule Portal.Workers.OutdatedGateways do
 
     def all_admins_for_account!(account) do
       from(a in Portal.Actor, as: :actors)
-      |> where([actors: a], is_nil(a.disabled_at))
+      |> where([actors: a], a.is_disabled == false)
       |> where([actors: a], a.account_id == ^account.id)
       |> where([actors: a], a.type == :account_admin_user)
       |> Safe.unscoped(:replica)
@@ -170,7 +170,7 @@ defmodule Portal.Workers.OutdatedGateways do
         on: c.actor_id == a.id and c.account_id == a.account_id,
         as: :actor
       )
-      |> where([actor: a], is_nil(a.disabled_at))
+      |> where([actor: a], a.is_disabled == false)
       |> Safe.unscoped(:replica)
       |> Safe.aggregate(:count)
     end

@@ -20,7 +20,7 @@ defmodule Portal.Changes.Hooks.ActorsTest do
         "account_id" => account.id,
         "name" => actor.name,
         "type" => actor.type,
-        "disabled_at" => nil
+        "is_disabled" => false
       }
 
       assert :ok == on_insert(0, data)
@@ -45,7 +45,7 @@ defmodule Portal.Changes.Hooks.ActorsTest do
         "account_id" => account.id,
         "name" => actor.name,
         "type" => actor.type,
-        "disabled_at" => nil
+        "is_disabled" => false
       }
 
       data = %{old_data | "name" => "Updated Name"}
@@ -75,10 +75,10 @@ defmodule Portal.Changes.Hooks.ActorsTest do
         "id" => actor.id,
         "account_id" => account.id,
         "type" => actor.type,
-        "disabled_at" => nil
+        "is_disabled" => false
       }
 
-      data = %{old_data | "disabled_at" => DateTime.utc_now()}
+      data = %{old_data | "is_disabled" => true}
 
       assert :ok == on_update(0, old_data, data)
 
@@ -99,7 +99,7 @@ defmodule Portal.Changes.Hooks.ActorsTest do
         "account_id" => account.id,
         "name" => actor.name,
         "type" => actor.type,
-        "disabled_at" => nil
+        "is_disabled" => false
       }
 
       assert :ok == on_delete(0, old_data)

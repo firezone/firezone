@@ -31,7 +31,7 @@ defmodule Portal.Repo.FilterTest do
           type: :boolean,
           name: :bool,
           fun: fn queryable ->
-            {queryable, dynamic([accounts: accounts], is_nil(accounts.disabled_at))}
+            {queryable, dynamic([accounts: accounts], accounts.is_disabled == false)}
           end
         }
       }
@@ -43,7 +43,7 @@ defmodule Portal.Repo.FilterTest do
              |> inspect() == """
              #Ecto.Query<from a0 in Portal.Account,\
               as: :accounts,\
-              where: is_nil(a0.disabled_at)>\
+              where: a0.is_disabled == false>\
              """
 
       assert {queryable, dynamic} = build_dynamic(queryable, [bool: false], filters, nil)
@@ -53,7 +53,7 @@ defmodule Portal.Repo.FilterTest do
              |> inspect() == """
              #Ecto.Query<from a0 in Portal.Account,\
               as: :accounts,\
-              where: not is_nil(a0.disabled_at)>\
+              where: not (a0.is_disabled == false)>\
              """
     end
 

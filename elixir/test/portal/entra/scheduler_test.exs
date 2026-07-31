@@ -58,7 +58,7 @@ defmodule Portal.Entra.SchedulerTest do
       # Disable the account
       disabled_account =
         disabled_account
-        |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+        |> Ecto.Changeset.change(is_disabled: true)
         |> Repo.update!()
 
       _dir = entra_directory_fixture(account: disabled_account, name: "Directory")

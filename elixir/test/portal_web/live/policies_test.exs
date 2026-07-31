@@ -427,12 +427,12 @@ defmodule PortalWeb.PoliciesTest do
       render_click(lv, "disable_policy")
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
-      assert policy.disabled_at
+      assert policy.is_disabled
 
       render_click(lv, "enable_policy")
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
-      assert is_nil(policy.disabled_at)
+      refute policy.is_disabled
 
       html = render_click(lv, "confirm_delete_policy")
       assert html =~ "Delete this policy?"
