@@ -7,7 +7,7 @@
 #if os(macOS)
   import SystemExtensions
 
-  public enum SystemExtensionError: Error {
+  public enum SystemExtensionError: Error, CustomStringConvertible, LocalizedError {
     case unknownResult(OSSystemExtensionRequest.Result)
 
     public var description: String {
@@ -16,6 +16,8 @@
         return "Unknown result: \(result)"
       }
     }
+
+    public var errorDescription: String? { description }
   }
 
   public enum SystemExtensionStatus: Equatable, Sendable {
