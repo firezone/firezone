@@ -61,29 +61,8 @@ defmodule PortalWeb.Settings.Notifications do
         <p class="text-sm font-medium text-heading">{@label}</p>
         <p :if={@description} class="text-xs text-subtle mt-0.5">{@description}</p>
       </div>
-      <label class="inline-flex items-center shrink-0 cursor-pointer">
-        <input type="hidden" name={@field.name} value="false" />
-        <input
-          type="checkbox"
-          id={@field.id}
-          name={@field.name}
-          value="true"
-          checked={@checked}
-          class="sr-only"
-        />
-        <div class={[
-          "w-9 h-5 rounded-full border transition-colors flex items-center px-0.5",
-          @checked && "bg-brand border-brand",
-          not @checked && "bg-input border-input-border"
-        ]}>
-          <span class={[
-            "w-4 h-4 bg-white rounded-full shadow-sm transition-transform",
-            @checked && "translate-x-4",
-            not @checked && "translate-x-0"
-          ]}>
-          </span>
-        </div>
-      </label>
+      <input type="hidden" name={@field.name} value="false" />
+      <.toggle id={@field.id} name={@field.name} value="true" checked={@checked} />
     </div>
     """
   end

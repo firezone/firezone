@@ -185,14 +185,63 @@ defmodule PortalWeb.Dev.ComponentsLive do
       id: "toggle",
       label: "Toggle",
       variants: [
-        %{name: "Off", props: %{"checked" => false, "disabled" => false, "label" => "Enable feature"}},
-        %{name: "On", props: %{"checked" => true, "disabled" => false, "label" => "Enable feature"}},
-        %{name: "Disabled", props: %{"checked" => false, "disabled" => true, "label" => "Locked"}}
+        %{
+          name: "Off",
+          props: %{
+            "checked" => false,
+            "disabled" => false,
+            "label" => "Enable feature",
+            "size" => "md",
+            "label_position" => "after"
+          }
+        },
+        %{
+          name: "On",
+          props: %{
+            "checked" => true,
+            "disabled" => false,
+            "label" => "Enable feature",
+            "size" => "md",
+            "label_position" => "after"
+          }
+        },
+        %{
+          name: "Disabled",
+          props: %{
+            "checked" => false,
+            "disabled" => true,
+            "label" => "Locked",
+            "size" => "md",
+            "label_position" => "after"
+          }
+        },
+        %{
+          name: "Small",
+          props: %{
+            "checked" => true,
+            "disabled" => false,
+            "label" => "Only failures",
+            "size" => "sm",
+            "label_position" => "after"
+          }
+        },
+        %{
+          name: "Label before",
+          props: %{
+            "checked" => true,
+            "disabled" => false,
+            "label" => "Only failures",
+            "size" => "sm",
+            "label_position" => "before"
+          }
+        }
       ],
       controls: [
         %{name: "label", type: "text"},
         %{name: "checked", type: "boolean"},
-        %{name: "disabled", type: "boolean"}
+        %{name: "disabled", type: "boolean"},
+        %{name: "size", type: "select", options: ~w[sm md]},
+        %{name: "label_position", type: "select", options: ~w[before after]}
       ]
     },
     %{
@@ -683,6 +732,8 @@ defmodule PortalWeb.Dev.ComponentsLive do
       checked={@props["checked"]}
       disabled={@props["disabled"]}
       label={@props["label"]}
+      size={@props["size"]}
+      label_position={@props["label_position"]}
     />
     """
   end

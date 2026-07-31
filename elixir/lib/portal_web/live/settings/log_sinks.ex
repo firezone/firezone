@@ -1566,29 +1566,28 @@ defmodule PortalWeb.Settings.LogSinks do
           </div>
         </fieldset>
 
-        <div :if={@live_action == :new}>
-          <label class="flex items-center gap-3 cursor-pointer">
-            <input type="hidden" name={@form[:retroactive].name} value="false" />
-            <input
-              type="checkbox"
-              name={@form[:retroactive].name}
-              value="true"
-              checked={get_field(@form.source, :retroactive)}
-              class="w-4 h-4 text-brand border-border rounded"
-            />
+        <div :if={@live_action == :new} class="flex items-start justify-between gap-4">
+          <div>
             <span class="text-sm font-medium text-heading">
               Deliver existing logs
             </span>
-          </label>
-          <p class="mt-1 ml-7 text-xs text-subtle">
-            Backfill logs recorded before this sink was created, oldest first, while new
-            logs are delivered as they arrive. When disabled, only logs recorded from now
-            on are delivered.
-          </p>
-          <p :if={@type == "newrelic"} class="mt-1 ml-7 text-xs text-subtle">
-            New Relic drops payloads with timestamps older than 48 hours, so backfilled
-            events older than that will not appear in New Relic.
-          </p>
+            <p class="mt-1 text-xs text-subtle">
+              Backfill logs recorded before this sink was created, oldest first, while new
+              logs are delivered as they arrive. When disabled, only logs recorded from now
+              on are delivered.
+            </p>
+            <p :if={@type == "newrelic"} class="mt-1 text-xs text-subtle">
+              New Relic drops payloads with timestamps older than 48 hours, so backfilled
+              events older than that will not appear in New Relic.
+            </p>
+          </div>
+          <input type="hidden" name={@form[:retroactive].name} value="false" />
+          <.toggle
+            id={@form[:retroactive].id}
+            name={@form[:retroactive].name}
+            value="true"
+            checked={get_field(@form.source, :retroactive)}
+          />
         </div>
       </div>
     </.form>

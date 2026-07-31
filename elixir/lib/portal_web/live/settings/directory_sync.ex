@@ -1281,24 +1281,23 @@ defmodule PortalWeb.Settings.DirectorySync do
           </div>
         </fieldset>
 
-        <div :if={@type == "google"} class="mt-4">
-          <label class="flex items-center gap-3 cursor-pointer">
-            <input type="hidden" name={@form[:orgunit_sync_enabled].name} value="false" />
-            <input
-              type="checkbox"
-              name={@form[:orgunit_sync_enabled].name}
-              value="true"
-              checked={get_field(@form.source, :orgunit_sync_enabled)}
-              class="w-4 h-4 text-brand border-border rounded"
-            />
+        <div :if={@type == "google"} class="mt-4 flex items-start justify-between gap-4">
+          <div>
             <span class="text-sm font-medium text-heading">
               Sync Organization Units
             </span>
-          </label>
-          <p class="mt-1 ml-7 text-xs text-subtle">
-            Sync Google Workspace organizational units as groups. <strong>Note:</strong>
-            When enabled, all org units and active users will be synced.
-          </p>
+            <p class="mt-1 text-xs text-subtle">
+              Sync Google Workspace organizational units as groups. <strong>Note:</strong>
+              When enabled, all org units and active users will be synced.
+            </p>
+          </div>
+          <input type="hidden" name={@form[:orgunit_sync_enabled].name} value="false" />
+          <.toggle
+            id={@form[:orgunit_sync_enabled].id}
+            name={@form[:orgunit_sync_enabled].name}
+            value="true"
+            checked={get_field(@form.source, :orgunit_sync_enabled)}
+          />
         </div>
 
         <div :if={@type == "okta"}>
