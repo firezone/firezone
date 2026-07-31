@@ -1254,7 +1254,8 @@ defmodule PortalWeb.Settings.Authentication do
                 phx-debounce="300"
               />
               <p class="mt-2 text-xs text-subtle">
-                Client default: 7 days
+                Client default: 7 days. Clients will be <strong>signed out</strong>
+                after this and forced to re-authenticate.
               </p>
             </div>
           </div>

@@ -429,6 +429,8 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert html =~ "Context"
       assert html =~ "Portal (seconds)"
       assert html =~ "Client (seconds)"
+      assert html =~ "Clients will be <strong>signed out</strong>"
+      assert html =~ "after this and forced to re-authenticate."
       assert html =~ "Verify Now"
     end
 
