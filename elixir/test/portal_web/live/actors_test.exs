@@ -556,7 +556,7 @@ defmodule PortalWeb.ActorsTest do
       html = render_click(lv, "enable", %{"id" => other_actor.id})
 
       assert html =~ "User limit reached for your account"
-      assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id).disabled_at
+      assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id).is_disabled
     end
 
     test "does not re-enable admin when admins limit is reached", %{
@@ -575,7 +575,7 @@ defmodule PortalWeb.ActorsTest do
       html = render_click(lv, "enable", %{"id" => other_actor.id})
 
       assert html =~ "Admin user limit reached for your account"
-      assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id).disabled_at
+      assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id).is_disabled
     end
 
     test "cancel delete actor returns to detail view", %{

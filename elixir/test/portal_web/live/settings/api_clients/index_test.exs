@@ -351,7 +351,7 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
       html = render_click(lv, "enable", %{"id" => api_client.id})
 
       assert html =~ "maximum number of API tokens allowed for your account"
-      assert Repo.get_by!(Actor, account_id: account.id, id: api_client.id).disabled_at
+      assert Repo.get_by!(Actor, account_id: account.id, id: api_client.id).is_disabled
     end
 
     test "deletes an api client after confirmation", %{conn: conn, account: account, actor: actor} do

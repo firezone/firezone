@@ -652,7 +652,7 @@ defmodule PortalWeb.ServiceAccountsTest do
       html = render_click(lv, "enable", %{"id" => service_account.id})
 
       assert html =~ "Service account limit reached for your account"
-      assert Repo.get_by!(Actor, id: service_account.id, account_id: account.id).disabled_at
+      assert Repo.get_by!(Actor, id: service_account.id, account_id: account.id).is_disabled
     end
 
     test "confirm and cancel delete service account", %{
