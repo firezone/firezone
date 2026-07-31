@@ -12,8 +12,12 @@ import Foundation
   /// Runs an async command the way `@main` would. Binding the concrete type here is what
   /// picks the asynchronous `main()`; calling it on the protocol resolves to the
   /// synchronous one inherited from `ParsableCommand`.
-  func runHeadlessClient<Command: AsyncParsableCommand>(_ command: Command.Type) async {
+  ///
+  /// Returns `Never` deliberately: `main()` only exits on the way out of an error, and
+  /// returning normally would carry on into the app and open its window.
+  func runHeadlessClient<Command: AsyncParsableCommand>(_ command: Command.Type) async -> Never {
     await command.main()
+    command.exit()
   }
 
   // The headless client is this same binary, reached through a symlink sitting next to
