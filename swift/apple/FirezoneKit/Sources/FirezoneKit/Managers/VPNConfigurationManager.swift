@@ -74,21 +74,9 @@ enum VPNConfigurationManagerError: Error {
 public final class VPNConfigurationManager {
   let manager: any TunnelProviderManager
 
-  public static let bundleIdentifier: String = "\(mainAppBundleIdentifier).network-extension"
-
-  /// Helpers nested in the app bundle, such as the CLI, have their own bundle identifier
-  /// and name the main app in their Info.plist. Everything else is the main app already.
-  private static let mainAppBundleIdentifier: String = {
-    if let helperHost = Bundle.main.object(forInfoDictionaryKey: "FirezoneMainAppBundleIdentifier")
-      as? String
-    {
-      return helperHost
-    }
-
-    // App cannot run without bundle identifier - force unwrap is safe
-    // swiftlint:disable:next force_unwrapping
-    return Bundle.main.bundleIdentifier!
-  }()
+  // App cannot run without bundle identifier - force unwrap is safe
+  // swiftlint:disable:next force_unwrapping
+  public static let bundleIdentifier: String = "\(Bundle.main.bundleIdentifier!).network-extension"
   static let bundleDescription = "Firezone"
 
   // Initialize and save a new VPN configuration in system Preferences
@@ -169,17 +157,10 @@ public final class VPNConfigurationManager {
     configuration.loadProviderConfiguration(stored)
     overrides.apply(to: configuration)
 
-    var updated = configuration.toProviderConfiguration(
+    try await save(
+      configuration: configuration,
       markUserDefaultsMigrated: stored[Configuration.Keys.userDefaultsMigrated] == "true"
     )
-
-    // A headless client has its own preferences domain, so it can't see the MDM forced
-    // values the GUI cached here. Carry them over rather than erasing them.
-    for (key, value) in stored where key.hasPrefix(Configuration.forcedPrefix) {
-      updated[key] = value
-    }
-
-    try await save(providerConfiguration: updated)
   }
 
   func save(

@@ -14,8 +14,6 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>FirezoneMainAppBundleIdentifier</key>
-	<string>$(MAIN_APP_BUNDLE_ID)</string>
 	<key>GitSha</key>
 	<string>$(GIT_SHA)</string>
 	<key>LSBackgroundOnly</key>

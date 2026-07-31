@@ -4,7 +4,10 @@ set -e
 
 # See https://docs.github.com/en/actions/use-cases-and-examples/deploying/installing-an-apple-certificate-on-macos-runners-for-xcode-development
 function setup_runner() {
-    # Takes (base64 profile, filename) pairs, one per target that needs its own profile.
+    local app_profile="$1"
+    local app_profile_file="$2"
+    local ne_profile="$3"
+    local ne_profile_file="$4"
 
     # Use the latest version of Xcode - matches what we typically use for development
     sudo xcode-select --switch "$(ls -d /Applications/Xcode*${XCODE_VERSION}*.app | sort -V | tail -n 1)"
@@ -15,10 +18,8 @@ function setup_runner() {
 
     # Install provisioning profiles
     mkdir -p "$profiles_path"
-    while [ "$#" -gt 0 ]; do
-        base64_decode "$1" "$profiles_path/$2"
-        shift 2
-    done
+    base64_decode "$app_profile" "$profiles_path/$app_profile_file"
+    base64_decode "$ne_profile" "$profiles_path/$ne_profile_file"
 
     # Create a keychain to use for signing
     security create-keychain -p "$keychain_pass" "$keychain_path"

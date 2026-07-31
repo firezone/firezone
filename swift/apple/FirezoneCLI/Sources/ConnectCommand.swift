@@ -32,22 +32,24 @@ extension FirezoneCLI {
     mutating func run() async throws {
       Log.useCLIOutput()
 
-      let apiURL = Self.setting(apiUrl, "FIREZONE_API_URL", ConfigurationDefaults.apiURL)
-      let accountSlug = Self.setting(
-        self.accountSlug, "FIREZONE_ACCOUNT_SLUG", ConfigurationDefaults.accountSlug)
-      let authBaseURL = Self.setting(
-        authBaseUrl, "FIREZONE_AUTH_BASE_URL", ConfigurationDefaults.authURL)
-      // No flag for this one yet; the environment variable is the only override.
-      let logFilter =
-        ProcessInfo.processInfo.environment["FIREZONE_LOG_FILTER"]
-        ?? ConfigurationDefaults.logFilter
-      let internetResourceEnabled =
+      // Only what was actually asked for. The VPN profile is shared with the app, so
+      // anything left unset here keeps the value the app stored.
+      let apiURL = Self.setting(apiUrl, "FIREZONE_API_URL")
+      let accountSlug = Self.setting(self.accountSlug, "FIREZONE_ACCOUNT_SLUG")
+      let logFilter = Self.setting(nil, "FIREZONE_LOG_FILTER")
+      let wantsInternetResource =
         activateInternetResource
         || ProcessInfo.processInfo.environment["FIREZONE_ACTIVATE_INTERNET_RESOURCE"] == "1"
+      // swiftlint:disable:next discouraged_optional_boolean - nil leaves the stored value
+      let internetResourceEnabled: Bool? = wantsInternetResource ? true : nil
 
-      Log.info("API URL: \(apiURL)")
-      Log.info("Account slug: \(accountSlug.isEmpty ? "(empty)" : accountSlug)")
-      Log.info("Internet resource: \(internetResourceEnabled)")
+      // Only used to build the sign-in URL, never written to the profile.
+      let authBaseURL =
+        Self.setting(authBaseUrl, "FIREZONE_AUTH_BASE_URL") ?? ConfigurationDefaults.authURL
+
+      Log.info("API URL: \(apiURL ?? "(unchanged)")")
+      Log.info("Account slug: \(accountSlug ?? "(unchanged)")")
+      Log.info("Internet resource: \(internetResourceEnabled.map(String.init) ?? "(unchanged)")")
 
       try await SystemExtension.requireInstalled()
 
@@ -60,8 +62,10 @@ extension FirezoneCLI {
         )
       )
 
+      // Without a slug the URL lands on the account picker, same as before.
+      let signInSlug = accountSlug ?? ConfigurationDefaults.accountSlug
       let supervisor = TunnelSupervisor(session: session) {
-        try await SignInPrompt.requestToken(authBaseURL: authBaseURL, accountSlug: accountSlug)
+        try await SignInPrompt.requestToken(authBaseURL: authBaseURL, accountSlug: signInSlug)
       }
 
       // A prompt may still be blocked on stdin with echo off when we stop.
@@ -69,9 +73,9 @@ extension FirezoneCLI {
       try await supervisor.run()
     }
 
-    /// Command-line flag, then environment variable, then the shared default.
-    private static func setting(_ flag: String?, _ variable: String, _ fallback: String) -> String {
-      flag ?? ProcessInfo.processInfo.environment[variable] ?? fallback
+    /// Command-line flag, then environment variable, then nothing.
+    private static func setting(_ flag: String?, _ variable: String) -> String? {
+      flag ?? ProcessInfo.processInfo.environment[variable]
     }
 
     @MainActor

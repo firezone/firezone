@@ -9,7 +9,6 @@ source "./scripts/build/lib.sh"
 # Define needed variables
 app_profile_id=$(extract_uuid "$MACOS_APP_PROVISIONING_PROFILE")
 ne_profile_id=$(extract_uuid "$MACOS_NE_PROVISIONING_PROFILE")
-cli_profile_id=$(extract_uuid "$MACOS_CLI_PROVISIONING_PROFILE")
 temp_dir="${TEMP_DIR:-$(mktemp -d)}"
 package_path="$temp_dir/Firezone.pkg"
 git_sha=${GITHUB_SHA:-$(git rev-parse HEAD)}
@@ -23,9 +22,7 @@ if [ "${CI:-}" = "true" ]; then
         "$MACOS_APP_PROVISIONING_PROFILE" \
         "$app_profile_id.provisionprofile" \
         "$MACOS_NE_PROVISIONING_PROFILE" \
-        "$ne_profile_id.provisionprofile" \
-        "$MACOS_CLI_PROVISIONING_PROFILE" \
-        "$cli_profile_id.provisionprofile"
+        "$ne_profile_id.provisionprofile"
 fi
 
 # Build and sign
@@ -38,7 +35,6 @@ xcodebuild build \
     CONFIGURATION_BUILD_DIR="$temp_dir" \
     APP_PROFILE_ID="$app_profile_id" \
     NE_PROFILE_ID="$ne_profile_id" \
-    CLI_PROFILE_ID="$cli_profile_id" \
     CURRENT_PROJECT_VERSION="$seconds_since_epoch" \
     ONLY_ACTIVE_ARCH=NO \
     -project "$project_file" \

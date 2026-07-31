@@ -9,7 +9,6 @@ source "./scripts/build/lib.sh"
 # Define needed variables
 app_profile_id=$(extract_uuid "$STANDALONE_MACOS_APP_PROVISIONING_PROFILE")
 ne_profile_id=$(extract_uuid "$STANDALONE_MACOS_NE_PROVISIONING_PROFILE")
-cli_profile_id=$(extract_uuid "$STANDALONE_MACOS_CLI_PROVISIONING_PROFILE")
 notarize=${NOTARIZE:-"false"}
 temp_dir="${TEMP_DIR:-$(mktemp -d)}"
 dmg_dir="$temp_dir/dmg"
@@ -27,9 +26,7 @@ if [ "${CI:-}" = "true" ]; then
         "$STANDALONE_MACOS_APP_PROVISIONING_PROFILE" \
         "$app_profile_id.provisionprofile" \
         "$STANDALONE_MACOS_NE_PROVISIONING_PROFILE" \
-        "$ne_profile_id.provisionprofile" \
-        "$STANDALONE_MACOS_CLI_PROVISIONING_PROFILE" \
-        "$cli_profile_id.provisionprofile"
+        "$ne_profile_id.provisionprofile"
 fi
 
 # Build and sign
@@ -45,7 +42,6 @@ xcodebuild build \
     CONFIGURATION_BUILD_DIR="$temp_dir" \
     APP_PROFILE_ID="$app_profile_id" \
     NE_PROFILE_ID="$ne_profile_id" \
-    CLI_PROFILE_ID="$cli_profile_id" \
     ONLY_ACTIVE_ARCH=NO \
     CURRENT_PROJECT_VERSION="$seconds_since_epoch" \
     -project "$project_file" \

@@ -196,7 +196,9 @@ These environment variables are read when the matching flag is absent:
 | `FIREZONE_LOG_FILTER`                 | none                           |
 
 Without a token it prints a sign-in URL and waits for you to paste one back.
-Logs go to stderr rather than to the log folder the app and extension share.
+
+Anything you don't set keeps whatever the app stored, since both share one VPN
+profile. Logs go to stderr as well as to the log folder the app shares.
 
 ### Instruments
 
@@ -377,35 +379,20 @@ APPLE_IOS_APP_PROVISIONING_PROFILE
 APPLE_IOS_NE_PROVISIONING_PROFILE
 APPLE_MACOS_APP_PROVISIONING_PROFILE
 APPLE_MACOS_NE_PROVISIONING_PROFILE
-APPLE_MACOS_CLI_PROVISIONING_PROFILE
 ```
 
 1. Go to
    [Apple Developer](https://developer.apple.com/account/resources/profiles/list)
 1. Click the "+" button to generate a new provisioning profile for App Store
 1. Select the appropriate app ID and distribution certificate you just created.
-   You'll need a provisioning profile for each app, network extension, and the
-   macOS CLI, so 5 total (mac app, mac network extension, mac CLI, ios app, ios
-   network extension).
+   You'll need a provisioning profile for each app and network extension, so 4
+   total (mac app, mac network extension, ios app, ios network extension).
 1. Download the resulting provisioning profiles.
 1. Encode to base64 and save each using the secrets names above:
 
 ```bash
 base64 < profile.mobileprovision
 ```
-
-Or upload it straight to GitHub, which is easier to get right than pasting a
-17,000 character string into a browser:
-
-```bash
-gh secret set APPLE_MACOS_CLI_PROVISIONING_PROFILE \
-    --repo firezone/firezone \
-    --body "$(base64 -i profile.provisionprofile)"
-```
-
-The CLI ships inside `Firezone.app` but has its own bundle identifier,
-`dev.firezone.firezone-cli`, so it needs its own app ID and its own profile. It
-cannot reuse the app's. Give it the same entitlements as the main app.
 
 ## Generating new signing certificates and provisioning profiles for standalone distribution
 
@@ -433,7 +420,6 @@ APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_BASE64
 APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD
 APPLE_STANDALONE_MACOS_APP_PROVISIONING_PROFILE
 APPLE_STANDALONE_MACOS_NE_PROVISIONING_PROFILE
-APPLE_STANDALONE_MACOS_CLI_PROVISIONING_PROFILE
 ```
 
 ## Code signing during development
@@ -444,5 +430,5 @@ missing. If it complains that your login was rejected, sign in again under Xcode
 -> Settings -> Accounts.
 
 Release builds never do this. They are given the profiles above by UUID through
-`APP_PROFILE_ID`, `NE_PROFILE_ID`, and `CLI_PROFILE_ID`, which the build scripts
-extract from the secrets.
+`APP_PROFILE_ID` and `NE_PROFILE_ID`, which the build scripts extract from the
+secrets.
