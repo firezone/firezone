@@ -83,6 +83,15 @@ fn payload_len(bencher: divan::Bencher, kind: Kind) {
     bencher.bench_local(|| divan::black_box(divan::black_box(&packet).layer4_payload_len()));
 }
 
+/// Reads the ECN codepoint from an already-parsed packet.
+#[divan::bench(args = KINDS)]
+fn ecn(bencher: divan::Bencher, kind: Kind) {
+    let (buf, len) = kind.buf();
+    let packet = IpPacket::new(buf, len).unwrap();
+
+    bencher.bench_local(|| divan::black_box(divan::black_box(&packet).ecn()));
+}
+
 impl Kind {
     fn buf(self) -> (IpPacketBuf, usize) {
         let bytes = self.bytes();

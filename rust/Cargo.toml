@@ -125,7 +125,7 @@ humantime = "2.3.0"
 hyper = "1.10.1"
 hyper-util = "0.1.20"
 incremental-inet-checksum = { path = "libs/incremental-inet-checksum" }
-ingot = { version = "0.1.1", default-features = false, features = ["alloc"] }
+ingot = { version = "0.2.1", default-features = false, features = ["alloc"] }
 ip-packet = { path = "libs/connlib/ip-packet" }
 ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
