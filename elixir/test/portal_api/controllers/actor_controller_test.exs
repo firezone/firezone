@@ -852,14 +852,7 @@ defmodule PortalAPI.ActorControllerTest do
     end
   end
 
-  describe "disable/2" do
-    test "returns error when not authorized", %{conn: conn, account: account} do
-      actor = actor_fixture(account: account)
-      conn = post(conn, "/actors/#{actor.id}/disable")
-      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
-               json_response(conn, 401)
-    end
-
+  describe "update/2 is_disabled" do
     test "disables an actor", %{
       conn: conn,
       account: account,
@@ -875,11 +868,11 @@ defmodule PortalAPI.ActorControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/disable")
+        |> put("/actors/#{actor.id}", actor: %{"is_disabled" => true})
 
-      assert %{"data" => %{"id" => id, "disabled_at" => disabled_at}} = json_response(conn, 200)
+      assert %{"data" => %{"id" => id, "is_disabled" => true}} = json_response(conn, 200)
       assert id == actor.id
-      refute is_nil(disabled_at)
+      assert Repo.get_by!(Actor, account_id: account.id, id: actor.id).is_disabled
     end
 
     test "disabling an already-disabled actor is idempotent", %{
@@ -893,42 +886,10 @@ defmodule PortalAPI.ActorControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/disable")
+        |> put("/actors/#{actor.id}", actor: %{"is_disabled" => true})
 
-      assert %{"data" => %{"id" => id}} = json_response(conn, 200)
+      assert %{"data" => %{"id" => id, "is_disabled" => true}} = json_response(conn, 200)
       assert id == actor.id
-    end
-
-    test "returns forbidden when actor attempts to disable itself", %{
-      conn: conn,
-      actor: api_actor
-    } do
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{api_actor.id}/disable")
-
-      assert %{"type" => "about:blank", "status" => 403} = json_response(conn, 403)
-    end
-
-    test "returns not found for unknown id", %{conn: conn, actor: api_actor} do
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{Ecto.UUID.generate()}/disable")
-
-      assert json_response(conn, 404)
-    end
-  end
-
-  describe "enable/2" do
-    test "returns error when not authorized", %{conn: conn, account: account} do
-      actor = disabled_actor_fixture(account: account)
-      conn = post(conn, "/actors/#{actor.id}/enable")
-      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
-               json_response(conn, 401)
     end
 
     test "enables a disabled actor", %{conn: conn, account: account, actor: api_actor} do
@@ -938,20 +899,39 @@ defmodule PortalAPI.ActorControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/enable")
+        |> put("/actors/#{actor.id}", actor: %{"is_disabled" => false})
 
-      assert %{"data" => %{"id" => id, "disabled_at" => nil}} = json_response(conn, 200)
+      assert %{"data" => %{"id" => id, "is_disabled" => false}} = json_response(conn, 200)
       assert id == actor.id
+      refute Repo.get_by!(Actor, account_id: account.id, id: actor.id).is_disabled
     end
 
-    test "returns not found for unknown id", %{conn: conn, actor: api_actor} do
+    test "returns forbidden when actor attempts to disable itself", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
       conn =
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{Ecto.UUID.generate()}/enable")
+        |> put("/actors/#{api_actor.id}", actor: %{"is_disabled" => true})
 
-      assert json_response(conn, 404)
+      assert %{"type" => "about:blank", "status" => 403} = json_response(conn, 403)
+      refute Repo.get_by!(Actor, account_id: account.id, id: api_actor.id).is_disabled
+    end
+
+    test "allows an actor to update itself without changing is_disabled", %{
+      conn: conn,
+      actor: api_actor
+    } do
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{api_actor.id}", actor: %{"is_disabled" => false})
+
+      assert %{"data" => %{"is_disabled" => false}} = json_response(conn, 200)
     end
   end
 
