@@ -41,8 +41,12 @@ defmodule Portal.Req.SSRFProtectionTest do
   test "blocks literal private and reserved IPv4 and IPv6 addresses before the adapter runs" do
     urls = [
       "https://169.254.169.254/latest/meta-data",
+      "http://[fe80::1]/latest/meta-data",
       "http://[::1]/metadata",
-      "http://[::ffff:127.0.0.1]/metadata"
+      "http://[::ffff:127.0.0.1]/metadata",
+      "http://[::ffff:169.254.169.254]/metadata",
+      "http://[::169.254.169.254]/metadata",
+      "http://[::ffff:0:169.254.169.254]/metadata"
     ]
 
     for url <- urls do

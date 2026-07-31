@@ -28,8 +28,10 @@ defmodule Portal.Changeset do
   ]
 
   @special_use_ipv6_cidrs [
-    %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 128},
-    %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: 128},
+    # ::/96 (which subsumes :: and ::1) and ::ffff:0:0:0/96 are deprecated
+    # formats that embed an arbitrary IPv4 address.
+    %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 96},
+    %Postgrex.INET{address: {0, 0, 0, 0, 0xFFFF, 0, 0, 0}, netmask: 96},
     %Postgrex.INET{address: {0x0064, 0xFF9B, 0, 0, 0, 0, 0, 0}, netmask: 96},
     %Postgrex.INET{address: {0x0064, 0xFF9B, 0x0001, 0, 0, 0, 0, 0}, netmask: 48},
     %Postgrex.INET{address: {0x0100, 0, 0, 0, 0, 0, 0, 0}, netmask: 64},
@@ -40,6 +42,7 @@ defmodule Portal.Changeset do
     %Postgrex.INET{address: {0x2002, 0, 0, 0, 0, 0, 0, 0}, netmask: 16},
     %Postgrex.INET{address: {0xFC00, 0, 0, 0, 0, 0, 0, 0}, netmask: 7},
     %Postgrex.INET{address: {0xFE80, 0, 0, 0, 0, 0, 0, 0}, netmask: 10},
+    %Postgrex.INET{address: {0xFEC0, 0, 0, 0, 0, 0, 0, 0}, netmask: 10},
     %Postgrex.INET{address: {0xFF00, 0, 0, 0, 0, 0, 0, 0}, netmask: 8}
   ]
 
