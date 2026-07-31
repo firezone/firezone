@@ -659,16 +659,10 @@ defmodule PortalWeb.Settings.DirectorySync do
             :if={@live_action == :edit and assigns[:form] != nil}
             class="flex flex-col h-full overflow-hidden"
           >
-            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
-              <div class="flex items-center gap-2">
-                <.provider_icon provider={@type} size="md" />
-                <h2 class="text-sm font-semibold text-heading">
-                  Edit {assigns[:directory_name]}
-                </h2>
-                <.docs_action path={"/directory-sync/#{@type}"} />
-              </div>
-              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
-            </div>
+            <.panel_header title={"Edit #{assigns[:directory_name]}"} variant="plain">
+              <:leading><.provider_icon provider={@type} size="md" /></:leading>
+              <:adornment><.docs_action path={"/directory-sync/#{@type}"} /></:adornment>
+            </.panel_header>
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <.flash :if={assigns[:is_legacy]} kind={:warning_inline} class="mb-4">
                 This directory uses legacy credentials and needs to be updated to use Firezone's shared service account.

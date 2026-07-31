@@ -251,7 +251,7 @@ defmodule PortalWeb.Clients.Components do
   def client_edit_view(assigns) do
     ~H"""
     <div class="flex flex-1 min-h-0 flex-col overflow-hidden">
-      <.client_edit_header />
+      <.panel_header title="Edit Client" close_event="cancel_client_edit_form" />
       <.form
         :if={@client_edit_form}
         id="client-edit-form"
@@ -263,17 +263,6 @@ defmodule PortalWeb.Clients.Components do
         <.client_edit_form_body client_edit_form={@client_edit_form} />
         <.client_edit_actions />
       </.form>
-    </div>
-    """
-  end
-
-  def client_edit_header(assigns) do
-    ~H"""
-    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
-      <div class="flex items-center justify-between gap-3">
-        <h2 class="text-sm font-semibold text-heading">Edit Client</h2>
-        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_client_edit_form" />
-      </div>
     </div>
     """
   end
