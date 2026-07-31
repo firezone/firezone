@@ -776,9 +776,7 @@ defmodule PortalWeb.Actors do
      end)}
   end
 
-  # The :actors topic carries every actor type, so this page also sees service
-  # accounts and API clients, which have pages of their own. Those and user
-  # updates that leave the count alone change nothing here.
+  # The :actors topic carries every actor type; the rest have their own pages.
   def handle_info(%Change{struct: %Actor{}}, socket), do: {:noreply, socket}
   def handle_info(%Change{old_struct: %Actor{}}, socket), do: {:noreply, socket}
 
