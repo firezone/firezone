@@ -426,6 +426,24 @@ public final class Store: ObservableObject {
     return vpnConfigurationManager
   }
 
+  /// Picks up a VPN configuration that the system replaced underneath us.
+  ///
+  /// Anything that writes the VPN preferences, the headless client included, leaves
+  /// every other process holding a copy the system no longer recognises. Ours then
+  /// fails every call with `NEVPNError.configurationInvalid` until it is replaced, and
+  /// the session it hands out is no longer the one status notifications arrive for, so
+  /// the observers have to be pointed at the new one as well.
+  private func reloadVPNConfiguration() async throws {
+    guard let manager = try await VPNConfigurationManager.load(using: tunnelManagerFactory)
+    else { return }
+
+    self.vpnConfigurationManager = manager
+
+    // Releasing it cancels it, and clearing it lets the observers be set up again.
+    vpnStatusTask = nil
+    try await setupTunnelObservers()
+  }
+
   /// Establishes `lastSyncedSnapshot` after the VPN configuration is loaded and
   /// performs the one-shot reconciliation of OS-level state (LoginItem) that
   /// isn't covered by simply mirroring `providerConfiguration` to disk.
@@ -595,15 +613,26 @@ public final class Store: ObservableObject {
     self.stateUpdateTask = Task {
       defer { self.stateUpdateTask = nil }
 
+      // Reloading is worth one attempt per run of failures: the tunnel not being up
+      // yet reports the same error, and that resolves on its own.
+      var didReload = false
+
       while !Task.isCancelled {
         do {
           try await self.pollStateOnce()
+          didReload = false
         } catch is CancellationError {
           break
         } catch let error as NSError {
           // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
           if error.domain == "NEVPNErrorDomain" && error.code == 1 {
-            // not initialized yet
+            // Either the tunnel isn't up yet, or the configuration we hold was replaced
+            // and every later poll would fail the same way, leaving resources loading
+            // forever. Reloading costs a preferences read and settles both.
+            if !didReload {
+              didReload = true
+              do { try await self.reloadVPNConfiguration() } catch { Log.error(error) }
+            }
           } else {
             Log.error(error)
           }
