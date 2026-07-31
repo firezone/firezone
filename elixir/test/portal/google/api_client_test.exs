@@ -960,9 +960,7 @@ defmodule Portal.Google.APIClientTest do
     end
 
     test "returns error for a 403 part rather than skipping it" do
-      # 403 is ambiguous: the Directory API uses it for userRateLimitExceeded and
-      # quotaExceeded as well as for permission failures. Skipping the user would
-      # leave them unstamped and delete_unsynced/2 would then delete them.
+      # 403 also means throttling, and skipping a user gets them deleted.
       Req.Test.expect(APIClient, fn conn ->
         boundary = "forbidden_part_boundary"
 

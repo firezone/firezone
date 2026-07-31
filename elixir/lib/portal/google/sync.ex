@@ -159,9 +159,8 @@ defmodule Portal.Google.Sync do
       )
 
     # Phase 4: BFS group member sync.
-    # For each group: fetch direct members → resolve unseen users, from the
-    # customer user list when syncing every domain and via batch_get_users
-    # otherwise → upsert identities → discover GROUP-type sub-groups → recurse.
+    # For each group: fetch direct members → resolve unseen users → upsert
+    # identities → discover GROUP-type sub-groups → recurse.
     sync_group_members_bfs(
       directory,
       access_token,
@@ -669,10 +668,8 @@ defmodule Portal.Google.Sync do
   defp domain_opts(%{sync_all_domains: true}), do: []
   defp domain_opts(directory), do: [domain: directory.domain]
 
-  # Groups can contain users from outside the customer. Passing those to
-  # batch_get_users makes Google answer 403, which aborts the sync, so they have
-  # to be dropped first. Matching the primary domain only works while we sync a
-  # single domain; otherwise membership comes from the customer's own user list.
+  # Outsiders in a group make batch_get_users answer 403, which aborts the sync,
+  # so drop them first.
   defp member_of_customer?(member, _directory, customer_users) when is_map(customer_users) do
     Map.has_key?(customer_users, member["id"])
   end
@@ -687,9 +684,8 @@ defmodule Portal.Google.Sync do
     end
   end
 
-  # Enumerating users is customer-wide, so it spans every domain. A failure here
-  # raises rather than yielding a short list, because a short list would make
-  # delete_unsynced/2 treat the missing users as departed and delete them.
+  # Raises rather than returning a short list: delete_unsynced/2 would read the
+  # missing users as departed and delete them.
   defp customer_users(%{sync_all_domains: true} = directory, access_token) do
     Google.APIClient.stream_users(access_token)
     |> Enum.reduce(%{}, fn
@@ -860,8 +856,6 @@ defmodule Portal.Google.Sync do
 
   defp fetch_syncable_users(_directory, _access_token, [], _customer_users), do: []
 
-  # The customer user list already carries full payloads, so members resolved
-  # from it need no second round-trip.
   defp fetch_syncable_users(directory, _access_token, user_idp_ids, customer_users)
        when is_map(customer_users) do
     user_idp_ids

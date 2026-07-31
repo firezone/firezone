@@ -161,7 +161,6 @@ defmodule Portal.Google.SyncTest do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         assert conn.request_path == "/token"
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
@@ -574,7 +573,6 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"groups" => []})
       end)
 
-      # 3. Org units → empty
       Req.Test.expect(APIClient, fn conn ->
         assert String.contains?(conn.request_path, "/orgunits")
         Req.Test.json(conn, %{"organizationUnits" => []})
@@ -1101,10 +1099,8 @@ defmodule Portal.Google.SyncTest do
     end
 
     test "syncs members from every customer domain and skips external members" do
-      # Google groups can contain external users (other Workspace customers or personal
-      # Gmail) that the Admin SDK returns with type="USER" (the documented EXTERNAL type
-      # is marked "not currently used"). users.get returns 403 for those, which is how we
-      # tell them apart from the customer's own secondary-domain users.
+      # Google returns type="USER" for external members too; the documented
+      # EXTERNAL type is marked "not currently used".
       account = account_fixture()
 
       directory =
@@ -1136,7 +1132,6 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"organizationUnits" => []})
       end)
 
-      # 4. Customer user list, spanning every domain and excluding outsiders.
       Req.Test.expect(APIClient, fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         assert conn.query_params["customer"] == "my_customer"
@@ -1150,9 +1145,6 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      # 5. Group members: two of the customer's own users across different domains,
-      #    an external user Google reports as type=USER, and one with the
-      #    documented-but-unused EXTERNAL type.
       Req.Test.expect(APIClient, fn conn ->
         assert String.contains?(conn.request_path, "/groups/group1/members")
 
@@ -1166,8 +1158,7 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      # 6. Nothing else: identities come from the payloads listed in step 4, so
-      #    there is no batch lookup to make.
+      # No batch lookup: identities come from the user list above.
       Req.Test.expect(APIClient, fn conn ->
         flunk("unexpected extra request to #{conn.request_path}")
       end)
@@ -1215,7 +1206,6 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"organizationUnits" => []})
       end)
 
-      # The Directory API reports throttling as 403 userRateLimitExceeded.
       Req.Test.expect(APIClient, fn conn ->
         conn
         |> Plug.Conn.put_status(403)
@@ -1242,7 +1232,6 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      # 2. Groups → scoped to the primary domain
       Req.Test.expect(APIClient, fn conn ->
         conn = Plug.Conn.fetch_query_params(conn)
         assert conn.query_params["domain"] == "example.com"
@@ -1259,7 +1248,6 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"organizationUnits" => []})
       end)
 
-      # 4. Group members spanning two of the customer's domains
       Req.Test.expect(APIClient, fn conn ->
         assert String.contains?(conn.request_path, "/groups/group1/members")
 
@@ -1271,7 +1259,6 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      # 5. batch_get_users — only the primary-domain user is looked up
       Req.Test.expect(APIClient, fn conn ->
         {:ok, body, _conn} = Plug.Conn.read_body(conn)
         assert String.contains?(body, "user1")
