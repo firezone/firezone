@@ -24,8 +24,16 @@ enum SystemExtension {
       throw CLIError(
         "System extension is not installed. Launch Firezone.app to install it.")
     case .needsReplacement:
-      throw CLIError(
-        "System extension is a different version. Launch Firezone.app to update it.")
+      #if DEBUG
+        // Every build stamps a new CURRENT_PROJECT_VERSION, and only the app can
+        // activate the extension it just built, so a freshly built CLI always
+        // disagrees with whatever the system still has running. Refusing to start
+        // would mean relaunching the app after every build.
+        Log.warning("System extension is a different version, continuing anyway")
+      #else
+        throw CLIError(
+          "System extension is a different version. Launch Firezone.app to update it.")
+      #endif
     }
   }
 }
