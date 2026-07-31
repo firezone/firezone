@@ -110,6 +110,69 @@ defmodule Portal.Config do
       :ok
     end
 
+    @doc """
+    Overrides application env for the current process, merging nested keyword
+    lists rather than replacing them.
+
+    `put_env_override/3` merges only the top level, so overriding one entry of a
+    nested list such as `:req_opts` drops everything else configured under it.
+    That silently hides whatever `config.exs` set, leaving tests agreeing with a
+    configuration no environment actually runs. Prefer this when overriding part
+    of a nested list.
+
+    Builds on any override already in place, so repeated calls accumulate.
+    """
+    def merge_env_override(app \\ :portal, key, value) do
+      Process.put(pdict_key_function(app, key), deep_merge(fetch_env!(app, key), value))
+      :ok
+    end
+
+    @doc """
+    Removes a key from the application env for the current process.
+
+    Given a path it reaches into nested keyword lists, so a test can run against
+    the configured value minus a single entry:
+
+        delete_env_override(:portal, Portal.Google.APIClient, [:req_opts, :retry])
+
+    Without a path the whole override is dropped and the configured value
+    applies again.
+    """
+    def delete_env_override(app \\ :portal, key, path \\ [])
+
+    def delete_env_override(app, key, []) do
+      Process.delete(pdict_key_function(app, key))
+      :ok
+    end
+
+    def delete_env_override(app, key, path) when is_list(path) do
+      Process.put(pdict_key_function(app, key), delete_in(fetch_env!(app, key), path))
+      :ok
+    end
+
+    defp deep_merge(base, override) when is_list(base) and is_list(override) do
+      if Keyword.keyword?(base) and Keyword.keyword?(override) do
+        Keyword.merge(base, override, fn _key, base_value, override_value ->
+          deep_merge(base_value, override_value)
+        end)
+      else
+        override
+      end
+    end
+
+    defp deep_merge(_base, override), do: override
+
+    defp delete_in(keyword, [key]) when is_list(keyword), do: Keyword.delete(keyword, key)
+
+    defp delete_in(keyword, [key | rest]) when is_list(keyword) do
+      case Keyword.fetch(keyword, key) do
+        {:ok, nested} -> Keyword.put(keyword, key, delete_in(nested, rest))
+        :error -> keyword
+      end
+    end
+
+    defp delete_in(value, _path), do: value
+
     def put_system_env_override(key, value) when is_atom(key) do
       Process.put({Portal.Config.Resolver, key}, {:env, value})
       :ok

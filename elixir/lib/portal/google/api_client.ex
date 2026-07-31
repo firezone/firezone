@@ -149,7 +149,7 @@ defmodule Portal.Google.APIClient do
            [
              headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
              body: payload
-           ] ++ (config[:req_opts] || [])
+           ] ++ request_opts(config)
          ) do
       {:ok,
        %Req.Response{
@@ -240,7 +240,7 @@ defmodule Portal.Google.APIClient do
            [
              headers: [{"Authorization", "Bearer #{access_token}"}],
              json: %{"payload" => JSON.encode!(claims)}
-           ] ++ (config[:req_opts] || [])
+           ] ++ request_opts(config)
          ) do
       {:ok, %Req.Response{status: 200, body: %{"signedJwt" => signed_jwt}}} ->
         {:ok, signed_jwt}
@@ -278,7 +278,7 @@ defmodule Portal.Google.APIClient do
       [
         headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
         body: payload
-      ] ++ (config[:req_opts] || [])
+      ] ++ request_opts(config)
     )
   end
 
@@ -725,17 +725,26 @@ defmodule Portal.Google.APIClient do
   @usage_limits_domain "usageLimits"
   @transient_statuses [408, 429, 500, 502, 503, 504]
   @transient_transport_reasons [:timeout, :econnrefused, :closed]
+  @transient_http_reasons [:unprocessed, :pool_not_available]
   @max_retries 5
 
+  # Config may switch retrying off, which is how tests keep themselves fast, but
+  # it must not be able to swap in a different strategy: a plain merge once let
+  # `retry: :transient` from config.exs replace the predicate below, which threw
+  # away the throttling handling without failing anything.
   defp request_opts(config) do
-    Keyword.merge(
-      [
-        retry: &retry_google_error/2,
-        retry_delay: &retry_delay/1,
-        max_retries: @max_retries
-      ],
-      config[:req_opts] || []
-    )
+    req_opts = config[:req_opts] || []
+
+    retry =
+      case Keyword.fetch(req_opts, :retry) do
+        {:ok, false} -> false
+        _otherwise -> &retry_google_error/2
+      end
+
+    req_opts
+    |> Keyword.put(:retry, retry)
+    |> Keyword.put_new(:retry_delay, &retry_delay/1)
+    |> Keyword.put_new(:max_retries, @max_retries)
   end
 
   defp retry_google_error(_request, %Req.Response{status: 403, body: body}) do
@@ -748,6 +757,12 @@ defmodule Portal.Google.APIClient do
 
   defp retry_google_error(_request, %Req.TransportError{reason: reason}) do
     reason in @transient_transport_reasons
+  end
+
+  # Cold Finch pools right after a deploy reject requests this way, and unlike
+  # Req's :safe_transient we need it on the POSTs too.
+  defp retry_google_error(_request, %Req.HTTPError{reason: reason}) do
+    reason in @transient_http_reasons
   end
 
   defp retry_google_error(_request, _response_or_exception), do: false

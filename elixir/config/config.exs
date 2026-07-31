@@ -253,10 +253,10 @@ config :portal, Portal.Google.APIClient,
   token_endpoint: "https://oauth2.googleapis.com/token",
   req_opts: [
     # 1 minute
-    receive_timeout: 60_000,
-    # Fixes `pool_not_available` errors on a cold Finch pool right after a deploy,
-    # since some requests are POSTs and the default `:safe_transient` retry strategy only retries HEADS and GETs.
-    retry: :transient
+    receive_timeout: 60_000
+    # Retries are set by Portal.Google.APIClient itself, which covers everything
+    # `:transient` did plus Google's throttling. Setting `:retry` here replaces
+    # that entirely, so don't.
   ]
 
 config :portal, Portal.TokenCache, enabled: true

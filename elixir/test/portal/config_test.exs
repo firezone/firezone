@@ -327,4 +327,59 @@ defmodule Portal.ConfigTest do
                Portal.ConfigTest.Test
     end
   end
+
+  describe "merge_env_override/3 and delete_env_override/3" do
+    @client Portal.Google.APIClient
+
+    test "merging keeps configured entries of a nested list" do
+      configured = Portal.Config.fetch_env!(:portal, @client)[:req_opts]
+      assert Keyword.has_key?(configured, :receive_timeout)
+
+      Portal.Config.merge_env_override(:portal, @client, req_opts: [retry_delay: 0])
+
+      req_opts = Portal.Config.fetch_env!(:portal, @client)[:req_opts]
+      assert req_opts[:retry_delay] == 0
+      assert req_opts[:receive_timeout] == configured[:receive_timeout]
+      assert req_opts[:plug] == configured[:plug]
+    end
+
+    test "merging leaves unrelated top-level keys alone" do
+      endpoint = Portal.Config.fetch_env!(:portal, @client)[:endpoint]
+      Portal.Config.merge_env_override(:portal, @client, req_opts: [retry_delay: 0])
+      assert Portal.Config.fetch_env!(:portal, @client)[:endpoint] == endpoint
+    end
+
+    test "merging accumulates across calls" do
+      Portal.Config.merge_env_override(:portal, @client, req_opts: [retry_delay: 0])
+      Portal.Config.merge_env_override(:portal, @client, req_opts: [max_retries: 1])
+
+      req_opts = Portal.Config.fetch_env!(:portal, @client)[:req_opts]
+      assert req_opts[:retry_delay] == 0
+      assert req_opts[:max_retries] == 1
+    end
+
+    test "deleting removes a nested key and keeps the rest" do
+      assert Portal.Config.fetch_env!(:portal, @client)[:req_opts]
+             |> Keyword.has_key?(:retry)
+
+      Portal.Config.delete_env_override(:portal, @client, [:req_opts, :retry])
+
+      req_opts = Portal.Config.fetch_env!(:portal, @client)[:req_opts]
+      refute Keyword.has_key?(req_opts, :retry)
+      assert Keyword.has_key?(req_opts, :receive_timeout)
+    end
+
+    test "deleting a missing key is a no-op" do
+      before = Portal.Config.fetch_env!(:portal, @client)[:req_opts]
+      Portal.Config.delete_env_override(:portal, @client, [:req_opts, :nope])
+      assert Portal.Config.fetch_env!(:portal, @client)[:req_opts] == before
+    end
+
+    test "deleting without a path restores the configured value" do
+      configured = Portal.Config.fetch_env!(:portal, @client)
+      Portal.Config.merge_env_override(:portal, @client, req_opts: [retry_delay: 0])
+      Portal.Config.delete_env_override(:portal, @client)
+      assert Portal.Config.fetch_env!(:portal, @client) == configured
+    end
+  end
 end

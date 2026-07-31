@@ -845,11 +845,54 @@ defmodule Portal.Google.APIClientTest do
     }
 
     setup do
-      Portal.Config.put_env_override(:portal, APIClient,
-        req_opts: [retry_delay: 0, plug: {Req.Test, APIClient}]
-      )
+      # test.exs switches retrying off for the rest of the suite. Drop that one
+      # key so the client's own strategy applies and everything else stays as
+      # configured, rather than replacing req_opts and testing a shape no
+      # environment runs.
+      Portal.Config.delete_env_override(:portal, APIClient, [:req_opts, :retry])
+      Portal.Config.merge_env_override(:portal, APIClient, req_opts: [retry_delay: 0])
 
       :ok
+    end
+
+    test "keeps the throttling predicate when config sets another retry strategy" do
+      # config.exs used to set `retry: :transient`, which replaced the predicate
+      # and silently dropped throttling handling everywhere but in tests.
+      Portal.Config.merge_env_override(:portal, APIClient,
+        req_opts: [retry: :transient, retry_delay: 0]
+      )
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.expect(APIClient, 2, fn conn ->
+        :counters.add(attempts, 1, 1)
+
+        case :counters.get(attempts, 1) do
+          1 -> conn |> Plug.Conn.put_status(403) |> Req.Test.json(@usage_limits_body)
+          2 -> Req.Test.json(conn, %{"organizationUnits" => [%{"orgUnitId" => "ou1"}]})
+        end
+      end)
+
+      assert [[%{"orgUnitId" => "ou1"}]] =
+               APIClient.stream_organization_units(@test_access_token) |> Enum.to_list()
+
+      assert :counters.get(attempts, 1) == 2
+    end
+
+    test "lets config switch retrying off" do
+      Portal.Config.merge_env_override(:portal, APIClient, req_opts: [retry: false])
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.stub(APIClient, fn conn ->
+        :counters.add(attempts, 1, 1)
+        conn |> Plug.Conn.put_status(403) |> Req.Test.json(@usage_limits_body)
+      end)
+
+      assert [{:error, %Req.Response{status: 403}}] =
+               APIClient.stream_organization_units(@test_access_token) |> Enum.to_list()
+
+      assert :counters.get(attempts, 1) == 1
     end
 
     test "retries a 403 caused by throttling and succeeds" do
