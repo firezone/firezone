@@ -178,10 +178,11 @@ mise run cli -- connect --account-slug my-account
 in the foreground until you stop it. `sign-out` drops the stored token.
 
 It talks to the same system extension as the GUI and will not start without it.
-`extension install` puts it in place, which means a machine with no one sitting
-at it can be set up without opening the app. macOS still asks the logged-in user
-to approve the extension, so for fleets, approve it ahead of time with an MDM
-system extension policy.
+`extension status` reports whether that extension is installed and matches the
+build, and exits non-zero when it does not, so a setup script can check before
+going further. It cannot install the extension: macOS looks for the extension
+inside the bundle that asks for it, and the extension ships in `Firezone.app`,
+not in `firezone-cli.app`. Launch the app once to install it.
 
 These environment variables are read when the matching flag is absent:
 
