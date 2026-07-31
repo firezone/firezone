@@ -632,7 +632,7 @@ defmodule Portal.Google.APIClient do
       end
     else
       status when is_integer(status) and status not in [200, 403, 404] ->
-        log_batch_parse_issue("Skipping batch users response part with unexpected status",
+        log_batch_parse_issue("Failing batch users response part with unexpected status",
           status: status
         )
 
@@ -641,9 +641,8 @@ defmodule Portal.Google.APIClient do
         {:error,
          %Req.Response{status: normalized_status, body: %{"error" => "Batch users part failed"}}}
 
-      # Anything else (parse failure, unexpected status) — skip this part
       malformed ->
-        log_batch_parse_issue("Skipping malformed batch users response part",
+        log_batch_parse_issue("Failing malformed batch users response part",
           detail: inspect(malformed),
           snippet: snippet(part)
         )
@@ -661,7 +660,7 @@ defmodule Portal.Google.APIClient do
       {:throttled,
        %Req.Response{status: 403, body: %{"error" => "Batch users part throttled"}}}
     else
-      log_batch_parse_issue("Skipping batch users response part with unexpected status",
+      log_batch_parse_issue("Failing batch users response part with unexpected status",
         status: 403
       )
 
