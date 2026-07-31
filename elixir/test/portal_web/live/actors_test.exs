@@ -1523,7 +1523,7 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ "Total"
     end
 
-    test "logs and ignores service account changes", %{
+    test "quietly ignores other actor types on the shared topic", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1538,11 +1538,12 @@ defmodule PortalWeb.ActorsTest do
       log =
         capture_log(fn ->
           send(lv.pid, %Change{op: :insert, struct: %Actor{type: :service_account}})
+          send(lv.pid, %Change{op: :update, struct: %Actor{type: :api_client}})
+          send(lv.pid, %Change{op: :delete, old_struct: %Actor{type: :service_account}})
           render(lv)
         end)
 
-      assert log =~ "[error]"
-      assert log =~ "Unhandled handle_info message in LiveView"
+      refute log =~ "Unhandled handle_info message in LiveView"
 
       html = render(lv)
       assert html =~ "1"
