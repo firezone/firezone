@@ -633,6 +633,127 @@ defmodule Portal.Google.APIClientTest do
     end
   end
 
+  describe "retrying throttled requests" do
+    @usage_limits_body %{
+      "error" => %{
+        "code" => 403,
+        "message" => "Rate Limit Exceeded",
+        "errors" => [
+          %{
+            "domain" => "usageLimits",
+            "message" => "Rate Limit Exceeded",
+            "reason" => "userRateLimitExceeded"
+          }
+        ]
+      }
+    }
+
+    @permission_denied_body %{
+      "error" => %{
+        "code" => 403,
+        "message" => "Not Authorized to access this resource/api",
+        "errors" => [
+          %{"domain" => "global", "message" => "Forbidden", "reason" => "forbidden"}
+        ]
+      }
+    }
+
+    setup do
+      # test.exs switches retrying off suite-wide; drop just that key.
+      Portal.Config.delete_env_override(:portal, APIClient, [:req_opts, :retry])
+      Portal.Config.merge_env_override(:portal, APIClient, req_opts: [retry_delay: 0])
+
+      :ok
+    end
+
+    test "keeps the throttling predicate when config sets another retry strategy" do
+      Portal.Config.merge_env_override(:portal, APIClient,
+        req_opts: [retry: :transient, retry_delay: 0]
+      )
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.expect(APIClient, 2, fn conn ->
+        :counters.add(attempts, 1, 1)
+
+        case :counters.get(attempts, 1) do
+          1 -> conn |> Plug.Conn.put_status(403) |> Req.Test.json(@usage_limits_body)
+          2 -> Req.Test.json(conn, %{"organizationUnits" => [%{"orgUnitId" => "ou1"}]})
+        end
+      end)
+
+      assert [[%{"orgUnitId" => "ou1"}]] =
+               APIClient.stream_organization_units(@test_access_token) |> Enum.to_list()
+
+      assert :counters.get(attempts, 1) == 2
+    end
+
+    test "lets config switch retrying off" do
+      Portal.Config.merge_env_override(:portal, APIClient, req_opts: [retry: false])
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.stub(APIClient, fn conn ->
+        :counters.add(attempts, 1, 1)
+        conn |> Plug.Conn.put_status(403) |> Req.Test.json(@usage_limits_body)
+      end)
+
+      assert [{:error, %Req.Response{status: 403}}] =
+               APIClient.stream_organization_units(@test_access_token) |> Enum.to_list()
+
+      assert :counters.get(attempts, 1) == 1
+    end
+
+    test "retries a 403 caused by throttling and succeeds" do
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.expect(APIClient, 2, fn conn ->
+        :counters.add(attempts, 1, 1)
+
+        case :counters.get(attempts, 1) do
+          1 ->
+            conn |> Plug.Conn.put_status(403) |> Req.Test.json(@usage_limits_body)
+
+          2 ->
+            Req.Test.json(conn, %{"organizationUnits" => [%{"orgUnitId" => "ou1"}]})
+        end
+      end)
+
+      assert [[%{"orgUnitId" => "ou1"}]] =
+               APIClient.stream_organization_units(@test_access_token) |> Enum.to_list()
+
+      assert :counters.get(attempts, 1) == 2
+    end
+
+    test "does not retry a 403 caused by a permission failure" do
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.stub(APIClient, fn conn ->
+        :counters.add(attempts, 1, 1)
+        conn |> Plug.Conn.put_status(403) |> Req.Test.json(@permission_denied_body)
+      end)
+
+      assert [{:error, %Req.Response{status: 403}}] =
+               APIClient.stream_organization_units(@test_access_token) |> Enum.to_list()
+
+      assert :counters.get(attempts, 1) == 1
+    end
+
+    test "surfaces the error when throttling outlasts the retries" do
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.stub(APIClient, fn conn ->
+        :counters.add(attempts, 1, 1)
+        conn |> Plug.Conn.put_status(403) |> Req.Test.json(@usage_limits_body)
+      end)
+
+      assert [{:error, %Req.Response{status: 403}}] =
+               APIClient.stream_organization_units(@test_access_token) |> Enum.to_list()
+
+      assert :counters.get(attempts, 1) == 6
+    end
+  end
+
   describe "stream_organization_units/1" do
     test "streams a single page of organization units" do
       test_pid = self()

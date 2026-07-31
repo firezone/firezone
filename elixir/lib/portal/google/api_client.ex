@@ -149,7 +149,7 @@ defmodule Portal.Google.APIClient do
            [
              headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
              body: payload
-           ] ++ (config[:req_opts] || [])
+           ] ++ request_opts(config)
          ) do
       {:ok,
        %Req.Response{
@@ -240,7 +240,7 @@ defmodule Portal.Google.APIClient do
            [
              headers: [{"Authorization", "Bearer #{access_token}"}],
              json: %{"payload" => JSON.encode!(claims)}
-           ] ++ (config[:req_opts] || [])
+           ] ++ request_opts(config)
          ) do
       {:ok, %Req.Response{status: 200, body: %{"signedJwt" => signed_jwt}}} ->
         {:ok, signed_jwt}
@@ -278,7 +278,7 @@ defmodule Portal.Google.APIClient do
       [
         headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
         body: payload
-      ] ++ (config[:req_opts] || [])
+      ] ++ request_opts(config)
     )
   end
 
@@ -383,11 +383,10 @@ defmodule Portal.Google.APIClient do
 
   defp test_endpoint(path, access_token, params) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    req_opts = config[:req_opts] || []
     query = URI.encode_query(params)
     url = "#{config[:endpoint]}#{path}?#{query}"
 
-    case Req.get(url, [headers: [Authorization: "Bearer #{access_token}"]] ++ req_opts) do
+    case Req.get(url, [headers: [Authorization: "Bearer #{access_token}"]] ++ request_opts(config)) do
       {:ok, %Req.Response{status: 200}} -> :ok
       other -> other
     end
@@ -511,7 +510,7 @@ defmodule Portal.Google.APIClient do
 
   defp do_batch_get_users(access_token, user_ids) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    req_opts = config[:req_opts] || []
+    req_opts = request_opts(config)
     batch_endpoint = config[:batch_endpoint] || @default_batch_endpoint
     boundary = "batch_#{System.unique_integer([:positive])}"
 
@@ -718,10 +717,72 @@ defmodule Portal.Google.APIClient do
 
   defp get(path, access_token) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    req_opts = config[:req_opts] || []
 
     (config[:endpoint] <> path)
-    |> Req.get([headers: [Authorization: "Bearer #{access_token}"]] ++ req_opts)
+    |> Req.get([headers: [Authorization: "Bearer #{access_token}"]] ++ request_opts(config))
+  end
+
+  # Throttling is a 403 with domain "usageLimits", not a 429, so Req's built-in
+  # strategies miss it. A custom predicate replaces them, hence the repetition.
+  # https://developers.google.com/workspace/admin/directory/v1/limits
+  @usage_limits_domain "usageLimits"
+  @transient_statuses [408, 429, 500, 502, 503, 504]
+  @transient_transport_reasons [:timeout, :econnrefused, :closed]
+  @transient_http_reasons [:unprocessed, :pool_not_available]
+  @max_retries 5
+
+  # Config may switch retrying off, but must not swap in another strategy.
+  defp request_opts(config) do
+    req_opts = config[:req_opts] || []
+
+    retry =
+      case Keyword.fetch(req_opts, :retry) do
+        {:ok, false} -> false
+        _otherwise -> &retry_google_error/2
+      end
+
+    req_opts
+    |> Keyword.put(:retry, retry)
+    |> Keyword.put_new(:retry_delay, &retry_delay/1)
+    |> Keyword.put_new(:max_retries, @max_retries)
+  end
+
+  defp retry_google_error(_request, %Req.Response{status: 403, body: body}) do
+    usage_limits_error?(body)
+  end
+
+  defp retry_google_error(_request, %Req.Response{status: status}) do
+    status in @transient_statuses
+  end
+
+  defp retry_google_error(_request, %Req.TransportError{reason: reason}) do
+    reason in @transient_transport_reasons
+  end
+
+  # Cold Finch pools reject this way right after a deploy, POSTs included.
+  defp retry_google_error(_request, %Req.HTTPError{reason: reason}) do
+    reason in @transient_http_reasons
+  end
+
+  defp retry_google_error(_request, _response_or_exception), do: false
+
+  # The retry step runs before the body is decoded, so this sees raw JSON.
+  defp usage_limits_error?(body) when is_binary(body) do
+    case JSON.decode(body) do
+      {:ok, decoded} -> usage_limits_error?(decoded)
+      {:error, _reason} -> false
+    end
+  end
+
+  defp usage_limits_error?(%{"error" => %{"errors" => errors}}) when is_list(errors) do
+    Enum.any?(errors, &(Map.get(&1, "domain") == @usage_limits_domain))
+  end
+
+  defp usage_limits_error?(_body), do: false
+
+  # Truncated exponential backoff, as Google documents it.
+  defp retry_delay(retry_count) do
+    Integer.pow(2, retry_count) * 1000 + :rand.uniform(1000)
   end
 
   defp stream_pages(path, query, access_token, result_key) do
@@ -740,10 +801,9 @@ defmodule Portal.Google.APIClient do
 
   defp fetch_page(current_path, current_query, access_token, result_key) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    req_opts = config[:req_opts] || []
     url = "#{config[:endpoint]}#{current_path}?#{current_query}"
 
-    case Req.get(url, [headers: [Authorization: "Bearer #{access_token}"]] ++ req_opts) do
+    case Req.get(url, [headers: [Authorization: "Bearer #{access_token}"]] ++ request_opts(config)) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         parse_page_response(body, current_path, current_query, result_key)
 
