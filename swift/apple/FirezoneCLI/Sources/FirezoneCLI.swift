@@ -28,6 +28,17 @@ struct FirezoneCLI: AsyncParsableCommand {
   }
 }
 
+/// Something went wrong at runtime, as opposed to `ValidationError`, which is for a
+/// command line we couldn't make sense of. Keeps the exit code off EX_USAGE and stops
+/// us printing usage at someone whose arguments were fine.
+struct CLIError: Error, LocalizedError {
+  let errorDescription: String?
+
+  init(_ message: String) {
+    errorDescription = message
+  }
+}
+
 /// Shared plumbing for the commands that talk to the VPN profile.
 enum VPNProfile {
   @MainActor
@@ -35,7 +46,7 @@ enum VPNProfile {
     for vpnManager: VPNConfigurationManager
   ) throws -> any TunnelSessionProtocol {
     guard let session = vpnManager.session() else {
-      throw ValidationError("Failed to get VPN session")
+      throw CLIError("Failed to get VPN session")
     }
 
     return session

@@ -18,10 +18,9 @@ enum SystemExtension {
     case .installed:
       Log.info("System extension is up to date")
     case .needsInstall:
-      throw ValidationError(
-        "System extension is not installed. Run 'firezone-cli extension install'.")
+      throw CLIError("System extension is not installed. Run 'firezone-cli extension install'.")
     case .needsReplacement:
-      throw ValidationError(
+      throw CLIError(
         "System extension is a different version. Run 'firezone-cli extension install'.")
     }
   }
@@ -87,7 +86,7 @@ extension FirezoneCLI {
         case .installed:
           Log.info("System extension installed")
         case .needsInstall, .needsReplacement:
-          throw ValidationError("System extension did not finish installing.")
+          throw CLIError("System extension did not finish installing.")
         }
       }
     }

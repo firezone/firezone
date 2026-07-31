@@ -39,7 +39,8 @@ extension FirezoneCLI {
         authBaseUrl, "FIREZONE_AUTH_BASE_URL", ConfigurationDefaults.authURL)
       // No flag for this one yet; the environment variable is the only override.
       let logFilter =
-        ProcessInfo.processInfo.environment["FIREZONE_LOG_FILTER"] ?? ConfigurationDefaults.logFilter
+        ProcessInfo.processInfo.environment["FIREZONE_LOG_FILTER"]
+        ?? ConfigurationDefaults.logFilter
       let internetResourceEnabled =
         activateInternetResource
         || ProcessInfo.processInfo.environment["FIREZONE_ACTIVATE_INTERNET_RESOURCE"] == "1"

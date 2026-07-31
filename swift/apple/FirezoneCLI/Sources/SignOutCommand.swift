@@ -22,7 +22,7 @@ extension FirezoneCLI {
 
       let factory = NETunnelProviderManagerFactory()
       guard let vpnManager = try await VPNConfigurationManager.load(using: factory) else {
-        throw ValidationError("No VPN configuration found")
+        throw CLIError("No VPN configuration found")
       }
 
       try await IPCClient.signOut(session: VPNProfile.session(for: vpnManager))

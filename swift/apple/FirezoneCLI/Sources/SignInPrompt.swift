@@ -42,11 +42,11 @@ enum SignInPrompt {
     let entered = await readHiddenLine()?.trimmingCharacters(in: .whitespacesAndNewlines)
 
     guard let entered, !entered.isEmpty else {
-      throw ValidationError("No token provided")
+      throw CLIError("No token provided")
     }
 
     guard let token = Token(entered) else {
-      throw ValidationError("Invalid token")
+      throw CLIError("Invalid token")
     }
 
     return token
