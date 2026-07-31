@@ -118,7 +118,14 @@ public final class VPNConfigurationManager {
 
   // If another VPN is activated on the system, ours becomes disabled. This is provided so that we may call it before
   // each start attempt in order to reactivate our configuration.
+  //
+  // Saving is skipped when it would change nothing. Writing the VPN preferences
+  // invalidates every other process's copy of them, and the app has no way to notice
+  // that happened, so a needless save from the headless client leaves the app talking
+  // to a configuration the system has already replaced.
   public func enable() async throws {
+    guard !manager.isEnabled else { return }
+
     manager.isEnabled = true
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
