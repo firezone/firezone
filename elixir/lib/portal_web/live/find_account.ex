@@ -230,7 +230,7 @@ defmodule PortalWeb.FindAccount do
         where: a.email == ^email,
         distinct: true
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
   end

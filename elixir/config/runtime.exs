@@ -50,30 +50,8 @@ if config_env() == :prod do
              else: [{:hostname, env_var_to_config!(:database_host)}]
            )
 
-  config :portal,
-         Portal.Repo.Replica,
-         [
-           {:database, env_var_to_config!(:database_name)},
-           {:username, env_var_to_config!(:database_user)},
-           {:port, env_var_to_config!(:database_port)},
-           {:pool_size, env_var_to_config!(:database_pool_size)},
-           {:queue_target, env_var_to_config!(:database_queue_target)},
-           {:queue_interval, env_var_to_config!(:database_queue_interval)},
-           {:ssl, env_var_to_config!(:database_ssl)},
-           {:parameters, env_var_to_config!(:database_parameters)}
-         ] ++
-           if(env_var_to_config!(:database_socket_options) != [],
-             do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
-             else: []
-           ) ++
-           database_password_opts ++
-           if(env_var_to_config(:database_socket_dir),
-             do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
-             else: [{:hostname, env_var_to_config!(:database_host_replica)}]
-           )
-
-  # Shared connection options for isolated primary pools
-  primary_pool_base_opts =
+  # Shared connection options for the isolated pools
+  pool_base_opts =
     [
       {:database, env_var_to_config!(:database_name)},
       {:username, env_var_to_config!(:database_user)},
@@ -92,29 +70,9 @@ if config_env() == :prod do
         else: [{:hostname, env_var_to_config!(:database_host)}]
       )
 
-  # Shared connection options for isolated replica pools
-  replica_pool_base_opts =
-    [
-      {:database, env_var_to_config!(:database_name)},
-      {:username, env_var_to_config!(:database_user)},
-      {:port, env_var_to_config!(:database_port)},
-      {:queue_target, env_var_to_config!(:database_queue_target)},
-      {:queue_interval, env_var_to_config!(:database_queue_interval)},
-      {:ssl, env_var_to_config!(:database_ssl)}
-    ] ++
-      if(env_var_to_config!(:database_socket_options) != [],
-        do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
-        else: []
-      ) ++
-      database_password_opts ++
-      if(env_var_to_config(:database_socket_dir),
-        do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
-        else: [{:hostname, env_var_to_config!(:database_host_replica)}]
-      )
-
   database_parameters = env_var_to_config!(:database_parameters)
 
-  # Isolated primary connection pools
+  # Isolated connection pools
   for {repo, pool_size_key, app_name} <- [
         {Portal.Repo.Web, :database_pool_size_web, "web"},
         {Portal.Repo.Api, :database_pool_size_api, "api"}
@@ -124,23 +82,10 @@ if config_env() == :prod do
            [
              {:pool_size, env_var_to_config!(pool_size_key)},
              {:parameters, Keyword.merge(database_parameters, application_name: app_name)}
-           ] ++ primary_pool_base_opts
+           ] ++ pool_base_opts
   end
 
-  # Isolated replica connection pools
-  for {repo, pool_size_key, app_name} <- [
-        {Portal.Repo.Replica.Web, :database_pool_size_web_replica, "replica-web"},
-        {Portal.Repo.Replica.Api, :database_pool_size_api_replica, "replica-api"}
-      ] do
-    config :portal,
-           repo,
-           [
-             {:pool_size, env_var_to_config!(pool_size_key)},
-             {:parameters, Keyword.merge(database_parameters, application_name: app_name)}
-           ] ++ replica_pool_base_opts
-  end
-
-  # Isolated poller connection pools, sized for the two slot pollers: poll
+  # Isolated poller connection pool, sized for the two slot pollers: poll
   # cycles hold a connection for as long as a cycle runs, which must not
   # starve the shared pools
   config :portal,
@@ -148,14 +93,7 @@ if config_env() == :prod do
          [
            {:pool_size, 2},
            {:parameters, Keyword.merge(database_parameters, application_name: "poller")}
-         ] ++ primary_pool_base_opts
-
-  config :portal,
-         Portal.Repo.Replica.Poller,
-         [
-           {:pool_size, 2},
-           {:parameters, Keyword.merge(database_parameters, application_name: "replica-poller")}
-         ] ++ replica_pool_base_opts
+         ] ++ pool_base_opts
 
   config :portal, Portal.ChangeLogs.Consumer,
     enabled: env_var_to_config!(:change_logs_replication_enabled),

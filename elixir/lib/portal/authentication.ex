@@ -488,14 +488,14 @@ defmodule Portal.Authentication do
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)
-      |> Safe.unscoped(:replica)
-      |> Safe.one!(fallback_to_primary: true)
+      |> Safe.unscoped()
+      |> Safe.one!()
     end
 
     def fetch_active_actor_by_id(id) do
       from(a in Actor, where: a.id == ^id, where: a.is_disabled == false)
-      |> Safe.unscoped(:replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.unscoped()
+      |> Safe.one()
       |> case do
         nil -> {:error, :not_found}
         actor -> {:ok, actor}
@@ -524,8 +524,8 @@ defmodule Portal.Authentication do
 
     def fetch_relay_token(id) do
       from(rt in Portal.RelayToken, where: rt.id == ^id)
-      |> Safe.unscoped(:replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.unscoped()
+      |> Safe.one()
       |> case do
         nil -> {:error, :not_found}
         relay_token -> {:ok, relay_token}
@@ -621,8 +621,8 @@ defmodule Portal.Authentication do
             sibling.id != gt.id,
         select_merge: %{rotated_sibling_id: sibling.id}
       )
-      |> Safe.unscoped(:replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.unscoped()
+      |> Safe.one()
       |> case do
         nil -> {:error, :not_found}
         gateway_token -> {:ok, gateway_token}
@@ -654,8 +654,8 @@ defmodule Portal.Authentication do
       |> where([account: account], account.is_disabled == false)
       |> where([actor: actor], actor.is_disabled == false)
       |> select([tokens: tokens], tokens)
-      |> Safe.unscoped(:replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.unscoped()
+      |> Safe.one()
       |> case do
         nil -> {:error, :not_found}
         token -> {:ok, token}
@@ -792,7 +792,7 @@ defmodule Portal.Authentication do
         where: ps.auth_provider_id in subquery(enabled_provider_ids),
         preload: [actor: a]
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.one()
       |> case do
         nil -> {:error, :not_found}

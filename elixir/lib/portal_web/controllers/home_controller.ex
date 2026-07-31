@@ -86,7 +86,7 @@ defmodule PortalWeb.HomeController do
 
     def get_accounts_by_ids(account_ids) do
       from(a in Portal.Account, where: a.id in ^account_ids)
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
   end

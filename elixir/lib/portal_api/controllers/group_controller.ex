@@ -215,7 +215,7 @@ defmodule PortalAPI.GroupController do
         as: :sync_state
       )
       |> preload([sync_state: gss], sync_state: gss)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -231,7 +231,7 @@ defmodule PortalAPI.GroupController do
           as: :sync_state
         )
         |> preload([sync_state: gss], sync_state: gss)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do

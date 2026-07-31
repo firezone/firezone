@@ -47,7 +47,7 @@ defmodule Portal.Workers.SweepAccountDeletions do
         where: a.scheduled_deletion_at <= ^now,
         select: a.id
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
   end

@@ -263,7 +263,7 @@ defmodule PortalAPI.ActorController do
 
     def list_actors(subject, opts \\ []) do
       from(a in Portal.Actor, as: :actors)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -276,7 +276,7 @@ defmodule PortalAPI.ActorController do
 
     def fetch_actor(id, subject) do
       from(a in Portal.Actor, where: a.id == ^id)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.one()
       |> case do
         nil -> {:error, :not_found}

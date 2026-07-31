@@ -2125,13 +2125,13 @@ defmodule PortalWeb.Resources.Components do
     def get_resource!(id, subject) do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.id == ^id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def list_resources(subject, opts \\ []) do
       from(r in Resource, as: :resources)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(Database.ListQuery, opts)
     end
 
@@ -2140,13 +2140,13 @@ defmodule PortalWeb.Resources.Components do
 
       account_feature_enabled? = account.features.client_to_client == true
 
-      Safe.unscoped(query, :replica) |> Safe.exists?() and account_feature_enabled?
+      Safe.unscoped(query) |> Safe.exists?() and account_feature_enabled?
     end
 
     def all_sites(subject) do
       from(s in Portal.Site, as: :sites)
       |> where([sites: s], s.managed_by != :system)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -2154,8 +2154,8 @@ defmodule PortalWeb.Resources.Components do
       from(c in Device, as: :clients)
       |> where([clients: c], c.type == :client)
       |> where([clients: c], c.id == ^client_id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def search_clients(search_term, _subject, _selected_clients) when search_term in [nil, ""],
@@ -2178,7 +2178,7 @@ defmodule PortalWeb.Resources.Components do
         |> order_by([clients: c], desc: c.id in ^online_ids)
         |> limit(10)
 
-      case query |> Safe.scoped(subject, :replica) |> Safe.all() do
+      case query |> Safe.scoped(subject) |> Safe.all() do
         {:error, _} ->
           []
 
@@ -2215,7 +2215,7 @@ defmodule PortalWeb.Resources.Components do
       from(c in Device, as: :clients)
       |> where([clients: c], c.type == :client)
       |> where([clients: c], c.id in ^ids)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, _} ->
@@ -2254,7 +2254,7 @@ defmodule PortalWeb.Resources.Components do
           where: m.resource_id == ^resource.id,
           select: m.device_id
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> case do
           {:error, _} -> []

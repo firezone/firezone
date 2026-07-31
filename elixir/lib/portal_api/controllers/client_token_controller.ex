@@ -239,7 +239,7 @@ defmodule PortalAPI.ClientTokenController do
           where: a.id == ^id,
           select: %{actor: a, allowed_type?: a.type in ^allowed_types}
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do
@@ -258,7 +258,7 @@ defmodule PortalAPI.ClientTokenController do
         where: t.actor_id == ^actor_id and a.type in ^@revocable_actor_types,
         order_by: [desc: t.inserted_at]
       )
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -309,7 +309,7 @@ defmodule PortalAPI.ClientTokenController do
             t.id == ^token_id and t.actor_id == ^actor_id and
               a.type in ^@revocable_actor_types
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do

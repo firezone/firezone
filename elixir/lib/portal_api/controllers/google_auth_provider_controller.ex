@@ -67,14 +67,14 @@ defmodule PortalAPI.GoogleAuthProviderController do
 
     def list_providers(subject) do
       from(p in Google.AuthProvider, as: :providers, order_by: [desc: p.inserted_at])
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
     def fetch_provider(id, subject) do
       result =
         from(p in Google.AuthProvider, where: p.id == ^id)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do

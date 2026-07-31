@@ -154,7 +154,7 @@ defmodule Portal.Workers.LogSinkErrorNotification do
         where: s.error_email_count < 10,
         preload: [:account]
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
 
@@ -170,7 +170,7 @@ defmodule Portal.Workers.LogSinkErrorNotification do
         where: a.type == :account_admin_user,
         where: a.is_disabled == false
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
 
@@ -183,7 +183,7 @@ defmodule Portal.Workers.LogSinkErrorNotification do
           last_delivered_at: max(c.last_synced_at)
         }
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.one()
     end
   end

@@ -177,28 +177,6 @@ defmodule Portal.Repo.DynamicRepoResolverTest do
       end
     end
 
-    test "works with Portal.Repo.Replica module" do
-      test_pid = self()
-
-      parent =
-        spawn(fn ->
-          Portal.Repo.Replica.put_dynamic_repo(Portal.Repo.Replica.Web)
-          send(test_pid, :ready)
-          receive do: (:stop -> :ok)
-        end)
-
-      assert_receive :ready
-
-      Process.put(:"$callers", [parent])
-
-      try do
-        assert DynamicRepoResolver.inherit(Portal.Repo.Replica) == Portal.Repo.Replica.Web
-      after
-        Process.put(:"$callers", [])
-        Process.exit(parent, :kill)
-      end
-    end
-
     test "inherits through Task.async" do
       Portal.Repo.put_dynamic_repo(Portal.Repo.Web)
 

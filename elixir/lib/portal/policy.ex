@@ -123,8 +123,8 @@ defmodule Portal.Policy do
             Portal.Resource.t() | nil
     def fetch_resource(resource_id, subject) do
       from(r in Portal.Resource, where: r.id == ^resource_id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     @spec reconnect_orphaned_policies(Ecto.UUID.t()) :: non_neg_integer()

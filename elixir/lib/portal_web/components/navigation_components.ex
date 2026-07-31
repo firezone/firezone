@@ -9,7 +9,7 @@ defmodule PortalWeb.NavigationComponents do
 
     def trust_anchors_feature_enabled? do
       query = from(f in Features, where: f.feature == :trust_anchors and f.enabled == true)
-      Safe.unscoped(query, :replica) |> Safe.exists?()
+      Safe.unscoped(query) |> Safe.exists?()
     end
   end
 

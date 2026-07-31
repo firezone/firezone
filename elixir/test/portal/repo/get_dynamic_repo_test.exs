@@ -59,35 +59,4 @@ defmodule Portal.Repo.GetDynamicRepoTest do
       Task.await(task)
     end
   end
-
-  describe "Portal.Repo.Replica.get_dynamic_repo/0" do
-    test "returns Portal.Repo.Replica when no dynamic repo is set" do
-      assert Portal.Repo.Replica.get_dynamic_repo() == Portal.Repo.Replica
-    end
-
-    test "returns explicitly set dynamic repo" do
-      Portal.Repo.Replica.put_dynamic_repo(Portal.Repo.Replica.Web)
-
-      try do
-        assert Portal.Repo.Replica.get_dynamic_repo() == Portal.Repo.Replica.Web
-      after
-        Portal.Repo.Replica.put_dynamic_repo(Portal.Repo.Replica)
-      end
-    end
-
-    test "inherits from parent process via $callers" do
-      Portal.Repo.Replica.put_dynamic_repo(Portal.Repo.Replica.Api)
-
-      try do
-        task =
-          Task.async(fn ->
-            Portal.Repo.Replica.get_dynamic_repo()
-          end)
-
-        assert Task.await(task) == Portal.Repo.Replica.Api
-      after
-        Portal.Repo.Replica.put_dynamic_repo(Portal.Repo.Replica)
-      end
-    end
-  end
 end

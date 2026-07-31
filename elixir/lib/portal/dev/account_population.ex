@@ -275,10 +275,6 @@ defmodule Portal.Dev.AccountPopulation do
       {:ok, _pid} = Portal.Repo.start_link()
     end
 
-    unless Process.whereis(Portal.Repo.Replica) do
-      {:ok, _pid} = Portal.Repo.Replica.start_link()
-    end
-
     :ok
   end
 

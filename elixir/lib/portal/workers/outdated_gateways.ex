@@ -134,7 +134,7 @@ defmodule Portal.Workers.OutdatedGateways do
               a.config
             )
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
 
@@ -143,7 +143,7 @@ defmodule Portal.Workers.OutdatedGateways do
       |> where([actors: a], a.is_disabled == false)
       |> where([actors: a], a.account_id == ^account.id)
       |> where([actors: a], a.type == :account_admin_user)
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
 
@@ -171,7 +171,7 @@ defmodule Portal.Workers.OutdatedGateways do
         as: :actor
       )
       |> where([actor: a], a.is_disabled == false)
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
 
@@ -180,7 +180,7 @@ defmodule Portal.Workers.OutdatedGateways do
         where: g.type == :gateway,
         where: g.account_id == ^account.id
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
 
@@ -188,7 +188,7 @@ defmodule Portal.Workers.OutdatedGateways do
       from(g in Portal.Site,
         where: g.account_id == ^account.id
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
 

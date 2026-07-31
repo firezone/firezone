@@ -9,8 +9,6 @@ defmodule Portal.Safe do
 
   alias Portal.{Authentication.Subject, Repo}
 
-  @replica Application.compile_env(:portal, :replica_repo)
-
   defmodule Scoped do
     @moduledoc """
     Scoped context that carries authorization information and optional queryable.
@@ -40,8 +38,6 @@ defmodule Portal.Safe do
   Returns a scoped context for operations with authorization and account filtering.
   Can optionally accept a queryable to enable chaining and a repo module.
 
-  The repo argument can be a module or the atoms `:primary` / `:replica`.
-
   ## Examples
 
       # Traditional style
@@ -50,18 +46,17 @@ defmodule Portal.Safe do
       # Chainable style
       query |> Safe.scoped(subject) |> Safe.one()
 
-      # With replica
-      Safe.scoped(subject, :replica) |> Safe.one(query)
-      query |> Safe.scoped(subject, :replica) |> Safe.one()
+      # With an isolated pool
+      Safe.scoped(subject, Repo.Poller) |> Safe.one(query)
   """
   @spec scoped(Subject.t()) :: Scoped.t()
   def scoped(%Subject{} = subject) do
     %Scoped{subject: subject, queryable: nil, repo: Repo}
   end
 
-  @spec scoped(Subject.t(), module() | :primary | :replica) :: Scoped.t()
+  @spec scoped(Subject.t(), module()) :: Scoped.t()
   def scoped(%Subject{} = subject, repo) when is_atom(repo) do
-    %Scoped{subject: subject, queryable: nil, repo: resolve_repo(repo)}
+    %Scoped{subject: subject, queryable: nil, repo: repo}
   end
 
   @spec scoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(), Subject.t()) ::
@@ -73,165 +68,138 @@ defmodule Portal.Safe do
   @spec scoped(
           Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(),
           Subject.t(),
-          module() | :primary | :replica
+          module()
         ) ::
           Scoped.t()
   def scoped(queryable, %Subject{} = subject, repo) when is_atom(repo) do
-    %Scoped{subject: subject, queryable: queryable, repo: resolve_repo(repo)}
+    %Scoped{subject: subject, queryable: queryable, repo: repo}
   end
 
   @doc """
   Returns an unscoped context for operations without authorization or filtering.
   Can optionally accept a queryable to enable chaining and a repo module.
 
-  The repo argument can be a module or the atoms `:primary` / `:replica`.
-
   ## Examples
 
       # Traditional style
       Safe.unscoped() |> Safe.one(query)
 
-      # With replica
-      Safe.unscoped(:replica) |> Safe.one(query)
-
       # Chainable style
       query |> Safe.unscoped() |> Safe.one()
 
-      # Chainable with replica
-      query |> Safe.unscoped(:replica) |> Safe.one()
+      # With an isolated pool
+      Safe.unscoped(Repo.Poller) |> Safe.one(query)
   """
   @spec unscoped() :: Unscoped.t()
   def unscoped do
     %Unscoped{queryable: nil, repo: Repo}
   end
 
-  @spec unscoped(module() | :primary | :replica) :: Unscoped.t()
-  def unscoped(repo) when is_atom(repo) do
-    %Unscoped{queryable: nil, repo: resolve_repo(repo)}
+  @spec unscoped(module() | Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t()) ::
+          Unscoped.t()
+  # A bare schema module is an atom too, so it would otherwise be taken for a repo
+  def unscoped(queryable_or_repo) when is_atom(queryable_or_repo) do
+    if ecto_schema?(queryable_or_repo) do
+      %Unscoped{queryable: queryable_or_repo, repo: Repo}
+    else
+      %Unscoped{queryable: nil, repo: queryable_or_repo}
+    end
   end
 
-  @spec unscoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t()) :: Unscoped.t()
   def unscoped(queryable) do
     %Unscoped{queryable: queryable, repo: Repo}
   end
 
-  @spec unscoped(
-          Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(),
-          module() | :primary | :replica
-        ) ::
+  @spec unscoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(), module()) ::
           Unscoped.t()
   def unscoped(queryable, repo) when is_atom(repo) do
-    %Unscoped{queryable: queryable, repo: resolve_repo(repo)}
+    %Unscoped{queryable: queryable, repo: repo}
   end
 
   # Query operations
 
-  # one/1,2
-  def one(ctx, opts \\ [])
-
-  @spec one(Scoped.t(), Keyword.t()) :: Ecto.Schema.t() | nil | {:error, :unauthorized}
-  def one(
-        %Scoped{
-          subject: %Subject{account: %{id: account_id}} = subject,
-          queryable: queryable,
-          repo: repo
-        },
-        opts
-      ) do
+  @spec one(Scoped.t()) :: Ecto.Schema.t() | nil | {:error, :unauthorized}
+  def one(%Scoped{
+        subject: %Subject{account: %{id: account_id}} = subject,
+        queryable: queryable,
+        repo: repo
+      }) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
       filtered_query = apply_account_filter(queryable, schema, account_id)
-      fetch_one_with_primary_retry(repo, filtered_query, opts[:fallback_to_primary])
+      safe_repo(fn -> repo.one(filtered_query) end)
     end
   end
 
-  @spec one(Unscoped.t(), Keyword.t()) :: Ecto.Schema.t() | nil
-  def one(%Unscoped{queryable: queryable, repo: repo}, opts),
-    do: fetch_one_with_primary_retry(repo, queryable, opts[:fallback_to_primary])
+  @spec one(Unscoped.t()) :: Ecto.Schema.t() | nil
+  def one(%Unscoped{queryable: queryable, repo: repo}),
+    do: safe_repo(fn -> repo.one(queryable) end)
 
   @spec one(Portal.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | nil
   def one(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.one(queryable) end)
 
-  # one!/1,2
-  def one!(ctx, opts \\ [])
-
-  @spec one!(Scoped.t(), Keyword.t()) ::
+  @spec one!(Scoped.t()) ::
           Ecto.Schema.t() | term() | no_return() | {:error, :unauthorized}
-  def one!(
-        %Scoped{
-          subject: %Subject{account: %{id: account_id}} = subject,
-          queryable: queryable,
-          repo: repo
-        },
-        opts
-      ) do
+  def one!(%Scoped{
+        subject: %Subject{account: %{id: account_id}} = subject,
+        queryable: queryable,
+        repo: repo
+      }) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
       filtered_query = apply_account_filter(queryable, schema, account_id)
-      fetch_one_with_primary_retry!(repo, filtered_query, opts[:fallback_to_primary])
+      safe_repo!(fn -> repo.one!(filtered_query) end, filtered_query)
     end
   end
 
-  @spec one!(Unscoped.t(), Keyword.t()) :: Ecto.Schema.t() | term() | no_return()
-  def one!(%Unscoped{queryable: queryable, repo: repo}, opts),
-    do: fetch_one_with_primary_retry!(repo, queryable, opts[:fallback_to_primary])
+  @spec one!(Unscoped.t()) :: Ecto.Schema.t() | term() | no_return()
+  def one!(%Unscoped{queryable: queryable, repo: repo}),
+    do: safe_repo!(fn -> repo.one!(queryable) end, queryable)
 
   @spec one!(Portal.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | term() | no_return()
   def one!(repo, queryable) when repo == Repo,
     do: safe_repo!(fn -> Repo.one!(queryable) end, queryable)
 
-  # all/1,2
-  def all(ctx, opts \\ [])
-
-  @spec all(Scoped.t(), Keyword.t()) :: [Ecto.Schema.t()] | {:error, :unauthorized}
-  def all(
-        %Scoped{
-          subject: %Subject{account: %{id: account_id}} = subject,
-          queryable: queryable,
-          repo: repo
-        },
-        opts
-      ) do
+  @spec all(Scoped.t()) :: [Ecto.Schema.t()] | {:error, :unauthorized}
+  def all(%Scoped{
+        subject: %Subject{account: %{id: account_id}} = subject,
+        queryable: queryable,
+        repo: repo
+      }) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
       filtered_query = apply_account_filter(queryable, schema, account_id)
-      fetch_all_with_primary_fallback(repo, filtered_query, opts[:fallback_to_primary])
+      safe_repo(fn -> repo.all(filtered_query) end) || []
     end
   end
 
-  @spec all(Unscoped.t(), Keyword.t()) :: [Ecto.Schema.t()]
-  def all(%Unscoped{queryable: queryable, repo: repo}, opts),
-    do: fetch_all_with_primary_fallback(repo, queryable, opts[:fallback_to_primary])
+  @spec all(Unscoped.t()) :: [Ecto.Schema.t()]
+  def all(%Unscoped{queryable: queryable, repo: repo}),
+    do: safe_repo(fn -> repo.all(queryable) end) || []
 
   @spec all(Portal.Repo, Ecto.Queryable.t()) :: [Ecto.Schema.t()]
   def all(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.all(queryable) end) || []
 
-  # exists?/1,2
-  def exists?(ctx, opts \\ [])
-
-  @spec exists?(Scoped.t(), Keyword.t()) :: boolean() | {:error, :unauthorized}
-  def exists?(
-        %Scoped{
-          subject: %Subject{account: %{id: account_id}} = subject,
-          queryable: queryable,
-          repo: repo
-        },
-        opts
-      ) do
+  @spec exists?(Scoped.t()) :: boolean() | {:error, :unauthorized}
+  def exists?(%Scoped{
+        subject: %Subject{account: %{id: account_id}} = subject,
+        queryable: queryable,
+        repo: repo
+      }) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
       filtered_query = apply_account_filter(queryable, schema, account_id)
-      exists_with_primary_retry?(repo, filtered_query, opts[:fallback_to_primary])
+      safe_repo(fn -> repo.exists?(filtered_query) end) || false
     end
   end
 
-  @spec exists?(Unscoped.t(), Keyword.t()) :: boolean()
-  def exists?(%Unscoped{queryable: queryable, repo: repo}, opts),
-    do: exists_with_primary_retry?(repo, queryable, opts[:fallback_to_primary])
+  @spec exists?(Unscoped.t()) :: boolean()
+  def exists?(%Unscoped{queryable: queryable, repo: repo}),
+    do: safe_repo(fn -> repo.exists?(queryable) end) || false
 
   @spec exists?(Portal.Repo, Ecto.Queryable.t()) :: boolean()
   def exists?(repo, queryable) when repo == Repo,
@@ -328,14 +296,9 @@ defmodule Portal.Safe do
   @spec load(module(), {list(), list()}) :: Ecto.Schema.t()
   def load(schema, data) when is_atom(schema), do: Repo.load(schema, data)
 
-  @spec preload(Ecto.Schema.t() | [Ecto.Schema.t()], term(), module() | :primary | :replica) ::
+  @spec preload(Ecto.Schema.t() | [Ecto.Schema.t()], term(), module()) ::
           Ecto.Schema.t() | [Ecto.Schema.t()]
-  def preload(struct_or_structs, preloads, repo \\ Repo)
-
-  def preload(struct_or_structs, preloads, repo) when repo in [:primary, :replica],
-    do: resolve_repo(repo).preload(struct_or_structs, preloads)
-
-  def preload(struct_or_structs, preloads, repo) when is_atom(repo),
+  def preload(struct_or_structs, preloads, repo \\ Repo) when is_atom(repo),
     do: repo.preload(struct_or_structs, preloads)
 
   @doc """
@@ -730,78 +693,9 @@ defmodule Portal.Safe do
       reraise Ecto.NoResultsError, [queryable: queryable], __STACKTRACE__
   end
 
-  defp fetch_one_with_primary_retry(repo, query, retry?) do
-    case read_replica(fn -> repo.one(query) end, retry?) do
-      :fallback ->
-        safe_repo(fn -> Repo.one(query) end)
-
-      nil when retry? ->
-        safe_repo(fn -> Repo.one(query) end)
-
-      result ->
-        result
-    end
+  defp ecto_schema?(module) do
+    Code.ensure_loaded?(module) and function_exported?(module, :__schema__, 1)
   end
-
-  defp fetch_one_with_primary_retry!(repo, query, retry?) do
-    case read_replica(fn -> repo.one(query) end, retry?) do
-      :fallback ->
-        safe_repo!(fn -> Repo.one!(query) end, query)
-
-      nil when retry? ->
-        safe_repo!(fn -> Repo.one!(query) end, query)
-
-      nil ->
-        raise(Ecto.NoResultsError, queryable: query)
-
-      result ->
-        result
-    end
-  end
-
-  # Unlike one/2, an empty list is a legitimate result, so fallback_to_primary
-  # only covers replica connection errors, never empty replica reads; callers
-  # that must not miss rows due to replication lag re-probe the primary.
-  defp fetch_all_with_primary_fallback(repo, query, retry?) do
-    case read_replica(fn -> repo.all(query) end, retry?) do
-      :fallback -> safe_repo(fn -> Repo.all(query) end) || []
-      nil -> []
-      result -> result
-    end
-  end
-
-  defp exists_with_primary_retry?(repo, query, retry?) do
-    case read_replica(fn -> repo.exists?(query) end, retry?) do
-      :fallback -> safe_repo(fn -> Repo.exists?(query) end) || false
-      true -> true
-      _ when retry? -> safe_repo(fn -> Repo.exists?(query) end) || false
-      _ -> false
-    end
-  end
-
-  # Runs a read against the (possibly replica) repo. When a fallback to the
-  # primary is requested and the replica connection fails (e.g. a non-HA Azure
-  # read replica dropping connections during a transient outage), returns
-  # `:fallback` so the caller can retry against the primary. When fallback is
-  # disabled the connection error propagates so the real failure surfaces.
-  defp read_replica(fun, retry?) do
-    safe_repo(fun)
-  rescue
-    error in DBConnection.ConnectionError ->
-      if retry? do
-        Logger.warning("Replica read failed, falling back to primary",
-          error: Exception.message(error)
-        )
-
-        :fallback
-      else
-        reraise error, __STACKTRACE__
-      end
-  end
-
-  defp resolve_repo(:primary), do: Repo
-  defp resolve_repo(:replica), do: @replica
-  defp resolve_repo(repo) when is_atom(repo), do: repo
 
   defp apply_account_filter(queryable, Portal.Account, account_id) do
     # For Account schema, filter by id instead of account_id

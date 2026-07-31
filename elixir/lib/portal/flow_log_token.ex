@@ -139,8 +139,8 @@ defmodule Portal.FlowLogToken do
 
     def fetch_account(account_id) do
       from(a in Account, where: a.id == ^account_id)
-      |> Safe.unscoped(:replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.unscoped()
+      |> Safe.one()
     end
   end
 end

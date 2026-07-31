@@ -9,12 +9,9 @@ defmodule Portal.Replication.SlotPoller do
   when `replication=database` is requested), so polling is the only way to
   consume logical replication when DATABASE_ENTRA_AUTH is enabled.
 
-  Every poll cycle runs while holding a session advisory lock on the primary
-  keyed by slot and region, so exactly one process in the cluster consumes
-  each slot with the database as the authority — no process-group
-  coordination. Advisory locks are per-server state, so the lock always
-  lives on the primary to give every candidate the same authority even when
-  the slot being polled is on a replica.
+  Every poll cycle runs while holding a session advisory lock keyed by slot
+  and region, so exactly one process in the cluster consumes each slot with
+  the database as the authority — no process-group coordination.
   The cycle deliberately runs outside any wrapping transaction:
   consumer callbacks run arbitrary side effects whose inner transactions may
   legitimately roll back, which would poison an enclosing transaction. Within
@@ -513,12 +510,9 @@ defmodule Portal.Replication.SlotPoller do
 
     @doc """
     Runs `fun` while holding the session advisory lock for `key` on a
-    connection checked out from the dedicated `Portal.Repo.Poller` primary
-    pool, or returns nil without calling it when another session holds the
-    lock. Advisory locks are per-server state, so the lock lives on the
-    primary to give every candidate the same authority even when the slot
-    being polled is on a replica; the dedicated pool keeps the cycle-long
-    checkout from starving shared pools.
+    connection checked out from the dedicated `Portal.Repo.Poller` pool, or
+    returns nil without calling it when another session holds the lock. The
+    dedicated pool keeps the cycle-long checkout from starving shared pools.
 
     Deliberately not a transaction: `fun` runs consumer side effects (hooks,
     inserts) whose own inner transactions may roll back, which would poison
@@ -557,9 +551,6 @@ defmodule Portal.Replication.SlotPoller do
       )
     end
 
-    # Publications are DDL, which a read replica cannot execute, so they are
-    # always managed on the primary; physical replication carries them to the
-    # replicas that Portal.Changes.Consumer polls.
     def ensure_publication!(config) do
       {:ok, %{rows: exists}} =
         Safe.unscoped()

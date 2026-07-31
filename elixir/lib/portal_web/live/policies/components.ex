@@ -2847,12 +2847,12 @@ defmodule PortalWeb.Policies.Components do
         )
 
       # Combine all providers from different tables using Safe
-      (userpass_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
-        (email_otp_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
-        (oidc_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
-        (google_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
-        (entra_query |> Safe.scoped(subject, :replica) |> Safe.all()) ++
-        (okta_query |> Safe.scoped(subject, :replica) |> Safe.all())
+      (userpass_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (email_otp_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (oidc_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (google_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (entra_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (okta_query |> Safe.scoped(subject) |> Safe.all())
     end
 
     # Inlined from PortalWeb.Groups.Components
@@ -2890,8 +2890,8 @@ defmodule PortalWeb.Policies.Components do
             directory_type: d.type
           }
         )
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one!(fallback_to_primary: true)
+        |> Safe.scoped(subject)
+        |> Safe.one!()
 
       {:ok, group_option(group)}
     end
@@ -2939,7 +2939,7 @@ defmodule PortalWeb.Policies.Components do
           query
         end
 
-      rows = query |> Safe.scoped(subject, :replica) |> Safe.all()
+      rows = query |> Safe.scoped(subject) |> Safe.all()
 
       # For metadata, we'll return a simple count
       metadata = %{limit: 25, count: length(rows)}
@@ -3044,7 +3044,7 @@ defmodule PortalWeb.Policies.Components do
 
     defp list_policy_authorizations(queryable, subject, opts) do
       queryable
-      |> Portal.Safe.scoped(subject, :replica)
+      |> Portal.Safe.scoped(subject)
       |> Portal.Safe.list(Database.PolicyAuthorizationQuery, opts)
     end
   end

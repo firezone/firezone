@@ -328,7 +328,7 @@ defmodule Portal.Ops do
         where: a.id == ^id,
         where: a.is_disabled == true
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.one!()
     end
 
@@ -356,7 +356,7 @@ defmodule Portal.Ops do
       |> where([a], a.is_disabled == false)
       |> maybe_filter_account_ids(account_ids_or_all)
       |> select([a], {a.account_id, a.email})
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
       |> Enum.group_by(fn {account_id, _email} -> account_id end, fn {_account_id, email} ->
         email

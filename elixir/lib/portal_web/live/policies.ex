@@ -1105,30 +1105,30 @@ defmodule PortalWeb.Policies do
 
     def flow_logs_feature_enabled? do
       from(f in Portal.Features, where: f.feature == :flow_logs and f.enabled == true)
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.exists?()
     end
 
     def get_site(id, subject) do
       from(s in Site, as: :sites)
       |> where([sites: s], s.id == ^id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def get_resource(id, subject) do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.id == ^id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def get_policy(id, subject) do
       from(p in Policy, as: :policies)
       |> where([policies: p], p.id == ^id)
       |> preload(group: [:directory], resource: [])
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def insert_policy(changeset, %Authentication.Subject{} = subject) do
@@ -1169,7 +1169,7 @@ defmodule PortalWeb.Policies do
 
     defp get_group_idp_id(group_id, subject) do
       from(g in Group, where: g.id == ^group_id, select: g.idp_id)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.one()
     end
 
@@ -1201,8 +1201,8 @@ defmodule PortalWeb.Policies do
             directory_type: d.type
           }
         )
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one!(fallback_to_primary: true)
+        |> Safe.scoped(subject)
+        |> Safe.one!()
 
       {:ok, {row.group.id, row.group.name, row}}
     end
@@ -1244,7 +1244,7 @@ defmodule PortalWeb.Policies do
           from([groups: g] in query, where: fulltext_search(g.name, ^search_query_or_nil))
         end
 
-      rows = query |> Safe.scoped(subject, :replica) |> Safe.all()
+      rows = query |> Safe.scoped(subject) |> Safe.all()
       metadata = %{limit: 25, count: length(rows)}
 
       {:ok, grouped_select_options(rows), metadata}
@@ -1286,20 +1286,20 @@ defmodule PortalWeb.Policies do
       ]
       |> Enum.flat_map(fn schema ->
         from(p in schema, where: not p.is_disabled)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
       end)
     end
 
     def count_policies(subject) do
       from(p in Policy, as: :policies)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
 
     def list_policies(subject, opts \\ []) do
       from(p in Policy, as: :policies)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list_offset(__MODULE__, opts)
     end
 
@@ -1466,7 +1466,7 @@ defmodule PortalWeb.Policies do
       |> order_by([policy_authorizations: pa], desc: pa.inserted_at, desc: pa.id)
       |> limit(^(@page_size + 1))
       |> offset(^offset)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, _} ->

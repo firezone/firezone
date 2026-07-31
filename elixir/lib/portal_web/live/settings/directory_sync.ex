@@ -58,8 +58,7 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   defp init(socket, opts \\ []) do
     new = Keyword.get(opts, :new, false)
-    repo = Keyword.get(opts, :repo, :replica)
-    directories = Database.list_all_directories(socket.assigns.subject, repo)
+    directories = Database.list_all_directories(socket.assigns.subject)
 
     if new do
       socket
@@ -1626,7 +1625,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp handle_submit({:ok, _directory}, socket) do
     {:noreply,
      socket
-     |> init(repo: :primary)
+     |> init()
      |> put_flash(:success, "Directory saved successfully.")
      |> push_patch(to: ~p"/#{socket.assigns.account}/settings/directory_sync")}
   end
@@ -1950,11 +1949,11 @@ defmodule PortalWeb.Settings.DirectorySync do
     alias Portal.{Entra, Google, Okta, Safe}
     import Ecto.Query
 
-    def list_all_directories(subject, repo \\ :replica) do
+    def list_all_directories(subject) do
       [
-        Entra.Directory |> Safe.scoped(subject, repo) |> Safe.all(),
-        Google.Directory |> Safe.scoped(subject, repo) |> Safe.all(),
-        Okta.Directory |> Safe.scoped(subject, repo) |> Safe.all()
+        Entra.Directory |> Safe.scoped(subject) |> Safe.all(),
+        Google.Directory |> Safe.scoped(subject) |> Safe.all(),
+        Okta.Directory |> Safe.scoped(subject) |> Safe.all()
       ]
       |> List.flatten()
       |> enrich_with_job_status()
@@ -1963,8 +1962,8 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     def get_directory!(schema, id, subject) do
       from(d in schema, where: d.id == ^id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def insert_directory(changeset, subject) do
@@ -1983,8 +1982,8 @@ defmodule PortalWeb.Settings.DirectorySync do
       # Delete the parent Portal.Directory, which will CASCADE delete the child
       parent =
         from(d in Portal.Directory, where: d.id == ^directory.id)
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one!(fallback_to_primary: true)
+        |> Safe.scoped(subject)
+        |> Safe.one!()
 
       parent |> Safe.scoped(subject) |> Safe.delete()
     end
@@ -1996,21 +1995,21 @@ defmodule PortalWeb.Settings.DirectorySync do
         from(a in Portal.Actor,
           where: a.created_by_directory_id == ^directory_id
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.aggregate(:count)
 
       identities_count =
         from(ei in Portal.ExternalIdentity,
           where: ei.directory_id == ^directory_id
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.aggregate(:count)
 
       groups_count =
         from(g in Portal.Group,
           where: g.directory_id == ^directory_id
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.aggregate(:count)
 
       policies_count =
@@ -2019,7 +2018,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           on: p.group_id == g.id and p.account_id == g.account_id,
           where: g.directory_id == ^directory_id
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.aggregate(:count)
 
       %{
@@ -2037,7 +2036,7 @@ defmodule PortalWeb.Settings.DirectorySync do
       schema = directory.__struct__
 
       from(d in schema, where: d.id == ^directory.id)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.one()
     end
 
@@ -2055,7 +2054,7 @@ defmodule PortalWeb.Settings.DirectorySync do
         |> Oban.Job.query()
         |> where([j], fragment("?->>'directory_id'", j.args) in ^directory_ids)
         |> order_by([j], desc: j.inserted_at)
-        |> Safe.unscoped(:replica)
+        |> Safe.unscoped()
         |> Safe.all()
         |> Enum.map(fn job -> {job.args["directory_id"], job} end)
         |> Map.new()
@@ -2066,7 +2065,7 @@ defmodule PortalWeb.Settings.DirectorySync do
         |> Oban.Job.query()
         |> where([j], fragment("?->>'directory_id'", j.args) in ^directory_ids)
         |> order_by([j], desc: j.completed_at)
-        |> Safe.unscoped(:replica)
+        |> Safe.unscoped()
         |> Safe.all()
         |> Enum.uniq_by(& &1.args["directory_id"])
         |> Enum.map(fn job -> {job.args["directory_id"], job} end)
@@ -2112,7 +2111,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           group_by: ei.directory_id,
           select: {ei.directory_id, count(ei.actor_id, :distinct)}
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> Map.new()
 
@@ -2123,7 +2122,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           group_by: g.directory_id,
           select: {g.directory_id, count(g.id)}
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> Map.new()
 

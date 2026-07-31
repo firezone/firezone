@@ -14,11 +14,8 @@ defmodule Portal.Application do
     # OpenTelemetry setup
     :ok = OpentelemetryLoggerMetadata.setup()
     :ok = OpentelemetryEcto.setup([:portal, :repo])
-    :ok = OpentelemetryEcto.setup([:portal, :repo, :replica])
     :ok = OpentelemetryEcto.setup([:portal, :repo, :web])
     :ok = OpentelemetryEcto.setup([:portal, :repo, :api])
-    :ok = OpentelemetryEcto.setup([:portal, :repo, :replica, :web])
-    :ok = OpentelemetryEcto.setup([:portal, :repo, :replica, :api])
     :ok = OpentelemetryBandit.setup()
     :ok = OpentelemetryPhoenix.setup(adapter: :bandit)
     :ok = OpentelemetryOban.setup()
@@ -40,14 +37,10 @@ defmodule Portal.Application do
     base_children = token_caches() ++ [
       # Core services
       Portal.Repo,
-      Portal.Repo.Replica,
       # Isolated connection pools (web/api/poller)
       Portal.Repo.Web,
       Portal.Repo.Api,
-      Portal.Repo.Replica.Web,
-      Portal.Repo.Replica.Api,
       Portal.Repo.Poller,
-      Portal.Repo.Replica.Poller,
       # Default pg scope for distributed process discovery (used by replication)
       %{id: :pg, start: {:pg, :start_link, []}},
       # Named pg scope for Portal.PG, isolated so a crash here does not affect replication

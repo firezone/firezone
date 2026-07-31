@@ -388,7 +388,7 @@ defmodule PortalWeb.Groups do
 
     case result do
       :ok ->
-        resources = Database.list_resources_for_group(group, socket.assigns.subject, :primary)
+        resources = Database.list_resources_for_group(group, socket.assigns.subject)
 
         {:noreply,
          socket
@@ -1037,16 +1037,14 @@ defmodule PortalWeb.Groups do
   defp editable_group?(%{idp_id: nil}), do: true
   defp editable_group?(_group), do: false
 
-  @spec load_panel_members(Phoenix.LiveView.Socket.t(), keyword()) :: Phoenix.LiveView.Socket.t()
-  defp load_panel_members(socket, opts \\ []) do
+  @spec load_panel_members(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
+  defp load_panel_members(socket) do
     group = socket.assigns.selected_group
     subject = socket.assigns.subject
     page = socket.assigns.group_panel.member_page
     filter = socket.assigns.group_panel.show_member_filter
-    repo = Keyword.get(opts, :repo, :replica)
-
     {members, total} =
-      Database.list_group_members(group, subject, page, @member_page_size, filter, repo: repo)
+      Database.list_group_members(group, subject, page, @member_page_size, filter)
 
     socket
     |> assign(group_members: group_members_state(panel_members: members))
@@ -1312,11 +1310,7 @@ defmodule PortalWeb.Groups do
 
   defp refresh_group_resources(socket, ui_state) do
     resources =
-      Database.list_resources_for_group(
-        socket.assigns.selected_group,
-        socket.assigns.subject,
-        :primary
-      )
+      Database.list_resources_for_group(socket.assigns.selected_group, socket.assigns.subject)
 
     merge_state(socket, :group_resources, Keyword.put(ui_state, :resources, resources))
   end
@@ -1344,7 +1338,7 @@ defmodule PortalWeb.Groups do
 
     def flow_logs_feature_enabled? do
       from(f in Portal.Features, where: f.feature == :flow_logs and f.enabled == true)
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.exists?()
     end
 
@@ -1432,7 +1426,7 @@ defmodule PortalWeb.Groups do
         [groups: g],
         not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
       )
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
 
@@ -1469,7 +1463,7 @@ defmodule PortalWeb.Groups do
       with {:ok, paginator_opts} <- OffsetPaginator.init(__MODULE__, final_order_by, page_opts),
            {:ok, filtered_query} <- Filter.filter(query, __MODULE__, filter),
            count when is_integer(count) <-
-             Safe.aggregate(Safe.scoped(filtered_query, subject, :replica), :count),
+             Safe.aggregate(Safe.scoped(filtered_query, subject), :count),
            group_ids <- list_group_ids(filtered_query, paginator_opts, subject),
            {group_ids, metadata} <- OffsetPaginator.metadata(group_ids, paginator_opts) do
         groups = fetch_groups_page(group_ids, subject)
@@ -1484,7 +1478,7 @@ defmodule PortalWeb.Groups do
       filtered_query
       |> select([groups: g], g.id)
       |> OffsetPaginator.query(paginator_opts)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -1495,7 +1489,7 @@ defmodule PortalWeb.Groups do
         index_query()
         |> hydrate_group_query()
         |> where([groups: g], g.id in ^group_ids)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
 
       groups_by_id = Map.new(groups, &{&1.group.id, &1})
@@ -1522,7 +1516,7 @@ defmodule PortalWeb.Groups do
         not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
       )
       |> select([member_counts: mc], sum(coalesce(mc.count, 0)))
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.one()
       |> case do
         {:error, _} -> 0
@@ -1578,7 +1572,7 @@ defmodule PortalWeb.Groups do
           },
           order_by: [asc: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name)]
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> case do
           {:error, _} ->
@@ -1612,15 +1606,15 @@ defmodule PortalWeb.Groups do
     def get_group!(id, subject) do
       from(g in Portal.Group, as: :groups)
       |> where([groups: groups], groups.id == ^id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def get_actor!(id, subject) do
       from(a in Portal.Actor, as: :actors)
       |> where([actors: a], a.id == ^id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def search_actors(search_term, subject, exclude_actors) do
@@ -1633,7 +1627,7 @@ defmodule PortalWeb.Groups do
                a.id not in ^exclude_ids
            )
            |> limit(10)
-           |> Safe.scoped(subject, :replica)
+           |> Safe.scoped(subject)
            |> Safe.all() do
         actors when is_list(actors) -> actors
         {:error, _} -> []
@@ -1660,9 +1654,7 @@ defmodule PortalWeb.Groups do
       end
     end
 
-    def list_group_members(group, subject, page, page_size, filter, opts \\ []) do
-      repo = Keyword.get(opts, :repo, :replica)
-
+    def list_group_members(group, subject, page, page_size, filter) do
       base =
         from(a in Portal.Actor, as: :actors)
         |> join(:inner, [actors: a], m in Portal.Membership,
@@ -1690,7 +1682,7 @@ defmodule PortalWeb.Groups do
         base
         |> exclude(:order_by)
         |> select([actors: a], count(a.id))
-        |> Safe.scoped(subject, repo)
+        |> Safe.scoped(subject)
         |> Safe.one()
         |> case do
           {:error, _} -> 0
@@ -1702,7 +1694,7 @@ defmodule PortalWeb.Groups do
         base
         |> limit(^page_size)
         |> offset(^((page - 1) * page_size))
-        |> Safe.scoped(subject, repo)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> case do
           {:error, _} -> []
@@ -1716,7 +1708,7 @@ defmodule PortalWeb.Groups do
       from(r in Portal.Resource, as: :resources)
       |> where([resources: r], r.id not in ^existing_resource_ids)
       |> order_by([resources: r], asc: r.name)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, _} -> []
@@ -1752,7 +1744,7 @@ defmodule PortalWeb.Groups do
       ]
       |> Enum.flat_map(fn schema ->
         from(p in schema, where: not p.is_disabled)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
       end)
     end
@@ -1767,14 +1759,14 @@ defmodule PortalWeb.Groups do
         group_id ->
           idp_id =
             from(g in Portal.Group, where: g.id == ^group_id, select: g.idp_id)
-            |> Safe.scoped(subject, :replica)
+            |> Safe.scoped(subject)
             |> Safe.one()
 
           put_change(changeset, :group_idp_id, idp_id)
       end
     end
 
-    def list_resources_for_group(group, subject, repo \\ :replica) do
+    def list_resources_for_group(group, subject) do
       from(r in Portal.Resource, as: :resources)
       |> join(:inner, [resources: r], p in Portal.Policy,
         on:
@@ -1788,7 +1780,7 @@ defmodule PortalWeb.Groups do
         policy_is_disabled: p.is_disabled
       })
       |> order_by([policies: p, resources: r], asc: p.is_disabled, asc: r.name)
-      |> Safe.scoped(subject, repo)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, _} -> []
@@ -1796,9 +1788,7 @@ defmodule PortalWeb.Groups do
       end
     end
 
-    def get_group_with_actors(id, subject, opts \\ []) do
-      repo = Keyword.get(opts, :repo, :replica)
-
+    def get_group_with_actors(id, subject) do
       query =
         from(g in Portal.Group, as: :groups)
         |> where([groups: groups], groups.id == ^id)
@@ -1839,7 +1829,7 @@ defmodule PortalWeb.Groups do
           sync_state: gss
         )
 
-      query |> Safe.scoped(subject, repo) |> Safe.one(fallback_to_primary: true)
+      query |> Safe.scoped(subject) |> Safe.one()
     end
 
     def preloads do
@@ -1868,7 +1858,7 @@ defmodule PortalWeb.Groups do
       from(p in Portal.Policy, as: :policies)
       |> where([policies: p], p.group_id == ^group.id and p.resource_id == ^resource_id)
       |> filter_policy_state(opts[:state])
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.one()
     end
 

@@ -228,7 +228,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         limit: ^limit
       )
       |> maybe_after_cursor(cursor)
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
 
@@ -250,7 +250,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()
     end
@@ -263,7 +263,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()
     end
@@ -276,7 +276,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()
     end
@@ -294,7 +294,7 @@ defmodule Portal.Workers.CheckAccountLimits do
       |> where([clients: c], c.last_seen_at > ago(1, "month"))
       |> group_by([clients: c], c.account_id)
       |> select([clients: c], {c.account_id, count(c.actor_id, :distinct)})
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()
     end
@@ -306,7 +306,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: g.account_id,
         select: {g.account_id, count(g.id)}
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()
     end
@@ -317,7 +317,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         where: a.type == :account_admin_user,
         where: a.is_disabled == false
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
   end

@@ -226,7 +226,7 @@ defmodule PortalAPI.ClientController do
     def list_clients(subject, opts \\ []) do
       from(d in Device, as: :clients)
       |> where([clients: d], d.type == :client)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -247,7 +247,7 @@ defmodule PortalAPI.ClientController do
       result =
         from(d in Device, as: :clients)
         |> where([clients: d], d.id == ^id and d.type == :client)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do

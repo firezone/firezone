@@ -1,6 +1,17 @@
 defmodule PortalWeb.Layouts do
   use PortalWeb, :html
 
+  defmodule Database do
+    import Ecto.Query
+    alias Portal.Safe
+
+    def fetch_banner do
+      from(b in Portal.Banner)
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+  end
+
   embed_templates "layouts/*"
 
   # Returns {wrapper_classes, text_class, icon_class, icon_name} for banner color variants.

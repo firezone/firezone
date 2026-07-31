@@ -54,11 +54,8 @@ defmodule Portal.Health do
   # make the readiness query queue up and fail
   @repos [
     Portal.Repo,
-    Portal.Repo.Replica,
     Portal.Repo.Web,
-    Portal.Repo.Api,
-    Portal.Repo.Replica.Web,
-    Portal.Repo.Replica.Api
+    Portal.Repo.Api
   ]
 
   defp repos_ready? do

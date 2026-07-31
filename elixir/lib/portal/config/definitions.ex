@@ -351,19 +351,6 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_host, :string, default: "postgres")
 
   @doc """
-  PostgreSQL replica host for read-only queries.
-  Falls back to DATABASE_HOST if not set.
-
-  Must point at a single server, never a load-balanced read-only endpoint:
-  the portal creates and consumes a logical replication slot on this host,
-  and a load balancer would scatter slots across replicas, where each
-  abandoned slot permanently retains WAL on the server it landed on.
-  """
-  defconfig(:database_host_replica, :string,
-    default: fn -> System.get_env("DATABASE_HOST", "postgres") end
-  )
-
-  @doc """
   PostgreSQL socket directory (takes precedence over hostname).
   """
   defconfig(:database_socket_dir, :string, default: nil)
@@ -411,24 +398,14 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  Size of the primary connection pool for PortalWeb (HTTP + LiveView) queries.
+  Size of the connection pool for PortalWeb (HTTP + LiveView) queries.
   """
-  defconfig(:database_pool_size_web, :integer, default: 2)
+  defconfig(:database_pool_size_web, :integer, default: 4)
 
   @doc """
-  Size of the primary connection pool for PortalAPI (REST + Sockets) queries.
+  Size of the connection pool for PortalAPI (REST + Sockets) queries.
   """
-  defconfig(:database_pool_size_api, :integer, default: 5)
-
-  @doc """
-  Size of the replica connection pool for PortalWeb (HTTP + LiveView) queries.
-  """
-  defconfig(:database_pool_size_web_replica, :integer, default: 2)
-
-  @doc """
-  Size of the replica connection pool for PortalAPI (REST + Sockets) queries.
-  """
-  defconfig(:database_pool_size_api_replica, :integer, default: 5)
+  defconfig(:database_pool_size_api, :integer, default: 10)
 
   @doc """
   The target threshold for the length of time in milliseconds that a query should wait in the queue

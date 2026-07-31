@@ -343,7 +343,7 @@ defmodule PortalWeb.Logs.SessionLogs do
 
     def list_session_logs(subject, opts \\ []) do
       from(sl in SessionLog, as: :session_logs)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list_offset(__MODULE__, opts)
     end
 
@@ -352,8 +352,8 @@ defmodule PortalWeb.Logs.SessionLogs do
         result =
           from(sl in SessionLog, as: :session_logs)
           |> where([session_logs: sl], sl.log_id == ^log_id)
-          |> Safe.scoped(subject, :replica)
-          |> Safe.one(fallback_to_primary: true)
+          |> Safe.scoped(subject)
+          |> Safe.one()
 
         case result do
           nil -> {:error, :not_found}

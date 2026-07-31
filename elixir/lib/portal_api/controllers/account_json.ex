@@ -65,7 +65,7 @@ defmodule PortalAPI.AccountJSON do
         where: a.is_disabled == false,
         where: a.type in [:account_admin_user, :account_user]
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
 
@@ -75,7 +75,7 @@ defmodule PortalAPI.AccountJSON do
         where: a.is_disabled == false,
         where: a.type == :service_account
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
 
@@ -85,7 +85,7 @@ defmodule PortalAPI.AccountJSON do
         where: a.is_disabled == false,
         where: a.type == :account_admin_user
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
 
@@ -102,7 +102,7 @@ defmodule PortalAPI.AccountJSON do
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> select([clients: c], c.actor_id)
       |> distinct(true)
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
 
@@ -111,7 +111,7 @@ defmodule PortalAPI.AccountJSON do
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
   end

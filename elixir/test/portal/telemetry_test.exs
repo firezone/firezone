@@ -363,10 +363,10 @@ defmodule Portal.TelemetryTest do
                )
     end
 
-    test "handles replica repo event" do
+    test "handles isolated pool repo event" do
       assert :ok =
                Portal.Telemetry.handle_db_metric(
-                 [:portal, :repo, :replica, :query],
+                 [:portal, :repo, :web, :query],
                  %{total_time: 200_000},
                  %{},
                  @config

@@ -1117,7 +1117,7 @@ defmodule PortalWeb.OIDCController do
           do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
-      query |> Safe.unscoped(:replica) |> Safe.one!()
+      query |> Safe.unscoped() |> Safe.one!()
     end
 
     def fetch_account_by_id_or_slug(id_or_slug) do
@@ -1127,8 +1127,8 @@ defmodule PortalWeb.OIDCController do
           else: from(a in Account, where: a.slug == ^id_or_slug)
 
       query
-      |> Safe.unscoped(:replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.unscoped()
+      |> Safe.one()
       |> case do
         nil -> {:error, :not_found}
         account -> {:ok, account}
@@ -1141,7 +1141,7 @@ defmodule PortalWeb.OIDCController do
       from(p in schema,
         where: p.account_id == ^account_id and p.id == ^id and p.is_disabled == false
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.one!()
     end
 
@@ -1151,8 +1151,8 @@ defmodule PortalWeb.OIDCController do
       from(p in schema,
         where: p.account_id == ^account_id and p.id == ^id and p.is_disabled == false
       )
-      |> Safe.unscoped(:replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.unscoped()
+      |> Safe.one()
       |> case do
         nil -> {:error, :not_found}
         provider -> {:ok, provider}
@@ -1169,7 +1169,7 @@ defmodule PortalWeb.OIDCController do
         where: actor.is_disabled == false,
         preload: [:account, actor: actor]
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.one()
       |> case do
         nil -> {:error, :not_found}
@@ -1188,7 +1188,7 @@ defmodule PortalWeb.OIDCController do
         preload: [:account],
         limit: 1
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.one()
       |> case do
         nil -> {:error, :actor_not_found}
@@ -1203,7 +1203,7 @@ defmodule PortalWeb.OIDCController do
       |> Safe.unscoped()
       |> Safe.update()
       |> case do
-        {:ok, identity} -> {:ok, Safe.preload(identity, [:actor, :account], :replica)}
+        {:ok, identity} -> {:ok, Safe.preload(identity, [:actor, :account])}
         error -> error
       end
     end
@@ -1287,7 +1287,7 @@ defmodule PortalWeb.OIDCController do
       end)
       |> case do
         {:ok, {:verified, %ExternalIdentity{} = identity, pending_identity_ids}} ->
-          {:ok, Safe.preload(identity, [:actor, :account], :replica), pending_identity_ids}
+          {:ok, Safe.preload(identity, [:actor, :account]), pending_identity_ids}
 
         {:ok, :invalid_code} ->
           {:error, :invalid_code}
@@ -1456,8 +1456,7 @@ defmodule PortalWeb.OIDCController do
           {:error, :actor_not_found}
 
         {_, [%ExternalIdentity{} = identity]} ->
-          # actor and account are long-lived records, safe to read from replica
-          {:ok, Safe.preload(identity, [:actor, :account], :replica)}
+          {:ok, Safe.preload(identity, [:actor, :account])}
       end
     end
 

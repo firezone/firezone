@@ -23,7 +23,7 @@
         <.icon name="ri-loop-left-line" class="ml-1 h-3 w-3 animate-spin" />
       </.flash>
 
-      <% banner = Portal.Safe.unscoped(Portal.Banner, :replica) |> Portal.Safe.one() %>
+      <% banner = Database.fetch_banner() %>
       <%= if banner do %>
         <% {wrapper_classes, text_class, icon_class, icon_name} = banner_classes(banner.color) %>
         <div id="banner" class={["border-b px-4 py-2.5", wrapper_classes]}>

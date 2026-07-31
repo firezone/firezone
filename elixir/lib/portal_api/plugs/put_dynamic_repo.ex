@@ -10,7 +10,6 @@ defmodule PortalAPI.Plugs.PutDynamicRepo do
   def call(conn, _opts) do
     unless @sandbox do
       Portal.Repo.put_dynamic_repo(Portal.Repo.Api)
-      Portal.Repo.Replica.put_dynamic_repo(Portal.Repo.Replica.Api)
     end
 
     conn

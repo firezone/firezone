@@ -3,9 +3,9 @@ defmodule Portal.Repo.DynamicRepoResolver do
   Walks the process hierarchy (`$callers` then `$ancestors`) to find and
   inherit a parent's dynamic repo setting.
 
-  Used by `Portal.Repo.get_dynamic_repo/0` and `Portal.Repo.Replica.get_dynamic_repo/0`
-  so that child processes (channels, tasks, GenServers) automatically route
-  queries to the same pool as their parent.
+  Used by `Portal.Repo.get_dynamic_repo/0` so that child processes (channels,
+  tasks, GenServers) automatically route queries to the same pool as their
+  parent.
   """
 
   @spec inherit(module()) :: module()
