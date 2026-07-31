@@ -330,6 +330,67 @@ defmodule PortalAPI.ResourceControllerTest do
                }
              } = json_response(conn, 422)
     end
+
+    test "returns 422 when creating a resource in the Internet Site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = internet_site_fixture(account: account)
+
+      attrs = %{
+        "address" => "google.com",
+        "name" => "Google",
+        "type" => "dns",
+        "site_id" => site.id
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/resources", resource: attrs)
+
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "validation_errors" => %{
+                 "site_id" => ["cannot be the Internet Site"]
+               }
+             } = json_response(conn, 422)
+
+      assert Portal.Repo.aggregate(Resource, :count) == 0
+    end
+
+    test "returns 422 when creating an internet resource in a regular Site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      attrs = %{
+        "name" => "Internet",
+        "type" => "internet",
+        "site_id" => site.id
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/resources", resource: attrs)
+
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "validation_errors" => %{
+                 "site_id" => ["must be the Internet Site for an Internet Resource"]
+               }
+             } = json_response(conn, 422)
+
+      assert Portal.Repo.aggregate(Resource, :count) == 0
+    end
   end
 
   describe "update/2" do
@@ -523,6 +584,59 @@ defmodule PortalAPI.ResourceControllerTest do
                "status" => 403,
                "detail" => "Internet Resource cannot be modified"
              } = json_response(conn, 403)
+    end
+
+    test "returns 422 when moving a resource to the Internet Site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      internet_site = internet_site_fixture(account: account)
+      resource = dns_resource_fixture(account: account, site: site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}", resource: %{"site_id" => internet_site.id})
+
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "validation_errors" => %{
+                 "site_id" => ["cannot be the Internet Site"]
+               }
+             } = json_response(conn, 422)
+
+      reloaded = Portal.Repo.get_by!(Resource, id: resource.id, account_id: account.id)
+      assert reloaded.site_id == site.id
+    end
+
+    test "returns 422 when changing a resource to the internet type", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      resource = dns_resource_fixture(account: account, site: site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}", resource: %{"type" => "internet"})
+
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "validation_errors" => %{
+                 "site_id" => ["must be the Internet Site for an Internet Resource"]
+               }
+             } = json_response(conn, 422)
+
+      reloaded = Portal.Repo.get_by!(Resource, id: resource.id, account_id: account.id)
+      assert reloaded.type == :dns
     end
 
     test "returns 422 when updating resource to static_device_pool type with feature disabled", %{

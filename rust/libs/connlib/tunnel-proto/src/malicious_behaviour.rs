@@ -5,9 +5,16 @@ pub fn ignore_resource_filter() -> bool {
     FEATURES.with(|f| f.get().ignore_resource_filters)
 }
 
+/// Returns `true` if the current thread is configured to answer a peer with an ICMP
+/// error that no flow of its own covers.
+pub fn send_untracked_icmp_errors() -> bool {
+    FEATURES.with(|f| f.get().send_untracked_icmp_errors)
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MaliciousBehaviour {
     pub ignore_resource_filters: bool,
+    pub send_untracked_icmp_errors: bool,
 }
 
 impl MaliciousBehaviour {

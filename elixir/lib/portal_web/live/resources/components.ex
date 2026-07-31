@@ -159,10 +159,11 @@ defmodule PortalWeb.Resources.Components do
         <div class="flex items-top mb-4">
           <.input type="hidden" name={"#{@form.name}[tcp][protocol]"} value="tcp" />
           <div class="mt-2.5 w-24" phx-update="ignore" id="tcp-filter-checkbox">
-            <.input
+            <.toggle
+              id="tcp-filter-toggle"
               title="Restrict traffic to TCP traffic"
-              type="checkbox"
               name={"#{@form.name}[tcp][enabled]"}
+              value="true"
               checked={Map.has_key?(@forms_by_protocol, :tcp)}
               disabled={!@traffic_filters_enabled?}
               label="TCP"
@@ -190,9 +191,10 @@ defmodule PortalWeb.Resources.Components do
         <div class="flex items-top mb-4">
           <.input type="hidden" name={"#{@form.name}[udp][protocol]"} value="udp" />
           <div class="mt-2.5 w-24" phx-update="ignore" id="udp-filter-checkbox">
-            <.input
-              type="checkbox"
+            <.toggle
+              id="udp-filter-toggle"
               name={"#{@form.name}[udp][enabled]"}
+              value="true"
               checked={Map.has_key?(@forms_by_protocol, :udp)}
               disabled={!@traffic_filters_enabled?}
               label="UDP"
@@ -221,10 +223,11 @@ defmodule PortalWeb.Resources.Components do
           <.input type="hidden" name={"#{@form.name}[icmp][protocol]"} value="icmp" />
 
           <div class="mt-2.5 w-24" phx-update="ignore" id="icmp-filter-checkbox">
-            <.input
+            <.toggle
+              id="icmp-filter-toggle"
               title="Allow ICMP echo requests/replies"
-              type="checkbox"
               name={"#{@form.name}[icmp][enabled]"}
+              value="true"
               checked={Map.has_key?(@forms_by_protocol, :icmp)}
               disabled={!@traffic_filters_enabled?}
               label="ICMP echo"

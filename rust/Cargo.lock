@@ -698,7 +698,7 @@ dependencies = [
  "ip-packet",
  "ip_network",
  "ipconfig",
- "itertools",
+ "itertools 0.15.0",
  "known-dirs",
  "libc",
  "logging",
@@ -1234,7 +1234,7 @@ dependencies = [
  "flow-log-writer",
  "ip-packet",
  "ip_network",
- "itertools",
+ "itertools 0.15.0",
  "jni 0.22.4",
  "libc",
  "logging",
@@ -1364,7 +1364,7 @@ dependencies = [
  "boringtun",
  "derive_more",
  "ip_network",
- "itertools",
+ "itertools 0.15.0",
  "serde",
  "uuid",
 ]
@@ -1627,36 +1627,12 @@ dependencies = [
 
 [[package]]
 name = "darling"
-version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cdf337090841a411e2a7f3deb9187445851f91b309c0c0a29e05f74a00a48c0"
-dependencies = [
- "darling_core 0.21.3",
- "darling_macro 0.21.3",
-]
-
-[[package]]
-name = "darling"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25ae13da2f202d56bd7f91c25fba009e7717a1e4a1cc98a76d844b65ae912e9d"
 dependencies = [
- "darling_core 0.23.0",
- "darling_macro 0.23.0",
-]
-
-[[package]]
-name = "darling_core"
-version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1247195ecd7e3c85f83c8d2a366e4210d588e802133e1e355180a9870b517ea4"
-dependencies = [
- "fnv",
- "ident_case",
- "proc-macro2",
- "quote",
- "strsim",
- "syn 2.0.119",
+ "darling_core",
+ "darling_macro",
 ]
 
 [[package]]
@@ -1674,22 +1650,11 @@ dependencies = [
 
 [[package]]
 name = "darling_macro"
-version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d38308df82d1080de0afee5d069fa14b0326a88c14f15c5ccda35b4a6c414c81"
-dependencies = [
- "darling_core 0.21.3",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "darling_macro"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac3984ec7bd6cfa798e62b4a642426a5be0e68f9401cfc2a01e3fa9ea2fcdb8d"
 dependencies = [
- "darling_core 0.23.0",
+ "darling_core",
  "quote",
  "syn 2.0.119",
 ]
@@ -2882,7 +2847,7 @@ dependencies = [
  "ip-packet",
  "ip_network",
  "ip_network_table",
- "itertools",
+ "itertools 0.15.0",
  "l3-tcp",
  "libfuzzer-sys",
  "rand 0.10.2",
@@ -3842,9 +3807,9 @@ dependencies = [
 
 [[package]]
 name = "ingot"
-version = "0.1.1"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a17a93829808685f3b6882763901d7489efc1155ad4ae568499d1b303067ca6"
+checksum = "20eae0b62f8c5e0215c7b3a00fe75566615ed7f2c96752ef8cd9e335a8922299"
 dependencies = [
  "bitflags 2.10.0",
  "ingot-macros",
@@ -3856,12 +3821,12 @@ dependencies = [
 
 [[package]]
 name = "ingot-macros"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4c94e8b5b5e08b71943d585acdb6062daaeb6b19de82ebb377c7c9cbeff44bb"
+checksum = "0d8c6b68cf2c0e9c6c385c8655cd390d861d6fba0e30493ad7e0ab6013a46f61"
 dependencies = [
- "darling 0.21.3",
- "itertools",
+ "darling",
+ "itertools 0.15.0",
  "proc-macro2",
  "quote",
  "regex",
@@ -3870,9 +3835,9 @@ dependencies = [
 
 [[package]]
 name = "ingot-types"
-version = "0.1.2"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d0d55db2f1de52564cc3781ffd5a7ebb7f2c6e1888841c2fa54231a9498db5f"
+checksum = "0c38331af4cff022b2ea46b220467d5962973853a47bd6851c54c111b71baa42"
 dependencies = [
  "ingot-macros",
  "macaddr",
@@ -4020,6 +3985,15 @@ name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
 dependencies = [
  "either",
 ]
@@ -5498,7 +5472,7 @@ dependencies = [
  "futures",
  "hex",
  "hostname",
- "itertools",
+ "itertools 0.15.0",
  "libc",
  "logging",
  "os_info",
@@ -5826,7 +5800,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27c6023962132f4b30eb4c172c91ce92d933da334c59c23cddee82358ddafb0b"
 dependencies = [
  "anyhow",
- "itertools",
+ "itertools 0.14.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -6760,7 +6734,7 @@ version = "3.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84d57bc0c8b9a17920c178daa6bb924850d54a9c97ab45194bb8c17ad66bb660"
 dependencies = [
- "darling 0.23.0",
+ "darling",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -6949,7 +6923,7 @@ dependencies = [
  "hex-display",
  "ip-packet",
  "is",
- "itertools",
+ "itertools 0.15.0",
  "logging",
  "opentelemetry",
  "otel-instruments",
@@ -8473,7 +8447,7 @@ dependencies = [
  "futures-bounded",
  "http-client",
  "ip-packet",
- "itertools",
+ "itertools 0.15.0",
  "l4-tcp-dns-server",
  "l4-udp-dns-server",
  "logging",
@@ -8521,7 +8495,7 @@ dependencies = [
  "ip-packet",
  "ip_network",
  "ip_network_table",
- "itertools",
+ "itertools 0.15.0",
  "l3-udp-dns-client",
  "logging",
  "lru",
@@ -8909,7 +8883,7 @@ version = "7.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80a7e511ce1795821207a837b7b1c8d8aca0c648810966ad200446ae58f6667f"
 dependencies = [
- "itertools",
+ "itertools 0.14.0",
  "nom 8.0.0",
 ]
 

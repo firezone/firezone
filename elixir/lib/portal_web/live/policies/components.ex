@@ -2049,14 +2049,13 @@ defmodule PortalWeb.Policies.Components do
           Allow access when the Client is manually verified by the administrator.
         </p>
         <div class="space-y-2" phx-update="ignore" id="conditions-client-verified-values">
-          <.input
-            type="checkbox"
+          <.toggle
             label="Require client verification"
             name="policy[conditions][client_verified][values][]"
             id="policy_conditions_client_verified_value"
+            value="true"
             disabled={@disabled}
             checked={List.first(List.wrap(condition_form[:values].value)) == "true"}
-            unchecked_value={nil}
           />
         </div>
       </div>

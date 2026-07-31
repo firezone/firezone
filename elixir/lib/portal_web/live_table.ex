@@ -559,35 +559,19 @@ defmodule PortalWeb.LiveTable do
     assigns = assign(assigns, checked: checked)
 
     ~H"""
-    <label
-      for={"#{@live_table_id}-#{@filter.name}-toggle"}
-      class="inline-flex items-center gap-2 h-8 px-2.5 rounded border border-[var(--control-border)] bg-[var(--control-bg)] cursor-pointer shrink-0"
-    >
-      <span class="text-xs font-medium text-[var(--text-secondary)] select-none">
-        {@filter.title}
-      </span>
+    <div class="inline-flex shrink-0">
       <input type="hidden" name={@form[@filter.name].name} value="false" />
-      <input
-        type="checkbox"
+      <.toggle
         id={"#{@live_table_id}-#{@filter.name}-toggle"}
         name={@form[@filter.name].name}
         value="true"
         checked={@checked}
-        class="sr-only peer"
+        size="sm"
+        label={@filter.title}
+        label_position="before"
+        class="h-8 px-2.5 rounded border border-input-border bg-input"
       />
-      <span class={[
-        "relative inline-flex w-7 h-4 rounded-full border transition-colors items-center px-0.5 shrink-0",
-        @checked && "bg-[var(--brand)] border-[var(--brand)]",
-        not @checked && "bg-[var(--surface)] border-[var(--control-border)]"
-      ]}>
-        <span class={[
-          "w-3 h-3 bg-white rounded-full shadow-sm transition-transform",
-          @checked && "translate-x-3",
-          not @checked && "translate-x-0"
-        ]}>
-        </span>
-      </span>
-    </label>
+    </div>
     """
   end
 

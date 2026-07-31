@@ -399,7 +399,14 @@ pub(crate) trait PollTimeout {
 
 impl PollTimeout for SimClient {
     fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
-        self.sut.poll_timeout()
+        iter::empty()
+            .chain(self.sut.poll_timeout())
+            .chain(
+                self.tcp_dns_client
+                    .poll_timeout()
+                    .map(|instant| (instant, "Application TCP DNS client")),
+            )
+            .min_by_key(|(instant, _)| *instant)
     }
 }
 

@@ -4,6 +4,45 @@ defmodule Portal.ChangesetTest do
   alias Portal.Changeset
 
   describe "private_ip?/1" do
+    test "blocks link-local addresses" do
+      ips = [
+        "169.254.0.0",
+        "169.254.169.254",
+        "169.254.255.255",
+        "fe80::1",
+        "febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
+      ]
+
+      for ip <- ips do
+        assert Changeset.private_ip?(parse_ip!(ip)), "Expected #{ip} to be blocked"
+      end
+    end
+
+    test "blocks link-local addresses wrapped in deprecated IPv6 embeddings" do
+      ips = [
+        "::ffff:169.254.169.254",
+        "::169.254.169.254",
+        "::ffff:0:169.254.169.254",
+        "64:ff9b::169.254.169.254",
+        "2002:a9fe:a9fe::1"
+      ]
+
+      for ip <- ips do
+        assert Changeset.private_ip?(parse_ip!(ip)), "Expected #{ip} to be blocked"
+      end
+    end
+
+    test "blocks site-local addresses" do
+      assert Changeset.private_ip?(parse_ip!("fec0::1"))
+      assert Changeset.private_ip?(parse_ip!("feff::1"))
+    end
+
+    test "allows addresses adjacent to the link-local ranges" do
+      refute Changeset.private_ip?(parse_ip!("169.253.255.255"))
+      refute Changeset.private_ip?(parse_ip!("169.255.0.0"))
+      refute Changeset.private_ip?(parse_ip!("2606:4700:4700::1111"))
+    end
+
     test "blocks IPv4-mapped IPv6 addresses when embedded IPv4 is blocked" do
       for ip <- ["::ffff:127.0.0.1", "::ffff:169.254.169.254", "::ffff:10.0.0.1"] do
         assert Changeset.private_ip?(parse_ip!(ip)), "Expected #{ip} to be blocked"

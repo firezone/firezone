@@ -370,6 +370,7 @@ mod tests {
 
         let _guard = MaliciousBehaviour {
             ignore_resource_filters: true,
+            ..Default::default()
         }
         .guard();
 
