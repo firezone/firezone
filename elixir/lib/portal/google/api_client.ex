@@ -509,9 +509,8 @@ defmodule Portal.Google.APIClient do
     end
   end
 
-  # The batch endpoint answers 200 even when individual parts are throttled, so
-  # Req's retry never sees those. Any throttled part means the whole chunk is
-  # re-sent, since re-reading a user that already succeeded costs nothing.
+  # The batch endpoint answers 200 even when parts are throttled, so Req's retry
+  # never sees those. Re-sending the whole chunk is cheaper than tracking parts.
   defp get_users_chunk(access_token, chunk, retry_count \\ 0) do
     case do_batch_get_users(access_token, chunk) do
       {:throttled, _response} when retry_count < @max_retries ->
@@ -526,8 +525,7 @@ defmodule Portal.Google.APIClient do
     end
   end
 
-  # Req applies :retry_delay itself for whole-request retries; per-part retries
-  # are ours to schedule, so honour the same setting.
+  # Req schedules its own retries; per-part ones are ours, same setting.
   defp batch_retry_delay(retry_count) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
 
@@ -658,7 +656,6 @@ defmodule Portal.Google.APIClient do
     end
   end
 
-  # Throttling is worth another go; any other 403 would only fail again.
   defp parse_forbidden_batch_part(json_body) do
     if usage_limits_error?(String.trim(json_body)) do
       {:throttled,
