@@ -163,10 +163,12 @@ mise run //swift/apple:<task>   # e.g. mise run //swift/apple:build
 
 ### Headless client
 
-`firezone-cli` is a macOS-only command line client. It is built as part of the
-`Firezone` scheme and ends up inside the app bundle, at
-`Firezone.app/Contents/Helpers/firezone-cli.app`. `mise run cli` finds it for
-you:
+`firezone-cli` is the macOS Client run from a terminal. It is not a separate
+program: it is the app's own binary, reached through a symlink beside it at
+`Firezone.app/Contents/MacOS/firezone-cli`, and it picks the command line path
+when started under that name. Being the same bundle is what lets it use the VPN
+configuration and system extension the app set up, which a second bundle could
+not do. `mise run cli` finds it for you:
 
 ```sh
 mise run cli -- --help
@@ -180,9 +182,8 @@ in the foreground until you stop it. `sign-out` drops the stored token.
 It talks to the same system extension as the GUI and will not start without it.
 `extension status` reports whether that extension is installed and matches the
 build, and exits non-zero when it does not, so a setup script can check before
-going further. It cannot install the extension: macOS looks for the extension
-inside the bundle that asks for it, and the extension ships in `Firezone.app`,
-not in `firezone-cli.app`. Launch the app once to install it.
+going further. It cannot install the extension, since installing one needs a user
+to approve it. Launch the app once to do that.
 
 These environment variables are read when the matching flag is absent:
 

@@ -20,7 +20,7 @@ if [ -z "$PRODUCTS_DIR" ]; then
     exit 1
 fi
 
-CLI_PATH="$PRODUCTS_DIR/Firezone.app/Contents/Helpers/firezone-cli.app/Contents/MacOS/firezone-cli"
+CLI_PATH="$PRODUCTS_DIR/Firezone.app/Contents/MacOS/firezone-cli"
 if [ ! -x "$CLI_PATH" ]; then
     echo "Error: firezone CLI not found at $CLI_PATH"
     exit 1

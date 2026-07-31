@@ -9,7 +9,6 @@ import FirezoneKit
 import Sentry
 import SwiftUI
 
-@main
 struct FirezoneApp: App {
   #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate

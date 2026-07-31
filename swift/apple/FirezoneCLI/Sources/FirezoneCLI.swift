@@ -9,7 +9,6 @@ import FirezoneKit
 import Foundation
 import NetworkExtension
 
-@main
 struct FirezoneCLI: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
     commandName: "firezone-cli",
