@@ -201,6 +201,9 @@ Without a token it prints a sign-in URL and waits for you to paste one back.
 Anything you don't set keeps whatever the app stored, since both share one VPN
 profile. Logs go to stderr as well as to the log folder the app shares.
 
+`connect` stops the menu bar app being kept alive, so quitting the headless
+client doesn't reopen it. Launching the app puts that back.
+
 ### Instruments
 
 `Instruments` is a powerful performance analyzer and visualizer application

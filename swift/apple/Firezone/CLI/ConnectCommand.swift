@@ -32,6 +32,12 @@ extension FirezoneCLI {
     mutating func run() async throws {
       Log.useCLIOutput()
 
+      // Connecting from a terminal means the menu bar app should stay closed. The helper
+      // that keeps it alive watches for this, and would otherwise open the app the moment
+      // we stop, since we share its bundle identifier. The app marks itself again the
+      // next time someone launches it.
+      SharedAccess.clearAppRunning()
+
       // Only what was actually asked for. The VPN profile is shared with the app, so
       // anything left unset here keeps the value the app stored.
       let apiURL = Self.setting(apiUrl, "FIREZONE_API_URL")
