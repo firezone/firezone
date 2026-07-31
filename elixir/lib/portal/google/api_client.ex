@@ -718,9 +718,8 @@ defmodule Portal.Google.APIClient do
     |> Req.get([headers: [Authorization: "Bearer #{access_token}"]] ++ request_opts(config))
   end
 
-  # Google reports throttling as 403 with an error whose domain is "usageLimits",
-  # which Req's default :safe_transient retry does not cover. Supplying our own
-  # predicate replaces that default, so the transient cases are repeated here.
+  # Throttling is a 403 with domain "usageLimits", not a 429, so Req's built-in
+  # strategies miss it. A custom predicate replaces them, hence the repetition.
   # https://developers.google.com/workspace/admin/directory/v1/limits
   @usage_limits_domain "usageLimits"
   @transient_statuses [408, 429, 500, 502, 503, 504]
@@ -728,10 +727,7 @@ defmodule Portal.Google.APIClient do
   @transient_http_reasons [:unprocessed, :pool_not_available]
   @max_retries 5
 
-  # Config may switch retrying off, which is how tests keep themselves fast, but
-  # it must not be able to swap in a different strategy: a plain merge once let
-  # `retry: :transient` from config.exs replace the predicate below, which threw
-  # away the throttling handling without failing anything.
+  # Config may switch retrying off, but must not swap in another strategy.
   defp request_opts(config) do
     req_opts = config[:req_opts] || []
 
@@ -759,8 +755,7 @@ defmodule Portal.Google.APIClient do
     reason in @transient_transport_reasons
   end
 
-  # Cold Finch pools right after a deploy reject requests this way, and unlike
-  # Req's :safe_transient we need it on the POSTs too.
+  # Cold Finch pools reject this way right after a deploy, POSTs included.
   defp retry_google_error(_request, %Req.HTTPError{reason: reason}) do
     reason in @transient_http_reasons
   end
@@ -781,8 +776,7 @@ defmodule Portal.Google.APIClient do
 
   defp usage_limits_error?(_body), do: false
 
-  # Google documents truncated exponential backoff as (2 ^ n) seconds plus a
-  # random number of milliseconds up to 1000, with n starting at 0.
+  # Truncated exponential backoff, as Google documents it.
   defp retry_delay(retry_count) do
     Integer.pow(2, retry_count) * 1000 + :rand.uniform(1000)
   end

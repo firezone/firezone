@@ -254,9 +254,7 @@ config :portal, Portal.Google.APIClient,
   req_opts: [
     # 1 minute
     receive_timeout: 60_000
-    # Retries are set by Portal.Google.APIClient itself, which covers everything
-    # `:transient` did plus Google's throttling. Setting `:retry` here replaces
-    # that entirely, so don't.
+    # Don't set :retry here; Portal.Google.APIClient owns the strategy.
   ]
 
 config :portal, Portal.TokenCache, enabled: true

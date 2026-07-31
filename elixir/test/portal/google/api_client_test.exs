@@ -818,8 +818,6 @@ defmodule Portal.Google.APIClientTest do
   end
 
   describe "retrying throttled requests" do
-    # Google reports throttling as 403 with domain "usageLimits" rather than 429.
-    # https://developers.google.com/workspace/admin/directory/v1/limits
     @usage_limits_body %{
       "error" => %{
         "code" => 403,
@@ -845,10 +843,7 @@ defmodule Portal.Google.APIClientTest do
     }
 
     setup do
-      # test.exs switches retrying off for the rest of the suite. Drop that one
-      # key so the client's own strategy applies and everything else stays as
-      # configured, rather than replacing req_opts and testing a shape no
-      # environment runs.
+      # test.exs switches retrying off suite-wide; drop just that key.
       Portal.Config.delete_env_override(:portal, APIClient, [:req_opts, :retry])
       Portal.Config.merge_env_override(:portal, APIClient, req_opts: [retry_delay: 0])
 
@@ -856,8 +851,6 @@ defmodule Portal.Google.APIClientTest do
     end
 
     test "keeps the throttling predicate when config sets another retry strategy" do
-      # config.exs used to set `retry: :transient`, which replaced the predicate
-      # and silently dropped throttling handling everywhere but in tests.
       Portal.Config.merge_env_override(:portal, APIClient,
         req_opts: [retry: :transient, retry_delay: 0]
       )

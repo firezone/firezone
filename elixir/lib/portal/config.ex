@@ -111,16 +111,10 @@ defmodule Portal.Config do
     end
 
     @doc """
-    Overrides application env for the current process, merging nested keyword
-    lists rather than replacing them.
+    Like `put_env_override/3` but merges nested keyword lists instead of
+    replacing them, so overriding one entry of `:req_opts` keeps the rest.
 
-    `put_env_override/3` merges only the top level, so overriding one entry of a
-    nested list such as `:req_opts` drops everything else configured under it.
-    That silently hides whatever `config.exs` set, leaving tests agreeing with a
-    configuration no environment actually runs. Prefer this when overriding part
-    of a nested list.
-
-    Builds on any override already in place, so repeated calls accumulate.
+    Builds on any override already in place.
     """
     def merge_env_override(app \\ :portal, key, value) do
       Process.put(pdict_key_function(app, key), deep_merge(fetch_env!(app, key), value))
@@ -130,13 +124,9 @@ defmodule Portal.Config do
     @doc """
     Removes a key from the application env for the current process.
 
-    Given a path it reaches into nested keyword lists, so a test can run against
-    the configured value minus a single entry:
-
         delete_env_override(:portal, Portal.Google.APIClient, [:req_opts, :retry])
 
-    Without a path the whole override is dropped and the configured value
-    applies again.
+    Without a path the whole override is dropped.
     """
     def delete_env_override(app \\ :portal, key, path \\ [])
 
