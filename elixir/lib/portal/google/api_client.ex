@@ -22,6 +22,7 @@ defmodule Portal.Google.APIClient do
     :service_account_sign_jwt
   ]
   @token_cache Portal.Google.TokenCache
+  @max_retries 5
 
   @doc """
   Gets a delegated Google Workspace access token using deployment credentials.
@@ -493,7 +494,7 @@ defmodule Portal.Google.APIClient do
       user_ids
       |> Enum.chunk_every(@batch_size)
       |> Enum.reduce_while({:ok, []}, fn chunk, {:ok, acc_chunks} ->
-        case do_batch_get_users(access_token, chunk) do
+        case get_users_chunk(access_token, chunk) do
           {:ok, users} -> {:cont, {:ok, [users | acc_chunks]}}
           {:error, _} = error -> {:halt, error}
         end
@@ -505,6 +506,33 @@ defmodule Portal.Google.APIClient do
 
       {:error, _} = error ->
         error
+    end
+  end
+
+  # The batch endpoint answers 200 even when parts are throttled, so Req's retry
+  # never sees those. Re-sending the whole chunk is cheaper than tracking parts.
+  defp get_users_chunk(access_token, chunk, retry_count \\ 0) do
+    case do_batch_get_users(access_token, chunk) do
+      {:throttled, _response} when retry_count < @max_retries ->
+        Process.sleep(batch_retry_delay(retry_count))
+        get_users_chunk(access_token, chunk, retry_count + 1)
+
+      {:throttled, response} ->
+        {:error, response}
+
+      result ->
+        result
+    end
+  end
+
+  # Req schedules its own retries; per-part ones are ours, same setting.
+  defp batch_retry_delay(retry_count) do
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+
+    case Keyword.get(config[:req_opts] || [], :retry_delay) do
+      nil -> retry_delay(retry_count)
+      milliseconds when is_integer(milliseconds) -> milliseconds
+      fun when is_function(fun, 1) -> fun.(retry_count)
     end
   end
 
@@ -561,13 +589,16 @@ defmodule Portal.Google.APIClient do
         {:ok, users} ->
           {:cont, {:ok, Enum.reverse(users, acc)}}
 
+        {:throttled, _} = throttled ->
+          {:halt, throttled}
+
         {:error, _} = error ->
           {:halt, error}
       end
     end)
     |> case do
       {:ok, users} -> {:ok, Enum.reverse(users)}
-      {:error, _} = error -> error
+      other -> other
     end
   end
 
@@ -588,17 +619,20 @@ defmodule Portal.Google.APIClient do
     #   HTTP/1.1 200 OK\r\n<response headers>\r\n\r\n<JSON body>
     with [_outer_headers, nested] <- String.split(part, "\r\n\r\n", parts: 2),
          [status_and_headers, json_body] <- String.split(nested, "\r\n\r\n", parts: 2),
-         status when status in [200, 404] <- extract_http_status(status_and_headers) do
+         status when status in [200, 403, 404] <- extract_http_status(status_and_headers) do
       case status do
         404 ->
           {:ok, []}
+
+        403 ->
+          parse_forbidden_batch_part(json_body)
 
         200 ->
           decode_json_user(json_body)
       end
     else
-      status when is_integer(status) and status not in [200, 404] ->
-        log_batch_parse_issue("Skipping batch users response part with unexpected status",
+      status when is_integer(status) and status not in [200, 403, 404] ->
+        log_batch_parse_issue("Failing batch users response part with unexpected status",
           status: status
         )
 
@@ -607,9 +641,8 @@ defmodule Portal.Google.APIClient do
         {:error,
          %Req.Response{status: normalized_status, body: %{"error" => "Batch users part failed"}}}
 
-      # Anything else (parse failure, unexpected status) — skip this part
       malformed ->
-        log_batch_parse_issue("Skipping malformed batch users response part",
+        log_batch_parse_issue("Failing malformed batch users response part",
           detail: inspect(malformed),
           snippet: snippet(part)
         )
@@ -619,6 +652,19 @@ defmodule Portal.Google.APIClient do
            status: 502,
            body: %{"error" => "Malformed batch users response part"}
          }}
+    end
+  end
+
+  defp parse_forbidden_batch_part(json_body) do
+    if usage_limits_error?(String.trim(json_body)) do
+      {:throttled,
+       %Req.Response{status: 403, body: %{"error" => "Batch users part throttled"}}}
+    else
+      log_batch_parse_issue("Failing batch users response part with unexpected status",
+        status: 403
+      )
+
+      {:error, %Req.Response{status: 403, body: %{"error" => "Batch users part failed"}}}
     end
   end
 
@@ -729,7 +775,6 @@ defmodule Portal.Google.APIClient do
   @transient_statuses [408, 429, 500, 502, 503, 504]
   @transient_transport_reasons [:timeout, :econnrefused, :closed]
   @transient_http_reasons [:unprocessed, :pool_not_available]
-  @max_retries 5
 
   # Config may switch retrying off, but must not swap in another strategy.
   defp request_opts(config) do

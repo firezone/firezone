@@ -1098,6 +1098,53 @@ defmodule Portal.Google.SyncTest do
       assert length(memberships) == 1
     end
 
+    test "keeps identities when a batch part fails" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      identity =
+        synced_identity_fixture(
+          account: account,
+          directory: Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+        )
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "members" => [%{"id" => "user1", "type" => "USER", "email" => "user1@example.com"}]
+        })
+      end)
+
+      Req.Test.stub(APIClient, fn conn ->
+        boundary = "server_error_part"
+
+        body =
+          "--#{boundary}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n" <>
+            JSON.encode!(%{"error" => %{"code" => 500}}) <> "\r\n--#{boundary}--"
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert_raise SyncError, fn -> perform_job(Sync, %{"directory_id" => directory.id}) end
+
+      assert Repo.get_by(Portal.ExternalIdentity, id: identity.id, account_id: account.id)
+    end
+
     test "syncs members from every customer domain and skips external members" do
       # Google returns type="USER" for external members too; the documented
       # EXTERNAL type is marked "not currently used".
