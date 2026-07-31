@@ -566,8 +566,8 @@ defmodule Portal.Resource do
     @spec fetch_site(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: Portal.Site.t() | nil
     def fetch_site(site_id, subject) do
       from(s in Portal.Site, where: s.id == ^site_id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
   end
 end

@@ -1100,7 +1100,7 @@ defmodule PortalWeb.Resources do
 
     case result do
       :ok ->
-        groups = Database.list_groups_for_resource(resource, socket.assigns.subject, :primary)
+        groups = Database.list_groups_for_resource(resource, socket.assigns.subject)
 
         {:noreply,
          socket
@@ -1404,11 +1404,7 @@ defmodule PortalWeb.Resources do
 
   defp refresh_selected_groups(socket) do
     groups =
-      Database.list_groups_for_resource(
-        socket.assigns.selected_resource,
-        socket.assigns.subject,
-        :primary
-      )
+      Database.list_groups_for_resource(socket.assigns.selected_resource, socket.assigns.subject)
 
     assign(socket, selected_groups: groups)
   end
@@ -1444,14 +1440,14 @@ defmodule PortalWeb.Resources do
 
     def flow_logs_feature_enabled? do
       from(f in Portal.Features, where: f.feature == :flow_logs and f.enabled == true)
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.exists?()
     end
 
     def all_sites(subject) do
       from(s in Site, as: :sites)
       |> where([sites: s], s.managed_by != :system)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -1551,7 +1547,7 @@ defmodule PortalWeb.Resources do
           where: m.resource_id == ^resource.id,
           select: m.device_id
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> case do
           {:error, _} -> []
@@ -1562,7 +1558,7 @@ defmodule PortalWeb.Resources do
       |> where([devices: d], d.type == :client)
       |> where([devices: d], d.id in ^client_ids)
       |> preload(:actor)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, _} ->
@@ -1579,36 +1575,36 @@ defmodule PortalWeb.Resources do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.id == ^id)
       |> preload(:site)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def get_site(id, subject) do
       from(s in Site, as: :sites)
       |> where([sites: s], s.id == ^id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def get_internet_resource(subject) do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.type == :internet)
       |> preload(:site)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def count_resources(subject) do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.type != :internet)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
 
     def list_resources(subject, opts \\ []) do
       from(resources in Resource, as: :resources)
       |> where([resources: r], r.type != :internet)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list_offset(__MODULE__, opts)
     end
 
@@ -1620,7 +1616,7 @@ defmodule PortalWeb.Resources do
       |> where([policies: p], p.is_disabled == false)
       |> group_by([policies: p], p.resource_id)
       |> select([policies: p], {p.resource_id, count(p.id)})
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, _} -> %{}
@@ -1638,7 +1634,7 @@ defmodule PortalWeb.Resources do
       from(m in StaticDevicePoolMember, as: :members)
       |> where([members: m], m.resource_id in ^ids)
       |> select([members: m], {m.resource_id, m.device_id})
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, _} ->
@@ -1652,7 +1648,7 @@ defmodule PortalWeb.Resources do
       end
     end
 
-    def list_groups_for_resource(resource, subject, repo \\ :replica) do
+    def list_groups_for_resource(resource, subject) do
       from(g in Group, as: :groups)
       |> join(:inner, [groups: g], p in Policy,
         on:
@@ -1671,7 +1667,7 @@ defmodule PortalWeb.Resources do
         policy_is_disabled: p.is_disabled
       })
       |> order_by([policies: p], asc: p.is_disabled)
-      |> Safe.scoped(subject, repo)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, _} -> []
@@ -1728,7 +1724,7 @@ defmodule PortalWeb.Resources do
       |> order_by([policy_authorizations: pa], desc: pa.inserted_at, desc: pa.id)
       |> limit(^(@page_size + 1))
       |> offset(^offset)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, _} ->
@@ -1748,7 +1744,7 @@ defmodule PortalWeb.Resources do
         as: :directory
       )
       |> select([groups: g, directory: d], %{group: g, directory_type: d.type})
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, _} -> []
@@ -1806,7 +1802,7 @@ defmodule PortalWeb.Resources do
       ]
       |> Enum.flat_map(fn schema ->
         from(p in schema, where: not p.is_disabled)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
       end)
     end
@@ -1819,7 +1815,7 @@ defmodule PortalWeb.Resources do
         group_id ->
           idp_id =
             from(g in Group, where: g.id == ^group_id, select: g.idp_id)
-            |> Safe.scoped(subject, :replica)
+            |> Safe.scoped(subject)
             |> Safe.one()
 
           put_change(changeset, :group_idp_id, idp_id)
@@ -1884,7 +1880,7 @@ defmodule PortalWeb.Resources do
       from(p in Policy, as: :policies)
       |> where([policies: p], p.resource_id == ^resource.id and p.group_id == ^group_id)
       |> filter_policy_state(opts[:state])
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.one()
     end
 

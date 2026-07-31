@@ -507,8 +507,8 @@ defmodule Portal.LogSinks.Delivery do
         where: a.is_disabled == false,
         where: fragment("(?)->>'log_sinks' = 'true'", a.features)
       )
-      |> Safe.unscoped(:replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.unscoped()
+      |> Safe.one()
     end
 
     def seed_missing_cursors(sink) do

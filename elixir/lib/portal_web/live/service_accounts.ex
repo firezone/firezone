@@ -869,7 +869,7 @@ defmodule PortalWeb.ServiceAccounts do
         Database.remove_group_member(group_id, actor, subject)
       end)
 
-    groups = Database.get_groups_for_actor(actor.id, subject, repo: :primary)
+    groups = Database.get_groups_for_actor(actor.id, subject)
 
     errors =
       (addition_results ++ removal_results)
@@ -931,7 +931,7 @@ defmodule PortalWeb.ServiceAccounts do
     def count_actors(subject) do
       from(a in Actor, as: :actors)
       |> where([actors: a], a.type == :service_account)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
 
@@ -983,7 +983,7 @@ defmodule PortalWeb.ServiceAccounts do
       with {:ok, paginator_opts} <- OffsetPaginator.init(__MODULE__, order_by, page_opts),
            {:ok, filtered_query} <- Filter.filter(index_query(), __MODULE__, filter),
            count when is_integer(count) <-
-             Safe.aggregate(Safe.scoped(filtered_query, subject, :replica), :count),
+             Safe.aggregate(Safe.scoped(filtered_query, subject), :count),
            actor_ids <- list_actor_ids(filtered_query, paginator_opts, subject),
            {actor_ids, metadata} <- OffsetPaginator.metadata(actor_ids, paginator_opts) do
         actors = fetch_actors_page(actor_ids, subject)
@@ -998,7 +998,7 @@ defmodule PortalWeb.ServiceAccounts do
       filtered_query
       |> select([actors: actors], actors.id)
       |> OffsetPaginator.query(paginator_opts)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -1008,7 +1008,7 @@ defmodule PortalWeb.ServiceAccounts do
       actors =
         from(a in Actor, as: :actors)
         |> where([actors: a], a.id in ^actor_ids)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> Enum.map(&%{&1 | identity_count: 0})
 
@@ -1024,8 +1024,8 @@ defmodule PortalWeb.ServiceAccounts do
         from(a in Actor, as: :actors)
         |> where([actors: a], a.id == ^id)
         |> where([actors: a], a.type == :service_account)
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.scoped(subject)
+        |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}
@@ -1039,7 +1039,7 @@ defmodule PortalWeb.ServiceAccounts do
         from(c in ClientToken, as: :client_tokens)
         |> where([client_tokens: c], c.actor_id == ^actor_id)
         |> order_by([client_tokens: c], desc: c.inserted_at)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
 
       tokens
@@ -1056,7 +1056,7 @@ defmodule PortalWeb.ServiceAccounts do
           distinct: d.client_token_id,
           order_by: [asc: d.client_token_id, desc: d.last_seen_at]
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> Map.new(&{&1.client_token_id, &1})
 
@@ -1068,13 +1068,11 @@ defmodule PortalWeb.ServiceAccounts do
     def get_client_token_by_id(token_id, subject) do
       from(c in ClientToken, as: :client_tokens)
       |> where([client_tokens: c], c.id == ^token_id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
-    def get_groups_for_actor(actor_id, subject, opts \\ []) do
-      repo = Keyword.get(opts, :repo, :replica)
-
+    def get_groups_for_actor(actor_id, subject) do
       from(g in Portal.Group, as: :groups)
       |> join(:inner, [groups: g], m in Portal.Membership,
         on: m.group_id == g.id and m.account_id == g.account_id,
@@ -1083,7 +1081,7 @@ defmodule PortalWeb.ServiceAccounts do
       |> where([membership: m], m.actor_id == ^actor_id)
       |> order_by([groups: g], asc: g.name)
       |> select([groups: g], %{group: g, directory_type: nil, directory_name: nil})
-      |> Safe.scoped(subject, repo)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -1132,7 +1130,7 @@ defmodule PortalWeb.ServiceAccounts do
         end
 
       query
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, _} = err -> err
@@ -1159,7 +1157,7 @@ defmodule PortalWeb.ServiceAccounts do
     defp fetch_membership(group_id, actor, subject) do
       from(m in Portal.Membership, as: :memberships)
       |> where([memberships: m], m.group_id == ^group_id and m.actor_id == ^actor.id)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.one()
     end
   end

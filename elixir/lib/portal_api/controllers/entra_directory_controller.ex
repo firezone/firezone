@@ -67,14 +67,14 @@ defmodule PortalAPI.EntraDirectoryController do
 
     def list_directories(subject) do
       from(d in Entra.Directory, as: :directories, order_by: [desc: d.inserted_at])
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
     def fetch_directory(id, subject) do
       result =
         from(d in Entra.Directory, where: d.id == ^id)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do

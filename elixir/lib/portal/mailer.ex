@@ -361,7 +361,7 @@ defmodule Portal.Mailer do
         []
       else
         from(s in EmailSuppression, where: s.email in ^addresses, select: s.email)
-        |> Safe.unscoped(:replica)
+        |> Safe.unscoped()
         |> Safe.all()
       end
     end

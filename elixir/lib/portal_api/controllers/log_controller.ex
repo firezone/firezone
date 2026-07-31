@@ -302,25 +302,25 @@ defmodule PortalAPI.LogController do
 
     def list_logs(:change, subject, opts) do
       from(cl in ChangeLog, as: :logs)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__.Change, opts)
     end
 
     def list_logs(:session, subject, opts) do
       from(sl in SessionLog, as: :logs)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__.Session, opts)
     end
 
     def list_logs(:flow, subject, opts) do
       from(fl in FlowLog, as: :logs)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__.Flow, opts)
     end
 
     def list_logs(:api_request, subject, opts) do
       from(arl in APIRequestLog, as: :logs)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__.APIRequest, opts)
     end
 
@@ -328,7 +328,7 @@ defmodule PortalAPI.LogController do
       result =
         type
         |> by_log_id_query(log_id)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do

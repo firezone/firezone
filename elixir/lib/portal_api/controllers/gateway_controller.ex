@@ -121,7 +121,7 @@ defmodule PortalAPI.GatewayController do
     def list_gateways(subject, opts \\ []) do
       from(d in Device, as: :gateways)
       |> where([gateways: d], d.type == :gateway)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -158,7 +158,7 @@ defmodule PortalAPI.GatewayController do
       result =
         from(d in Device, as: :gateways)
         |> where([gateways: d], d.id == ^id and d.type == :gateway)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do

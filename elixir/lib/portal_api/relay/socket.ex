@@ -35,7 +35,6 @@ defmodule PortalAPI.Relay.Socket do
   def connect(attrs, socket, connect_info) do
     unless Application.get_env(:portal, :sql_sandbox) do
       Portal.Repo.put_dynamic_repo(Portal.Repo.Api)
-      Portal.Repo.Replica.put_dynamic_repo(Portal.Repo.Replica.Api)
     end
 
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)

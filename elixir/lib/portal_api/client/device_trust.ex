@@ -525,7 +525,7 @@ defmodule PortalAPI.Client.DeviceTrust do
         on: f.feature == :trust_anchors and f.enabled == true,
         select: c.pem
       )
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> Enum.flat_map(&decode_anchor_pem/1)
       |> Enum.uniq()

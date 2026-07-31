@@ -30,7 +30,7 @@ defmodule PortalAPI.AccountController do
 
     def fetch_account(id, subject) do
       from(a in Account, where: a.id == ^id)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.one()
     end
   end

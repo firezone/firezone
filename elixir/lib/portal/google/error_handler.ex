@@ -154,8 +154,8 @@ defmodule Portal.Google.ErrorHandler do
 
     def get_directory(directory_id) do
       from(d in Google.Directory, where: d.id == ^directory_id)
-      |> Safe.unscoped(:replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.unscoped()
+      |> Safe.one()
     end
 
     def update_directory(directory, attrs) do

@@ -570,7 +570,7 @@ defmodule PortalWeb.Clients do
     def count_clients(subject) do
       from(d in Device, as: :devices)
       |> where([devices: d], d.type == :client)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
 
@@ -589,7 +589,7 @@ defmodule PortalWeb.Clients do
       with {:ok, paginator_opts} <- OffsetPaginator.init(__MODULE__, order_by, page_opts),
            {:ok, filtered_query} <- Filter.filter(base_query, __MODULE__, filter),
            count when is_integer(count) <-
-             Safe.aggregate(Safe.scoped(filtered_query, subject, :replica), :count),
+             Safe.aggregate(Safe.scoped(filtered_query, subject), :count),
            client_ids <- list_client_ids(filtered_query, paginator_opts, subject),
            {client_ids, metadata} <- OffsetPaginator.metadata(client_ids, paginator_opts) do
         clients = fetch_clients_page(client_ids, preload, subject)
@@ -624,7 +624,7 @@ defmodule PortalWeb.Clients do
       filtered_query
       |> select([devices: d], d.id)
       |> OffsetPaginator.query(paginator_opts)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -634,7 +634,7 @@ defmodule PortalWeb.Clients do
       clients =
         page_query(subject)
         |> where([devices: d], d.id in ^client_ids)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> maybe_preload_clients(preload, subject)
 
@@ -648,7 +648,7 @@ defmodule PortalWeb.Clients do
     defp maybe_preload_clients(clients, preload, _subject) do
       Enum.reduce(preload, clients, fn
         :actor, clients ->
-          Safe.preload(clients, :actor, :replica)
+          Safe.preload(clients, :actor)
 
         :online?, clients ->
           Clients.preload_clients_presence(clients)
@@ -718,8 +718,8 @@ defmodule PortalWeb.Clients do
         |> where([devices: d], d.type == :client)
         |> where([devices: d], d.id == ^id)
         |> preload([:actor])
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.scoped(subject)
+        |> Safe.one()
 
       case client do
         %Device{type: :client} ->
@@ -863,7 +863,7 @@ defmodule PortalWeb.Clients do
       |> order_by([policy_authorizations: pa], desc: pa.inserted_at, desc: pa.id)
       |> limit(^(@page_size + 1))
       |> offset(^offset)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, _} ->

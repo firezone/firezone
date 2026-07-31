@@ -626,7 +626,7 @@ defmodule PortalWeb.Sites do
     with true <- Portal.Billing.can_create_sites?(account),
          changeset = Database.new_site_changeset(account, attrs),
          {:ok, site} <- Database.create_site(changeset, socket.assigns.subject) do
-      sites = Database.list_all_sites(socket.assigns.subject, :primary)
+      sites = Database.list_all_sites(socket.assigns.subject)
 
       {:noreply,
        socket
@@ -1066,7 +1066,7 @@ defmodule PortalWeb.Sites do
 
     case Database.update_site(changeset, socket.assigns.subject) do
       {:ok, updated_site} ->
-        sites = Database.list_all_sites(socket.assigns.subject, :primary)
+        sites = Database.list_all_sites(socket.assigns.subject)
         site_ids = Enum.map(sites, & &1.id)
         resources_counts = Database.count_resources_by_site(site_ids, socket.assigns.subject)
 
@@ -1326,18 +1326,18 @@ defmodule PortalWeb.Sites do
     alias Portal.{Safe, Site, Resource, Device, GatewayToken}
 
     @spec list_all_sites(Portal.Authentication.Subject.t()) :: [Site.t()]
-    def list_all_sites(subject, repo \\ :replica) do
+    def list_all_sites(subject) do
       from(s in Site, as: :sites)
       |> where([sites: s], s.managed_by == :account)
       |> order_by([sites: s], asc: s.name)
-      |> Safe.scoped(subject, repo)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
     def list_sites(subject, opts \\ []) do
       from(g in Site, as: :sites)
       |> where([sites: s], s.managed_by != :system)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -1345,7 +1345,7 @@ defmodule PortalWeb.Sites do
     def get_site(id, subject) do
       from(s in Site, as: :sites)
       |> where([sites: s], s.id == ^id)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.one()
     end
 
@@ -1357,7 +1357,7 @@ defmodule PortalWeb.Sites do
       |> where([devices: d], d.type == :gateway)
       |> where([devices: d], d.site_id == ^site_id)
       |> order_by([devices: d], asc: d.name)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -1368,7 +1368,7 @@ defmodule PortalWeb.Sites do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.site_id == ^site_id)
       |> order_by([resources: r], asc: r.name)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -1377,7 +1377,7 @@ defmodule PortalWeb.Sites do
       |> where([resources: r], r.site_id in ^site_ids)
       |> group_by([resources: r], r.site_id)
       |> select([resources: r], {r.site_id, count(r.id)})
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> Map.new()
     end
@@ -1391,7 +1391,7 @@ defmodule PortalWeb.Sites do
       |> where([resources: r], r.site_id in ^site_ids)
       |> group_by([resources: r], r.site_id)
       |> select([resources: r], {r.site_id, count()})
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> Map.new()
     end
@@ -1402,7 +1402,7 @@ defmodule PortalWeb.Sites do
       |> where([devices: d], d.site_id in ^site_ids)
       |> group_by([devices: d], d.site_id)
       |> select([devices: d], {d.site_id, count(d.id)})
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> Map.new()
     end
@@ -1463,8 +1463,8 @@ defmodule PortalWeb.Sites do
       result =
         from(d in Device, as: :devices)
         |> where([devices: d], d.id == ^id and d.type == :gateway)
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.scoped(subject)
+        |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}
@@ -1492,7 +1492,7 @@ defmodule PortalWeb.Sites do
         as: :devices
       )
       |> where([devices: d], d.site_id == ^site_id)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -1519,7 +1519,7 @@ defmodule PortalWeb.Sites do
       from(t in GatewayToken, as: :gateway_tokens)
       |> where([gateway_tokens: t], t.site_id == ^site_id)
       |> order_by([gateway_tokens: t], desc: t.inserted_at)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -1591,8 +1591,8 @@ defmodule PortalWeb.Sites do
         from(r in Resource, as: :resources)
         |> where([resources: r], r.type == :internet)
         |> preload(site: :gateways)
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.scoped(subject)
+        |> Safe.one()
 
       case resource do
         nil ->

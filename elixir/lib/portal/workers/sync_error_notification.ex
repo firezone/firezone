@@ -141,7 +141,7 @@ defmodule Portal.Workers.SyncErrorNotification do
     def errored_disabled_directories(schema, frequency) do
       schema
       |> errored_disabled_directories_query(frequency)
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
 
@@ -189,7 +189,7 @@ defmodule Portal.Workers.SyncErrorNotification do
         where: a.type == :account_admin_user,
         where: a.is_disabled == false
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
   end

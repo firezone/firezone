@@ -459,7 +459,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
     def list_api_request_logs(subject, opts \\ []) do
       result =
         from(arl in APIRequestLog, as: :api_request_logs)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.list_offset(__MODULE__, opts)
 
       case result do
@@ -473,8 +473,8 @@ defmodule PortalWeb.Logs.APIRequestLogs do
         result =
           from(arl in APIRequestLog, as: :api_request_logs)
           |> where([api_request_logs: arl], arl.log_id == ^log_id)
-          |> Safe.scoped(subject, :replica)
-          |> Safe.one(fallback_to_primary: true)
+          |> Safe.scoped(subject)
+          |> Safe.one()
 
         case result do
           nil ->
@@ -546,7 +546,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
 
     defp load_by_ids(schema, ids, subject) do
       from(x in schema, where: x.id in ^ids)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, :unauthorized} -> %{}

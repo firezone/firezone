@@ -1183,7 +1183,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.one!()
     end
   end

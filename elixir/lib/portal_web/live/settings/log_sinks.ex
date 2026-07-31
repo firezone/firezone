@@ -2221,8 +2221,7 @@ defmodule PortalWeb.Settings.LogSinks do
 
   defp init(socket, opts \\ []) do
     new = Keyword.get(opts, :new, false)
-    repo = Keyword.get(opts, :repo, :replica)
-    log_sinks = Database.list_all_sinks(socket.assigns.subject, repo)
+    log_sinks = Database.list_all_sinks(socket.assigns.subject)
 
     if new do
       socket
@@ -2246,26 +2245,26 @@ defmodule PortalWeb.Settings.LogSinks do
     alias Portal.Sentinel
     alias Portal.Splunk
 
-    def list_all_sinks(subject, repo \\ :replica) do
+    def list_all_sinks(subject) do
       [
-        Splunk.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        Datadog.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        NewRelic.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        Elastic.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        Sentinel.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        S3.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        QRadar.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        HTTP.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
+        Splunk.LogSink |> Safe.scoped(subject) |> Safe.all(),
+        Datadog.LogSink |> Safe.scoped(subject) |> Safe.all(),
+        NewRelic.LogSink |> Safe.scoped(subject) |> Safe.all(),
+        Elastic.LogSink |> Safe.scoped(subject) |> Safe.all(),
+        Sentinel.LogSink |> Safe.scoped(subject) |> Safe.all(),
+        S3.LogSink |> Safe.scoped(subject) |> Safe.all(),
+        QRadar.LogSink |> Safe.scoped(subject) |> Safe.all(),
+        HTTP.LogSink |> Safe.scoped(subject) |> Safe.all()
       ]
       |> List.flatten()
       |> Enum.sort_by(& &1.name)
-      |> enrich_with_delivery_stats(subject, repo)
+      |> enrich_with_delivery_stats(subject)
     end
 
     def get_sink!(schema, id, subject) do
       from(s in schema, where: s.id == ^id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def insert_sink(changeset, subject) do
@@ -2284,13 +2283,13 @@ defmodule PortalWeb.Settings.LogSinks do
       # Delete the parent Portal.LogSink; the provider row and cursors CASCADE.
       parent =
         from(ls in Portal.LogSink, where: ls.id == ^sink.id)
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one!(fallback_to_primary: true)
+        |> Safe.scoped(subject)
+        |> Safe.one!()
 
       parent |> Safe.scoped(subject) |> Safe.delete()
     end
 
-    defp enrich_with_delivery_stats(sinks, subject, repo) do
+    defp enrich_with_delivery_stats(sinks, subject) do
       stats =
         from(c in Portal.LogSinkCursor,
           group_by: c.log_sink_id,
@@ -2304,7 +2303,7 @@ defmodule PortalWeb.Settings.LogSinks do
              pending_backfills: filter(count(), c.phase == :backfill and is_nil(c.completed_at))
            }}
         )
-        |> Safe.scoped(subject, repo)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> Map.new()
 

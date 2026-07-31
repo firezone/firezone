@@ -34,7 +34,6 @@ config :req,
   default_options: [plugins: [Portal.Req.SSRFProtection]]
 
 config :portal, sql_sandbox: false
-config :portal, replica_repo: Portal.Repo.Replica
 
 config :portal, flow_logs_upload_batch_size: 1000
 
@@ -55,40 +54,11 @@ config :portal, Portal.Repo,
   start_apps_before_migration: [:ssl, :logger_json, :req],
   parameters: [application_name: "portal"]
 
-config :portal, Portal.Repo.Replica,
-  hostname: "localhost",
-  username: "postgres",
-  password: "postgres",
-  database: "firezone_dev",
-  show_sensitive_data_on_connection_error: true,
-  pool_size: :erlang.system_info(:logical_processors_available) * 2,
-  queue_target: 500,
-  queue_interval: 1000,
-  parameters: [application_name: "replica"]
-
-# Isolated primary connection pools (web/api/poller)
+# Isolated connection pools (web/api/poller)
 for {repo, app_name} <- [
       {Portal.Repo.Web, "web"},
       {Portal.Repo.Api, "api"},
       {Portal.Repo.Poller, "poller"}
-    ] do
-  config :portal, repo,
-    hostname: "localhost",
-    username: "postgres",
-    password: "postgres",
-    database: "firezone_dev",
-    show_sensitive_data_on_connection_error: true,
-    pool_size: :erlang.system_info(:logical_processors_available) * 2,
-    queue_target: 500,
-    queue_interval: 1000,
-    parameters: [application_name: app_name]
-end
-
-# Isolated replica connection pools (web/api/poller)
-for {repo, app_name} <- [
-      {Portal.Repo.Replica.Web, "replica-web"},
-      {Portal.Repo.Replica.Api, "replica-api"},
-      {Portal.Repo.Replica.Poller, "replica-poller"}
     ] do
   config :portal, repo,
     hostname: "localhost",
@@ -158,9 +128,7 @@ config :portal, Portal.ChangeLogs.Consumer,
   batch_size: 500
 
 config :portal, Portal.Changes.Consumer,
-  # Changes only broadcasts, so it reads from the regional replica to keep
-  # decoding load off the primary
-  repo: Portal.Repo.Replica.Poller,
+  repo: Portal.Repo.Poller,
   replication_slot_name: "changes_slot",
   publication_name: "changes_publication",
   region: "",

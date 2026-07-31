@@ -22,7 +22,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       |> order_by([actors: a, tokens: t], asc: a.inserted_at, asc: a.id, desc: t.inserted_at)
       |> distinct([actors: a], a.id)
       |> select([actors: a, tokens: t], {a, t})
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -32,8 +32,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
         where: a.id == ^id,
         where: a.type == :api_client
       )
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     @spec create_api_token_with_actor(Ecto.Changeset.t(), map(), any()) ::
@@ -54,8 +54,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           where: t.id == ^token_id,
           where: t.expires_at > ^DateTime.utc_now() or is_nil(t.expires_at)
         )
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.scoped(subject)
+        |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}

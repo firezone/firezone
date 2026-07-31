@@ -12,8 +12,6 @@ partition_suffix =
   end
 
 config :portal, sql_sandbox: true
-# Replica is not used in tests; use the primary DB instead
-config :portal, replica_repo: Portal.Repo
 
 config :portal, run_manual_migrations: true
 
@@ -23,19 +21,10 @@ config :portal, Portal.Repo,
   pool_size: 5,
   queue_target: 1000
 
-config :portal, Portal.Repo.Replica,
-  database: "firezone_test#{partition_suffix}",
-  pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: 5,
-  queue_target: 1000
-
 for repo <- [
       Portal.Repo.Web,
       Portal.Repo.Api,
-      Portal.Repo.Replica.Web,
-      Portal.Repo.Replica.Api,
-      Portal.Repo.Poller,
-      Portal.Repo.Replica.Poller
+      Portal.Repo.Poller
     ] do
   config :portal, repo,
     database: "firezone_test#{partition_suffix}",
@@ -281,7 +270,6 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   ]
 
 config :portal, :constant_execution_time, 1
-config :portal, replica_repo: Portal.Repo
 
 ###############################
 ##### PortalAPI Endpoint ######

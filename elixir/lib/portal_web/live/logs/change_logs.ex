@@ -384,7 +384,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
 
     def list_change_logs(subject, opts \\ []) do
       from(cl in ChangeLog, as: :change_logs)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list_offset(__MODULE__, opts)
     end
 
@@ -396,8 +396,8 @@ defmodule PortalWeb.Logs.ChangeLogs do
         result =
           from(cl in ChangeLog, as: :change_logs)
           |> where([change_logs: cl], cl.log_id == ^log_id)
-          |> Safe.scoped(subject, :replica)
-          |> Safe.one(fallback_to_primary: true)
+          |> Safe.scoped(subject)
+          |> Safe.one()
 
         case result do
           nil -> {:error, :not_found}

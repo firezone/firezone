@@ -16,11 +16,8 @@ defmodule Portal.Telemetry do
       handler_id: "portal-db-metrics",
       events: [
         [:portal, :repo, :query],
-        [:portal, :repo, :replica, :query],
         [:portal, :repo, :web, :query],
-        [:portal, :repo, :api, :query],
-        [:portal, :repo, :replica, :web, :query],
-        [:portal, :repo, :replica, :api, :query]
+        [:portal, :repo, :api, :query]
       ]
     },
     liveview_lifecycle: %{

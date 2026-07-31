@@ -82,7 +82,6 @@ defmodule PortalAPI.Client.Socket do
   defp handle_connect(attrs, socket, connect_info, mode) do
     unless Application.get_env(:portal, :sql_sandbox) do
       Portal.Repo.put_dynamic_repo(Portal.Repo.Api)
-      Portal.Repo.Replica.put_dynamic_repo(Portal.Repo.Replica.Api)
     end
 
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
@@ -515,8 +514,8 @@ defmodule PortalAPI.Client.Socket do
           where: ^attested_match,
           order_by: [asc: d.inserted_at]
         )
-        |> Safe.scoped(subject, :replica)
-        |> Safe.all(fallback_to_primary: true)
+        |> Safe.scoped(subject)
+        |> Safe.all()
         |> classify_attested_rows(Map.new(filters))
       end
     end
@@ -611,8 +610,8 @@ defmodule PortalAPI.Client.Socket do
         where: d.firezone_id == ^firezone_id,
         where: d.type == :client
       )
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     # The merge is in-memory only: the connect path stays write-free, and the

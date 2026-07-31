@@ -143,7 +143,7 @@ defmodule PortalAPI.ExternalIdentityController do
         as: :sync_state
       )
       |> preload([sync_state: iss], sync_state: iss)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -162,7 +162,7 @@ defmodule PortalAPI.ExternalIdentityController do
           as: :sync_state
         )
         |> preload([sync_state: iss], sync_state: iss)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do

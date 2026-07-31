@@ -1229,7 +1229,7 @@ defmodule PortalWeb.Actors do
         Database.remove_group_member(group_id, actor, subject)
       end)
 
-    groups = Database.get_groups_for_actor(actor.id, subject, repo: :primary)
+    groups = Database.get_groups_for_actor(actor.id, subject)
 
     errors =
       (addition_results ++ removal_results)
@@ -1325,7 +1325,7 @@ defmodule PortalWeb.Actors do
     def count_actors(subject) do
       from(a in Actor, as: :actors)
       |> where([actors: a], a.type in [:account_user, :account_admin_user])
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
 
@@ -1401,7 +1401,7 @@ defmodule PortalWeb.Actors do
           },
           order_by: [asc: fragment("COALESCE(?, ?, ?)", google.name, entra.name, okta.name)]
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> case do
           {:error, _} ->
@@ -1480,7 +1480,7 @@ defmodule PortalWeb.Actors do
       with {:ok, paginator_opts} <- OffsetPaginator.init(__MODULE__, order_by, page_opts),
            {:ok, filtered_query} <- Filter.filter(index_query(), __MODULE__, filter),
            count when is_integer(count) <-
-             Safe.aggregate(Safe.scoped(filtered_query, subject, :replica), :count),
+             Safe.aggregate(Safe.scoped(filtered_query, subject), :count),
            actor_ids <- list_actor_ids(filtered_query, paginator_opts, subject),
            {actor_ids, metadata} <- OffsetPaginator.metadata(actor_ids, paginator_opts) do
         actors = fetch_actors_page(actor_ids, subject)
@@ -1495,7 +1495,7 @@ defmodule PortalWeb.Actors do
       filtered_query
       |> select([actors: actors], actors.id)
       |> OffsetPaginator.query(paginator_opts)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -1505,7 +1505,7 @@ defmodule PortalWeb.Actors do
       actors =
         all()
         |> where([actors: actors], actors.id in ^actor_ids)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
 
       actors_by_id = Map.new(actors, &{&1.id, &1})
@@ -1517,8 +1517,8 @@ defmodule PortalWeb.Actors do
 
     def fetch_account(subject) do
       from(a in Portal.Account)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def get_actor(id, subject) do
@@ -1526,8 +1526,8 @@ defmodule PortalWeb.Actors do
         from(a in Actor, as: :actors)
         |> where([actors: a], a.id == ^id)
         |> where([actors: a], a.type != :api_client)
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.scoped(subject)
+        |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}
@@ -1573,7 +1573,7 @@ defmodule PortalWeb.Actors do
       )
       |> order_by([identities: i], desc: i.inserted_at)
       |> preload([identities: i, sync_state: ss], sync_state: ss)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -1584,8 +1584,8 @@ defmodule PortalWeb.Actors do
         where: a.id != ^actor_id,
         where: a.is_disabled == false
       )
-      |> Safe.scoped(subject, :replica)
-      |> Safe.exists?(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.exists?()
     end
 
     def get_client_tokens_for_actor(actor_id, subject) do
@@ -1593,7 +1593,7 @@ defmodule PortalWeb.Actors do
         from(c in ClientToken, as: :client_tokens)
         |> where([client_tokens: c], c.actor_id == ^actor_id)
         |> order_by([client_tokens: c], desc: c.inserted_at)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
 
       tokens
@@ -1610,7 +1610,7 @@ defmodule PortalWeb.Actors do
           distinct: d.client_token_id,
           order_by: [asc: d.client_token_id, desc: d.last_seen_at]
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> Map.new(&{&1.client_token_id, &1})
 
@@ -1622,15 +1622,15 @@ defmodule PortalWeb.Actors do
     def get_identity_by_id(identity_id, subject) do
       from(i in ExternalIdentity, as: :identities)
       |> where([identities: i], i.id == ^identity_id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def get_client_token_by_id(token_id, subject) do
       from(c in ClientToken, as: :client_tokens)
       |> where([client_tokens: c], c.id == ^token_id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def get_portal_sessions_for_actor(actor_id, subject) do
@@ -1663,7 +1663,7 @@ defmodule PortalWeb.Actors do
           )
       })
       |> order_by([portal_sessions: ps], desc: ps.inserted_at)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> Presence.PortalSessions.preload_portal_sessions_presence()
     end
@@ -1671,13 +1671,11 @@ defmodule PortalWeb.Actors do
     def get_portal_session_by_id(session_id, subject) do
       from(ps in PortalSession, as: :portal_sessions)
       |> where([portal_sessions: ps], ps.id == ^session_id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
-    def get_groups_for_actor(actor_id, subject, opts \\ []) do
-      repo = Keyword.get(opts, :repo, :replica)
-
+    def get_groups_for_actor(actor_id, subject) do
       from(g in Portal.Group, as: :groups)
       |> join(:inner, [groups: g], m in Portal.Membership,
         on: m.group_id == g.id and m.account_id == g.account_id,
@@ -1709,7 +1707,7 @@ defmodule PortalWeb.Actors do
         }
       )
       |> order_by([groups: g], asc: g.name)
-      |> Safe.scoped(subject, repo)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -1793,7 +1791,7 @@ defmodule PortalWeb.Actors do
         end
 
       query
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, _} = err -> err
@@ -1824,7 +1822,7 @@ defmodule PortalWeb.Actors do
     defp fetch_membership(group_id, actor, subject) do
       from(m in Portal.Membership, as: :memberships)
       |> where([memberships: m], m.group_id == ^group_id and m.actor_id == ^actor.id)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.one()
     end
   end

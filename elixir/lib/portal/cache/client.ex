@@ -983,7 +983,7 @@ defmodule Portal.Cache.Client do
              ag.name == "Everyone")
       )
       |> preload(resource: :site)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -991,7 +991,7 @@ defmodule Portal.Cache.Client do
       # Get real memberships
       memberships =
         from(m in Portal.Membership, where: m.actor_id == ^actor_id)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> case do
           {:error, :unauthorized} -> []
@@ -1008,7 +1008,7 @@ defmodule Portal.Cache.Client do
                 g.name == "Everyone" and
                 g.account_id == ^subject.account.id
           )
-          |> Safe.scoped(subject, :replica)
+          |> Safe.scoped(subject)
           |> Safe.one()
 
         # Append a synthetic membership for the Everyone group
@@ -1031,7 +1031,7 @@ defmodule Portal.Cache.Client do
       result =
         from(r in Portal.Resource, where: r.id == ^id)
         |> preload([:site])
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do
@@ -1042,14 +1042,14 @@ defmodule Portal.Cache.Client do
     end
 
     def preload_site(resource) do
-      Safe.preload(resource, :site, :replica)
+      Safe.preload(resource, :site)
     end
 
     def get_site_by_id(site_id, subject) when is_binary(site_id) do
       id = Ecto.UUID.load!(site_id)
 
       from(s in Portal.Site, where: s.id == ^id)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.one()
     end
 
@@ -1075,7 +1075,7 @@ defmodule Portal.Cache.Client do
         [resources: r, members: m, clients: c],
         {r.id, m.device_id, c.ipv4, c.ipv6}
       )
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, :unauthorized} ->
@@ -1098,7 +1098,7 @@ defmodule Portal.Cache.Client do
         where: c.type == :client,
         where: c.id == ^client_id
       )
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.one()
       |> case do
         %Portal.Device{

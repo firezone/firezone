@@ -1002,8 +1002,8 @@ defmodule Portal.Google.Sync do
         where: d.is_disabled == false,
         where: a.is_disabled == false
       )
-      |> Safe.unscoped(:replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.unscoped()
+      |> Safe.one()
     end
 
     def update_directory(changeset) do

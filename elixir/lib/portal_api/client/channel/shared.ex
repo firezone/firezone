@@ -2647,13 +2647,13 @@ defmodule PortalAPI.Client.Channel.Shared do
 
       account_feature_enabled? = account.features.client_to_client == true
 
-      Portal.Safe.unscoped(query, :replica) |> Portal.Safe.exists?() and account_feature_enabled?
+      Portal.Safe.unscoped(query) |> Portal.Safe.exists?() and account_feature_enabled?
     end
 
     def flow_logs_feature_enabled? do
       query = from(f in Features, where: f.feature == :flow_logs and f.enabled == true)
 
-      Portal.Safe.unscoped(query, :replica) |> Portal.Safe.exists?()
+      Portal.Safe.unscoped(query) |> Portal.Safe.exists?()
     end
 
     def all_compatible_gateways_for_client_and_resource(
@@ -2695,7 +2695,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         where: d.type == :client,
         where: d.hostname == ^hostname
       )
-      |> Portal.Safe.scoped(subject, :replica)
+      |> Portal.Safe.scoped(subject)
       |> Portal.Safe.one()
       |> case do
         %Portal.Device{} = device -> {:ok, device}
@@ -2734,7 +2734,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         end
 
       query
-      |> Portal.Safe.scoped(subject, :replica)
+      |> Portal.Safe.scoped(subject)
       |> Portal.Safe.one()
       |> case do
         %Portal.Device{} = device -> {:ok, device}

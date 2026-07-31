@@ -211,14 +211,14 @@ defmodule PortalAPI.ResourceController do
 
     def list_resources(subject, opts \\ []) do
       from(r in Portal.Resource, as: :resources)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
     def fetch_resource(id, subject) do
       result =
         from(r in Portal.Resource, where: r.id == ^id)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do
@@ -245,7 +245,7 @@ defmodule PortalAPI.ResourceController do
 
       account_feature_enabled? = account.features.client_to_client == true
 
-      Safe.unscoped(query, :replica) |> Safe.exists?() and account_feature_enabled?
+      Safe.unscoped(query) |> Safe.exists?() and account_feature_enabled?
     end
 
     def validate_traffic_filters_feature_enabled(changeset, account) do

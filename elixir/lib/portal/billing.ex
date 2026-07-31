@@ -702,37 +702,37 @@ defmodule Portal.Billing do
       |> Safe.update()
     end
 
-    def count_users_for_account(%Account{} = account, repo \\ :replica) do
+    def count_users_for_account(%Account{} = account) do
       from(a in Actor,
         where: a.account_id == ^account.id,
         where: a.is_disabled == false,
         where: a.type in [:account_admin_user, :account_user]
       )
-      |> Safe.unscoped(repo)
+      |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
 
-    def count_service_accounts_for_account(%Account{} = account, repo \\ :replica) do
+    def count_service_accounts_for_account(%Account{} = account) do
       from(a in Actor,
         where: a.account_id == ^account.id,
         where: a.is_disabled == false,
         where: a.type == :service_account
       )
-      |> Safe.unscoped(repo)
+      |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
 
-    def count_account_admin_users_for_account(%Account{} = account, repo \\ :replica) do
+    def count_account_admin_users_for_account(%Account{} = account) do
       from(a in Actor,
         where: a.account_id == ^account.id,
         where: a.is_disabled == false,
         where: a.type == :account_admin_user
       )
-      |> Safe.unscoped(repo)
+      |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
 
-    def count_1m_active_users_for_account(%Account{} = account, repo \\ :replica) do
+    def count_1m_active_users_for_account(%Account{} = account) do
       from(c in Device, as: :clients)
       |> where([clients: c], c.type == :client)
       |> where([clients: c], c.account_id == ^account.id)
@@ -745,35 +745,35 @@ defmodule Portal.Billing do
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> select([clients: c], c.actor_id)
       |> distinct(true)
-      |> Safe.unscoped(repo)
+      |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
 
-    def count_sites_for_account(account, repo \\ :replica) do
+    def count_sites_for_account(account) do
       from(g in Portal.Site,
         where: g.account_id == ^account.id,
         where: g.managed_by == :account
       )
-      |> Safe.unscoped(repo)
+      |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
 
-    def count_api_clients_for_account(%Account{} = account, repo \\ :replica) do
+    def count_api_clients_for_account(%Account{} = account) do
       from(a in Actor,
         where: a.account_id == ^account.id,
         where: a.is_disabled == false,
         where: a.type == :api_client
       )
-      |> Safe.unscoped(repo)
+      |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
 
-    def count_api_tokens_for_actor(%Actor{} = actor, repo \\ :replica) do
+    def count_api_tokens_for_actor(%Actor{} = actor) do
       from(t in Portal.APIToken,
         where: t.actor_id == ^actor.id,
         where: t.account_id == ^actor.account_id
       )
-      |> Safe.unscoped(repo)
+      |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
 
@@ -784,8 +784,8 @@ defmodule Portal.Billing do
           where: s.name == "Internet",
           where: s.managed_by == :system
         )
-        |> Safe.unscoped(:replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.unscoped()
+        |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}
@@ -809,8 +809,8 @@ defmodule Portal.Billing do
           where: r.account_id == ^account.id,
           where: r.type == :internet
         )
-        |> Safe.unscoped(:replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.unscoped()
+        |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}

@@ -15,19 +15,15 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
     def list_trust_anchors(subject) do
       from(t in TrustAnchor, order_by: [asc: t.inserted_at, asc: t.id])
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
-      |> Safe.preload(:certificates, :replica)
+      |> Safe.preload(:certificates)
     end
 
     def get_trust_anchor!(id, subject) do
-      # Bake the preload into the query itself rather than a separate
-      # `Safe.preload/3` call, so on replica lag both the trust anchor and
-      # its certificates fall back to primary together instead of pairing a
-      # primary parent with stale (possibly empty) replica children.
       from(t in TrustAnchor, where: t.id == ^id, preload: [:certificates])
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
   end
 

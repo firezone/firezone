@@ -880,7 +880,7 @@ defmodule PortalWeb.SignUp do
         order_by: [desc: a.inserted_at],
         limit: 1
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.one()
     end
 
@@ -896,14 +896,14 @@ defmodule PortalWeb.SignUp do
             ),
         order_by: [asc: a.inserted_at]
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
 
     @spec slug_exists?(String.t()) :: boolean()
     def slug_exists?(slug) do
       from(a in Portal.Account, where: a.slug == ^slug)
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.exists?()
     end
 

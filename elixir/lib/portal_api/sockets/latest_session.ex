@@ -184,45 +184,31 @@ defmodule PortalAPI.Sockets.LatestSession do
         |> Enum.uniq()
 
       schema = Map.fetch!(@token_schemas, token_field)
-      existing = existing_token_ids(schema, probe_rows, :replica)
-      misses = Enum.reject(probe_rows, &MapSet.member?(existing, &1.token_id))
+      existing = existing_token_ids(schema, probe_rows)
 
-      # Replica lag can hide a token created moments before the flush; a token
-      # is only declared dead (disconnecting its session) once the primary
-      # confirms the miss. Steady state issues no primary query.
-      if misses == [] do
-        MapSet.new()
-      else
-        existing_on_primary = existing_token_ids(schema, misses, :primary)
-
-        misses
-        |> Enum.map(& &1.token_id)
-        |> Enum.reject(&MapSet.member?(existing_on_primary, &1))
-        |> MapSet.new()
-      end
+      probe_rows
+      |> Enum.map(& &1.token_id)
+      |> Enum.reject(&MapSet.member?(existing, &1))
+      |> MapSet.new()
     end
 
-    defp existing_token_ids(schema, probe_rows, repo) do
+    defp existing_token_ids(schema, probe_rows) do
       from(t in schema,
         join: v in values(probe_rows, @token_probe_types),
         on: t.account_id == v.account_id and t.id == v.token_id,
         select: t.id
       )
-      |> probe(repo)
+      |> probe()
     end
 
-    defp probe(queryable, :replica) do
-      queryable |> Safe.unscoped(:replica) |> Safe.all(fallback_to_primary: true) |> MapSet.new()
-    end
-
-    defp probe(queryable, :primary) do
+    defp probe(queryable) do
       queryable |> Safe.unscoped() |> Safe.all() |> MapSet.new()
     end
 
     def update_devices([], _token_field), do: MapSet.new()
 
     def update_devices(rows, token_field) do
-      do_update_devices(rows, token_field, _retries_left = 1, :replica)
+      do_update_devices(rows, token_field, _retries_left = 1)
     end
 
     # The probe-then-update window is not atomic: a flush on another node can
@@ -230,15 +216,14 @@ defmodule PortalAPI.Sockets.LatestSession do
     # the unique index. Re-probing (which then sees the winner and strips the
     # loser) and retrying once resolves the collision at the entry level
     # instead of failing every session in the batch; anything beyond that is
-    # left to the caller's batch-level rescue. The retry probes the primary:
-    # the winning write just landed and may not have replicated yet.
-    defp do_update_devices(rows, token_field, retries_left, probe_repo) do
+    # left to the caller's batch-level rescue.
+    defp do_update_devices(rows, token_field, retries_left) do
       rows =
         rows
         |> dedupe_proposed_firezone_ids()
-        |> strip_conflicting_firezone_ids(probe_repo)
+        |> strip_conflicting_firezone_ids()
         |> dedupe_proposed_attested_identities()
-        |> strip_conflicting_attested_identities(probe_repo)
+        |> strip_conflicting_attested_identities()
 
       set =
         [
@@ -288,7 +273,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     rescue
       error in Postgrex.Error ->
         if retries_left > 0 and unique_violation?(error) do
-          do_update_devices(rows, token_field, retries_left - 1, :primary)
+          do_update_devices(rows, token_field, retries_left - 1)
         else
           reraise error, __STACKTRACE__
         end
@@ -378,7 +363,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     # than skip-forever. Until that lands, a device whose attested identity
     # displaced an older row will keep this firezone_id split until the stale
     # row is removed; the log line below is the actionable signal.
-    defp strip_conflicting_firezone_ids(rows, probe_repo) do
+    defp strip_conflicting_firezone_ids(rows) do
       probe_rows =
         for row <- rows, not is_nil(row.firezone_id), not is_nil(row.actor_id) do
           Map.take(row, [:account_id, :actor_id, :device_id, :firezone_id])
@@ -396,7 +381,7 @@ defmodule PortalAPI.Sockets.LatestSession do
             where: d.type == :client,
             select: %{device_id: v.device_id, conflicting_id: d.id, firezone_id: v.firezone_id}
           )
-          |> probe(probe_repo)
+          |> probe()
         end
 
       conflicted = MapSet.new(conflicts, & &1.device_id)
@@ -465,9 +450,9 @@ defmodule PortalAPI.Sockets.LatestSession do
     # concurrent adoption on another node can land in between. As with
     # firezone_id, the conflicting entry keeps its session and skips the
     # attested update; a conflict that appears between this probe and the
-    # UPDATE still raises unique_violation, which the retry (re-probing the
-    # primary) resolves at the entry level.
-    defp strip_conflicting_attested_identities(rows, probe_repo) do
+    # UPDATE still raises unique_violation, which the retry (which re-probes)
+    # resolves at the entry level.
+    defp strip_conflicting_attested_identities(rows) do
       probe_rows =
         for row <- rows,
             not is_nil(row.actor_id),
@@ -489,7 +474,7 @@ defmodule PortalAPI.Sockets.LatestSession do
                    d.last_attested_mdm_device_id == v.last_attested_mdm_device_id),
             select: %{device_id: v.device_id, conflicting_id: d.id}
           )
-          |> probe(probe_repo)
+          |> probe()
         end
 
       for conflict <- conflicts do
@@ -515,27 +500,19 @@ defmodule PortalAPI.Sockets.LatestSession do
       end)
     end
 
-    # A device missing here fails its entry (disconnecting the session), so a
-    # replica miss is confirmed against the primary before it counts.
     def existing_device_ids(rows) do
-      probe_rows = Enum.map(rows, &Map.take(&1, [:account_id, :device_id]))
-      existing = probe_device_ids(probe_rows, :replica)
-      misses = Enum.reject(probe_rows, &MapSet.member?(existing, &1.device_id))
-
-      if misses == [] do
-        existing
-      else
-        MapSet.union(existing, probe_device_ids(misses, :primary))
-      end
+      rows
+      |> Enum.map(&Map.take(&1, [:account_id, :device_id]))
+      |> probe_device_ids()
     end
 
-    defp probe_device_ids(probe_rows, repo) do
+    defp probe_device_ids(probe_rows) do
       from(d in Device,
         join: v in values(probe_rows, @probe_types),
         on: d.account_id == v.account_id and d.id == v.device_id,
         select: d.id
       )
-      |> probe(repo)
+      |> probe()
     end
   end
 end

@@ -1800,20 +1800,20 @@ defmodule PortalWeb.Settings.Authentication do
 
     def list_all_providers(subject) do
       [
-        EmailOTP.AuthProvider |> Safe.scoped(subject, :replica) |> Safe.all(),
-        Userpass.AuthProvider |> Safe.scoped(subject, :replica) |> Safe.all(),
-        Google.AuthProvider |> Safe.scoped(subject, :replica) |> Safe.all(),
-        Entra.AuthProvider |> Safe.scoped(subject, :replica) |> Safe.all(),
-        Okta.AuthProvider |> Safe.scoped(subject, :replica) |> Safe.all(),
-        OIDC.AuthProvider |> Safe.scoped(subject, :replica) |> Safe.all()
+        EmailOTP.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        Userpass.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        Google.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        Entra.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        Okta.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        OIDC.AuthProvider |> Safe.scoped(subject) |> Safe.all()
       ]
       |> List.flatten()
     end
 
     def get_provider!(schema, id, subject) do
       from(p in schema, where: p.id == ^id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def insert_provider(changeset, subject) do
@@ -1832,8 +1832,8 @@ defmodule PortalWeb.Settings.Authentication do
       # Delete the parent auth_provider, which will CASCADE delete the child and tokens
       parent =
         from(p in AuthProvider, where: p.id == ^provider.id)
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one!(fallback_to_primary: true)
+        |> Safe.scoped(subject)
+        |> Safe.one!()
 
       parent |> Safe.scoped(subject) |> Safe.delete()
     end
@@ -1885,7 +1885,7 @@ defmodule PortalWeb.Settings.Authentication do
           group_by: ct.auth_provider_id,
           select: {ct.auth_provider_id, count(ct.id)}
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> Map.new()
 
@@ -1895,7 +1895,7 @@ defmodule PortalWeb.Settings.Authentication do
           group_by: ps.auth_provider_id,
           select: {ps.auth_provider_id, count(ps.id)}
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> Map.new()
 

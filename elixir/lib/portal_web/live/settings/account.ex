@@ -619,7 +619,7 @@ defmodule PortalWeb.Settings.Account do
         where: a.is_disabled == false,
         where: a.type == :account_admin_user
       )
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
 
@@ -629,7 +629,7 @@ defmodule PortalWeb.Settings.Account do
         where: a.is_disabled == false,
         where: a.type == :service_account
       )
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
 
@@ -639,7 +639,7 @@ defmodule PortalWeb.Settings.Account do
         where: a.is_disabled == false,
         where: a.type in [:account_admin_user, :account_user]
       )
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
 
@@ -656,7 +656,7 @@ defmodule PortalWeb.Settings.Account do
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
       |> select([devices: d], d.actor_id)
       |> distinct(true)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
 
@@ -665,7 +665,7 @@ defmodule PortalWeb.Settings.Account do
       from(g in Portal.Site,
         where: g.managed_by == :account
       )
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
   end
