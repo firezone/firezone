@@ -12,6 +12,10 @@ defmodule Portal.Mocks.Stripe do
 
   Expectations are a list of tuples: `{method, path, status, response}`
 
+  Every request is also sent to the calling process as
+  `{:stripe_request, method, path, decoded_body}` so that tests can assert on
+  what was sent.
+
   ## Example
 
       Stripe.stub([
@@ -20,10 +24,16 @@ defmodule Portal.Mocks.Stripe do
       ])
   """
   def stub(expectations) when is_list(expectations) do
+    test_pid = self()
+
     Req.Test.stub(APIClient, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+
       method = conn.method
       base_path = "/" <> Enum.join(conn.path_info, "/")
       path = if conn.query_string != "", do: base_path <> "?" <> conn.query_string, else: base_path
+
+      send(test_pid, {:stripe_request, method, base_path, URI.decode_query(body)})
 
       case find_expectation(expectations, method, path) do
         {:ok, {status, response}} ->
@@ -157,6 +167,38 @@ defmodule Portal.Mocks.Stripe do
       )
 
     [{"POST", "/v1/billing_portal/sessions", 200, response}]
+  end
+
+  def mock_fetch_subscription_endpoint(subscription) do
+    [{"GET", "/v1/subscriptions/#{subscription["id"]}", 200, subscription}]
+  end
+
+  def mock_create_portal_configuration_endpoint(configuration_id \\ "bpc_test123") do
+    [
+      {"POST", "/v1/billing_portal/configurations", 200,
+       portal_configuration_object(configuration_id)}
+    ]
+  end
+
+  def mock_update_portal_configuration_endpoint(configuration_id, status \\ 200) do
+    response =
+      if status == 200 do
+        portal_configuration_object(configuration_id)
+      else
+        %{"error" => %{"message" => "No such configuration: #{configuration_id}"}}
+      end
+
+    [{"POST", "/v1/billing_portal/configurations/#{configuration_id}", status, response}]
+  end
+
+  def portal_configuration_object(id) do
+    %{
+      "id" => id,
+      "object" => "billing_portal.configuration",
+      "active" => true,
+      "is_default" => false,
+      "livemode" => false
+    }
   end
 
   def mock_fetch_customer_subscriptions_endpoint(customer_id, subscriptions \\ []) do
@@ -470,6 +512,8 @@ defmodule Portal.Mocks.Stripe do
       "id" => "sub_" <> random_id(),
       "object" => "subscription",
       "status" => "active",
+      "collection_method" => "charge_automatically",
+      "days_until_due" => nil,
       "customer" => "cus_" <> random_id(),
       "items" => %{
         "object" => "list",

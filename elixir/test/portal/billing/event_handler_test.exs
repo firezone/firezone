@@ -342,6 +342,99 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:error, :no_plan_product} = EventHandler.handle_event(event)
     end
 
+    test "sets the monthly active users limit from Enterprise seats", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 42)
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.monthly_active_users_count == 42
+    end
+
+    test "leaves the monthly active users limit alone for Team seats", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 42)
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.monthly_active_users_count == nil
+      assert updated.limits.users_count == 42
+    end
+
+    test "raises the seat floor on the Enterprise billing portal configuration", %{
+      account: account,
+      customer: customer
+    } do
+      update_account(account, %{
+        metadata: %{stripe: %{portal_configuration_id: "bpc_existing"}}
+      })
+
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 55)
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product) ++
+          Stripe.mock_update_portal_configuration_endpoint("bpc_existing")
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      assert_received {:stripe_request, "POST", "/v1/billing_portal/configurations/bpc_existing",
+                       params}
+
+      assert params["features[subscription_update][products][0][adjustable_quantity][minimum]"] ==
+               "55"
+    end
+
+    test "does not touch a billing portal configuration for Team seats", %{
+      account: account,
+      customer: customer
+    } do
+      update_account(account, %{
+        metadata: %{stripe: %{portal_configuration_id: "bpc_existing"}}
+      })
+
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 55)
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      refute_received {:stripe_request, "POST", "/v1/billing_portal/configurations/bpc_existing",
+                       _params}
+    end
+
     test "clears account limit flags when subscription update increases limits", %{
       account: account,
       customer: customer
