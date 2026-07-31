@@ -97,25 +97,30 @@ pub enum Window {
 /// otherwise its address. Returns `None` when that value is empty or identical
 /// to the `name` already shown by the parent menu item, so nothing is repeated.
 ///
-/// A description that parses as a URL becomes a clickable link; anything else is
-/// shown greyed-out, since the address is copied via the explicit "Copy address"
-/// action instead.
+/// A description that parses as a URL becomes a clickable link and is always
+/// shown — even when it is equal to the name — because the parent menu item is
+/// not clickable, making this link the only way to open it. Anything else is
+/// shown greyed-out, since the address is copied via the explicit "Copy
+/// address" action instead.
 pub(crate) fn resource_detail(res: &ResourceView) -> Option<Item> {
-    let detail = match res.address_description() {
-        Some(description) if !description.is_empty() => Cow::from(description),
-        _ => res.pastable(),
+    let description = res.address_description().filter(|d| !d.is_empty());
+
+    if let Some(description) = description
+        && let Ok(url) = Url::parse(description)
+    {
+        return Some(item(Event::Url(url), format!("<{description}>")));
+    }
+
+    let detail = match description {
+        Some(description) => Cow::from(description),
+        None => res.pastable(),
     };
 
     if detail.is_empty() || &*detail == res.name() {
         return None;
     }
 
-    let detail = match Url::parse(&detail) {
-        Ok(url) => item(Event::Url(url), format!("<{detail}>")),
-        Err(_) => item(None, detail.into_owned()),
-    };
-
-    Some(detail)
+    Some(item(None, detail.into_owned()))
 }
 
 impl Menu {
@@ -141,16 +146,15 @@ impl Menu {
         self
     }
 
-    /// Appends a menu item that copies its title when clicked and shows `icon`
-    /// to the left of the text.
-    pub(crate) fn copyable_with_icon(mut self, s: &str, icon: Icon) -> Self {
-        self.add_item(copyable(s).icon(icon));
-        self
-    }
-
     /// Appends a disabled item with no accelerator or event
     pub(crate) fn disabled<S: Into<String>>(mut self, title: S) -> Self {
         self.add_item(item(None, title).disabled());
+        self
+    }
+
+    /// Appends a disabled item that shows `icon` to the left of the text.
+    pub(crate) fn disabled_with_icon<S: Into<String>>(mut self, title: S, icon: Icon) -> Self {
+        self.add_item(item(None, title).disabled().icon(icon));
         self
     }
 

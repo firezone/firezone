@@ -183,8 +183,9 @@ impl SignedIn {
     }
 
     /// Builds a Resource's submenu: its read-only details (address or
-    /// description, and Site status with a colored dot) above its actions (copy,
-    /// favorite, or enable / disable), separated by a divider.
+    /// description, and the connection status as a colored dot plus a short
+    /// label) above its actions (copy, favorite, or enable / disable),
+    /// separated by a divider.
     fn resource_submenu(&self, res: &ResourceView) -> Menu {
         let mut info = Menu::default();
 
@@ -195,12 +196,14 @@ impl SignedIn {
         }
 
         if let Some(site) = res.sites().first() {
-            let icon = match res.status() {
-                ResourceStatus::Unknown => MenuItemIcon::Grey,
-                ResourceStatus::Online => MenuItemIcon::Green,
-                ResourceStatus::Offline => MenuItemIcon::Red,
+            let (label, icon) = match res.status() {
+                ResourceStatus::Unknown => ("Unknown".to_string(), MenuItemIcon::Grey),
+                ResourceStatus::Online => {
+                    (format!("Connected: {}", site.name), MenuItemIcon::Green)
+                }
+                ResourceStatus::Offline => ("Offline".to_string(), MenuItemIcon::Red),
             };
-            info = info.copyable_with_icon(&site.name, icon);
+            info = info.disabled_with_icon(label, icon);
         }
 
         let mut actions = Menu::default();
@@ -527,7 +530,7 @@ mod tests {
     fn cidr_submenu(toggle: Event, label: &str, checked: bool) -> Menu {
         Menu::default()
             .disabled("cidr resource")
-            .copyable_with_icon("test", MenuItemIcon::Grey)
+            .disabled_with_icon("Unknown", MenuItemIcon::Grey)
             .separator()
             .item(Event::Copy("172.172.0.0/16".to_string()), COPY_ADDRESS)
             .checkable(toggle, label, checked)
@@ -540,7 +543,7 @@ mod tests {
                 Event::Url("https://gitlab.mycorp.com".parse().unwrap()),
                 "<https://gitlab.mycorp.com>",
             )
-            .copyable_with_icon("test", MenuItemIcon::Green)
+            .disabled_with_icon("Connected: test", MenuItemIcon::Green)
             .separator()
             .item(Event::Copy("gitlab.mycorp.com".to_string()), COPY_ADDRESS)
             .checkable(toggle, label, checked)
@@ -550,9 +553,37 @@ mod tests {
     fn internet_submenu() -> Menu {
         Menu::default()
             .disabled(INTERNET_RESOURCE_DESCRIPTION)
-            .copyable_with_icon("test", MenuItemIcon::Red)
+            .disabled_with_icon("Offline", MenuItemIcon::Red)
             .separator()
             .item(Event::EnableInternetResource, ENABLE)
+    }
+
+    /// A URL description must stay clickable even when it is equal to the
+    /// name: the parent menu item is not clickable, so this link is the only
+    /// way to open it.
+    #[test]
+    fn url_description_is_shown_even_when_equal_to_the_name() {
+        let res: ResourceView = serde_json::from_str(
+            r#"{
+                "id": "03000143-e25e-45c7-aafb-144990e57dcd",
+                "type": "dns",
+                "name": "https://gitlab.mycorp.com",
+                "address": "gitlab.mycorp.com",
+                "address_description": "https://gitlab.mycorp.com",
+                "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                "status": "Online"
+            }"#,
+        )
+        .unwrap();
+
+        let actual = resource_detail(&res);
+
+        let expected = item(
+            Event::Url("https://gitlab.mycorp.com".parse().unwrap()),
+            "<https://gitlab.mycorp.com>",
+        );
+
+        assert_eq!(actual, Some(expected));
     }
 
     fn add_favorite(uuid: &str) -> Event {

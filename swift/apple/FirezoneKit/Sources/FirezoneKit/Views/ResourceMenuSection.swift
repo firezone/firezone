@@ -37,22 +37,21 @@
 
     var body: some View {
       Group {
-        // Information: the description or address, and the Site status. The
-        // parent menu item already shows the name, so it isn't repeated here.
+        // Information: the description or address, and the connection status.
+        // The parent menu item already shows the name, so it isn't repeated
+        // here.
         if resource.isInternetResource() {
           Text("All network traffic")
             .foregroundStyle(.secondary)
-        } else if let detail = displayDetail {
-          if let url = URL(string: detail), url.scheme != nil {
-            Link(destination: url) {
-              Text(detail)
-                .foregroundColor(.blue)
-                .underline()
-            }
-          } else {
-            Text(detail)
-              .foregroundStyle(.secondary)
+        } else if let link = descriptionLink {
+          Link(destination: link.url) {
+            Text(link.text)
+              .foregroundColor(.blue)
+              .underline()
           }
+        } else if let detail = displayDetail {
+          Text(detail)
+            .foregroundStyle(.secondary)
         }
 
         if let site = resource.sites.first {
@@ -82,8 +81,21 @@
       }
     }
 
-    /// The single detail line: the description if present, otherwise the
-    /// address. Hidden when empty or identical to the name shown by the parent.
+    /// The description as a clickable link. Always shown — even when equal to
+    /// the name — because the parent menu item is not clickable, making this
+    /// link the only way to open it.
+    private var descriptionLink: (text: String, url: URL)? {
+      guard let description = resource.addressDescription,
+        let url = URL(string: description),
+        url.scheme != nil
+      else { return nil }
+
+      return (description, url)
+    }
+
+    /// The single non-link detail line: the description if present, otherwise
+    /// the address. Hidden when empty or identical to the name shown by the
+    /// parent.
     private var displayDetail: String? {
       let description = resource.addressDescription.flatMap { $0.isEmpty ? nil : $0 }
       guard let detail = description ?? resource.address,
@@ -95,24 +107,34 @@
     }
 
     private var hasInfo: Bool {
-      resource.isInternetResource() || displayDetail != nil || resource.sites.first != nil
+      resource.isInternetResource() || descriptionLink != nil || displayDetail != nil
+        || resource.sites.first != nil
     }
 
-    /// The Site name with its status as a colored dot. The textual status is
-    /// kept in the tooltip so the menu stays compact.
+    /// The connection status as a single line: a colored dot plus a short
+    /// label, with the Site name included when connected. The longer textual
+    /// explanation is kept in the tooltip so the menu stays compact.
     @ViewBuilder
     private func siteStatus(_ site: Site) -> some View {
-      Button {
-        Clipboard.copy(site.name)
-      } label: {
-        HStack {
-          if let icon = resource.status.statusIcon {
-            Image(nsImage: icon)
-          }
-          Text(site.name)
+      HStack {
+        if let icon = resource.status.statusIcon {
+          Image(nsImage: icon)
         }
+        Text(statusTitle(site))
+          .foregroundStyle(.secondary)
       }
       .help(resource.status.toSiteStatusTooltip())
+    }
+
+    private func statusTitle(_ site: Site) -> String {
+      switch resource.status {
+      case .online:
+        return "Connected: \(site.name)"
+      case .unknown:
+        return "Unknown"
+      case .offline:
+        return "Offline"
+      }
     }
 
     var internetResourceToggleTitle: String {
