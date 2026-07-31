@@ -50,6 +50,9 @@ fi
 xcodebuild_args=(
     build
     -project Firezone.xcodeproj
+    # Dev builds sign automatically; xcodebuild won't fetch or create a profile without this.
+    # Release builds pass explicit profile ids instead, so they never reach for it.
+    -allowProvisioningUpdates
     -scheme Firezone
     -configuration "${CONFIGURATION}"
     -sdk macosx
