@@ -1515,7 +1515,7 @@
 				INFOPLIST_FILE = FirezoneCLI/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited)-cli";
 				PRODUCT_NAME = "firezone-cli";
 				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROFILE_ID)";
 				REGISTER_APP_GROUPS = YES;
@@ -1541,7 +1541,7 @@
 				INFOPLIST_FILE = FirezoneCLI/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited)-cli";
 				PRODUCT_NAME = "firezone-cli";
 				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROFILE_ID)";
 				REGISTER_APP_GROUPS = YES;
@@ -1568,7 +1568,7 @@
 				INFOPLIST_FILE = FirezoneCLI/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited)-cli";
 				PRODUCT_NAME = "firezone-cli";
 				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROFILE_ID)";
 				REGISTER_APP_GROUPS = YES;

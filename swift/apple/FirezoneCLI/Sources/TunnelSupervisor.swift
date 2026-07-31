@@ -18,18 +18,21 @@ final class TunnelSupervisor {
     case shutdown
     case restart
     case signIn
+    case tokenReceived(Token)
   }
 
   private static let connectTimeout = Duration.seconds(30)
 
   private let session: any TunnelSessionProtocol
-  private let requestToken: () throws -> Token
+  private let requestToken: () async throws -> Token
 
   private var isRestarting = false
   private var hasRequestedToken = false
+  private var signInFailure: (any Error)?
   private var timeoutTask: Task<Void, Never>?
+  private var signInTask: Task<Void, Never>?
 
-  init(session: any TunnelSessionProtocol, requestToken: @escaping () throws -> Token) {
+  init(session: any TunnelSessionProtocol, requestToken: @escaping () async throws -> Token) {
     self.session = session
     self.requestToken = requestToken
   }
@@ -47,8 +50,9 @@ final class TunnelSupervisor {
 
     defer {
       timeoutTask?.cancel()
+      signInTask?.cancel()
       statusTask.cancel()
-      signalSources.forEach { $0.cancel() }
+      for source in signalSources { source.cancel() }
     }
 
     for await action in actions {
@@ -56,6 +60,9 @@ final class TunnelSupervisor {
       case .shutdown:
         Log.info("Shutting down...")
         session.stopTunnel()
+        if let signInFailure {
+          throw signInFailure
+        }
         return
 
       case .restart:
@@ -68,11 +75,24 @@ final class TunnelSupervisor {
       case .signIn:
         timeoutTask?.cancel()
         hasRequestedToken = true
-        let token = try requestToken()
+        // Signing in waits on the user, so it runs alongside the loop rather than
+        // inside it. A signal arriving mid-prompt still shuts us down promptly.
+        signInTask = Task { await signIn(emit: emit) }
+
+      case .tokenReceived(let token):
         try IPCClient.start(session: session, token: token.description)
         Log.info("Tunnel started with token")
         startConnectTimeout(emit: emit)
       }
+    }
+  }
+
+  private func signIn(emit: AsyncStream<Action>.Continuation) async {
+    do {
+      emit.yield(.tokenReceived(try await requestToken()))
+    } catch {
+      signInFailure = error
+      emit.yield(.shutdown)
     }
   }
 

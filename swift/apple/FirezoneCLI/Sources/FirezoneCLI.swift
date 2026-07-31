@@ -77,8 +77,11 @@ struct FirezoneCLI: AsyncParsableCommand {
     )
 
     let supervisor = TunnelSupervisor(session: session) {
-      try SignInPrompt.requestToken(authBaseURL: authBaseURL, accountSlug: accountSlug)
+      try await SignInPrompt.requestToken(authBaseURL: authBaseURL, accountSlug: accountSlug)
     }
+
+    // A prompt may still be blocked on stdin with echo off when we stop.
+    defer { SignInPrompt.restoreTerminal() }
     try await supervisor.run()
   }
 

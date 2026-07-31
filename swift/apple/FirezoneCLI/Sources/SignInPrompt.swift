@@ -10,7 +10,10 @@ import Foundation
 
 /// Walks the user through browser sign-in and reads the token back from the terminal.
 enum SignInPrompt {
-  static func requestToken(authBaseURL: String, accountSlug: String) throws -> Token {
+  private static let terminalLock = NSLock()
+  nonisolated(unsafe) private static var mutedTerminal: termios?
+
+  static func requestToken(authBaseURL: String, accountSlug: String) async throws -> Token {
     let url = try signInURL(authBaseURL: authBaseURL, accountSlug: accountSlug)
 
     print(
@@ -36,13 +39,9 @@ enum SignInPrompt {
     print("Enter the token from your browser: ", terminator: "")
     fflush(stdout)
 
-    // Restore default SIGINT handling so Ctrl+C works during the prompt
-    signal(SIGINT, SIG_DFL)
-    defer { signal(SIGINT, SIG_IGN) }
+    let entered = await readHiddenLine()?.trimmingCharacters(in: .whitespacesAndNewlines)
 
-    guard let entered = readHiddenLine()?.trimmingCharacters(in: .whitespacesAndNewlines),
-      !entered.isEmpty
-    else {
+    guard let entered, !entered.isEmpty else {
       throw ValidationError("No token provided")
     }
 
@@ -51,6 +50,16 @@ enum SignInPrompt {
     }
 
     return token
+  }
+
+  /// Re-enables terminal echo. Called on the way out in case we're shutting down while
+  /// a prompt is still blocked on stdin, which would otherwise leave the terminal muted.
+  static func restoreTerminal() {
+    terminalLock.withLock {
+      guard var original = mutedTerminal else { return }
+      tcsetattr(STDIN_FILENO, TCSANOW, &original)
+      mutedTerminal = nil
+    }
   }
 
   private static func signInURL(authBaseURL: String, accountSlug: String) throws -> URL {
@@ -72,18 +81,30 @@ enum SignInPrompt {
     return url
   }
 
-  private static func readHiddenLine() -> String? {
+  /// `readLine` blocks, so it runs off the cooperative pool. Keeping the main actor free
+  /// is what lets SIGINT and SIGTERM still be handled while we wait for the user.
+  private static func readHiddenLine() async -> String? {
+    await withCheckedContinuation { continuation in
+      DispatchQueue.global(qos: .userInitiated).async {
+        continuation.resume(returning: readHiddenLineBlocking())
+      }
+    }
+  }
+
+  private static func readHiddenLineBlocking() -> String? {
     var original = termios()
     guard tcgetattr(STDIN_FILENO, &original) == 0 else {
-      return readLine()  // Not a terminal, nothing to hide
+      return readLine()  // Not a terminal, so there's no echo to suppress
     }
 
     var muted = original
     muted.c_lflag &= ~UInt(ECHO)
+    terminalLock.withLock { mutedTerminal = original }
     tcsetattr(STDIN_FILENO, TCSANOW, &muted)
+
     defer {
-      tcsetattr(STDIN_FILENO, TCSANOW, &original)
-      print()  // Newline the hidden Return didn't echo
+      restoreTerminal()
+      print()  // Newline the muted Return didn't echo
     }
 
     return readLine()
