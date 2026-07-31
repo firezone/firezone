@@ -393,25 +393,22 @@ defmodule Portal.Google.APIClient do
     end
   end
 
-  @doc """
-  Streams active users from the Google Workspace directory.
-  Returns a stream that yields pages of users.
-  """
   @active_user_query "isSuspended=false isArchived=false"
 
-  def stream_users(access_token, domain) do
+  @doc """
+  Streams active users across every domain in the customer account.
+  Returns a stream that yields pages of users.
+  """
+  def stream_users(access_token) do
     query =
       URI.encode_query(%{
         "customer" => "my_customer",
-        "domain" => domain,
         "maxResults" => "500",
         "projection" => "full",
         "query" => @active_user_query
       })
 
-    path = "/admin/directory/v1/users"
-
-    stream_pages(path, query, access_token, "users")
+    stream_pages("/admin/directory/v1/users", query, access_token, "users")
     |> Stream.map(&filter_active_google_users_result/1)
   end
 
@@ -423,11 +420,12 @@ defmodule Portal.Google.APIClient do
 
     * `:query` - optional query string passed directly to the API `query` parameter
       (e.g. `"email:firezone-sync*"` to filter by email prefix server-side)
+    * `:domain` - restrict to a single domain; omit to cover every domain in the
+      customer account
   """
-  def stream_groups(access_token, domain, opts \\ []) do
+  def stream_groups(access_token, opts \\ []) do
     params = %{
       "customer" => "my_customer",
-      "domain" => domain,
       "maxResults" => "200"
     }
 
@@ -435,6 +433,12 @@ defmodule Portal.Google.APIClient do
       case Keyword.get(opts, :query) do
         nil -> params
         q -> Map.put(params, "query", q)
+      end
+
+    params =
+      case Keyword.get(opts, :domain) do
+        nil -> params
+        domain -> Map.put(params, "domain", domain)
       end
 
     path = "/admin/directory/v1/groups"

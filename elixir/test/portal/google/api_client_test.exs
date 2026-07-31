@@ -466,190 +466,6 @@ defmodule Portal.Google.APIClientTest do
     end
   end
 
-  describe "stream_users/2" do
-    test "streams a single page of users" do
-      test_pid = self()
-
-      Req.Test.expect(APIClient, fn conn ->
-        conn = Plug.Conn.fetch_query_params(conn)
-        send(test_pid, {:users_request, conn})
-
-        Req.Test.json(conn, %{
-          "kind" => "admin#directory#users",
-          "users" => [
-            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
-            active_google_user(%{"id" => "user2", "primaryEmail" => "user2@example.com"})
-          ]
-        })
-      end)
-
-      result =
-        APIClient.stream_users(@test_access_token, @test_domain)
-        |> Enum.to_list()
-
-      assert [[%{"id" => "user1"}, %{"id" => "user2"}]] = result
-
-      assert_receive {:users_request, conn}
-      assert_authorization_header(conn, @test_access_token)
-      assert conn.query_params["customer"] == "my_customer"
-      assert conn.query_params["domain"] == @test_domain
-      assert conn.query_params["maxResults"] == "500"
-      assert conn.query_params["projection"] == "full"
-      assert conn.query_params["query"] == "isSuspended=false isArchived=false"
-    end
-
-    test "streams multiple pages using nextPageToken" do
-      test_pid = self()
-      page_count = :counters.new(1, [:atomics])
-
-      Req.Test.expect(APIClient, 3, fn conn ->
-        conn = Plug.Conn.fetch_query_params(conn)
-        current_page = :counters.get(page_count, 1)
-        :counters.add(page_count, 1, 1)
-        send(test_pid, {:users_page, current_page, conn.query_params})
-
-        response =
-          case current_page do
-            0 ->
-              %{
-                "users" => [active_google_user(%{"id" => "user1"})],
-                "nextPageToken" => "page2_token"
-              }
-
-            1 ->
-              %{
-                "users" => [active_google_user(%{"id" => "user2"})],
-                "nextPageToken" => "page3_token"
-              }
-
-            2 ->
-              %{"users" => [active_google_user(%{"id" => "user3"})]}
-          end
-
-        Req.Test.json(conn, response)
-      end)
-
-      result =
-        APIClient.stream_users(@test_access_token, @test_domain)
-        |> Enum.to_list()
-
-      assert [
-               [%{"id" => "user1"}],
-               [%{"id" => "user2"}],
-               [%{"id" => "user3"}]
-             ] = result
-
-      assert_receive {:users_page, 0, page1_params}
-      assert page1_params["query"] == "isSuspended=false isArchived=false"
-      refute Map.has_key?(page1_params, "pageToken")
-
-      assert_receive {:users_page, 1, page2_params}
-      assert page2_params["query"] == "isSuspended=false isArchived=false"
-      assert page2_params["pageToken"] == "page2_token"
-
-      assert_receive {:users_page, 2, page3_params}
-      assert page3_params["query"] == "isSuspended=false isArchived=false"
-      assert page3_params["pageToken"] == "page3_token"
-    end
-
-    test "returns error on non-200 response" do
-      Req.Test.expect(APIClient, fn conn ->
-        conn
-        |> Plug.Conn.put_status(403)
-        |> Req.Test.json(%{"error" => "Forbidden"})
-      end)
-
-      result =
-        APIClient.stream_users(@test_access_token, @test_domain)
-        |> Enum.to_list()
-
-      assert [{:error, %Req.Response{status: 403}}] = result
-    end
-
-    test "returns error when users key is missing" do
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{"kind" => "admin#directory#users"})
-      end)
-
-      result =
-        APIClient.stream_users(@test_access_token, @test_domain)
-        |> Enum.to_list()
-
-      assert [{:error, {:missing_key, message, _body}}] = result
-      assert message =~ "users"
-    end
-
-    test "returns error when users key is not a list" do
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{"users" => "not_a_list"})
-      end)
-
-      result =
-        APIClient.stream_users(@test_access_token, @test_domain)
-        |> Enum.to_list()
-
-      assert [{:error, {:invalid_response, message, _body}}] = result
-      assert message =~ "users is not a list"
-    end
-
-    test "returns error on network failure" do
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.transport_error(conn, :econnrefused)
-      end)
-
-      result =
-        APIClient.stream_users(@test_access_token, @test_domain)
-        |> Enum.to_list()
-
-      assert [{:error, %Req.TransportError{reason: :econnrefused}}] = result
-    end
-
-    test "filters suspended and archived users from returned pages" do
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{
-          "users" => [
-            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
-            %{"id" => "user2", "primaryEmail" => "user2@example.com", "suspended" => true},
-            %{"id" => "user3", "primaryEmail" => "user3@example.com", "archived" => true}
-          ]
-        })
-      end)
-
-      result =
-        APIClient.stream_users(@test_access_token, @test_domain)
-        |> Enum.to_list()
-
-      assert [[%{"id" => "user1"}]] = result
-    end
-
-    test "logs and skips users missing suspended or archived flags" do
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{
-          "kind" => "admin#directory#users",
-          "users" => [
-            %{"id" => "user1", "primaryEmail" => "user1@example.com"},
-            active_google_user(%{
-              "id" => "user2",
-              "primaryEmail" => "user2@example.com"
-            })
-          ]
-        })
-      end)
-
-      log =
-        capture_log(fn ->
-          result =
-            APIClient.stream_users(@test_access_token, @test_domain)
-            |> Enum.to_list()
-
-          assert [[%{"id" => "user2"}]] = result
-        end)
-
-      assert log =~ "Skipping Google user with missing suspended/archived flags"
-      assert log =~ "user1"
-    end
-  end
-
   describe "stream_groups/2" do
     test "streams a single page of groups" do
       test_pid = self()
@@ -668,7 +484,7 @@ defmodule Portal.Google.APIClientTest do
       end)
 
       result =
-        APIClient.stream_groups(@test_access_token, @test_domain)
+        APIClient.stream_groups(@test_access_token)
         |> Enum.to_list()
 
       assert [[%{"id" => "group1"}, %{"id" => "group2"}]] = result
@@ -676,7 +492,7 @@ defmodule Portal.Google.APIClientTest do
       assert_receive {:groups_request, conn}
       assert_authorization_header(conn, @test_access_token)
       assert conn.query_params["customer"] == "my_customer"
-      assert conn.query_params["domain"] == @test_domain
+      refute Map.has_key?(conn.query_params, "domain")
       assert conn.query_params["maxResults"] == "200"
     end
 
@@ -698,7 +514,7 @@ defmodule Portal.Google.APIClientTest do
       end)
 
       result =
-        APIClient.stream_groups(@test_access_token, @test_domain)
+        APIClient.stream_groups(@test_access_token)
         |> Enum.to_list()
 
       assert [[%{"id" => "group1"}], [%{"id" => "group2"}]] = result
@@ -710,7 +526,7 @@ defmodule Portal.Google.APIClientTest do
       end)
 
       result =
-        APIClient.stream_groups(@test_access_token, @test_domain)
+        APIClient.stream_groups(@test_access_token)
         |> Enum.to_list()
 
       assert [[]] = result
@@ -1143,13 +959,19 @@ defmodule Portal.Google.APIClientTest do
                APIClient.batch_get_users(@test_access_token, ["user1"])
     end
 
-    test "returns error for non-404 per-part status in batch response" do
+    test "returns error for a 403 part rather than skipping it" do
+      # 403 also means throttling, and skipping a user gets them deleted.
       Req.Test.expect(APIClient, fn conn ->
         boundary = "forbidden_part_boundary"
 
         body =
           build_batch_body(boundary, [
-            {"HTTP/1.1 403 Forbidden", JSON.encode!(%{"error" => %{"message" => "forbidden"}})}
+            {"HTTP/1.1 200 OK",
+             JSON.encode!(
+               active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+             )},
+            {"HTTP/1.1 403 Forbidden",
+             JSON.encode!(%{"error" => %{"message" => "userRateLimitExceeded"}})}
           ])
 
         conn
@@ -1158,6 +980,25 @@ defmodule Portal.Google.APIClientTest do
       end)
 
       assert {:error, %Req.Response{status: 403}} =
+               APIClient.batch_get_users(@test_access_token, ["user1", "extuser"])
+    end
+
+    test "returns error for unexpected per-part status in batch response" do
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "server_error_part_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 500 Internal Server Error",
+             JSON.encode!(%{"error" => %{"message" => "boom"}})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:error, %Req.Response{status: 500}} =
                APIClient.batch_get_users(@test_access_token, ["user1"])
     end
 
@@ -1318,13 +1159,13 @@ defmodule Portal.Google.APIClientTest do
   end
 
   describe "pagination edge cases" do
-    test "handles empty result list correctly for users" do
+    test "handles empty result list correctly for org unit members" do
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"users" => []})
       end)
 
       result =
-        APIClient.stream_users(@test_access_token, @test_domain)
+        APIClient.stream_organization_unit_members(@test_access_token, "/Engineering")
         |> Enum.to_list()
 
       assert [[]] = result
@@ -1353,7 +1194,7 @@ defmodule Portal.Google.APIClientTest do
       end)
 
       result =
-        APIClient.stream_users(@test_access_token, @test_domain)
+        APIClient.stream_organization_unit_members(@test_access_token, "/Engineering")
         |> Enum.to_list()
 
       assert [[%{"id" => "user1"}], {:error, %Req.Response{status: 500}}] = result
@@ -1384,23 +1225,27 @@ defmodule Portal.Google.APIClientTest do
         Req.Test.json(conn, response)
       end)
 
-      APIClient.stream_users(@test_access_token, @test_domain)
+      APIClient.stream_organization_unit_members(@test_access_token, "/Engineering")
       |> Enum.to_list()
 
       assert_receive {:page_params, 0, page1_params}
       assert page1_params["customer"] == "my_customer"
-      assert page1_params["domain"] == @test_domain
       assert page1_params["maxResults"] == "500"
       assert page1_params["projection"] == "full"
-      assert page1_params["query"] == "isSuspended=false isArchived=false"
+
+      assert page1_params["query"] ==
+               "orgUnitPath='/Engineering' isSuspended=false isArchived=false"
+
       refute Map.has_key?(page1_params, "pageToken")
 
       assert_receive {:page_params, 1, page2_params}
       assert page2_params["customer"] == "my_customer"
-      assert page2_params["domain"] == @test_domain
       assert page2_params["maxResults"] == "500"
       assert page2_params["projection"] == "full"
-      assert page2_params["query"] == "isSuspended=false isArchived=false"
+
+      assert page2_params["query"] ==
+               "orgUnitPath='/Engineering' isSuspended=false isArchived=false"
+
       assert page2_params["pageToken"] == "token123"
     end
   end

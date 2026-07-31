@@ -20,7 +20,9 @@ defmodule Portal.GoogleDirectoryFixtures do
       name: "Google Directory #{unique_num}",
       impersonation_email: "admin#{unique_num}@example#{unique_num}.com",
       is_verified: true,
-      orgunit_sync_enabled: true
+      orgunit_sync_enabled: true,
+      # Tests exercising multi-domain opt in explicitly.
+      sync_all_domains: false
     })
   end
 
@@ -78,7 +80,8 @@ defmodule Portal.GoogleDirectoryFixtures do
         :error_message,
         :error_email_count,
         :group_sync_mode,
-        :orgunit_sync_enabled
+        :orgunit_sync_enabled,
+        :sync_all_domains
       ])
       |> Portal.Google.Directory.changeset()
       |> Portal.Repo.insert()

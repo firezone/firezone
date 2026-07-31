@@ -34,7 +34,8 @@ defmodule PortalWeb.Settings.DirectorySync do
   @fields %{
     Entra.Directory => @common_fields ++ ~w[tenant_id sync_all_groups email_field]a,
     Google.Directory =>
-      @common_fields ++ ~w[domain impersonation_email group_sync_mode orgunit_sync_enabled]a,
+      @common_fields ++
+        ~w[domain impersonation_email group_sync_mode orgunit_sync_enabled sync_all_domains]a,
     Okta.Directory => @common_fields ++ ~w[okta_domain client_id private_key_jwk kid]a
   }
 
@@ -1293,6 +1294,27 @@ defmodule PortalWeb.Settings.DirectorySync do
           />
         </div>
 
+        <div :if={@type == "google"} class="mt-4 flex items-start justify-between gap-4">
+          <div>
+            <span class="text-sm font-medium text-heading">
+              Sync all domains
+            </span>
+            <p class="mt-1 text-xs text-subtle">
+              Sync groups and their members from every domain in your Google Workspace account.
+              Leave this off to sync only your primary domain{primary_domain_hint(@form)}.
+              Turn it on if your account has additional domains and you want those users in
+              Firezone too.
+            </p>
+          </div>
+          <input type="hidden" name={@form[:sync_all_domains].name} value="false" />
+          <.toggle
+            id={@form[:sync_all_domains].id}
+            name={@form[:sync_all_domains].name}
+            value="true"
+            checked={get_field(@form.source, :sync_all_domains)}
+          />
+        </div>
+
         <div :if={@type == "okta"}>
           <label
             for={@form[:okta_domain].id}
@@ -1538,6 +1560,13 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp select_type_classes, do: @select_type_classes
+
+  defp primary_domain_hint(form) do
+    case get_field(form.source, :domain) do
+      domain when is_binary(domain) and domain != "" -> " (#{domain})"
+      _ -> ""
+    end
+  end
 
   defp titleize("google"), do: "Google"
   defp titleize("entra"), do: "Microsoft Entra"

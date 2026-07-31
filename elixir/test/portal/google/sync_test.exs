@@ -5,6 +5,7 @@ defmodule Portal.Google.SyncTest do
   import Ecto.Query
   import Portal.AccountFixtures
   import Portal.GoogleDirectoryFixtures
+  import Portal.IdentityFixtures
   import Portal.ResourceFixtures
   import ExUnit.CaptureLog
 
@@ -44,16 +45,26 @@ defmodule Portal.Google.SyncTest do
   # Builds a valid multipart/mixed batch response and sends it via the conn.
   # `users` is a list of user maps to include as 200 OK parts.
   defp respond_with_batch_users(conn, users) do
+    respond_with_batch_parts(conn, Enum.map(users, &{:ok, &1}))
+  end
+
+  defp respond_with_batch_parts(conn, parts) do
     boundary = "test_batch_response_boundary"
 
-    parts =
-      Enum.map(users, fn user ->
-        json = user |> active_google_user() |> JSON.encode!()
+    body =
+      parts
+      |> Enum.map_join("", fn
+        {:ok, user} ->
+          json = user |> active_google_user() |> JSON.encode!()
 
-        "--#{boundary}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n#{json}\r\n"
+          "--#{boundary}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n#{json}\r\n"
+
+        {:error, status} ->
+          json = JSON.encode!(%{"error" => %{"code" => status}})
+
+          "--#{boundary}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 #{status} Error\r\nContent-Type: application/json\r\n\r\n#{json}\r\n"
       end)
-
-    body = Enum.join(parts, "") <> "--#{boundary}--"
+      |> Kernel.<>("--#{boundary}--")
 
     conn
     |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
@@ -150,7 +161,6 @@ defmodule Portal.Google.SyncTest do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         assert conn.request_path == "/token"
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
@@ -563,7 +573,6 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"groups" => []})
       end)
 
-      # 3. Org units → empty
       Req.Test.expect(APIClient, fn conn ->
         assert String.contains?(conn.request_path, "/orgunits")
         Req.Test.json(conn, %{"organizationUnits" => []})
@@ -1089,15 +1098,17 @@ defmodule Portal.Google.SyncTest do
       assert length(memberships) == 1
     end
 
-    test "skips type=USER members whose email belongs to a different domain" do
-      # Regression: Google groups can contain external users (from other Google Workspace
-      # domains or personal Gmail accounts) that the Admin SDK returns with type="USER"
-      # (the documented EXTERNAL type is marked "not currently used"). Calling users.get
-      # for these IDs returns 403 Forbidden because the service account's domain-wide
-      # delegation only covers the customer's own domain. We must filter them out
-      # before passing IDs to batch_get_users.
+    test "syncs members from every customer domain and skips external members" do
+      # Google returns type="USER" for external members too; the documented
+      # EXTERNAL type is marked "not currently used".
       account = account_fixture()
-      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      directory =
+        google_directory_fixture(
+          account: account,
+          domain: "example.com",
+          sync_all_domains: true
+        )
 
       # 1. Token
       Req.Test.expect(APIClient, fn conn ->
@@ -1106,6 +1117,9 @@ defmodule Portal.Google.SyncTest do
 
       # 2. Groups → group1
       Req.Test.expect(APIClient, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        refute Map.has_key?(conn.query_params, "domain")
+
         Req.Test.json(conn, %{
           "groups" => [
             %{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}
@@ -1118,30 +1132,137 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"organizationUnits" => []})
       end)
 
-      # 4. Group members: internal user1, external user appearing as type=USER with
-      #    a foreign domain email (this is what Google actually returns in production),
-      #    and an external user with the documented-but-unused EXTERNAL type.
+      Req.Test.expect(APIClient, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        assert conn.query_params["customer"] == "my_customer"
+        refute Map.has_key?(conn.query_params, "domain")
+
+        Req.Test.json(conn, %{
+          "users" => [
+            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
+            active_google_user(%{"id" => "user2", "primaryEmail" => "user2@example.co.nz"})
+          ]
+        })
+      end)
+
       Req.Test.expect(APIClient, fn conn ->
         assert String.contains?(conn.request_path, "/groups/group1/members")
 
         Req.Test.json(conn, %{
           "members" => [
             %{"id" => "user1", "type" => "USER", "email" => "user1@example.com"},
+            %{"id" => "user2", "type" => "USER", "email" => "user2@example.co.nz"},
             %{"id" => "extuser", "type" => "USER", "email" => "extuser@otherdomain.com"},
             %{"id" => "extuser2", "type" => "EXTERNAL", "email" => "extuser2@otherdomain.com"}
           ]
         })
       end)
 
-      # 5. batch_get_users — must only contain user1; extuser must NOT be included
-      #    (if it were, Google would return 403, failing the entire sync)
+      # No batch lookup: identities come from the user list above.
       Req.Test.expect(APIClient, fn conn ->
-        assert conn.method == "POST"
-        assert String.contains?(conn.request_path, "/batch")
+        flunk("unexpected extra request to #{conn.request_path}")
+      end)
 
+      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+
+      identities = Repo.all(Portal.ExternalIdentity)
+      assert Enum.map(identities, & &1.idp_id) |> Enum.sort() == ["user1", "user2"]
+      assert Enum.map(identities, & &1.email) |> Enum.sort() == ["user1@example.com", "user2@example.co.nz"]
+
+      memberships = Repo.all(Portal.Membership)
+      assert length(memberships) == 2
+    end
+
+    test "keeps identities when the customer user list is throttled" do
+      account = account_fixture()
+
+      directory =
+        google_directory_fixture(
+          account: account,
+          domain: "example.com",
+          sync_all_domains: true
+        )
+
+      identity =
+        synced_identity_fixture(
+          account: account,
+          directory:
+            Repo.get_by!(Portal.Directory, id: directory.id, account_id: directory.account_id)
+        )
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [
+            %{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{
+          "error" => %{"code" => 403, "errors" => [%{"reason" => "userRateLimitExceeded"}]}
+        })
+      end)
+
+      assert_raise Portal.Google.SyncError, fn ->
+        perform_job(Sync, %{"directory_id" => directory.id})
+      end
+
+      assert Repo.get_by(Portal.ExternalIdentity, id: identity.id, account_id: account.id)
+    end
+
+    test "skips members outside the primary domain when sync_all_domains is off" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      refute directory.sync_all_domains
+
+      # 1. Token
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        assert conn.query_params["domain"] == "example.com"
+
+        Req.Test.json(conn, %{
+          "groups" => [
+            %{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}
+          ]
+        })
+      end)
+
+      # 3. Org units → empty
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+
+        Req.Test.json(conn, %{
+          "members" => [
+            %{"id" => "user1", "type" => "USER", "email" => "user1@example.com"},
+            %{"id" => "user2", "type" => "USER", "email" => "user2@example.co.nz"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
         {:ok, body, _conn} = Plug.Conn.read_body(conn)
         assert String.contains?(body, "user1")
-        refute String.contains?(body, "extuser")
+        refute String.contains?(body, "user2")
 
         respond_with_batch_users(conn, [
           %{
@@ -1154,14 +1275,8 @@ defmodule Portal.Google.SyncTest do
 
       assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
 
-      # Only the internal domain user has an identity
       identities = Repo.all(Portal.ExternalIdentity)
-      assert length(identities) == 1
-      assert hd(identities).idp_id == "user1"
-
-      # Only user1 has a membership
-      memberships = Repo.all(Portal.Membership)
-      assert length(memberships) == 1
+      assert Enum.map(identities, & &1.idp_id) == ["user1"]
     end
 
     test "syncs transitive sub-groups recursively and creates memberships at each level" do
