@@ -68,8 +68,6 @@ defmodule PortalAPI.Router do
 
     resources "/resources", ResourceController, except: [:new, :edit]
     resources "/policies", PolicyController, except: [:new, :edit]
-    post "/policies/:id/disable", PolicyController, :disable
-    post "/policies/:id/enable", PolicyController, :enable
 
     resources "/sites", SiteController, except: [:new, :edit] do
       post "/gateway_tokens", GatewayTokenController, :create
@@ -82,8 +80,6 @@ defmodule PortalAPI.Router do
     end
 
     resources "/actors", ActorController, except: [:new, :edit] do
-      post "/disable", ActorController, :disable
-      post "/enable", ActorController, :enable
       resources "/external_identities", ExternalIdentityController, only: [:index, :show, :delete]
       get "/client_tokens", ClientTokenController, :index
       get "/client_tokens/:id", ClientTokenController, :show

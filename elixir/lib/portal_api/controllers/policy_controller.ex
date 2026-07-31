@@ -112,6 +112,12 @@ defmodule PortalAPI.PolicyController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update,
     summary: "Update a Policy",
+    description: """
+    Updates a Policy.
+
+    A Policy is enabled or disabled through the `is_disabled` field. Disabling \
+    a Policy stops it granting access without deleting it.
+    """,
     parameters: [
       id: [
         in: :path,
@@ -182,69 +188,9 @@ defmodule PortalAPI.PolicyController do
     end
   end
 
-  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
-  operation :disable,
-    summary: "Disable a Policy",
-    description: "Idempotent - disabling an already-disabled Policy is a no-op.",
-    parameters: [
-      id: [
-        in: :path,
-        description: "Policy ID",
-        type: :string,
-        example: "00000000-0000-0000-0000-000000000000"
-      ]
-    ],
-    responses:
-      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}] ++
-        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
-
-  # coveralls-ignore-stop
-
-  @spec disable(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def disable(conn, %{"id" => id}) do
-    subject = conn.assigns.subject
-
-    with {:ok, policy} <- Database.fetch_policy(id, subject),
-         {:ok, policy} <- Database.set_disabled_at(policy, :disable, subject) do
-      render(conn, :show, policy: policy)
-    else
-      error -> Error.handle(conn, error)
-    end
-  end
-
-  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
-  operation :enable,
-    summary: "Enable a Policy",
-    parameters: [
-      id: [
-        in: :path,
-        description: "Policy ID",
-        type: :string,
-        example: "00000000-0000-0000-0000-000000000000"
-      ]
-    ],
-    responses:
-      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}] ++
-        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
-
-  # coveralls-ignore-stop
-
-  @spec enable(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def enable(conn, %{"id" => id}) do
-    subject = conn.assigns.subject
-
-    with {:ok, policy} <- Database.fetch_policy(id, subject),
-         {:ok, policy} <- Database.set_disabled_at(policy, :enable, subject) do
-      render(conn, :show, policy: policy)
-    else
-      error -> Error.handle(conn, error)
-    end
-  end
-
   defmodule Database do
     import Ecto.Query
     import Ecto.Changeset
-    import Portal.Changeset, only: [put_default_value: 3]
     alias Portal.{Policy, Safe, Authentication}
 
     def list_policies(subject, opts \\ []) do
@@ -364,25 +310,6 @@ defmodule PortalAPI.PolicyController do
       |> Safe.delete()
     end
 
-    # Mirrors the admin UI's disable/enable behavior (lib/portal_web/live/policies.ex):
-    # disabling is idempotent (only sets disabled_at if unset), enabling is
-    # unconditional.
-    def set_disabled_at(%Policy{} = policy, :disable, subject) do
-      policy
-      |> change()
-      |> put_default_value(:disabled_at, DateTime.utc_now())
-      |> Safe.scoped(subject)
-      |> Safe.update()
-    end
-
-    def set_disabled_at(%Policy{} = policy, :enable, subject) do
-      policy
-      |> change()
-      |> put_change(:disabled_at, nil)
-      |> Safe.scoped(subject)
-      |> Safe.update()
-    end
-
     # The base Policy.changeset/1 is applied centrally by Safe.insert/Safe.update,
     # so we only do the request-specific casting here.
     defp create_changeset(attrs, %Authentication.Subject{} = subject) do
@@ -395,7 +322,7 @@ defmodule PortalAPI.PolicyController do
 
     defp changeset(%Policy{} = policy, attrs) do
       policy
-      |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
+      |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled is_disabled]a)
       |> validate_required(~w[group_id resource_id]a)
       |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     end

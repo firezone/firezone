@@ -185,6 +185,9 @@ defmodule PortalAPI.ActorController do
     Email comparison ignores case and surrounding whitespace, so changes like
     `User@Example.com` → `user@example.com` are not treated as a real change
     and will not unlink identities.
+
+    **Setting `is_disabled` to `true` immediately revokes all of the Actor's
+    active Client tokens and portal sessions.** An Actor cannot disable itself.
     """,
     parameters: [
       id: [
@@ -217,6 +220,7 @@ defmodule PortalAPI.ActorController do
 
     with {:ok, actor} <- Database.fetch_actor(id, subject),
          changeset <- actor_changeset(actor, params),
+         :ok <- ensure_not_self_disable(actor, changeset, subject),
          :ok <- check_role_promotion_limits(account, actor, changeset),
          {:ok, actor} <- Database.update_actor(changeset, subject) do
       render(conn, :show, actor: actor)
@@ -257,79 +261,14 @@ defmodule PortalAPI.ActorController do
     end
   end
 
-  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
-  operation :disable,
-    summary: "Disable an Actor",
-    description: """
-    Disables the Actor, immediately revoking all of its active Client tokens \
-    and portal sessions.
-    """,
-    parameters: [
-      actor_id: [
-        in: :path,
-        description: "Actor ID",
-        type: :string,
-        example: "00000000-0000-0000-0000-000000000000"
-      ]
-    ],
-    responses:
-      [ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
-        ProblemDetails.responses([
-          :bad_request,
-          :unauthorized,
-          :forbidden,
-          :not_found,
-          :too_many_requests
-        ])
-
-  # coveralls-ignore-stop
-
-  @spec disable(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def disable(conn, %{"actor_id" => id}) do
-    subject = conn.assigns.subject
-
-    with :ok <- ensure_not_self(id, subject),
-         {:ok, actor} <- Database.set_disabled_at_by_id(id, DateTime.utc_now(), subject) do
-      render(conn, :show, actor: actor)
+  # Disabling an Actor revokes its own credentials, so letting a caller disable
+  # the Actor behind the current request would lock it out mid-request.
+  defp ensure_not_self_disable(actor, changeset, subject) do
+    if get_change(changeset, :is_disabled) == true and actor.id == subject.actor.id do
+      {:error, :forbidden, reason: "You cannot disable the Actor used to make this request"}
     else
-      {:error, :self_operation} ->
-        Error.handle(conn, {:error, :forbidden, reason: "You cannot disable the API client used to make this request"})
-
-      error ->
-        Error.handle(conn, error)
+      :ok
     end
-  end
-
-  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
-  operation :enable,
-    summary: "Enable an Actor",
-    parameters: [
-      actor_id: [
-        in: :path,
-        description: "Actor ID",
-        type: :string,
-        example: "00000000-0000-0000-0000-000000000000"
-      ]
-    ],
-    responses:
-      [ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
-        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
-
-  # coveralls-ignore-stop
-
-  @spec enable(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def enable(conn, %{"actor_id" => id}) do
-    subject = conn.assigns.subject
-
-    with {:ok, actor} <- Database.set_disabled_at_by_id(id, nil, subject) do
-      render(conn, :show, actor: actor)
-    else
-      error -> Error.handle(conn, error)
-    end
-  end
-
-  defp ensure_not_self(id, subject) do
-    if id == subject.actor.id, do: {:error, :self_operation}, else: :ok
   end
 
   defp create_actor_changeset(account, attrs) do
@@ -343,7 +282,7 @@ defmodule PortalAPI.ActorController do
 
   defp actor_changeset(actor, attrs) do
     actor
-    |> cast(attrs, [:name, :email, :type, :allow_email_otp_sign_in])
+    |> cast(attrs, [:name, :email, :type, :allow_email_otp_sign_in, :is_disabled])
     |> validate_required([:name, :type])
   end
 
@@ -450,39 +389,14 @@ defmodule PortalAPI.ActorController do
       end
     end
 
-    # Single-query delete, same shape as set_disabled_at_by_id/3: Safe.delete_all/2
-    # already applies the account filter automatically (unlike Safe.update_all/2),
-    # and a plain delete has no changeset to bypass, so there's no fetch to save
-    # by skipping.
+    # Single-query delete: Safe.delete_all/2 already applies the account filter
+    # automatically, and a plain delete has no changeset to run, so there's no
+    # fetch to save by skipping.
     def delete_actor_by_id(id, subject) do
       result =
         from(a in Actor, where: a.id == ^id, select: a)
         |> Safe.scoped(subject)
         |> Safe.delete_all()
-
-      case result do
-        {0, _} -> {:error, :not_found}
-        {1, [actor]} -> {:ok, actor}
-      end
-    end
-
-    # Single-query disable/enable: goes through Repo.update_all instead of
-    # a fetch + Ecto.Changeset, so there's no separate SELECT before the
-    # UPDATE. This deliberately bypasses Actor.changeset/1 entirely -
-    # update_all never runs changesets - which is only safe because
-    # disabled_at has no validation of its own. Do not copy this pattern
-    # for a field Actor.changeset/1 actually validates (e.g. name, email):
-    # validate_required(~w[name type]a) would spuriously fail here, since
-    # a changeset built this way never has those fields loaded.
-    #
-    # Safe.update_all/2 does not apply an automatic account filter the way
-    # Safe.one/Safe.list/etc. do (see Portal.Safe's apply_account_filter/3
-    # call sites) - account_id is included in this query explicitly.
-    def set_disabled_at_by_id(id, disabled_at, subject) do
-      result =
-        from(a in Actor, where: a.id == ^id and a.account_id == ^subject.account.id, select: a)
-        |> Safe.scoped(subject)
-        |> Safe.update_all(set: [disabled_at: disabled_at, updated_at: DateTime.utc_now()])
 
       case result do
         {0, _} -> {:error, :not_found}
