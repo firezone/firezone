@@ -25,14 +25,35 @@ nix copy --to "file://$staging_dir?compression=zstd" ./result*
 # shared paths.
 printf 'StoreDir: /nix/store\nWantMassQuery: 1\nPriority: 41\n' >"$staging_dir/nix-cache-info"
 
-# Incremental: already-present blobs are skipped. `az storage blob sync`
-# defaults --delete-destination to true, which would prune every NAR not
-# in this single-closure staging dir: prior releases and the other arch's
-# matrix job. The cache is content-addressed and shared across releases,
-# so it must never be pruned by sync.
-az storage blob sync \
-    --account-name firezoneartifacts \
-    --auth-mode login \
-    --container nix \
-    --source "$staging_dir" \
-    --delete-destination false
+# Compare contents instead of mtimes: this staging directory is freshly
+# created, so AzCopy's default mtime comparison would re-upload the entire
+# closure on every run. Existing blobs without MD5 metadata are uploaded once
+# to seed it. Concurrent matrix jobs can still race on those initial uploads,
+# so retry the sync to re-enumerate the destination after the winner finishes.
+#
+# `az storage blob sync` defaults --delete-destination to true, which would
+# prune every NAR not in this single-closure staging dir: prior releases and
+# the other arch's matrix job. The cache is content-addressed and shared across
+# releases, so it must never be pruned by sync.
+max_sync_attempts=3
+
+for ((attempt = 1; attempt <= max_sync_attempts; attempt++)); do
+    if az storage blob sync \
+        --account-name firezoneartifacts \
+        --auth-mode login \
+        --container nix \
+        --source "$staging_dir" \
+        --delete-destination false \
+        -- \
+        --compare-hash=MD5; then
+        break
+    fi
+
+    if ((attempt == max_sync_attempts)); then
+        printf 'Nix cache sync failed after %d attempts.\n' "$max_sync_attempts" >&2
+        exit 1
+    fi
+
+    printf 'Nix cache sync attempt %d failed; retrying.\n' "$attempt" >&2
+    sleep $((attempt * 5))
+done
