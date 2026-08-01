@@ -190,7 +190,6 @@ defmodule Portal.Account.Metadata.Stripe do
     field :billing_email, :string
     field :trial_ends_at, :utc_datetime_usec
     field :support_type, :string
-    field :portal_configuration_id, :string
   end
 
   def changeset(stripe \\ %__MODULE__{}, attrs) do
@@ -201,8 +200,7 @@ defmodule Portal.Account.Metadata.Stripe do
       :product_name,
       :billing_email,
       :trial_ends_at,
-      :support_type,
-      :portal_configuration_id
+      :support_type
     ])
   end
 end

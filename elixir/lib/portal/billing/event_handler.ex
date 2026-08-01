@@ -18,7 +18,7 @@ defmodule Portal.Billing.EventHandler do
   defp process_event_with_lock(event) do
     customer_id = extract_customer_id(event)
 
-    Billing.with_customer_lock(customer_id, fn ->
+    Database.with_customer_lock(customer_id, fn ->
       process_event(event, customer_id)
     end)
   end
@@ -233,7 +233,7 @@ defmodule Portal.Billing.EventHandler do
     with {:ok, attrs} <- build_subscription_update_attrs(subscription_data),
          {:ok, account} <- update_account_and_return(customer_id, attrs),
          {:ok, _account} <- Billing.evaluate_account_limits(account) do
-      Billing.sync_billing_portal_configuration(account, subscription_data)
+      :ok
     else
       {:error, reason} ->
         Logger.error("Failed to build subscription update attrs",
@@ -293,10 +293,43 @@ defmodule Portal.Billing.EventHandler do
   end
 
   defp find_plan_product(items) do
-    with {:ok, item} <- Billing.fetch_plan_item(items),
-         {:ok, info} <- Billing.fetch_product(get_in(item, ["price", "product"])) do
-      {:ok, info, item["quantity"]}
+    plan_ids = Billing.plan_product_ids()
+
+    {plan_items, other_items} =
+      Enum.split_with(items, &(get_in(&1, ["price", "product"]) in plan_ids))
+
+    log_non_plan_items(other_items)
+
+    case plan_items do
+      [%{"price" => %{"product" => product_id}, "quantity" => quantity}] ->
+        with {:ok, info} <- Billing.fetch_product(product_id), do: {:ok, info, quantity}
+
+      [] ->
+        {:error, :no_plan_product}
+
+      multiple ->
+        ids = Enum.map(multiple, &get_in(&1, ["price", "product"]))
+        Logger.error("Multiple plan products found in subscription", product_ids: inspect(ids))
+        {:error, :multiple_plan_products}
     end
+  end
+
+  defp log_non_plan_items(items) do
+    adhoc_id = Billing.adhoc_device_product_id()
+
+    Enum.each(items, fn %{"price" => %{"product" => product_id}} = item ->
+      if product_id == adhoc_id do
+        Logger.info("Ignoring adhoc device product in subscription",
+          product_id: product_id,
+          item_id: item["id"]
+        )
+      else
+        Logger.warning("Ignoring unrecognized product in subscription",
+          product_id: product_id,
+          item_id: item["id"]
+        )
+      end
+    end)
   end
 
   defp update_account(customer_id, attrs) do
@@ -559,10 +592,7 @@ defmodule Portal.Billing.EventHandler do
     {limits, params} = Map.split(params, limit_fields)
     {features, _} = Map.split(params, feature_fields)
 
-    limits =
-      limits
-      |> Map.put("users_count", users_count)
-      |> put_seat_limit(Billing.plan_type(stripe_metadata["product_name"]), seats)
+    limits = Map.merge(limits, %{"users_count" => users_count})
 
     %{
       features: features,
@@ -570,13 +600,6 @@ defmodule Portal.Billing.EventHandler do
       metadata: %{stripe: Map.merge(metadata, stripe_metadata)}
     }
   end
-
-  # Enterprise seats are sold as monthly active users and can be bought from the
-  # billing portal, so the subscription quantity wins over the product metadata.
-  defp put_seat_limit(limits, :enterprise, seats),
-    do: Map.put(limits, "monthly_active_users_count", seats)
-
-  defp put_seat_limit(limits, _plan_type, _seats), do: limits
 
   defp parse_metadata_params(metadata, limit_fields, metadata_fields) do
     metadata
@@ -631,6 +654,15 @@ defmodule Portal.Billing.EventHandler do
       EmailOTP,
       Safe
     }
+
+    def with_customer_lock(customer_id, fun) do
+      hashed_id = :erlang.phash2(customer_id)
+
+      Safe.transact(fn ->
+        {:ok, _} = Safe.unscoped() |> Safe.query("SELECT pg_advisory_xact_lock($1)", [hashed_id])
+        fun.()
+      end)
+    end
 
     def slug_exists?(slug) do
       from(a in Portal.Account, where: a.slug == ^slug)
