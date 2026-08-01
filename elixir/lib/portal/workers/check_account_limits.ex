@@ -13,6 +13,7 @@ defmodule Portal.Workers.CheckAccountLimits do
     unique: [period: :infinity, states: :incomplete]
 
   alias Portal.Account
+  alias Portal.Accounts.Activity
   alias Portal.Billing
   alias Portal.Mailer
   alias Portal.Mailer.Notifications
@@ -30,7 +31,7 @@ defmodule Portal.Workers.CheckAccountLimits do
   end
 
   defp process_accounts_in_batches(cursor) do
-    case Database.fetch_active_accounts_batch(cursor, @batch_size) do
+    case Database.fetch_enabled_accounts_batch(cursor, @batch_size) do
       [] ->
         :ok
 
@@ -119,9 +120,15 @@ defmodule Portal.Workers.CheckAccountLimits do
     |> Map.put(:warning_last_sent_at, nil)
   end
 
-  defp should_send_email?(%{warning_last_sent_at: nil}), do: true
+  # Dormant accounts are checked last so the reminder clock only starts once
+  # there is somebody to remind.
+  defp should_send_email?(account) do
+    due_for_email?(account) and Activity.account_active?(account.id)
+  end
 
-  defp should_send_email?(%{warning_last_sent_at: last_sent_at}) do
+  defp due_for_email?(%{warning_last_sent_at: nil}), do: true
+
+  defp due_for_email?(%{warning_last_sent_at: last_sent_at}) do
     days_since_last_email = DateTime.diff(DateTime.utc_now(), last_sent_at, :day)
     days_since_last_email >= @email_reminder_interval_days
   end
@@ -221,7 +228,7 @@ defmodule Portal.Workers.CheckAccountLimits do
       end)
     end
 
-    def fetch_active_accounts_batch(cursor, limit) do
+    def fetch_enabled_accounts_batch(cursor, limit) do
       from(a in Account,
         where: a.is_disabled == false,
         order_by: [asc: a.id],

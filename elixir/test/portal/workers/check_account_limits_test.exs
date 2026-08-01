@@ -8,6 +8,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
   import Portal.ActorFixtures
   import Portal.OutboundEmailTestHelpers
   import Portal.ClientSessionFixtures
+  import Portal.SessionLogFixtures
 
   alias Portal.Workers.CheckAccountLimits
 
@@ -111,6 +112,28 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
 
       # Verify count/limit format (3 admins / 1 limit)
       assert first_email.text_body =~ "account admins (3 / 1)"
+    end
+
+    test "sets limit flags but sends no email for an account with no session logs" do
+      account = dormant_provisioned_account_fixture()
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+
+      update_account(account, %{
+        limits: %{
+          account_admin_users_count: 1
+        }
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      refute_email_queued(account.id)
+
+      account = Repo.get!(Portal.Account, account.id)
+      assert account.admins_limit_exceeded
+      # The reminder clock only starts once there is somebody to remind.
+      refute account.warning_last_sent_at
     end
 
     test "does not send email if warning_last_sent_at is less than 3 days ago" do
@@ -441,7 +464,15 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
     end
   end
 
+  # Also given a session log, since limit warnings only go to active accounts.
   defp provisioned_account_fixture(attrs \\ %{}) do
+    account = dormant_provisioned_account_fixture(attrs)
+    session_log_fixture(account: account)
+
+    account
+  end
+
+  defp dormant_provisioned_account_fixture(attrs \\ %{}) do
     account = account_fixture(attrs)
 
     stripe_attrs =

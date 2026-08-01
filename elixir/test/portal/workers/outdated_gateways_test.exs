@@ -7,6 +7,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
   import Portal.DeviceFixtures
   import Portal.ClientSessionFixtures
   import Portal.OutboundEmailTestHelpers
+  import Portal.SessionLogFixtures
   import Portal.SiteFixtures
 
   alias Portal.Workers.OutdatedGateways
@@ -144,6 +145,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
         )
 
       admin = admin_actor_fixture(account: account)
+      session_log_fixture(account: account)
       site = site_fixture(account: account)
 
       gateway =
@@ -169,6 +171,37 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
       end)
 
       refute_email_sent()
+    end
+
+    test "skips accounts with no session logs" do
+      account =
+        account_fixture(
+          config: %{
+            notifications: %{
+              outdated_gateway: %{enabled: true}
+            }
+          }
+        )
+
+      admin_actor_fixture(account: account)
+      site = site_fixture(account: account)
+
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          last_seen_version: "0.9.0"
+        )
+
+      assert :ok = Portal.Presence.Gateways.connect(gateway, gateway.gateway_token_id)
+
+      assert :ok = perform_job(OutdatedGateways, %{})
+
+      refute_email_queued(account.id)
+
+      # The account stays pending so it is notified as soon as it comes back.
+      account = Portal.Repo.get!(Portal.Account, account.id)
+      assert is_nil(account.config.notifications.outdated_gateway.last_notified)
     end
   end
 end

@@ -12,6 +12,7 @@ defmodule Portal.Workers.OutdatedGateways do
   require Logger
 
   alias __MODULE__.Database
+  alias Portal.Accounts.Activity
   alias Portal.{Device, Mailer}
 
   @impl Oban.Worker
@@ -24,6 +25,7 @@ defmodule Portal.Workers.OutdatedGateways do
     latest_version = Portal.ComponentVersions.gateway_version()
 
     Database.all_accounts_pending_notification!()
+    |> reject_dormant_accounts()
     |> Enum.each(fn account ->
       incompatible_client_count = Database.count_incompatible_for(account, latest_version)
 
@@ -31,6 +33,12 @@ defmodule Portal.Workers.OutdatedGateways do
       |> Enum.filter(&Device.gateway_outdated?/1)
       |> send_notifications(account, incompatible_client_count)
     end)
+  end
+
+  defp reject_dormant_accounts(accounts) do
+    active_ids = Activity.active_account_ids(Enum.map(accounts, & &1.id))
+
+    Enum.filter(accounts, &MapSet.member?(active_ids, &1.id))
   end
 
   defp all_online_gateways_for_account(account) do

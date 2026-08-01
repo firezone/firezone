@@ -9,6 +9,7 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
   import Portal.GoogleDirectoryFixtures
   import Portal.OktaDirectoryFixtures
   import Portal.OutboundEmailTestHelpers
+  import Portal.SessionLogFixtures
 
   alias Portal.DirectorySync.ErrorHandler
   alias Portal.Workers.SyncErrorNotification
@@ -24,6 +25,7 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
   describe "perform/1" do
     test "increments error_email_count for an Entra mail field validation error" do
       account = account_fixture(features: %{idp_sync: true})
+      session_log_fixture(account: account)
       admin = admin_actor_fixture(account: account)
 
       directory = entra_directory_fixture(account: account, email_field: "mail")
@@ -61,6 +63,7 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
 
     test "routes google directories through the three day frequency window" do
       account = account_fixture(features: %{idp_sync: true})
+      session_log_fixture(account: account)
       admin = admin_actor_fixture(account: account)
 
       too_low =
@@ -92,6 +95,7 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
 
     test "routes okta directories through the weekly frequency window" do
       account = account_fixture(features: %{idp_sync: true})
+      session_log_fixture(account: account)
       admin = admin_actor_fixture(account: account)
 
       too_low =
@@ -121,8 +125,9 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
       assert email.text_body =~ "eligible"
     end
 
-    test "logs and skips notification when the account has no active admins" do
+    test "logs and skips notification when the account has no enabled admins" do
       account = account_fixture(features: %{idp_sync: true})
+      session_log_fixture(account: account)
 
       directory =
         entra_directory_fixture(
@@ -140,6 +145,27 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
       refute_email_queued(account.id)
     end
 
+    test "skips notification for an account with no session logs" do
+      account = account_fixture(features: %{idp_sync: true})
+      admin_actor_fixture(account: account)
+
+      directory =
+        entra_directory_fixture(
+          sync_error_attrs(account: account, error_email_count: 0, error_message: "dormant")
+        )
+
+      log =
+        capture_log(fn ->
+          assert :ok = perform_job(SyncErrorNotification, notification_args("entra", "daily"))
+        end)
+
+      assert log =~ "Skipping sync error notification for dormant account"
+      refute_email_queued(account.id)
+
+      # The count stays put so a returning account still gets the full series.
+      assert Repo.get!(Portal.Entra.Directory, directory.id).error_email_count == 0
+    end
+
     test "logs enqueue failures and still increments error_email_count" do
       Portal.Config.put_env_override(:portal, SyncErrorNotification,
         mailer_module: FailingMailer,
@@ -147,6 +173,7 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
       )
 
       account = account_fixture(features: %{idp_sync: true})
+      session_log_fixture(account: account)
       admin_actor_fixture(account: account)
 
       directory =
