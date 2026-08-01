@@ -50,8 +50,7 @@ extension FirezoneCLI {
       let internetResourceEnabled: Bool? = wantsInternetResource ? true : nil
 
       // Only used to build the sign-in URL, never written to the profile.
-      let authBaseURL =
-        Self.setting(authBaseUrl, "FIREZONE_AUTH_BASE_URL") ?? ConfigurationDefaults.authURL
+      let authBaseURLOverride = Self.setting(authBaseUrl, "FIREZONE_AUTH_BASE_URL")
 
       Log.info("API URL: \(apiURL ?? "(unchanged)")")
       Log.info("Account slug: \(accountSlug ?? "(unchanged)")")
@@ -59,7 +58,7 @@ extension FirezoneCLI {
 
       try await SystemExtension.requireInstalled()
 
-      let session = try await startTunnel(
+      let tunnel = try await startTunnel(
         overrides: ProviderOverrides(
           apiURL: apiURL,
           accountSlug: accountSlug,
@@ -68,9 +67,11 @@ extension FirezoneCLI {
         )
       )
 
-      // Without a slug the URL lands on the account picker, same as before.
-      let signInSlug = accountSlug ?? ConfigurationDefaults.accountSlug
-      let supervisor = TunnelSupervisor(session: session) {
+      // Fall back to what the app is configured with, so a self-hosted deployment
+      // doesn't send someone to the public portal to fetch a token.
+      let authBaseURL = authBaseURLOverride ?? tunnel.signIn.authURL
+      let signInSlug = accountSlug ?? tunnel.signIn.accountSlug
+      let supervisor = TunnelSupervisor(session: tunnel.session) {
         try await SignInPrompt.requestToken(authBaseURL: authBaseURL, accountSlug: signInSlug)
       }
 
@@ -87,7 +88,7 @@ extension FirezoneCLI {
     @MainActor
     private func startTunnel(
       overrides: ProviderOverrides
-    ) async throws -> any TunnelSessionProtocol {
+    ) async throws -> (session: any TunnelSessionProtocol, signIn: SignInSettings) {
       let factory = NETunnelProviderManagerFactory()
       let vpnManager: VPNConfigurationManager
       if let existing = try await VPNConfigurationManager.load(using: factory) {
@@ -101,6 +102,7 @@ extension FirezoneCLI {
       try await vpnManager.save(overrides: overrides)
       try await vpnManager.enable()
 
+      let signIn = try vpnManager.signInSettings()
       let session = try VPNProfile.session(for: vpnManager)
 
       if let token = ProcessInfo.processInfo.environment["FIREZONE_TOKEN"].flatMap(Token.init) {
@@ -112,7 +114,7 @@ extension FirezoneCLI {
 
       Log.info("Tunnel started")
 
-      return session
+      return (session, signIn)
     }
   }
 }

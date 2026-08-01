@@ -181,6 +181,19 @@ public final class VPNConfigurationManager {
     )
   }
 
+  /// What a headless sign-in link is built from, honouring what the app stored and any
+  /// MDM override, so it lands where the app's own sign-in would rather than at the
+  /// public portal.
+  public func signInSettings() throws -> SignInSettings {
+    let configuration = Configuration()
+    configuration.loadProviderConfiguration(try providerConfiguration())
+
+    return SignInSettings(
+      authURL: configuration.authURL,
+      accountSlug: configuration.accountSlug
+    )
+  }
+
   func providerConfiguration() throws -> [String: String] {
     guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol
     else {

@@ -42,3 +42,9 @@ public struct ProviderOverrides: Sendable {
     }
   }
 }
+
+/// The parts of the stored configuration a headless sign-in link is built from.
+public struct SignInSettings: Sendable {
+  public let authURL: String
+  public let accountSlug: String
+}

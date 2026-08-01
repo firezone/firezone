@@ -12,6 +12,9 @@ import NetworkExtension
 ///
 /// SIGINT/SIGTERM shut down, SIGHUP restarts. If the extension reports a missing
 /// token, `requestToken` is called once to sign in and the tunnel is retried.
+///
+/// Anything other than a signal is a failure and is rethrown, so a service manager
+/// watching the exit status can tell a tunnel that stopped from one that was stopped.
 @MainActor
 final class TunnelSupervisor {
   private enum Action {
@@ -28,7 +31,7 @@ final class TunnelSupervisor {
 
   private var isRestarting = false
   private var hasRequestedToken = false
-  private var signInFailure: (any Error)?
+  private var failure: (any Error)?
   private var timeoutTask: Task<Void, Never>?
   private var signInTask: Task<Void, Never>?
 
@@ -39,10 +42,6 @@ final class TunnelSupervisor {
 
   func run() async throws {
     let (actions, emit) = AsyncStream.makeStream(of: Action.self)
-
-    if session.status == .connected {
-      Log.info("Tunnel already connected")
-    }
 
     let statusTask = Task { await watchStatus(emit: emit) }
     let signalSources = installSignalHandlers(emit: emit)
@@ -55,26 +54,30 @@ final class TunnelSupervisor {
       for source in signalSources { source.cancel() }
     }
 
+    // The tunnel was started before we got here, so it may already have failed. Only
+    // changes are reported from now on, and the first one is easily the one that
+    // matters: with no token in the Keychain the provider gives up immediately.
+    await handle(status: session.status, emit: emit)
+
     for await action in actions {
       switch action {
       case .shutdown:
         Log.info("Shutting down...")
         session.stopTunnel()
-        if let signInFailure {
-          throw signInFailure
+        if let failure {
+          throw failure
         }
         return
 
       case .restart:
         Log.info("Restarting tunnel...")
         isRestarting = true
+        // Starting again has to wait for the tunnel to actually be down, or the start
+        // races the stop and is dropped. `handle(status:)` picks it up from there.
         session.stopTunnel()
-        try IPCClient.start(session: session)
-        Log.info("Tunnel restarted")
 
       case .signIn:
         timeoutTask?.cancel()
-        hasRequestedToken = true
         // Signing in waits on the user, so it runs alongside the loop rather than
         // inside it. A signal arriving mid-prompt still shuts us down promptly.
         signInTask = Task { await signIn(emit: emit) }
@@ -91,51 +94,71 @@ final class TunnelSupervisor {
     do {
       emit.yield(.tokenReceived(try await requestToken()))
     } catch {
-      signInFailure = error
-      emit.yield(.shutdown)
+      fail(with: error, emit: emit)
     }
+  }
+
+  private func fail(with error: any Error, emit: AsyncStream<Action>.Continuation) {
+    failure = error
+    emit.yield(.shutdown)
   }
 
   // MARK: - Status
 
   private func watchStatus(emit: AsyncStream<Action>.Continuation) async {
     for await status in IPCClient.vpnStatusUpdates(session: session) {
-      switch status {
-      case .connected:
-        Log.info("Tunnel connected")
-        isRestarting = false
-      case .connecting:
-        Log.info("Tunnel connecting...")
-      case .reasserting:
-        Log.info("Tunnel reasserting...")
-      case .disconnecting:
-        Log.info("Tunnel disconnecting...")
-      case .invalid:
-        Log.warning("Tunnel status invalid")
-      case .disconnected:
-        await handleDisconnect(emit: emit)
-      @unknown default:
-        Log.warning("Unknown tunnel status: \(status.rawValue)")
-      }
+      await handle(status: status, emit: emit)
+    }
+  }
+
+  private func handle(status: NEVPNStatus, emit: AsyncStream<Action>.Continuation) async {
+    switch status {
+    case .connected:
+      Log.info("Tunnel connected")
+    case .connecting:
+      Log.info("Tunnel connecting...")
+    case .reasserting:
+      Log.info("Tunnel reasserting...")
+    case .disconnecting:
+      Log.info("Tunnel disconnecting...")
+    case .invalid:
+      // The profile or the system extension went away. Nothing is going to bring it
+      // back on its own, and without this the process would sit here doing nothing.
+      fail(
+        with: CLIError("VPN configuration is no longer usable, it may have been removed."),
+        emit: emit)
+    case .disconnected:
+      await handleDisconnect(emit: emit)
+    @unknown default:
+      Log.warning("Unknown tunnel status: \(status.rawValue)")
     }
   }
 
   private func handleDisconnect(emit: AsyncStream<Action>.Continuation) async {
-    guard !isRestarting else {
-      Log.info("Tunnel disconnected (restarting)")
+    if isRestarting {
+      isRestarting = false
+      Log.info("Tunnel disconnected, starting it again")
+      do {
+        try IPCClient.start(session: session)
+        startConnectTimeout(emit: emit)
+      } catch {
+        fail(with: error, emit: emit)
+      }
       return
     }
 
     let error = await lastDisconnectError()
 
     if let error, !hasRequestedToken, Self.isTokenNotFound(error) {
+      // Set before yielding, so a repeated disconnect can't queue a second prompt.
+      hasRequestedToken = true
       Log.info("Token not found in keychain: \(error)")
       emit.yield(.signIn)
       return
     }
 
     log(disconnect: error)
-    emit.yield(.shutdown)
+    fail(with: error ?? CLIError("Tunnel disconnected"), emit: emit)
   }
 
   private func lastDisconnectError() async -> (any Error)? {
@@ -178,8 +201,7 @@ final class TunnelSupervisor {
     timeoutTask = Task {
       try? await Task.sleep(for: Self.connectTimeout)
       guard !Task.isCancelled, session.status != .connected else { return }
-      Log.error("Timed out waiting for tunnel to connect")
-      emit.yield(.shutdown)
+      fail(with: CLIError("Timed out waiting for the tunnel to connect."), emit: emit)
     }
   }
 
