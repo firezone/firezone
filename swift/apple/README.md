@@ -182,8 +182,8 @@ in the foreground until you stop it. `sign-out` drops the stored token.
 It talks to the same system extension as the GUI and will not start without it.
 `extension status` reports whether that extension is installed and matches the
 build, and exits non-zero when it does not, so a setup script can check before
-going further. It cannot install the extension, since installing one needs a user
-to approve it. Launch the app once to do that.
+going further. It cannot install the extension, since installing one needs a
+user to approve it. Launch the app once to do that.
 
 These environment variables are read when the matching flag is absent:
 
