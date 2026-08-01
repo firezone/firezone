@@ -804,15 +804,4 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
     end
   end
 
-  describe "flow_logs" do
-    test "renders the coming soon message", %{conn: conn, account: account, actor: actor} do
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/logs/flow_logs")
-
-      assert html =~ "Flow Logs in the portal are coming soon"
-      assert html =~ "FIREZONE_FLOW_LOGS=true"
-    end
-  end
 end

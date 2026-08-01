@@ -95,6 +95,44 @@ defmodule PortalWeb.LiveTableTest do
       assert Floki.attribute(input, "value") == ["foo"]
     end
 
+    test "renders compact protocol and port filter", %{assigns: assigns} do
+      assigns = %{
+        assigns
+        | filters: [
+            %Portal.Repo.Filter{
+              name: :protocol_port,
+              title: "Protocol / port",
+              type: {:string, :protocol_port}
+            }
+          ],
+          filter: filter_to_form(%{protocol_port: "tcp/443"}, "table-id")
+      }
+
+      input =
+        render_component(&live_table/1, assigns)
+        |> Floki.parse_fragment!()
+        |> Floki.find("form#table-id-filters input[type=text]")
+
+      assert Floki.attribute(input, "id") == ["table-id_protocol_port"]
+      assert Floki.attribute(input, "name") == ["table-id[protocol_port]"]
+      assert Floki.attribute(input, "placeholder") == ["Port or tcp/443"]
+      assert Floki.attribute(input, "value") == ["tcp/443"]
+    end
+
+    test "adds per-row classes", %{assigns: assigns} do
+      html =
+        render_component(
+          &live_table/1,
+          Map.put(assigns, :row_class, fn "foo" -> "bg-brand-muted" end)
+        )
+
+      assert html
+             |> Floki.parse_fragment!()
+             |> Floki.find("#table-id-rows > tr")
+             |> Floki.attribute("class")
+             |> Enum.any?(&String.contains?(&1, "bg-brand-muted"))
+    end
+
     test "renders email filter", %{assigns: assigns} do
       assigns = %{
         assigns

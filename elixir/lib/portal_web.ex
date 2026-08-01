@@ -147,6 +147,7 @@ defmodule PortalWeb do
   def components do
     quote do
       use Gettext, backend: PortalWeb.Gettext
+      import PortalWeb.AuthorizationComponents
       import PortalWeb.CoreComponents
       import PortalWeb.NavigationComponents
       import PortalWeb.FormComponents

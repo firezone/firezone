@@ -79,6 +79,7 @@ defmodule PortalWeb.TableComponents do
   attr :patch, :any, default: nil, doc: "the function for generating patch path for each row"
   attr :click, :any, default: nil, doc: "fn(row) -> patch path for row-level phx-click"
   attr :selected, :boolean, default: false, doc: "whether this row is currently selected"
+  attr :class, :any, default: nil, doc: "additional classes for the table row"
 
   attr :columns, :any, required: true, doc: "col slot taken from parent component"
   attr :actions, :list, required: true, doc: "action slot taken from parent component"
@@ -95,7 +96,8 @@ defmodule PortalWeb.TableComponents do
         "border-b border-border group transition-colors",
         @selected && "border-l-4 border-l-brand bg-raised",
         not @selected && (@patch || @click) && "hover:cursor-pointer hover:bg-raised",
-        @selected && (@patch || @click) && "cursor-pointer"
+        @selected && (@patch || @click) && "cursor-pointer",
+        @class
       ]}
       phx-click={@click && "table_row_click"}
       phx-value-path={@click && @click.(@row)}

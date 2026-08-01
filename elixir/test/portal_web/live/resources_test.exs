@@ -1129,12 +1129,18 @@ defmodule PortalWeb.ResourcesTest do
     } do
       resource = resource_fixture(account: account)
 
-      {:ok, _lv, html} =
+      {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}?tab=authorizations")
 
       assert html =~ "No recent policy authorizations"
+
+      assert has_element?(
+               lv,
+               "[data-authorization-flow-logs-notice] a[href='#{~p"/#{account}/logs/flow_logs"}']",
+               "flow logs"
+             )
     end
 
     test "Authorizations tab renders actor name for membership-based authorization", %{

@@ -263,6 +263,7 @@ defmodule PortalWeb.Router do
         live "/session_logs", SessionLogs
         live "/session_logs/:log_id", SessionLogs, :show
         live "/flow_logs", FlowLogs
+        live "/flow_logs/:log_id", FlowLogs, :show
         live "/api_request_logs", APIRequestLogs
         live "/api_request_logs/:log_id", APIRequestLogs, :show
       end

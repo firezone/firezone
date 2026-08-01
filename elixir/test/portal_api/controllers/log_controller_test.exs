@@ -359,7 +359,17 @@ defmodule PortalAPI.LogControllerTest do
     end
 
     test "renders flow log fields", %{conn: conn, account: account, actor: actor} do
-      flow_log = flow_log_fixture(account: account)
+      flow_log =
+        flow_log_fixture(
+          account: account,
+          initiator_client_version: "1.5.1",
+          initiator_device_os_name: "macOS",
+          initiator_device_os_version: "15.5",
+          initiator_device_serial: "C02ABC123",
+          initiator_device_uuid: "0C4A8D24-FA9F-4E56-9B57-40D0D46A245E",
+          initiator_device_identifier_for_vendor: "C242BC21-AB4A-4F6D-B755-F50E2B5B51B7",
+          initiator_device_firebase_installation_id: "firebase-installation-id"
+        )
 
       conn =
         conn
@@ -367,13 +377,45 @@ defmodule PortalAPI.LogControllerTest do
         |> get(~p"/logs?type=flow")
 
       assert %{"data" => [data]} = json_response(conn, 200)
+
+      expected_keys =
+        Portal.FlowLog.__schema__(:fields)
+        |> Enum.reject(&(&1 in [:account_id, :seq, :start_seq]))
+        |> Enum.map(fn
+          :inserted_at -> "timestamp"
+          :domain -> "inner_domain"
+          field -> Atom.to_string(field)
+        end)
+        |> MapSet.new()
+        |> MapSet.put("type")
+
+      assert MapSet.new(Map.keys(data)) == expected_keys
       assert data["log_id"] == flow_log.log_id
       assert data["initiator_device_id"] == flow_log.initiator_device_id
       assert data["responder_device_id"] == flow_log.responder_device_id
       assert data["role"] == "responder"
+      assert data["policy_authorization_id"] == flow_log.policy_authorization_id
+      assert data["policy_id"] == flow_log.policy_id
       assert data["protocol"] == "tcp"
+      assert data["authorized_at"] == DateTime.to_iso8601(flow_log.authorized_at)
+
+      assert data["authorization_expires_at"] ==
+               DateTime.to_iso8601(flow_log.authorization_expires_at)
+
       assert data["initiator_actor_id"] == flow_log.initiator_actor_id
       assert data["initiator_actor_email"] == "user@example.com"
+      assert data["initiator_client_version"] == "1.5.1"
+      assert data["initiator_device_os_name"] == "macOS"
+      assert data["initiator_device_os_version"] == "15.5"
+      assert data["initiator_device_serial"] == "C02ABC123"
+      assert data["initiator_device_uuid"] == "0C4A8D24-FA9F-4E56-9B57-40D0D46A245E"
+
+      assert data["initiator_device_identifier_for_vendor"] ==
+               "C242BC21-AB4A-4F6D-B755-F50E2B5B51B7"
+
+      assert data["initiator_device_firebase_installation_id"] ==
+               "firebase-installation-id"
+
       assert data["resource_id"] == flow_log.resource_id
       assert data["resource_name"] == "GitLab"
       assert data["resource_address"] == "gitlab.company.com"
@@ -387,6 +429,44 @@ defmodule PortalAPI.LogControllerTest do
       assert data["tx_packets"] == 80
       assert data["rx_bytes"] == 102_400
       assert data["tx_bytes"] == 20_480
+      refute Map.has_key?(data, "account_id")
+      refute Map.has_key?(data, "seq")
+      refute Map.has_key?(data, "start_seq")
+    end
+
+    test "renders and documents incomplete flow fields as null", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      flow_log_fixture(
+        account: account,
+        flow_end: nil,
+        last_packet: nil,
+        rx_packets: nil,
+        tx_packets: nil,
+        rx_bytes: nil,
+        tx_bytes: nil,
+        resource_address: nil
+      )
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get(~p"/logs?type=flow")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+
+      for field <- ~w[flow_end last_packet rx_packets tx_packets rx_bytes tx_bytes resource_address] do
+        assert Map.fetch!(data, field) == nil
+      end
+
+      schema = PortalAPI.Schemas.Log.Flow.schema()
+
+      for field <- ~w[flow_end last_packet rx_packets tx_packets rx_bytes tx_bytes resource_address]a do
+        assert schema.properties[field].nullable
+        assert field in schema.required
+      end
     end
 
     test "filters by actor_id", %{conn: conn, account: account, actor: actor} do

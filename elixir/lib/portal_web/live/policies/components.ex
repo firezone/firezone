@@ -1060,9 +1060,10 @@ defmodule PortalWeb.Policies.Components do
   def policy_authorizations_tab(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col overflow-hidden">
+      <.authorization_flow_logs_notice account={@account} />
       <div
         :if={@policy_authorizations == []}
-        class="flex flex-col items-center justify-center h-full gap-2 text-subtle"
+        class="flex flex-1 flex-col items-center justify-center gap-2 text-subtle"
       >
         <.icon name="ri-shield-check-line" class="w-8 h-8" />
         <p class="text-sm">No recent authorizations</p>

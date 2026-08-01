@@ -16,6 +16,8 @@ defmodule PortalAPI.LogJSON do
     %{data: data(log)}
   end
 
+  def flow_log(%FlowLog{} = log), do: data(log)
+
   defp data(%ChangeLog{} = log) do
     %{
       type: "change",
@@ -47,14 +49,26 @@ defmodule PortalAPI.LogJSON do
       initiator_device_id: log.initiator_device_id,
       responder_device_id: log.responder_device_id,
       role: log.role,
+      policy_authorization_id: log.policy_authorization_id,
+      policy_id: log.policy_id,
       protocol: log.protocol,
       flow_start: log.flow_start,
       flow_end: log.flow_end,
       last_packet: log.last_packet,
+      authorized_at: log.authorized_at,
+      authorization_expires_at: log.authorization_expires_at,
       initiator_auth_provider_id: log.initiator_auth_provider_id,
       initiator_actor_id: log.initiator_actor_id,
       initiator_actor_name: log.initiator_actor_name,
       initiator_actor_email: log.initiator_actor_email,
+      initiator_client_version: log.initiator_client_version,
+      initiator_device_os_name: log.initiator_device_os_name,
+      initiator_device_os_version: log.initiator_device_os_version,
+      initiator_device_serial: log.initiator_device_serial,
+      initiator_device_uuid: log.initiator_device_uuid,
+      initiator_device_identifier_for_vendor: log.initiator_device_identifier_for_vendor,
+      initiator_device_firebase_installation_id:
+        log.initiator_device_firebase_installation_id,
       resource_id: log.resource_id,
       resource_name: log.resource_name,
       resource_address: log.resource_address,

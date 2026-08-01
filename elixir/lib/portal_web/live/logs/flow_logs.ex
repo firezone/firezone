@@ -1,8 +1,112 @@
 defmodule PortalWeb.Logs.FlowLogs do
   use PortalWeb, :live_view
 
+  import PortalWeb.Logs.Components
+
+  alias __MODULE__.Database
+  alias PortalWeb.Logs.JSONDiff
+
+  @table_id "flow_logs"
+  @filter_key "flow_logs_filter"
+  @json_token_regex ~r/"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b/
+
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "Flow Logs")}
+    browser_tz = browser_tz_from_connect(socket)
+
+    socket =
+      socket
+      |> assign(page_title: "Flow Logs")
+      |> assign(selected_report: nil, selected_report_json: nil, browser_tz: browser_tz)
+      |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
+      |> assign_live_table(@table_id,
+        query_module: Database,
+        sortable_fields: [
+          {:flow_logs, :flow_start},
+          {:flow_logs, :total_bytes},
+          {:flow_logs, :log_id}
+        ],
+        callback: &handle_logs_update!/2
+      )
+
+    {:ok, socket}
+  end
+
+  def handle_params(
+        %{"log_id" => log_id} = params,
+        uri,
+        %{assigns: %{live_action: :show}} = socket
+      ) do
+    socket =
+      socket
+      |> assign_tz(params, @filter_key)
+      |> handle_live_tables_params(params, uri)
+
+    case Database.fetch_report(log_id, socket.assigns.subject) do
+      {:ok, report} ->
+        {:noreply,
+         assign(socket,
+           selected_report: report,
+           selected_report_json: flow_log_json(report.log)
+         )}
+
+      {:error, :not_found} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Flow log not found")
+         |> push_navigate(to: ~p"/#{socket.assigns.account}/logs/flow_logs")}
+
+      {:error, :unauthorized} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "You are not authorized to view this flow log")
+         |> push_navigate(to: ~p"/#{socket.assigns.account}/logs/flow_logs")}
+    end
+  end
+
+  def handle_params(params, uri, socket) do
+    socket =
+      socket
+      |> assign(selected_report: nil, selected_report_json: nil)
+      |> assign_tz(params, @filter_key)
+      |> handle_live_tables_params(params, uri)
+
+    {:noreply, socket}
+  end
+
+  def handle_event(event, params, socket)
+      when event in ["paginate", "order_by", "filter", "table_row_click", "change_limit"],
+      do: handle_live_table_event(event, params, socket)
+
+  def handle_event("close_panel", _params, socket) do
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/#{socket.assigns.account}/logs/flow_logs?#{socket.assigns.query_params}"
+     )}
+  end
+
+  def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
+      when not is_nil(socket.assigns.selected_report) do
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/#{socket.assigns.account}/logs/flow_logs?#{socket.assigns.query_params}"
+     )}
+  end
+
+  def handle_event("handle_keydown", _params, socket), do: {:noreply, socket}
+
+  def handle_logs_update!(socket, list_opts) do
+    list_opts =
+      Keyword.update(list_opts, :filter, [show_incomplete: false], &default_show_incomplete/1)
+
+    with {:ok, logs, metadata} <- Database.list_flow_logs(socket.assigns.subject, list_opts) do
+      {:ok, assign(socket, flow_logs: logs, flow_logs_metadata: metadata)}
+    end
+  end
+
+  defp default_show_incomplete(filter) do
+    if Keyword.has_key?(filter, :show_incomplete),
+      do: filter,
+      else: [{:show_incomplete, false} | filter]
   end
 
   def render(assigns) do
@@ -10,45 +114,1076 @@ defmodule PortalWeb.Logs.FlowLogs do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.logs_nav account={@account} current_path={@current_path} />
 
-      <div class="flex-1 min-h-0 overflow-y-auto p-6">
-        <div class="max-w-2xl mx-auto">
-          <div class="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
-            <div class="px-6 py-8 flex flex-col items-center text-center gap-4">
-              <div class="w-14 h-14 rounded-full border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-exchange-line" class="w-7 h-7 text-[var(--brand)]" />
+      <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <.live_table
+          id="flow_logs"
+          rows={@flow_logs}
+          row_id={&"flow-log-#{&1.log.log_id}"}
+          row_click={
+            fn row ->
+              ~p"/#{@account}/logs/flow_logs/#{row.log.log_id}?#{@query_params}"
+            end
+          }
+          row_selected={
+            fn row ->
+              not is_nil(@selected_report) and
+                row.log.log_id == @selected_report.log.log_id
+            end
+          }
+          row_class={&role_row_class/1}
+          filters={@filters_by_table_id["flow_logs"]}
+          filter={@filter_form_by_table_id["flow_logs"]}
+          ordered_by={@order_by_table_id["flow_logs"]}
+          metadata={@flow_logs_metadata}
+          class="flex-1 min-h-0"
+          row_item={& &1}
+        >
+          <:col :let={row} field={{:flow_logs, :flow_start}} label="Opened" class="w-44">
+            <span class="sr-only">Logged by {row.log.role}</span>
+            <.timestamp_cell
+              log_id={row.log.log_id}
+              timestamp={row.log.flow_start}
+              tz_mode={@tz_mode}
+              display_tz={@display_tz}
+            />
+          </:col>
+          <:col :let={row} label="Actor" class="w-64">
+            <.actor_cell subject={actor_subject(row.log)} />
+          </:col>
+          <:col :let={row} label="Client" class="w-52">
+            <.flow_client_cell
+              device_name={device_name(row.initiator_device, "Deleted client")}
+              outer_src_ip={row.log.outer_src_ip}
+            />
+          </:col>
+          <:col :let={row} label="Resource" class="w-72">
+            <.flow_resource_cell
+              name={row.log.resource_name}
+              domain={row.log.domain}
+              protocol={row.log.protocol}
+              ip={row.log.inner_dst_ip}
+              port={row.log.inner_dst_port}
+            />
+          </:col>
+          <:col :let={row} label="Duration" class="w-28">
+            <.flow_state log={row.log} />
+          </:col>
+          <:col
+            :let={row}
+            field={{:flow_logs, :total_bytes}}
+            label="Size"
+            class="w-28"
+          >
+            <span
+              class="font-mono text-xs tabular-nums text-[var(--text-secondary)]"
+              title="Total traffic in both directions"
+            >
+              {format_bytes(total_bytes(row.log))}
+            </span>
+          </:col>
+          <:empty>
+            <div class="flex flex-col items-center gap-3 py-16">
+              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
+                <.icon name="ri-exchange-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
               </div>
-              <div>
-                <h3 class="text-base font-semibold text-[var(--text-primary)]">
-                  Flow Logs in the portal are coming soon!
-                </h3>
-                <p class="mt-2 text-sm text-[var(--text-secondary)] max-w-md mx-auto">
-                  In the meantime, flow logs can be emitted to stdout on your gateways by setting
-                  the environment variable below.
+              <div class="text-center">
+                <p class="text-sm font-medium text-[var(--text-primary)]">No flow logs</p>
+                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                  Logs from initiators and responders will appear here as flows are observed.
                 </p>
               </div>
+            </div>
+          </:empty>
+          <:footer>
+            <.log_sinks_notice account={@account} />
+          </:footer>
+        </.live_table>
+      </div>
 
-              <div class="w-full mt-2 rounded border border-[var(--border)] bg-[var(--surface-raised)]">
-                <div class="flex items-center justify-between px-3 py-2 border-b border-[var(--border)]">
-                  <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-                    Gateway environment
-                  </span>
-                  <.icon name="ri-terminal-box-line" class="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
+      <.show_panel id="flow-log-panel" open?={not is_nil(@selected_report)}>
+        <:title>
+          <%= if @selected_report do %>
+            <div id="flow-log-panel-title" class="flex min-w-0 items-center gap-2 text-sm">
+              <span class="truncate text-[var(--text-primary)]">
+                {@selected_report.log.initiator_actor_name || "Unknown actor"}
+                <span
+                  :if={@selected_report.log.initiator_actor_email not in [nil, ""]}
+                  class="text-[var(--text-tertiary)]"
+                >
+                  ({@selected_report.log.initiator_actor_email})
+                </span>
+              </span>
+              <.icon
+                name="ri-arrow-right-line"
+                class="h-4 w-4 shrink-0 text-[var(--text-tertiary)]"
+              />
+              <span class="truncate text-[var(--text-primary)]">
+                {@selected_report.log.resource_name}
+              </span>
+            </div>
+          <% end %>
+        </:title>
+
+        <div
+          :if={@selected_report}
+          class="flex-1 min-w-0 overflow-y-auto p-5 space-y-5"
+        >
+          <.match_notice
+            matching_logs={@selected_report.matching_logs}
+            selected_role={@selected_report.log.role}
+          />
+
+          <section>
+            <div class="flex items-center justify-between gap-3 mb-2">
+              <.section_heading label="Initiator and responder logs" />
+              <span class="text-xs text-[var(--text-tertiary)]">
+                Directions are normalized to initiator → responder
+              </span>
+            </div>
+            <div class="grid grid-cols-1 2xl:grid-cols-2 gap-3">
+              <.report_card
+                :for={log <- comparison_logs(@selected_report)}
+                log={log}
+                selected?={log.log_id == @selected_report.log.log_id}
+                path={~p"/#{@account}/logs/flow_logs/#{log.log_id}?#{@query_params}"}
+                tz_mode={@tz_mode}
+                display_tz={@display_tz}
+              />
+            </div>
+          </section>
+
+          <section>
+            <.section_heading label="Connection details" />
+            <div class="rounded border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="min-w-0 flex-1">
+                  <div class="text-xs text-[var(--text-tertiary)]">
+                    Initiator
+                  </div>
+                  <div class="mt-1 truncate font-mono text-xs text-[var(--text-primary)]">
+                    {format_endpoint(
+                      @selected_report.log.inner_src_ip,
+                      @selected_report.log.inner_src_port
+                    )}
+                  </div>
                 </div>
-                <pre class="px-3 py-3 text-left text-xs font-mono text-[var(--text-primary)] overflow-x-auto"><code>FIREZONE_FLOW_LOGS=true</code></pre>
+                <.icon name="ri-arrow-right-line" class="w-4 h-4 shrink-0 text-[var(--brand)]" />
+                <div class="min-w-0 flex-1 text-right">
+                  <div class="truncate text-xs text-[var(--text-tertiary)]">
+                    {destination_label(@selected_report.log)}
+                  </div>
+                  <div class="mt-1 truncate font-mono text-xs text-[var(--text-primary)]">
+                    {format_endpoint(
+                      @selected_report.log.inner_dst_ip,
+                      @selected_report.log.inner_dst_port
+                    )}
+                  </div>
+                </div>
               </div>
-
-              <div class="flex items-start gap-2 text-left rounded border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-xs text-[var(--text-secondary)] w-full">
-                <.icon name="ri-information-line" class="w-4 h-4 shrink-0 mt-0.5 text-[var(--brand)]" />
-                <span>
-                  Flow logs are written to stdout on the gateway process. Capture them with your
-                  log aggregator of choice.
+              <div
+                :if={@selected_report.log.domain}
+                class="mt-3 pt-3 border-t border-[var(--border)] text-xs text-[var(--text-secondary)]"
+              >
+                Resolved domain:
+                <span class="font-mono text-[var(--text-primary)]">
+                  {@selected_report.log.domain}
                 </span>
               </div>
             </div>
+          </section>
+
+          <.json_view id="flow-log-json" value={@selected_report_json} />
+        </div>
+
+        <.show_panel_sidebar :if={@selected_report}>
+          <section>
+            <.section_heading label="Log details" />
+            <dl class="space-y-2.5">
+              <.detail_row label="Logged by">
+                <div class="flex items-center gap-2">
+                  <.role_badge role={@selected_report.log.role} />
+                  <span class="truncate text-xs text-[var(--text-secondary)]">
+                    {reporter_device_name(@selected_report)}
+                  </span>
+                </div>
+              </.detail_row>
+              <.detail_row label="Received">
+                <.timestamp_cell
+                  id_prefix="panel-received"
+                  log_id={@selected_report.log.log_id}
+                  timestamp={@selected_report.log.inserted_at}
+                  tz_mode={@tz_mode}
+                  display_tz={@display_tz}
+                />
+              </.detail_row>
+              <.detail_row label="Log ID">
+                <.identifier value={@selected_report.log.log_id} />
+              </.detail_row>
+            </dl>
+          </section>
+
+          <div class="border-t border-[var(--border)]"></div>
+
+          <section>
+            <.section_heading label="Devices and resource" />
+            <dl class="space-y-2.5">
+              <.detail_row label="Actor">
+                <div class="text-xs text-[var(--text-primary)]">
+                  {@selected_report.log.initiator_actor_name}
+                </div>
+                <div
+                  :if={@selected_report.log.initiator_actor_email}
+                  class="truncate text-xs text-[var(--text-tertiary)]"
+                >
+                  {@selected_report.log.initiator_actor_email}
+                </div>
+              </.detail_row>
+              <.detail_row label="Initiator device">
+                <div class="text-xs text-[var(--text-secondary)]">
+                  {device_name(@selected_report.initiator_device, "Deleted client")}
+                </div>
+                <.identifier value={@selected_report.log.initiator_device_id} />
+              </.detail_row>
+              <.detail_row label="Responder device">
+                <div class="text-xs text-[var(--text-secondary)]">
+                  {device_name(@selected_report.responder_device, "Deleted responder")}
+                </div>
+                <.identifier value={@selected_report.log.responder_device_id} />
+              </.detail_row>
+              <.detail_row label="Resource">
+                <div class="text-xs text-[var(--text-primary)]">
+                  {@selected_report.log.resource_name}
+                </div>
+                <div
+                  :if={@selected_report.log.resource_address}
+                  class="truncate font-mono text-xs text-[var(--text-tertiary)]"
+                >
+                  {@selected_report.log.resource_address}
+                </div>
+                <.identifier value={@selected_report.log.resource_id} />
+              </.detail_row>
+            </dl>
+          </section>
+
+          <div class="border-t border-[var(--border)]"></div>
+
+          <section>
+            <.section_heading label="Authorization" />
+            <dl class="space-y-2.5">
+              <.detail_row label="Authorization ID">
+                <.identifier value={@selected_report.log.policy_authorization_id} />
+              </.detail_row>
+              <.detail_row label="Policy ID">
+                <.identifier value={@selected_report.log.policy_id} />
+              </.detail_row>
+              <.detail_row label="Authorized">
+                <.timestamp_cell
+                  id_prefix="panel-authorized"
+                  log_id={@selected_report.log.log_id}
+                  timestamp={@selected_report.log.authorized_at}
+                  tz_mode={@tz_mode}
+                  display_tz={@display_tz}
+                />
+              </.detail_row>
+              <.detail_row label="Expires">
+                <.timestamp_cell
+                  id_prefix="panel-expires"
+                  log_id={@selected_report.log.log_id}
+                  timestamp={@selected_report.log.authorization_expires_at}
+                  tz_mode={@tz_mode}
+                  display_tz={@display_tz}
+                />
+              </.detail_row>
+            </dl>
+          </section>
+
+          <div
+            :if={has_client_telemetry?(@selected_report.log)}
+            class="border-t border-[var(--border)]"
+          >
+          </div>
+
+          <section :if={has_client_telemetry?(@selected_report.log)}>
+            <.section_heading label="Initiator device details" />
+            <dl class="space-y-2.5">
+              <.detail_row :if={@selected_report.log.initiator_client_version} label="Client">
+                <.detail_value value={@selected_report.log.initiator_client_version} />
+              </.detail_row>
+              <.detail_row :if={@selected_report.log.initiator_device_os_name} label="Operating system">
+                <.detail_value value={os_label(@selected_report.log)} />
+              </.detail_row>
+              <.detail_row :if={@selected_report.log.initiator_device_serial} label="Serial">
+                <.identifier value={@selected_report.log.initiator_device_serial} />
+              </.detail_row>
+              <.detail_row :if={@selected_report.log.initiator_device_uuid} label="Device UUID">
+                <.identifier value={@selected_report.log.initiator_device_uuid} />
+              </.detail_row>
+              <.detail_row
+                :if={@selected_report.log.initiator_device_identifier_for_vendor}
+                label="Vendor identifier"
+              >
+                <.identifier value={@selected_report.log.initiator_device_identifier_for_vendor} />
+              </.detail_row>
+              <.detail_row
+                :if={@selected_report.log.initiator_device_firebase_installation_id}
+                label="Firebase installation"
+              >
+                <.identifier value={
+                  @selected_report.log.initiator_device_firebase_installation_id
+                } />
+              </.detail_row>
+              <.detail_row :if={@selected_report.log.initiator_auth_provider_id} label="Auth provider ID">
+                <.identifier value={@selected_report.log.initiator_auth_provider_id} />
+              </.detail_row>
+            </dl>
+          </section>
+        </.show_panel_sidebar>
+      </.show_panel>
+    </div>
+    """
+  end
+
+  attr :role, :atom, required: true
+
+  defp role_badge(assigns) do
+    ~H"""
+    <.badge type={if(@role == :initiator, do: "primary", else: "accent")} size="xs">
+      {if(@role == :initiator, do: "Initiator", else: "Responder")}
+    </.badge>
+    """
+  end
+
+  attr :log, :any, required: true
+
+  defp flow_state(assigns) do
+    assigns = assign(assigns, :skew?, clock_skew?(assigns.log))
+
+    ~H"""
+    <.badge :if={is_nil(@log.flow_end)} type="info" size="xs">Incomplete</.badge>
+    <.badge
+      :if={@skew?}
+      type="warning"
+      size="xs"
+      title="The reported flow end time is earlier than its start time, usually because the reporting device's clock changed or was out of sync."
+    >
+      Clock skew
+    </.badge>
+    <span
+      :if={not is_nil(@log.flow_end) and not @skew?}
+      class="text-xs tabular-nums text-[var(--text-secondary)]"
+    >
+      {format_duration(@log.flow_start, @log.flow_end)}
+    </span>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :value, :map, required: true
+
+  defp json_view(assigns) do
+    encoded = JSONDiff.pretty(assigns.value)
+
+    assigns = assign(assigns, :tokens, json_tokens(encoded))
+
+    ~H"""
+    <section id={@id} phx-hook="CopyClipboard">
+      <.section_heading label="Flow log JSON" />
+      <div class="relative">
+        <pre class="max-h-96 overflow-auto rounded border border-[var(--border)] bg-[var(--surface-raised)] p-4 pr-24 text-xs leading-5"><code id={"#{@id}-code"} class="block min-w-max" phx-no-format><span :for={token <- @tokens} class={json_token_class(token.kind)}><%= token.text %></span></code></pre>
+        <button
+          type="button"
+          data-copy-to-clipboard-target={"#{@id}-code"}
+          title="Copy JSON to clipboard"
+          class="absolute end-2 top-2 inline-flex h-8 items-center gap-1.5 rounded border border-[var(--control-border)] bg-[var(--surface)] px-2.5 text-xs text-[var(--text-secondary)] shadow-sm hover:text-[var(--text-primary)]"
+        >
+          <span id={"#{@id}-default-message"} class="inline-flex items-center gap-1.5">
+            <.icon name="ri-clipboard-line" data-icon class="h-3.5 w-3.5" /> Copy
+          </span>
+          <span id={"#{@id}-success-message"} class="hidden items-center gap-1.5">
+            <.icon name="ri-check-line" data-icon class="h-3.5 w-3.5 text-emerald-600" /> Copied
+          </span>
+        </button>
+      </div>
+    </section>
+    """
+  end
+
+  defp json_tokens(json) do
+    {groups, cursor} =
+      @json_token_regex
+      |> Regex.scan(json, return: :index, capture: :first)
+      |> Enum.map_reduce(0, fn [{start, length}], cursor ->
+        token_end = start + length
+        leading = binary_part(json, cursor, start - cursor)
+        token = binary_part(json, start, length)
+
+        {[
+           %{kind: :plain, text: leading},
+           %{kind: json_token_kind(token, json, token_end), text: token}
+         ], token_end}
+      end)
+
+    trailing = binary_part(json, cursor, byte_size(json) - cursor)
+
+    groups
+    |> List.flatten()
+    |> Kernel.++([%{kind: :plain, text: trailing}])
+    |> Enum.reject(&(&1.text == ""))
+  end
+
+  defp json_token_kind(<<"\"", _::binary>>, json, token_end) do
+    remainder = binary_part(json, token_end, byte_size(json) - token_end)
+
+    if remainder |> String.trim_leading() |> String.starts_with?(":"),
+      do: :key,
+      else: :string
+  end
+
+  defp json_token_kind(token, _json, _token_end) when token in ["true", "false"],
+    do: :boolean
+
+  defp json_token_kind("null", _json, _token_end), do: :null
+  defp json_token_kind(_token, _json, _token_end), do: :number
+
+  defp json_token_class(:key),
+    do: "json-key text-sky-700 dark:text-sky-300"
+
+  defp json_token_class(:string),
+    do: "json-string text-emerald-700 dark:text-emerald-300"
+
+  defp json_token_class(:number),
+    do: "json-number text-violet-700 dark:text-violet-300"
+
+  defp json_token_class(:boolean),
+    do: "json-boolean text-amber-700 dark:text-amber-300"
+
+  defp json_token_class(:null), do: "json-null text-[var(--text-tertiary)]"
+  defp json_token_class(:plain), do: nil
+
+  attr :matching_logs, :list, required: true
+  attr :selected_role, :atom, required: true
+
+  defp match_notice(assigns) do
+    assigns =
+      assign(assigns,
+        count: length(assigns.matching_logs),
+        other_role: if(assigns.selected_role == :initiator, do: "responder", else: "initiator")
+      )
+
+    ~H"""
+    <div
+      :if={@count == 0}
+      class="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-xs text-[var(--text-secondary)]"
+    >
+      <.icon name="ri-information-line" class="h-4 w-4 shrink-0 text-[var(--brand)]" />
+      <span>
+        No matching {@other_role} log was found. It may still be open, delayed, dropped, or beyond
+        the retention period.
+      </span>
+    </div>
+    <div
+      :if={@count == 1}
+      class="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-xs text-[var(--text-secondary)]"
+    >
+      <.icon name="ri-link" class="h-4 w-4 shrink-0 text-[var(--brand)]" />
+      <span>
+        Flow logs are paired on a best-effort basis.
+        <.link
+          href="https://www.firezone.dev/kb/audit-logs/flow#two-sided-reporting"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="font-medium text-[var(--brand)] hover:underline"
+        >
+          Read more
+        </.link>
+      </span>
+    </div>
+    <div
+      :if={@count > 1}
+      class="flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200"
+    >
+      <.icon name="ri-alert-line" class="h-4 w-4 shrink-0" />
+      <span>
+        Multiple {@other_role} logs have the same flow details and overlapping time windows. Up to
+        the three closest matches are shown; none can be selected with certainty.
+      </span>
+    </div>
+    """
+  end
+
+  attr :log, :any, required: true
+  attr :selected?, :boolean, required: true
+  attr :path, :string, required: true
+  attr :tz_mode, :string, required: true
+  attr :display_tz, :string, required: true
+
+  defp report_card(assigns) do
+    ~H"""
+    <.link
+      id={"flow-log-card-#{@log.log_id}"}
+      patch={@path}
+      data-role={@log.role}
+      aria-current={if(@selected?, do: "page")}
+      class={[
+        "block rounded border bg-[var(--surface)] overflow-hidden transition-colors",
+        if(@selected?,
+          do: "border-[var(--brand)]/50",
+          else: "border-[var(--border)] hover:border-[var(--brand)]/50"
+        )
+      ]}
+    >
+      <div class="flex items-center justify-between gap-3 px-3 py-2 border-b border-[var(--border)] bg-[var(--surface-raised)]">
+        <div class="flex items-center gap-2 min-w-0">
+          <.role_badge role={@log.role} />
+          <span :if={@selected?} class="text-xs text-[var(--text-tertiary)]">
+            Selected log
+          </span>
+          <span
+            :if={not @selected?}
+            class="inline-flex items-center gap-1 text-xs text-[var(--brand)]"
+          >
+            View log <.icon name="ri-arrow-right-line" class="w-3 h-3" />
+          </span>
+        </div>
+        <.flow_state log={@log} />
+      </div>
+      <div class="p-3 space-y-3">
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
+          <.detail_row label="Started">
+            <.timestamp_cell
+              id_prefix={"report-start-#{@log.role}"}
+              log_id={@log.log_id}
+              timestamp={@log.flow_start}
+              tz_mode={@tz_mode}
+              display_tz={@display_tz}
+            />
+          </.detail_row>
+          <.detail_row label="Ended">
+            <.timestamp_cell
+              :if={@log.flow_end}
+              id_prefix={"report-end-#{@log.role}"}
+              log_id={@log.log_id}
+              timestamp={@log.flow_end}
+              tz_mode={@tz_mode}
+              display_tz={@display_tz}
+            />
+            <span :if={is_nil(@log.flow_end)} class="text-xs text-[var(--text-tertiary)]">Open</span>
+          </.detail_row>
+          <.detail_row label="Last packet">
+            <.timestamp_cell
+              :if={@log.last_packet}
+              id_prefix={"report-packet-#{@log.role}"}
+              log_id={@log.log_id}
+              timestamp={@log.last_packet}
+              tz_mode={@tz_mode}
+              display_tz={@display_tz}
+            />
+            <span :if={is_nil(@log.last_packet)} class="text-xs text-[var(--text-tertiary)]">-</span>
+          </.detail_row>
+          <.detail_row label="Log ID">
+            <.identifier value={@log.log_id} />
+          </.detail_row>
+        </dl>
+
+        <div class="grid grid-cols-2 gap-2">
+          <.metric label="Initiator → responder" value={format_bytes(@log.tx_bytes)} secondary={format_packets(@log.tx_packets)} />
+          <.metric label="Responder → initiator" value={format_bytes(@log.rx_bytes)} secondary={format_packets(@log.rx_packets)} />
+        </div>
+
+        <div class="pt-3 border-t border-[var(--border)]">
+          <div class="mb-1 text-xs text-[var(--text-tertiary)]">
+            WireGuard endpoints
+          </div>
+          <div class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
+            <span class="text-[var(--text-tertiary)]">Initiator</span>
+            <span
+              data-wireguard-endpoint="initiator"
+              class="break-all text-right font-mono text-[var(--text-secondary)]"
+            >
+              {format_endpoint(@log.outer_src_ip, @log.outer_src_port)}
+            </span>
+            <span class="text-[var(--text-tertiary)]">Responder</span>
+            <span
+              data-wireguard-endpoint="responder"
+              class="break-all text-right font-mono text-[var(--text-secondary)]"
+            >
+              {format_endpoint(@log.outer_dst_ip, @log.outer_dst_port)}
+            </span>
           </div>
         </div>
       </div>
+    </.link>
+    """
+  end
+
+  attr :label, :string, required: true
+  attr :value, :string, required: true
+  attr :secondary, :string, required: true
+
+  defp metric(assigns) do
+    ~H"""
+    <div class="rounded bg-[var(--surface-raised)] px-3 py-2">
+      <div class="text-xs text-[var(--text-tertiary)]">{@label}</div>
+      <div class="mt-1 font-mono text-xs text-[var(--text-primary)]">{@value}</div>
+      <div class="font-mono text-xs text-[var(--text-tertiary)]">{@secondary}</div>
     </div>
     """
+  end
+
+  attr :value, :any, required: true
+
+  defp identifier(assigns) do
+    ~H"""
+    <span class="block font-mono text-xs text-[var(--text-secondary)] break-all">
+      {@value}
+    </span>
+    """
+  end
+
+  attr :value, :any, required: true
+
+  defp detail_value(assigns) do
+    ~H"""
+    <span class="text-xs text-[var(--text-secondary)]">{@value}</span>
+    """
+  end
+
+  defp comparison_logs(report) do
+    [report.log | report.matching_logs]
+    |> Enum.sort_by(&if(&1.role == :initiator, do: 0, else: 1))
+  end
+
+  defp role_row_class(%{log: %{role: :initiator}}),
+    do:
+      "!bg-brand/[0.025] hover:!bg-brand/[0.04] dark:!bg-brand/[0.04] dark:hover:!bg-brand/[0.06]"
+
+  defp role_row_class(%{log: %{role: :responder}}),
+    do:
+      "!bg-accent/[0.025] hover:!bg-accent/[0.04] dark:!bg-accent/[0.04] dark:hover:!bg-accent/[0.06]"
+
+  defp actor_subject(log) do
+    %{
+      "actor_name" => log.initiator_actor_name,
+      "actor_email" => log.initiator_actor_email
+    }
+  end
+
+  defp destination_label(log), do: log.domain || log.resource_name
+
+  defp flow_log_json(log) do
+    log
+    |> PortalAPI.LogJSON.flow_log()
+    |> JSON.encode!()
+    |> JSON.decode!()
+  end
+
+  defp reporter_device_name(%{log: %{role: :initiator}, initiator_device: device}),
+    do: device_name(device, "Deleted client")
+
+  defp reporter_device_name(%{log: %{role: :responder}, responder_device: device}),
+    do: device_name(device, "Deleted responder")
+
+  defp device_name(%{name: name}, _fallback) when name not in [nil, ""], do: name
+  defp device_name(_, fallback), do: fallback
+
+  defp format_duration(started_at, ended_at) do
+    seconds = DateTime.diff(ended_at, started_at, :second)
+
+    cond do
+      seconds < 60 -> "#{seconds}s"
+      seconds < 3_600 -> "#{div(seconds, 60)}m #{rem(seconds, 60)}s"
+      true -> "#{div(seconds, 3_600)}h #{div(rem(seconds, 3_600), 60)}m"
+    end
+  end
+
+  defp clock_skew?(%{flow_end: nil}), do: false
+
+  defp clock_skew?(%{flow_start: started_at, flow_end: ended_at}),
+    do: DateTime.compare(ended_at, started_at) == :lt
+
+  defp format_bytes(nil), do: "-"
+  defp format_bytes(bytes) when bytes < 1_000, do: "#{bytes} B"
+
+  defp format_bytes(bytes) do
+    {value, unit} =
+      cond do
+        bytes < 1_000_000 -> {bytes / 1_000, "KB"}
+        bytes < 1_000_000_000 -> {bytes / 1_000_000, "MB"}
+        bytes < 1_000_000_000_000 -> {bytes / 1_000_000_000, "GB"}
+        true -> {bytes / 1_000_000_000_000, "TB"}
+      end
+
+    formatted =
+      if value >= 100,
+        do: :erlang.float_to_binary(value, decimals: 0),
+        else: :erlang.float_to_binary(value, decimals: 1)
+
+    "#{formatted} #{unit}"
+  end
+
+  defp format_packets(nil), do: "No final packet count"
+  defp format_packets(1), do: "1 packet"
+  defp format_packets(count), do: "#{count} packets"
+
+  defp total_bytes(%{tx_bytes: nil, rx_bytes: nil}), do: nil
+
+  defp total_bytes(log),
+    do: (log.tx_bytes || 0) + (log.rx_bytes || 0)
+
+  defp has_client_telemetry?(log) do
+    Enum.any?(
+      [
+        log.initiator_client_version,
+        log.initiator_device_os_name,
+        log.initiator_device_os_version,
+        log.initiator_device_serial,
+        log.initiator_device_uuid,
+        log.initiator_device_identifier_for_vendor,
+        log.initiator_device_firebase_installation_id,
+        log.initiator_auth_provider_id
+      ],
+      &(&1 not in [nil, ""])
+    )
+  end
+
+  defp os_label(log) do
+    [log.initiator_device_os_name, log.initiator_device_os_version]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" ")
+  end
+
+  defmodule Database do
+    import Ecto.Query
+
+    alias Portal.Device
+    alias Portal.FlowLog
+    alias Portal.Safe
+    alias Portal.Types.LogId
+
+    @candidate_limit 3
+
+    def list_flow_logs(subject, opts \\ []) do
+      {query, opts} =
+        from(fl in FlowLog, as: :flow_logs)
+        |> apply_total_bytes_order(opts)
+
+      result =
+        query
+        |> Safe.scoped(subject)
+        |> Safe.list_offset(__MODULE__, opts)
+
+      case result do
+        {:ok, logs, metadata} -> {:ok, enrich(logs, subject), metadata}
+        other -> other
+      end
+    end
+
+    defp apply_total_bytes_order(queryable, opts) do
+      order_by = Keyword.get(opts, :order_by, [])
+
+      case Enum.find(
+             order_by,
+             &match?(
+               {:flow_logs, direction, :total_bytes} when direction in [:asc, :desc],
+               &1
+             )
+           ) do
+        nil ->
+          {queryable, opts}
+
+        {:flow_logs, direction, :total_bytes} ->
+          remaining_order =
+            Enum.reject(order_by, &match?({:flow_logs, _, :total_bytes}, &1))
+
+          queryable = order_by_total_bytes(queryable, direction)
+          {queryable, Keyword.put(opts, :order_by, remaining_order)}
+      end
+    end
+
+    defp order_by_total_bytes(queryable, :asc) do
+      order_by(
+        queryable,
+        [flow_logs: fl],
+        asc_nulls_last:
+          fragment(
+            "CASE WHEN ? IS NULL AND ? IS NULL THEN NULL ELSE COALESCE(?::numeric, 0) + COALESCE(?::numeric, 0) END",
+            fl.tx_bytes,
+            fl.rx_bytes,
+            fl.tx_bytes,
+            fl.rx_bytes
+          )
+      )
+    end
+
+    defp order_by_total_bytes(queryable, :desc) do
+      order_by(
+        queryable,
+        [flow_logs: fl],
+        desc_nulls_last:
+          fragment(
+            "CASE WHEN ? IS NULL AND ? IS NULL THEN NULL ELSE COALESCE(?::numeric, 0) + COALESCE(?::numeric, 0) END",
+            fl.tx_bytes,
+            fl.rx_bytes,
+            fl.tx_bytes,
+            fl.rx_bytes
+          )
+      )
+    end
+
+    def fetch_report(log_id, subject) do
+      with {:ok, log_id} <- LogId.parse(log_id),
+           %FlowLog{} = log <- fetch_log(log_id, subject),
+           matching_logs when is_list(matching_logs) <- matching_logs(log, subject) do
+        [report] = enrich([log], subject)
+        {:ok, Map.put(report, :matching_logs, matching_logs)}
+      else
+        :error -> {:error, :not_found}
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+      end
+    end
+
+    def cursor_fields,
+      do: [{:flow_logs, :desc, :flow_start}, {:flow_logs, :desc, :log_id}]
+
+    def filters do
+      [
+        %Portal.Repo.Filter{
+          name: :search,
+          title: "actor, resource, IP, or log ID",
+          type: {:string, :websearch_wide},
+          fun: &filter_by_search/2
+        },
+        %Portal.Repo.Filter{
+          name: :role,
+          title: "Logged by",
+          type: :string,
+          values: [{"Initiator", "initiator"}, {"Responder", "responder"}],
+          fun: &filter_by_role/2
+        },
+        %Portal.Repo.Filter{
+          name: :protocol_port,
+          title: "Protocol / port",
+          type: {:string, :protocol_port},
+          fun: &filter_by_protocol_port/2
+        },
+        %Portal.Repo.Filter{
+          name: :show_incomplete,
+          title: "Show incomplete",
+          type: :boolean,
+          fun: &filter_show_incomplete/2
+        },
+        %Portal.Repo.Filter{
+          name: :timestamp,
+          title: "Flow started",
+          type: {:range, :datetime},
+          fun: &filter_by_timestamp/2
+        }
+      ]
+    end
+
+    defp fetch_log(log_id, subject) do
+      from(fl in FlowLog, as: :flow_logs, where: fl.log_id == ^log_id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    # Both devices normalize the inner and WireGuard tuples to initiator ->
+    # responder. Exact attribution, protocol, tuple, and domain equality plus
+    # an overlapping time window narrows the matches, but cannot prove identity
+    # because independently created logs have no shared flow ID.
+    defp matching_logs(log, subject) do
+      opposite_role = if log.role == :initiator, do: :responder, else: :initiator
+      {selected_min, selected_max} = normalized_bounds(log)
+
+      query =
+        from(candidate in FlowLog,
+          as: :flow_logs,
+          where: candidate.role == ^opposite_role,
+          where: candidate.policy_authorization_id == ^log.policy_authorization_id,
+          where: candidate.initiator_device_id == ^log.initiator_device_id,
+          where: candidate.responder_device_id == ^log.responder_device_id,
+          where: candidate.resource_id == ^log.resource_id,
+          where: candidate.protocol == ^log.protocol,
+          where: candidate.inner_src_ip == ^log.inner_src_ip,
+          where: candidate.inner_src_port == ^log.inner_src_port,
+          where: candidate.inner_dst_ip == ^log.inner_dst_ip,
+          where: candidate.inner_dst_port == ^log.inner_dst_port,
+          where: candidate.outer_src_ip == ^log.outer_src_ip,
+          where: candidate.outer_src_port == ^log.outer_src_port,
+          where: candidate.outer_dst_ip == ^log.outer_dst_ip,
+          where: candidate.outer_dst_port == ^log.outer_dst_port,
+          where:
+            is_nil(candidate.flow_end) or
+              ^selected_min <= fragment("GREATEST(?, ?)", candidate.flow_start, candidate.flow_end),
+          order_by:
+            fragment(
+              "abs(extract(epoch from (? - ?)))",
+              candidate.flow_start,
+              ^log.flow_start
+            ),
+          limit: @candidate_limit
+        )
+        |> filter_candidate_domain(log.domain)
+        |> filter_candidate_upper_bound(selected_max)
+
+      query
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    defp normalized_bounds(%{flow_start: started_at, flow_end: nil}), do: {started_at, nil}
+
+    defp normalized_bounds(%{flow_start: started_at, flow_end: ended_at}) do
+      if DateTime.compare(started_at, ended_at) == :gt,
+        do: {ended_at, started_at},
+        else: {started_at, ended_at}
+    end
+
+    defp filter_candidate_domain(query, nil),
+      do: where(query, [flow_logs: candidate], is_nil(candidate.domain))
+
+    defp filter_candidate_domain(query, domain),
+      do: where(query, [flow_logs: candidate], candidate.domain == ^domain)
+
+    defp filter_candidate_upper_bound(query, nil), do: query
+
+    defp filter_candidate_upper_bound(query, selected_max) do
+      where(
+        query,
+        [flow_logs: candidate],
+        fragment("LEAST(?, COALESCE(?, ?))", candidate.flow_start, candidate.flow_end, candidate.flow_start) <=
+          ^selected_max
+      )
+    end
+
+    defp enrich([], _subject), do: []
+
+    defp enrich(logs, subject) do
+      device_ids =
+        logs
+        |> Enum.flat_map(&[&1.initiator_device_id, &1.responder_device_id])
+        |> Enum.uniq()
+
+      devices_by_id =
+        from(device in Device, where: device.id in ^device_ids)
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> case do
+          devices when is_list(devices) -> Map.new(devices, &{&1.id, &1})
+          _ -> %{}
+        end
+
+      Enum.map(logs, fn log ->
+        %{
+          log: log,
+          initiator_device: Map.get(devices_by_id, log.initiator_device_id),
+          responder_device: Map.get(devices_by_id, log.responder_device_id)
+        }
+      end)
+    end
+
+    defp filter_by_timestamp(queryable, %Portal.Repo.Filter.Range{from: from, to: to}) do
+      {queryable, timestamp_dynamic(from, to)}
+    end
+
+    # Keep the partition key bare in these predicates so PostgreSQL can prune
+    # the daily flow_start partitions selected by the UI's explicit Started
+    # filter.
+    defp timestamp_dynamic(%DateTime{} = from, %DateTime{} = to),
+      do: dynamic([flow_logs: fl], fl.flow_start >= ^from and fl.flow_start <= ^to)
+
+    defp timestamp_dynamic(%DateTime{} = from, nil),
+      do: dynamic([flow_logs: fl], fl.flow_start >= ^from)
+
+    defp timestamp_dynamic(nil, %DateTime{} = to),
+      do: dynamic([flow_logs: fl], fl.flow_start <= ^to)
+
+    defp filter_by_search(queryable, value) do
+      pattern = "%" <> value <> "%"
+
+      {queryable,
+       dynamic(
+         [flow_logs: fl],
+         fragment("? ILIKE ?", fl.initiator_actor_name, ^pattern) or
+           fragment("? ILIKE ?", fl.initiator_actor_email, ^pattern) or
+           fragment("? ILIKE ?", fl.resource_name, ^pattern) or
+           fragment("? ILIKE ?", fl.resource_address, ^pattern) or
+           fragment("? ILIKE ?", fl.domain, ^pattern) or
+           fragment("?::text ILIKE ?", fl.inner_src_ip, ^pattern) or
+           fragment("?::text ILIKE ?", fl.inner_dst_ip, ^pattern) or
+           fragment("?::text ILIKE ?", fl.outer_src_ip, ^pattern) or
+           fragment("?::text ILIKE ?", fl.outer_dst_ip, ^pattern) or
+           fragment("encode(?, 'hex') ILIKE ?", fl.log_id, ^pattern)
+       )}
+    end
+
+    defp filter_by_role(queryable, values) when is_list(values) and values != [] do
+      roles = Enum.map(values, &String.to_existing_atom/1)
+      {queryable, dynamic([flow_logs: fl], fl.role in ^roles)}
+    end
+
+    defp filter_by_role(queryable, value) when value in ["initiator", "responder"],
+      do: filter_by_role(queryable, [value])
+
+    defp filter_by_protocol_port(queryable, value) do
+      dynamic =
+        case parse_protocol_port(value) do
+          {:port, port} ->
+            dynamic([flow_logs: fl], fl.inner_dst_port == ^port)
+
+          {:protocol, protocol} ->
+            dynamic([flow_logs: fl], fl.protocol == ^protocol)
+
+          {:protocol_port, protocol, port} ->
+            dynamic(
+              [flow_logs: fl],
+              fl.protocol == ^protocol and fl.inner_dst_port == ^port
+            )
+
+          :error ->
+            dynamic(false)
+        end
+
+      {queryable, dynamic}
+    end
+
+    defp parse_protocol_port(value) do
+      value = value |> String.trim() |> String.downcase()
+
+      case String.split(value, ~r{[/:]}, parts: 2) do
+        [protocol, port] when protocol in ["tcp", "udp"] ->
+          with {:ok, port} <- parse_port(port) do
+            {:protocol_port, protocol_atom(protocol), port}
+          end
+
+        [protocol] when protocol in ["tcp", "udp"] ->
+          {:protocol, protocol_atom(protocol)}
+
+        [port] ->
+          case parse_port(port) do
+            {:ok, port} -> {:port, port}
+            :error -> :error
+          end
+
+        _other ->
+          :error
+      end
+    end
+
+    defp parse_port(value) do
+      case Integer.parse(value) do
+        {port, ""} when port in 0..65_535 -> {:ok, port}
+        _other -> :error
+      end
+    end
+
+    defp protocol_atom("tcp"), do: :tcp
+    defp protocol_atom("udp"), do: :udp
+
+    defp filter_show_incomplete(queryable, true), do: {queryable, nil}
+
+    defp filter_show_incomplete(queryable, false),
+      do: {queryable, dynamic([flow_logs: fl], not is_nil(fl.flow_end))}
   end
 end
