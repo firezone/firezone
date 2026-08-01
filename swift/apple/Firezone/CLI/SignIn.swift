@@ -34,23 +34,23 @@ enum SignIn {
     let command = CommandLine.arguments.first ?? "firezone-cli"
 
     return """
-      No token to sign in with.
+      No token found. To sign in:
 
         1. Open this in a browser and sign in:
 
            \(url)
 
-        2. Copy the token it gives you.
+        2. Copy the token.
 
-        3. Run this, which hands the token over without it appearing on screen:
+        3. Run:
 
            pbpaste | \(command)
 
-      A token can come from FIREZONE_TOKEN or from a file instead:
+      A token can also be set in FIREZONE_TOKEN, or read from a file:
 
            \(command) < token
 
-      Whichever way it arrives, the Keychain keeps it and later runs need none of this.
+      The token is saved to the Keychain, so later runs don't need one.
       """
   }
 
