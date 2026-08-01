@@ -108,18 +108,18 @@ jobs:
         if: "!cancelled()"
         run: |
           docker compose logs client-1 |
-            grep "WARN" && exit 1 || exit 0
+            grep " WARN " && exit 1 || exit 0
 
           docker compose logs gateway |
-            grep "WARN" && exit 1 || exit 0
+            grep " WARN " && exit 1 || exit 0
 
           # BTF doesn't load for veth interfaces
           docker compose logs relay-1 | \
             grep --invert "Object BTF couldn't be loaded in the kernel: the BPF_BTF_LOAD syscall failed." | \
-            grep "WARN" && exit 1 || exit 0
+            grep " WARN " && exit 1 || exit 0
           docker compose logs relay-2 | \
             grep --invert "Object BTF couldn't be loaded in the kernel: the BPF_BTF_LOAD syscall failed." | \
-            grep "WARN" && exit 1 || exit 0
+            grep " WARN " && exit 1 || exit 0
 
       - name: Ensure no UDP socket errors
         if: "!cancelled() && startsWith(matrix.test, 'tcp')"
