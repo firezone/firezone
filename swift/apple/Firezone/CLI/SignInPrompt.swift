@@ -109,11 +109,22 @@ enum SignInPrompt {
     // Muting has to happen before we ask, or anything already typed is echoed on its
     // way into the buffer. TCSAFLUSH throws that away too, so a stray keystroke can't
     // be taken for the token.
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &muted)
+    let applied = tcsetattr(STDIN_FILENO, TCSAFLUSH, &muted) == 0
 
     defer {
       restoreTerminal()
       print()  // Newline the muted Return didn't echo
+    }
+
+    // Read it back rather than trust it. Somebody typing a token they believe is hidden
+    // when it isn't deserves to be told, and it says which half of this went wrong.
+    var applied2 = termios()
+    let stillEchoes = tcgetattr(STDIN_FILENO, &applied2) != 0 || applied2.c_lflag & UInt(ECHO) != 0
+
+    if !applied || stillEchoes {
+      Log.warning(
+        "Could not turn off terminal echo (set=\(applied), still echoing=\(stillEchoes)). "
+          + "Your token will be visible as you type it.")
     }
 
     return ask()
