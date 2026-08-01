@@ -54,11 +54,6 @@ final class TunnelSupervisor {
       for source in signalSources { source.cancel() }
     }
 
-    // The tunnel was started before we got here, so it may already have failed. Only
-    // changes are reported from now on, and the first one is easily the one that
-    // matters: with no token in the Keychain the provider gives up immediately.
-    await handle(status: session.status, emit: emit)
-
     for await action in actions {
       switch action {
       case .shutdown:
@@ -201,6 +196,19 @@ final class TunnelSupervisor {
     timeoutTask = Task {
       try? await Task.sleep(for: Self.connectTimeout)
       guard !Task.isCancelled, session.status != .connected else { return }
+
+      // The tunnel is started before this is watching it, so a provider that gave up
+      // for want of a token can do so unobserved. Nothing else would ask for one, and
+      // timing out instead would be an unhelpful way to say "sign in".
+      if !hasRequestedToken, let error = await lastDisconnectError(),
+        Self.isTokenNotFound(error)
+      {
+        hasRequestedToken = true
+        Log.info("Token not found in keychain: \(error)")
+        emit.yield(.signIn)
+        return
+      }
+
       fail(with: CLIError("Timed out waiting for the tunnel to connect."), emit: emit)
     }
   }
