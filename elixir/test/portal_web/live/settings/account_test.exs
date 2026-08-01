@@ -50,7 +50,7 @@ defmodule PortalWeb.Settings.AccountTest do
       refute html =~ "Contact your account manager for plan changes."
     end
 
-    test "shows contact message and add more seats button for enterprise provisioned account", %{
+    test "shows contact message instead of manage plan button for enterprise provisioned account", %{
       conn: conn,
       account: account,
       actor: actor
@@ -60,16 +60,10 @@ defmodule PortalWeb.Settings.AccountTest do
           metadata: %{stripe: %{customer_id: "cus_test", product_name: "Enterprise"}}
         })
 
-      {:ok, lv, html} =
+      {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
-
-      assert has_element?(
-               lv,
-               ~s|button[phx-click="redirect_to_billing_portal"]|,
-               "Add more seats"
-             )
 
       refute html =~ "Manage plan"
       assert html =~ "Contact your account manager for plan changes."

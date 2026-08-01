@@ -99,12 +99,12 @@ defmodule PortalWeb.Settings.Account do
               </div>
             </div>
             <.button
-              :if={@billing_provisioned}
+              :if={@billing_provisioned and @billing_plan_type != :enterprise}
               phx-click="redirect_to_billing_portal"
               size="xs"
               class="w-full mt-1"
             >
-              {if @billing_plan_type == :enterprise, do: "Add more seats", else: "Manage plan"}
+              Manage plan
             </.button>
           </div>
 
