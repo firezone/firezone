@@ -35,6 +35,7 @@
 		8DC333FA2D2FA85200E627D5 /* libresolv.9.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC333F82D2FA85200E627D5 /* libresolv.9.tbd */; };
 		8DC333FB2D2FA89100E627D5 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6FFECD5B2AD6998400E00273 /* SystemConfiguration.framework */; };
 		8DC9FB852CF5A738001BCE6A /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */; };
+		8D0F0A022E9A000100BEEF02 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0F0A032E9A000100BEEF02 /* main.swift */; };
 		8DCC021D28D512AC007E12D2 /* FirezoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DCC021C28D512AC007E12D2 /* FirezoneApp.swift */; };
 		8DCC022628D512AE007E12D2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DCC022528D512AE007E12D2 /* Assets.xcassets */; };
 		8DCC022A28D512AE007E12D2 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DCC022928D512AE007E12D2 /* Preview Assets.xcassets */; };
@@ -44,6 +45,13 @@
 		C1892134991C462C8E137DE3 /* Channel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C09DC14A4A04715A37BC04C /* Channel.swift */; };
 		C4B08E1145E04823BC25E00D /* SessionEventLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */; };
 		CCC04BEF428B758D9BB5F842 /* connlib.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2847ACC9D73EA6F356F2DEE1 /* connlib.swift */; };
+		FZ0CLI012E80000000000001 /* FirezoneCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000010 /* FirezoneCLI.swift */; platformFilters = (macos, ); };
+		FZ0CLI012E80000000000006 /* SignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000014 /* SignIn.swift */; platformFilters = (macos, ); };
+		FZ0CLI012E80000000000008 /* ConnectCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000016 /* ConnectCommand.swift */; platformFilters = (macos, ); };
+		FZ0CLI012E80000000000009 /* SignOutCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000017 /* SignOutCommand.swift */; platformFilters = (macos, ); };
+		FZ0CLI012E8000000000000A /* ExtensionCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000018 /* ExtensionCommand.swift */; platformFilters = (macos, ); };
+		FZ0CLI012E80000000000007 /* TunnelSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */; platformFilters = (macos, ); };
+		FZ0CLI012E80000000000003 /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = FZ0CLI012E80000000000030 /* ArgumentParser */; platformFilters = (macos, ); };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -120,6 +128,7 @@
 		8DC333F72D2FA85200E627D5 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.2.sdk/usr/lib/libresolv.tbd; sourceTree = DEVELOPER_DIR; };
 		8DC333F82D2FA85200E627D5 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.2.sdk/usr/lib/libresolv.9.tbd; sourceTree = DEVELOPER_DIR; };
 		8DCC021928D512AC007E12D2 /* Firezone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Firezone.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8D0F0A032E9A000100BEEF02 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		8DCC021C28D512AC007E12D2 /* FirezoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirezoneApp.swift; sourceTree = "<group>"; };
 		8DCC022528D512AE007E12D2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8DCC022928D512AE007E12D2 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
@@ -132,6 +141,12 @@
 		9A1000042F10000100BEEF01 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		9A1000052F10000100BEEF01 /* KeepFirezoneRunning.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeepFirezoneRunning.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SessionEventLoop.swift; sourceTree = "<group>"; };
+		FZ0CLI012E80000000000010 /* FirezoneCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirezoneCLI.swift; sourceTree = "<group>"; };
+		FZ0CLI012E80000000000014 /* SignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignIn.swift; sourceTree = "<group>"; };
+		FZ0CLI012E80000000000016 /* ConnectCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectCommand.swift; sourceTree = "<group>"; };
+		FZ0CLI012E80000000000017 /* SignOutCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignOutCommand.swift; sourceTree = "<group>"; };
+		FZ0CLI012E80000000000018 /* ExtensionCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionCommand.swift; sourceTree = "<group>"; };
+		FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelSupervisor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -162,6 +177,7 @@
 			files = (
 				05D3BB2128FDE9C000BC3727 /* NetworkExtension.framework in Frameworks */,
 				79756C6629704A7A0018E2D5 /* FirezoneKit in Frameworks */,
+				FZ0CLI012E80000000000003 /* ArgumentParser in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -199,6 +215,7 @@
 			isa = PBXGroup;
 			children = (
 				8DCC021C28D512AC007E12D2 /* FirezoneApp.swift */,
+				8D0F0A032E9A000100BEEF02 /* main.swift */,
 			);
 			path = Application;
 			sourceTree = "<group>";
@@ -265,6 +282,7 @@
 				8D1D405D2CFF6F5D00E669F9 /* Info.plist */,
 				8DDD0E8B2ADC6657001FA7E9 /* config.xcconfig */,
 				05E1505F28FF398000170F82 /* Application */,
+				FZ0CLI012E80000000000071 /* CLI */,
 				8DCC022528D512AE007E12D2 /* Assets.xcassets */,
 				8DCC022828D512AE007E12D2 /* Preview Content */,
 			);
@@ -295,6 +313,19 @@
 				9A1000042F10000100BEEF01 /* main.swift */,
 			);
 			path = KeepFirezoneRunning;
+			sourceTree = "<group>";
+		};
+		FZ0CLI012E80000000000071 /* CLI */ = {
+			isa = PBXGroup;
+			children = (
+				FZ0CLI012E80000000000010 /* FirezoneCLI.swift */,
+				FZ0CLI012E80000000000014 /* SignIn.swift */,
+				FZ0CLI012E80000000000016 /* ConnectCommand.swift */,
+				FZ0CLI012E80000000000017 /* SignOutCommand.swift */,
+				FZ0CLI012E80000000000018 /* ExtensionCommand.swift */,
+				FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */,
+			);
+			path = CLI;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -354,6 +385,7 @@
 				8D0F0A012E9A000100BEEF01 /* Bundle keep app running agent */,
 				8DC169A32CFF77D1006801B5 /* Embed Foundation Extensions */,
 				8DC169A42CFF77D1006801B5 /* Embed System Extensions */,
+				8D0F0A042E9A000100BEEF03 /* Link headless client */,
 			);
 			buildRules = (
 			);
@@ -365,6 +397,7 @@
 			name = Firezone;
 			packageProductDependencies = (
 				79756C6529704A7A0018E2D5 /* FirezoneKit */,
+				FZ0CLI012E80000000000030 /* ArgumentParser */,
 			);
 			productName = Firezone;
 			productReference = 8DCC021928D512AC007E12D2 /* Firezone.app */;
@@ -424,6 +457,9 @@
 				Base,
 			);
 			mainGroup = 8DCC021028D512AC007E12D2;
+			packageReferences = (
+				FZ0CLI012E80000000000300 /* XCRemoteSwiftPackageReference "swift-argument-parser" */,
+			);
 			productRefGroup = 8DCC021A28D512AC007E12D2 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -492,6 +528,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -eu\nif [ \"${PLATFORM_NAME}\" != \"macosx\" ]; then\n  exit 0\nfi\nhelper_src=\"${BUILT_PRODUCTS_DIR}/KeepFirezoneRunning.app\"\nhelper_dir=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LoginItems\"\nhelper_dst=\"${helper_dir}/KeepFirezoneRunning.app\"\nplist_template=\"${SRCROOT}/Firezone/LaunchAgents/dev.firezone.firezone.keep-app-running.plist.template\"\nplist_dir=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents\"\nplist_dst=\"${plist_dir}/${PRODUCT_BUNDLE_IDENTIFIER}.keep-app-running.plist\"\nmkdir -p \"${helper_dir}\" \"${plist_dir}\"\nrm -rf \"${helper_dst}\"\n/usr/bin/ditto \"${helper_src}\" \"${helper_dst}\"\n/usr/bin/sed \"s#__PRODUCT_BUNDLE_IDENTIFIER__#${PRODUCT_BUNDLE_IDENTIFIER}#g\" \"${plist_template}\" > \"${plist_dst}\"\n";
+		};
+		8D0F0A042E9A000100BEEF03 /* Link headless client */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Link headless client";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nif [ \"${PLATFORM_NAME}\" != \"macosx\" ]; then\n  exit 0\nfi\n# The headless client is the app's own binary under another name, so that it runs\n# with the app's identity and sees the app's VPN configuration.\nln -sf \"${EXECUTABLE_NAME}\" \"${TARGET_BUILD_DIR}/${EXECUTABLE_FOLDER_PATH}/firezone-cli\"\n";
 		};
 		8D40C0B72DD1335C00ACF8D7 /* Generate build number */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -615,6 +666,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				8DCC021D28D512AC007E12D2 /* FirezoneApp.swift in Sources */,
+				8D0F0A022E9A000100BEEF02 /* main.swift in Sources */,
+				FZ0CLI012E80000000000001 /* FirezoneCLI.swift in Sources */,
+				FZ0CLI012E80000000000006 /* SignIn.swift in Sources */,
+				FZ0CLI012E80000000000007 /* TunnelSupervisor.swift in Sources */,
+				FZ0CLI012E80000000000008 /* ConnectCommand.swift in Sources */,
+				FZ0CLI012E80000000000009 /* SignOutCommand.swift in Sources */,
+				FZ0CLI012E8000000000000A /* ExtensionCommand.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1461,7 +1519,23 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = FirezoneKit;
 		};
+		FZ0CLI012E80000000000030 /* ArgumentParser */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FZ0CLI012E80000000000300 /* XCRemoteSwiftPackageReference "swift-argument-parser" */;
+			productName = ArgumentParser;
+		};
 /* End XCSwiftPackageProductDependency section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		FZ0CLI012E80000000000300 /* XCRemoteSwiftPackageReference "swift-argument-parser" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-argument-parser";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 	};
 	rootObject = 8DCC021128D512AC007E12D2 /* Project object */;
 }

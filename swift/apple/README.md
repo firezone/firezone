@@ -161,6 +161,55 @@ From the repository root:
 mise run //swift/apple:<task>   # e.g. mise run //swift/apple:build
 ```
 
+### Headless client
+
+`firezone-cli` is the macOS Client run from a terminal. It is not a separate
+program: it is the app's own binary, reached through a symlink beside it at
+`Firezone.app/Contents/MacOS/firezone-cli`, and it picks the command line path
+when started under that name. Being the same bundle is what lets it use the VPN
+configuration and system extension the app set up, which a second bundle could
+not do. `mise run cli` finds it for you:
+
+```sh
+mise run cli -- --help
+mise run cli -- extension status
+mise run cli -- connect --account-slug my-account
+```
+
+`connect` is the default, so plain `firezone-cli` brings the tunnel up and stays
+in the foreground until you stop it. `sign-out` drops the stored token.
+
+It talks to the same system extension as the GUI and will not start without it.
+`extension status` reports whether that extension is installed and matches the
+build, and exits non-zero when it does not, so a setup script can check before
+going further. It cannot install the extension, since installing one needs a user
+to approve it. Launch the app once to do that.
+
+These environment variables are read when the matching flag is absent:
+
+| Variable                              | Flag                           |
+| ------------------------------------- | ------------------------------ |
+| `FIREZONE_TOKEN`                      | none, taken from the Keychain  |
+| `FIREZONE_ACCOUNT_SLUG`               | `--account-slug`               |
+| `FIREZONE_API_URL`                    | `--api-url`                    |
+| `FIREZONE_AUTH_BASE_URL`              | `--auth-base-url`              |
+| `FIREZONE_ACTIVATE_INTERNET_RESOURCE` | `--activate-internet-resource` |
+| `FIREZONE_LOG_FILTER`                 | none                           |
+
+It never asks for a token at a prompt. The app is sandboxed, so it cannot turn
+terminal echo off, and a token typed at a prompt would stay in the scrollback.
+Pipe one in instead, which is what it tells you to do when it hasn't got one:
+
+```sh
+pbpaste | firezone-cli
+```
+
+Anything you don't set keeps whatever the app stored, since both share one VPN
+profile. Logs go to stderr as well as to the log folder the app shares.
+
+`connect` stops the menu bar app being kept alive, so quitting the headless
+client doesn't reopen it. Launching the app puts that back.
+
 ### Instruments
 
 `Instruments` is a powerful performance analyzer and visualizer application
@@ -382,3 +431,14 @@ APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD
 APPLE_STANDALONE_MACOS_APP_PROVISIONING_PROFILE
 APPLE_STANDALONE_MACOS_NE_PROVISIONING_PROFILE
 ```
+
+## Code signing during development
+
+Development builds sign themselves. `mise run build` passes
+`-allowProvisioningUpdates`, so Xcode creates and downloads any profile it is
+missing. If it complains that your login was rejected, sign in again under Xcode
+-> Settings -> Accounts.
+
+Release builds never do this. They are given the profiles above by UUID through
+`APP_PROFILE_ID` and `NE_PROFILE_ID`, which the build scripts extract from the
+secrets.

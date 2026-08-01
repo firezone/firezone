@@ -80,7 +80,7 @@ public final class VPNConfigurationManager {
   static let bundleDescription = "Firezone"
 
   // Initialize and save a new VPN configuration in system Preferences
-  init(manager: any TunnelProviderManager) async throws {
+  public init(manager: any TunnelProviderManager) async throws {
     let protocolConfiguration = NETunnelProviderProtocol()
 
     // Seed with defaults (and any forced overrides) but don't mark migrated;
@@ -102,7 +102,7 @@ public final class VPNConfigurationManager {
     self.manager = manager
   }
 
-  static func load(using factory: TunnelProviderManagerFactory) async throws
+  public static func load(using factory: TunnelProviderManagerFactory) async throws
     -> VPNConfigurationManager?
   {
     // loadAllFromPreferences() returns list of VPN configurations created by our main app's bundle ID.
@@ -118,13 +118,20 @@ public final class VPNConfigurationManager {
 
   // If another VPN is activated on the system, ours becomes disabled. This is provided so that we may call it before
   // each start attempt in order to reactivate our configuration.
-  func enable() async throws {
+  //
+  // Saving is skipped when it would change nothing. Writing the VPN preferences
+  // invalidates every other process's copy of them, and the app has no way to notice
+  // that happened, so a needless save from the headless client leaves the app talking
+  // to a configuration the system has already replaced.
+  public func enable() async throws {
+    guard !manager.isEnabled else { return }
+
     manager.isEnabled = true
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
   }
 
-  func session() -> (any TunnelSessionProtocol)? {
+  public func session() -> (any TunnelSessionProtocol)? {
     return manager.tunnelSession
   }
 
@@ -146,6 +153,23 @@ public final class VPNConfigurationManager {
     }
   }
 
+  /// Merges `overrides` into the saved provider configuration, leaving every other
+  /// stored setting as the GUI left it.
+  ///
+  /// The UserDefaults migration flag is preserved rather than set: only the GUI may
+  /// claim the migration ran, or it would skip it and lose the user's settings.
+  public func save(overrides: ProviderOverrides) async throws {
+    let stored = try providerConfiguration()
+    let configuration = Configuration()
+    configuration.loadProviderConfiguration(stored)
+    overrides.apply(to: configuration)
+
+    try await save(
+      configuration: configuration,
+      markUserDefaultsMigrated: stored[Configuration.Keys.userDefaultsMigrated] == "true"
+    )
+  }
+
   func save(
     configuration: Configuration,
     markUserDefaultsMigrated: Bool = true
@@ -154,6 +178,19 @@ public final class VPNConfigurationManager {
       providerConfiguration: configuration.toProviderConfiguration(
         markUserDefaultsMigrated: markUserDefaultsMigrated
       )
+    )
+  }
+
+  /// What a headless sign-in link is built from, honouring what the app stored and any
+  /// MDM override, so it lands where the app's own sign-in would rather than at the
+  /// public portal.
+  public func signInSettings() throws -> SignInSettings {
+    let configuration = Configuration()
+    configuration.loadProviderConfiguration(try providerConfiguration())
+
+    return SignInSettings(
+      authURL: configuration.authURL,
+      accountSlug: configuration.accountSlug
     )
   }
 
