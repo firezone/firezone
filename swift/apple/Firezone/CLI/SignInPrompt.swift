@@ -87,6 +87,10 @@ enum SignInPrompt {
   /// on standard input by hand does not hold up here: the call is refused, and the token
   /// is typed in the clear.
   private static func readHiddenLineBlocking(prompt: String) -> String? {
+    if let problem = terminalRefusesToHideInput() {
+      Log.warning("Your token will be visible as you type it. \(problem)")
+    }
+
     var buffer = [CChar](repeating: 0, count: tokenBufferSize)
 
     // It's a credential, so don't leave it lying around in freed memory.
@@ -109,5 +113,42 @@ enum SignInPrompt {
     let entered = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
 
     return String(bytes: entered, encoding: .utf8)
+  }
+
+  /// Tries turning echo off on the terminal and puts it straight back, so that a terminal
+  /// which won't allow it is reported before a token is typed into it rather than after.
+  ///
+  /// Returns nil when hiding input works, and otherwise says how far it got.
+  private static func terminalRefusesToHideInput() -> String? {
+    let terminal = open("/dev/tty", O_RDWR)
+    guard terminal >= 0 else {
+      return "No terminal to read from (/dev/tty: \(errorText(errno)))."
+    }
+    defer { close(terminal) }
+
+    var settings = termios()
+    guard tcgetattr(terminal, &settings) == 0 else {
+      return "Couldn't read the terminal's settings (\(errorText(errno)))."
+    }
+
+    var muted = settings
+    muted.c_lflag &= ~UInt(ECHO)
+
+    guard tcsetattr(terminal, TCSAFLUSH, &muted) == 0 else {
+      let reason = errorText(errno)
+      // Being in the background is the usual cause, and is worth naming outright.
+      let groups =
+        tcgetpgrp(terminal) == getpgrp()
+        ? "" : " This process isn't the terminal's foreground job."
+      return "The terminal wouldn't turn echo off (\(reason)).\(groups)"
+    }
+
+    tcsetattr(terminal, TCSAFLUSH, &settings)
+
+    return nil
+  }
+
+  private static func errorText(_ code: Int32) -> String {
+    "errno \(code): \(String(cString: strerror(code)))"
   }
 }
