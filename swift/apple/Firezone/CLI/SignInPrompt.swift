@@ -70,8 +70,8 @@ enum SignInPrompt {
     return url
   }
 
-  /// `readpassphrase` blocks, so it runs off the cooperative pool. Keeping the main actor
-  /// free is what lets SIGINT and SIGTERM still be handled while we wait for the user.
+  /// Reading blocks, so it runs off the cooperative pool. Keeping the main actor free
+  /// is what lets SIGINT and SIGTERM still be handled while we wait for the user.
   private static func readHiddenLine(prompt: String) async throws -> String? {
     try await withCheckedThrowingContinuation { continuation in
       DispatchQueue.global(qos: .userInitiated).async {
@@ -80,87 +80,54 @@ enum SignInPrompt {
     }
   }
 
-  /// Reads a line without echoing it.
+  /// Reads a line with the terminal's echo turned off.
   ///
-  /// `readpassphrase` talks to `/dev/tty` instead of standard input, and puts the
-  /// terminal back itself, including when a signal interrupts the read. Turning echo off
-  /// on standard input by hand does not hold up here: the call is refused, and the token
-  /// is typed in the clear.
+  /// This works on the terminal already attached to standard input rather than opening
+  /// `/dev/tty`, which is what the sandbox actually objects to.
   private static func readHiddenLineBlocking(prompt: String) throws -> String? {
     // Piped in, so there's nothing to hide and nothing to ask.
     guard isatty(STDIN_FILENO) == 1 else {
       return readLine()
     }
 
-    if let problem = terminalRefusesToHideInput() {
-      throw CLIError(
-        """
-        Refusing to ask for a token that would be typed in the clear. \(problem)
-
-        Pass it without a terminal instead, either of:
-          FIREZONE_TOKEN="$(cat token)" firezone-cli
-          firezone-cli < token
-        """)
+    var original = termios()
+    guard tcgetattr(STDIN_FILENO, &original) == 0 else {
+      throw refusal(reason: "couldn't read the terminal's settings", code: errno)
     }
 
-    var buffer = [CChar](repeating: 0, count: tokenBufferSize)
-
-    // It's a credential, so don't leave it lying around in freed memory.
-    defer {
-      buffer.withUnsafeMutableBytes { bytes in
-        _ = memset_s(bytes.baseAddress, bytes.count, 0, bytes.count)
-      }
-    }
-
-    let result = buffer.withUnsafeMutableBufferPointer { pointer in
-      readpassphrase(
-        prompt,
-        pointer.baseAddress,
-        pointer.count,
-        RPP_ECHO_OFF | RPP_REQUIRE_TTY)
-    }
-
-    guard result != nil else { return nil }
-
-    let entered = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
-
-    return String(bytes: entered, encoding: .utf8)
-  }
-
-  /// Tries turning echo off on the terminal and puts it straight back, so that a terminal
-  /// which won't allow it is reported before a token is typed into it rather than after.
-  ///
-  /// Returns nil when hiding input works, and otherwise says how far it got.
-  private static func terminalRefusesToHideInput() -> String? {
-    let terminal = open("/dev/tty", O_RDWR)
-    guard terminal >= 0 else {
-      return "No terminal to read from (/dev/tty: \(errorText(errno)))."
-    }
-    defer { close(terminal) }
-
-    var settings = termios()
-    guard tcgetattr(terminal, &settings) == 0 else {
-      return "Couldn't read the terminal's settings (\(errorText(errno)))."
-    }
-
-    var muted = settings
+    var muted = original
     muted.c_lflag &= ~UInt(ECHO)
 
-    guard tcsetattr(terminal, TCSAFLUSH, &muted) == 0 else {
-      let reason = errorText(errno)
-      // Being in the background is the usual cause, and is worth naming outright.
-      let groups =
-        tcgetpgrp(terminal) == getpgrp()
-        ? "" : " This process isn't the terminal's foreground job."
-      return "The terminal wouldn't turn echo off (\(reason)).\(groups)"
+    // Before the prompt, so nothing typed early is echoed on its way in, and flushing
+    // so a stray keystroke can't be taken for the token.
+    guard tcsetattr(STDIN_FILENO, TCSAFLUSH, &muted) == 0 else {
+      throw refusal(reason: "the terminal wouldn't turn echo off", code: errno)
     }
 
-    tcsetattr(terminal, TCSAFLUSH, &settings)
+    defer {
+      tcsetattr(STDIN_FILENO, TCSAFLUSH, &original)
+      print()  // Newline the muted Return didn't echo
+    }
 
-    return nil
+    print(prompt, terminator: "")
+    fflush(stdout)
+
+    return readLine()
   }
 
-  private static func errorText(_ code: Int32) -> String {
-    "errno \(code): \(String(cString: strerror(code)))"
+  /// Asking for a token the terminal is going to print is the wrong trade, so say how to
+  /// pass one without a terminal, and carry enough detail to explain the refusal.
+  private static func refusal(reason: String, code: Int32) -> CLIError {
+    CLIError(
+      """
+      Refusing to ask for a token that would be typed in the clear: \(reason) \
+      (errno \(code): \(String(cString: strerror(code)))). \
+      Foreground process group \(tcgetpgrp(STDIN_FILENO)), ours \(getpgrp()), \
+      session \(getsid(0)).
+
+      Pass it without a terminal instead, either of:
+        FIREZONE_TOKEN="$(cat token)" firezone-cli
+        firezone-cli < token
+      """)
   }
 }
