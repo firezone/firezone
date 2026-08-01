@@ -31,6 +31,7 @@ final class TunnelSupervisor {
 
   private var isRestarting = false
   private var hasRequestedToken = false
+  private var isAwaitingToken = false
   private var failure: (any Error)?
   private var timeoutTask: Task<Void, Never>?
   private var signInTask: Task<Void, Never>?
@@ -78,6 +79,7 @@ final class TunnelSupervisor {
         signInTask = Task { await signIn(emit: emit) }
 
       case .tokenReceived(let token):
+        isAwaitingToken = false
         try IPCClient.start(session: session, token: token.description)
         Log.info("Tunnel started with token")
         startConnectTimeout(emit: emit)
@@ -89,6 +91,7 @@ final class TunnelSupervisor {
     do {
       emit.yield(.tokenReceived(try await requestToken()))
     } catch {
+      isAwaitingToken = false
       fail(with: error, emit: emit)
     }
   }
@@ -142,11 +145,19 @@ final class TunnelSupervisor {
       return
     }
 
+    if isAwaitingToken {
+      // Of course it's disconnected: it has no token, which is what we're waiting on.
+      // Failing here would tear down the prompt mid-answer.
+      Log.info("Tunnel disconnected, waiting for the token")
+      return
+    }
+
     let error = await lastDisconnectError()
 
     if let error, !hasRequestedToken, Self.isTokenNotFound(error) {
       // Set before yielding, so a repeated disconnect can't queue a second prompt.
       hasRequestedToken = true
+      isAwaitingToken = true
       Log.info("Token not found in keychain: \(error)")
       emit.yield(.signIn)
       return
@@ -204,6 +215,7 @@ final class TunnelSupervisor {
         Self.isTokenNotFound(error)
       {
         hasRequestedToken = true
+        isAwaitingToken = true
         Log.info("Token not found in keychain: \(error)")
         emit.yield(.signIn)
         return
