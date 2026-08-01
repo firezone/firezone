@@ -13,7 +13,6 @@ defmodule Portal.Workers.CheckAccountLimits do
     unique: [period: :infinity, states: :incomplete]
 
   alias Portal.Account
-  alias Portal.Accounts.Activity
   alias Portal.Billing
   alias Portal.Mailer
   alias Portal.Mailer.Notifications
@@ -123,7 +122,7 @@ defmodule Portal.Workers.CheckAccountLimits do
   # Dormant accounts are checked last so the reminder clock only starts once
   # there is somebody to remind.
   defp should_send_email?(account) do
-    due_for_email?(account) and Activity.account_active?(account.id)
+    due_for_email?(account) and Database.account_active?(account.id)
   end
 
   defp due_for_email?(%{warning_last_sent_at: nil}), do: true
@@ -326,6 +325,12 @@ defmodule Portal.Workers.CheckAccountLimits do
       )
       |> Safe.unscoped()
       |> Safe.all()
+    end
+
+    def account_active?(account_id) do
+      from(sl in Portal.SessionLog, where: sl.account_id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
   end
 end

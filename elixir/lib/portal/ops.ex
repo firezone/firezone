@@ -1,7 +1,6 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
   alias Portal.{Banner, EmailSuppression, Mailer}
-  alias Portal.Accounts.Activity
   alias Portal.Workers.DeleteAccount
 
   @max_bcc_per_message 50
@@ -239,7 +238,11 @@ defmodule Portal.Ops do
   end
 
   defp split_dormant_accounts(emails_by_account) do
-    active_ids = Activity.active_account_ids(Enum.map(emails_by_account, &elem(&1, 0)))
+    active_ids =
+      emails_by_account
+      |> Enum.map(&elem(&1, 0))
+      |> Database.active_account_ids()
+      |> MapSet.new()
 
     Enum.split_with(emails_by_account, fn {account_id, _emails} ->
       MapSet.member?(active_ids, account_id)
@@ -375,6 +378,25 @@ defmodule Portal.Ops do
       |> Enum.group_by(fn {account_id, _email} -> account_id end, fn {_account_id, email} ->
         email
       end)
+    end
+
+    def active_account_ids([]), do: []
+
+    def active_account_ids(account_ids) do
+      from(a in Account, as: :accounts)
+      |> where([accounts: a], a.id in ^account_ids)
+      |> where(
+        [accounts: a],
+        exists(
+          from(sl in Portal.SessionLog,
+            where: sl.account_id == parent_as(:accounts).id,
+            select: 1
+          )
+        )
+      )
+      |> select([accounts: a], a.id)
+      |> Safe.unscoped()
+      |> Safe.all()
     end
 
     def accounts_missing_deletion_jobs do

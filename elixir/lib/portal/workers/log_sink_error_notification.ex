@@ -21,7 +21,6 @@ defmodule Portal.Workers.LogSinkErrorNotification do
     max_attempts: 3,
     unique: [period: :infinity, states: :incomplete]
 
-  alias Portal.Accounts.Activity
   alias Portal.Mailer
   alias __MODULE__.Database
   require Logger
@@ -82,7 +81,7 @@ defmodule Portal.Workers.LogSinkErrorNotification do
         )
 
       # Leave the count alone so a returning account still gets the full series.
-      not Activity.account_active?(sink.account_id) ->
+      not Database.account_active?(sink.account_id) ->
         Logger.info("Skipping log sink error notification for dormant account",
           account_id: sink.account_id,
           log_sink_id: sink.id
@@ -180,6 +179,12 @@ defmodule Portal.Workers.LogSinkErrorNotification do
       )
       |> Safe.unscoped()
       |> Safe.all()
+    end
+
+    def account_active?(account_id) do
+      from(sl in Portal.SessionLog, where: sl.account_id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
 
     def delivery_stats(sink) do

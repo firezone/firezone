@@ -15,7 +15,6 @@ defmodule Portal.Workers.SyncErrorNotification do
     max_attempts: 3,
     unique: [period: :infinity, states: :incomplete]
 
-  alias Portal.Accounts.Activity
   alias Portal.Entra
   alias Portal.Google
   alias Portal.Okta
@@ -77,7 +76,7 @@ defmodule Portal.Workers.SyncErrorNotification do
         )
 
       # Leave the count alone so a returning account still gets the full series.
-      not Activity.account_active?(directory.account_id) ->
+      not Database.account_active?(directory.account_id) ->
         Logger.info("Skipping sync error notification for dormant account",
           account_id: directory.account_id,
           directory_id: directory.id
@@ -199,6 +198,12 @@ defmodule Portal.Workers.SyncErrorNotification do
       )
       |> Safe.unscoped()
       |> Safe.all()
+    end
+
+    def account_active?(account_id) do
+      from(sl in Portal.SessionLog, where: sl.account_id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
   end
 end
