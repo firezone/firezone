@@ -158,7 +158,7 @@ final class TunnelSupervisor {
       // Set before yielding, so a repeated disconnect can't queue a second prompt.
       hasRequestedToken = true
       isAwaitingToken = true
-      Log.info("Token not found in keychain: \(error)")
+      Log.info("No token stored yet, signing in")
       emit.yield(.signIn)
       return
     }
@@ -216,7 +216,7 @@ final class TunnelSupervisor {
       {
         hasRequestedToken = true
         isAwaitingToken = true
-        Log.info("Token not found in keychain: \(error)")
+        Log.info("No token stored yet, signing in")
         emit.yield(.signIn)
         return
       }
