@@ -75,8 +75,6 @@ extension FirezoneCLI {
         try await SignInPrompt.requestToken(authBaseURL: authBaseURL, accountSlug: signInSlug)
       }
 
-      // A prompt may still be blocked on stdin with echo off when we stop.
-      defer { SignInPrompt.restoreTerminal() }
       try await supervisor.run()
     }
 

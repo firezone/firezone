@@ -5,13 +5,13 @@
 //
 
 import ArgumentParser
+import Darwin
 import FirezoneKit
 import Foundation
 
 /// Walks the user through browser sign-in and reads the token back from the terminal.
 enum SignInPrompt {
-  private static let terminalLock = NSLock()
-  nonisolated(unsafe) private static var mutedTerminal: termios?
+  private static let tokenBufferSize = 4096
 
   static func requestToken(authBaseURL: String, accountSlug: String) async throws -> Token {
     let url = try signInURL(authBaseURL: authBaseURL, accountSlug: accountSlug)
@@ -51,16 +51,6 @@ enum SignInPrompt {
     return token
   }
 
-  /// Re-enables terminal echo. Called on the way out in case we're shutting down while
-  /// a prompt is still blocked on stdin, which would otherwise leave the terminal muted.
-  static func restoreTerminal() {
-    terminalLock.withLock {
-      guard var original = mutedTerminal else { return }
-      tcsetattr(STDIN_FILENO, TCSANOW, &original)
-      mutedTerminal = nil
-    }
-  }
-
   private static func signInURL(authBaseURL: String, accountSlug: String) throws -> URL {
     guard var components = URLComponents(string: authBaseURL) else {
       throw ValidationError("Invalid auth base URL: \(authBaseURL)")
@@ -80,8 +70,8 @@ enum SignInPrompt {
     return url
   }
 
-  /// `readLine` blocks, so it runs off the cooperative pool. Keeping the main actor free
-  /// is what lets SIGINT and SIGTERM still be handled while we wait for the user.
+  /// `readpassphrase` blocks, so it runs off the cooperative pool. Keeping the main actor
+  /// free is what lets SIGINT and SIGTERM still be handled while we wait for the user.
   private static func readHiddenLine(prompt: String) async -> String? {
     await withCheckedContinuation { continuation in
       DispatchQueue.global(qos: .userInitiated).async {
@@ -90,43 +80,34 @@ enum SignInPrompt {
     }
   }
 
+  /// Reads a line without echoing it.
+  ///
+  /// `readpassphrase` talks to `/dev/tty` instead of standard input, and puts the
+  /// terminal back itself, including when a signal interrupts the read. Turning echo off
+  /// on standard input by hand does not hold up here: the call is refused, and the token
+  /// is typed in the clear.
   private static func readHiddenLineBlocking(prompt: String) -> String? {
-    func ask() -> String? {
-      print(prompt, terminator: "")
-      fflush(stdout)
-      return readLine()
-    }
+    var buffer = [CChar](repeating: 0, count: tokenBufferSize)
 
-    var original = termios()
-    guard tcgetattr(STDIN_FILENO, &original) == 0 else {
-      return ask()  // Not a terminal, so there's no echo to suppress
-    }
-
-    var muted = original
-    muted.c_lflag &= ~UInt(ECHO)
-    terminalLock.withLock { mutedTerminal = original }
-
-    // Muting has to happen before we ask, or anything already typed is echoed on its
-    // way into the buffer. TCSAFLUSH throws that away too, so a stray keystroke can't
-    // be taken for the token.
-    let applied = tcsetattr(STDIN_FILENO, TCSAFLUSH, &muted) == 0
-
+    // It's a credential, so don't leave it lying around in freed memory.
     defer {
-      restoreTerminal()
-      print()  // Newline the muted Return didn't echo
+      buffer.withUnsafeMutableBytes { bytes in
+        _ = memset_s(bytes.baseAddress, bytes.count, 0, bytes.count)
+      }
     }
 
-    // Read it back rather than trust it. Somebody typing a token they believe is hidden
-    // when it isn't deserves to be told, and it says which half of this went wrong.
-    var applied2 = termios()
-    let stillEchoes = tcgetattr(STDIN_FILENO, &applied2) != 0 || applied2.c_lflag & UInt(ECHO) != 0
-
-    if !applied || stillEchoes {
-      Log.warning(
-        "Could not turn off terminal echo (set=\(applied), still echoing=\(stillEchoes)). "
-          + "Your token will be visible as you type it.")
+    let result = buffer.withUnsafeMutableBufferPointer { pointer in
+      readpassphrase(
+        prompt,
+        pointer.baseAddress,
+        pointer.count,
+        RPP_ECHO_OFF | RPP_REQUIRE_TTY)
     }
 
-    return ask()
+    guard result != nil else { return nil }
+
+    let entered = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+
+    return String(bytes: entered, encoding: .utf8)
   }
 }
