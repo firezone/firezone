@@ -632,14 +632,19 @@ defmodule PortalWeb.Settings.DirectorySync do
                 public_jwk={assigns[:public_jwk]}
               />
             </div>
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <.button phx-click="close_panel">
+            <.panel_footer>
+              <.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button form="directory-form" type="submit" style="primary" disabled={not @form.source.valid?}>
+              </.panel_footer_button>
+              <.panel_footer_button
+                form="directory-form"
+                type="submit"
+                style="primary"
+                disabled={not @form.source.valid?}
+              >
                 Create
-              </.button>
-            </div>
+              </.panel_footer_button>
+            </.panel_footer>
           </div>
         </div>
 
@@ -681,11 +686,11 @@ defmodule PortalWeb.Settings.DirectorySync do
                 public_jwk={assigns[:public_jwk]}
               />
             </div>
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <.button phx-click="close_panel">
+            <.panel_footer>
+              <.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button
+              </.panel_footer_button>
+              <.panel_footer_button
                 form="directory-form"
                 type="submit"
                 style="primary"
@@ -694,8 +699,8 @@ defmodule PortalWeb.Settings.DirectorySync do
                 }
               >
                 Save
-              </.button>
-            </div>
+              </.panel_footer_button>
+            </.panel_footer>
           </div>
         </div>
       <% else %>

@@ -416,14 +416,14 @@ defmodule PortalWeb.Settings.Account do
           />
         </div>
 
-        <div class="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-          <.button type="button" phx-click="close_edit_account" size="xs">
+        <.panel_footer>
+          <.panel_footer_button type="button" phx-click="close_edit_account">
             Cancel
-          </.button>
-          <.button type="submit" style="primary" disabled={not @form.source.valid?} size="xs">
+          </.panel_footer_button>
+          <.panel_footer_button type="submit" style="primary" disabled={not @form.source.valid?}>
             Save
-          </.button>
-        </div>
+          </.panel_footer_button>
+        </.panel_footer>
       </.form>
     </div>
     """
