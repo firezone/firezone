@@ -37,7 +37,7 @@ enum SignInPrompt {
 
       """)
     let entered =
-      await readHiddenLine(prompt: "Enter the token from your browser: ")?
+      try await readHiddenLine(prompt: "Enter the token from your browser: ")?
       .trimmingCharacters(in: .whitespacesAndNewlines)
 
     guard let entered, !entered.isEmpty else {
@@ -72,10 +72,10 @@ enum SignInPrompt {
 
   /// `readpassphrase` blocks, so it runs off the cooperative pool. Keeping the main actor
   /// free is what lets SIGINT and SIGTERM still be handled while we wait for the user.
-  private static func readHiddenLine(prompt: String) async -> String? {
-    await withCheckedContinuation { continuation in
+  private static func readHiddenLine(prompt: String) async throws -> String? {
+    try await withCheckedThrowingContinuation { continuation in
       DispatchQueue.global(qos: .userInitiated).async {
-        continuation.resume(returning: readHiddenLineBlocking(prompt: prompt))
+        continuation.resume(with: Result { try readHiddenLineBlocking(prompt: prompt) })
       }
     }
   }
@@ -86,9 +86,21 @@ enum SignInPrompt {
   /// terminal back itself, including when a signal interrupts the read. Turning echo off
   /// on standard input by hand does not hold up here: the call is refused, and the token
   /// is typed in the clear.
-  private static func readHiddenLineBlocking(prompt: String) -> String? {
+  private static func readHiddenLineBlocking(prompt: String) throws -> String? {
+    // Piped in, so there's nothing to hide and nothing to ask.
+    guard isatty(STDIN_FILENO) == 1 else {
+      return readLine()
+    }
+
     if let problem = terminalRefusesToHideInput() {
-      Log.warning("Your token will be visible as you type it. \(problem)")
+      throw CLIError(
+        """
+        Refusing to ask for a token that would be typed in the clear. \(problem)
+
+        Pass it without a terminal instead, either of:
+          FIREZONE_TOKEN="$(cat token)" firezone-cli
+          firezone-cli < token
+        """)
     }
 
     var buffer = [CChar](repeating: 0, count: tokenBufferSize)
