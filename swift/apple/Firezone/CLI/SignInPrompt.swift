@@ -36,10 +36,9 @@ enum SignInPrompt {
       ==========================================================================
 
       """)
-    print("Enter the token from your browser: ", terminator: "")
-    fflush(stdout)
-
-    let entered = await readHiddenLine()?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let entered =
+      await readHiddenLine(prompt: "Enter the token from your browser: ")?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
 
     guard let entered, !entered.isEmpty else {
       throw CLIError("No token provided")
@@ -83,30 +82,40 @@ enum SignInPrompt {
 
   /// `readLine` blocks, so it runs off the cooperative pool. Keeping the main actor free
   /// is what lets SIGINT and SIGTERM still be handled while we wait for the user.
-  private static func readHiddenLine() async -> String? {
+  private static func readHiddenLine(prompt: String) async -> String? {
     await withCheckedContinuation { continuation in
       DispatchQueue.global(qos: .userInitiated).async {
-        continuation.resume(returning: readHiddenLineBlocking())
+        continuation.resume(returning: readHiddenLineBlocking(prompt: prompt))
       }
     }
   }
 
-  private static func readHiddenLineBlocking() -> String? {
+  private static func readHiddenLineBlocking(prompt: String) -> String? {
+    func ask() -> String? {
+      print(prompt, terminator: "")
+      fflush(stdout)
+      return readLine()
+    }
+
     var original = termios()
     guard tcgetattr(STDIN_FILENO, &original) == 0 else {
-      return readLine()  // Not a terminal, so there's no echo to suppress
+      return ask()  // Not a terminal, so there's no echo to suppress
     }
 
     var muted = original
     muted.c_lflag &= ~UInt(ECHO)
     terminalLock.withLock { mutedTerminal = original }
-    tcsetattr(STDIN_FILENO, TCSANOW, &muted)
+
+    // Muting has to happen before we ask, or anything already typed is echoed on its
+    // way into the buffer. TCSAFLUSH throws that away too, so a stray keystroke can't
+    // be taken for the token.
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &muted)
 
     defer {
       restoreTerminal()
       print()  // Newline the muted Return didn't echo
     }
 
-    return readLine()
+    return ask()
   }
 }
