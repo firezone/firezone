@@ -196,7 +196,13 @@ These environment variables are read when the matching flag is absent:
 | `FIREZONE_ACTIVATE_INTERNET_RESOURCE` | `--activate-internet-resource` |
 | `FIREZONE_LOG_FILTER`                 | none                           |
 
-Without a token it prints a sign-in URL and waits for you to paste one back.
+It never asks for a token at a prompt. The app is sandboxed, so it cannot turn
+terminal echo off, and a token typed at a prompt would stay in the scrollback.
+Pipe one in instead, which is what it tells you to do when it hasn't got one:
+
+```sh
+pbpaste | firezone-cli
+```
 
 Anything you don't set keeps whatever the app stored, since both share one VPN
 profile. Logs go to stderr as well as to the log folder the app shares.

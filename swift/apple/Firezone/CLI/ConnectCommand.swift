@@ -68,12 +68,14 @@ extension FirezoneCLI {
       )
 
       // Fall back to what the app is configured with, so a self-hosted deployment
-      // doesn't send someone to the public portal to fetch a token.
-      let authBaseURL = authBaseURLOverride ?? tunnel.signIn.authURL
-      let signInSlug = accountSlug ?? tunnel.signIn.accountSlug
-      let supervisor = TunnelSupervisor(session: tunnel.session) {
-        try await SignInPrompt.requestToken(authBaseURL: authBaseURL, accountSlug: signInSlug)
-      }
+      // doesn't point someone at the public portal to fetch a token.
+      let supervisor = TunnelSupervisor(
+        session: tunnel.session,
+        noTokenAdvice: SignIn.instructions(
+          authBaseURL: authBaseURLOverride ?? tunnel.signIn.authURL,
+          accountSlug: accountSlug ?? tunnel.signIn.accountSlug
+        )
+      )
 
       try await supervisor.run()
     }
@@ -103,10 +105,15 @@ extension FirezoneCLI {
       let signIn = try vpnManager.signInSettings()
       let session = try VPNProfile.session(for: vpnManager)
 
-      if let token = ProcessInfo.processInfo.environment["FIREZONE_TOKEN"].flatMap(Token.init) {
-        try IPCClient.start(session: session, token: token.description)
+      // Piped in beats the environment, and either beats whatever the Keychain has,
+      // which is what the extension falls back to when handed nothing.
+      let supplied =
+        SignIn.pipedToken()
+        ?? ProcessInfo.processInfo.environment["FIREZONE_TOKEN"].flatMap(Token.init)
+
+      if let supplied {
+        try IPCClient.start(session: session, token: supplied.description)
       } else {
-        // No token supplied, so the extension falls back to the one in the Keychain.
         try IPCClient.start(session: session)
       }
 

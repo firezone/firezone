@@ -10,8 +10,8 @@ import NetworkExtension
 
 /// Keeps the tunnel running until a signal or an unrecoverable disconnect stops it.
 ///
-/// SIGINT/SIGTERM shut down, SIGHUP restarts. If the extension reports a missing
-/// token, `requestToken` is called once to sign in and the tunnel is retried.
+/// SIGINT/SIGTERM shut down, SIGHUP restarts. A tunnel that stops for want of a token
+/// ends the run saying how to supply one, since there is no way to ask for it here.
 ///
 /// Anything other than a signal is a failure and is rethrown, so a service manager
 /// watching the exit status can tell a tunnel that stopped from one that was stopped.
@@ -20,25 +20,20 @@ final class TunnelSupervisor {
   private enum Action {
     case shutdown
     case restart
-    case signIn
-    case tokenReceived(Token)
   }
 
   private static let connectTimeout = Duration.seconds(30)
 
   private let session: any TunnelSessionProtocol
-  private let requestToken: () async throws -> Token
+  private let noTokenAdvice: String
 
   private var isRestarting = false
-  private var hasRequestedToken = false
-  private var isAwaitingToken = false
   private var failure: (any Error)?
   private var timeoutTask: Task<Void, Never>?
-  private var signInTask: Task<Void, Never>?
 
-  init(session: any TunnelSessionProtocol, requestToken: @escaping () async throws -> Token) {
+  init(session: any TunnelSessionProtocol, noTokenAdvice: String) {
     self.session = session
-    self.requestToken = requestToken
+    self.noTokenAdvice = noTokenAdvice
   }
 
   func run() async throws {
@@ -50,7 +45,6 @@ final class TunnelSupervisor {
 
     defer {
       timeoutTask?.cancel()
-      signInTask?.cancel()
       statusTask.cancel()
       for source in signalSources { source.cancel() }
     }
@@ -71,28 +65,7 @@ final class TunnelSupervisor {
         // Starting again has to wait for the tunnel to actually be down, or the start
         // races the stop and is dropped. `handle(status:)` picks it up from there.
         session.stopTunnel()
-
-      case .signIn:
-        timeoutTask?.cancel()
-        // Signing in waits on the user, so it runs alongside the loop rather than
-        // inside it. A signal arriving mid-prompt still shuts us down promptly.
-        signInTask = Task { await signIn(emit: emit) }
-
-      case .tokenReceived(let token):
-        isAwaitingToken = false
-        try IPCClient.start(session: session, token: token.description)
-        Log.info("Tunnel started with token")
-        startConnectTimeout(emit: emit)
       }
-    }
-  }
-
-  private func signIn(emit: AsyncStream<Action>.Continuation) async {
-    do {
-      emit.yield(.tokenReceived(try await requestToken()))
-    } catch {
-      isAwaitingToken = false
-      fail(with: error, emit: emit)
     }
   }
 
@@ -145,21 +118,10 @@ final class TunnelSupervisor {
       return
     }
 
-    if isAwaitingToken {
-      // Of course it's disconnected: it has no token, which is what we're waiting on.
-      // Failing here would tear down the prompt mid-answer.
-      Log.info("Tunnel disconnected, waiting for the token")
-      return
-    }
-
     let error = await lastDisconnectError()
 
-    if let error, !hasRequestedToken, Self.isTokenNotFound(error) {
-      // Set before yielding, so a repeated disconnect can't queue a second prompt.
-      hasRequestedToken = true
-      isAwaitingToken = true
-      Log.info("No token stored yet, signing in")
-      emit.yield(.signIn)
+    if let error, Self.isTokenNotFound(error) {
+      fail(with: CLIError(noTokenAdvice), emit: emit)
       return
     }
 
@@ -209,15 +171,10 @@ final class TunnelSupervisor {
       guard !Task.isCancelled, session.status != .connected else { return }
 
       // The tunnel is started before this is watching it, so a provider that gave up
-      // for want of a token can do so unobserved. Nothing else would ask for one, and
-      // timing out instead would be an unhelpful way to say "sign in".
-      if !hasRequestedToken, let error = await lastDisconnectError(),
-        Self.isTokenNotFound(error)
-      {
-        hasRequestedToken = true
-        isAwaitingToken = true
-        Log.info("No token stored yet, signing in")
-        emit.yield(.signIn)
+      // for want of a token can do so unobserved. Timing out would be an unhelpful way
+      // to say that a token is all it needed.
+      if let error = await lastDisconnectError(), Self.isTokenNotFound(error) {
+        fail(with: CLIError(noTokenAdvice), emit: emit)
         return
       }
 
