@@ -14,7 +14,7 @@ defmodule Portal.Accounts.Activity do
   Returns true when the account has a session in the session log retention window.
   """
   def account_active?(account_id) do
-    Database.active_account_ids([account_id]) != []
+    Database.account_active?(account_id)
   end
 
   @doc """
@@ -31,6 +31,12 @@ defmodule Portal.Accounts.Activity do
     alias Portal.Account
     alias Portal.Safe
     alias Portal.SessionLog
+
+    def account_active?(account_id) do
+      from(sl in SessionLog, where: sl.account_id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
 
     def active_account_ids([]), do: []
 
