@@ -120,8 +120,8 @@ actor Adapter {
   private var resources: [Resource]?  // swiftlint:disable:this discouraged_optional_collection
   private var connectedDevices: [ConnectedDevice] = []
 
-  /// Resources we couldn't connect to
-  private var unreachableResources: [UnreachableResource]
+  /// Resource notifications waiting for the UI process to poll them.
+  private var pendingUnreachableResources: [UnreachableResource]
 
   /// Starting parameters
   private let apiURL: String
@@ -145,7 +145,7 @@ actor Adapter {
     self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
     self.providerCommandSender = providerCommandSender
-    self.unreachableResources = []
+    self.pendingUnreachableResources = []
     // Start log cleanup immediately - doesn't depend on tunnel being connected
     providerCommandSender.send(.startLogCleanupTask)
   }
@@ -309,13 +309,19 @@ actor Adapter {
     hash: Data
   ) -> Data? {
     do {
-      return try ConnlibState.encodeIfChanged(
+      let state = try ConnlibState.encodeIfChanged(
         resources: self.resources?.map { self.convertResource($0) },
         connectedDevices: self.connectedDevices.map { FirezoneKit.ConnectedDevice($0) },
-        unreachableResources: self.unreachableResources,
+        unreachableResources: self.pendingUnreachableResources,
         isLogStreamingActive: Log.isStreamingActive,
         comparedTo: hash
       )
+
+      // Connlib already deduplicates these notifications. The array is only a mailbox between
+      // processes, so drain it after the UI has polled rather than retaining it as session state.
+      pendingUnreachableResources.removeAll()
+
+      return state
     } catch {
       Log.log("Failed to encode state as PropertyList: \(error)")
       return nil
@@ -461,11 +467,11 @@ actor Adapter {
       providerCommandSender.send(.cancelWithError(sendableError))
 
     case .allGatewaysOffline(let resourceId):
-      self.unreachableResources.append(
+      self.pendingUnreachableResources.append(
         UnreachableResource(resourceId: resourceId, reason: UnreachableReason.offline))
 
     case .gatewayVersionMismatch(let resourceId):
-      self.unreachableResources.append(
+      self.pendingUnreachableResources.append(
         UnreachableResource(resourceId: resourceId, reason: UnreachableReason.versionMismatch))
     }
   }

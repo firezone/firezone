@@ -82,9 +82,6 @@ public final class Store: ObservableObject {
   // Track which session expired alerts have been shown to prevent duplicates
   private var shownAlertIds: Set<String>
 
-  // Track which unreachable resource notifications we have already shown
-  private var unreachableResources: Set<UnreachableResource> = []
-
   /// UserDefaults instance for persisting GUI state.
   let userDefaults: UserDefaults
 
@@ -550,9 +547,6 @@ public final class Store: ObservableObject {
     shownAlertIds.removeAll()
     userDefaults.removeObject(forKey: "shownAlertIds")
 
-    // Clear notified unreachable resources for fresh session
-    unreachableResources.removeAll()
-
     // Bring the tunnel up and send it a token to start
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
@@ -657,7 +651,6 @@ public final class Store: ObservableObject {
     stateUpdateTask = nil
     resourceList = ResourceList.loading
     connlibStateHash = Data()
-    unreachableResources.removeAll()
     connectedDevices.removeAll()
     Log.setStreamingActive(false)
   }
@@ -735,15 +728,10 @@ public final class Store: ObservableObject {
 
     connectedDevices = state.connectedDevices
 
-    let newlyUnreachableResources = Set(state.unreachableResources).subtracting(
-      self.unreachableResources)
-
     await showNotificationsForUnreachableResources(
-      unreachableResources: newlyUnreachableResources,
+      unreachableResources: Set(state.unreachableResources),
       resources: state.resources ?? []
     )
-
-    self.unreachableResources = Set(state.unreachableResources)
   }
 
   private func showNotificationsForUnreachableResources(
