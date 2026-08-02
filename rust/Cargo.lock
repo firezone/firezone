@@ -258,6 +258,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "asn1-rs"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f43a50ac4fdca5df8e885c21b835997f0a1cdee65494a6847694a98652d9d8"
+dependencies = [
+ "asn1-rs-derive",
+ "asn1-rs-impl",
+ "displaydoc",
+ "nom 7.1.3",
+ "num-traits",
+ "rusticata-macros",
+ "thiserror 2.0.19",
+ "time",
+]
+
+[[package]]
+name = "asn1-rs-derive"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3109e49b1e4909e9db6515a30c633684d68cdeaa252f215214cb4fa1a5bfee2c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+ "synstructure",
+]
+
+[[package]]
+name = "asn1-rs-impl"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b18050c2cd6fe86c3a76584ef5e0baf286d038cda203eb6223df2cc413565f7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "assert_matches"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1284,7 +1323,7 @@ dependencies = [
  "phoenix-channel",
  "rustls",
  "rustls-platform-verifier",
- "secrecy",
+ "secrecy 0.10.3",
  "socket-factory",
  "telemetry",
  "thiserror 2.0.19",
@@ -1593,6 +1632,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "cryptoki"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "781357a7779a8e92ea985121bbf379a9adf0777f44ab6392efc6abd5aa9b67db"
+dependencies = [
+ "bitflags 1.3.2",
+ "cryptoki-sys",
+ "libloading 0.8.7",
+ "log",
+ "paste",
+ "secrecy 0.8.0",
+]
+
+[[package]]
+name = "cryptoki-sys"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "753e27d860277930ae9f394c119c8c70303236aab0ffab1d51f3d207dbb2bc4b"
+dependencies = [
+ "libloading 0.8.7",
+]
+
+[[package]]
 name = "cssparser"
 version = "0.36.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1811,6 +1873,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "der-parser"
+version = "10.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07da5016415d5a3c4dd39b11ed26f915f52fc4e0dc197d87908bc916e51bc1a6"
+dependencies = [
+ "asn1-rs",
+ "displaydoc",
+ "nom 7.1.3",
+ "num-bigint",
+ "num-traits",
+ "rusticata-macros",
+]
+
+[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1879,6 +1955,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "device-trust"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "base64 0.23.1",
+ "cryptoki",
+ "rustls",
+ "rustls-platform-verifier",
+ "serde",
+ "sha2 0.11.0",
+ "tracing",
+ "uuid",
+ "windows",
+ "windows-core",
+ "x509-parser",
+]
+
+[[package]]
 name = "difference"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1940,7 +2034,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2388,7 +2482,7 @@ dependencies = [
  "clap",
  "nix 0.31.3",
  "rpassword",
- "secrecy",
+ "secrecy 0.10.3",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2423,7 +2517,7 @@ dependencies = [
  "phoenix-channel",
  "resolv-conf",
  "rustls",
- "secrecy",
+ "secrecy 0.10.3",
  "snownet",
  "socket-factory",
  "telemetry",
@@ -2454,6 +2548,7 @@ dependencies = [
  "dbus-secret-service-keyring-store",
  "derive_more",
  "desktop-notifications",
+ "device-trust",
  "dirs",
  "embed-resource",
  "fd-lock",
@@ -2482,7 +2577,7 @@ dependencies = [
  "rustls",
  "sadness-generator",
  "sd-notify",
- "secrecy",
+ "secrecy 0.10.3",
  "semver",
  "serde",
  "serde_json",
@@ -2530,6 +2625,7 @@ dependencies = [
  "bin-shared",
  "clap",
  "client-shared",
+ "device-trust",
  "flow-log-upload",
  "flow-log-writer",
  "futures",
@@ -2549,7 +2645,7 @@ dependencies = [
  "rpassword",
  "rustls",
  "sd-notify",
- "secrecy",
+ "secrecy 0.10.3",
  "socket-factory",
  "telemetry",
  "tokio",
@@ -2576,7 +2672,7 @@ dependencies = [
  "rand 0.10.2",
  "reqwest",
  "rustls",
- "secrecy",
+ "secrecy 0.10.3",
  "serde",
  "serde_json",
  "socket-factory",
@@ -2615,7 +2711,7 @@ dependencies = [
  "rand 0.10.2",
  "relay-proto",
  "rustls",
- "secrecy",
+ "secrecy 0.10.3",
  "serde",
  "socket-factory",
  "socket2",
@@ -2935,7 +3031,7 @@ dependencies = [
  "libfuzzer-sys",
  "rand 0.10.2",
  "relay-proto",
- "secrecy",
+ "secrecy 0.10.3",
  "serde_json",
  "sha2 0.11.0",
  "smallvec",
@@ -4327,7 +4423,7 @@ version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a1886916523694cd6ea3d175f03a1e5010699a2a4cc13696d83d7bea1d80638"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4716,7 +4812,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "thiserror 2.0.19",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4887,7 +4983,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5001,7 +5097,7 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af1844ef2428cc3e1cb900be36181049ef3d3193c63e43026cfe202983b27a56"
 dependencies = [
- "proc-macro-crate 1.3.1",
+ "proc-macro-crate 3.3.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -5242,6 +5338,15 @@ checksum = "182eab3e1cd9cdc0ecf1ce3342d9844f3dc7d098f0694569bfdf327b612d69fd"
 dependencies = [
  "bytes",
  "serde",
+]
+
+[[package]]
+name = "oid-registry"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12f40cff3dde1b6087cc5d5f5d4d65712f34016a03ed60e9c08dcc392736b5b7"
+dependencies = [
+ "asn1-rs",
 ]
 
 [[package]]
@@ -5608,7 +5713,7 @@ dependencies = [
  "os_info",
  "rand 0.10.2",
  "rustls",
- "secrecy",
+ "secrecy 0.10.3",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -5958,7 +6063,7 @@ dependencies = [
  "libc",
  "socket2",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6166,7 +6271,7 @@ dependencies = [
  "opentelemetry",
  "proptest",
  "rand 0.10.2",
- "secrecy",
+ "secrecy 0.10.3",
  "sha2 0.11.0",
  "smallvec",
  "stun_codec",
@@ -6336,6 +6441,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusticata-macros"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "faf0c4a6ece9950b9abdb62b1cfcf2a68b3b67a10ba445b3bb85be2a293d0632"
+dependencies = [
+ "nom 7.1.3",
+]
+
+[[package]]
 name = "rustix"
 version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6358,7 +6472,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6415,7 +6529,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6570,6 +6684,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e4ef7359e694bfaf1dd27a30f9d760b54c00dfae9f19bd0c05a39bc9128fe76"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "secrecy"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bd1c54ea06cfd2f6b63219704de0b9b4f72dcc2b8fdef820be6cd799780e91e"
+dependencies = [
+ "zeroize",
 ]
 
 [[package]]
@@ -7128,7 +7251,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7902,7 +8025,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7922,7 +8045,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix 1.1.4",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8538,7 +8661,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "thiserror 2.0.19",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8656,7 +8779,7 @@ dependencies = [
  "rand 0.10.2",
  "rangemap",
  "ringbuffer",
- "secrecy",
+ "secrecy 0.10.3",
  "serde",
  "serde_json",
  "serde_with",
@@ -9989,7 +10112,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10197,6 +10320,23 @@ dependencies = [
  "getrandom 0.4.2",
  "rand_core 0.10.1",
  "zeroize",
+]
+
+[[package]]
+name = "x509-parser"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d43b0f71ce057da06bc0851b23ee24f3f86190b07203dd8f567d0b706a185202"
+dependencies = [
+ "asn1-rs",
+ "data-encoding",
+ "der-parser",
+ "lazy_static",
+ "nom 7.1.3",
+ "oid-registry",
+ "rusticata-macros",
+ "thiserror 2.0.19",
+ "time",
 ]
 
 [[package]]

@@ -89,6 +89,14 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
             ClientMsg::ClearLogs => {
                 ipc_tx.send(&ServerMsg::ClearedLogs(Ok(()))).await?;
             }
+            ClientMsg::GetX509Status => {
+                ipc_tx
+                    .send(&ServerMsg::X509Status(Ok(device_trust::Status {
+                        summary: "No X.509 device identity is configured.".to_owned(),
+                        sections: vec![],
+                    })))
+                    .await?;
+            }
             ClientMsg::ApplyAdvancedSettings(settings) => {
                 ipc_tx
                     .send(&ServerMsg::AdvancedSettingsApplied(Ok(settings)))

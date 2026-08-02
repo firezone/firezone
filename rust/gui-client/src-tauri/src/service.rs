@@ -52,6 +52,7 @@ pub(crate) use platform::ProcessToken;
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
     ClearLogs,
+    GetX509Status,
     Connect {
         #[serde(serialize_with = "serialize_token")]
         token: SecretString,
@@ -93,6 +94,7 @@ pub enum ServerMsg {
     OnDisconnect {
         error_msg: String,
         is_authentication_error: bool,
+        is_device_trust_error: bool,
     },
     AllGatewaysOffline {
         resource_id: ResourceId,
@@ -104,6 +106,8 @@ pub enum ServerMsg {
     /// Result of an `ApplyAdvancedSettings` from the GUI. `Ok` echoes the
     /// persisted struct so the GUI is certain about what landed.
     AdvancedSettingsApplied(Result<AdvancedSettings, String>),
+    /// Result of inspecting the native X.509 identity provider.
+    X509Status(Result<device_trust::Status, String>),
     /// The Tunnel service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -228,6 +232,7 @@ struct Handler<'a> {
     mdm_settings: MdmSettings,
     session: Session,
     telemetry_release: Option<String>,
+    mdm_device_id: Option<String>,
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
     network_notifier: BoxStream<'static, Result<()>>,
@@ -438,6 +443,7 @@ impl<'a> Handler<'a> {
             mdm_settings,
             session: Session::None,
             telemetry_release: None,
+            mdm_device_id: None,
             tun_device,
             dns_notifier,
             network_notifier,
@@ -598,6 +604,7 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::OnDisconnect {
                     error_msg: error.to_string(),
                     is_authentication_error: error.is_authentication_error(),
+                    is_device_trust_error: error.is_device_trust_error(),
                 })
                 .await?
             }
@@ -640,6 +647,15 @@ impl<'a> Handler<'a> {
                 let result = logging::clear_service_logs().await;
                 self.send_ipc(ServerMsg::ClearedLogs(result.map_err(|e| e.to_string())))
                     .await?
+            }
+            ClientMsg::GetX509Status => {
+                let config = device_trust_config();
+                let result = tokio::task::spawn_blocking(move || device_trust::status(&config))
+                    .await
+                    .map_err(anyhow::Error::new)
+                    .and_then(|result| result)
+                    .map_err(|error| format!("{error:#}"));
+                self.send_ipc(ServerMsg::X509Status(result)).await?;
             }
             ClientMsg::Connect {
                 token,
@@ -725,6 +741,7 @@ impl<'a> Handler<'a> {
                     self.telemetry_release = Some(release.clone());
                     telemetry::start(&environment, &release, telemetry::GUI_DSN);
                     telemetry::set_firezone_id(self.device_id.id.clone());
+                    telemetry::set_mdm_device_id(self.mdm_device_id.clone());
 
                     opentelemetry::global::set_meter_provider(
                         telemetry::SentryMeterProvider::default(),
@@ -764,8 +781,18 @@ impl<'a> Handler<'a> {
             device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
         let api_url = self.api_url().to_string();
-        let url = LoginUrl::client(
+        let identity = device_trust::identity(&device_trust_config())?;
+        self.mdm_device_id = identity
+            .as_ref()
+            .and_then(device_trust::Identity::mdm_device_id)
+            .map(str::to_owned);
+        telemetry::set_mdm_device_id(self.mdm_device_id.clone());
+        let portal_api_url = portal_api_url(
             Url::parse(&api_url).context("Failed to parse URL")?,
+            identity.is_some(),
+        );
+        let url = LoginUrl::client(
+            portal_api_url,
             device_id.id.clone(),
             None,
             DeviceInfo {
@@ -789,6 +816,10 @@ impl<'a> Handler<'a> {
             },
             Arc::new(tcp_socket_factory),
         );
+        let portal = match identity {
+            Some(identity) => portal.with_tls_client_config(identity.tls_client_config()),
+            None => portal,
+        };
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
@@ -846,6 +877,30 @@ impl<'a> Handler<'a> {
 
         Ok(())
     }
+}
+
+fn device_trust_config() -> device_trust::Config {
+    device_trust::Config {
+        pkcs11_uri: std::env::var("FIREZONE_DEVICE_TRUST_PKCS11_URI").ok(),
+    }
+}
+
+fn portal_api_url(mut api_url: Url, use_client_certificate: bool) -> Url {
+    if !use_client_certificate {
+        return api_url;
+    }
+
+    let mtls_host = match api_url.host_str() {
+        Some("api.firez.one") => Some("mtls.firez.one"),
+        Some("api.firezone.dev") => Some("mtls.firezone.dev"),
+        _ => None,
+    };
+    if let Some(host) = mtls_host {
+        api_url
+            .set_host(Some(host))
+            .expect("a known valid hostname should remain valid");
+    }
+    api_url
 }
 
 /// Run the Tunnel service in an interactive terminal rather than as a
@@ -957,6 +1012,22 @@ pub fn run_smoke_test() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn client_certificate_uses_mtls_api_host() {
+        let production = Url::parse("wss://api.firezone.dev/custom?foo=bar").unwrap();
+        let staging = Url::parse("wss://api.firez.one:444/custom?foo=bar").unwrap();
+
+        assert_eq!(
+            portal_api_url(production.clone(), true).as_str(),
+            "wss://mtls.firezone.dev/custom?foo=bar"
+        );
+        assert_eq!(
+            portal_api_url(staging, true).as_str(),
+            "wss://mtls.firez.one:444/custom?foo=bar"
+        );
+        assert_eq!(portal_api_url(production.clone(), false), production);
+    }
 
     #[tokio::test]
     async fn panic_inside_handler_doesnt_interrupt_service() {
