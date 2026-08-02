@@ -18,5 +18,10 @@
 		-->
 		<string>$(APP_GROUP_ID_PRE_1_4_0)</string>
 	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+		<string>com.apple.managed.vpn.shared</string>
+	</array>
 </dict>
 </plist>
