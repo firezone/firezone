@@ -108,17 +108,37 @@ public class Configuration: ObservableObject {
   private(set) var publishedInternetResourceEnabled = false
   private(set) var publishedHideAdminPortalMenuItem = false
   private(set) var publishedHideResourceList = false
+  @Published private(set) var isVPNConfigurationManaged = false
 
   var internetResourceEnabledPublisher: AnyPublisher<Bool, Never> {
     internetResourceEnabledSubject.eraseToAnyPublisher()
   }
 
-  var isAuthURLForced: Bool { defaults.objectIsForced(forKey: Keys.authURL) }
-  var isApiURLForced: Bool { defaults.objectIsForced(forKey: Keys.apiURL) }
-  var isLogFilterForced: Bool { defaults.objectIsForced(forKey: Keys.logFilter) }
-  var isAccountSlugForced: Bool { defaults.objectIsForced(forKey: Keys.accountSlug) }
-  var isConnectOnStartForced: Bool { defaults.objectIsForced(forKey: Keys.connectOnStart) }
-  var isStartOnLoginForced: Bool { defaults.objectIsForced(forKey: Keys.startOnLogin) }
+  var isAuthURLForced: Bool {
+    isVPNConfigurationManaged || defaults.objectIsForced(forKey: Keys.authURL)
+  }
+  var isApiURLForced: Bool {
+    isVPNConfigurationManaged || defaults.objectIsForced(forKey: Keys.apiURL)
+  }
+  var isLogFilterForced: Bool {
+    isVPNConfigurationManaged || defaults.objectIsForced(forKey: Keys.logFilter)
+  }
+  var isAccountSlugForced: Bool {
+    isVPNConfigurationManaged || defaults.objectIsForced(forKey: Keys.accountSlug)
+  }
+  var isConnectOnStartForced: Bool {
+    isVPNConfigurationManaged || defaults.objectIsForced(forKey: Keys.connectOnStart)
+  }
+  var isStartOnLoginForced: Bool {
+    isVPNConfigurationManaged || defaults.objectIsForced(forKey: Keys.startOnLogin)
+  }
+  var isInternetResourceEnabledForced: Bool {
+    isVPNConfigurationManaged || defaults.objectIsForced(forKey: Keys.internetResourceEnabled)
+  }
+
+  func setVPNConfigurationManaged(_ isManaged: Bool) {
+    isVPNConfigurationManaged = isManaged
+  }
 
   var authURL: String {
     get { effectiveString(Keys.authURL, default: ConfigurationDefaults.authURL) }

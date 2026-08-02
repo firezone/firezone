@@ -40,6 +40,12 @@ public final class Log {
     }
   }
 
+  public static func setMdmDeviceId(_ mdmDeviceId: String?) {
+    sentryLock.withLock {
+      _sentryAttributes["user.mdm_device_id"] = mdmDeviceId
+    }
+  }
+
   public static func setEnvironment(_ environment: String) {
     sentryLock.withLock {
       _sentryAttributes["environment"] = environment

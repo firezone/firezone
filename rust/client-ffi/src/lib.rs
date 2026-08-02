@@ -293,10 +293,16 @@ impl Session {
         flow_logs_dir: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
+        use_client_certificate: bool,
+        mdm_device_id: Option<String>,
+        client_tls_identity: Arc<dyn ClientTlsIdentity>,
     ) -> Result<Self, ConnlibError> {
         // iOS doesn't need socket protection like Android
         let tcp_socket_factory = Arc::new(socket_factory::tcp);
         let udp_socket_factory = Arc::new(socket_factory::udp);
+        let tls_client_config = use_client_certificate
+            .then(|| tls_client_config(client_tls_identity))
+            .transpose()?;
 
         let session = connect(
             api_url,
@@ -309,8 +315,8 @@ impl Session {
             flow_logs_dir,
             device_info,
             is_internet_resource_active,
-            None,
-            None,
+            mdm_device_id,
+            tls_client_config,
             tcp_socket_factory,
             udp_socket_factory,
         )?;

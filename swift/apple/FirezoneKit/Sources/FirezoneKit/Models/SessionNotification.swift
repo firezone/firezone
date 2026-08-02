@@ -123,6 +123,34 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
         }
       }
     }
+
+    nonisolated public static func showDeviceAttestationFailureNotificationiOS(_ message: String) {
+      UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
+        guard notificationSettings.authorizationStatus == .authorized else {
+          Log.warning("Cannot show device-attestation failure notification: notifications denied")
+          return
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Device attestation failed"
+        content.body = message
+        content.sound = .default
+        content.categoryIdentifier =
+          NotificationIndentifier.sessionEndedNotificationCategory.rawValue
+        let request = UNNotificationRequest(
+          identifier: "FirezoneDeviceAttestationFailed",
+          content: content,
+          trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+          if let error {
+            Log.error("Failed to show device-attestation notification: \(error)")
+          } else {
+            Log.info("Device-attestation failure notification shown")
+          }
+        }
+      }
+    }
   #elseif os(macOS)
     // In macOS, use a Cocoa alert.
     // This gets called from the app side.

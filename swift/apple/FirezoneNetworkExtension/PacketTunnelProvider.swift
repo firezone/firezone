@@ -111,6 +111,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       providerConfiguration[Configuration.Keys.internetResourceEnabled],
       default: ConfigurationDefaults.internetResourceEnabled
     )
+    let identityReference =
+      (protocolConfiguration as? NETunnelProviderProtocol)?.identityReference
+    Log.info(
+      "VPN X.509 identity reference "
+        + (identityReference.map { "is configured (\($0.count) bytes)" } ?? "is not configured")
+    )
 
     Telemetry.setEnvironmentOrClose(apiURL)
     Telemetry.setUser(firezoneId: firezoneId.encoded, accountSlug: accountSlug)
@@ -126,6 +132,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       logFilter: logFilter,
       accountSlug: accountSlug,
       internetResourceEnabled: internetResourceEnabled,
+      identityReference: identityReference,
       providerCommandSender: commandSender
     )
 

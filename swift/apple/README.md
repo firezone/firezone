@@ -56,6 +56,18 @@ build phase. Xcode build can be triggered both from Xcode UI or via
 **Note**: To test the iOS app, you'll need a physical iOS device such as an
 iPhone or iPad. Network Extensions can't be debugged in the iOS simulator.
 
+### Managed VPN credentials
+
+X.509 identities delivered with an MDM VPN configuration are stored in Apple's
+`com.apple.managed.vpn.shared` keychain access group. Both the Firezone app and
+its Packet Tunnel Provider provisioning profiles must authorize that access
+group. Apple treats this as a managed capability; request it for both App IDs,
+enable it after approval, and regenerate the development and distribution
+provisioning profiles before testing or releasing an MDM-provided identity.
+
+See Apple's [Network Extension entitlement guidance](https://developer.apple.com/forums/thread/67613)
+and [managed capability provisioning instructions](https://developer.apple.com/help/account/reference/provisioning-with-managed-capabilities).
+
 ### Making release builds for local testing
 
 1. Install the needed signing certificates to your keychain by exporting them
@@ -173,6 +185,7 @@ not do. `mise run cli` finds it for you:
 ```sh
 mise run cli -- --help
 mise run cli -- extension status
+mise run cli -- x509
 mise run cli -- connect --account-slug my-account
 ```
 
@@ -184,6 +197,9 @@ It talks to the same system extension as the GUI and will not start without it.
 build, and exits non-zero when it does not, so a setup script can check before
 going further. It cannot install the extension, since installing one needs a
 user to approve it. Launch the app once to do that.
+
+`x509` prints the same read-only certificate, identity-reference, and key
+diagnostics shown in the app's Advanced settings, then exits.
 
 These environment variables are read when the matching flag is absent:
 

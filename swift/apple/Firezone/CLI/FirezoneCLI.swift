@@ -14,7 +14,7 @@ struct FirezoneCLI: AsyncParsableCommand {
     commandName: "firezone-cli",
     abstract: "Firezone headless Client",
     version: versionString,
-    subcommands: [Connect.self, SignOut.self, Extension.self],
+    subcommands: [Connect.self, SignOut.self, Extension.self, X509Details.self],
     defaultSubcommand: Connect.self
   )
 
