@@ -122,7 +122,7 @@ defmodule Portal.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:telemetry_metrics, "~> 1.0"},
       {:recon, "~> 2.5"},
-      {:observer_cli, "~> 1.7"},
+      {:observer_cli, "~> 2.0"},
       {:opentelemetry, "~> 1.5"},
       {:opentelemetry_logger_metadata, "~> 0.2.0"},
       {:opentelemetry_api_experimental,
