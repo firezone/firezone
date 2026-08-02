@@ -159,7 +159,7 @@ internal class SettingsActivity : AppCompatActivity() {
     private inner class SettingsPagerAdapter(
         activity: FragmentActivity,
     ) : FragmentStateAdapter(activity) {
-        override fun getItemCount(): Int = 3 // Three tabs
+        override fun getItemCount(): Int = 3
 
         override fun createFragment(position: Int): Fragment =
             when (position) {
