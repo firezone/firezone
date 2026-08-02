@@ -29,6 +29,47 @@ Both tasks build only the cargo target matching the device's ABI (detected via
 `adb` for `install-phone`, host arch for `install-emulator`), which is roughly
 4x faster than the default all-ABI build.
 
+## X.509 device identity
+
+Firezone uses Android's system `KeyChain` for X.509 device identity. The private
+key remains in the KeyChain; Firezone receives a key handle and asks it to sign
+the mutual-TLS handshake. The **X.509 Device Identity** section in Advanced
+Settings shows the configured alias, key access, and certificate-chain
+diagnostics.
+
+Android ownership and distribution do not create four different certificate
+APIs. The important distinction is whether a device policy controller (DPC)
+has granted Firezone access to a key:
+
+| Deployment | Certificate provisioning and Firezone access | User interaction |
+| --- | --- | --- |
+| Personally owned, personal profile | Not supported. A work-profile DPC cannot provision private keys across the profile boundary. | Advanced Settings explains that X.509 device identity requires a managed work profile or corporate-owned device. |
+| Personally owned, work profile | The DPC installs the identity in the work profile. It may pre-grant access on Android 11+, or handle the KeyChain chooser on older versions. | No prompt when pre-granted; otherwise Advanced Settings launches the system picker. |
+| Corporate owned | The device/profile owner installs the identity, grants the Firezone package access, and supplies its alias as managed configuration. | None on Android 11+ when fully configured. On older releases, **Authorize Certificate** invokes the chooser so the DPC can return the alias silently. |
+| AOSP | `KeyChain` is an Android framework API and does not depend on Google Play services. Managed work-profile and corporate-owned provisioning are supported when the build includes a working KeyChain service and selection UI. | Determined by whether a DPC pre-granted the key, just as on other Android builds. Unmanaged personal profiles are not supported. |
+
+For managed deployment, set the `x509CertificateAlias` application restriction
+to the exact alias used when installing the key pair. The selected leaf
+certificate must have subject common name `dev.firezone.device-trust`. On
+Android 11 (API 30) or newer, the DPC should also call
+[`DevicePolicyManager.grantKeyPairToApp`](https://developer.android.com/reference/android/app/admin/DevicePolicyManager#grantKeyPairToApp(android.content.ComponentName,%20java.lang.String,%20java.lang.String))
+for `dev.firezone.android`. On earlier supported versions, the DPC can implement
+[`onChoosePrivateKeyAlias`](https://developer.android.com/reference/android/app/admin/DeviceAdminReceiver#onChoosePrivateKeyAlias(android.content.Context,%20android.content.Intent,%20int,%20android.net.Uri,%20java.lang.String))
+and return the managed alias when Firezone requests access.
+
+An installation in a supported profile can remember an alias returned by
+[`KeyChain.choosePrivateKeyAlias`](https://developer.android.com/reference/android/security/KeyChain#choosePrivateKeyAlias(android.app.Activity,%20android.security.KeyChainAliasCallback,%20java.lang.String[],%20java.security.Principal[],%20android.net.Uri,%20java.lang.String)).
+If the key is removed or its grant is revoked, Advanced Settings reports it as
+unavailable and the user can select it again.
+
+The public KeyChain API intentionally resolves client identities by alias and
+does not let applications enumerate every installed private-key alias. A DPC
+therefore controls zero-touch selection and certificate renewal. When a SCEP
+identity is renewed under the same alias, `KeyChain.getCertificateChain`
+returns the current chain. If renewal creates multiple aliases, the DPC must
+return the newest suitable alias from `onChoosePrivateKeyAlias`; the system
+picker performs that choice for user-managed selection.
+
 ### Wireless ADB
 
 Useful when your USB connection is flaky. Both flows give you a regular `adb`

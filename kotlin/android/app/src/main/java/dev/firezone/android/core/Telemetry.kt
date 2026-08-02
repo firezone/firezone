@@ -11,6 +11,7 @@ import io.sentry.protocol.User
 object Telemetry {
     private var firezoneId: String? = null
     private var accountSlug: String? = null
+    private var mdmDeviceId: String? = null
 
     fun start(context: Context) {
         SentryAndroid.init(context) { options ->
@@ -33,16 +34,26 @@ object Telemetry {
         updateUser()
     }
 
+    fun setMdmDeviceId(id: String?) {
+        mdmDeviceId = id
+        updateUser()
+    }
+
     private fun updateUser() {
         val id = firezoneId
         val slug = accountSlug
+        val mdmId = mdmDeviceId
 
         if (id != null && slug != null) {
-            Log.setUser(id, slug)
+            Log.setUser(id, slug, mdmId)
             val user =
                 User().apply {
                     this.id = id
-                    this.data = mapOf("account_slug" to slug)
+                    this.data =
+                        buildMap {
+                            put("account_slug", slug)
+                            mdmId?.let { put("mdm_device_id", it) }
+                        }
                 }
             Sentry.setUser(user)
         } else {

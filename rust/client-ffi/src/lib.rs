@@ -112,6 +112,8 @@ pub struct AndroidSessionConfig {
     pub flow_logs_dir: Option<String>,
     pub device_info: DeviceInfo,
     pub is_internet_resource_active: bool,
+    pub use_client_certificate: bool,
+    pub mdm_device_id: Option<String>,
 }
 
 /// Resource status enum
@@ -239,6 +241,7 @@ impl Session {
     pub fn new_android(
         config: AndroidSessionConfig,
         protect_socket: Arc<dyn ProtectSocket>,
+        client_tls_identity: Arc<dyn ClientTlsIdentity>,
     ) -> Result<Self, ConnlibError> {
         let AndroidSessionConfig {
             api_url,
@@ -251,9 +254,14 @@ impl Session {
             flow_logs_dir,
             device_info,
             is_internet_resource_active,
+            use_client_certificate,
+            mdm_device_id,
         } = config;
         let udp_socket_factory = Arc::new(protected_udp_socket_factory(protect_socket.clone()));
         let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(protect_socket));
+        let tls_client_config = use_client_certificate
+            .then(|| tls_client_config(client_tls_identity))
+            .transpose()?;
 
         connect(
             api_url,
@@ -266,8 +274,8 @@ impl Session {
             flow_logs_dir,
             device_info,
             is_internet_resource_active,
-            None,
-            None,
+            mdm_device_id,
+            tls_client_config,
             tcp_socket_factory,
             udp_socket_factory,
         )

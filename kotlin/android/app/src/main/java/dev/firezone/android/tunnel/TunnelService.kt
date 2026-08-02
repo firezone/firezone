@@ -24,7 +24,11 @@ import dev.firezone.android.core.Log
 import dev.firezone.android.core.Telemetry
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.ResourceState
+import dev.firezone.android.core.data.X509_CERTIFICATE_ALIAS_RESTRICTION
 import dev.firezone.android.core.data.isEnabled
+import dev.firezone.android.core.x509.NoClientTlsIdentity
+import dev.firezone.android.core.x509.X509Identity
+import dev.firezone.android.core.x509.X509IdentityException
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.ConnectedDevice
 import dev.firezone.android.tunnel.model.Resource
@@ -45,6 +49,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.withContext
 import uniffi.connlib.AndroidSessionConfig
 import uniffi.connlib.ConnlibException
 import uniffi.connlib.DeviceInfo
@@ -75,6 +80,9 @@ class TunnelService : VpnService() {
 
     @Inject
     internal lateinit var moshi: Moshi
+
+    @Inject
+    internal lateinit var x509Identity: X509Identity
 
     private var tunnelIpv4Address: String? = null
     private var tunnelIpv6Address: String? = null
@@ -329,6 +337,26 @@ class TunnelService : VpnService() {
                     Telemetry.setFirezoneId(deviceIdValue)
                     Telemetry.setAccountSlug(config.accountSlug)
 
+                    val x509Alias =
+                        appRestrictions
+                            .getString(X509_CERTIFICATE_ALIAS_RESTRICTION)
+                            ?.takeUnless { it.isBlank() || it == "null" }
+                            ?: if (appRestrictions.containsKey(X509_CERTIFICATE_ALIAS_RESTRICTION)) {
+                                null
+                            } else {
+                                repo.getSelectedX509CertificateAliasSync()
+                            }
+                    val x509ClientIdentity =
+                        if (x509Identity.isSupportedProfile()) {
+                            withContext(Dispatchers.IO) {
+                                x509Identity.clientTlsIdentity(x509Alias)
+                            }
+                        } else {
+                            null
+                        }
+                    val mdmDeviceId = x509ClientIdentity?.mdmDeviceId
+                    Telemetry.setMdmDeviceId(mdmDeviceId)
+
                     Session
                         .newAndroid(
                             config =
@@ -343,8 +371,12 @@ class TunnelService : VpnService() {
                                     flowLogsDir = flowLogsDir(this@TunnelService),
                                     isInternetResourceActive = resourceState.isEnabled(),
                                     deviceInfo = deviceInfo,
+                                    useClientCertificate = x509ClientIdentity != null,
+                                    mdmDeviceId = mdmDeviceId,
                                 ),
                             protectSocket = protectSocketCallback,
+                            clientTlsIdentity =
+                                x509ClientIdentity?.clientTlsIdentity ?: NoClientTlsIdentity,
                         ).use { session ->
                             startNetworkMonitoring()
                             startLogCleanup()
@@ -362,6 +394,13 @@ class TunnelService : VpnService() {
                 } catch (e: ConnlibException) {
                     Log.e(TAG, "Failed to start session", e)
                     e.close()
+                } catch (e: X509IdentityException) {
+                    Log.e(TAG, "Failed to load X.509 device identity", e)
+                    showErrorNotification(
+                        "Device verification failed",
+                        (e.message ?: "The Android KeyChain could not load the device identity.") +
+                            " Contact your administrator for support.",
+                    )
                 } finally {
                     commandChannel = null
                     tunnelState = State.DOWN
@@ -787,7 +826,13 @@ class TunnelService : VpnService() {
         }
 
         private val MANAGED_CONFIGURATIONS =
-            arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
+            arrayOf(
+                "token",
+                "allowedApplications",
+                "disallowedApplications",
+                "deviceName",
+                X509_CERTIFICATE_ALIAS_RESTRICTION,
+            )
 
         @Volatile
         private var activeService: TunnelService? = null
