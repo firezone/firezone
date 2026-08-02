@@ -153,6 +153,30 @@ struct Cli {
     /// spooling and uploading them is always controlled by the portal.
     #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
     flow_logs: bool,
+
+    /// RFC 7512 URI for the Linux X.509 device identity.
+    #[arg(long, env = "FIREZONE_DEVICE_TRUST_PKCS11_URI", global = true)]
+    device_trust_pkcs11_uri: Option<Pkcs11Uri>,
+}
+
+#[derive(Clone)]
+struct Pkcs11Uri(String);
+
+impl std::fmt::Debug for Pkcs11Uri {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("[configured]")
+    }
+}
+
+impl std::str::FromStr for Pkcs11Uri {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        if !value.starts_with("pkcs11:") {
+            return Err("PKCS#11 URI must begin with 'pkcs11:'".to_owned());
+        }
+        Ok(Self(value.to_owned()))
+    }
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -198,6 +222,9 @@ enum Cmd {
         #[arg(long, short)]
         force: bool,
     },
+
+    /// Show the X.509 device identity status and certificate diagnostics
+    X509,
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -240,10 +267,17 @@ fn try_main() -> Result<()> {
 
             return Ok(());
         }
+        Some(Cmd::X509) => {
+            handle_x509_status(device_trust_config(&cli))?;
+
+            return Ok(());
+        }
         Some(Cmd::Standalone) | None => {
             // Continue with normal operation
         }
     }
+
+    let x509_config = device_trust_config(&cli);
 
     // Modifying the environment of a running process is unsafe. If any other
     // thread is reading or writing the environment, something bad can happen.
@@ -343,12 +377,19 @@ fn try_main() -> Result<()> {
         Arc::new(tcp_socket_factory),
         Arc::new(UdpSocketFactory::default()),
     );
+    let x509_identity = device_trust::identity(&x509_config)?;
 
     if cli.is_telemetry_allowed() {
         telemetry::configure(Arc::new(tcp_socket_factory));
 
         telemetry::start(cli.api_url.as_ref(), RELEASE, telemetry::HEADLESS_DSN);
         telemetry::set_firezone_id(firezone_id.clone());
+        telemetry::set_mdm_device_id(
+            x509_identity
+                .as_ref()
+                .and_then(device_trust::Identity::mdm_device_id)
+                .map(str::to_owned),
+        );
 
         analytics::identify(RELEASE.to_owned(), None);
     }
@@ -364,8 +405,9 @@ fn try_main() -> Result<()> {
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
+    let portal_api_url = portal_api_url(&cli.api_url, x509_identity.is_some());
     let url = LoginUrl::client(
-        cli.api_url.clone(),
+        portal_api_url,
         firezone_id.clone(),
         cli.firezone_name,
         DeviceInfo {
@@ -435,6 +477,10 @@ fn try_main() -> Result<()> {
             },
             Arc::new(tcp_socket_factory),
         );
+        let portal = match x509_identity.as_ref() {
+            Some(identity) => portal.with_tls_client_config(identity.tls_client_config()),
+            None => portal,
+        };
         if let Some(dir) = flow_logs_dir.clone() {
             flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
         }
@@ -539,6 +585,43 @@ fn try_main() -> Result<()> {
     rt.shutdown_timeout(Duration::from_secs(1));
 
     Ok(())
+}
+
+fn device_trust_config(cli: &Cli) -> device_trust::Config {
+    device_trust::Config {
+        pkcs11_uri: cli
+            .device_trust_pkcs11_uri
+            .as_ref()
+            .map(|uri| uri.0.clone()),
+    }
+}
+
+#[expect(
+    clippy::print_stdout,
+    reason = "This status command is designed to print to stdout"
+)]
+fn handle_x509_status(config: device_trust::Config) -> Result<()> {
+    let status = device_trust::status(&config)?;
+    print!("{}", status.text_description());
+    Ok(())
+}
+
+fn portal_api_url(api_url: &url::Url, use_client_certificate: bool) -> url::Url {
+    let mut url = api_url.clone();
+    if !use_client_certificate {
+        return url;
+    }
+
+    let mtls_host = match url.host_str() {
+        Some("api.firez.one") => Some("mtls.firez.one"),
+        Some("api.firezone.dev") => Some("mtls.firezone.dev"),
+        _ => None,
+    };
+    if let Some(host) = mtls_host {
+        url.set_host(Some(host))
+            .expect("a known valid hostname should remain valid");
+    }
+    url
 }
 
 /// Constructs the authentication URL for browser-based sign-in.
@@ -708,7 +791,7 @@ fn tonic_otlp_exporter(
 
 #[cfg(test)]
 mod tests {
-    use super::{Cli, Cmd};
+    use super::{Cli, Cmd, portal_api_url};
     use clap::Parser;
     use std::path::PathBuf;
     use url::Url;
@@ -730,6 +813,22 @@ mod tests {
             Cli::try_parse_from([exe_name, "--check", "--log-dir", "bogus_log_dir"]).unwrap();
         assert!(actual.check);
         assert_eq!(actual.log_dir, Some(PathBuf::from("bogus_log_dir")));
+    }
+
+    #[test]
+    fn client_certificate_uses_mtls_api_host() {
+        let production = Url::parse("wss://api.firezone.dev/custom?foo=bar").unwrap();
+        let staging = Url::parse("wss://api.firez.one:444/custom?foo=bar").unwrap();
+
+        assert_eq!(
+            portal_api_url(&production, true).as_str(),
+            "wss://mtls.firezone.dev/custom?foo=bar"
+        );
+        assert_eq!(
+            portal_api_url(&staging, true).as_str(),
+            "wss://mtls.firez.one:444/custom?foo=bar"
+        );
+        assert_eq!(portal_api_url(&production, false), production);
     }
 
     #[test]
@@ -823,6 +922,37 @@ mod tests {
 
         assert_eq!(actual.token_path, PathBuf::from("/custom/token/path"));
         assert!(matches!(actual._command, Some(Cmd::SignOut { .. })));
+    }
+
+    #[test]
+    fn x509_status_accepts_linux_pkcs11_configuration() {
+        let actual = Cli::try_parse_from([
+            "firezone-headless-client",
+            "x509",
+            "--device-trust-pkcs11-uri",
+            "pkcs11:token=Firezone?module-path=/usr/lib/libpkcs11.so",
+        ])
+        .unwrap();
+
+        assert!(matches!(actual._command, Some(Cmd::X509)));
+        assert_eq!(
+            actual.device_trust_pkcs11_uri.unwrap().0,
+            "pkcs11:token=Firezone?module-path=/usr/lib/libpkcs11.so"
+        );
+    }
+
+    #[test]
+    fn pkcs11_uri_is_redacted_from_debug_output() {
+        let actual = Cli::try_parse_from([
+            "firezone-headless-client",
+            "--device-trust-pkcs11-uri",
+            "pkcs11:token=Firezone?module-path=/usr/lib/libpkcs11.so",
+        ])
+        .unwrap();
+
+        let debug = format!("{actual:?}");
+        assert!(debug.contains("[configured]"));
+        assert!(!debug.contains("libpkcs11"));
     }
 
     /// Verifies that `set_token_permissions` produces a file that passes `check_token_permissions`.

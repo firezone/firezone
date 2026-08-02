@@ -39,6 +39,40 @@ capability to open `/dev/net/tun`. You can add this to the client binary with:
 sudo setcap 'cap_net_admin+eip' /path/to/firezone-headless-client
 ```
 
+## X.509 device identity
+
+The headless client uses the same Windows certificate-store and Linux PKCS#11
+identity providers as the GUI Tunnel service. To inspect enrollment without
+connecting to the portal or reading a Firezone token, run:
+
+```sh
+firezone-headless-client x509
+```
+
+The command prints the matching certificates, validity and client-auth EKU,
+private-key access, signing algorithm, and SHA-256 fingerprint. A missing
+identity is reported as a normal status; malformed configuration or an
+unreadable key store exits non-zero.
+
+Windows needs no Firezone-specific configuration. Provision a currently valid
+certificate with subject CN `dev.firezone.device-trust`, TLS client
+authentication EKU, and a CNG private key into `LocalMachine\My` for the
+service account to use.
+
+On Linux, set `FIREZONE_DEVICE_TRUST_PKCS11_URI` (or pass
+`--device-trust-pkcs11-uri`) to an RFC 7512 URI. For example:
+
+```sh
+export FIREZONE_DEVICE_TRUST_PKCS11_URI='pkcs11:token=Firezone;object=device-trust?module-path=/usr/lib/x86_64-linux-gnu/pkcs11/libtpm2_pkcs11.so&pin-source=file:/etc/firezone/pkcs11-pin'
+firezone-headless-client x509
+```
+
+Only `pin-source=file:` is supported; inline `pin-value` credentials are
+rejected. Private-key bytes remain inside CNG or the PKCS#11 provider.
+The selected identity authenticates the `/client/v2` Phoenix connection with
+mutual TLS. When multiple usable certificates match, the client selects the
+newest certificate by `notBefore`.
+
 ## Building
 
 Assuming you have Rust installed, you can build the headless Client with:

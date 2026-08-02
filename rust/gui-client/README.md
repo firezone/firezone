@@ -152,6 +152,37 @@ work if you
 
 `x86_64` architecture is supported for Windows. `aarch64` and `x86_64` are supported for Linux.
 
+## X.509 device identity
+
+The Windows and Linux clients can authenticate the portal connection with an
+MDM-provisioned X.509 identity over mutual TLS. The **X.509 Identity** settings page
+shows certificate validity, client-auth EKU, private-key access, signing
+algorithm, and fingerprint diagnostics. Private-key bytes are never exported.
+
+On Windows, the Tunnel service searches `LocalMachine\My` and
+`CurrentUser\My` for currently valid certificates whose subject CN is
+`dev.firezone.device-trust` and whose EKU permits TLS client authentication.
+Signing uses the certificate's CNG key handle, including keys backed by the
+Microsoft Platform Crypto Provider/TPM. For zero-touch MDM enrollment, install
+the identity and private-key grant in the local-machine certificate store so
+the `LocalSystem` Tunnel service can use it without prompting.
+When multiple usable certificates match, the newest certificate by `notBefore`
+is selected.
+
+On Linux, set `FIREZONE_DEVICE_TRUST_PKCS11_URI` for the Tunnel service to an
+RFC 7512 URI identifying the module, token, and certificate/key object. The
+packaged systemd unit reads `/etc/default/firezone-client-tunnel`, so a typical
+configuration is:
+
+```sh
+FIREZONE_DEVICE_TRUST_PKCS11_URI='pkcs11:token=Firezone;object=device-trust?module-path=/usr/lib/x86_64-linux-gnu/pkcs11/libtpm2_pkcs11.so&pin-source=file:/etc/firezone/pkcs11-pin'
+```
+
+Only `pin-source=file:` is supported; inline `pin-value` credentials are
+rejected. The URI works with PKCS#11 implementations such as `tpm2-pkcs11`,
+OpenSC, and SoftHSM. The service account must be able to read the module, token,
+and optional PIN file.
+
 ## Threat model
 
 See [Security](docs/security.md)

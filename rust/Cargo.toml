@@ -32,6 +32,7 @@ members = [
     "libs/connlib/tun",
     "libs/connlib/tunnel",
     "libs/connlib/tunnel-proto",
+    "libs/device-trust",
     "libs/eventloop-budget",
     "libs/flow-log-spool",
     "libs/flow-log-upload",
@@ -93,9 +94,11 @@ clock = { path = "libs/clock" }
 connlib-model = { path = "libs/connlib/model" }
 crc32fast = "1.5.0"
 crossbeam-queue = "0.3.12"
+cryptoki = "0.10.0"
 dashmap = "6.2.1"
 dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
 derive_more = { version = "2.1.1", default-features = false }
+device-trust = { path = "libs/device-trust" }
 difference = "2.0.0"
 dirs = "6.0.0"
 divan = "0.1.21"
@@ -256,6 +259,7 @@ windows-native-keyring-store = "1.1.0"
 windows-security = { path = "libs/windows-security" }
 windows-service = "0.8.1"
 winreg = "0.56.0"
+x509-parser = "0.18.0"
 zbus = "5.15.0"
 zip = { version = "8.6.0", default-features = false }
 
