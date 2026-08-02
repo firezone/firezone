@@ -45,6 +45,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import uniffi.connlib.AndroidSessionConfig
 import uniffi.connlib.ConnlibException
 import uniffi.connlib.DeviceInfo
 import uniffi.connlib.Event
@@ -330,17 +331,20 @@ class TunnelService : VpnService() {
 
                     Session
                         .newAndroid(
-                            apiUrl = config.apiUrl,
-                            token = token,
-                            accountSlug = config.accountSlug,
-                            deviceId = deviceIdValue,
-                            deviceName = getDeviceName(),
-                            logDir = getLogDir(),
-                            logFilter = config.logFilter,
-                            flowLogsDir = flowLogsDir(this@TunnelService),
-                            isInternetResourceActive = resourceState.isEnabled(),
+                            config =
+                                AndroidSessionConfig(
+                                    apiUrl = config.apiUrl,
+                                    token = token,
+                                    accountSlug = config.accountSlug,
+                                    deviceId = deviceIdValue,
+                                    deviceName = getDeviceName(),
+                                    logDir = getLogDir(),
+                                    logFilter = config.logFilter,
+                                    flowLogsDir = flowLogsDir(this@TunnelService),
+                                    isInternetResourceActive = resourceState.isEnabled(),
+                                    deviceInfo = deviceInfo,
+                                ),
                             protectSocket = protectSocketCallback,
-                            deviceInfo = deviceInfo,
                         ).use { session ->
                             startNetworkMonitoring()
                             startLogCleanup()

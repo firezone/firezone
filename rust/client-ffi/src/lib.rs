@@ -69,6 +69,24 @@ pub struct DeviceInfo {
     pub identifier_for_vendor: Option<String>,
 }
 
+/// Configuration for constructing an Android session.
+///
+/// Passing one record across the FFI boundary avoids JNA's arm64 calling-convention issues with
+/// constructors that have many by-value `RustBuffer` arguments.
+#[derive(uniffi::Record)]
+pub struct AndroidSessionConfig {
+    pub api_url: String,
+    pub token: String,
+    pub device_id: String,
+    pub account_slug: String,
+    pub device_name: String,
+    pub log_dir: String,
+    pub log_filter: String,
+    pub flow_logs_dir: Option<String>,
+    pub device_info: DeviceInfo,
+    pub is_internet_resource_active: bool,
+}
+
 /// Resource status enum
 #[derive(uniffi::Enum)]
 pub enum ResourceStatus {
@@ -183,23 +201,22 @@ pub trait ProtectSocket: Send + Sync + fmt::Debug {
 #[cfg(target_os = "android")]
 impl Session {
     #[uniffi::constructor]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "This is the API we want to expose over FFI."
-    )]
     pub fn new_android(
-        api_url: String,
-        token: String,
-        device_id: String,
-        account_slug: String,
-        device_name: String,
-        log_dir: String,
-        log_filter: String,
-        flow_logs_dir: Option<String>,
-        device_info: DeviceInfo,
-        is_internet_resource_active: bool,
+        config: AndroidSessionConfig,
         protect_socket: Arc<dyn ProtectSocket>,
     ) -> Result<Self, ConnlibError> {
+        let AndroidSessionConfig {
+            api_url,
+            token,
+            device_id,
+            account_slug,
+            device_name,
+            log_dir,
+            log_filter,
+            flow_logs_dir,
+            device_info,
+            is_internet_resource_active,
+        } = config;
         let udp_socket_factory = Arc::new(protected_udp_socket_factory(protect_socket.clone()));
         let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(protect_socket));
 
