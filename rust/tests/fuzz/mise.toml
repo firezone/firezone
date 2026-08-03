@@ -97,10 +97,21 @@ if [ -n "${usage_libfuzzer_args:-}" ]; then
   # `usage` joins variadic arguments as a shell-escaped string.
   eval "set -- $usage_libfuzzer_args"
 else
+  # CI has the machine to itself. A developer is still using theirs during the
+  # half hour this takes, so leave them a quarter of the cores.
+  if [ -n "${CI:-}" ]; then
+    fork="$(nproc)"
+  else
+    fork="$(( $(nproc) * 3 / 4 ))"
+    if [ "$fork" -lt 1 ]; then
+      fork=1
+    fi
+  fi
+
   # `-fork` re-merges the whole seed corpus before it discovers anything, and
   # `-max_total_time` does not bound that startup. A short budget would be
   # spent entirely inside it, so this matches what the nightly job asks for.
-  set -- "-fork=$(nproc)" -max_total_time=1800
+  set -- "-fork=$fork" -max_total_time=1800
 fi
 
 before="$(cat "$baseline" 2>/dev/null || echo null)"

@@ -65,11 +65,11 @@ When it does, `grow` runs the whole recovery locally: it fuzzes for new coverage
 mise run //rust/tests/fuzz:grow tunnel-proto
 ```
 
-This runs exactly what the nightly workflow runs, down to the arguments, so commit both the repacked corpus and the refreshed baseline.
-Expect it to take a while: it fuzzes for 30 minutes across all cores before the remaining steps even start.
+This runs what the nightly workflow runs, so commit both the repacked corpus and the refreshed baseline.
+Expect it to take a while: it fuzzes for 30 minutes before the remaining steps even start.
 
-It defaults to `-fork=$(nproc) -max_total_time=1800`: every core, for 30 minutes.
-Pass libFuzzer arguments to override both, e.g. `-fork=8 -max_total_time=300`.
+It spreads that across three quarters of the cores, leaving you some to work with, and across all of them when `CI` is set.
+Pass libFuzzer arguments to override both the parallelism and the duration, e.g. `-fork=8 -max_total_time=300`.
 Be wary of shortening it much for `tunnel-proto`: `-fork` re-merges the whole seed corpus before it discovers anything, `-max_total_time` does not bound that startup, and a short budget is spent entirely inside it.
 
 The measurement is taken on the machine that runs it.
