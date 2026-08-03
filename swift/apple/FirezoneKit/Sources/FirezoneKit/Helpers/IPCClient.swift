@@ -54,13 +54,20 @@ public enum IPCClient {
   }
 
   @MainActor
-  static func fetchState(
+  static func pollUpdates(
     session: any TunnelSessionProtocol, currentHash: Data
-  ) async throws -> Data? {
-    let message = ProviderMessage.getState(currentHash)
+  ) async throws -> StatePollResponse {
+    let message = ProviderMessage.pollUpdates(StatePollRequest(stateHash: currentHash))
 
-    // Get data from the provider - if hash matches, provider returns nil
-    return try await sendProviderMessage(session: session, message: message)
+    guard let data = try await sendProviderMessage(session: session, message: message) else {
+      throw Error.noIPCData
+    }
+
+    guard let response = try? decoder.decode(StatePollResponse.self, from: data) else {
+      throw Error.decodeIPCDataFailed
+    }
+
+    return response
   }
 
   @MainActor

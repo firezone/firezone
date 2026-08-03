@@ -667,6 +667,7 @@ struct ProviderMessageCodableTests {
   func valuelessCasesRoundTrip() throws {
     let cases: [ProviderMessage] = [
       .signOut, .clearLogs, .getLogFolderSize, .exportLogs, .getEncodedFirezoneId,
+      .drainFlowLogs,
     ]
 
     for message in cases {
@@ -677,15 +678,15 @@ struct ProviderMessageCodableTests {
     }
   }
 
-  @Test("getState round-trips through JSON")
-  func getStateRoundTrip() throws {
+  @Test("pollUpdates round-trips through JSON")
+  func pollUpdatesRoundTrip() throws {
     let hash = Data([0x01, 0x02, 0x03])
-    let decoded = try roundTrip(.getState(hash))
+    let decoded = try roundTrip(.pollUpdates(StatePollRequest(stateHash: hash)))
 
-    if case .getState(let decodedHash) = decoded {
-      #expect(decodedHash == hash)
+    if case .pollUpdates(let request) = decoded {
+      #expect(request.stateHash == hash)
     } else {
-      Issue.record("Expected .getState, got \(decoded)")
+      Issue.record("Expected .pollUpdates, got \(decoded)")
     }
   }
 

@@ -11,266 +11,161 @@ import Testing
 
 @Suite("ConnlibState Tests")
 struct ConnlibStateTests {
-
-  // MARK: - decode() Tests
-
-  @Test("decode() returns state and hash")
-  func decodeReturnsStateAndHash() throws {
-    let resource = makeTestResource(id: "1", name: "Resource A")
-    let unreachable = UnreachableResource(resourceId: "2", reason: .offline)
-
-    // Use encodeIfChanged with empty hash to get initial data
-    let data = try ConnlibState.encodeIfChanged(
-      resources: [resource],
-      connectedDevices: [],
-      unreachableResources: [unreachable],
-      isLogStreamingActive: false,
-      comparedTo: Data()
+  @Test("State round-trips through a property list")
+  func stateRoundTrip() throws {
+    let state = ConnlibState(
+      resources: [makeTestResource(id: "resource-1", name: "Resource A")],
+      connectedDevices: [makeTestConnectedDevice(id: "device-1")],
+      isLogStreamingActive: true
     )
 
-    let unwrappedData = try #require(data)
-    let (state, hash) = try ConnlibState.decode(from: unwrappedData)
+    let decoded = try roundTrip(state)
 
-    #expect(hash.count == 32)  // SHA256 hash size
-    #expect(state.resources?.count == 1)
-    #expect(state.resources?[0].id == "1")
-    #expect(state.unreachableResources.count == 1)
+    #expect(decoded.resources?.first?.id == "resource-1")
+    #expect(decoded.connectedDevices.first?.id == "device-1")
+    #expect(decoded.isLogStreamingActive)
   }
 
-  @Test("decode() produces same hash for identical content")
-  func decodeSameHashForIdenticalContent() throws {
-    let resource = makeTestResource(id: "1", name: "Resource A")
-
-    let data1 = try ConnlibState.encodeIfChanged(
-      resources: [resource],
-      connectedDevices: [],
-      unreachableResources: [],
-      isLogStreamingActive: false,
-      comparedTo: Data()
-    )
-
-    let data2 = try ConnlibState.encodeIfChanged(
-      resources: [resource],
-      connectedDevices: [],
-      unreachableResources: [],
-      isLogStreamingActive: false,
-      comparedTo: Data()
-    )
-
-    let unwrappedData1 = try #require(data1)
-    let unwrappedData2 = try #require(data2)
-    let (_, hash1) = try ConnlibState.decode(from: unwrappedData1)
-    let (_, hash2) = try ConnlibState.decode(from: unwrappedData2)
-
-    #expect(hash1 == hash2)
-  }
-
-  @Test("decode() produces different hash for different content")
-  func decodeDifferentHashForDifferentContent() throws {
-    let resource1 = makeTestResource(id: "1", name: "Resource A")
-    let resource2 = makeTestResource(id: "2", name: "Resource B")
-
-    let data1 = try ConnlibState.encodeIfChanged(
-      resources: [resource1],
-      connectedDevices: [],
-      unreachableResources: [],
-      isLogStreamingActive: false,
-      comparedTo: Data()
-    )
-
-    let data2 = try ConnlibState.encodeIfChanged(
-      resources: [resource2],
-      connectedDevices: [],
-      unreachableResources: [],
-      isLogStreamingActive: false,
-      comparedTo: Data()
-    )
-
-    let unwrappedData1 = try #require(data1)
-    let unwrappedData2 = try #require(data2)
-    let (_, hash1) = try ConnlibState.decode(from: unwrappedData1)
-    let (_, hash2) = try ConnlibState.decode(from: unwrappedData2)
-
-    #expect(hash1 != hash2)
-  }
-
-  // MARK: - encodeIfChanged() Tests
-
-  @Test("encodeIfChanged() returns nil when hash matches")
-  func encodeIfChangedReturnsNilWhenHashMatches() throws {
-    let resource = makeTestResource(id: "1", name: "Resource A")
-    let unreachable = UnreachableResource(resourceId: "2", reason: .offline)
-
-    // First encode to get the hash
-    let data = try ConnlibState.encodeIfChanged(
-      resources: [resource],
-      connectedDevices: [],
-      unreachableResources: [unreachable],
-      isLogStreamingActive: false,
-      comparedTo: Data()
-    )
-
-    let unwrappedData = try #require(data)
-    let (_, hash) = try ConnlibState.decode(from: unwrappedData)
-
-    // Now try to encode again with the same hash
-    let result = try ConnlibState.encodeIfChanged(
-      resources: [resource],
-      connectedDevices: [],
-      unreachableResources: [unreachable],
-      isLogStreamingActive: false,
-      comparedTo: hash
-    )
-
-    #expect(result == nil)
-  }
-
-  @Test("encodeIfChanged() returns data when hash differs")
-  func encodeIfChangedReturnsDataWhenHashDiffers() throws {
-    let resource1 = makeTestResource(id: "1", name: "Resource A")
-    let resource2 = makeTestResource(id: "2", name: "Resource B")
-
-    // Get hash for first state
-    let data1 = try ConnlibState.encodeIfChanged(
-      resources: [resource1],
-      connectedDevices: [],
-      unreachableResources: [],
-      isLogStreamingActive: false,
-      comparedTo: Data()
-    )
-
-    let unwrappedData1 = try #require(data1)
-    let (_, hash1) = try ConnlibState.decode(from: unwrappedData1)
-
-    // Try to encode different state with first hash
-    let result = try ConnlibState.encodeIfChanged(
-      resources: [resource2],
-      connectedDevices: [],
-      unreachableResources: [],
-      isLogStreamingActive: false,
-      comparedTo: hash1
-    )
-
-    #expect(result != nil)
-
-    let unwrappedResult = try #require(result)
-    let (state, _) = try ConnlibState.decode(from: unwrappedResult)
-    #expect(state.resources?.count == 1)
-    #expect(state.resources?[0].id == "2")
-  }
-
-  @Test("encodeIfChanged() handles nil resources")
-  func encodeIfChangedHandlesNilResources() throws {
-    let result = try ConnlibState.encodeIfChanged(
+  @Test("State round-trips nil resources")
+  func nilResourcesRoundTrip() throws {
+    let state = ConnlibState(
       resources: nil,
       connectedDevices: [],
-      unreachableResources: [],
-      isLogStreamingActive: false,
-      comparedTo: Data()
+      isLogStreamingActive: false
     )
 
-    #expect(result != nil)
+    let decoded = try roundTrip(state)
 
-    let unwrappedResult = try #require(result)
-    let (state, _) = try ConnlibState.decode(from: unwrappedResult)
-    #expect(state.resources == nil)
-    #expect(state.unreachableResources.isEmpty)
+    #expect(decoded.resources == nil)
   }
 
-  // MARK: - isLogStreamingActive Tests
-
-  @Test("decode() round-trips isLogStreamingActive = true")
-  func decodeRoundTripsLogStreamingActive() throws {
-    let data = try ConnlibState.encodeIfChanged(
-      resources: nil,
-      connectedDevices: [],
-      unreachableResources: [],
-      isLogStreamingActive: true,
-      comparedTo: Data()
-    )
-
-    let unwrapped = try #require(data)
-    let (state, _) = try ConnlibState.decode(from: unwrapped)
-
-    #expect(state.isLogStreamingActive == true)
-  }
-
-  @Test("encodeIfChanged() detects isLogStreamingActive change")
-  func encodeIfChangedDetectsLogStreamingChange() throws {
-    let data = try ConnlibState.encodeIfChanged(
-      resources: nil,
-      connectedDevices: [],
-      unreachableResources: [],
-      isLogStreamingActive: false,
-      comparedTo: Data()
-    )
-
-    let unwrapped = try #require(data)
-    let (_, hash) = try ConnlibState.decode(from: unwrapped)
-
-    // Same resources, different streaming flag — should return data
-    let result = try ConnlibState.encodeIfChanged(
-      resources: nil,
-      connectedDevices: [],
-      unreachableResources: [],
-      isLogStreamingActive: true,
-      comparedTo: hash
-    )
-
-    #expect(result != nil)
-  }
-
-  // MARK: - connectedDevices Tests
-
-  @Test("decode() round-trips non-empty connectedDevices")
-  func decodeRoundTripsConnectedDevices() throws {
-    let device = makeTestConnectedDevice(id: "device-1")
-
-    let data = try ConnlibState.encodeIfChanged(
-      resources: nil,
-      connectedDevices: [device],
-      unreachableResources: [],
-      isLogStreamingActive: false,
-      comparedTo: Data()
-    )
-
-    let unwrapped = try #require(data)
-    let (state, _) = try ConnlibState.decode(from: unwrapped)
-
-    #expect(state.connectedDevices.count == 1)
-    #expect(state.connectedDevices[0].id == "device-1")
-    #expect(state.connectedDevices[0].name == "Device device-1")
-    #expect(state.connectedDevices[0].tunIPv4 == "100.64.0.1")
-    #expect(state.connectedDevices[0].tunIPv6 == "fd00:2021:1111::1")
-    #expect(state.connectedDevices[0].pools == ["pool-a"])
-  }
-
-  @Test("encodeIfChanged() detects connectedDevices change")
-  func encodeIfChangedDetectsConnectedDevicesChange() throws {
-    let data = try ConnlibState.encodeIfChanged(
-      resources: nil,
-      connectedDevices: [],
-      unreachableResources: [],
-      isLogStreamingActive: false,
-      comparedTo: Data()
-    )
-
-    let unwrapped = try #require(data)
-    let (_, hash) = try ConnlibState.decode(from: unwrapped)
-
-    // Only the device list differs from the encoded state — should return data.
-    let result = try ConnlibState.encodeIfChanged(
+  @Test("Connected-device fields round-trip")
+  func connectedDeviceFieldsRoundTrip() throws {
+    let state = ConnlibState(
       resources: nil,
       connectedDevices: [makeTestConnectedDevice(id: "device-1")],
-      unreachableResources: [],
-      isLogStreamingActive: false,
-      comparedTo: hash
+      isLogStreamingActive: false
     )
 
-    #expect(result != nil)
+    let device = try #require(roundTrip(state).connectedDevices.first)
+
+    #expect(device.id == "device-1")
+    #expect(device.name == "Device device-1")
+    #expect(device.tunIPv4 == "100.64.0.1")
+    #expect(device.tunIPv6 == "fd00:2021:1111::1")
+    #expect(device.pools == ["pool-a"])
   }
 
-  // MARK: - Helper Functions
+  @Test("Identical state has an identical content hash")
+  func identicalStateHash() throws {
+    let first = ConnlibState(
+      resources: [makeTestResource(id: "resource-1", name: "Resource A")],
+      connectedDevices: [],
+      isLogStreamingActive: false
+    )
+    let second = ConnlibState(
+      resources: [makeTestResource(id: "resource-1", name: "Resource A")],
+      connectedDevices: [],
+      isLogStreamingActive: false
+    )
+
+    #expect(try first.contentHash() == second.contentHash())
+    #expect(try first.contentHash().count == 32)
+  }
+
+  @Test("Resource changes alter the content hash")
+  func resourceChangeAltersHash() throws {
+    let first = ConnlibState(
+      resources: [makeTestResource(id: "resource-1", name: "Resource A")],
+      connectedDevices: [],
+      isLogStreamingActive: false
+    )
+    let second = ConnlibState(
+      resources: [makeTestResource(id: "resource-2", name: "Resource B")],
+      connectedDevices: [],
+      isLogStreamingActive: false
+    )
+
+    #expect(try first.contentHash() != second.contentHash())
+  }
+
+  @Test("Connected-device changes alter the content hash")
+  func connectedDeviceChangeAltersHash() throws {
+    let first = ConnlibState(
+      resources: nil,
+      connectedDevices: [],
+      isLogStreamingActive: false
+    )
+    let second = ConnlibState(
+      resources: nil,
+      connectedDevices: [makeTestConnectedDevice(id: "device-1")],
+      isLogStreamingActive: false
+    )
+
+    #expect(try first.contentHash() != second.contentHash())
+  }
+
+  @Test("Log-streaming changes alter the content hash")
+  func logStreamingChangeAltersHash() throws {
+    let first = ConnlibState(
+      resources: nil,
+      connectedDevices: [],
+      isLogStreamingActive: false
+    )
+    let second = ConnlibState(
+      resources: nil,
+      connectedDevices: [],
+      isLogStreamingActive: true
+    )
+
+    #expect(try first.contentHash() != second.contentHash())
+  }
+
+  @Test("Poll response round-trips state and notifications independently")
+  func pollResponseRoundTrip() throws {
+    let state = ConnlibState(
+      resources: [makeTestResource(id: "resource-1", name: "Resource A")],
+      connectedDevices: [],
+      isLogStreamingActive: false
+    )
+    let hash = try state.contentHash()
+    let response = StatePollResponse(
+      state: state,
+      stateHash: hash,
+      notifications: [UnreachableResource(resourceId: "resource-1", reason: .offline)]
+    )
+
+    let decoded = try roundTrip(response)
+
+    #expect(decoded.state?.resources?.first?.id == "resource-1")
+    #expect(decoded.stateHash == hash)
+    #expect(
+      decoded.notifications == [
+        UnreachableResource(resourceId: "resource-1", reason: .offline)
+      ])
+  }
+
+  @Test("Poll response can contain notifications without a state change")
+  func pollResponseWithoutState() throws {
+    let response = StatePollResponse(
+      state: nil,
+      stateHash: nil,
+      notifications: [
+        UnreachableResource(resourceId: "resource-1", reason: .versionMismatch)
+      ]
+    )
+
+    let decoded = try roundTrip(response)
+
+    #expect(decoded.state == nil)
+    #expect(decoded.stateHash == nil)
+    #expect(decoded.notifications.count == 1)
+  }
+
+  private func roundTrip<T: Codable>(_ value: T) throws -> T {
+    let data = try PropertyListEncoder().encode(value)
+    return try PropertyListDecoder().decode(T.self, from: data)
+  }
 
   private func makeTestResource(id: String, name: String) -> FirezoneKit.Resource {
     let site = Site(id: "site-1", name: "Test Site")

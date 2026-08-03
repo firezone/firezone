@@ -31,6 +31,10 @@ enum AdapterError: Error {
 
 // Loosely inspired from WireGuardAdapter from WireGuardKit
 actor Adapter {
+  private struct PendingUnreachableResource {
+    let resource: UnreachableResource
+    let receivedAt: ContinuousClock.Instant
+  }
 
   /// Command sender for sending commands to the session
   private var commandSender: Sender<SessionCommand>?
@@ -45,6 +49,7 @@ actor Adapter {
   /// Shorter than `RE_EVAL_DURATION` (5 min) on the Rust side so the NE
   /// picks up a flag change soon after PostHog re-evaluation.
   private static let featureFlagPollInterval: Duration = .seconds(5)
+  private static let resourceNotificationTTL: Duration = .seconds(15)
 
   // Our local copy of the accountSlug
   private let accountSlug: String
@@ -120,8 +125,9 @@ actor Adapter {
   private var resources: [Resource]?  // swiftlint:disable:this discouraged_optional_collection
   private var connectedDevices: [ConnectedDevice] = []
 
-  /// Resources we couldn't connect to
-  private var unreachableResources: [UnreachableResource]
+  /// Resource notifications waiting for the UI process to poll them.
+  private var pendingUnreachableResources: [PendingUnreachableResource]
+  private let notificationClock = ContinuousClock()
 
   /// Starting parameters
   private let apiURL: String
@@ -145,7 +151,7 @@ actor Adapter {
     self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
     self.providerCommandSender = providerCommandSender
-    self.unreachableResources = []
+    self.pendingUnreachableResources = []
     // Start log cleanup immediately - doesn't depend on tunnel being connected
     providerCommandSender.send(.startLogCleanupTask)
   }
@@ -301,23 +307,40 @@ actor Adapter {
     // stopTunnel's completionHandler lets the OS reap this process. Capped so a
     // wedged loop can't hang stopTunnel; connlib's own flush wait is 10s.
     await eventLoopTask?.wait(timeout: .seconds(15))
+
+    pendingUnreachableResources.removeAll()
   }
 
-  /// Get the current state in the completionHandler, only returning
-  /// them if the content has changed.
-  func getStateIfVersionDifferentFrom(
-    hash: Data
-  ) -> Data? {
+  /// Returns state changes and consumes fresh notifications in one UI polling operation.
+  func pollUpdates(_ request: StatePollRequest) -> Data? {
     do {
-      return try ConnlibState.encodeIfChanged(
+      let state = ConnlibState(
         resources: self.resources?.map { self.convertResource($0) },
         connectedDevices: self.connectedDevices.map { FirezoneKit.ConnectedDevice($0) },
-        unreachableResources: self.unreachableResources,
-        isLogStreamingActive: Log.isStreamingActive,
-        comparedTo: hash
+        isLogStreamingActive: Log.isStreamingActive
       )
+      let stateHash = try state.contentHash()
+      let stateChanged = stateHash != request.stateHash
+
+      let now = notificationClock.now
+      let notifications = pendingUnreachableResources.compactMap { pending in
+        let age = pending.receivedAt.duration(to: now)
+        return age < Self.resourceNotificationTTL ? pending.resource : nil
+      }
+
+      let response = StatePollResponse(
+        state: stateChanged ? state : nil,
+        stateHash: stateChanged ? stateHash : nil,
+        notifications: notifications
+      )
+      let encodedResponse = try PropertyListEncoder().encode(response)
+
+      // Only consume the mailbox after the complete response has been encoded successfully.
+      pendingUnreachableResources.removeAll()
+
+      return encodedResponse
     } catch {
-      Log.log("Failed to encode state as PropertyList: \(error)")
+      Log.log("Failed to encode state updates as PropertyList: \(error)")
       return nil
     }
   }
@@ -332,6 +355,18 @@ actor Adapter {
 
   func setInternetResourceEnabled(_ enabled: Bool) async {
     internetResourceEnabled = enabled
+
+    if !enabled {
+      let internetResourceIds = Set(
+        (resources ?? []).compactMap { resource -> String? in
+          guard case .internet(let internetResource) = resource else { return nil }
+          return internetResource.id
+        })
+      pendingUnreachableResources.removeAll { pending in
+        internetResourceIds.contains(pending.resource.resourceId)
+      }
+    }
+
     sendCommand(.setInternetResourceState(enabled))
   }
 
@@ -461,12 +496,20 @@ actor Adapter {
       providerCommandSender.send(.cancelWithError(sendableError))
 
     case .allGatewaysOffline(let resourceId):
-      self.unreachableResources.append(
-        UnreachableResource(resourceId: resourceId, reason: UnreachableReason.offline))
+      self.pendingUnreachableResources.append(
+        PendingUnreachableResource(
+          resource: UnreachableResource(
+            resourceId: resourceId, reason: UnreachableReason.offline),
+          receivedAt: notificationClock.now
+        ))
 
     case .gatewayVersionMismatch(let resourceId):
-      self.unreachableResources.append(
-        UnreachableResource(resourceId: resourceId, reason: UnreachableReason.versionMismatch))
+      self.pendingUnreachableResources.append(
+        PendingUnreachableResource(
+          resource: UnreachableResource(
+            resourceId: resourceId, reason: UnreachableReason.versionMismatch),
+          receivedAt: notificationClock.now
+        ))
     }
   }
 

@@ -226,18 +226,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       case .signOut:
         do { try Token.delete() } catch { Log.error(error) }
         completionHandler?(nil)
-      case .getState(let hash):
+      case .pollUpdates(let request):
         guard let adapter else {
           Log.warning("Adapter is nil")
           completionHandler?(nil)
           return
         }
 
-        // Use hash comparison to only return resources if they've changed
         Task { @Sendable in
-          // Use hash comparison to only return state if it changed
-          let connlibState = await adapter.getStateIfVersionDifferentFrom(hash: hash)
-          completionHandler?(connlibState)
+          let updates = await adapter.pollUpdates(request)
+          completionHandler?(updates)
         }
       case .getEncodedFirezoneId:
         guard let rawId = defaults.string(forKey: "firezoneId") else {
