@@ -49,7 +49,7 @@ set -euo pipefail
 
 target="$usage_target"
 
-if [ -n "$usage_libfuzzer_args" ]; then
+if [ -n "${usage_libfuzzer_args:-}" ]; then
   # `usage` joins variadic arguments as a shell-escaped string.
   eval "set -- $usage_libfuzzer_args"
 else
@@ -77,6 +77,66 @@ run = '''
 set -euo pipefail
 
 ./interruptible.sh cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target"
+'''
+
+[tasks.grow]
+description = "Fuzz a target, then minimize, repack and re-baseline its corpus"
+shell = "bash -c"
+usage = '''
+arg "<target>"
+arg "[libfuzzer_args]…" var=#true
+'''
+raw = true
+run = '''
+set -euo pipefail
+
+target="$usage_target"
+baseline="expected-coverage/$target.json"
+
+if [ -n "${usage_libfuzzer_args:-}" ]; then
+  # `usage` joins variadic arguments as a shell-escaped string.
+  eval "set -- $usage_libfuzzer_args"
+else
+  # CI has the machine to itself. A developer is still using theirs during the
+  # half hour this takes, so leave them a quarter of the cores.
+  if [ -n "${CI:-}" ]; then
+    fork="$(nproc)"
+  else
+    fork="$(( $(nproc) * 3 / 4 ))"
+    if [ "$fork" -lt 1 ]; then
+      fork=1
+    fi
+  fi
+
+  # `-fork` re-merges the whole seed corpus before it discovers anything, and
+  # `-max_total_time` does not bound that startup. A short budget would be
+  # spent entirely inside it, so this matches what the nightly job asks for.
+  set -- "-fork=$fork" -max_total_time=1800
+fi
+
+before="$(cat "$baseline" 2>/dev/null || echo null)"
+
+# Each step consumes what the previous one wrote, so they are invoked in order
+# rather than declared as `depends`, which mise runs in parallel.
+mise run //rust/tests/fuzz:fuzz "$target" "$@"
+mise run //rust/tests/fuzz:cmin "$target"
+mise run //rust/tests/fuzz:pack-corpus "$target"
+mise run //rust/tests/fuzz:coverage "$target"
+
+# Write the baseline via a temporary so a failed measurement leaves the
+# committed one intact rather than truncating it.
+mkdir -p expected-coverage
+temporary="$(mktemp "expected-coverage/.$target.XXXXXX")"
+trap 'rm -f "$temporary"' EXIT
+mise run -q //rust/tests/fuzz:coverage-summary "$target" > "$temporary"
+mv "$temporary" "$baseline"
+chmod 0644 "$baseline"
+
+summarise() { jq -r 'if . == null then "(none)" else "\(.total - .covered) uncovered of \(.total)" end'; }
+
+printf 'baseline: %s -> %s\n' \
+  "$(summarise <<<"$before")" \
+  "$(summarise < "$baseline")"
 '''
 
 [tasks.pack-corpus]

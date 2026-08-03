@@ -58,7 +58,24 @@ mise run //rust/tests/fuzz:coverage-check ip-packet
 
 Coverage growth passes without requiring a baseline update.
 An increase in uncovered regions fails.
-After deliberately growing and minimizing a corpus, refresh its baseline with:
+
+When it does, `grow` runs the whole recovery locally: it fuzzes for new coverage, minimizes and repacks the corpus, then refreshes the baseline from what the grown corpus actually reaches.
+
+```console
+mise run //rust/tests/fuzz:grow tunnel-proto
+```
+
+This runs what the nightly workflow runs, so commit both the repacked corpus and the refreshed baseline.
+Expect it to take a while: it fuzzes for 30 minutes before the remaining steps even start.
+
+It spreads that across three quarters of the cores, leaving you some to work with, and across all of them when `CI` is set.
+Pass libFuzzer arguments to override both the parallelism and the duration, e.g. `-fork=8 -max_total_time=300`.
+Be wary of shortening it much for `tunnel-proto`: `-fork` re-merges the whole seed corpus before it discovers anything, `-max_total_time` does not bound that startup, and a short budget is spent entirely inside it.
+
+The measurement is taken on the machine that runs it.
+A local run that gets luckier than CI writes a ceiling CI cannot meet, so re-run `coverage-check` before pushing.
+
+The individual steps remain available for doing this by hand:
 
 ```console
 mise run //rust/tests/fuzz:pack-corpus tunnel-proto

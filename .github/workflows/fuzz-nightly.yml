@@ -52,17 +52,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/free-disk-space
-      - name: Discover new coverage
-        run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} "-fork=$(nproc)" -max_total_time=1800
-      - name: Minimize corpus
-        run: mise run //rust/tests/fuzz:cmin ${{ matrix.fuzz-target }}
-      - name: Refresh coverage baseline
-        run: |
-          mise run //rust/tests/fuzz:pack-corpus ${{ matrix.fuzz-target }}
-          mise run //rust/tests/fuzz:coverage ${{ matrix.fuzz-target }}
-          mkdir -p rust/tests/fuzz/expected-coverage
-          mise run -q //rust/tests/fuzz:coverage-summary ${{ matrix.fuzz-target }} > rust/tests/fuzz/expected-coverage/${{ matrix.fuzz-target }}.json
-          cat tests/fuzz/expected-coverage/${{ matrix.fuzz-target }}.json
+      - name: Grow, minimize and re-baseline the corpus
+        run: mise run //rust/tests/fuzz:grow ${{ matrix.fuzz-target }}
       - name: Save corpus and coverage baseline
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
