@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::time::Instant;
 
 use anyhow::{Context, ErrorExt, Result, bail};
@@ -327,8 +327,8 @@ impl ClientOnGateway {
             Err(e) => {
                 tracing::debug!(filtered_packet = ?packet, "{e:#}");
 
-                return match e.any_downcast_ref::<InternetResourceExcludesLocalLan>() {
-                    Some(InternetResourceExcludesLocalLan(_)) => {
+                return match e.any_downcast_ref::<InternetResourceRejectedAddress>() {
+                    Some(InternetResourceRejectedAddress(_)) => {
                         Ok(TranslateOutboundResult::DestinationUnreachable(
                             ip_packet::make::icmp_dest_unreachable_network(&packet)?,
                         ))
@@ -511,7 +511,9 @@ impl ClientOnGateway {
         let resource = match self.internet_resource_enabled {
             Some(internet_resource) => match resource_ip {
                 ip if is_dns_addr(ip) => self.classify_non_internet_resource(ip, protocol)?,
-                ip if is_local_lan(ip) => bail!(InternetResourceExcludesLocalLan(ip)),
+                ip if internet_resource_rejects(ip) => {
+                    bail!(InternetResourceRejectedAddress(ip))
+                }
                 // Note a Gateway with Internet resource should never get packets for other resources.
                 _ => internet_resource,
             },
@@ -549,8 +551,8 @@ impl ClientOnGateway {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("Internet resource excludes local LAN IP: {0}")]
-struct InternetResourceExcludesLocalLan(IpAddr);
+#[error("Internet resource rejects IP: {0}")]
+struct InternetResourceRejectedAddress(IpAddr);
 
 #[derive(Debug)]
 enum ResourceOnGateway {
@@ -678,11 +680,15 @@ fn is_dns_addr(addr: IpAddr) -> bool {
     IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
 }
 
-fn is_local_lan(addr: IpAddr) -> bool {
+fn internet_resource_rejects(addr: IpAddr) -> bool {
     match addr {
-        IpAddr::V4(addr) => addr.is_private() || addr.is_link_local(),
+        IpAddr::V4(addr) => addr.is_private() || addr.is_link_local() || is_cgnat(addr),
         IpAddr::V6(addr) => addr.is_unicast_link_local(),
     }
+}
+
+fn is_cgnat(addr: Ipv4Addr) -> bool {
+    matches!(addr.octets(), [100, 64..=127, _, _])
 }
 
 /// Rejects addresses within Firezone's tunnel range.
