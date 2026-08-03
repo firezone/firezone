@@ -36,7 +36,7 @@ pub(super) enum PacketTarget {
         src: IpAddr,
         dst: IpAddr,
     },
-    InternetLan {
+    InternetResourceRejectedAddress {
         client_id: ClientId,
         src: IpAddr,
     },
@@ -133,11 +133,11 @@ pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<PacketTarget>
                     let client = client.inner();
 
                     [
-                        PacketTarget::InternetLan {
+                        PacketTarget::InternetResourceRejectedAddress {
                             client_id: *client_id,
                             src: IpAddr::V4(client.tunnel_ip4),
                         },
-                        PacketTarget::InternetLan {
+                        PacketTarget::InternetResourceRejectedAddress {
                             client_id: *client_id,
                             src: IpAddr::V6(client.tunnel_ip6),
                         },
@@ -230,8 +230,8 @@ pub(super) fn generate(
             src,
             dst,
         } => arb_unfiltered_packet(g, state, client_id, src, dst, true),
-        PacketTarget::InternetLan { client_id, src } => {
-            let dst = local_lan_destination(g, src);
+        PacketTarget::InternetResourceRejectedAddress { client_id, src } => {
+            let dst = internet_resource_rejected_destination(g, src);
             arb_unfiltered_packet(g, state, client_id, src, dst, true)
         }
         PacketTarget::ConnectedGateway {
@@ -251,11 +251,12 @@ pub(super) fn generate(
     }
 }
 
-fn local_lan_destination(g: &mut Generator, source: IpAddr) -> IpAddr {
+fn internet_resource_rejected_destination(g: &mut Generator, source: IpAddr) -> IpAddr {
     match source {
         IpAddr::V4(_) => {
             let networks = [
                 Ipv4Network::new(Ipv4Addr::new(10, 0, 0, 0), 8).unwrap(),
+                Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 10).unwrap(),
                 Ipv4Network::new(Ipv4Addr::new(169, 254, 0, 0), 16).unwrap(),
                 Ipv4Network::new(Ipv4Addr::new(172, 16, 0, 0), 12).unwrap(),
                 Ipv4Network::new(Ipv4Addr::new(192, 168, 0, 0), 16).unwrap(),

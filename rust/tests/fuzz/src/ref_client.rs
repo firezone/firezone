@@ -735,15 +735,24 @@ impl RefClient {
             return PacketRoute::Drop;
         };
 
-        if self.internet_resource().is_some_and(|id| id == resource)
-            && dst.ip_addr().is_some_and(is_local_lan)
-        {
-            PacketRoute::ResourceUnreachableByGateway { resource, gateway }
-        } else if strictly_allowed {
-            PacketRoute::Resource { resource, gateway }
-        } else {
-            PacketRoute::ResourceRejectedByGateway { resource, gateway }
+        if self.internet_resource().is_some_and(|id| id == resource) {
+            match dst.ip_addr() {
+                Some(ip) if is_resource_proxy(ip) => {
+                    return PacketRoute::ResourceRejectedByGateway { resource, gateway };
+                }
+                Some(ip) if internet_resource_rejects(ip) => {
+                    return PacketRoute::ResourceUnreachableByGateway { resource, gateway };
+                }
+                Some(_) => {}
+                None => {}
+            }
         }
+
+        if strictly_allowed {
+            return PacketRoute::Resource { resource, gateway };
+        }
+
+        PacketRoute::ResourceRejectedByGateway { resource, gateway }
     }
 
     fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
@@ -1368,10 +1377,21 @@ impl ExecMutScope for RefClient {
     fn enter(&self) -> Self::Guard {}
 }
 
-fn is_local_lan(addr: IpAddr) -> bool {
+fn internet_resource_rejects(addr: IpAddr) -> bool {
     match addr {
-        IpAddr::V4(addr) => addr.is_private() || addr.is_link_local(),
+        IpAddr::V4(addr) => addr.is_private() || addr.is_link_local() || is_cgnat(addr),
         IpAddr::V6(addr) => addr.is_unicast_link_local(),
+    }
+}
+
+fn is_cgnat(addr: Ipv4Addr) -> bool {
+    matches!(addr.octets(), [100, 64..=127, _, _])
+}
+
+fn is_resource_proxy(addr: IpAddr) -> bool {
+    match addr {
+        IpAddr::V4(addr) => tunnel_proto::IPV4_RESOURCES.contains(addr),
+        IpAddr::V6(addr) => tunnel_proto::IPV6_RESOURCES.contains(addr),
     }
 }
 
