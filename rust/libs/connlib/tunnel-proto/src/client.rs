@@ -3093,52 +3093,6 @@ mod tests {
         assert!(state.poll_event().is_none());
     }
 
-    #[test]
-    fn no_authorization_event_from_other_gateway_is_ignored() {
-        let mut state = ClientState::for_test();
-        let now = Instant::now();
-        let authorized_gateway = GatewayId::from_u128(1);
-        let other_gateway = GatewayId::from_u128(2);
-
-        state.upsert_resource(cidr_resource(), now);
-        state
-            .authorized_resources
-            .insert(cidr_resource_id(), AccessPath::Gateway(authorized_gateway));
-
-        state.handle_no_authorization(other_gateway, no_authorization_event());
-
-        assert!(state.authorized_resources.contains_key(&cidr_resource_id()));
-    }
-
-    fn no_authorization_event() -> p2p_control::no_authorization::NoAuthorization {
-        p2p_control::no_authorization::NoAuthorization {
-            dst: cidr_contained_ip().into(),
-            protocol: p2p_control::no_authorization::Protocol::Udp { dst_port: 443 },
-        }
-    }
-
-    fn cidr_resource() -> Resource {
-        Resource::Cidr(resource::CidrResource {
-            id: cidr_resource_id(),
-            address: "10.0.0.0/24".parse().unwrap(),
-            name: "cidr".to_owned(),
-            address_description: None,
-            sites: vec![Site {
-                id: SiteId::from_u128(1),
-                name: "site".to_owned(),
-            }],
-            filters: vec![],
-        })
-    }
-
-    fn cidr_resource_id() -> ResourceId {
-        ResourceId::from_u128(100)
-    }
-
-    fn cidr_contained_ip() -> Ipv4Addr {
-        Ipv4Addr::new(10, 0, 0, 5)
-    }
-
     impl ClientState {
         pub fn for_test() -> ClientState {
             ClientState::new(

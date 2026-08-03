@@ -296,4 +296,35 @@ pub mod no_authorization {
             }
         }
     }
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::net::{Ipv4Addr, Ipv6Addr};
+
+        #[test]
+        fn no_authorization_serde_roundtrip() {
+            let packet = event(
+                IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+                Protocol::Tcp { dst_port: 443 },
+            )
+            .unwrap();
+
+            let slice = packet.as_fz_p2p_control().unwrap();
+            let no_authorization = decode(slice).unwrap();
+
+            assert_eq!(no_authorization.dst, IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)));
+            assert_eq!(no_authorization.protocol, Protocol::Tcp { dst_port: 443 });
+        }
+
+        #[test]
+        fn no_authorization_serde_roundtrip_icmp_ipv6() {
+            let packet = event(IpAddr::V6(Ipv6Addr::LOCALHOST), Protocol::Icmp).unwrap();
+
+            let slice = packet.as_fz_p2p_control().unwrap();
+            let no_authorization = decode(slice).unwrap();
+
+            assert_eq!(no_authorization.dst, IpAddr::V6(Ipv6Addr::LOCALHOST));
+            assert_eq!(no_authorization.protocol, Protocol::Icmp);
+        }
+    }
 }
