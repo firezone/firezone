@@ -2,7 +2,7 @@ use crate::ref_gateway::RefGateway;
 
 use super::{
     dns_records::DnsRecords,
-    ref_client::{RefClient, RejectionResponse},
+    ref_client::{ExpectedRejection, RefClient, RejectionRemote, RejectionResponse},
     sim_client::SimClient,
     sim_gateway::SimGateway,
     stub_portal::StubPortal,
@@ -116,7 +116,7 @@ fn assert_packets_properties<T, U>(
         &RefClient,
     )
         -> &BTreeMap<ClientId, BTreeMap<u64, (Destination, T, U)>>,
-    get_expected_rejections: impl Fn(&RefClient) -> &BTreeMap<(T, U), RejectionResponse>,
+    get_expected_rejections: impl Fn(&RefClient) -> &BTreeMap<(T, U), ExpectedRejection>,
     get_received_replies: impl Fn(&SimClient) -> &BTreeMap<(T, U), IpPacket>,
     get_received_requests_on_gateway: impl Fn(&SimGateway) -> &BTreeMap<u64, (Instant, IpPacket)>,
     get_received_requests_on_client: impl Fn(&SimClient) -> &BTreeMap<u64, (Instant, IpPacket)>,
@@ -209,14 +209,26 @@ fn assert_packets_properties<T, U>(
         .map(|(g, s)| (*g, &s.dns_query_timestamps))
         .collect::<BTreeMap<_, _>>();
 
-    for (expected, response) in &all_expected_rejections {
+    for (expected, rejection) in &all_expected_rejections {
         let Some(reply) = all_received_replies_on_client.get(expected) else {
-            tracing::error!(target: "assertions", ?expected, ?response, "❌ Missing ICMP error for rejected {packet_protocol} packet");
+            let (cid, reply) = *expected;
+            let Some((sent_at, _)) = all_sent_requests.get(&(cid, reply.reply_to())) else {
+                tracing::error!(target: "assertions", ?expected, "❌ Missing rejected {packet_protocol} request on client");
+                continue;
+            };
+            let ref_client = ref_clients.get(&cid).unwrap();
+
+            if can_drop_during_rekey(ref_client, rejection.remote, *sent_at) {
+                tracing::debug!(target: "assertions", %cid, remote = ?rejection.remote, "Tolerating rejected {packet_protocol} packet dropped in the WireGuard re-key window");
+                continue;
+            }
+
+            tracing::error!(target: "assertions", ?expected, response = ?rejection.response, "❌ Missing ICMP error for rejected {packet_protocol} packet");
             continue;
         };
 
-        if rejection_response(reply) != Some(*response) {
-            tracing::error!(target: "assertions", ?expected, ?response, "❌ Received wrong ICMP error for rejected {packet_protocol} packet");
+        if rejection_response(reply) != Some(rejection.response) {
+            tracing::error!(target: "assertions", ?expected, response = ?rejection.response, "❌ Received wrong ICMP error for rejected {packet_protocol} packet");
         }
     }
 
@@ -295,10 +307,7 @@ fn assert_packets_properties<T, U>(
                 // record the same as a long-idle one.
                 //
                 // TODO: Delete once ICEless is the default.
-                if ref_client
-                    .last_packet_sent_to_gateway_before(*gateway, *sent_at)
-                    .is_none_or(|prev| sent_at.duration_since(prev) >= MIN_IDLE_FOR_REKEY_DROP)
-                {
+                if can_drop_during_rekey(ref_client, RejectionRemote::Gateway(*gateway), *sent_at) {
                     tracing::debug!(target: "assertions", %cid, "Tolerating {packet_protocol} packet dropped in the WireGuard re-key window");
                     num_expected_handshakes -= 1;
                     continue;
@@ -423,10 +432,11 @@ fn assert_packets_properties<T, U>(
                 // (see `MIN_IDLE_FOR_REKEY_DROP`), exactly like the client→gateway case above.
                 //
                 // TODO: Delete once ICEless is the default.
-                if src_ref_client
-                    .last_packet_sent_to_client_before(*dst_client_id, *sent_at)
-                    .is_some_and(|prev| sent_at.duration_since(prev) >= MIN_IDLE_FOR_REKEY_DROP)
-                {
+                if can_drop_during_rekey(
+                    src_ref_client,
+                    RejectionRemote::Client(*dst_client_id),
+                    *sent_at,
+                ) {
                     tracing::debug!(target: "assertions", %dst_client_id, "Tolerating {packet_protocol} packet dropped in the WireGuard re-key window");
                     num_expected_handshakes -= 1;
                     continue;
@@ -460,6 +470,22 @@ fn assert_packets_properties<T, U>(
         } else {
             tracing::info!(target: "assertions", %num_expected_handshakes, %dst_client_id, "✅ Performed the expected {packet_protocol} handshakes");
         }
+    }
+}
+
+fn can_drop_during_rekey(
+    ref_client: &RefClient,
+    remote: RejectionRemote,
+    sent_at: Instant,
+) -> bool {
+    match remote {
+        RejectionRemote::Local => false,
+        RejectionRemote::Gateway(gateway) => ref_client
+            .last_packet_sent_to_gateway_before(gateway, sent_at)
+            .is_none_or(|previous| sent_at.duration_since(previous) >= MIN_IDLE_FOR_REKEY_DROP),
+        RejectionRemote::Client(client) => ref_client
+            .last_packet_sent_to_client_before(client, sent_at)
+            .is_some_and(|previous| sent_at.duration_since(previous) >= MIN_IDLE_FOR_REKEY_DROP),
     }
 }
 

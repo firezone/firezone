@@ -93,7 +93,7 @@ pub struct RefClient {
 
     /// Tracks ICMP packets expected to receive an error response.
     #[debug(skip)]
-    pub(crate) expected_icmp_rejections: BTreeMap<(Seq, Identifier), RejectionResponse>,
+    pub(crate) expected_icmp_rejections: BTreeMap<(Seq, Identifier), ExpectedRejection>,
 
     /// The expected UDP handshakes with Gateways.
     #[debug(skip)]
@@ -107,7 +107,7 @@ pub struct RefClient {
 
     /// Tracks UDP packets expected to receive an ICMP error response.
     #[debug(skip)]
-    pub(crate) expected_udp_rejections: BTreeMap<(SPort, DPort), RejectionResponse>,
+    pub(crate) expected_udp_rejections: BTreeMap<(SPort, DPort), ExpectedRejection>,
 
     /// The expected TCP connections.
     #[debug(skip)]
@@ -568,7 +568,7 @@ impl RefClient {
         packet_id: E,
         gateway_map: impl FnOnce(&mut Self) -> &mut BTreeMap<GatewayId, BTreeMap<u64, E>>,
         client_map: impl FnOnce(&mut Self) -> &mut BTreeMap<ClientId, BTreeMap<u64, E>>,
-        rejection_map: impl FnOnce(&mut Self) -> &mut BTreeMap<K, RejectionResponse>,
+        rejection_map: impl FnOnce(&mut Self) -> &mut BTreeMap<K, ExpectedRejection>,
         rejection_id: K,
         payload: u64,
         now: Instant,
@@ -589,11 +589,27 @@ impl RefClient {
             }
             PacketRoute::PeerRejectedByPeer(remote_id) => {
                 tracing::Span::current().record("peer", tracing::field::display(remote_id));
-                rejection_map(self).insert(rejection_id, RejectionResponse::Prohibited);
+                self.client_send_times
+                    .entry(remote_id)
+                    .or_default()
+                    .insert(now);
+                rejection_map(self).insert(
+                    rejection_id,
+                    ExpectedRejection {
+                        response: RejectionResponse::Prohibited,
+                        remote: RejectionRemote::Client(remote_id),
+                    },
+                );
                 return;
             }
             PacketRoute::RejectedByClient => {
-                rejection_map(self).insert(rejection_id, RejectionResponse::Prohibited);
+                rejection_map(self).insert(
+                    rejection_id,
+                    ExpectedRejection {
+                        response: RejectionResponse::Prohibited,
+                        remote: RejectionRemote::Local,
+                    },
+                );
                 return;
             }
             PacketRoute::Gateway(gateway) => gateway,
@@ -608,7 +624,17 @@ impl RefClient {
                 tracing::Span::current().record("gateway", tracing::field::display(gateway));
                 self.connect_to_resource(resource, dst);
                 self.set_resource_online(resource);
-                rejection_map(self).insert(rejection_id, RejectionResponse::Prohibited);
+                self.gateway_send_times
+                    .entry(gateway)
+                    .or_default()
+                    .insert(now);
+                rejection_map(self).insert(
+                    rejection_id,
+                    ExpectedRejection {
+                        response: RejectionResponse::Prohibited,
+                        remote: RejectionRemote::Gateway(gateway),
+                    },
+                );
                 return;
             }
             PacketRoute::ResourceUnreachableByGateway { resource, gateway } => {
@@ -616,7 +642,17 @@ impl RefClient {
                 tracing::Span::current().record("gateway", tracing::field::display(gateway));
                 self.connect_to_resource(resource, dst);
                 self.set_resource_online(resource);
-                rejection_map(self).insert(rejection_id, RejectionResponse::Unreachable);
+                self.gateway_send_times
+                    .entry(gateway)
+                    .or_default()
+                    .insert(now);
+                rejection_map(self).insert(
+                    rejection_id,
+                    ExpectedRejection {
+                        response: RejectionResponse::Unreachable,
+                        remote: RejectionRemote::Gateway(gateway),
+                    },
+                );
                 return;
             }
         };
@@ -1393,6 +1429,19 @@ fn is_resource_proxy(addr: IpAddr) -> bool {
         IpAddr::V4(addr) => tunnel_proto::IPV4_RESOURCES.contains(addr),
         IpAddr::V6(addr) => tunnel_proto::IPV6_RESOURCES.contains(addr),
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ExpectedRejection {
+    pub(crate) response: RejectionResponse,
+    pub(crate) remote: RejectionRemote,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RejectionRemote {
+    Local,
+    Gateway(GatewayId),
+    Client(ClientId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
