@@ -16,7 +16,7 @@ use resource::{InternetResource, Resource, StaticDevicePoolResource};
 use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
 use crate::client::dns_config::DnsConfig;
-use crate::client::pending_authorizations::{DnsQueryForSite, PendingAuthorizations, Trigger};
+use crate::client::pending_authorizations::{DnsQueryForSite, PendingAuthorizations};
 use crate::client::routing::{Route, RoutingTables};
 use crate::client::tracked_state::TrackedState;
 use crate::conn_track::Originator;
@@ -58,7 +58,6 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
-use telemetry::{analytics, feature_flags};
 
 pub const IPV4_RESOURCES: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
     Ok(n) => n,
@@ -500,6 +499,8 @@ impl ClientState {
                 },
             );
 
+        let mut sendable_packets = Vec::new();
+
         for (domain, rid, proxy_ips, gid) in
             self.resource_stub_resolver
                 .resolved_resources()
@@ -532,7 +533,7 @@ impl ClientState {
                 packets_for_domain,
                 now,
             ) {
-                Ok(()) => {}
+                Ok(packets) => sendable_packets.extend(packets),
                 Err(e) => {
                     tracing::warn!("Failed to update DNS resource NAT state: {e:#}");
                     continue;
@@ -543,6 +544,13 @@ impl ClientState {
                 for ip in proxy_ips {
                     peer.allow_ip_for_resource(*ip, *rid);
                 }
+            }
+        }
+
+        // Packets buffered for an already-confirmed NAT can be sent right away.
+        for packet in sendable_packets {
+            if let Err(e) = self.handle_out_of_band_ip_packet(packet, now) {
+                tracing::debug!("Failed to route buffered DNS resource packet: {e:#}");
             }
         }
     }
@@ -824,6 +832,12 @@ impl ClientState {
                         }
                     }
                 }
+                (p2p_control::NO_AUTHORIZATION_EVENT, ClientOrGatewayId::Gateway(gid)) => {
+                    let event = p2p_control::no_authorization::decode(fz_p2p_control)
+                        .context("Failed to decode `NoAuthorization`")?;
+
+                    self.handle_no_authorization(gid, event);
+                }
                 (p2p_control::GOODBYE_EVENT, pid) => {
                     self.node.remove_connection(pid, "received `goodbye`", now);
 
@@ -879,28 +893,6 @@ impl ClientState {
                 // To a gateway we are always the one who opened the flow;
                 // this packet is a reply.
                 flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
-
-                // All facts are recorded; commit the flow so the tracker
-                // borrow is free for the `&mut self` calls below.
-                drop(_guard);
-
-                if feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
-                    && let Ok(Some((failed_packet, error))) = packet.icmp_error()
-                    && error.is_unreachable_prohibited()
-                    && let Some(resource) = self
-                        .get_resource_by_destination(failed_packet.dst(), failed_packet.dst_proto())
-                {
-                    analytics::feature_flag_called(
-                        "icmp-error-unreachable-prohibited-create-new-flow",
-                    );
-
-                    self.pending_authorizations.on_not_authorized_resource(
-                        resource,
-                        Trigger::IcmpDestinationUnreachableProhibited,
-                        &self.resources_by_id,
-                        now,
-                    );
-                }
             }
         }
 
@@ -1358,6 +1350,50 @@ impl ClientState {
         self.handle_udp_dns_query(upstream, packet, now);
 
         ControlFlow::Break(())
+    }
+
+    /// Handles a [`no_authorization`](p2p_control::no_authorization) event from a Gateway.
+    ///
+    /// A Gateway sends this event when it receives packets from us for a destination that none
+    /// of our authorizations with it cover (anymore), e.g. because the authorization expired.
+    /// We discard the matching authorization; the next packet for the resource will request a
+    /// new one from the portal and be buffered until it is granted.
+    ///
+    /// Delivery of the event is unreliable but the Gateway re-sends it as long as we keep
+    /// sending packets for the unauthorized destination.
+    fn handle_no_authorization(
+        &mut self,
+        gid: GatewayId,
+        event: p2p_control::no_authorization::NoAuthorization,
+    ) {
+        #[cfg(any(test, feature = "malicious-behaviour"))]
+        if crate::malicious_behaviour::ignore_no_authorization_events() {
+            tracing::debug!("Malicious client: ignoring `NoAuthorization` event");
+            return;
+        }
+
+        let dst = event.dst;
+
+        let Some(rid) = self.get_resource_by_destination(dst, event.protocol.into()) else {
+            tracing::debug!(%gid, %dst, "Ignoring `NoAuthorization` event for unknown destination");
+            return;
+        };
+
+        let hash_map::Entry::Occupied(authorization) = self.authorized_resources.entry(rid) else {
+            tracing::debug!(%gid, %rid, "Ignoring `NoAuthorization` event: resource is not authorized");
+            return;
+        };
+
+        // Gateways only know about destinations, not resources; make sure we only discard an
+        // authorization that the sending Gateway is actually responsible for.
+        if authorization.get().as_gateway() != Some(&gid) {
+            tracing::debug!(%gid, %rid, "Ignoring `NoAuthorization` event: resource is not authorized via this Gateway");
+            return;
+        }
+
+        tracing::debug!(%gid, %rid, %dst, "Discarding authorization that is no longer valid on the Gateway");
+
+        authorization.remove();
     }
 
     pub fn on_resource_connection_failed(&mut self, resource: ResourceId, now: Instant) {

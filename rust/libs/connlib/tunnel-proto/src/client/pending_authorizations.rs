@@ -195,7 +195,6 @@ impl PendingAuthorization {
             Trigger::DnsQueryForSite(query) => {
                 self.dns_queries.enqueue(query);
             }
-            Trigger::IcmpDestinationUnreachableProhibited => {}
         }
     }
 
@@ -216,10 +215,6 @@ pub enum Trigger {
     PacketForResource(IpPacket),
     /// A DNS query that needs to be resolved within a particular site that we aren't connected to yet.
     DnsQueryForSite(DnsQueryForSite),
-    /// We have received an ICMP error that is marked as "access prohibited".
-    ///
-    /// Most likely, the Gateway is filtering these packets because the Client doesn't have access (anymore).
-    IcmpDestinationUnreachableProhibited,
 }
 
 pub struct DnsQueryForSite {
@@ -234,9 +229,6 @@ impl Trigger {
         match self {
             Trigger::PacketForResource(_) => "packet-for-resource",
             Trigger::DnsQueryForSite(_) => "dns-query-for-site",
-            Trigger::IcmpDestinationUnreachableProhibited => {
-                "icmp-destination-unreachable-prohibited"
-            }
         }
     }
 }
@@ -257,8 +249,8 @@ impl From<DnsQueryForSite> for Trigger {
 fn is_trigger_allowed(trigger: &Trigger, filter: &FilterEngine) -> bool {
     let protocol = match trigger {
         Trigger::PacketForResource(packet) => packet.destination_protocol(),
-        // DNS queries and ICMP errors are control-plane triggers, not subject to data-plane filters.
-        Trigger::DnsQueryForSite(_) | Trigger::IcmpDestinationUnreachableProhibited => return true,
+        // DNS queries are control-plane triggers, not subject to data-plane filters.
+        Trigger::DnsQueryForSite(_) => return true,
     };
 
     if filter.apply(protocol).is_ok() {

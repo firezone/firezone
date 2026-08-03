@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::net::{IpAddr, Ipv4Addr};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
@@ -17,7 +17,9 @@ use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken};
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
-use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp};
+use crate::{
+    GatewayEvent, IpConfig, NoAuthorization, NotAllowedResource, NotClientIp, p2p_control,
+};
 
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
@@ -39,12 +41,35 @@ pub struct ClientOnGateway {
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
     nat_table: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
+
+    /// When we last told the client that it lacks an authorization for a given destination.
+    ///
+    /// The client is expected to react to a single [`p2p_control::no_authorization`]
+    /// event but its delivery is unreliable.
+    /// Retransmissions are driven by the client's own traffic:
+    /// every packet for an unauthorized destination re-sends the event,
+    /// throttled to one per destination per [`NO_AUTHORIZATION_THROTTLE`].
+    no_authorization_sent_at: BTreeMap<IpAddr, Instant>,
 }
+
+/// How long we wait before re-sending a [`p2p_control::no_authorization`] event for the same destination.
+///
+/// Mirrors the throttle the client applies to its authorization requests.
+const NO_AUTHORIZATION_THROTTLE: Duration = Duration::from_secs(2);
+
+/// Upper bound on the number of destinations we track for [`p2p_control::no_authorization`] events.
+///
+/// Bounds the memory used by a client that sprays packets across many unauthorized destinations.
+const MAX_TRACKED_NO_AUTHORIZATION_EVENTS: usize = 1000;
 
 #[derive(Debug, PartialEq)]
 pub enum TranslateOutboundResult {
     Send(IpPacket),
-    IcmpError(IpPacket),
+    IcmpError {
+        reply: IpPacket,
+        /// Tells the client to request a new authorization, if we rejected the packet because we don't have one.
+        no_authorization: Option<IpPacket>,
+    },
 }
 
 impl ClientOnGateway {
@@ -64,6 +89,7 @@ impl ClientOnGateway {
             nat_table: Default::default(),
             buffered_events: Default::default(),
             internet_resource_enabled: None,
+            no_authorization_sent_at: Default::default(),
         }
     }
 
@@ -150,6 +176,9 @@ impl ClientOnGateway {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         self.nat_table.handle_timeout(now);
         self.resources.handle_timeout(now);
+        for _ in self.no_authorization_sent_at.extract_if(.., |_, sent_at| {
+            now.duration_since(*sent_at) >= NO_AUTHORIZATION_THROTTLE
+        }) {}
 
         let cid = self.id;
         let mut any_expired = false;
@@ -192,6 +221,10 @@ impl ClientOnGateway {
             self.resources
                 .insert(rid, ResourceOnGateway::new(resource), now, ttl);
         }
+
+        // A fresh authorization voids recently sent `no_authorization` events:
+        // if it gets revoked again, the client deserves a new event right away.
+        self.no_authorization_sent_at.clear();
 
         self.recalculate_filters();
     }
@@ -330,12 +363,52 @@ impl ClientOnGateway {
                 None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
             };
 
-            return Ok(TranslateOutboundResult::IcmpError(reply));
+            let no_authorization = error
+                .any_is::<NoAuthorization>()
+                .then(|| self.make_no_authorization_event(&packet, now))
+                .flatten();
+
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply,
+                no_authorization,
+            });
         }
 
         let result = self.transform_network_to_tun(packet, now)?;
 
         Ok(result)
+    }
+
+    /// Construct a [`p2p_control::no_authorization`] event for the given denied packet.
+    ///
+    /// Returns `None` if the packet's protocol cannot be represented in the event or if we
+    /// recently sent one for the same destination.
+    fn make_no_authorization_event(&mut self, packet: &IpPacket, now: Instant) -> Option<IpPacket> {
+        let dst = packet.destination();
+        let protocol = packet.destination_protocol().ok()?.into();
+
+        match self.no_authorization_sent_at.get_mut(&dst) {
+            Some(sent_at) => {
+                if now.duration_since(*sent_at) < NO_AUTHORIZATION_THROTTLE {
+                    return None;
+                }
+
+                *sent_at = now;
+            }
+            None => {
+                if self.no_authorization_sent_at.len() >= MAX_TRACKED_NO_AUTHORIZATION_EVENTS {
+                    return None;
+                }
+
+                self.no_authorization_sent_at.insert(dst, now);
+            }
+        }
+
+        tracing::debug!(cid = %self.id, %dst, "Requesting re-authorization from client");
+
+        p2p_control::no_authorization::event(dst, protocol)
+            .inspect_err(|e| tracing::debug!("Failed to create `NoAuthorization` event: {e:#}"))
+            .ok()
     }
 
     pub fn translate_inbound(
@@ -390,15 +463,17 @@ impl ClientOnGateway {
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             tracing::debug!(%dst, "No translation entry");
 
-            return Ok(TranslateOutboundResult::IcmpError(
-                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-            ));
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                no_authorization: None,
+            });
         };
 
         let Some(resolved_ip) = state.resolved_ip else {
-            return Ok(TranslateOutboundResult::IcmpError(
-                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-            ));
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                no_authorization: None,
+            });
         };
 
         if resolved_ip.is_ipv4() != dst.is_ipv4() {
@@ -408,9 +483,10 @@ impl ClientOnGateway {
                 "Cannot translate between IP versions"
             );
 
-            return Ok(TranslateOutboundResult::IcmpError(
-                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-            ));
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                no_authorization: None,
+            });
         }
 
         flow_tracker::record_domain(state.domain.clone());
@@ -524,8 +600,11 @@ impl ClientOnGateway {
         let entry = self
             .routing_table
             .matches(resource_ip, protocol.clone())
-            .context(NotAllowedResource(resource_ip))?;
+            .context(NoAuthorization(resource_ip))?;
 
+        // A failing filter is not a missing authorization:
+        // filters are synced via resource updates, not via authorizations,
+        // so requesting a new authorization would not resolve the mismatch.
         entry
             .filter
             .apply(protocol)
@@ -891,7 +970,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::IcmpError(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -905,7 +984,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::IcmpError(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -955,7 +1034,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::IcmpError(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -986,7 +1065,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(request, Instant::now()).unwrap(),
-            TranslateOutboundResult::IcmpError(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
     }
 
@@ -1247,7 +1326,7 @@ mod tests {
         )
         .unwrap();
 
-        let TranslateOutboundResult::IcmpError(packet) =
+        let TranslateOutboundResult::IcmpError { reply: packet, .. } =
             peer.translate_outbound(request, now).unwrap()
         else {
             panic!("Bad translation result")

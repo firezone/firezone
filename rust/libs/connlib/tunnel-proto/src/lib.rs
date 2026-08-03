@@ -151,6 +151,10 @@ pub(crate) struct NotClientIp(IpAddr);
 pub(crate) struct NotAllowedResource(IpAddr);
 
 #[derive(Debug, thiserror::Error)]
+#[error("No active authorization covers this resource IP: {0}")]
+pub(crate) struct NoAuthorization(IpAddr);
+
+#[derive(Debug, thiserror::Error)]
 #[error("Failed to decapsulate '{0}' packet")]
 pub struct FailedToDecapsulate(packet_kind::Kind);
 

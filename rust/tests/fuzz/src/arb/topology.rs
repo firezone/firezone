@@ -402,6 +402,7 @@ fn arb_client_host(
     let internet_resource_active = g.bool();
     let ignore_resource_filters = g.bool();
     let send_untracked_icmp_errors = g.bool();
+    let ignore_no_authorization_events = g.bool();
 
     let inner = RefClient::new(
         id,
@@ -413,6 +414,7 @@ fn arb_client_host(
         MaliciousBehaviour {
             ignore_resource_filters,
             send_untracked_icmp_errors,
+            ignore_no_authorization_events,
         },
     );
 
