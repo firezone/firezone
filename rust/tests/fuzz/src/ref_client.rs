@@ -91,7 +91,7 @@ pub struct RefClient {
     pub(crate) expected_client_icmp_handshakes:
         BTreeMap<ClientId, BTreeMap<u64, (Destination, Seq, Identifier)>>,
 
-    /// ICMP packets expected to receive an error response.
+    /// Tracks ICMP packets expected to receive an error response.
     #[debug(skip)]
     pub(crate) expected_icmp_rejections: BTreeMap<(Seq, Identifier), RejectionResponse>,
 
@@ -105,7 +105,7 @@ pub struct RefClient {
     pub(crate) expected_client_udp_handshakes:
         BTreeMap<ClientId, BTreeMap<u64, (Destination, SPort, DPort)>>,
 
-    /// UDP packets expected to receive an ICMP error response.
+    /// Tracks UDP packets expected to receive an ICMP error response.
     #[debug(skip)]
     pub(crate) expected_udp_rejections: BTreeMap<(SPort, DPort), RejectionResponse>,
 
@@ -113,7 +113,7 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) expected_tcp_connections: BTreeMap<(IpAddr, Destination, SPort, DPort), ResourceId>,
 
-    /// TCP connections expected to receive an ICMP error response.
+    /// Tracks TCP connections expected to receive an ICMP error response.
     #[debug(skip)]
     pub(crate) expected_tcp_rejections: BTreeMap<(SPort, DPort), RejectionResponse>,
 
@@ -644,7 +644,9 @@ impl RefClient {
         dport: DPort,
     ) {
         match expected_route {
-            PacketRoute::Drop | PacketRoute::Gateway(_) | PacketRoute::Peer(_) => {}
+            PacketRoute::Drop => {}
+            PacketRoute::Gateway(_) => {}
+            PacketRoute::Peer(_) => {}
             PacketRoute::RejectedByClient => {
                 self.expected_tcp_rejections
                     .insert((sport, dport), RejectionResponse::Prohibited);
