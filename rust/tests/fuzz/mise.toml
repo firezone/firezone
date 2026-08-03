@@ -49,7 +49,7 @@ set -euo pipefail
 
 target="$usage_target"
 
-if [ -n "$usage_libfuzzer_args" ]; then
+if [ -n "${usage_libfuzzer_args:-}" ]; then
   # `usage` joins variadic arguments as a shell-escaped string.
   eval "set -- $usage_libfuzzer_args"
 else
@@ -93,7 +93,7 @@ set -euo pipefail
 target="$usage_target"
 baseline="expected-coverage/$target.json"
 
-if [ -n "$usage_libfuzzer_args" ]; then
+if [ -n "${usage_libfuzzer_args:-}" ]; then
   # `usage` joins variadic arguments as a shell-escaped string.
   eval "set -- $usage_libfuzzer_args"
 else
