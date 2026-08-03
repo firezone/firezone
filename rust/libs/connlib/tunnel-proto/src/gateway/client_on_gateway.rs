@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::net::IpAddr;
 use std::time::Instant;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -47,6 +47,10 @@ pub enum TranslateOutboundResult {
     DestinationUnreachable(IpPacket),
     Filtered(IpPacket),
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("Internet resource excludes local LAN IP: {0}")]
+struct InternetResourceExcludesLocalLan(IpAddr);
 
 impl ClientOnGateway {
     pub(crate) fn new(
@@ -322,17 +326,25 @@ impl ClientOnGateway {
         }
 
         // Filtering a packet is not an error.
-        if let Err(e) = self.ensure_allowed_outbound(&packet) {
-            tracing::debug!(filtered_packet = ?packet, "{e:#}");
-            return Ok(TranslateOutboundResult::Filtered(
-                ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
-            ));
+        match self.ensure_allowed_outbound(&packet) {
+            Ok(()) => {}
+            Err(e) => {
+                tracing::debug!(filtered_packet = ?packet, "{e:#}");
+
+                return match e.any_downcast_ref::<InternetResourceExcludesLocalLan>() {
+                    Some(InternetResourceExcludesLocalLan(_)) => {
+                        Ok(TranslateOutboundResult::DestinationUnreachable(
+                            ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                        ))
+                    }
+                    _ => Ok(TranslateOutboundResult::Filtered(
+                        ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
+                    )),
+                };
+            }
         }
 
-        // Failing to transform is an error we want to know about further up.
-        let result = self.transform_network_to_tun(packet, now)?;
-
-        Ok(result)
+        self.transform_network_to_tun(packet, now)
     }
 
     pub fn translate_inbound(
@@ -498,13 +510,22 @@ impl ClientOnGateway {
         resource_ip: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
     ) -> anyhow::Result<ResourceId> {
-        // Note a Gateway with Internet resource should never get packets for other resources
-        if let Some(rid) = self.internet_resource_enabled
-            && !is_dns_addr(resource_ip)
-        {
-            return Ok(rid);
+        match self.internet_resource_enabled {
+            Some(internet_resource) => match resource_ip {
+                ip if is_dns_addr(ip) => self.classify_non_internet_resource(ip, protocol),
+                ip if is_local_lan(ip) => bail!(InternetResourceExcludesLocalLan(ip)),
+                // Note a Gateway with Internet resource should never get packets for other resources.
+                _ => Ok(internet_resource),
+            },
+            None => self.classify_non_internet_resource(resource_ip, protocol),
         }
+    }
 
+    fn classify_non_internet_resource(
+        &mut self,
+        resource_ip: IpAddr,
+        protocol: Result<Protocol, UnsupportedProtocol>,
+    ) -> anyhow::Result<ResourceId> {
         let entry = self
             .routing_table
             .matches(resource_ip, protocol.clone())
@@ -651,6 +672,13 @@ impl TranslationState {
 
 fn is_dns_addr(addr: IpAddr) -> bool {
     IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
+}
+
+fn is_local_lan(addr: IpAddr) -> bool {
+    match addr {
+        IpAddr::V4(addr) => addr.is_private() || addr.is_link_local(),
+        IpAddr::V6(addr) => addr.is_unicast_link_local(),
+    }
 }
 
 /// Rejects addresses within Firezone's tunnel range.
