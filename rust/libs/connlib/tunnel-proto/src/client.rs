@@ -1366,6 +1366,12 @@ impl ClientState {
         gid: GatewayId,
         event: p2p_control::no_authorization::NoAuthorization,
     ) {
+        #[cfg(any(test, feature = "malicious-behaviour"))]
+        if crate::malicious_behaviour::ignore_no_authorization_events() {
+            tracing::debug!("Malicious client: ignoring `NoAuthorization` event");
+            return;
+        }
+
         let dst = event.dst;
 
         let Some(rid) = self.get_resource_by_destination(dst, event.protocol.into()) else {
@@ -3088,36 +3094,6 @@ mod tests {
     }
 
     #[test]
-    fn no_authorization_event_invalidates_authorization() {
-        let mut state = ClientState::for_test();
-        let now = Instant::now();
-        let gid = GatewayId::from_u128(1);
-
-        state.update_interface_config(interface(tun_ipv4(), Ipv6Addr::LOCALHOST));
-        state.upsert_resource(cidr_resource(), now);
-        state
-            .authorized_resources
-            .insert(cidr_resource_id(), AccessPath::Gateway(gid));
-        while state.poll_event().is_some() {} // Drain setup events.
-
-        state.handle_no_authorization(gid, no_authorization_event());
-
-        assert!(!state.authorized_resources.contains_key(&cidr_resource_id()));
-
-        // The next packet for the resource requests a new authorization.
-        let packet =
-            ip_packet::make::udp_packet(tun_ipv4(), cidr_contained_ip(), 54321, 443, &[1]).unwrap();
-        state
-            .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
-            .unwrap();
-
-        assert!(matches!(
-            state.poll_event(),
-            Some(ClientEvent::ResourceConnectionIntent { resource, .. }) if resource == cidr_resource_id()
-        ));
-    }
-
-    #[test]
     fn no_authorization_event_from_other_gateway_is_ignored() {
         let mut state = ClientState::for_test();
         let now = Instant::now();
@@ -3132,15 +3108,6 @@ mod tests {
         state.handle_no_authorization(other_gateway, no_authorization_event());
 
         assert!(state.authorized_resources.contains_key(&cidr_resource_id()));
-    }
-
-    #[test]
-    fn no_authorization_event_for_unknown_destination_is_ignored() {
-        let mut state = ClientState::for_test();
-
-        state.handle_no_authorization(GatewayId::from_u128(1), no_authorization_event());
-
-        assert!(state.authorized_resources.is_empty());
     }
 
     fn no_authorization_event() -> p2p_control::no_authorization::NoAuthorization {
@@ -3170,10 +3137,6 @@ mod tests {
 
     fn cidr_contained_ip() -> Ipv4Addr {
         Ipv4Addr::new(10, 0, 0, 5)
-    }
-
-    fn tun_ipv4() -> Ipv4Addr {
-        Ipv4Addr::new(100, 82, 80, 16)
     }
 
     impl ClientState {

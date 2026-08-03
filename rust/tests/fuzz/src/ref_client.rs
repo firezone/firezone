@@ -662,7 +662,11 @@ impl RefClient {
                 if self.gateway_revoked_authorizations.contains(&resource) {
                     // The rejection comes with a `no_authorization` event: the client
                     // discards its authorization and re-authorizes on the next packet.
-                    self.discard_authorization(&resource);
+                    // A malicious client ignores the event and keeps its stale
+                    // authorization, so the Gateway keeps rejecting its packets.
+                    if !self.malicious_behaviour.ignore_no_authorization_events {
+                        self.discard_authorization(&resource);
+                    }
                 } else {
                     self.connect_to_resource(resource, dst);
                 }
@@ -752,7 +756,11 @@ impl RefClient {
                 if self.gateway_revoked_authorizations.contains(&resource) {
                     // The rejection comes with a `no_authorization` event: the client
                     // discards its authorization and re-authorizes on the next packet.
-                    self.discard_authorization(&resource);
+                    // A malicious client ignores the event and keeps its stale
+                    // authorization, so the Gateway keeps rejecting its packets.
+                    if !self.malicious_behaviour.ignore_no_authorization_events {
+                        self.discard_authorization(&resource);
+                    }
                 } else {
                     self.connect_to_resource(resource, dst);
                 }

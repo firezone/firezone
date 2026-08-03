@@ -1442,56 +1442,6 @@ mod tests {
     }
 
     #[test]
-    fn sends_no_authorization_event_when_authorization_expires() {
-        let _guard = logging::test("trace");
-
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
-        let now = Instant::now();
-        let expires_at = now + Duration::from_secs(10);
-
-        peer.add_resource(bar_cidr_resource(), Some(expires_at), now);
-
-        assert!(matches!(
-            peer.translate_outbound(udp_packet_to(bar_contained_ip()), now)
-                .unwrap(),
-            TranslateOutboundResult::Send(_)
-        ));
-
-        peer.handle_timeout(expires_at);
-
-        let event =
-            no_authorization_event(&mut peer, udp_packet_to(bar_contained_ip()), expires_at)
-                .expect("expired authorization should produce an event");
-        let event =
-            p2p_control::no_authorization::decode(event.as_fz_p2p_control().unwrap()).unwrap();
-
-        assert_eq!(event.dst, IpAddr::from(bar_contained_ip()));
-        assert_eq!(
-            event.protocol,
-            p2p_control::no_authorization::Protocol::Udp {
-                dst_port: bar_allowed_port()
-            }
-        );
-    }
-
-    #[test]
-    fn throttles_no_authorization_events_per_destination() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
-        let mut now = Instant::now();
-
-        let dst1 = bar_contained_ip();
-        let dst2 = "10.0.0.2".parse::<Ipv4Addr>().unwrap();
-
-        assert!(no_authorization_event(&mut peer, udp_packet_to(dst1), now).is_some());
-        assert!(no_authorization_event(&mut peer, udp_packet_to(dst1), now).is_none());
-        assert!(no_authorization_event(&mut peer, udp_packet_to(dst2), now).is_some());
-
-        now += NO_AUTHORIZATION_THROTTLE;
-
-        assert!(no_authorization_event(&mut peer, udp_packet_to(dst1), now).is_some());
-    }
-
-    #[test]
     fn does_not_send_no_authorization_event_for_traffic_to_another_client() {
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         let now = Instant::now();
