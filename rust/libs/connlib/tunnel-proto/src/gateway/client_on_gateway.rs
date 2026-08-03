@@ -333,7 +333,9 @@ impl ClientOnGateway {
             return Ok(TranslateOutboundResult::IcmpError(reply));
         }
 
-        self.transform_network_to_tun(packet, now)
+        let result = self.transform_network_to_tun(packet, now)?;
+
+        Ok(result)
     }
 
     pub fn translate_inbound(
