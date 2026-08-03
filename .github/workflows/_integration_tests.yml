@@ -58,67 +58,23 @@ on:
 
 jobs:
   collect-images:
-    name: collect-images
-    runs-on: ubuntu-24.04
+    uses: ./.github/workflows/_collect_images.yml
     permissions:
       contents: read
-    env:
-      PORTAL_IMAGE: ${{ inputs.portal_image }}
-      PORTAL_TAG: ${{ inputs.portal_tag }}
-      RELAY_IMAGE: ${{ inputs.relay_image }}
-      RELAY_TAG: ${{ inputs.relay_tag }}
-      GATEWAY_IMAGE: ${{ inputs.gateway_image }}
-      GATEWAY_TAG: ${{ inputs.gateway_tag }}
-      CLIENT_IMAGE: ${{ inputs.client_image }}
-      CLIENT_TAG: ${{ inputs.client_tag }}
-      ELIXIR_IMAGE: ${{ inputs.elixir_image }}
-      ELIXIR_TAG: ${{ inputs.elixir_tag }}
-      HTTP_TEST_SERVER_IMAGE: ${{ inputs.http_test_server_image }}
-      HTTP_TEST_SERVER_TAG: ${{ inputs.http_test_server_tag }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/ghcr-docker-login
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: ./.github/actions/setup-scripts
-      - name: Pull all images once
-        # Pulls every registry image in the compose project (resolving `extends`,
-        # anchors and env interpolation). The build-only `*-router` services have
-        # no `image:` and are skipped here; they are built once in the next step.
-        run: |
-          retry docker compose pull
-      - name: Build the router images once
-        # The `*-router` services are built once here and shipped in the images
-        # archive so the downstream test-matrix jobs load them via `docker load`
-        # instead of each running `docker build` + `apk add` against the Alpine
-        # CDN, which was a recurring source of flaky failures.
-        run: retry docker compose build client-1-router gateway-router relay-1-router relay-2-router portal-router client-2-router
-      - name: Save pulled images as a single archive
-        run: |
-          set -xe
-
-          # Save the compose project's images that are present locally: the pulled
-          # registry images plus the `*-router` images built in the previous step.
-          # The `docker image inspect` filter drops any build-only service that
-          # wasn't built.
-          images=$(docker compose config --images | sort -u | while read -r image; do
-            if docker image inspect "$image" > /dev/null 2>&1; then
-              echo "$image"
-            fi
-          done)
-
-          echo "Saving images:"
-          echo "$images"
-
-          # shellcheck disable=SC2086 # $images must be split into separate args
-          docker save $images | zstd --long=30 -T0 -o images.tar.zst
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          overwrite: true
-          name: images-${{ inputs.id }}
-          path: images.tar.zst
-          compression-level: 0
-          retention-days: 1
+    with:
+      id: ${{ inputs.id }}
+      portal_image: ${{ inputs.portal_image }}
+      portal_tag: ${{ inputs.portal_tag }}
+      relay_image: ${{ inputs.relay_image }}
+      relay_tag: ${{ inputs.relay_tag }}
+      gateway_image: ${{ inputs.gateway_image }}
+      gateway_tag: ${{ inputs.gateway_tag }}
+      client_image: ${{ inputs.client_image }}
+      client_tag: ${{ inputs.client_tag }}
+      elixir_image: ${{ inputs.elixir_image }}
+      elixir_tag: ${{ inputs.elixir_tag }}
+      http_test_server_image: ${{ inputs.http_test_server_image }}
+      http_test_server_tag: ${{ inputs.http_test_server_tag }}
 
   integration-tests:
     name: ${{ matrix.test.name || matrix.test.script }}
