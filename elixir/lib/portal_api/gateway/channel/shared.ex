@@ -54,14 +54,14 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   before flushing, the cached authz on the receiver eventually triggers
   a reject so the gateway stops authorizing packets for an authz that
   has no DB row backing it. The gateway rejects the client's packets with
-  an `authorization_required` p2p control event, upon which the client
+  an `no_authorization` p2p control event, upon which the client
   discards its stale authorization and requests a fresh one through the
   normal portal path, closing the loop.
 
   This function is the manual version of that fail-closed signal. If the
   gateway's local cache ever desyncs from production state (a bug, a
   partial flush we didn't anticipate, an ops mistake), this lets us
-  trigger the same fail-closed → authorization-required → re-authorize
+  trigger the same fail-closed → no-authorization → re-authorize
   recovery without waiting for a queue to crash or for the authz
   durability timer to time out.
 

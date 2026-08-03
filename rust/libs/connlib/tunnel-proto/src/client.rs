@@ -823,11 +823,11 @@ impl ClientState {
                         }
                     }
                 }
-                (p2p_control::AUTHORIZATION_REQUIRED_EVENT, ClientOrGatewayId::Gateway(gid)) => {
-                    let event = p2p_control::authorization_required::decode(fz_p2p_control)
-                        .context("Failed to decode `AuthorizationRequired`")?;
+                (p2p_control::NO_AUTHORIZATION_EVENT, ClientOrGatewayId::Gateway(gid)) => {
+                    let event = p2p_control::no_authorization::decode(fz_p2p_control)
+                        .context("Failed to decode `NoAuthorization`")?;
 
-                    self.handle_authorization_required(gid, event);
+                    self.handle_no_authorization(gid, event);
                 }
                 (p2p_control::GOODBYE_EVENT, pid) => {
                     self.node.remove_connection(pid, "received `goodbye`", now);
@@ -1343,7 +1343,7 @@ impl ClientState {
         ControlFlow::Break(())
     }
 
-    /// Handles an [`authorization_required`](p2p_control::authorization_required) event from a Gateway.
+    /// Handles an [`no_authorization`](p2p_control::no_authorization) event from a Gateway.
     ///
     /// A Gateway sends this event when it receives packets from us for a destination that none
     /// of our authorizations with it cover (anymore), e.g. because the authorization expired.
@@ -1352,15 +1352,15 @@ impl ClientState {
     ///
     /// Delivery of the event is unreliable but the Gateway re-sends it as long as we keep
     /// sending packets for the unauthorized destination.
-    fn handle_authorization_required(
+    fn handle_no_authorization(
         &mut self,
         gid: GatewayId,
-        event: p2p_control::authorization_required::AuthorizationRequired,
+        event: p2p_control::no_authorization::NoAuthorization,
     ) {
         let dst = event.dst;
 
         let Some(rid) = self.get_resource_by_destination(dst, event.protocol.into()) else {
-            tracing::debug!(%gid, %dst, "Ignoring `AuthorizationRequired` event for unknown destination");
+            tracing::debug!(%gid, %dst, "Ignoring `NoAuthorization` event for unknown destination");
             return;
         };
 
@@ -1372,7 +1372,7 @@ impl ClientState {
             .and_then(|path| path.as_gateway())
             != Some(&gid)
         {
-            tracing::debug!(%gid, %rid, "Ignoring `AuthorizationRequired` event: resource is not authorized via this Gateway");
+            tracing::debug!(%gid, %rid, "Ignoring `NoAuthorization` event: resource is not authorized via this Gateway");
             return;
         }
 
@@ -3079,7 +3079,7 @@ mod tests {
     }
 
     #[test]
-    fn authorization_required_event_invalidates_authorization() {
+    fn no_authorization_event_invalidates_authorization() {
         let mut state = ClientState::for_test();
         let now = Instant::now();
         let gid = GatewayId::from_u128(1);
@@ -3091,7 +3091,7 @@ mod tests {
             .insert(cidr_resource_id(), AccessPath::Gateway(gid));
         while state.poll_event().is_some() {} // Drain setup events.
 
-        state.handle_authorization_required(gid, authorization_required_event());
+        state.handle_no_authorization(gid, no_authorization_event());
 
         assert!(!state.authorized_resources.contains_key(&cidr_resource_id()));
 
@@ -3109,7 +3109,7 @@ mod tests {
     }
 
     #[test]
-    fn authorization_required_event_from_other_gateway_is_ignored() {
+    fn no_authorization_event_from_other_gateway_is_ignored() {
         let mut state = ClientState::for_test();
         let now = Instant::now();
         let authorized_gateway = GatewayId::from_u128(1);
@@ -3120,26 +3120,24 @@ mod tests {
             .authorized_resources
             .insert(cidr_resource_id(), AccessPath::Gateway(authorized_gateway));
 
-        state.handle_authorization_required(other_gateway, authorization_required_event());
+        state.handle_no_authorization(other_gateway, no_authorization_event());
 
         assert!(state.authorized_resources.contains_key(&cidr_resource_id()));
     }
 
     #[test]
-    fn authorization_required_event_for_unknown_destination_is_ignored() {
+    fn no_authorization_event_for_unknown_destination_is_ignored() {
         let mut state = ClientState::for_test();
 
-        state
-            .handle_authorization_required(GatewayId::from_u128(1), authorization_required_event());
+        state.handle_no_authorization(GatewayId::from_u128(1), no_authorization_event());
 
         assert!(state.authorized_resources.is_empty());
     }
 
-    fn authorization_required_event() -> p2p_control::authorization_required::AuthorizationRequired
-    {
-        p2p_control::authorization_required::AuthorizationRequired {
+    fn no_authorization_event() -> p2p_control::no_authorization::NoAuthorization {
+        p2p_control::no_authorization::NoAuthorization {
             dst: cidr_contained_ip().into(),
-            protocol: p2p_control::authorization_required::Protocol::Udp { dst_port: 443 },
+            protocol: p2p_control::no_authorization::Protocol::Udp { dst_port: 443 },
         }
     }
 

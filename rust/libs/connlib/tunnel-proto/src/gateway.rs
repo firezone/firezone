@@ -224,7 +224,7 @@ impl GatewayState {
             }
             TranslateOutboundResult::IcmpError {
                 reply,
-                authorization_required,
+                no_authorization,
             } => {
                 flow_tracker::record_icmp_error(&reply);
 
@@ -236,7 +236,7 @@ impl GatewayState {
                     now,
                 )?;
 
-                if let Some(event) = authorization_required {
+                if let Some(event) = no_authorization {
                     encrypt_packet(
                         event,
                         cid,
