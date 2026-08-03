@@ -54,7 +54,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   before flushing, the cached authz on the receiver eventually triggers
   a reject so the gateway stops authorizing packets for an authz that
   has no DB row backing it. The gateway rejects the client's packets with
-  an `no_authorization` p2p control event, upon which the client
+  a `no_authorization` p2p control event, upon which the client
   discards its stale authorization and requests a fresh one through the
   normal portal path, closing the loop.
 

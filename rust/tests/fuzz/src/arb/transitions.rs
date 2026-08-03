@@ -45,6 +45,7 @@ enum TransitionKind {
     RestartClient,
     SetInternetResourceState,
     DeauthorizeWhileGatewayIsPartitioned,
+    RevokeGatewayAuthorization,
     UpdateDnsRecords,
     SendPacket,
     SendDnsQuery,
@@ -64,6 +65,7 @@ pub(super) fn generate(
     let replaceable_resources = state.replaceable_resources_on_any_client();
     let removable_resources = state.removable_resource_ids();
     let deauthorizable_resources = state.deauthorizable_resource_ids();
+    let revocable_resources = state.revocable_resource_ids();
     let client_ids = state.all_client_ids();
     let dns_record_domains = state.dns_resource_domains();
     let packet_targets = packets::targets(state, now);
@@ -93,6 +95,7 @@ pub(super) fn generate(
         (!removable_resources.is_empty()).then_some((K::RemoveResource, 1)),
         (!deauthorizable_resources.is_empty())
             .then_some((K::DeauthorizeWhileGatewayIsPartitioned, 1)),
+        (!revocable_resources.is_empty()).then_some((K::RevokeGatewayAuthorization, 2)),
         (!client_ids.is_empty()).then_some((K::ReconnectPortal, 1)),
         (!client_ids.is_empty()).then_some((K::RestartClient, 1)),
         (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
@@ -103,7 +106,7 @@ pub(super) fn generate(
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 23]>>();
+    .collect::<SmallVec<[_; 24]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -209,6 +212,10 @@ pub(super) fn generate(
         K::DeauthorizeWhileGatewayIsPartitioned => {
             let id = deauthorizable_resources[g.choose_index(deauthorizable_resources.len())];
             Transition::DeauthorizeWhileGatewayIsPartitioned(id)
+        }
+        K::RevokeGatewayAuthorization => {
+            let id = revocable_resources[g.choose_index(revocable_resources.len())];
+            Transition::RevokeGatewayAuthorization(id)
         }
         K::ReconnectPortal => {
             let client_id = client_ids[g.choose_index(client_ids.len())];

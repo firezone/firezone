@@ -102,6 +102,11 @@ pub enum Transition {
     Idle,
     RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
     DeauthorizeWhileGatewayIsPartitioned(ResourceId),
+    /// Revokes the authorization for a resource on the Gateway only, without informing the Client.
+    ///
+    /// Models an authorization expiring on the Gateway or the portal's `reject_access` message.
+    /// The Client recovers through the Gateway's `no_authorization` p2p control event.
+    RevokeGatewayAuthorization(ResourceId),
     UpdateDnsRecords {
         domain: DomainName,
         records: BTreeSet<OwnedRecordData>,
@@ -136,6 +141,7 @@ impl Transition {
             Transition::Idle => false,
             Transition::RebootRelaysWhilePartitioned(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
+            Transition::RevokeGatewayAuthorization(_) => true,
             Transition::UpdateDnsRecords { .. } => false,
         }
     }

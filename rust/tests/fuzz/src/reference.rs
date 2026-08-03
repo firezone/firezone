@@ -404,6 +404,19 @@ impl ReferenceState {
                     client.exec_mut(|client| client.remove_resource(resource))
                 }
             }
+            Transition::RevokeGatewayAuthorization(resource) => {
+                let portal = &state.portal;
+
+                for client in state.clients.values_mut() {
+                    client.exec_mut(|client| {
+                        client.revoke_gateway_authorization(
+                            *resource,
+                            |r| portal.gateway_for_resource(r).copied(),
+                            now,
+                        )
+                    })
+                }
+            }
             Transition::RestartClient { client_id, key } => {
                 state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                     c.restart(*key, now);
@@ -459,6 +472,19 @@ impl ReferenceState {
                 self.portal
                     .gateway_for_resource(*resource)
                     .is_some_and(|gateway| self.gateways.contains_key(gateway))
+            })
+            .collect()
+    }
+
+    /// Resources whose authorization can be revoked on the Gateway, i.e. some client is
+    /// connected to them and thus the Gateway actually holds an authorization.
+    pub(crate) fn revocable_resource_ids(&self) -> Vec<ResourceId> {
+        self.deauthorizable_resource_ids()
+            .into_iter()
+            .filter(|resource| {
+                self.clients
+                    .values()
+                    .any(|client| client.inner().connected_resources().any(|r| r == *resource))
             })
             .collect()
     }
