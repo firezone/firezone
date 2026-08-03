@@ -7,9 +7,23 @@ env:
   COMPOSE_PARALLEL_LIMIT: 1 # Temporary fix for https://github.com/docker/compose/pull/12752 until compose v2.36.0 lands on GitHub actions runners.
 
 jobs:
+  collect-images:
+    uses: ./.github/workflows/_collect_images.yml
+    permissions:
+      contents: read
+    with:
+      id: perf
+      # `http-test-server` has no perf image, and the perf tests don't use it.
+      pull_services: "elixir postgres portal relay-1 relay-2 gateway client-1 iperf3 secnetperf network-config"
+      build_services: "client-1-router gateway-router relay-1-router relay-2-router portal-router"
+      gateway_image: "ghcr.io/firezone/perf/gateway"
+      client_image: "ghcr.io/firezone/perf/client"
+      relay_image: "ghcr.io/firezone/perf/relay"
+
   perf-tests:
     name: perf-tests
     runs-on: ubuntu-24.04
+    needs: collect-images
     permissions:
       contents: read
       id-token: write # OIDC auth
@@ -40,13 +54,15 @@ jobs:
           - relayed
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/ghcr-docker-login
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-docker
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: images-perf
+      - name: Load pre-pulled images
+        run: zstd -dc --long=30 images.tar.zst | docker load
       - uses: ./.github/actions/setup-scripts
       - name: Seed database
-        run: docker compose run elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
+        run: docker compose run --pull never elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
       - name: Tune Linux kernel
         run: |
           sudo sysctl -w net.core.wmem_max=2097152            # 2 MB
@@ -60,17 +76,18 @@ jobs:
             echo "UDP_BITRATE=300M" >> "$GITHUB_ENV"
           fi
 
-          docker compose build client-1-router gateway-router relay-1-router relay-2-router portal-router
+          # The `*-router` images are pre-built in the `collect-images` job and
+          # loaded from the images archive above, so they are not built here.
 
           # Start services in the same order each time for the tests
           # Retries are used because network I/O is flaky in GitHub Actions runners
-          retry docker compose up -d iperf3
-          retry docker compose up -d secnetperf
-          retry docker compose up -d portal --no-build
-          retry docker compose up -d relay-1 relay-2 --no-build
-          retry docker compose up -d gateway --no-build
-          retry docker compose up -d client-1 --no-build
-          retry docker compose up -d network-config
+          retry docker compose up -d iperf3 --no-build --pull never
+          retry docker compose up -d secnetperf --no-build --pull never
+          retry docker compose up -d portal --no-build --pull never
+          retry docker compose up -d relay-1 relay-2 --no-build --pull never
+          retry docker compose up -d gateway --no-build --pull never
+          retry docker compose up -d client-1 --no-build --pull never
+          retry docker compose up -d network-config --pull never
       - name: "Performance test: ${{ matrix.flavour }}-${{ matrix.test }}"
         timeout-minutes: 5
         env:

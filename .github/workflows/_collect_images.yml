@@ -1,0 +1,133 @@
+name: Collect Images
+run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
+on:
+  workflow_call:
+    inputs:
+      id:
+        description: "Unique identifier for this invocation. Used to namespace the artifact holding the pre-pulled images so that concurrent invocations within the same run don't collide."
+        required: true
+        type: string
+      pull_services:
+        description: "Space-separated compose services to pull. Empty pulls every service in the project."
+        required: false
+        type: string
+        default: ""
+      build_services:
+        description: "Space-separated compose services to build once and ship in the archive."
+        required: false
+        type: string
+        default: "client-1-router gateway-router relay-1-router relay-2-router portal-router client-2-router"
+      portal_image:
+        required: false
+        type: string
+        default: "ghcr.io/firezone/portal"
+      portal_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      elixir_image:
+        required: false
+        type: string
+        default: "ghcr.io/firezone/elixir"
+      elixir_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      relay_image:
+        required: false
+        type: string
+        default: "ghcr.io/firezone/debug/relay"
+      relay_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      gateway_image:
+        required: false
+        type: string
+        default: "ghcr.io/firezone/debug/gateway"
+      gateway_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      client_image:
+        required: false
+        type: string
+        default: "ghcr.io/firezone/debug/client"
+      client_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      http_test_server_image:
+        required: false
+        type: string
+        default: "ghcr.io/firezone/debug/http-test-server"
+      http_test_server_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+
+jobs:
+  collect-images:
+    name: collect-images
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      PORTAL_IMAGE: ${{ inputs.portal_image }}
+      PORTAL_TAG: ${{ inputs.portal_tag }}
+      RELAY_IMAGE: ${{ inputs.relay_image }}
+      RELAY_TAG: ${{ inputs.relay_tag }}
+      GATEWAY_IMAGE: ${{ inputs.gateway_image }}
+      GATEWAY_TAG: ${{ inputs.gateway_tag }}
+      CLIENT_IMAGE: ${{ inputs.client_image }}
+      CLIENT_TAG: ${{ inputs.client_tag }}
+      ELIXIR_IMAGE: ${{ inputs.elixir_image }}
+      ELIXIR_TAG: ${{ inputs.elixir_tag }}
+      HTTP_TEST_SERVER_IMAGE: ${{ inputs.http_test_server_image }}
+      HTTP_TEST_SERVER_TAG: ${{ inputs.http_test_server_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/ghcr-docker-login
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/setup-scripts
+      - name: Pull all images once
+        # Pulls the registry images of the compose project (resolving `extends`,
+        # anchors and env interpolation). The build-only `*-router` services have
+        # no `image:` and are skipped here; they are built once in the next step.
+        # Callers that only exercise part of the project scope this via
+        # `pull_services`, so they don't pull images that aren't published for them.
+        run: |
+          retry docker compose pull ${{ inputs.pull_services }}
+      - name: Build the router images once
+        # The `*-router` services are built once here and shipped in the images
+        # archive so the downstream test-matrix jobs load them via `docker load`
+        # instead of each running `docker build` + `apk add` against the Alpine
+        # CDN, which was a recurring source of flaky failures.
+        run: retry docker compose build ${{ inputs.build_services }}
+      - name: Save pulled images as a single archive
+        run: |
+          set -xe
+
+          # Save the compose project's images that are present locally: the pulled
+          # registry images plus the `*-router` images built in the previous step.
+          # The `docker image inspect` filter drops any build-only service that
+          # wasn't built.
+          images=$(docker compose config --images | sort -u | while read -r image; do
+            if docker image inspect "$image" > /dev/null 2>&1; then
+              echo "$image"
+            fi
+          done)
+
+          echo "Saving images:"
+          echo "$images"
+
+          # shellcheck disable=SC2086 # $images must be split into separate args
+          docker save $images | zstd --long=30 -T0 -o images.tar.zst
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          overwrite: true
+          name: images-${{ inputs.id }}
+          path: images.tar.zst
+          compression-level: 0
+          retention-days: 1
