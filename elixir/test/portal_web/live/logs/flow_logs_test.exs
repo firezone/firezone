@@ -493,7 +493,7 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       refute panel_html =~ other.log_id
     end
 
-    test "does not match a different WireGuard tuple", %{
+    test "matches when NAT rewrote the WireGuard tuple", %{
       conn: conn,
       account: account,
       actor: actor
@@ -509,10 +509,6 @@ defmodule PortalWeb.Logs.FlowLogsTest do
         inner_src_port: 51_234,
         inner_dst_ip: %Postgrex.INET{address: {10, 0, 0, 9}},
         inner_dst_port: 443,
-        outer_src_ip: %Postgrex.INET{address: {203, 0, 113, 10}},
-        outer_src_port: 51_820,
-        outer_dst_ip: %Postgrex.INET{address: {198, 51, 100, 5}},
-        outer_dst_port: 51_820,
         domain: nil
       }
 
@@ -520,6 +516,10 @@ defmodule PortalWeb.Logs.FlowLogsTest do
         flow_log_fixture(
           identity
           |> Map.put(:role, :initiator)
+          |> Map.put(:outer_src_ip, %Postgrex.INET{address: {192, 168, 1, 86}})
+          |> Map.put(:outer_src_port, 52_625)
+          |> Map.put(:outer_dst_ip, %Postgrex.INET{address: {203, 0, 113, 5}})
+          |> Map.put(:outer_dst_port, 52_625)
           |> Map.put(:flow_start, ~U[2026-07-30 10:00:00.000000Z])
           |> Map.put(:flow_end, ~U[2026-07-30 10:01:00.000000Z])
         )
@@ -528,7 +528,110 @@ defmodule PortalWeb.Logs.FlowLogsTest do
         flow_log_fixture(
           identity
           |> Map.put(:role, :responder)
-          |> Map.put(:outer_src_ip, %Postgrex.INET{address: {203, 0, 113, 11}})
+          |> Map.put(:outer_src_ip, %Postgrex.INET{address: {198, 51, 100, 130}})
+          |> Map.put(:outer_src_port, 41_001)
+          |> Map.put(:outer_dst_ip, %Postgrex.INET{address: {10, 122, 5, 4}})
+          |> Map.put(:outer_dst_port, 52_625)
+          |> Map.put(:flow_start, ~U[2026-07-30 10:00:02.000000Z])
+          |> Map.put(:flow_end, ~U[2026-07-30 10:01:02.000000Z])
+        )
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/logs/flow_logs/#{selected.log_id}")
+
+      panel_html = lv |> element("#flow-log-panel") |> render()
+
+      refute html =~ "No matching responder log"
+      assert panel_html =~ other.log_id
+
+      assert has_element?(
+               lv,
+               "#flow-log-card-#{other.log_id} [data-wireguard-endpoint='initiator']",
+               "198.51.100.130:41001"
+             )
+    end
+
+    test "matches a DNS Resource flow on its domain, not the proxy IP", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      identity = %{
+        account: account,
+        policy_authorization_id: Ecto.UUID.generate(),
+        initiator_device_id: Ecto.UUID.generate(),
+        responder_device_id: Ecto.UUID.generate(),
+        resource_id: Ecto.UUID.generate(),
+        protocol: :tcp,
+        inner_src_ip: %Postgrex.INET{address: {100, 64, 0, 8}},
+        inner_src_port: 51_234,
+        inner_dst_port: 443,
+        domain: "gitlab.company.com"
+      }
+
+      selected =
+        flow_log_fixture(
+          identity
+          |> Map.put(:role, :initiator)
+          |> Map.put(:inner_dst_ip, %Postgrex.INET{address: {100, 96, 0, 3}})
+          |> Map.put(:flow_start, ~U[2026-07-30 10:00:00.000000Z])
+          |> Map.put(:flow_end, ~U[2026-07-30 10:01:00.000000Z])
+        )
+
+      other =
+        flow_log_fixture(
+          identity
+          |> Map.put(:role, :responder)
+          |> Map.put(:inner_dst_ip, %Postgrex.INET{address: {10, 0, 0, 9}})
+          |> Map.put(:flow_start, ~U[2026-07-30 10:00:02.000000Z])
+          |> Map.put(:flow_end, ~U[2026-07-30 10:01:02.000000Z])
+        )
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/logs/flow_logs/#{selected.log_id}")
+
+      panel_html = lv |> element("#flow-log-panel") |> render()
+
+      refute html =~ "No matching responder log"
+      assert panel_html =~ other.log_id
+    end
+
+    test "does not match a different destination without a domain", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      identity = %{
+        account: account,
+        policy_authorization_id: Ecto.UUID.generate(),
+        initiator_device_id: Ecto.UUID.generate(),
+        responder_device_id: Ecto.UUID.generate(),
+        resource_id: Ecto.UUID.generate(),
+        protocol: :tcp,
+        inner_src_ip: %Postgrex.INET{address: {100, 64, 0, 8}},
+        inner_src_port: 51_234,
+        inner_dst_port: 443,
+        domain: nil
+      }
+
+      selected =
+        flow_log_fixture(
+          identity
+          |> Map.put(:role, :initiator)
+          |> Map.put(:inner_dst_ip, %Postgrex.INET{address: {10, 0, 0, 9}})
+          |> Map.put(:flow_start, ~U[2026-07-30 10:00:00.000000Z])
+          |> Map.put(:flow_end, ~U[2026-07-30 10:01:00.000000Z])
+        )
+
+      other =
+        flow_log_fixture(
+          identity
+          |> Map.put(:role, :responder)
+          |> Map.put(:inner_dst_ip, %Postgrex.INET{address: {10, 0, 0, 10}})
           |> Map.put(:flow_start, ~U[2026-07-30 10:00:02.000000Z])
           |> Map.put(:flow_end, ~U[2026-07-30 10:01:02.000000Z])
         )

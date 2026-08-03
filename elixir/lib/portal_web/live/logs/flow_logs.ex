@@ -692,7 +692,7 @@ defmodule PortalWeb.Logs.FlowLogs do
 
         <div class="pt-3 border-t border-[var(--border)]">
           <div class="mb-1 text-xs text-[var(--text-tertiary)]">
-            WireGuard endpoints
+            WireGuard endpoints, as seen by this side
           </div>
           <div class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
             <span class="text-[var(--text-tertiary)]">Initiator</span>
@@ -988,10 +988,16 @@ defmodule PortalWeb.Logs.FlowLogs do
       |> Safe.one()
     end
 
-    # Both devices normalize the inner and WireGuard tuples to initiator ->
-    # responder. Exact attribution, protocol, tuple, and domain equality plus
-    # an overlapping time window narrows the matches, but cannot prove identity
+    # Both devices normalize the inner tuple to initiator -> responder. Exact
+    # attribution, protocol, inner tuple, and domain equality plus an
+    # overlapping time window narrows the matches, but cannot prove identity
     # because independently created logs have no shared flow ID.
+    #
+    # Only fields both sides can agree on are matched, and the WireGuard tuple
+    # is not one of them: each side records the path from its own vantage point
+    # (its own bound socket address and the peer address it observes), so NAT on
+    # either end, or a relay in between, leaves the two sides disagreeing on
+    # every outer address in the common case.
     defp matching_logs(log, subject) do
       opposite_role = if log.role == :initiator, do: :responder, else: :initiator
       {selected_min, selected_max} = normalized_bounds(log)
@@ -1007,12 +1013,7 @@ defmodule PortalWeb.Logs.FlowLogs do
           where: candidate.protocol == ^log.protocol,
           where: candidate.inner_src_ip == ^log.inner_src_ip,
           where: candidate.inner_src_port == ^log.inner_src_port,
-          where: candidate.inner_dst_ip == ^log.inner_dst_ip,
           where: candidate.inner_dst_port == ^log.inner_dst_port,
-          where: candidate.outer_src_ip == ^log.outer_src_ip,
-          where: candidate.outer_src_port == ^log.outer_src_port,
-          where: candidate.outer_dst_ip == ^log.outer_dst_ip,
-          where: candidate.outer_dst_port == ^log.outer_dst_port,
           where:
             is_nil(candidate.flow_end) or
               ^selected_min <= fragment("GREATEST(?, ?)", candidate.flow_start, candidate.flow_end),
@@ -1024,6 +1025,7 @@ defmodule PortalWeb.Logs.FlowLogs do
             ),
           limit: @candidate_limit
         )
+        |> filter_candidate_inner_dst_ip(log)
         |> filter_candidate_domain(log.domain)
         |> filter_candidate_upper_bound(selected_max)
 
@@ -1039,6 +1041,15 @@ defmodule PortalWeb.Logs.FlowLogs do
         do: {ended_at, started_at},
         else: {started_at, ended_at}
     end
+
+    # A flow to a DNS Resource is addressed to the proxy IP the Client assigned
+    # to the domain, and the Gateway swaps that for the IP it resolved before
+    # forwarding, so the two sides never agree on the destination. Their shared
+    # domain identifies the destination instead.
+    defp filter_candidate_inner_dst_ip(query, %{domain: nil} = log),
+      do: where(query, [flow_logs: candidate], candidate.inner_dst_ip == ^log.inner_dst_ip)
+
+    defp filter_candidate_inner_dst_ip(query, _log), do: query
 
     defp filter_candidate_domain(query, nil),
       do: where(query, [flow_logs: candidate], is_nil(candidate.domain))
