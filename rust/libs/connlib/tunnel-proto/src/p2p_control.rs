@@ -15,6 +15,7 @@ use ip_packet::{FzP2pEventType, IpPacket};
 pub const ASSIGNED_IPS_EVENT: FzP2pEventType = FzP2pEventType::new(0);
 pub const DOMAIN_STATUS_EVENT: FzP2pEventType = FzP2pEventType::new(1);
 pub const GOODBYE_EVENT: FzP2pEventType = FzP2pEventType::new(2);
+pub const AUTHORIZATION_REQUIRED_EVENT: FzP2pEventType = FzP2pEventType::new(3);
 
 pub mod dns_resource_nat {
     use super::*;
@@ -219,4 +220,113 @@ pub mod dns_resource_nat {
 pub fn goodbye() -> IpPacket {
     ip_packet::make::fz_p2p_control([GOODBYE_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0], &[])
         .expect("should always be able to make a `goodbye` packet")
+}
+
+pub mod authorization_required {
+    use super::*;
+    use anyhow::{Context as _, Result};
+    use ip_packet::{FzP2pControlSlice, IpPacket};
+    use std::net::IpAddr;
+
+    /// Construct a new [`AuthorizationRequired`] event.
+    ///
+    /// The Gateway sends this event to the Client when it receives a packet for a destination
+    /// that none of the Client's active authorizations cover, e.g. because it expired.
+    /// Upon receiving the event, the Client discards its local authorization state for the
+    /// corresponding resource so that the next packet requests a new authorization.
+    pub fn event(dst: IpAddr, protocol: Protocol) -> Result<IpPacket> {
+        let payload = serde_json::to_vec(&AuthorizationRequired { dst, protocol })
+            .context("Failed to serialize `AuthorizationRequired` event")?;
+
+        let ip_packet = ip_packet::make::fz_p2p_control(
+            [AUTHORIZATION_REQUIRED_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0],
+            &payload,
+        )
+        .context("Failed to create p2p control protocol packet")?;
+
+        Ok(ip_packet)
+    }
+
+    pub fn decode(packet: FzP2pControlSlice) -> Result<AuthorizationRequired> {
+        anyhow::ensure!(
+            packet.event_type() == AUTHORIZATION_REQUIRED_EVENT,
+            "Control protocol packet is not an `AuthorizationRequired` event"
+        );
+
+        serde_json::from_slice::<AuthorizationRequired>(packet.payload())
+            .context("Failed to deserialize `AuthorizationRequired`")
+    }
+
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct AuthorizationRequired {
+        pub dst: IpAddr,
+        pub protocol: Protocol,
+    }
+
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+    #[serde(rename_all = "snake_case")]
+    pub enum Protocol {
+        Tcp { dst_port: u16 },
+        Udp { dst_port: u16 },
+        Icmp,
+    }
+
+    impl From<ip_packet::Protocol> for Protocol {
+        fn from(p: ip_packet::Protocol) -> Self {
+            match p {
+                ip_packet::Protocol::Tcp(dst_port) => Protocol::Tcp { dst_port },
+                ip_packet::Protocol::Udp(dst_port) => Protocol::Udp { dst_port },
+                // The echo identifier is irrelevant for identifying the authorization.
+                ip_packet::Protocol::IcmpEcho(_) => Protocol::Icmp,
+            }
+        }
+    }
+
+    impl From<Protocol> for ip_packet::Protocol {
+        fn from(p: Protocol) -> Self {
+            match p {
+                Protocol::Tcp { dst_port } => ip_packet::Protocol::Tcp(dst_port),
+                Protocol::Udp { dst_port } => ip_packet::Protocol::Udp(dst_port),
+                Protocol::Icmp => ip_packet::Protocol::IcmpEcho(0),
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::net::{Ipv4Addr, Ipv6Addr};
+
+        #[test]
+        fn authorization_required_serde_roundtrip() {
+            let packet = event(
+                IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+                Protocol::Tcp { dst_port: 443 },
+            )
+            .unwrap();
+
+            let slice = packet.as_fz_p2p_control().unwrap();
+            let authorization_required = decode(slice).unwrap();
+
+            assert_eq!(
+                authorization_required.dst,
+                IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))
+            );
+            assert_eq!(
+                authorization_required.protocol,
+                Protocol::Tcp { dst_port: 443 }
+            );
+        }
+
+        #[test]
+        fn authorization_required_serde_roundtrip_icmp_ipv6() {
+            let packet = event(IpAddr::V6(Ipv6Addr::LOCALHOST), Protocol::Icmp).unwrap();
+
+            let slice = packet.as_fz_p2p_control().unwrap();
+            let authorization_required = decode(slice).unwrap();
+
+            assert_eq!(authorization_required.dst, IpAddr::V6(Ipv6Addr::LOCALHOST));
+            assert_eq!(authorization_required.protocol, Protocol::Icmp);
+        }
+    }
 }
