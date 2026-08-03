@@ -839,6 +839,12 @@ impl ClientState {
                         }
                     }
                 }
+                (p2p_control::AUTHORIZATION_REQUIRED_EVENT, ClientOrGatewayId::Gateway(gid)) => {
+                    let event = p2p_control::authorization_required::decode(fz_p2p_control)
+                        .context("Failed to decode `AuthorizationRequired`")?;
+
+                    self.handle_authorization_required(gid, event);
+                }
                 (p2p_control::GOODBYE_EVENT, pid) => {
                     self.node.remove_connection(pid, "received `goodbye`", now);
 
@@ -894,36 +900,6 @@ impl ClientState {
                 // To a gateway we are always the one who opened the flow;
                 // this packet is a reply.
                 flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
-
-                // All facts are recorded; commit the flow so the tracker
-                // borrow is free for the `&mut self` calls below.
-                drop(_guard);
-
-                #[cfg(feature = "telemetry")]
-                if telemetry::feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
-                    && let Ok(Some((failed_packet, error))) = packet.icmp_error()
-                    && error.is_unreachable_prohibited()
-                    && let internet_resource = self.active_internet_resource().map(|r| r.id)
-                    && let Some(resource) = self
-                        .routing_tables
-                        .resolve_resource(
-                            failed_packet.dst(),
-                            failed_packet.dst_proto(),
-                            internet_resource,
-                        )
-                        .map(|route| route.resource_id())
-                {
-                    telemetry::analytics::feature_flag_called(
-                        "icmp-error-unreachable-prohibited-create-new-flow",
-                    );
-
-                    self.pending_authorizations.on_not_authorized_resource(
-                        resource,
-                        pending_authorizations::Trigger::IcmpDestinationUnreachableProhibited,
-                        &self.resources_by_id,
-                        now,
-                    );
-                }
             }
         }
 
@@ -1395,6 +1371,44 @@ impl ClientState {
         self.handle_udp_dns_query(upstream, packet, now);
 
         ControlFlow::Break(())
+    }
+
+    /// Handles an [`authorization_required`](p2p_control::authorization_required) event from a Gateway.
+    ///
+    /// A Gateway sends this event when it receives packets from us for a destination that none
+    /// of our authorizations with it cover (anymore), e.g. because the authorization expired.
+    /// We discard the matching authorization; the next packet for the resource will request a
+    /// new one from the portal and be buffered until it is granted.
+    ///
+    /// Delivery of the event is unreliable but the Gateway re-sends it as long as we keep
+    /// sending packets for the unauthorized destination.
+    fn handle_authorization_required(
+        &mut self,
+        gid: GatewayId,
+        event: p2p_control::authorization_required::AuthorizationRequired,
+    ) {
+        let dst = event.dst;
+
+        let Some(rid) = self.get_resource_by_destination(dst, event.protocol.into()) else {
+            tracing::debug!(%gid, %dst, "Ignoring `AuthorizationRequired` event for unknown destination");
+            return;
+        };
+
+        // Gateways only know about destinations, not resources; make sure we only discard an
+        // authorization that the sending Gateway is actually responsible for.
+        if self
+            .authorized_resources
+            .get(&rid)
+            .and_then(|path| path.as_gateway())
+            != Some(&gid)
+        {
+            tracing::debug!(%gid, %rid, "Ignoring `AuthorizationRequired` event: resource is not authorized via this Gateway");
+            return;
+        }
+
+        tracing::debug!(%gid, %rid, %dst, "Discarding authorization that is no longer valid on the Gateway");
+
+        self.authorized_resources.remove(&rid);
     }
 
     pub fn on_resource_connection_failed(&mut self, resource: ResourceId, now: Instant) {
@@ -3212,6 +3226,97 @@ mod tests {
             &(ResourceStatus::Offline, offline_at)
         );
         assert!(state.poll_event().is_none());
+    }
+
+    #[test]
+    fn authorization_required_event_invalidates_authorization() {
+        let mut state = ClientState::for_test();
+        let now = Instant::now();
+        let gid = GatewayId::from_u128(1);
+
+        state.update_interface_config(interface(tun_ipv4(), Ipv6Addr::LOCALHOST));
+        state.upsert_resource(cidr_resource(), now);
+        state
+            .authorized_resources
+            .insert(cidr_resource_id(), AccessPath::Gateway(gid));
+        while state.poll_event().is_some() {} // Drain setup events.
+
+        state.handle_authorization_required(gid, authorization_required_event());
+
+        assert!(!state.authorized_resources.contains_key(&cidr_resource_id()));
+
+        // The next packet for the resource requests a new authorization.
+        let packet =
+            ip_packet::make::udp_packet(tun_ipv4(), cidr_contained_ip(), 54321, 443, &[1]).unwrap();
+        state
+            .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
+            .unwrap();
+
+        assert!(matches!(
+            state.poll_event(),
+            Some(ClientEvent::ResourceConnectionIntent { resource, .. }) if resource == cidr_resource_id()
+        ));
+    }
+
+    #[test]
+    fn authorization_required_event_from_other_gateway_is_ignored() {
+        let mut state = ClientState::for_test();
+        let now = Instant::now();
+        let authorized_gateway = GatewayId::from_u128(1);
+        let other_gateway = GatewayId::from_u128(2);
+
+        state.upsert_resource(cidr_resource(), now);
+        state
+            .authorized_resources
+            .insert(cidr_resource_id(), AccessPath::Gateway(authorized_gateway));
+
+        state.handle_authorization_required(other_gateway, authorization_required_event());
+
+        assert!(state.authorized_resources.contains_key(&cidr_resource_id()));
+    }
+
+    #[test]
+    fn authorization_required_event_for_unknown_destination_is_ignored() {
+        let mut state = ClientState::for_test();
+
+        state
+            .handle_authorization_required(GatewayId::from_u128(1), authorization_required_event());
+
+        assert!(state.authorized_resources.is_empty());
+    }
+
+    fn authorization_required_event() -> p2p_control::authorization_required::AuthorizationRequired
+    {
+        p2p_control::authorization_required::AuthorizationRequired {
+            dst: cidr_contained_ip().into(),
+            protocol: p2p_control::authorization_required::Protocol::Udp { dst_port: 443 },
+        }
+    }
+
+    fn cidr_resource() -> Resource {
+        Resource::Cidr(resource::CidrResource {
+            id: cidr_resource_id(),
+            address: "10.0.0.0/24".parse().unwrap(),
+            name: "cidr".to_owned(),
+            address_description: None,
+            sites: vec![Site {
+                id: SiteId::from_u128(1),
+                name: "site".to_owned(),
+            }],
+            filters: vec![],
+        })
+    }
+
+    fn cidr_resource_id() -> ResourceId {
+        ResourceId::from_u128(100)
+    }
+
+    fn cidr_contained_ip() -> Ipv4Addr {
+        Ipv4Addr::new(10, 0, 0, 5)
+    }
+
+    fn tun_ipv4() -> Ipv4Addr {
+        Ipv4Addr::new(100, 82, 80, 16)
     }
 
     impl ClientState {
