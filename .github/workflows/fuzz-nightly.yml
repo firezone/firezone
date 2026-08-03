@@ -40,6 +40,9 @@ jobs:
         fuzz-target: ${{ fromJSON(needs.targets.outputs.targets) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 75
+    permissions:
+      contents: read
+      security-events: write # trivy SARIF upload from setup-mise
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-sccache
