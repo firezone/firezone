@@ -287,6 +287,9 @@ jobs:
       - uses: ./.github/actions/setup-mise
         if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || env.BUILDS_DEB == 'true' || matrix.name.package == 'firezone-relay' }}
         with:
+          # Stamping the SHA into the relay shells out to coreutils only, so a
+          # restored relay needs `mise` as a task runner but none of its tools.
+          install: ${{ steps.binary-cache.outputs.cache-hit != 'true' || env.BUILDS_DEB == 'true' }}
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

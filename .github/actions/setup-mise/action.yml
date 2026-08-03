@@ -10,6 +10,10 @@ inputs:
     description: "Arguments to pass to `mise install`"
     required: false
     default: ""
+  install:
+    description: "Whether to run `mise install`. Set to false to get `mise` itself without any tools, e.g. to only run a task that shells out to coreutils."
+    required: false
+    default: "true"
 
 runs:
   using: "composite"
@@ -30,6 +34,7 @@ runs:
       continue-on-error: true
       with:
         version: ${{ inputs.version }}
+        install: ${{ inputs.install }}
         install_args: ${{ inputs.install_args }}
         reshim: true
         cache_key_prefix: "mise-v2"
@@ -40,6 +45,7 @@ runs:
       continue-on-error: true
       with:
         version: ${{ inputs.version }}
+        install: ${{ inputs.install }}
         install_args: ${{ inputs.install_args }}
         reshim: true
         cache_key_prefix: "mise-v2"
@@ -48,6 +54,7 @@ runs:
       if: ${{ steps.mise-2.outcome == 'failure' }}
       with:
         version: ${{ inputs.version }}
+        install: ${{ inputs.install }}
         install_args: ${{ inputs.install_args }}
         reshim: true
         cache_key_prefix: "mise-v2"
@@ -59,7 +66,7 @@ runs:
     # then point the default cache location at the result so subsequent
     # workflow invocations of the tool don't re-extract.
     - name: Pre-warm self-extracting tool caches
-      if: ${{ runner.os != 'Windows' }}
+      if: ${{ runner.os != 'Windows' && inputs.install == 'true' }}
       shell: bash
       run: |
         firebase_bin=$(mise which firebase 2>/dev/null || true)
@@ -79,6 +86,7 @@ runs:
     #    Those are not scanned with this approach.
 
     - name: Scan mise installs with Trivy
+      if: ${{ inputs.install == 'true' }}
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
         scan-type: fs
@@ -90,7 +98,7 @@ runs:
         output: trivy-mise.sarif
 
     - name: Upload results to GitHub Security tab
-      if: always()
+      if: ${{ always() && inputs.install == 'true' }}
       uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
       with:
         sarif_file: trivy-mise.sarif
