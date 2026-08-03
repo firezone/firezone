@@ -68,7 +68,8 @@ mise run //rust/tests/fuzz:grow tunnel-proto
 This runs exactly what the nightly workflow runs, down to the arguments, so commit both the repacked corpus and the refreshed baseline.
 Expect it to take a while: it fuzzes for 30 minutes across all cores before the remaining steps even start.
 
-Pass libFuzzer arguments to override that, e.g. `-fork=4 -max_total_time=300`.
+It defaults to `-fork=$(nproc) -max_total_time=1800`: every core, for 30 minutes.
+Pass libFuzzer arguments to override both, e.g. `-fork=8 -max_total_time=300`.
 Be wary of shortening it much for `tunnel-proto`: `-fork` re-merges the whole seed corpus before it discovers anything, `-max_total_time` does not bound that startup, and a short budget is spent entirely inside it.
 
 The measurement is taken on the machine that runs it.
