@@ -46,19 +46,23 @@ jobs:
         with:
           ref: ${{ inputs.sha }}
 
-      - uses: ./.github/actions/setup-rust-stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - uses: ./.github/actions/setup-rust-sccache
-        with:
-          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-
       - uses: ./.github/actions/setup-rust-binary-cache
         id: binary-cache
         with:
           path: rust/target/${{ matrix.target }}/release/${{ matrix.binary }}
           key: firezone-loadtest-${{ matrix.target }}-release
+
+      # A restored binary skips the build below, so the toolchain that only
+      # exists to compile it is skipped too.
+      - uses: ./.github/actions/setup-rust-stable
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: ./.github/actions/setup-rust-sccache
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
 
       - name: Install dependencies (Linux)
         if: matrix.os == 'linux' && steps.binary-cache.outputs.cache-hit != 'true'

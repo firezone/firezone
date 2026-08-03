@@ -130,17 +130,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.RESOLVED_SHA }}
-      - uses: ./.github/actions/setup-rust-stable
-        with:
-          targets: ${{ matrix.target }}
-      - uses: ./.github/actions/setup-rust-sccache
-        with:
-          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-rust-binary-cache
         id: binary-cache
         with:
           path: rust/target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe
           key: ${{ matrix.package }}-${{ matrix.target }}-${{ inputs.profile }}
+      # A restored binary skips the build below, so the toolchain that only
+      # exists to compile it is skipped too.
+      - uses: ./.github/actions/setup-rust-stable
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          targets: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-rust-sccache
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - name: Build binaries
         if: steps.binary-cache.outputs.cache-hit != 'true'
         shell: bash
@@ -235,6 +239,8 @@ jobs:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}_${{ matrix.name.version }}_${{ matrix.arch.shortname }}
       SENTRY_ENVIRONMENT: "production"
       RESOLVED_SHA: ${{ inputs.sha || github.sha }}
+      # `firezone-cli` and the `.deb` are only produced for release Gateways.
+      BUILDS_DEB: ${{ inputs.profile == 'release' && inputs.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
     outputs:
       client_image: ${{ steps.image-name.outputs.client_image }}
       relay_image: ${{ steps.image-name.outputs.relay_image }}
@@ -248,15 +254,6 @@ jobs:
         id: login
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: ./.github/actions/setup-musl
-        with:
-          target: ${{ matrix.arch.target }}
-      - uses: ./.github/actions/setup-rust-stable
-        with:
-          targets: ${{ matrix.arch.target }}
-      - uses: ./.github/actions/setup-rust-sccache
-        with:
-          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-rust-binary-cache
         id: binary-cache
         with:
@@ -266,11 +263,27 @@ jobs:
       # separately below and needs its own entry.
       - uses: ./.github/actions/setup-rust-binary-cache
         id: cli-binary-cache
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
+        if: ${{ env.BUILDS_DEB == 'true' }}
         with:
           path: rust/target/${{ matrix.arch.target }}/release/firezone-cli
           key: firezone-cli-${{ matrix.arch.target }}-release
+      # Restored binaries skip every `cargo build` below, so the toolchains only
+      # needed to compile them are skipped too. `cargo deb` still needs cargo and
+      # `cargo-deb`, and the relay still needs mise to stamp in the commit SHA.
+      - uses: ./.github/actions/setup-musl
+        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || (env.BUILDS_DEB == 'true' && steps.cli-binary-cache.outputs.cache-hit != 'true') }}
+        with:
+          target: ${{ matrix.arch.target }}
+      - uses: ./.github/actions/setup-rust-stable
+        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || env.BUILDS_DEB == 'true' }}
+        with:
+          targets: ${{ matrix.arch.target }}
+      - uses: ./.github/actions/setup-rust-sccache
+        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || env.BUILDS_DEB == 'true' }}
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-mise
+        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || env.BUILDS_DEB == 'true' || matrix.name.package == 'firezone-relay' }}
         with:
           install_args: --cd rust
         env:
@@ -345,10 +358,10 @@ jobs:
             --account-name firezoneartifacts
 
       - name: Build firezone-cli
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' && steps.cli-binary-cache.outputs.cache-hit != 'true' }}
+        if: ${{ env.BUILDS_DEB == 'true' && steps.cli-binary-cache.outputs.cache-hit != 'true' }}
         run: cargo build --bin firezone-cli --release --target ${{ matrix.arch.target }}
       - name: Create Firezone Gateway .deb package
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
+        if: ${{ env.BUILDS_DEB == 'true' }}
         run: |
           cargo deb --package firezone-gateway --target ${{ matrix.arch.target }} --no-build --no-strip
           cp target/debian/*.deb "$BINARY_DEST_PATH".deb
