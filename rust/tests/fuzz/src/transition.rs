@@ -180,6 +180,10 @@ pub(crate) enum PacketRoute {
         resource: ResourceId,
         gateway: GatewayId,
     },
+    ResourceUnreachableByGateway {
+        resource: ResourceId,
+        gateway: GatewayId,
+    },
     Gateway(GatewayId),
     Peer(ClientId),
     PeerRejectedByPeer(ClientId),
