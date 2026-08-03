@@ -46,6 +46,9 @@ defmodule Portal.Account do
     has_many :resources, Portal.Resource
 
     has_many :devices, Portal.Device
+    has_many :device_integrations, Portal.DeviceIntegration
+    has_many :intune_integrations, Portal.Intune.Integration
+    has_many :intune_devices, Portal.Intune.Device
     has_many :clients, Portal.Device, where: [type: :client]
     has_many :gateways, Portal.Device, where: [type: :gateway]
     has_many :sites, Portal.Site

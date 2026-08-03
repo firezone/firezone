@@ -48,6 +48,7 @@ defmodule Portal.PubSub do
             | :actors
             | :client_tokens
             | :devices
+            | :device_inventory
             | :directories
             | :groups
             | :memberships

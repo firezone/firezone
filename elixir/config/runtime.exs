@@ -137,6 +137,13 @@ if config_env() == :prod do
     token_base_url: "https://login.microsoftonline.com",
     endpoint: "https://graph.microsoft.com"
 
+  # Intune device inventory uses its own app registration. Production uses
+  # workload identity federation when no development client secret is set.
+  config :portal, Portal.Intune.APIClient,
+    client_id: env_var_to_config!(:intune_sync_client_id),
+    token_base_url: "https://login.microsoftonline.com",
+    endpoint: "https://graph.microsoft.com"
+
   # No client secret: production authenticates the app with workload identity
   # federation, minting a token-exchange assertion from the portal's managed
   # identity (Portal.Azure.ManagedIdentity).
@@ -216,6 +223,9 @@ if config_env() == :prod do
 
     # Schedule Entra directory sync every 2 hours
     {"0 */2 * * *", Portal.Entra.Scheduler},
+
+    # Schedule Intune device inventory sync every 2 hours
+    {"10 */2 * * *", Portal.Intune.Scheduler},
 
     # Schedule Google directory sync every 2 hours
     {"20 */2 * * *", Portal.Google.Scheduler},
@@ -308,6 +318,8 @@ if config_env() == :prod do
       default: 10,
       entra_scheduler: 1,
       entra_sync: 5,
+      intune_scheduler: 1,
+      intune_sync: 5,
       google_scheduler: 1,
       google_sync: 5,
       okta_scheduler: 1,

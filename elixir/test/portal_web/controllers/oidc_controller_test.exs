@@ -258,6 +258,21 @@ defmodule PortalWeb.OIDCControllerTest do
       assert redirected_to(conn) =~ "/verification/entra"
     end
 
+    test "redirects to /verification/entra for Intune device integration state", %{conn: conn} do
+      lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
+      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "intune-device-integration")
+
+      params = %{
+        "state" => state,
+        "admin_consent" => "True",
+        "tenant" => "test-tenant-id"
+      }
+
+      conn = get(conn, ~p"/auth/oidc/callback", params)
+
+      assert redirected_to(conn) =~ "/verification/entra"
+    end
+
     test "redirects to /verification/entra when admin_consent callback omits tenant", %{
       conn: conn
     } do

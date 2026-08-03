@@ -210,6 +210,16 @@ config :portal, Portal.Entra.APIClient,
     retry: :transient
   ]
 
+config :portal, Portal.Intune.APIClient,
+  client_id: System.get_env("INTUNE_SYNC_CLIENT_ID"),
+  client_secret: System.get_env("INTUNE_SYNC_CLIENT_SECRET"),
+  endpoint: "https://graph.microsoft.com",
+  token_base_url: "https://login.microsoftonline.com",
+  req_opts: [
+    receive_timeout: 900_000,
+    retry: :transient
+  ]
+
 config :portal, Portal.Google.APIClient,
   endpoint: "https://admin.googleapis.com",
   service_account_key: System.get_env("GOOGLE_SERVICE_ACCOUNT_KEY"),

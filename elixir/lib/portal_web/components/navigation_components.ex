@@ -252,10 +252,10 @@ defmodule PortalWeb.NavigationComponents do
             </.sidebar_item>
             <.sidebar_item
               current_path={@current_path}
-              navigate={~p"/#{@account}/clients"}
+              navigate={~p"/#{@account}/devices"}
               icon="ri-computer-line"
             >
-              Clients
+              Devices
             </.sidebar_item>
           </ul>
         </div>
@@ -494,6 +494,14 @@ defmodule PortalWeb.NavigationComponents do
           icon="ri-loop-left-fill"
         >
           Directory Sync
+        </.settings_tab>
+        <.settings_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/settings/device_integrations"}
+          tab_path="settings/device_integrations"
+          icon="ri-device-fill"
+        >
+          Device Inventory
         </.settings_tab>
         <.settings_tab
           current_path={@current_path}

@@ -169,6 +169,16 @@ config :portal, Portal.Entra.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Intune.APIClient,
+  client_id: "test_intune_client_id",
+  client_secret: "test_intune_client_secret",
+  endpoint: "https://graph.microsoft.com",
+  token_base_url: "https://login.microsoftonline.com",
+  req_opts: [
+    plug: {Req.Test, Portal.Intune.APIClient},
+    retry: false
+  ]
+
 config :portal, Portal.Workers.SyncErrorNotification, []
 
 config :portal, Portal.Workers.LogSinkErrorNotification, []

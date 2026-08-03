@@ -1453,7 +1453,7 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "Tunnel IPv6"
       assert html =~ to_string(client.ipv6)
       assert html =~ "SERIAL-1234"
-      assert has_element?(lv, ~s|a[href="/#{account.slug}/clients/#{client.id}"]|)
+      assert has_element?(lv, ~s|a[href="/#{account.slug}/devices/#{client.id}"]|)
 
       html = render_click(lv, "toggle_pool_client_row", %{"id" => client.id})
       refute html =~ "Tunnel IPv6"

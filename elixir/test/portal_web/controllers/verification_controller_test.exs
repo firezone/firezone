@@ -456,6 +456,73 @@ defmodule PortalWeb.VerificationControllerTest do
     end
   end
 
+  describe "entra/2 (Intune device integration flow)" do
+    test "verifies managed-device access and acknowledges the settings LiveView", %{conn: conn} do
+      parent = self()
+
+      lv_pid =
+        spawn(fn ->
+          receive do
+            {:intune_device_integration_complete, tenant_id, verification_ref, {from, ref}} ->
+              send(parent, {:intune_verification_received, tenant_id, verification_ref})
+              send(from, {:verification_ack, ref})
+          end
+        end)
+
+      {state, verification_ref} =
+        lv_pid
+        |> :erlang.pid_to_list()
+        |> to_string()
+        |> sign_entra_state("intune-device-integration")
+
+      Req.Test.stub(Portal.Intune.APIClient, fn req_conn ->
+        if req_conn.method == "POST" do
+          Req.Test.json(req_conn, %{"access_token" => "graph-token"})
+        else
+          assert req_conn.request_path == "/v1.0/deviceManagement/managedDevices"
+          Req.Test.json(req_conn, %{"value" => [%{"id" => "managed-device"}]})
+        end
+      end)
+
+      conn =
+        get(conn, ~p"/verification/entra", %{
+          "state" => state,
+          "admin_consent" => "True",
+          "tenant" => "tenant-id"
+        })
+
+      assert conn.resp_body =~ "Verification Successful"
+      assert_received {:intune_verification_received, "tenant-id", ^verification_ref}
+    end
+
+    test "describes the required Intune permission when Graph denies access", %{conn: conn} do
+      lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
+      {state, verification_ref} = sign_entra_state(lv_pid_string, "intune-device-integration")
+
+      Req.Test.stub(Portal.Intune.APIClient, fn req_conn ->
+        if req_conn.method == "POST" do
+          Req.Test.json(req_conn, %{"access_token" => "graph-token"})
+        else
+          req_conn
+          |> Plug.Conn.put_status(403)
+          |> Req.Test.json(%{"error" => %{"message" => "Insufficient privileges"}})
+        end
+      end)
+
+      conn =
+        get(conn, ~p"/verification/entra", %{
+          "state" => state,
+          "admin_consent" => "True",
+          "tenant" => "tenant-id"
+        })
+
+      assert conn.resp_body =~ "Verification Failed"
+      assert conn.resp_body =~ "DeviceManagementManagedDevices.Read.All"
+      assert_received {:verification_failed, message, ^verification_ref}
+      assert message =~ "DeviceManagementManagedDevices.Read.All"
+    end
+  end
+
   describe "entra/2 with invalid state" do
     test "renders failure for unsigned/unknown state", %{conn: conn} do
       conn =

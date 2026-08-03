@@ -1,7 +1,7 @@
 defmodule PortalWeb.VerificationController do
   use PortalWeb, :controller
 
-  alias Portal.Entra
+  alias Portal.{Entra, Intune}
 
   require Logger
   @verification_ack_timeout 5_000
@@ -69,6 +69,15 @@ defmodule PortalWeb.VerificationController do
       when is_binary(verification_ref) ->
         handle_entra_directory_sync(conn, params, lv_pid_string, verification_ref)
 
+      {:ok,
+       %{
+         type: "intune-device-integration",
+         lv_pid: lv_pid_string,
+         verification_ref: verification_ref
+       }}
+      when is_binary(verification_ref) ->
+        handle_intune_device_integration(conn, params, lv_pid_string, verification_ref)
+
       {:ok, _state} ->
         render(conn, :failure, error: "Invalid or expired verification state. Please try again.")
 
@@ -100,6 +109,21 @@ defmodule PortalWeb.VerificationController do
     lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid_string)
 
     case run_entra_directory_sync_verification(params, lv_pid, verification_ref) do
+      :ok ->
+        render(conn, :success)
+
+      {:error, error_message, notify_lv?} ->
+        if notify_lv? and lv_pid,
+          do: send(lv_pid, {:verification_failed, error_message, verification_ref})
+
+        render(conn, :failure, error: error_message)
+    end
+  end
+
+  defp handle_intune_device_integration(conn, params, lv_pid_string, verification_ref) do
+    lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid_string)
+
+    case run_intune_device_integration_verification(params, lv_pid, verification_ref) do
       :ok ->
         render(conn, :success)
 
@@ -150,6 +174,27 @@ defmodule PortalWeb.VerificationController do
     end
   end
 
+  defp run_intune_device_integration_verification(params, lv_pid, verification_ref) do
+    with {:ok, tenant_id} <- extract_tenant_id_for_verification(params),
+         {:ok, :verified} <- verify_intune_access_for_verification(tenant_id),
+         :ok <-
+           notify_and_await_ack(
+             lv_pid,
+             {:intune_device_integration_complete, tenant_id, verification_ref}
+           ) do
+      :ok
+    else
+      {:error, reason} when reason in [:ack_timeout, :no_receiver] ->
+        ack_failure_result()
+
+      {:error, {:consent_error, reason}} ->
+        {:error, format_consent_error(reason, params), true}
+
+      {:error, {:intune_verification_error, reason}} ->
+        {:error, format_intune_verification_error(reason), true}
+    end
+  end
+
   defp extract_tenant_id_for_verification(params) do
     case extract_tenant_id(params) do
       {:ok, tenant_id} -> {:ok, tenant_id}
@@ -161,6 +206,13 @@ defmodule PortalWeb.VerificationController do
     case verify_directory_access(tenant_id) do
       {:ok, :verified} = result -> result
       error -> {:error, {:directory_verification_error, error}}
+    end
+  end
+
+  defp verify_intune_access_for_verification(tenant_id) do
+    case verify_intune_access(tenant_id) do
+      {:ok, :verified} = result -> result
+      error -> {:error, {:intune_verification_error, error}}
     end
   end
 
@@ -202,6 +254,14 @@ defmodule PortalWeb.VerificationController do
          {:ok, %Req.Response{status: 200, body: %{"value" => _assignments}}} <-
            Entra.APIClient.list_app_role_assignments(access_token, service_principal["id"]),
          :ok <- Entra.APIClient.test_connection(access_token) do
+      {:ok, :verified}
+    end
+  end
+
+  defp verify_intune_access(tenant_id) do
+    with {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
+           Intune.APIClient.get_access_token(tenant_id),
+         :ok <- Intune.APIClient.test_connection(access_token) do
       {:ok, :verified}
     end
   end
@@ -261,9 +321,55 @@ defmodule PortalWeb.VerificationController do
     "Failed to verify directory access."
   end
 
+  defp format_intune_verification_error({:ok, %Req.Response{status: 401, body: body}}) do
+    error_message = entra_error_message(body)
+
+    "Unauthorized: #{error_message || "Invalid credentials"}. " <>
+      "Ensure the application credentials are valid."
+  end
+
+  defp format_intune_verification_error({:ok, %Req.Response{status: 403, body: body}}) do
+    error_message = entra_error_message(body) || "forbidden"
+
+    "Access denied: #{error_message}. " <>
+      "Ensure the application has DeviceManagementManagedDevices.Read.All with admin consent. " <>
+      "If you just granted access, please wait a minute or two and try again."
+  end
+
+  defp format_intune_verification_error({:ok, %Req.Response{status: status, body: body}})
+       when status >= 400 do
+    error_message = entra_error_message(body) || error_description(body)
+    "Verification failed (HTTP #{status}): #{error_message || "Unknown error"}"
+  end
+
+  defp format_intune_verification_error({:error, %Req.TransportError{reason: :nxdomain}}) do
+    "Failed to verify Intune access: DNS lookup failed. Please try again."
+  end
+
+  defp format_intune_verification_error({:error, %Req.TransportError{reason: :econnrefused}}) do
+    "Failed to verify Intune access: Connection refused by the remote server."
+  end
+
+  defp format_intune_verification_error({:error, %Req.TransportError{reason: :timeout}}) do
+    "Failed to verify Intune access: Connection timed out."
+  end
+
+  defp format_intune_verification_error({:error, %Req.TransportError{}}) do
+    "Failed to verify Intune access due to a network error."
+  end
+
+  defp format_intune_verification_error({:error, _reason}) do
+    "Failed to verify Intune access."
+  end
+
   defp entra_error_message(%{"error" => %{"message" => message}}) when is_binary(message),
     do: message
 
   defp entra_error_message(%{"error" => error}) when is_binary(error), do: error
   defp entra_error_message(_), do: nil
+
+  defp error_description(%{"error_description" => description}) when is_binary(description),
+    do: description
+
+  defp error_description(_), do: nil
 end

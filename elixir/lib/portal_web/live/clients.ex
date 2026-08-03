@@ -1,11 +1,10 @@
 defmodule PortalWeb.Clients do
   use PortalWeb, :live_view
   import PortalWeb.Clients.Components
-  alias Portal.{Presence.Clients, ComponentVersions}
+  alias Portal.Presence.Clients
   alias Portal.Changes.Change
-  alias Portal.Device
+  alias Portal.{Device, DeviceInventory}
   alias Portal.PubSub
-  alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
@@ -14,12 +13,14 @@ defmodule PortalWeb.Clients do
     if connected?(socket) do
       :ok = Clients.Account.subscribe(subject.account.id)
       :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :devices)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :device_inventory)
     end
 
     socket =
       socket
-      |> assign(page_title: "Clients")
+      |> assign(page_title: "Devices")
       |> assign(selected_client: nil)
+      |> assign(selected_inventory: nil)
       |> assign(stale: false)
       |> assign_async(:clients_count, fn -> {:ok, %{clients_count: Database.count_clients(subject)}} end)
       |> assign(
@@ -32,11 +33,11 @@ defmodule PortalWeb.Clients do
       |> assign_live_table("clients",
         query_module: Database,
         sortable_fields: [
-          {:devices, :name},
-          {:devices, :last_seen_version},
-          {:devices, :last_seen_at},
-          {:devices, :inserted_at},
-          {:devices, :last_seen_user_agent}
+          {:device_inventory, :name},
+          {:device_inventory, :last_seen_at},
+          {:device_inventory, :intune_last_sync_at},
+          {:device_inventory, :inserted_at},
+          {:device_inventory, :intune_compliance_state}
         ],
         callback: &handle_clients_update!/2
       )
@@ -47,20 +48,25 @@ defmodule PortalWeb.Clients do
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
     socket = handle_live_tables_params(socket, params, uri)
 
-    case Database.get_client_for_panel(id, socket.assigns.subject) do
+    case Database.get_inventory_for_panel(id, socket.assigns.subject) do
       nil ->
-        redirect_to_clients_index(socket, "Client does not exist.")
+        redirect_to_devices_index(socket, "Device does not exist.")
 
-      client ->
+      {inventory, client} ->
         page = parse_page(params)
         tab = parse_client_tab(Map.get(params, "tab", "overview"))
 
         {policy_authorizations, has_next} =
-          Database.list_policy_authorizations_for_client(client, socket.assigns.subject, page)
+          if client do
+            Database.list_policy_authorizations_for_client(client, socket.assigns.subject, page)
+          else
+            {[], false}
+          end
 
         {:noreply,
          socket
          |> assign(selected_client: client)
+         |> assign(selected_inventory: inventory)
          |> assign(show_client_assigns(tab))
          |> assign(
            policy_authorizations: policy_authorizations,
@@ -74,16 +80,20 @@ defmodule PortalWeb.Clients do
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
     socket = handle_live_tables_params(socket, params, uri)
 
-    case Database.get_client_for_panel(id, socket.assigns.subject) do
+    case Database.get_inventory_for_panel(id, socket.assigns.subject) do
       nil ->
-        redirect_to_clients_index(socket, "Client does not exist.")
+        redirect_to_devices_index(socket, "Device does not exist.")
 
-      client ->
+      {_inventory, nil} ->
+        redirect_to_devices_index(socket, "This device has not connected to Firezone yet.")
+
+      {inventory, client} ->
         changeset = Database.change_client(client)
 
         {:noreply,
          socket
          |> assign(selected_client: client)
+         |> assign(selected_inventory: inventory)
          |> assign(edit_client_assigns(to_form(changeset)))}
     end
   end
@@ -94,6 +104,7 @@ defmodule PortalWeb.Clients do
     {:noreply,
      socket
      |> assign(selected_client: nil)
+     |> assign(selected_inventory: nil)
      |> assign(base_client_assigns())}
   end
 
@@ -116,9 +127,9 @@ defmodule PortalWeb.Clients do
         <:icon>
           <.icon name="ri-computer-line" class="w-16 h-16 text-brand" />
         </:icon>
-        <:title>Clients</:title>
+        <:title>Devices</:title>
         <:description>
-          End-user devices and servers that access your protected Resources.
+          Inventory from connected clients and device management integrations.
         </:description>
         <:action>
           <.docs_action path="/deploy/clients" />
@@ -140,9 +151,9 @@ defmodule PortalWeb.Clients do
           id="clients"
           rows={@clients}
           row_id={&"client-#{&1.id}"}
-          row_click={fn client -> ~p"/#{@account}/clients/#{client.id}?#{@query_params}" end}
+          row_click={fn device -> ~p"/#{@account}/devices/#{device.id}?#{@query_params}" end}
           row_selected={
-            fn client -> not is_nil(@selected_client) and client.id == @selected_client.id end
+            fn device -> not is_nil(@selected_inventory) and device.id == @selected_inventory.id end
           }
           filters={@filters_by_table_id["clients"]}
           filter={@filter_form_by_table_id["clients"]}
@@ -150,71 +161,90 @@ defmodule PortalWeb.Clients do
           metadata={@clients_metadata}
           class="flex-1 min-h-0"
         >
-          <:col :let={client} field={{:devices, :name}} label="Client" class="w-80">
+          <:col :let={device} field={{:device_inventory, :name}} label="Device" class="w-72">
             <div class="flex items-center gap-2">
               <span class="mr-2">
-                <.client_os_icon client={client} />
+                <.inventory_os_icon inventory={device} />
               </span>
               <div>
                 <div class="font-medium text-heading group-hover:text-brand transition-colors">
-                  {client.name}
+                  {device.name}
                 </div>
                 <div class="font-mono text-[10px] text-subtle mt-0.5">
-                  {client.id}
+                  {device.id}
                 </div>
               </div>
             </div>
           </:col>
-          <:col :let={client} label="Owner">
+          <:col :let={device} label="Owner">
             <.actor_name_and_role
+              :if={device.actor}
               account={@account}
-              actor={client.actor}
+              actor={device.actor}
               class="text-sm"
               return_to={@return_to}
             />
+            <div :if={is_nil(device.actor)}>
+              <p class="text-sm text-heading">
+                {device.intune_user_display_name || device.intune_user_principal_name || "—"}
+              </p>
+              <p :if={device.intune_user_display_name && device.intune_user_principal_name} class="text-[10px] text-subtle">
+                {device.intune_user_principal_name}
+              </p>
+            </div>
           </:col>
-          <:col :let={client} field={{:devices, :last_seen_version}} label="Version" class="w-32">
-            <.version
-              current={client.last_seen_version}
-              latest={ComponentVersions.client_version(client)}
-            />
+          <:col :let={device} label="Sources" class="w-32">
+            <.inventory_source_badges inventory={device} />
           </:col>
-          <:col :let={client} label="Verified" class="w-28">
+          <:col
+            :let={device}
+            field={{:device_inventory, :intune_compliance_state}}
+            label="Compliance"
+            class="w-28"
+          >
+            <.inventory_compliance_badge inventory={device} />
             <span
-              :if={not is_nil(client.verified_at)}
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light"
-              title="Device attributes of this client are manually verified"
+              :if={device.connected && not is_nil(device.verified_at)}
+              class="ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light"
             >
               <.icon name="ri-shield-check-line" class="w-2.5 h-2.5" /> Verified
             </span>
             <span
-              :if={is_nil(client.verified_at)}
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-raised"
+              :if={device.connected && is_nil(device.verified_at) && is_nil(device.intune_compliance_state)}
+              class="ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-raised"
             >
               Unverified
             </span>
           </:col>
-          <:col :let={client} label="Status" class="w-28">
-            <.client_status_badge online?={client.online?} />
+          <:col :let={device} label="Connection" class="w-28">
+            <.inventory_connection_badge inventory={device} />
+          </:col>
+          <:col :let={device} label="Tunnel Addresses" class="hidden xl:table-cell w-48">
+            <div :if={device.connected} class="space-y-0.5 font-mono text-[10px] text-body">
+              <p>{device.ipv4}</p>
+              <p class="truncate">{device.ipv6}</p>
+            </div>
+            <span :if={not device.connected} class="text-xs text-muted">Allocated on connect</span>
           </:col>
           <:col
-            :let={client}
-            field={{:devices, :last_seen_at}}
-            label="Last Started"
+            :let={device}
+            field={{:device_inventory, :last_seen_at}}
+            label="Last Activity"
             class="hidden lg:table-cell"
           >
-            <span class="text-xs text-subtle">
-              <.relative_datetime datetime={client.last_seen_at} />
+            <span :if={inventory_last_activity(device)} class="text-xs text-subtle">
+              <.relative_datetime datetime={inventory_last_activity(device)} />
             </span>
+            <span :if={is_nil(inventory_last_activity(device))} class="text-xs text-muted">—</span>
           </:col>
           <:col
-            :let={client}
-            field={{:devices, :inserted_at}}
+            :let={device}
+            field={{:device_inventory, :inserted_at}}
             label="Created"
             class="hidden lg:table-cell"
           >
             <span class="text-xs text-subtle">
-              <.relative_datetime datetime={client.inserted_at} />
+              <.relative_datetime datetime={device.inserted_at} />
             </span>
           </:col>
           <:empty>
@@ -223,9 +253,9 @@ defmodule PortalWeb.Clients do
                 <.icon name="ri-computer-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-heading">No clients yet</p>
+                <p class="text-sm font-medium text-heading">No devices yet</p>
                 <p class="text-xs text-subtle mt-0.5">
-                  No clients have connected yet.
+                  Connect a device inventory integration or sign in from a Firezone client.
                 </p>
               </div>
             </div>
@@ -236,6 +266,7 @@ defmodule PortalWeb.Clients do
       <.client_panel
         account={@account}
         client={@selected_client}
+        inventory={@selected_inventory}
         panel={client_panel_state(assigns)}
         confirm_state={client_confirm_state(assigns)}
         query_params={@query_params}
@@ -243,6 +274,11 @@ defmodule PortalWeb.Clients do
         policy_authorizations_page={@policy_authorizations_page}
         policy_authorizations_has_next={@policy_authorizations_has_next}
         policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
+      />
+      <.inventory_device_panel
+        :if={@selected_inventory && is_nil(@selected_client)}
+        account={@account}
+        inventory={@selected_inventory}
       />
     </div>
     """
@@ -261,6 +297,18 @@ defmodule PortalWeb.Clients do
       confirm_delete_client: assigns.client_confirm.delete?,
       confirm_unverify_client: assigns.client_confirm.unverify?
     }
+  end
+
+  defp inventory_last_activity(%{last_seen_at: nil, intune_last_sync_at: intune_last_sync_at}),
+    do: intune_last_sync_at
+
+  defp inventory_last_activity(%{last_seen_at: last_seen_at, intune_last_sync_at: nil}),
+    do: last_seen_at
+
+  defp inventory_last_activity(%{last_seen_at: last_seen_at, intune_last_sync_at: intune_last_sync_at}) do
+    if DateTime.compare(last_seen_at, intune_last_sync_at) == :lt,
+      do: intune_last_sync_at,
+      else: last_seen_at
   end
 
   defp base_client_assigns do
@@ -306,7 +354,7 @@ defmodule PortalWeb.Clients do
 
   def handle_event("close_panel", _params, socket) do
     params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/clients?#{params}")}
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/devices?#{params}")}
   end
 
   def handle_event(
@@ -321,7 +369,7 @@ defmodule PortalWeb.Clients do
 
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/clients/#{client}?#{params}"
+       to: ~p"/#{socket.assigns.account}/devices/#{client}?#{params}"
      )}
   end
 
@@ -334,7 +382,7 @@ defmodule PortalWeb.Clients do
 
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/clients/#{socket.assigns.selected_client.id}?#{params}"
+       to: ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_inventory.id}?#{params}"
      )}
   end
 
@@ -348,14 +396,14 @@ defmodule PortalWeb.Clients do
   def handle_event("open_client_edit_form", _params, socket) do
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/clients/#{socket.assigns.selected_client.id}/edit"
+       to: ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_inventory.id}/edit"
      )}
   end
 
   def handle_event("cancel_client_edit_form", _params, socket) do
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/clients/#{socket.assigns.selected_client.id}"
+       to: ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_inventory.id}"
      )}
   end
 
@@ -374,9 +422,9 @@ defmodule PortalWeb.Clients do
       {:ok, updated_client} ->
         {:noreply,
          socket
-         |> put_flash(:success, "Client updated successfully.")
+         |> put_flash(:success, "Device updated successfully.")
          |> reload_live_table!("clients")
-         |> push_patch(to: ~p"/#{socket.assigns.account}/clients/#{updated_client.id}")}
+         |> push_patch(to: ~p"/#{socket.assigns.account}/devices/#{updated_client.id}")}
 
       {:error, changeset} ->
         {:noreply,
@@ -390,14 +438,14 @@ defmodule PortalWeb.Clients do
       when socket.assigns.client_panel.view == :edit_client do
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/clients/#{socket.assigns.selected_client.id}"
+       to: ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_inventory.id}"
      )}
   end
 
   def handle_event("handle_keydown", _params, socket)
-      when not is_nil(socket.assigns.selected_client) do
+      when not is_nil(socket.assigns.selected_inventory) do
     params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/clients?#{params}")}
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/devices?#{params}")}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -419,13 +467,13 @@ defmodule PortalWeb.Clients do
       {:ok, updated_client} ->
         {:noreply,
          socket
-         |> put_flash(:success, "Client \"#{client.name}\" was verified.")
+         |> put_flash(:success, "Device \"#{client.name}\" was verified.")
          |> assign_updated_selected_client(updated_client)
          |> merge_state(:client_confirm, unverify?: false)
          |> reload_live_table!("clients")}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to verify client.")}
+        {:noreply, put_flash(socket, :error, "Failed to verify device.")}
     end
   end
 
@@ -444,7 +492,7 @@ defmodule PortalWeb.Clients do
       {:ok, updated_client} ->
         {:noreply,
          socket
-         |> put_flash(:success, "Client \"#{client.name}\" was unverified.")
+         |> put_flash(:success, "Device \"#{client.name}\" was unverified.")
          |> assign_updated_selected_client(updated_client)
          |> merge_state(:client_confirm, unverify?: false)
          |> reload_live_table!("clients")}
@@ -452,7 +500,7 @@ defmodule PortalWeb.Clients do
       {:error, _} ->
         {:noreply,
          socket
-         |> put_flash(:error, "Failed to unverify client.")
+         |> put_flash(:error, "Failed to unverify device.")
          |> merge_state(:client_confirm, unverify?: false)}
     end
   end
@@ -464,10 +512,10 @@ defmodule PortalWeb.Clients do
       {:ok, _} ->
         {:noreply,
          socket
-         |> put_flash(:success, "Client \"#{client.name}\" was deleted.")
+         |> put_flash(:success, "Device \"#{client.name}\" was deleted.")
          |> merge_state(:client_confirm, delete?: false)
          |> reload_live_table!("clients")
-         |> push_patch(to: ~p"/#{socket.assigns.account}/clients")}
+         |> push_patch(to: ~p"/#{socket.assigns.account}/devices")}
 
       {:error, _} ->
         {:noreply, merge_state(socket, :client_confirm, delete?: false)}
@@ -495,35 +543,26 @@ defmodule PortalWeb.Clients do
     end
   end
 
-  defp redirect_to_clients_index(socket, message) do
+  defp redirect_to_devices_index(socket, message) do
     {:noreply,
      socket
      |> put_flash(:error, message)
-     |> push_patch(to: ~p"/#{socket.assigns.account}/clients?#{socket.assigns.query_params}")}
+     |> push_patch(to: ~p"/#{socket.assigns.account}/devices?#{socket.assigns.query_params}")}
   end
 
   def handle_info(%Change{op: :insert, struct: %Device{type: :client}} = change, socket) do
-    {:noreply,
-     socket
-     |> update(:clients_count, fn
-       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
-       ar -> ar
-     end)
-     |> mark_stale_if_unreflected(change)}
+    _ = change
+    {:noreply, refresh_device_inventory(socket)}
   end
 
   def handle_info(%Change{op: :delete, old_struct: %Device{type: :client}} = change, socket) do
-    {:noreply,
-     socket
-     |> update(:clients_count, fn
-       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
-       ar -> ar
-     end)
-     |> mark_stale_if_unreflected(change)}
+    _ = change
+    {:noreply, refresh_device_inventory(socket)}
   end
 
   def handle_info(%Change{struct: %Device{type: :client}} = change, socket) do
-    {:noreply, mark_stale_if_unreflected(socket, change)}
+    _ = change
+    {:noreply, refresh_device_inventory(socket)}
   end
 
   def handle_info(%Change{struct: %Device{type: :gateway}}, socket), do: {:noreply, socket}
@@ -533,7 +572,7 @@ defmodule PortalWeb.Clients do
         %Phoenix.Socket.Broadcast{topic: "presences:account_clients:" <> _account_id} = event,
         socket
       ) do
-    rendered_client_ids = Enum.map(socket.assigns.clients, & &1.id)
+    rendered_client_ids = Enum.map(socket.assigns.clients, & &1.device_id) |> Enum.reject(&is_nil/1)
 
     if presence_updates_any_id?(event, rendered_client_ids) do
       socket = reload_live_table!(socket, "clients")
@@ -543,14 +582,21 @@ defmodule PortalWeb.Clients do
     end
   end
 
+  def handle_info(:device_inventory_changed, socket) do
+    {:noreply, refresh_device_inventory(socket)}
+  end
+
   def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
-  defp mark_stale_if_unreflected(socket, change) do
-    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.clients, change) do
-      socket
-    else
-      assign(socket, stale: true)
-    end
+  defp refresh_device_inventory(socket) do
+    subject = socket.assigns.subject
+
+    socket
+    |> assign(stale: false)
+    |> assign_async(:clients_count, fn ->
+      {:ok, %{clients_count: Database.count_clients(subject)}}
+    end)
+    |> reload_live_table!("clients")
   end
 
   defmodule Database do
@@ -559,7 +605,7 @@ defmodule PortalWeb.Clients do
     import Portal.Changeset
     import Portal.Repo.Query
     alias Portal.{Presence.Clients, Safe}
-    alias Portal.Device
+    alias Portal.{Device, DeviceInventory}
     alias Portal.Policy
     alias Portal.PolicyAuthorization
     alias Portal.Group
@@ -568,8 +614,7 @@ defmodule PortalWeb.Clients do
     alias Portal.Repo.OffsetPaginator
 
     def count_clients(subject) do
-      from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      from(d in DeviceInventory, as: :device_inventory)
       |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
@@ -601,19 +646,25 @@ defmodule PortalWeb.Clients do
     end
 
     defp page_query(_subject) do
-      from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
+      from(d in DeviceInventory, as: :device_inventory)
     end
 
     defp maybe_filter_by_presence(base_query, presence, subject) do
       case presence do
         "online" ->
           ids = Clients.online_client_ids(subject.account.id)
-          where(base_query, [devices: d], d.id in ^ids)
+          where(base_query, [device_inventory: d], d.device_id in ^ids)
 
         "offline" ->
           ids = Clients.online_client_ids(subject.account.id)
-          where(base_query, [devices: d], d.id not in ^ids)
+          where(
+            base_query,
+            [device_inventory: d],
+            d.connected == true and d.device_id not in ^ids
+          )
+
+        "not_connected" ->
+          where(base_query, [device_inventory: d], d.connected == false)
 
         _ ->
           base_query
@@ -622,7 +673,7 @@ defmodule PortalWeb.Clients do
 
     defp list_client_ids(filtered_query, paginator_opts, subject) do
       filtered_query
-      |> select([devices: d], d.id)
+      |> select([device_inventory: d], d.id)
       |> OffsetPaginator.query(paginator_opts)
       |> Safe.scoped(subject)
       |> Safe.all()
@@ -633,7 +684,7 @@ defmodule PortalWeb.Clients do
     defp fetch_clients_page(client_ids, preload, subject) do
       clients =
         page_query(subject)
-        |> where([devices: d], d.id in ^client_ids)
+        |> where([device_inventory: d], d.id in ^client_ids)
         |> Safe.scoped(subject)
         |> Safe.all()
         |> maybe_preload_clients(preload, subject)
@@ -651,11 +702,17 @@ defmodule PortalWeb.Clients do
           Safe.preload(clients, :actor)
 
         :online?, clients ->
-          Clients.preload_clients_presence(clients)
+          preload_inventory_presence(clients)
 
         _other, clients ->
           clients
       end)
+    end
+
+    def preload_inventory_presence(inventory) do
+      account_id = inventory |> List.first() |> then(&(&1 && &1.account_id))
+      online_ids = if account_id, do: Clients.online_client_ids(account_id), else: []
+      Enum.map(inventory, &%{&1 | online?: &1.device_id in online_ids})
     end
 
     @spec change_client(Portal.Device.t(), map()) :: Ecto.Changeset.t()
@@ -710,37 +767,59 @@ defmodule PortalWeb.Clients do
       end
     end
 
-    @spec get_client_for_panel(binary(), Portal.Authentication.Subject.t()) ::
-            Portal.Device.t() | nil
-    def get_client_for_panel(id, subject) do
-      client =
-        from(c in Device, as: :devices)
-        |> where([devices: d], d.type == :client)
-        |> where([devices: d], d.id == ^id)
+    @spec get_inventory_for_panel(binary(), Portal.Authentication.Subject.t()) ::
+            {Portal.DeviceInventory.t(), Portal.Device.t() | nil} | nil
+    def get_inventory_for_panel(id, subject) do
+      inventory =
+        from(d in DeviceInventory, as: :device_inventory)
+        |> where([device_inventory: d], d.id == ^id)
         |> preload([:actor])
         |> Safe.scoped(subject)
         |> Safe.one()
+        |> case do
+          %DeviceInventory{} = inventory ->
+            preload_inventory_presence([inventory]) |> List.first()
 
-      case client do
-        %Device{type: :client} ->
-          Clients.preload_clients_presence([client]) |> List.first()
+          _ ->
+            nil
+        end
 
-        _ ->
+      case inventory do
+        nil ->
           nil
+
+        %DeviceInventory{device_id: nil} ->
+          {inventory, nil}
+
+        %DeviceInventory{device_id: device_id} ->
+          client =
+            from(c in Device, as: :devices)
+            |> where([devices: d], d.type == :client and d.id == ^device_id)
+            |> preload([:actor])
+            |> Safe.scoped(subject)
+            |> Safe.one()
+
+          client =
+            case client do
+              %Device{} -> Clients.preload_clients_presence([client]) |> List.first()
+              _ -> nil
+            end
+
+          {inventory, client}
       end
     end
 
     def cursor_fields do
       [
-        {:devices, :desc, :last_seen_at},
-        {:devices, :asc, :id}
+        {:device_inventory, :desc, :last_seen_at},
+        {:device_inventory, :asc, :id}
       ]
     end
 
     def preloads do
       [
         :actor,
-        online?: &Clients.preload_clients_presence/1
+        online?: &preload_inventory_presence/1
       ]
     end
 
@@ -748,7 +827,7 @@ defmodule PortalWeb.Clients do
       [
         %Portal.Repo.Filter{
           name: :search,
-          title: "Client or Actor",
+          title: "Device or Owner",
           type: {:string, :websearch},
           fun: &filter_by_search_fts/2
         },
@@ -768,7 +847,8 @@ defmodule PortalWeb.Clients do
           type: :string,
           values: [
             {"Online", "online"},
-            {"Offline", "offline"}
+            {"Offline", "offline"},
+            {"Not Connected", "not_connected"}
           ],
           fun: &filter_by_presence/2
         }
@@ -780,7 +860,7 @@ defmodule PortalWeb.Clients do
         if has_named_binding?(queryable, :actors) do
           queryable
         else
-          join(queryable, :inner, [devices: d], a in assoc(d, :actor),
+          join(queryable, :left, [device_inventory: d], a in assoc(d, :actor),
             on: a.account_id == d.account_id,
             as: :actors
           )
@@ -788,19 +868,33 @@ defmodule PortalWeb.Clients do
 
       {queryable,
        dynamic(
-         [devices: devices, actors: actors],
+         [device_inventory: devices, actors: actors],
          fulltext_search(actors.name, ^search_term) or
            fulltext_search(devices.name, ^search_term) or
-           fulltext_search(actors.email, ^search_term)
+           fulltext_search(actors.email, ^search_term) or
+           fulltext_search(devices.intune_serial_number, ^search_term) or
+           fulltext_search(devices.intune_id, ^search_term) or
+           fulltext_search(devices.intune_user_principal_name, ^search_term) or
+           fulltext_search(devices.intune_operating_system, ^search_term)
        )}
     end
 
     def filter_by_verification(queryable, "verified") do
-      {queryable, dynamic([devices: devices], not is_nil(devices.verified_at))}
+      {queryable,
+       dynamic(
+         [device_inventory: devices],
+         not is_nil(devices.verified_at) or devices.intune_compliance_state == "compliant"
+       )}
     end
 
     def filter_by_verification(queryable, "not_verified") do
-      {queryable, dynamic([devices: devices], is_nil(devices.verified_at))}
+      {queryable,
+       dynamic(
+         [device_inventory: devices],
+         is_nil(devices.verified_at) and
+           (is_nil(devices.intune_compliance_state) or
+              devices.intune_compliance_state != "compliant")
+       )}
     end
 
     def filter_by_presence(queryable, _presence) do

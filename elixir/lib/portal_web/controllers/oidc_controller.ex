@@ -42,6 +42,9 @@ defmodule PortalWeb.OIDCController do
       {:entra_directory_sync, _lv_pid_string} ->
         redirect(conn, to: ~p"/verification/entra?#{params}")
 
+      {:intune_device_integration, _lv_pid_string} ->
+        redirect(conn, to: ~p"/verification/entra?#{params}")
+
       _ ->
         handle_error(conn, {:error, :invalid_callback_params})
     end
@@ -991,6 +994,9 @@ defmodule PortalWeb.OIDCController do
       {:ok, %{type: "oidc-auth-provider", lv_pid: lv_pid}} -> {:oidc_verification, lv_pid}
       {:ok, %{type: "entra-auth-provider", lv_pid: lv_pid}} -> {:entra_auth_provider, lv_pid}
       {:ok, %{type: "entra-directory-sync", lv_pid: lv_pid}} -> {:entra_directory_sync, lv_pid}
+      {:ok, %{type: "intune-device-integration", lv_pid: lv_pid}} ->
+        {:intune_device_integration, lv_pid}
+
       {:error, _} -> :authentication
     end
   end
