@@ -97,7 +97,10 @@ if [ -n "${usage_libfuzzer_args:-}" ]; then
   # `usage` joins variadic arguments as a shell-escaped string.
   eval "set -- $usage_libfuzzer_args"
 else
-  set -- "-fork=$(nproc)" -max_total_time=300
+  # `-fork` re-merges the whole seed corpus before it discovers anything, and
+  # `-max_total_time` does not bound that startup. A short budget would be
+  # spent entirely inside it, so this matches what the nightly job asks for.
+  set -- "-fork=$(nproc)" -max_total_time=1800
 fi
 
 before="$(cat "$baseline" 2>/dev/null || echo null)"
