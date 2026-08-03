@@ -80,10 +80,10 @@ defmodule PortalAPI.EntraDirectoryController do
     import Ecto.Query
     alias Portal.{Entra, Safe}
 
-    def list_directories(subject) do
-      from(d in Entra.Directory, as: :directories, order_by: [desc: d.inserted_at])
+    def list_directories(subject, opts \\ []) do
+      from(d in Entra.Directory, as: :directories)
       |> Safe.scoped(subject)
-      |> Safe.all()
+      |> Safe.list(__MODULE__, opts)
     end
 
     def cursor_fields do

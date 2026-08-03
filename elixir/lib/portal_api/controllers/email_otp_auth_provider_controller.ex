@@ -79,10 +79,10 @@ defmodule PortalAPI.EmailOTPAuthProviderController do
     import Ecto.Query
     alias Portal.{EmailOTP, Safe}
 
-    def list_providers(subject) do
-      from(p in EmailOTP.AuthProvider, as: :providers, order_by: [desc: p.inserted_at])
+    def list_providers(subject, opts \\ []) do
+      from(p in EmailOTP.AuthProvider, as: :providers)
       |> Safe.scoped(subject)
-      |> Safe.all()
+      |> Safe.list(__MODULE__, opts)
     end
 
     def cursor_fields do
