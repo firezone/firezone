@@ -62,7 +62,7 @@ jobs:
         run: zstd -dc --long=30 images.tar.zst | docker load
       - uses: ./.github/actions/setup-scripts
       - name: Seed database
-        run: docker compose run --no-build --pull never elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
+        run: docker compose run --pull never elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
       - name: Tune Linux kernel
         run: |
           sudo sysctl -w net.core.wmem_max=2097152            # 2 MB
