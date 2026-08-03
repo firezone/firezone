@@ -44,8 +44,7 @@ pub struct ClientOnGateway {
 #[derive(Debug, PartialEq)]
 pub enum TranslateOutboundResult {
     Send(IpPacket),
-    DestinationUnreachable(IpPacket),
-    Filtered(IpPacket),
+    IcmpError(IpPacket),
 }
 
 impl ClientOnGateway {
@@ -321,28 +320,20 @@ impl ClientOnGateway {
             bail!(UnroutablePacket::outbound_icmp_error(&packet))
         }
 
-        // Filtering a packet is not an error.
-        match self.ensure_allowed_outbound(&packet) {
-            Ok(()) => {}
-            Err(e) => {
-                tracing::debug!(filtered_packet = ?packet, "{e:#}");
+        if let Err(error) = self.ensure_allowed_outbound(&packet) {
+            tracing::debug!(filtered_packet = ?packet, "{error:#}");
 
-                return match e.any_downcast_ref::<InternetResourceRejectedAddress>() {
-                    Some(InternetResourceRejectedAddress(_)) => {
-                        Ok(TranslateOutboundResult::DestinationUnreachable(
-                            ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-                        ))
-                    }
-                    _ => Ok(TranslateOutboundResult::Filtered(
-                        ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
-                    )),
-                };
-            }
+            let reply = match error.any_downcast_ref::<InternetResourceRejectedAddress>() {
+                Some(InternetResourceRejectedAddress(_)) => {
+                    ip_packet::make::icmp_dest_unreachable_network(&packet)?
+                }
+                None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
+            };
+
+            return Ok(TranslateOutboundResult::IcmpError(reply));
         }
 
-        let result = self.transform_network_to_tun(packet, now)?;
-
-        Ok(result)
+        self.transform_network_to_tun(packet, now)
     }
 
     pub fn translate_inbound(
@@ -397,13 +388,13 @@ impl ClientOnGateway {
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             tracing::debug!(%dst, "No translation entry");
 
-            return Ok(TranslateOutboundResult::DestinationUnreachable(
+            return Ok(TranslateOutboundResult::IcmpError(
                 ip_packet::make::icmp_dest_unreachable_network(&packet)?,
             ));
         };
 
         let Some(resolved_ip) = state.resolved_ip else {
-            return Ok(TranslateOutboundResult::DestinationUnreachable(
+            return Ok(TranslateOutboundResult::IcmpError(
                 ip_packet::make::icmp_dest_unreachable_network(&packet)?,
             ));
         };
@@ -415,7 +406,7 @@ impl ClientOnGateway {
                 "Cannot translate between IP versions"
             );
 
-            return Ok(TranslateOutboundResult::DestinationUnreachable(
+            return Ok(TranslateOutboundResult::IcmpError(
                 ip_packet::make::icmp_dest_unreachable_network(&packet)?,
             ));
         }
@@ -898,7 +889,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::Filtered(_)
+            TranslateOutboundResult::IcmpError(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -912,7 +903,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::Filtered(_)
+            TranslateOutboundResult::IcmpError(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -962,7 +953,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::Filtered(_)
+            TranslateOutboundResult::IcmpError(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -993,7 +984,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(request, Instant::now()).unwrap(),
-            TranslateOutboundResult::Filtered(_)
+            TranslateOutboundResult::IcmpError(_)
         ));
     }
 
@@ -1254,7 +1245,7 @@ mod tests {
         )
         .unwrap();
 
-        let TranslateOutboundResult::DestinationUnreachable(packet) =
+        let TranslateOutboundResult::IcmpError(packet) =
             peer.translate_outbound(request, now).unwrap()
         else {
             panic!("Bad translation result")

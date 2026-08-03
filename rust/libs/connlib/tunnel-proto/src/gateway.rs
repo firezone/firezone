@@ -222,8 +222,7 @@ impl GatewayState {
 
                 Ok(Some(packet))
             }
-            TranslateOutboundResult::DestinationUnreachable(reply)
-            | TranslateOutboundResult::Filtered(reply) => {
+            TranslateOutboundResult::IcmpError(reply) => {
                 flow_tracker::record_icmp_error(&reply);
 
                 encrypt_packet(
