@@ -176,8 +176,12 @@ impl ClientOnGateway {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         self.nat_table.handle_timeout(now);
         self.resources.handle_timeout(now);
-        self.authorization_required_sent_at
-            .retain(|_, sent_at| now.duration_since(*sent_at) < AUTHORIZATION_REQUIRED_THROTTLE);
+        for _ in self
+            .authorization_required_sent_at
+            .extract_if(.., |_, sent_at| {
+                now.duration_since(*sent_at) >= AUTHORIZATION_REQUIRED_THROTTLE
+            })
+        {}
 
         let cid = self.id;
         let mut any_expired = false;
