@@ -245,7 +245,7 @@ defmodule PortalAPI.GatewayController do
     def fetch_site(id, subject) do
       result =
         from(s in Site, where: s.id == ^id)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do
