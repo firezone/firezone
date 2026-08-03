@@ -1352,7 +1352,7 @@ impl ClientState {
         ControlFlow::Break(())
     }
 
-    /// Handles an [`no_authorization`](p2p_control::no_authorization) event from a Gateway.
+    /// Handles a [`no_authorization`](p2p_control::no_authorization) event from a Gateway.
     ///
     /// A Gateway sends this event when it receives packets from us for a destination that none
     /// of our authorizations with it cover (anymore), e.g. because the authorization expired.
@@ -1373,21 +1373,21 @@ impl ClientState {
             return;
         };
 
+        let hash_map::Entry::Occupied(authorization) = self.authorized_resources.entry(rid) else {
+            tracing::debug!(%gid, %rid, "Ignoring `NoAuthorization` event: resource is not authorized");
+            return;
+        };
+
         // Gateways only know about destinations, not resources; make sure we only discard an
         // authorization that the sending Gateway is actually responsible for.
-        if self
-            .authorized_resources
-            .get(&rid)
-            .and_then(|path| path.as_gateway())
-            != Some(&gid)
-        {
+        if authorization.get().as_gateway() != Some(&gid) {
             tracing::debug!(%gid, %rid, "Ignoring `NoAuthorization` event: resource is not authorized via this Gateway");
             return;
         }
 
         tracing::debug!(%gid, %rid, %dst, "Discarding authorization that is no longer valid on the Gateway");
 
-        self.authorized_resources.remove(&rid);
+        authorization.remove();
     }
 
     pub fn on_resource_connection_failed(&mut self, resource: ResourceId, now: Instant) {

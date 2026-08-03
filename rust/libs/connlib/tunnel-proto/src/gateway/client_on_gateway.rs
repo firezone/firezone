@@ -222,6 +222,10 @@ impl ClientOnGateway {
                 .insert(rid, ResourceOnGateway::new(resource), now, ttl);
         }
 
+        // A fresh authorization voids recently sent `no_authorization` events:
+        // if it gets revoked again, the client deserves a new event right away.
+        self.no_authorization_sent_at.clear();
+
         self.recalculate_filters();
     }
 
