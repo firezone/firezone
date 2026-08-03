@@ -234,6 +234,11 @@ pub mod authorization_required {
     /// that none of the Client's active authorizations cover, e.g. because it expired.
     /// Upon receiving the event, the Client discards its local authorization state for the
     /// corresponding resource so that the next packet requests a new authorization.
+    ///
+    /// The event names the denied flow's destination and protocol instead of a resource ID:
+    /// once an authorization expired or was revoked, the Gateway no longer knows which
+    /// resource the destination belonged to. The Client resolves the destination against its
+    /// own routing table, which is authoritative for which authorization produced the packet.
     pub fn event(dst: IpAddr, protocol: Protocol) -> Result<IpPacket> {
         let payload = serde_json::to_vec(&AuthorizationRequired { dst, protocol })
             .context("Failed to serialize `AuthorizationRequired` event")?;

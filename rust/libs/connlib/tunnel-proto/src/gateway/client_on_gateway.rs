@@ -605,10 +605,13 @@ impl ClientOnGateway {
             .matches(resource_ip, protocol.clone())
             .context(NoAuthorization(resource_ip))?;
 
+        // A failing filter is not a missing authorization:
+        // filters are synced via resource updates, not via authorizations,
+        // so requesting a new authorization would not resolve the mismatch.
         entry
             .filter
             .apply(protocol)
-            .context(NoAuthorization(resource_ip))?;
+            .context(NotAllowedResource(resource_ip))?;
 
         Ok(entry.resource_id)
     }
@@ -1502,6 +1505,25 @@ mod tests {
             authorization_required_event(&mut peer, udp_packet_to(other_client_tun_ipv4()), now)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn no_authorization_required_event_for_filter_denied_packet() {
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let now = Instant::now();
+
+        peer.add_resource(bar_cidr_resource(), None, now);
+
+        let denied_port = ip_packet::make::udp_packet(
+            client_tun_ipv4(),
+            bar_contained_ip(),
+            5401,
+            bar_allowed_port() + 1,
+            &[0u8; 8],
+        )
+        .unwrap();
+
+        assert!(authorization_required_event(&mut peer, denied_port, now).is_none());
     }
 
     #[test]
