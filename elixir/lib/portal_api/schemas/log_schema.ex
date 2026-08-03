@@ -309,13 +309,17 @@ defmodule PortalAPI.Schemas.Log do
         outer_src_ip: %Schema{
           type: :string,
           description: """
-          WireGuard endpoint IP of the initiator, on both entries of the flow.
+          WireGuard endpoint IP of the initiator, as observed by the reporting
+          side. The two entries of a flow disagree whenever NAT or a relay sits
+          between the peers.
           """
         },
         outer_dst_ip: %Schema{
           type: :string,
           description: """
-          WireGuard endpoint IP of the responder, on both entries of the flow.
+          WireGuard endpoint IP of the responder, as observed by the reporting
+          side. The two entries of a flow disagree whenever NAT or a relay sits
+          between the peers.
           """
         },
         outer_src_port: %Schema{type: :integer},
