@@ -75,12 +75,12 @@ Be wary of shortening it much for `tunnel-proto`: `-fork` re-merges the whole se
 The measurement is taken on the machine that runs it.
 A local run that gets luckier than CI writes a ceiling CI cannot meet, so re-run `coverage-check` before pushing.
 
-The individual steps remain available for doing this by hand:
+After growing and minimizing a corpus yourself, the remaining steps run individually; `update-baseline` records the measurement without the risk of truncating the committed file on a failed one:
 
 ```console
 mise run //rust/tests/fuzz:pack-corpus tunnel-proto
 mise run //rust/tests/fuzz:coverage tunnel-proto
-mise run -q //rust/tests/fuzz:coverage-summary tunnel-proto > expected-coverage/tunnel-proto.json
+mise run //rust/tests/fuzz:update-baseline tunnel-proto
 ```
 
 For a local browsable report:

@@ -88,7 +88,6 @@ run = '''
 set -euo pipefail
 
 target="$usage_target"
-baseline="expected-coverage/$target.json"
 
 if [ -n "${usage_libfuzzer_args:-}" ]; then
   # `usage` joins variadic arguments as a shell-escaped string.
@@ -111,14 +110,27 @@ else
   set -- "-fork=$fork" -max_total_time=1800
 fi
 
-before="$(cat "$baseline" 2>/dev/null || echo null)"
-
 # Each step consumes what the previous one wrote, so they are invoked in order
 # rather than declared as `depends`, which mise runs in parallel.
 mise run //rust/tests/fuzz:fuzz "$target" "$@"
 mise run //rust/tests/fuzz:cmin "$target"
 mise run //rust/tests/fuzz:pack-corpus "$target"
 mise run //rust/tests/fuzz:coverage "$target"
+mise run //rust/tests/fuzz:update-baseline "$target"
+'''
+
+[tasks.update-baseline]
+description = "Record the last coverage measurement as the target's committed baseline"
+shell = "bash -c"
+usage = 'arg "<target>"'
+raw = true
+run = '''
+set -euo pipefail
+
+target="$usage_target"
+baseline="expected-coverage/$target.json"
+
+before="$(cat "$baseline" 2>/dev/null || echo null)"
 
 # Write the baseline via a temporary so a failed measurement leaves the
 # committed one intact rather than truncating it.
