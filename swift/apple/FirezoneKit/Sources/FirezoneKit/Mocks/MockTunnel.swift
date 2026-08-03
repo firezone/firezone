@@ -37,7 +37,7 @@
     #endif
   }
 
-  /// Answers `getState` with the canned snapshot and reports a connected tunnel.
+  /// Answers `pollUpdates` with the canned snapshot and reports a connected tunnel.
   private final class MockTunnelSession: TunnelSessionProtocol {
     var status: NEVPNStatus { .connected }
 
@@ -64,19 +64,27 @@
       // Listed exhaustively (no `default`) so adding a `ProviderMessage` variant
       // fails to compile here and forces a decision about the mock's response.
       switch message {
-      case .getState(let currentHash):
+      case .pollUpdates(let request):
         do {
+          let state = ConnlibState(
+            resources: MockFixtures.resources,
+            connectedDevices: MockFixtures.connectedDevices,
+            isLogStreamingActive: false
+          )
+          let stateHash = try state.contentHash()
+          let stateChanged = stateHash != request.stateHash
+
           responseHandler(
-            try ConnlibState.encodeIfChanged(
-              resources: MockFixtures.resources,
-              connectedDevices: MockFixtures.connectedDevices,
-              unreachableResources: [],
-              isLogStreamingActive: false,
-              comparedTo: currentHash
+            try PropertyListEncoder().encode(
+              StatePollResponse(
+                state: stateChanged ? state : nil,
+                stateHash: stateChanged ? stateHash : nil,
+                notifications: []
+              )
             )
           )
         } catch {
-          Log.warning("MockTunnelSession: failed to encode ConnlibState: \(error)")
+          Log.warning("MockTunnelSession: failed to encode state updates: \(error)")
           responseHandler(nil)
         }
       case .setInternetResourceEnabled, .signOut, .clearLogs, .getLogFolderSize, .exportLogs,

@@ -28,8 +28,8 @@ public final class Store: ObservableObject {
   // Encapsulate Tunnel status here to make it easier for other components to observe
   @Published public private(set) var vpnStatus: NEVPNStatus?
 
-  // Hash for resource list optimisation
-  private var connlibStateHash = Data()
+  // Hash of the last tunnel state snapshot received from the network extension.
+  private var tunnelStateHash = Data()
 
   // User notifications
   @Published private(set) var decision: UNAuthorizationStatus?
@@ -613,7 +613,7 @@ public final class Store: ObservableObject {
 
       while !Task.isCancelled {
         do {
-          try await self.pollStateOnce()
+          try await self.pollUpdatesOnce()
           didReload = false
         } catch is CancellationError {
           break
@@ -650,7 +650,7 @@ public final class Store: ObservableObject {
     stateUpdateTask?.cancel()
     stateUpdateTask = nil
     resourceList = ResourceList.loading
-    connlibStateHash = Data()
+    tunnelStateHash = Data()
     connectedDevices.removeAll()
     Log.setStreamingActive(false)
   }
@@ -687,50 +687,35 @@ public final class Store: ObservableObject {
     }
   #endif
 
-  private func pollStateOnce() async throws {
+  private func pollUpdatesOnce() async throws {
     guard let session = try self.manager().session() else { return }
-    try await self.fetchState(session: session)
-  }
-
-  /// Fetches state from the tunnel provider, using hash-based optimisation.
-  ///
-  /// If the hash matches what the provider has, state is unchanged.
-  /// Otherwise, fetches and caches the new state.
-  ///
-  /// - Parameter session: The tunnel provider session to communicate with
-  /// - Throws: IPCClient.Error if IPC communication fails
-  private func fetchState(session: any TunnelSessionProtocol) async throws {
-    // Capture current hash before IPC call
-    let currentHash = self.connlibStateHash
-
-    // If no data returned, state hasn't changed - no update needed
-    guard let data = try await IPCClient.fetchState(session: session, currentHash: currentHash)
-    else {
-      return
-    }
+    let response = try await IPCClient.pollUpdates(
+      session: session,
+      currentHash: tunnelStateHash
+    )
 
     try Task.checkCancellation()
 
     guard vpnStatus == .connected else { return }
 
-    // Decode state and compute hash
-    let (state, hash) = try ConnlibState.decode(from: data)
+    if let state = response.state {
+      guard let stateHash = response.stateHash else {
+        throw IPCClient.Error.decodeIPCDataFailed
+      }
 
-    // Update both hash and resource list
-    self.connlibStateHash = hash
+      tunnelStateHash = stateHash
+      Log.setStreamingActive(state.isLogStreamingActive)
 
-    // Propagate log streaming state from the NE to the main app process
-    Log.setStreamingActive(state.isLogStreamingActive)
+      if let resources = state.resources {
+        resourceList = ResourceList.loaded(resources)
+      }
 
-    if let resources = state.resources {
-      resourceList = ResourceList.loaded(resources)
+      connectedDevices = state.connectedDevices
     }
 
-    connectedDevices = state.connectedDevices
-
     await showNotificationsForUnreachableResources(
-      unreachableResources: Set(state.unreachableResources),
-      resources: state.resources ?? []
+      unreachableResources: Set(response.notifications),
+      resources: resourceList.asArray()
     )
   }
 
