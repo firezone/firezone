@@ -29,6 +29,7 @@ defmodule PortalWeb.LiveTable do
   attr :row_patch, :any, default: nil, doc: "the function for generating patch path for each row"
   attr :row_click, :any, default: nil, doc: "fn(row) -> patch path for row click"
   attr :row_selected, :any, default: nil, doc: "fn(row) -> boolean indicating if row is selected"
+  attr :row_class, :any, default: nil, doc: "fn(row) -> additional classes for the table row"
 
   attr :row_item, :any,
     default: &Function.identity/1,
@@ -83,6 +84,7 @@ defmodule PortalWeb.LiveTable do
               patch={@row_patch}
               click={@row_click}
               selected={not is_nil(@row_selected) and @row_selected.(row)}
+              class={@row_class && @row_class.(row)}
               mapper={@row_item}
             />
           </tbody>
@@ -329,9 +331,20 @@ defmodule PortalWeb.LiveTable do
     """
   end
 
-  defp filter(%{filter: %{type: {:string, :websearch}}} = assigns) do
+  defp filter(%{filter: %{type: {:string, search_type}}} = assigns)
+       when search_type in [:websearch, :websearch_wide] do
+    assigns =
+      assign(
+        assigns,
+        :width_class,
+        if(search_type == :websearch_wide, do: "sm:w-80 lg:w-96", else: "sm:w-64")
+      )
+
     ~H"""
-    <div class="relative w-full sm:w-64 shrink-0" phx-feedback-for={@form[@filter.name].name}>
+    <div
+      class={["relative w-full shrink-0", @width_class]}
+      phx-feedback-for={@form[@filter.name].name}
+    >
       <.icon name="ri-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-subtle pointer-events-none" />
       <input
         type="text"
@@ -339,6 +352,73 @@ defmodule PortalWeb.LiveTable do
         id={@form[@filter.name].id}
         value={Phoenix.HTML.Form.normalize_value("text", @form[@filter.name].value)}
         placeholder={"Search by " <> @filter.title}
+        phx-debounce="300"
+        class={[
+          "w-full pl-8 pr-3 py-1.5 text-xs font-medium rounded border h-8",
+          "bg-input border-input-border text-heading",
+          "placeholder:text-muted placeholder:font-normal outline-none transition-colors",
+          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
+          @form[@filter.name].errors != [] && "border-rose-400"
+        ]}
+      />
+      <.error
+        :for={msg <- @form[@filter.name].errors}
+        data-validation-error-for={@form[@filter.name].name}
+      >
+        {msg}
+      </.error>
+    </div>
+    """
+  end
+
+  defp filter(%{filter: %{type: :integer}} = assigns) do
+    ~H"""
+    <div class="relative w-24 shrink-0" phx-feedback-for={@form[@filter.name].name}>
+      <input
+        type="number"
+        name={@form[@filter.name].name}
+        id={@form[@filter.name].id}
+        value={Phoenix.HTML.Form.normalize_value("number", @form[@filter.name].value)}
+        min="0"
+        max="65535"
+        step="1"
+        inputmode="numeric"
+        placeholder="Port"
+        aria-label={@filter.title}
+        phx-debounce="300"
+        class={[
+          "w-full px-3 py-1.5 text-xs font-medium rounded border h-8",
+          "bg-input border-input-border text-heading",
+          "placeholder:text-muted placeholder:font-normal outline-none transition-colors",
+          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
+          @form[@filter.name].errors != [] && "border-rose-400"
+        ]}
+      />
+      <.error
+        :for={msg <- @form[@filter.name].errors}
+        data-validation-error-for={@form[@filter.name].name}
+      >
+        {msg}
+      </.error>
+    </div>
+    """
+  end
+
+  defp filter(%{filter: %{type: {:string, :protocol_port}}} = assigns) do
+    ~H"""
+    <div class="relative w-36 shrink-0" phx-feedback-for={@form[@filter.name].name}>
+      <.icon name="ri-route-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-subtle pointer-events-none" />
+      <input
+        type="text"
+        name={@form[@filter.name].name}
+        id={@form[@filter.name].id}
+        value={Phoenix.HTML.Form.normalize_value("text", @form[@filter.name].value)}
+        placeholder="Port or tcp/443"
+        aria-label={@filter.title}
+        title="Enter a port, protocol, or protocol/port pair: 443, tcp, or udp/53"
+        autocapitalize="none"
+        autocomplete="off"
+        spellcheck="false"
         phx-debounce="300"
         class={[
           "w-full pl-8 pr-3 py-1.5 text-xs font-medium rounded border h-8",
@@ -1004,6 +1084,16 @@ defmodule PortalWeb.LiveTable do
 
   defp cast_filter(value, :boolean) when value in ["true", true], do: {:ok, true}
   defp cast_filter(value, :boolean) when value in ["false", false], do: {:ok, false}
+  defp cast_filter("", :integer), do: {:ok, nil}
+  defp cast_filter(value, :integer) when is_integer(value), do: {:ok, value}
+
+  defp cast_filter(value, :integer) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} -> {:ok, integer}
+      _ -> {:error, :invalid_filter}
+    end
+  end
+
   defp cast_filter(value, _type), do: cast_filter(value)
 
   defp cast_filter(%{"from" => from_raw, "to" => to_raw}) do

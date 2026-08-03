@@ -497,12 +497,18 @@ defmodule PortalWeb.ClientsTest do
     } do
       client = client_fixture(account: account, actor: actor)
 
-      {:ok, _lv, html} =
+      {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/clients/#{client.id}?tab=authorizations")
 
       assert html =~ "No recent authorizations"
+
+      assert has_element?(
+               lv,
+               "[data-authorization-flow-logs-notice] a[href='#{~p"/#{account}/logs/flow_logs"}']",
+               "flow logs"
+             )
     end
 
     test "Authorizations tab renders resource and group name", %{

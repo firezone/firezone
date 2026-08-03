@@ -184,8 +184,16 @@ defmodule PortalAPI.Schemas.Log do
           Which of the two endpoints reported this entry: `initiator` means
           `initiator_device_id` wrote it, `responder` means
           `responder_device_id` did. Gateways always report `responder`;
-          Clients report either role.
+            Clients report either role.
           """
+        },
+        policy_authorization_id: %Schema{
+          type: :string,
+          description: "ID of the Policy Authorization that permitted the flow."
+        },
+        policy_id: %Schema{
+          type: :string,
+          description: "ID of the Policy that permitted the flow."
         },
         protocol: %Schema{
           type: :string,
@@ -204,12 +212,24 @@ defmodule PortalAPI.Schemas.Log do
         flow_end: %Schema{
           type: :string,
           format: :"date-time",
-          description: "RFC 3339 timestamp of when the flow ended."
+          nullable: true,
+          description: "RFC 3339 timestamp of when the flow ended. Null while the flow is open."
         },
         last_packet: %Schema{
           type: :string,
           format: :"date-time",
-          description: "When the last packet of the flow was seen."
+          nullable: true,
+          description: "When the last packet was seen. Null while the flow is open."
+        },
+        authorized_at: %Schema{
+          type: :string,
+          format: :"date-time",
+          description: "When access to the Resource was authorized."
+        },
+        authorization_expires_at: %Schema{
+          type: :string,
+          format: :"date-time",
+          description: "When the Policy Authorization expires."
         },
         initiator_auth_provider_id: %Schema{
           type: :string,
@@ -229,9 +249,48 @@ defmodule PortalAPI.Schemas.Log do
         },
         initiator_actor_name: %Schema{type: :string, nullable: true},
         initiator_actor_email: %Schema{type: :string, nullable: true},
+        initiator_client_version: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Firezone Client version reported by the initiating Client."
+        },
+        initiator_device_os_name: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Operating system reported by the initiating Client."
+        },
+        initiator_device_os_version: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Operating system version reported by the initiating Client."
+        },
+        initiator_device_serial: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Device serial number reported by the initiating Client."
+        },
+        initiator_device_uuid: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Device UUID reported by the initiating Client."
+        },
+        initiator_device_identifier_for_vendor: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Vendor identifier reported by the initiating Client."
+        },
+        initiator_device_firebase_installation_id: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Firebase installation ID reported by the initiating Client."
+        },
         resource_id: %Schema{type: :string, description: "ID of the Resource accessed."},
         resource_name: %Schema{type: :string},
-        resource_address: %Schema{type: :string},
+        resource_address: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Resource address, when the Resource type has one."
+        },
         inner_src_ip: %Schema{
           type: :string,
           description: "Tunnel IP of the initiator, on both entries of the flow."
@@ -263,19 +322,27 @@ defmodule PortalAPI.Schemas.Log do
         outer_dst_port: %Schema{type: :integer},
         rx_packets: %Schema{
           type: :integer,
-          description: "Packets sent responder-to-initiator, as counted by the reporting side."
+          nullable: true,
+          description:
+            "Packets sent responder-to-initiator, as counted by the reporting side. Null while the flow is open."
         },
         tx_packets: %Schema{
           type: :integer,
-          description: "Packets sent initiator-to-responder, as counted by the reporting side."
+          nullable: true,
+          description:
+            "Packets sent initiator-to-responder, as counted by the reporting side. Null while the flow is open."
         },
         rx_bytes: %Schema{
           type: :integer,
-          description: "Bytes sent responder-to-initiator, as counted by the reporting side."
+          nullable: true,
+          description:
+            "Bytes sent responder-to-initiator, as counted by the reporting side. Null while the flow is open."
         },
         tx_bytes: %Schema{
           type: :integer,
-          description: "Bytes sent initiator-to-responder, as counted by the reporting side."
+          nullable: true,
+          description:
+            "Bytes sent initiator-to-responder, as counted by the reporting side. Null while the flow is open."
         }
       },
       required: [
@@ -285,10 +352,14 @@ defmodule PortalAPI.Schemas.Log do
         :initiator_device_id,
         :responder_device_id,
         :role,
+        :policy_authorization_id,
+        :policy_id,
         :protocol,
         :flow_start,
         :flow_end,
         :last_packet,
+        :authorized_at,
+        :authorization_expires_at,
         :resource_id,
         :resource_name,
         :resource_address,
@@ -312,11 +383,18 @@ defmodule PortalAPI.Schemas.Log do
         "initiator_device_id" => "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "responder_device_id" => "9d3a1c40-5f2b-4c8e-9a71-0b6d4e2f8c13",
         "role" => "responder",
+        "policy_authorization_id" => "6fa1d58f-0289-42e6-a3ba-7edfa46ee2d5",
+        "policy_id" => "46f997d1-77c8-4936-8655-8f050dffbfa4",
         "protocol" => "tcp",
         "flow_start" => "2026-05-26T12:30:00.000Z",
         "flow_end" => "2026-05-26T12:34:00.000Z",
         "last_packet" => "2026-05-26T12:33:58.000Z",
+        "authorized_at" => "2026-05-26T12:29:00.000Z",
+        "authorization_expires_at" => "2026-05-26T20:29:00.000Z",
         "initiator_actor_email" => "user@example.com",
+        "initiator_client_version" => "1.5.1",
+        "initiator_device_os_name" => "macOS",
+        "initiator_device_os_version" => "15.5",
         "resource_id" => "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "resource_name" => "GitLab",
         "resource_address" => "gitlab.company.com",

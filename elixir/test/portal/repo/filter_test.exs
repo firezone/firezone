@@ -110,6 +110,7 @@ defmodule Portal.Repo.FilterTest do
             {{:string, :email}, "foo@example.com"},
             {{:string, :phone_number}, "+15671112233"},
             {{:string, :uuid}, Ecto.UUID.generate()},
+            {{:string, :protocol_port}, "tcp/443"},
             {:list, ["a", "b"], "a"},
             {:list, ["a", "b"], "b"},
             {{:range, :datetime}, %Filter.Range{from: DateTime.utc_now()}},

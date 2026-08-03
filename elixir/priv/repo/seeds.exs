@@ -18,6 +18,7 @@ defmodule Portal.Repo.Seeds do
     Entra,
     ExternalIdentity,
     Device,
+    FlowLog,
     PolicyAuthorization,
     Google,
     Group,
@@ -253,6 +254,259 @@ defmodule Portal.Repo.Seeds do
       |> Repo.update!()
 
     {:ok, client}
+  end
+
+  defp create_seed_policy_authorization(
+         subject,
+         initiating_device,
+         receiving_device,
+         resource,
+         policy,
+         membership
+       ) do
+    %PolicyAuthorization{
+      initiating_device_id: initiating_device.id,
+      receiving_device_id: receiving_device.id,
+      resource_id: resource.id,
+      policy_id: policy.id,
+      membership_id: membership && membership.id,
+      account_id: subject.account.id,
+      token_id: subject.credential.id,
+      initiator_remote_ip: {127, 0, 0, 1},
+      initiator_user_agent: @ua_ios,
+      receiver_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}, netmask: nil},
+      expires_at: subject.expires_at || DateTime.add(DateTime.utc_now(), 1, :hour)
+    }
+    |> Repo.insert!()
+  end
+
+  # Seeds logs from each device rather than pre-aggregated flows. The recent rows
+  # deliberately cover the states the Flow Logs UI needs to communicate:
+  # paired TCP/UDP logs, an open initiator log, a responder-only log,
+  # an invalid-looking interval caused by clock skew, and a one-to-many
+  # overlap that must be labeled ambiguous rather than silently rolled up.
+  defp seed_flow_logs(account, actor, initiator, auth_provider_id, contexts) do
+    now = DateTime.utc_now()
+
+    base = %{
+      account: account,
+      actor: actor,
+      initiator: initiator,
+      auth_provider_id: auth_provider_id,
+      inserted_at: now
+    }
+
+    google = Map.merge(base, contexts.google)
+    httpbin = Map.merge(base, contexts.httpbin)
+    network = Map.merge(base, contexts.network)
+    iperf = Map.merge(base, contexts.iperf)
+
+    open_report =
+      seed_flow_log_row(google, %{
+        role: :initiator,
+        protocol: :tcp,
+        inner_src_port: 54_001,
+        inner_dst_port: 443,
+        flow_start: DateTime.add(now, -2, :minute),
+        flow_end: nil
+      })
+
+    recent_tcp =
+      paired_seed_flow_logs(httpbin, %{
+        protocol: :tcp,
+        inner_src_port: 54_002,
+        inner_dst_port: 443,
+        flow_start: DateTime.add(now, -8, :minute),
+        flow_end: DateTime.add(now, -3, :minute),
+        tx_packets: 6_240,
+        rx_packets: 5_980,
+        tx_bytes: 8_400_000,
+        rx_bytes: 42_700_000
+      })
+
+    recent_udp =
+      paired_seed_flow_logs(google, %{
+        protocol: :udp,
+        inner_src_port: 54_003,
+        inner_dst_port: 53,
+        flow_start: DateTime.add(now, -14, :minute),
+        flow_end: DateTime.add(now, -12, :minute),
+        tx_packets: 24,
+        rx_packets: 22,
+        tx_bytes: 2_480,
+        rx_bytes: 9_720
+      })
+
+    responder_only =
+      seed_flow_log_row(network, %{
+        role: :responder,
+        protocol: :tcp,
+        inner_src_port: 54_004,
+        inner_dst_port: 22,
+        flow_start: DateTime.add(now, -22, :minute),
+        flow_end: DateTime.add(now, -20, :minute)
+      })
+
+    clock_skewed =
+      seed_flow_log_row(iperf, %{
+        role: :initiator,
+        protocol: :tcp,
+        inner_src_port: 54_005,
+        inner_dst_port: 5_201,
+        flow_start: DateTime.add(now, -30, :minute),
+        flow_end: DateTime.add(now, -31, :minute),
+        tx_packets: 8_440,
+        rx_packets: 8_120,
+        tx_bytes: 640_000_000,
+        rx_bytes: 612_000_000
+      })
+
+    # The initiator sees one long flow while the responder sees two sequential
+    # windows for the same tuple. Both overlap the initiator window, so neither
+    # responder can be selected as a guaranteed match from the current fields.
+    ambiguous_attrs = %{
+      protocol: :tcp,
+      inner_src_port: 54_006,
+      inner_dst_port: 80
+    }
+
+    ambiguous = [
+      seed_flow_log_row(
+        httpbin,
+        Map.merge(ambiguous_attrs, %{
+          role: :initiator,
+          flow_start: DateTime.add(now, -55, :minute),
+          flow_end: DateTime.add(now, -30, :minute),
+          tx_packets: 940,
+          rx_packets: 860,
+          tx_bytes: 2_800_000,
+          rx_bytes: 18_600_000
+        })
+      ),
+      seed_flow_log_row(
+        httpbin,
+        Map.merge(ambiguous_attrs, %{
+          role: :responder,
+          flow_start: DateTime.add(now, -54, :minute),
+          flow_end: DateTime.add(now, -43, :minute),
+          tx_packets: 410,
+          rx_packets: 380,
+          tx_bytes: 1_200_000,
+          rx_bytes: 8_100_000
+        })
+      ),
+      seed_flow_log_row(
+        httpbin,
+        Map.merge(ambiguous_attrs, %{
+          role: :responder,
+          flow_start: DateTime.add(now, -42, :minute),
+          flow_end: DateTime.add(now, -29, :minute),
+          tx_packets: 525,
+          rx_packets: 475,
+          tx_bytes: 1_580_000,
+          rx_bytes: 10_420_000
+        })
+      )
+    ]
+
+    historical =
+      1..6
+      |> Enum.flat_map(fn i ->
+        context = Enum.at([google, httpbin, iperf], rem(i - 1, 3))
+        protocol = if rem(i, 3) == 0, do: :udp, else: :tcp
+        started_at = DateTime.add(now, -i * 8, :hour)
+
+        paired_seed_flow_logs(context, %{
+          protocol: protocol,
+          inner_src_port: 55_000 + i,
+          inner_dst_port: if(protocol == :udp, do: 5_201, else: context.default_port),
+          flow_start: started_at,
+          flow_end: DateTime.add(started_at, 90 + i * 20, :second),
+          tx_packets: 80 * i,
+          rx_packets: 65 * i,
+          tx_bytes: 240_000 * i,
+          rx_bytes: 1_100_000 * i
+        })
+      end)
+
+    rows =
+      [open_report]
+      |> Kernel.++(recent_tcp)
+      |> Kernel.++(recent_udp)
+      |> Kernel.++([responder_only, clock_skewed])
+      |> Kernel.++(ambiguous)
+      |> Kernel.++(historical)
+
+    {count, _} = Repo.insert_all(FlowLog, rows)
+    IO.puts("Created #{count} flow logs")
+    IO.puts("")
+  end
+
+  defp paired_seed_flow_logs(context, attrs) do
+    initiator = seed_flow_log_row(context, Map.put(attrs, :role, :initiator))
+
+    responder_attrs =
+      attrs
+      |> Map.put(:role, :responder)
+      |> Map.update!(:flow_start, &DateTime.add(&1, 2, :second))
+      |> Map.update!(:flow_end, &DateTime.add(&1, 3, :second))
+      |> Map.put(:tx_packets, max(Map.get(attrs, :tx_packets, 120) - 2, 0))
+      |> Map.put(:rx_packets, max(Map.get(attrs, :rx_packets, 96) - 2, 0))
+      |> Map.put(:tx_bytes, max(Map.get(attrs, :tx_bytes, 600_000) - 1_200, 0))
+      |> Map.put(:rx_bytes, max(Map.get(attrs, :rx_bytes, 1_800_000) - 2_400, 0))
+
+    [initiator, seed_flow_log_row(context, responder_attrs)]
+  end
+
+  defp seed_flow_log_row(context, attrs) do
+    flow_end = Map.fetch!(attrs, :flow_end)
+    closed? = not is_nil(flow_end)
+
+    %{
+      account_id: context.account.id,
+      log_id: LogId.build_flow_log(),
+      initiator_device_id: context.initiator.id,
+      responder_device_id: context.authorization.receiving_device_id,
+      role: Map.fetch!(attrs, :role),
+      policy_authorization_id: context.authorization.id,
+      policy_id: context.authorization.policy_id,
+      resource_id: context.resource.id,
+      resource_name: context.resource.name,
+      resource_address: context.resource.address,
+      authorized_at: context.authorization.inserted_at,
+      authorization_expires_at: context.authorization.expires_at,
+      initiator_actor_id: context.actor.id,
+      initiator_actor_name: context.actor.name,
+      initiator_actor_email: context.actor.email,
+      initiator_auth_provider_id: context.auth_provider_id,
+      initiator_client_version: context.initiator.last_seen_version,
+      initiator_device_os_name: "iOS",
+      initiator_device_os_version: "18.7.7",
+      initiator_device_serial: context.initiator.device_serial,
+      initiator_device_uuid: context.initiator.device_uuid,
+      initiator_device_identifier_for_vendor: context.initiator.identifier_for_vendor,
+      initiator_device_firebase_installation_id: context.initiator.firebase_installation_id,
+      protocol: Map.fetch!(attrs, :protocol),
+      inner_src_ip: context.initiator.ipv4,
+      inner_src_port: Map.fetch!(attrs, :inner_src_port),
+      inner_dst_ip: context.inner_dst_ip,
+      inner_dst_port: Map.fetch!(attrs, :inner_dst_port),
+      domain: context.domain,
+      # connlib normalizes both logs to initiator -> responder, including the
+      # WireGuard tuple, so paired logs intentionally carry the same values.
+      outer_src_ip: {203, 0, 113, 44},
+      outer_src_port: 62_000,
+      outer_dst_ip: {189, 172, 73, 153},
+      outer_dst_port: 51_820,
+      flow_start: Map.fetch!(attrs, :flow_start),
+      flow_end: flow_end,
+      last_packet: if(closed?, do: Map.get(attrs, :last_packet, DateTime.add(flow_end, -1, :second))),
+      tx_packets: if(closed?, do: Map.get(attrs, :tx_packets, 120)),
+      rx_packets: if(closed?, do: Map.get(attrs, :rx_packets, 96)),
+      tx_bytes: if(closed?, do: Map.get(attrs, :tx_bytes, 600_000)),
+      rx_bytes: if(closed?, do: Map.get(attrs, :rx_bytes, 1_800_000)),
+      inserted_at: context.inserted_at
+    }
   end
 
   # Seeds a mix of change_logs, session_logs, and api_request_logs so the
@@ -1898,7 +2152,7 @@ defmodule Portal.Repo.Seeds do
       {:ok, policy}
     end
 
-    {:ok, policy} =
+    {:ok, google_policy} =
       create_policy.(
         %{
           description: "All Access To Google",
@@ -1968,7 +2222,7 @@ defmodule Portal.Repo.Seeds do
         admin_subject
       )
 
-    {:ok, _} =
+    {:ok, cidr_policy} =
       create_policy.(
         %{
           description: "All Access To Network",
@@ -1988,7 +2242,7 @@ defmodule Portal.Repo.Seeds do
         admin_subject
       )
 
-    {:ok, _} =
+    {:ok, httpbin_policy} =
       create_policy.(
         %{
           description: "All Access To **.httpbin",
@@ -2028,7 +2282,7 @@ defmodule Portal.Repo.Seeds do
         admin_subject
       )
 
-    {:ok, _} =
+    {:ok, iperf_policy} =
       create_policy.(
         %{
           description: "All Access To iperf3.test",
@@ -2075,22 +2329,76 @@ defmodule Portal.Repo.Seeds do
         actor_id: unprivileged_actor.id
       )
 
-    # Create policy_authorization directly without context module
-    _policy_authorization =
-      %PolicyAuthorization{
-        initiating_device_id: user_iphone.id,
-        receiving_device_id: gateway1.id,
-        resource_id: cidr_resource.id,
-        policy_id: policy.id,
-        membership_id: membership.id,
-        account_id: unprivileged_subject.account.id,
-        token_id: unprivileged_subject.credential.id,
-        initiator_remote_ip: {127, 0, 0, 1},
-        initiator_user_agent: @ua_ios,
-        receiver_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}, netmask: nil},
-        expires_at: unprivileged_subject.expires_at || DateTime.utc_now() |> DateTime.add(3600)
+    cidr_authorization =
+      create_seed_policy_authorization(
+        unprivileged_subject,
+        user_iphone,
+        gateway1,
+        cidr_resource,
+        cidr_policy,
+        membership
+      )
+
+    google_authorization =
+      create_seed_policy_authorization(
+        unprivileged_subject,
+        user_iphone,
+        gateway1,
+        dns_google_resource,
+        google_policy,
+        nil
+      )
+
+    httpbin_authorization =
+      create_seed_policy_authorization(
+        unprivileged_subject,
+        user_iphone,
+        gateway1,
+        dns_httpbin_resource,
+        httpbin_policy,
+        nil
+      )
+
+    iperf_authorization =
+      create_seed_policy_authorization(
+        unprivileged_subject,
+        user_iphone,
+        gateway1,
+        iperf_resource,
+        iperf_policy,
+        nil
+      )
+
+    seed_flow_logs(account, unprivileged_actor, user_iphone, userpass_provider.id, %{
+      google: %{
+        authorization: google_authorization,
+        resource: dns_google_resource,
+        inner_dst_ip: {100, 96, 0, 10},
+        domain: dns_google_resource.address,
+        default_port: 443
+      },
+      httpbin: %{
+        authorization: httpbin_authorization,
+        resource: dns_httpbin_resource,
+        inner_dst_ip: {100, 96, 0, 20},
+        domain: "api.httpbin",
+        default_port: 443
+      },
+      network: %{
+        authorization: cidr_authorization,
+        resource: cidr_resource,
+        inner_dst_ip: {172, 20, 10, 25},
+        domain: nil,
+        default_port: 22
+      },
+      iperf: %{
+        authorization: iperf_authorization,
+        resource: iperf_resource,
+        inner_dst_ip: {100, 96, 0, 30},
+        domain: iperf_resource.address,
+        default_port: 5_201
       }
-      |> Repo.insert!()
+    })
 
     # Populate the audit log tables so /logs pages have realistic data on
     # first boot. Uses a spread of recent timestamps across the seeded

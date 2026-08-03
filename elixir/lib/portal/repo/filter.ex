@@ -30,7 +30,10 @@ defmodule Portal.Repo.Filter do
 
   @type numeric_type :: :integer | :number
   @type datetime_type :: :date | :time | :datetime
-  @type binary_type :: :string | {:string, :email | :phone_number | :uuid | :websearch | :select}
+  @type binary_type ::
+          :string
+          | {:string,
+             :email | :phone_number | :uuid | :websearch | :websearch_wide | :protocol_port | :select}
   @type range_type :: {:range, numeric_type() | datetime_type()}
   @type type ::
           :boolean
@@ -242,6 +245,8 @@ defmodule Portal.Repo.Filter do
   defp value_type_valid?({:string, :email}, value), do: is_binary(value)
   defp value_type_valid?({:string, :phone_number}, value), do: is_binary(value)
   defp value_type_valid?({:string, :websearch}, value), do: is_binary(value)
+  defp value_type_valid?({:string, :websearch_wide}, value), do: is_binary(value)
+  defp value_type_valid?({:string, :protocol_port}, value), do: is_binary(value)
   defp value_type_valid?({:string, :select}, value), do: is_binary(value)
   defp value_type_valid?({:string, :uuid}, value), do: is_binary(value)
   defp value_type_valid?(:string, value), do: is_binary(value)

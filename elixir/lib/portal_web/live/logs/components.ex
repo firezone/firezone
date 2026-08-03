@@ -105,6 +105,53 @@ defmodule PortalWeb.Logs.Components do
 
   def format_ip(other), do: to_string(other)
 
+  @doc "Renders an initiating Client and its outer source IP."
+  attr :device_name, :string, required: true
+  attr :outer_src_ip, :any, required: true
+
+  def flow_client_cell(assigns) do
+    ~H"""
+    <div class="min-w-0">
+      <div class="truncate text-xs text-[var(--text-primary)]">{@device_name}</div>
+      <div class="truncate font-mono text-xs text-[var(--text-tertiary)]">
+        {format_ip(@outer_src_ip) || "-"}
+      </div>
+    </div>
+    """
+  end
+
+  @doc "Renders a Resource and its protocol/application destination."
+  attr :name, :string, required: true
+  attr :domain, :string, default: nil
+  attr :protocol, :atom, required: true
+  attr :ip, :any, required: true
+  attr :port, :integer, required: true
+
+  def flow_resource_cell(assigns) do
+    assigns = assign(assigns, :endpoint, format_endpoint(assigns.domain || assigns.ip, assigns.port))
+
+    ~H"""
+    <div class="min-w-0">
+      <div class="truncate text-xs text-[var(--text-primary)]">{@name}</div>
+      <div class="flex min-w-0 items-center gap-1.5 font-mono text-xs text-[var(--text-tertiary)]">
+        <span class="shrink-0 uppercase">{@protocol}</span>
+        <span class="shrink-0">·</span>
+        <span class="truncate">{@endpoint}</span>
+      </div>
+    </div>
+    """
+  end
+
+  def format_endpoint(ip, port) do
+    ip = format_ip(ip) || "-"
+
+    if String.contains?(ip, ":") do
+      "[#{ip}]:#{port}"
+    else
+      "#{ip}:#{port}"
+    end
+  end
+
   @doc """
   Renders a colored rectangular badge for an insert/update/delete operation.
   """
