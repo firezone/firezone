@@ -222,7 +222,10 @@ impl GatewayState {
 
                 Ok(Some(packet))
             }
-            TranslateOutboundResult::IcmpError(reply) => {
+            TranslateOutboundResult::IcmpError {
+                reply,
+                authorization_required,
+            } => {
                 flow_tracker::record_icmp_error(&reply);
 
                 encrypt_packet(
@@ -232,6 +235,16 @@ impl GatewayState {
                     &mut self.buffered_transmits,
                     now,
                 )?;
+
+                if let Some(event) = authorization_required {
+                    encrypt_packet(
+                        event,
+                        cid,
+                        &mut self.node,
+                        &mut self.buffered_transmits,
+                        now,
+                    )?;
+                }
 
                 Ok(None)
             }

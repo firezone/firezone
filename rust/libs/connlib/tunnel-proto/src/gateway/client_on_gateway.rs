@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::net::{IpAddr, Ipv4Addr};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
@@ -17,7 +17,9 @@ use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken};
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
-use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp};
+use crate::{
+    GatewayEvent, IpConfig, NoAuthorization, NotAllowedResource, NotClientIp, p2p_control,
+};
 
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
@@ -39,12 +41,35 @@ pub struct ClientOnGateway {
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
     nat_table: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
+
+    /// When we last told the client that it lacks an authorization for a given destination.
+    ///
+    /// The client is expected to react to a single [`p2p_control::authorization_required`]
+    /// event but its delivery is unreliable.
+    /// Retransmissions are driven by the client's own traffic:
+    /// every packet for an unauthorized destination re-sends the event,
+    /// throttled to one per destination per [`AUTHORIZATION_REQUIRED_THROTTLE`].
+    authorization_required_sent_at: BTreeMap<IpAddr, Instant>,
 }
+
+/// How long we wait before re-sending a [`p2p_control::authorization_required`] event for the same destination.
+///
+/// Mirrors the throttle the client applies to its authorization requests.
+const AUTHORIZATION_REQUIRED_THROTTLE: Duration = Duration::from_secs(2);
+
+/// Upper bound on the number of destinations we track for [`p2p_control::authorization_required`] events.
+///
+/// Bounds the memory used by a client that sprays packets across many unauthorized destinations.
+const MAX_TRACKED_AUTHORIZATION_REQUIRED_EVENTS: usize = 1000;
 
 #[derive(Debug, PartialEq)]
 pub enum TranslateOutboundResult {
     Send(IpPacket),
-    IcmpError(IpPacket),
+    IcmpError {
+        reply: IpPacket,
+        /// Tells the client to request a new authorization, if we rejected the packet because we don't have one.
+        authorization_required: Option<IpPacket>,
+    },
 }
 
 impl ClientOnGateway {
@@ -64,6 +89,7 @@ impl ClientOnGateway {
             nat_table: Default::default(),
             buffered_events: Default::default(),
             internet_resource_enabled: None,
+            authorization_required_sent_at: Default::default(),
         }
     }
 
@@ -150,6 +176,8 @@ impl ClientOnGateway {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         self.nat_table.handle_timeout(now);
         self.resources.handle_timeout(now);
+        self.authorization_required_sent_at
+            .retain(|_, sent_at| now.duration_since(*sent_at) < AUTHORIZATION_REQUIRED_THROTTLE);
 
         let cid = self.id;
         let mut any_expired = false;
@@ -330,12 +358,60 @@ impl ClientOnGateway {
                 None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
             };
 
-            return Ok(TranslateOutboundResult::IcmpError(reply));
+            let authorization_required = error
+                .any_is::<NoAuthorization>()
+                .then(|| self.make_authorization_required_event(&packet, now))
+                .flatten();
+
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply,
+                authorization_required,
+            });
         }
 
         let result = self.transform_network_to_tun(packet, now)?;
 
         Ok(result)
+    }
+
+    /// Construct a [`p2p_control::authorization_required`] event for the given denied packet.
+    ///
+    /// Returns `None` if the packet's protocol cannot be represented in the event or if we
+    /// recently sent one for the same destination.
+    fn make_authorization_required_event(
+        &mut self,
+        packet: &IpPacket,
+        now: Instant,
+    ) -> Option<IpPacket> {
+        let dst = packet.destination();
+        let protocol = packet.destination_protocol().ok()?.into();
+
+        match self.authorization_required_sent_at.get_mut(&dst) {
+            Some(sent_at) => {
+                if now.duration_since(*sent_at) < AUTHORIZATION_REQUIRED_THROTTLE {
+                    return None;
+                }
+
+                *sent_at = now;
+            }
+            None => {
+                if self.authorization_required_sent_at.len()
+                    >= MAX_TRACKED_AUTHORIZATION_REQUIRED_EVENTS
+                {
+                    return None;
+                }
+
+                self.authorization_required_sent_at.insert(dst, now);
+            }
+        }
+
+        tracing::debug!(cid = %self.id, %dst, "Requesting re-authorization from client");
+
+        p2p_control::authorization_required::event(dst, protocol)
+            .inspect_err(|e| {
+                tracing::debug!("Failed to create `AuthorizationRequired` event: {e:#}")
+            })
+            .ok()
     }
 
     pub fn translate_inbound(
@@ -390,15 +466,17 @@ impl ClientOnGateway {
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             tracing::debug!(%dst, "No translation entry");
 
-            return Ok(TranslateOutboundResult::IcmpError(
-                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-            ));
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                authorization_required: None,
+            });
         };
 
         let Some(resolved_ip) = state.resolved_ip else {
-            return Ok(TranslateOutboundResult::IcmpError(
-                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-            ));
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                authorization_required: None,
+            });
         };
 
         if resolved_ip.is_ipv4() != dst.is_ipv4() {
@@ -408,9 +486,10 @@ impl ClientOnGateway {
                 "Cannot translate between IP versions"
             );
 
-            return Ok(TranslateOutboundResult::IcmpError(
-                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-            ));
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                authorization_required: None,
+            });
         }
 
         flow_tracker::record_domain(state.domain.clone());
@@ -524,12 +603,12 @@ impl ClientOnGateway {
         let entry = self
             .routing_table
             .matches(resource_ip, protocol.clone())
-            .context(NotAllowedResource(resource_ip))?;
+            .context(NoAuthorization(resource_ip))?;
 
         entry
             .filter
             .apply(protocol)
-            .context(NotAllowedResource(resource_ip))?;
+            .context(NoAuthorization(resource_ip))?;
 
         Ok(entry.resource_id)
     }
@@ -891,7 +970,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::IcmpError(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -905,7 +984,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::IcmpError(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -955,7 +1034,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::IcmpError(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -986,7 +1065,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(request, Instant::now()).unwrap(),
-            TranslateOutboundResult::IcmpError(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
     }
 
@@ -1247,7 +1326,7 @@ mod tests {
         )
         .unwrap();
 
-        let TranslateOutboundResult::IcmpError(packet) =
+        let TranslateOutboundResult::IcmpError { reply: packet, .. } =
             peer.translate_outbound(request, now).unwrap()
         else {
             panic!("Bad translation result")
@@ -1360,6 +1439,107 @@ mod tests {
         assert_eq!(error.source().to_string(), "100.64.0.1");
         assert_eq!(error.destination().to_string(), "100.96.0.1");
         assert_eq!(error.proto().to_string(), "ICMP");
+    }
+
+    #[test]
+    fn sends_authorization_required_event_when_authorization_expires() {
+        let _guard = logging::test("trace");
+
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let now = Instant::now();
+        let expires_at = now + Duration::from_secs(10);
+
+        peer.add_resource(bar_cidr_resource(), Some(expires_at), now);
+
+        assert!(matches!(
+            peer.translate_outbound(udp_packet_to(bar_contained_ip()), now)
+                .unwrap(),
+            TranslateOutboundResult::Send(_)
+        ));
+
+        peer.handle_timeout(expires_at);
+
+        let event =
+            authorization_required_event(&mut peer, udp_packet_to(bar_contained_ip()), expires_at)
+                .expect("expired authorization should produce an event");
+        let event = p2p_control::authorization_required::decode(event.as_fz_p2p_control().unwrap())
+            .unwrap();
+
+        assert_eq!(event.dst, IpAddr::from(bar_contained_ip()));
+        assert_eq!(
+            event.protocol,
+            p2p_control::authorization_required::Protocol::Udp {
+                dst_port: bar_allowed_port()
+            }
+        );
+    }
+
+    #[test]
+    fn throttles_authorization_required_events_per_destination() {
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut now = Instant::now();
+
+        let dst1 = bar_contained_ip();
+        let dst2 = "10.0.0.2".parse::<Ipv4Addr>().unwrap();
+
+        assert!(authorization_required_event(&mut peer, udp_packet_to(dst1), now).is_some());
+        assert!(authorization_required_event(&mut peer, udp_packet_to(dst1), now).is_none());
+        assert!(authorization_required_event(&mut peer, udp_packet_to(dst2), now).is_some());
+
+        now += AUTHORIZATION_REQUIRED_THROTTLE;
+
+        assert!(authorization_required_event(&mut peer, udp_packet_to(dst1), now).is_some());
+    }
+
+    #[test]
+    fn no_authorization_required_event_for_traffic_to_another_client() {
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let now = Instant::now();
+
+        peer.add_resource(internet_resource(), None, now);
+
+        assert!(
+            authorization_required_event(&mut peer, udp_packet_to(other_client_tun_ipv4()), now)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn no_authorization_required_event_for_spoofed_source() {
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let now = Instant::now();
+
+        let spoofed = ip_packet::make::udp_packet(
+            other_client_tun_ipv4(),
+            bar_contained_ip(),
+            5401,
+            bar_allowed_port(),
+            &[0u8; 8],
+        )
+        .unwrap();
+
+        assert!(authorization_required_event(&mut peer, spoofed, now).is_none());
+    }
+
+    fn udp_packet_to(dst: Ipv4Addr) -> IpPacket {
+        ip_packet::make::udp_packet(client_tun_ipv4(), dst, 5401, bar_allowed_port(), &[0u8; 8])
+            .unwrap()
+    }
+
+    fn authorization_required_event(
+        peer: &mut ClientOnGateway,
+        packet: IpPacket,
+        now: Instant,
+    ) -> Option<IpPacket> {
+        match peer.translate_outbound(packet, now).unwrap() {
+            TranslateOutboundResult::IcmpError {
+                authorization_required,
+                ..
+            } => authorization_required,
+            other @ TranslateOutboundResult::Send(_) => {
+                panic!("Expected `IcmpError`, got {other:?}")
+            }
+        }
     }
 
     fn foo_dns_resource() -> crate::messages::gateway::ResourceDescription {

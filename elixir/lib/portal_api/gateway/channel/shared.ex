@@ -53,21 +53,22 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   The authz durability timer is our fail-closed guarantee: if a queue crashes
   before flushing, the cached authz on the receiver eventually triggers
   a reject so the gateway stops authorizing packets for an authz that
-  has no DB row backing it. The client recovers by tripping ICMP
-  prohibited and requesting a fresh authorization through the normal portal
-  path — closing the loop.
+  has no DB row backing it. The gateway rejects the client's packets with
+  an `authorization_required` p2p control event, upon which the client
+  discards its stale authorization and requests a fresh one through the
+  normal portal path, closing the loop.
 
   This function is the manual version of that fail-closed signal. If the
   gateway's local cache ever desyncs from production state (a bug, a
   partial flush we didn't anticipate, an ops mistake), this lets us
-  trigger the same fail-closed → ICMP → re-authorize recovery without
-  waiting for a queue to crash or for the authz durability timer to time out.
+  trigger the same fail-closed → authorization-required → re-authorize
+  recovery without waiting for a queue to crash or for the authz
+  durability timer to time out.
 
-  Integration tests use it to exercise the
-  `icmp_error_unreachable_prohibited_create_new_flow` recovery path
-  end-to-end: the test asserts that even when the gateway is forced into
-  a fail-closed state for a pair, the client correctly recovers and
-  re-authorizes via the portal.
+  Integration tests use it to exercise that recovery path end-to-end:
+  the test asserts that even when the gateway is forced into a fail-closed
+  state for a pair, the client correctly recovers and re-authorizes via
+  the portal.
 
   Do not call from production code paths.
   """

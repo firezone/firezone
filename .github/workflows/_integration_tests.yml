@@ -146,8 +146,9 @@ jobs:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         test:
-          - script: create-flow-from-icmp-error
+          - script: create-flow-after-revocation
             min_client_version: 1.5.4
+            min_gateway_version: 1.5.3
           - script: download-rst
             min_gateway_version: 1.4.18
           - script: curl-portal-down
