@@ -278,17 +278,6 @@ impl RefClient {
         }
     }
 
-    /// The client no longer holds an authorization for `resource`; the next packet requests a new one.
-    fn discard_authorization(&mut self, resource: &ResourceId) {
-        self.gateway_revoked_authorizations.remove(resource);
-        self.connected_cidr_resources.remove(resource);
-        self.connected_dns_resources.remove(resource);
-
-        if self.internet_resource().is_some_and(|r| r == *resource) {
-            self.connected_internet_resource = false;
-        }
-    }
-
     /// Models the Gateway losing its authorization for `resource` without the client knowing,
     /// e.g. because it expired or the portal revoked it.
     pub(crate) fn revoke_gateway_authorization(
@@ -865,6 +854,17 @@ impl RefClient {
                 self.connected_dns_resources.insert(resource);
             }
             Destination::IpAddr(_) => self.connect_to_internet_or_cidr_resource(resource),
+        }
+    }
+
+    /// The client no longer holds an authorization for `resource`; the next packet requests a new one.
+    fn discard_authorization(&mut self, resource: &ResourceId) {
+        self.gateway_revoked_authorizations.remove(resource);
+        self.connected_cidr_resources.remove(resource);
+        self.connected_dns_resources.remove(resource);
+
+        if self.internet_resource().is_some_and(|r| r == *resource) {
+            self.connected_internet_resource = false;
         }
     }
 
