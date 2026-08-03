@@ -239,8 +239,10 @@ jobs:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}_${{ matrix.name.version }}_${{ matrix.arch.shortname }}
       SENTRY_ENVIRONMENT: "production"
       RESOLVED_SHA: ${{ inputs.sha || github.sha }}
-      # `firezone-cli` and the `.deb` are only produced for release Gateways.
-      BUILDS_DEB: ${{ inputs.profile == 'release' && inputs.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
+      # `firezone-cli` and the `.deb` are only produced for release Gateways, and
+      # only a dispatched build publishes them. On a push, the `.deb` would just
+      # expire unread as an artifact.
+      BUILDS_DEB: ${{ github.event_name == 'workflow_dispatch' && inputs.profile == 'release' && inputs.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
     outputs:
       client_image: ${{ steps.image-name.outputs.client_image }}
       relay_image: ${{ steps.image-name.outputs.relay_image }}
@@ -386,6 +388,7 @@ jobs:
             --auth-mode login \
             --account-name firezoneartifacts
       - name: Upload `.deb` artifact
+        if: ${{ env.BUILDS_DEB == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.BINARY_DEST_PATH }}.deb
