@@ -1,6 +1,7 @@
 use super::{
     QueryId,
     dns_records::DnsRecords,
+    icmp_error_hosts::IcmpErrorHosts,
     reference::PrivateKey,
     resource::{
         CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
@@ -839,7 +840,12 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn on_dns_query(&mut self, query: &DnsQuery, upstream_do53: &[UpstreamDo53]) {
+    pub(crate) fn on_dns_query(
+        &mut self,
+        query: &DnsQuery,
+        upstream_do53: &[UpstreamDo53],
+        icmp_error_hosts: &IcmpErrorHosts,
+    ) {
         if self.is_dynamic_device_pool_dns_query(query) {
             self.expect_dns_response(query);
             return;
@@ -859,8 +865,6 @@ impl RefClient {
         }
 
         if let Some(resource) = self.dns_query_via_resource(query, upstream_do53) {
-            self.expect_dns_response(query); // We always generate a response, even if we don't connect to the upstream server.
-
             let proto = match query.transport {
                 DnsTransport::Udp { .. } => Protocol::Udp(53),
                 DnsTransport::Tcp => Protocol::Tcp(53),
@@ -868,7 +872,16 @@ impl RefClient {
 
             if !self.resource_filter_allows(resource, proto) {
                 tracing::debug!("Resource filter does not allow protocol, dropping");
+                self.expect_dns_response(query); // We always generate a response, even if we don't connect to the upstream server.
                 return;
+            }
+
+            if self.resolver_is_unreachable(query, icmp_error_hosts) {
+                // The resolver answers with an ICMP error; connlib fails the query
+                // and responds with SERVFAIL, so no records are learned.
+                self.expect_dns_handshake(query);
+            } else {
+                self.expect_dns_response(query);
             }
 
             self.connect_to_internet_or_cidr_resource(resource);
@@ -880,12 +893,27 @@ impl RefClient {
         self.expect_dns_response(query);
     }
 
+    /// Returns whether the query's resolver answers tunnelled traffic with ICMP errors.
+    fn resolver_is_unreachable(&self, query: &DnsQuery, icmp_error_hosts: &IcmpErrorHosts) -> bool {
+        match &query.dns_server {
+            dns::Upstream::Do53 { server } => {
+                icmp_error_hosts.icmp_error_for_ip(server.ip()).is_some()
+            }
+            dns::Upstream::DoH { .. } => false,
+        }
+    }
+
     fn expect_dns_response(&mut self, query: &DnsQuery) {
         self.dns_records
             .entry(query.domain.clone())
             .or_default()
             .insert(query.r_type);
 
+        self.expect_dns_handshake(query);
+    }
+
+    /// Expects a response for the query without learning any records from it, e.g. a SERVFAIL.
+    fn expect_dns_handshake(&mut self, query: &DnsQuery) {
         match query.transport {
             DnsTransport::Udp { local_port } => {
                 self.expected_udp_dns_handshakes.push_back((

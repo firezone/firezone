@@ -13,6 +13,11 @@ use l3_tcp::{
 };
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 
+/// How long [`Client::reset`] remembers the remotes of dropped connections.
+///
+/// A late ICMP error for such a connection is still consumed within this period instead of surfacing on the TUN device.
+const CLOSED_REMOTE_GRACE_PERIOD: Duration = Duration::from_secs(60);
+
 /// A sans-io DNS-over-TCP client.
 ///
 /// The client maintains a single TCP connection for each configured resolver.
@@ -32,6 +37,8 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
 
     sockets: SocketSet<'static>,
     sockets_by_remote: BTreeMap<SocketAddr, l3_tcp::SocketHandle>,
+    /// Remotes whose connections [`Client::reset`] dropped, so late ICMP errors for them are still consumed.
+    recently_closed_remotes: BTreeMap<SocketAddr, Instant>,
     local_ports_by_socket: BTreeMap<l3_tcp::SocketHandle, u16>,
     /// Queries we should send to a DNS resolver.
     pending_queries_by_remote_and_local: BTreeMap<(SocketAddr, SocketAddr), VecDeque<PendingQuery>>,
@@ -85,6 +92,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             query_results: Default::default(),
             rng: StdRng::from_seed(seed),
             sockets_by_remote: Default::default(),
+            recently_closed_remotes: Default::default(),
             local_ports_by_socket: Default::default(),
             pending_queries_by_remote_and_local: Default::default(),
             query_timeout,
@@ -174,9 +182,9 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
         if let Ok(Some((failed_packet, _))) = packet.icmp_error()
             && let Layer4Protocol::Tcp { dst, .. } = failed_packet.layer4_protocol()
-            && self
-                .sockets_by_remote
-                .contains_key(&SocketAddr::new(failed_packet.dst(), dst))
+            && let server = SocketAddr::new(failed_packet.dst(), dst)
+            && (self.sockets_by_remote.contains_key(&server)
+                || self.recently_closed_remotes.contains_key(&server))
         {
             return true;
         }
@@ -270,6 +278,14 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             return;
         }
 
+        // An ICMP error without a live connection refers to one that [`Client::reset`] dropped.
+        // Its queries have already been failed; there is nothing left to do.
+        if packet.icmp_error().is_ok_and(|error| error.is_some()) {
+            tracing::debug!("Ignoring ICMP error for closed connection");
+
+            return;
+        }
+
         self.device.receive(packet);
     }
 
@@ -289,6 +305,8 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.last_now = now;
         self.fail_expired_queries(now);
+        self.recently_closed_remotes
+            .retain(|_, closed_at| now.duration_since(*closed_at) < CLOSED_REMOTE_GRACE_PERIOD);
 
         let Some((ipv4_source, ipv6_source)) = self.source_ips else {
             return;
@@ -439,6 +457,13 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
         self.query_results
             .extend(aborted_pending_queries.chain(aborted_sent_queries));
+
+        let closed_at = self.last_now;
+        self.recently_closed_remotes.extend(
+            self.sockets_by_remote
+                .keys()
+                .map(|remote| (*remote, closed_at)),
+        );
 
         self.sockets = SocketSet::new(vec![]);
         self.sockets_by_remote.clear();
@@ -662,6 +687,31 @@ mod tests {
             query_result.result.unwrap_err().to_string(),
             "Received ICMP error for DNS query: Destination is unreachable (code: 0)"
         );
+    }
+
+    #[test]
+    fn consumes_icmp_error_for_reset_connection() {
+        let _guard = logging::test("trace");
+
+        let now = Instant::now();
+        let mut client = create_test_client(now);
+        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+
+        client.send_query(server, create_test_query()).unwrap();
+        client.handle_timeout(now);
+        client.handle_timeout(now);
+
+        let packet = client.poll_outbound().unwrap();
+        let icmp_error_response = ip_packet::make::icmp_dest_unreachable_network(&packet).unwrap();
+
+        client.reset();
+        while client.poll_query_result().is_some() {} // Drain the `Aborted` results.
+
+        assert!(client.accepts(&icmp_error_response));
+
+        client.handle_inbound(icmp_error_response);
+
+        assert!(client.poll_query_result().is_none());
     }
 
     #[test]

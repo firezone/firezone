@@ -132,7 +132,9 @@ impl TunnelTest {
         for gateway in gateways.values_mut() {
             let upstream_do53_servers = upstream_do53_servers.clone();
 
-            gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
+            gateway.exec_mut(|g| {
+                g.deploy_new_dns_servers(upstream_do53_servers, &ref_state.icmp_error_hosts)
+            })
         }
 
         let mut this = Self {
@@ -417,7 +419,9 @@ impl TunnelTest {
                 for gateway in state.gateways.values_mut() {
                     let upstream_do53_servers = upstream_do53_servers.clone();
 
-                    gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
+                    gateway.exec_mut(|g| {
+                        g.deploy_new_dns_servers(upstream_do53_servers, &ref_state.icmp_error_hosts)
+                    })
                 }
             }
             Transition::UpdateUpstreamDoHServers(upstream_doh) => {
