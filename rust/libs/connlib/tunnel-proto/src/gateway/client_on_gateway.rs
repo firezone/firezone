@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::time::Instant;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -44,8 +44,7 @@ pub struct ClientOnGateway {
 #[derive(Debug, PartialEq)]
 pub enum TranslateOutboundResult {
     Send(IpPacket),
-    DestinationUnreachable(IpPacket),
-    Filtered(IpPacket),
+    IcmpError(IpPacket),
 }
 
 impl ClientOnGateway {
@@ -321,15 +320,19 @@ impl ClientOnGateway {
             bail!(UnroutablePacket::outbound_icmp_error(&packet))
         }
 
-        // Filtering a packet is not an error.
-        if let Err(e) = self.ensure_allowed_outbound(&packet) {
-            tracing::debug!(filtered_packet = ?packet, "{e:#}");
-            return Ok(TranslateOutboundResult::Filtered(
-                ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
-            ));
+        if let Err(error) = self.ensure_allowed_outbound(&packet) {
+            tracing::debug!(filtered_packet = ?packet, "{error:#}");
+
+            let reply = match error.any_downcast_ref::<InternetResourceRejectedAddress>() {
+                Some(InternetResourceRejectedAddress(_)) => {
+                    ip_packet::make::icmp_dest_unreachable_network(&packet)?
+                }
+                None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
+            };
+
+            return Ok(TranslateOutboundResult::IcmpError(reply));
         }
 
-        // Failing to transform is an error we want to know about further up.
         let result = self.transform_network_to_tun(packet, now)?;
 
         Ok(result)
@@ -387,13 +390,13 @@ impl ClientOnGateway {
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             tracing::debug!(%dst, "No translation entry");
 
-            return Ok(TranslateOutboundResult::DestinationUnreachable(
+            return Ok(TranslateOutboundResult::IcmpError(
                 ip_packet::make::icmp_dest_unreachable_network(&packet)?,
             ));
         };
 
         let Some(resolved_ip) = state.resolved_ip else {
-            return Ok(TranslateOutboundResult::DestinationUnreachable(
+            return Ok(TranslateOutboundResult::IcmpError(
                 ip_packet::make::icmp_dest_unreachable_network(&packet)?,
             ));
         };
@@ -405,7 +408,7 @@ impl ClientOnGateway {
                 "Cannot translate between IP versions"
             );
 
-            return Ok(TranslateOutboundResult::DestinationUnreachable(
+            return Ok(TranslateOutboundResult::IcmpError(
                 ip_packet::make::icmp_dest_unreachable_network(&packet)?,
             ));
         }
@@ -498,13 +501,26 @@ impl ClientOnGateway {
         resource_ip: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
     ) -> anyhow::Result<ResourceId> {
-        // Note a Gateway with Internet resource should never get packets for other resources
-        if let Some(rid) = self.internet_resource_enabled
-            && !is_dns_addr(resource_ip)
-        {
-            return Ok(rid);
-        }
+        let resource = match self.internet_resource_enabled {
+            Some(internet_resource) => match resource_ip {
+                ip if is_dns_addr(ip) => self.classify_non_internet_resource(ip, protocol)?,
+                ip if internet_resource_rejects(ip) => {
+                    bail!(InternetResourceRejectedAddress(ip))
+                }
+                // Note a Gateway with Internet resource should never get packets for other resources.
+                _ => internet_resource,
+            },
+            None => self.classify_non_internet_resource(resource_ip, protocol)?,
+        };
 
+        Ok(resource)
+    }
+
+    fn classify_non_internet_resource(
+        &mut self,
+        resource_ip: IpAddr,
+        protocol: Result<Protocol, UnsupportedProtocol>,
+    ) -> anyhow::Result<ResourceId> {
         let entry = self
             .routing_table
             .matches(resource_ip, protocol.clone())
@@ -526,6 +542,10 @@ impl ClientOnGateway {
         self.client_tun
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("Internet resource rejects IP: {0}")]
+struct InternetResourceRejectedAddress(IpAddr);
 
 #[derive(Debug)]
 enum ResourceOnGateway {
@@ -651,6 +671,34 @@ impl TranslationState {
 
 fn is_dns_addr(addr: IpAddr) -> bool {
     IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
+}
+
+fn internet_resource_rejects(addr: IpAddr) -> bool {
+    match addr {
+        IpAddr::V4(addr) => {
+            addr.is_private()
+                || addr.is_loopback()
+                || addr.is_link_local()
+                || is_cgnat(addr)
+                || addr.is_multicast()
+                || is_reserved(addr)
+        }
+        IpAddr::V6(addr) => {
+            addr.is_loopback()
+                || addr.to_ipv4_mapped().is_some()
+                || addr.is_unique_local()
+                || addr.is_unicast_link_local()
+                || addr.is_multicast()
+        }
+    }
+}
+
+fn is_cgnat(addr: Ipv4Addr) -> bool {
+    matches!(addr.octets(), [100, 64..=127, _, _])
+}
+
+fn is_reserved(addr: Ipv4Addr) -> bool {
+    matches!(addr.octets(), [240..=255, _, _, _])
 }
 
 /// Rejects addresses within Firezone's tunnel range.
@@ -860,7 +908,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::Filtered(_)
+            TranslateOutboundResult::IcmpError(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -874,7 +922,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::Filtered(_)
+            TranslateOutboundResult::IcmpError(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -924,7 +972,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::Filtered(_)
+            TranslateOutboundResult::IcmpError(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -955,7 +1003,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(request, Instant::now()).unwrap(),
-            TranslateOutboundResult::Filtered(_)
+            TranslateOutboundResult::IcmpError(_)
         ));
     }
 
@@ -1216,7 +1264,7 @@ mod tests {
         )
         .unwrap();
 
-        let TranslateOutboundResult::DestinationUnreachable(packet) =
+        let TranslateOutboundResult::IcmpError(packet) =
             peer.translate_outbound(request, now).unwrap()
         else {
             panic!("Bad translation result")

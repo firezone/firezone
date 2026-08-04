@@ -36,6 +36,10 @@ pub(super) enum PacketTarget {
         src: IpAddr,
         dst: IpAddr,
     },
+    InternetResourceRejectedAddress {
+        client_id: ClientId,
+        src: IpAddr,
+    },
     ConnectedGateway {
         client_id: ClientId,
         src: IpAddr,
@@ -118,6 +122,26 @@ pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<PacketTarget>
                     client_id,
                     src: IpAddr::V6(state.clients[&client_id].inner().tunnel_ip6),
                     dst: IpAddr::V6(dst),
+                }),
+        )
+        .chain(
+            state
+                .clients
+                .iter()
+                .filter(|(_, client)| client.inner().active_internet_resource().is_some())
+                .flat_map(|(client_id, client)| {
+                    let client = client.inner();
+
+                    [
+                        PacketTarget::InternetResourceRejectedAddress {
+                            client_id: *client_id,
+                            src: IpAddr::V4(client.tunnel_ip4),
+                        },
+                        PacketTarget::InternetResourceRejectedAddress {
+                            client_id: *client_id,
+                            src: IpAddr::V6(client.tunnel_ip6),
+                        },
+                    ]
                 }),
         )
         .chain(
@@ -206,6 +230,10 @@ pub(super) fn generate(
             src,
             dst,
         } => arb_unfiltered_packet(g, state, client_id, src, dst, true),
+        PacketTarget::InternetResourceRejectedAddress { client_id, src } => {
+            let dst = internet_resource_rejected_destination(g, src);
+            arb_unfiltered_packet(g, state, client_id, src, dst, true)
+        }
         PacketTarget::ConnectedGateway {
             client_id,
             src,
@@ -220,6 +248,38 @@ pub(super) fn generate(
             dst,
             filters,
         } => arb_filtered_packet(g, state, client_id, src, DstSpec::Ip(dst), &filters),
+    }
+}
+
+fn internet_resource_rejected_destination(g: &mut Generator, source: IpAddr) -> IpAddr {
+    match source {
+        IpAddr::V4(_) => {
+            let networks = [
+                Ipv4Network::new(Ipv4Addr::new(10, 0, 0, 0), 8).unwrap(),
+                Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 10).unwrap(),
+                Ipv4Network::new(Ipv4Addr::new(127, 0, 0, 0), 8).unwrap(),
+                Ipv4Network::new(Ipv4Addr::new(169, 254, 0, 0), 16).unwrap(),
+                Ipv4Network::new(Ipv4Addr::new(172, 16, 0, 0), 12).unwrap(),
+                Ipv4Network::new(Ipv4Addr::new(192, 168, 0, 0), 16).unwrap(),
+                Ipv4Network::new(Ipv4Addr::new(224, 0, 0, 0), 4).unwrap(),
+                Ipv4Network::new(Ipv4Addr::new(240, 0, 0, 0), 4).unwrap(),
+            ];
+            let network = networks[g.choose_index(networks.len())];
+
+            IpAddr::V4(host_in_v4(g, network))
+        }
+        IpAddr::V6(_) => {
+            let networks = [
+                Ipv6Network::new(Ipv6Addr::LOCALHOST, 128).unwrap(),
+                Ipv6Network::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0, 0), 96).unwrap(),
+                Ipv6Network::new(Ipv6Addr::new(0xfc00, 0, 0, 0, 0, 0, 0, 0), 7).unwrap(),
+                Ipv6Network::new(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0), 10).unwrap(),
+                Ipv6Network::new(Ipv6Addr::new(0xff00, 0, 0, 0, 0, 0, 0, 0), 8).unwrap(),
+            ];
+            let network = networks[g.choose_index(networks.len())];
+
+            IpAddr::V6(host_in_v6(g, network))
+        }
     }
 }
 

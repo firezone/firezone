@@ -2,7 +2,7 @@ use crate::ref_gateway::RefGateway;
 
 use super::{
     dns_records::DnsRecords,
-    ref_client::RefClient,
+    ref_client::{ExpectedRejection, RefClient, RejectionRemote, RejectionResponse},
     sim_client::SimClient,
     sim_gateway::SimGateway,
     stub_portal::StubPortal,
@@ -116,7 +116,7 @@ fn assert_packets_properties<T, U>(
         &RefClient,
     )
         -> &BTreeMap<ClientId, BTreeMap<u64, (Destination, T, U)>>,
-    get_expected_rejections: impl Fn(&RefClient) -> &std::collections::BTreeSet<(T, U)>,
+    get_expected_rejections: impl Fn(&RefClient) -> &BTreeMap<(T, U), ExpectedRejection>,
     get_received_replies: impl Fn(&SimClient) -> &BTreeMap<(T, U), IpPacket>,
     get_received_requests_on_gateway: impl Fn(&SimGateway) -> &BTreeMap<u64, (Instant, IpPacket)>,
     get_received_requests_on_client: impl Fn(&SimClient) -> &BTreeMap<u64, (Instant, IpPacket)>,
@@ -192,9 +192,9 @@ fn assert_packets_properties<T, U>(
         .flat_map(|(cid, ref_client)| {
             get_expected_rejections(ref_client)
                 .iter()
-                .map(move |request| (*cid, request.reply_to()))
+                .map(move |(request, response)| ((*cid, request.reply_to()), *response))
         })
-        .collect::<std::collections::BTreeSet<_>>();
+        .collect::<BTreeMap<_, _>>();
 
     let received_requests_by_gateway = sim_gateways
         .iter()
@@ -209,34 +209,45 @@ fn assert_packets_properties<T, U>(
         .map(|(g, s)| (*g, &s.dns_query_timestamps))
         .collect::<BTreeMap<_, _>>();
 
-    for expected in &all_expected_rejections {
+    for (expected, rejection) in &all_expected_rejections {
         let Some(reply) = all_received_replies_on_client.get(expected) else {
-            tracing::error!(target: "assertions", ?expected, "❌ Missing ICMP prohibited reply for rejected {packet_protocol} packet");
+            let (cid, reply) = *expected;
+            let Some((sent_at, _)) = all_sent_requests.get(&(cid, reply.reply_to())) else {
+                tracing::error!(target: "assertions", ?expected, "❌ Missing rejected {packet_protocol} request on client");
+                continue;
+            };
+            let ref_client = ref_clients.get(&cid).unwrap();
+
+            if can_drop_during_rekey(ref_client, rejection.remote, *sent_at) {
+                tracing::debug!(target: "assertions", %cid, remote = ?rejection.remote, "Tolerating rejected {packet_protocol} packet dropped in the WireGuard re-key window");
+                continue;
+            }
+
+            tracing::error!(target: "assertions", ?expected, response = ?rejection.response, "❌ Missing ICMP error for rejected {packet_protocol} packet");
             continue;
         };
 
-        if !reply
-            .icmp_error()
-            .is_ok_and(|error| error.is_some_and(|(_, error)| error.is_unreachable_prohibited()))
-        {
-            tracing::error!(target: "assertions", ?expected, "❌ Expected ICMP prohibited reply for rejected {packet_protocol} packet");
+        if rejection_response(reply) != Some(rejection.response) {
+            tracing::error!(target: "assertions", ?expected, response = ?rejection.response, "❌ Received wrong ICMP error for rejected {packet_protocol} packet");
         }
     }
 
     // Rejected packets are not handshakes, so validate their ICMP errors
     // separately before comparing successful replies below.
-    let received_replies_excluding_prohibited = all_received_replies_on_client
+    let received_replies_excluding_rejections = all_received_replies_on_client
         .iter()
         .filter(|(key, packet)| {
-            let prohibited = packet
-                .icmp_error()
-                .is_ok_and(|e| e.is_some_and(|(_, err)| err.is_unreachable_prohibited()));
-
-            if prohibited && !all_expected_rejections.contains(*key) {
-                tracing::error!(target: "assertions", ?key, "❌ Unexpected ICMP prohibited reply for {packet_protocol} packet");
+            if all_expected_rejections.contains_key(*key) {
+                return false;
             }
 
-            !prohibited
+            if rejection_response(packet) == Some(RejectionResponse::Prohibited) {
+                tracing::error!(target: "assertions", ?key, "❌ Unexpected ICMP error for {packet_protocol} packet");
+
+                return false;
+            }
+
+            true
         })
         .map(|(k, v)| (*k, v.clone()))
         .collect::<BTreeMap<_, _>>();
@@ -246,7 +257,7 @@ fn assert_packets_properties<T, U>(
             .chain(all_expected_gateway_handshakes.values().flatten())
             .chain(all_expected_client_handshakes.values().flatten())
             .collect(),
-        &received_replies_excluding_prohibited,
+        &received_replies_excluding_rejections,
         |(_, (_, _, t_a, u_a)), (_, b)| (*t_a, *u_a) == b.reply_to(),
     );
 
@@ -296,10 +307,7 @@ fn assert_packets_properties<T, U>(
                 // record the same as a long-idle one.
                 //
                 // TODO: Delete once ICEless is the default.
-                if ref_client
-                    .last_packet_sent_to_gateway_before(*gateway, *sent_at)
-                    .is_none_or(|prev| sent_at.duration_since(prev) >= MIN_IDLE_FOR_REKEY_DROP)
-                {
+                if can_drop_during_rekey(ref_client, RejectionRemote::Gateway(*gateway), *sent_at) {
                     tracing::debug!(target: "assertions", %cid, "Tolerating {packet_protocol} packet dropped in the WireGuard re-key window");
                     num_expected_handshakes -= 1;
                     continue;
@@ -424,10 +432,11 @@ fn assert_packets_properties<T, U>(
                 // (see `MIN_IDLE_FOR_REKEY_DROP`), exactly like the client→gateway case above.
                 //
                 // TODO: Delete once ICEless is the default.
-                if src_ref_client
-                    .last_packet_sent_to_client_before(*dst_client_id, *sent_at)
-                    .is_some_and(|prev| sent_at.duration_since(prev) >= MIN_IDLE_FOR_REKEY_DROP)
-                {
+                if can_drop_during_rekey(
+                    src_ref_client,
+                    RejectionRemote::Client(*dst_client_id),
+                    *sent_at,
+                ) {
                     tracing::debug!(target: "assertions", %dst_client_id, "Tolerating {packet_protocol} packet dropped in the WireGuard re-key window");
                     num_expected_handshakes -= 1;
                     continue;
@@ -464,11 +473,40 @@ fn assert_packets_properties<T, U>(
     }
 }
 
+fn can_drop_during_rekey(
+    ref_client: &RefClient,
+    remote: RejectionRemote,
+    sent_at: Instant,
+) -> bool {
+    match remote {
+        RejectionRemote::Local => false,
+        RejectionRemote::Gateway(gateway) => ref_client
+            .last_packet_sent_to_gateway_before(gateway, sent_at)
+            .is_none_or(|previous| sent_at.duration_since(previous) >= MIN_IDLE_FOR_REKEY_DROP),
+        RejectionRemote::Client(client) => ref_client
+            .last_packet_sent_to_client_before(client, sent_at)
+            .is_some_and(|previous| sent_at.duration_since(previous) >= MIN_IDLE_FOR_REKEY_DROP),
+    }
+}
+
+fn rejection_response(packet: &IpPacket) -> Option<RejectionResponse> {
+    let (_, error) = packet.icmp_error().ok()??;
+
+    if error.is_unreachable_prohibited() {
+        return Some(RejectionResponse::Prohibited);
+    }
+    if error.is_unreachable_network() {
+        return Some(RejectionResponse::Unreachable);
+    }
+
+    None
+}
+
 pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
     for ((sport, dport), error) in &sim_client.failed_tcp_packets {
         let expected_rejection = ref_client
             .expected_tcp_rejections
-            .contains(&(*sport, *dport));
+            .contains_key(&(*sport, *dport));
         let expected_connection = ref_client.expected_tcp_connections.keys().any(
             |(_, _, expected_sport, expected_dport)| {
                 (expected_sport, expected_dport) == (sport, dport)
@@ -480,16 +518,21 @@ pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimCli
         }
     }
 
-    for (sport, dport) in &ref_client.expected_tcp_rejections {
+    for ((sport, dport), response) in &ref_client.expected_tcp_rejections {
         match sim_client.failed_tcp_packets.get(&(*sport, *dport)) {
-            Some(error) if error.is_unreachable_prohibited() => {
+            Some(error)
+                if match response {
+                    RejectionResponse::Prohibited => error.is_unreachable_prohibited(),
+                    RejectionResponse::Unreachable => error.is_unreachable_network(),
+                } =>
+            {
                 tracing::info!(target: "assertions", sport = sport.0, dport = dport.0, "TCP connection was rejected as expected");
             }
             Some(error) => {
-                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, ?error, "Expected ICMP prohibited error for rejected TCP connection");
+                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, ?response, ?error, "Received wrong ICMP error for rejected TCP connection");
             }
             None => {
-                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, "Missing ICMP prohibited error for rejected TCP connection");
+                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, ?response, "Missing ICMP error for rejected TCP connection");
             }
         }
     }

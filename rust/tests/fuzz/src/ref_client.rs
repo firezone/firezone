@@ -91,9 +91,9 @@ pub struct RefClient {
     pub(crate) expected_client_icmp_handshakes:
         BTreeMap<ClientId, BTreeMap<u64, (Destination, Seq, Identifier)>>,
 
-    /// ICMP packets that should be rejected by the destination's inbound filter.
+    /// Tracks ICMP packets expected to receive an error response.
     #[debug(skip)]
-    pub(crate) expected_icmp_rejections: BTreeSet<(Seq, Identifier)>,
+    pub(crate) expected_icmp_rejections: BTreeMap<(Seq, Identifier), ExpectedRejection>,
 
     /// The expected UDP handshakes with Gateways.
     #[debug(skip)]
@@ -105,17 +105,17 @@ pub struct RefClient {
     pub(crate) expected_client_udp_handshakes:
         BTreeMap<ClientId, BTreeMap<u64, (Destination, SPort, DPort)>>,
 
-    /// UDP packets that should be rejected by the destination's inbound filter.
+    /// Tracks UDP packets expected to receive an ICMP error response.
     #[debug(skip)]
-    pub(crate) expected_udp_rejections: BTreeSet<(SPort, DPort)>,
+    pub(crate) expected_udp_rejections: BTreeMap<(SPort, DPort), ExpectedRejection>,
 
     /// The expected TCP connections.
     #[debug(skip)]
     pub(crate) expected_tcp_connections: BTreeMap<(IpAddr, Destination, SPort, DPort), ResourceId>,
 
-    /// TCP connections that should be rejected by the destination's inbound filter.
+    /// Tracks TCP connections expected to receive an ICMP error response.
     #[debug(skip)]
-    pub(crate) expected_tcp_rejections: BTreeSet<(SPort, DPort)>,
+    pub(crate) expected_tcp_rejections: BTreeMap<(SPort, DPort), RejectionResponse>,
 
     /// The expected UDP DNS handshakes.
     #[debug(skip)]
@@ -568,7 +568,7 @@ impl RefClient {
         packet_id: E,
         gateway_map: impl FnOnce(&mut Self) -> &mut BTreeMap<GatewayId, BTreeMap<u64, E>>,
         client_map: impl FnOnce(&mut Self) -> &mut BTreeMap<ClientId, BTreeMap<u64, E>>,
-        rejection_set: impl FnOnce(&mut Self) -> &mut BTreeSet<K>,
+        rejection_map: impl FnOnce(&mut Self) -> &mut BTreeMap<K, ExpectedRejection>,
         rejection_id: K,
         payload: u64,
         now: Instant,
@@ -589,11 +589,27 @@ impl RefClient {
             }
             PacketRoute::PeerRejectedByPeer(remote_id) => {
                 tracing::Span::current().record("peer", tracing::field::display(remote_id));
-                rejection_set(self).insert(rejection_id);
+                self.client_send_times
+                    .entry(remote_id)
+                    .or_default()
+                    .insert(now);
+                rejection_map(self).insert(
+                    rejection_id,
+                    ExpectedRejection {
+                        response: RejectionResponse::Prohibited,
+                        remote: RejectionRemote::Client(remote_id),
+                    },
+                );
                 return;
             }
             PacketRoute::RejectedByClient => {
-                rejection_set(self).insert(rejection_id);
+                rejection_map(self).insert(
+                    rejection_id,
+                    ExpectedRejection {
+                        response: RejectionResponse::Prohibited,
+                        remote: RejectionRemote::Local,
+                    },
+                );
                 return;
             }
             PacketRoute::Gateway(gateway) => gateway,
@@ -608,7 +624,35 @@ impl RefClient {
                 tracing::Span::current().record("gateway", tracing::field::display(gateway));
                 self.connect_to_resource(resource, dst);
                 self.set_resource_online(resource);
-                rejection_set(self).insert(rejection_id);
+                self.gateway_send_times
+                    .entry(gateway)
+                    .or_default()
+                    .insert(now);
+                rejection_map(self).insert(
+                    rejection_id,
+                    ExpectedRejection {
+                        response: RejectionResponse::Prohibited,
+                        remote: RejectionRemote::Gateway(gateway),
+                    },
+                );
+                return;
+            }
+            PacketRoute::ResourceUnreachableByGateway { resource, gateway } => {
+                tracing::Span::current().record("resource", tracing::field::display(resource));
+                tracing::Span::current().record("gateway", tracing::field::display(gateway));
+                self.connect_to_resource(resource, dst);
+                self.set_resource_online(resource);
+                self.gateway_send_times
+                    .entry(gateway)
+                    .or_default()
+                    .insert(now);
+                rejection_map(self).insert(
+                    rejection_id,
+                    ExpectedRejection {
+                        response: RejectionResponse::Unreachable,
+                        remote: RejectionRemote::Gateway(gateway),
+                    },
+                );
                 return;
             }
         };
@@ -636,12 +680,16 @@ impl RefClient {
         dport: DPort,
     ) {
         match expected_route {
-            PacketRoute::Drop | PacketRoute::Gateway(_) | PacketRoute::Peer(_) => {}
+            PacketRoute::Drop => {}
+            PacketRoute::Gateway(_) => {}
+            PacketRoute::Peer(_) => {}
             PacketRoute::RejectedByClient => {
-                self.expected_tcp_rejections.insert((sport, dport));
+                self.expected_tcp_rejections
+                    .insert((sport, dport), RejectionResponse::Prohibited);
             }
             PacketRoute::PeerRejectedByPeer(_) => {
-                self.expected_tcp_rejections.insert((sport, dport));
+                self.expected_tcp_rejections
+                    .insert((sport, dport), RejectionResponse::Prohibited);
             }
             PacketRoute::Resource {
                 resource,
@@ -659,7 +707,17 @@ impl RefClient {
             } => {
                 self.connect_to_resource(resource, dst);
                 self.set_resource_online(resource);
-                self.expected_tcp_rejections.insert((sport, dport));
+                self.expected_tcp_rejections
+                    .insert((sport, dport), RejectionResponse::Prohibited);
+            }
+            PacketRoute::ResourceUnreachableByGateway {
+                resource,
+                gateway: _,
+            } => {
+                self.connect_to_resource(resource, dst);
+                self.set_resource_online(resource);
+                self.expected_tcp_rejections
+                    .insert((sport, dport), RejectionResponse::Unreachable);
             }
         }
     }
@@ -672,6 +730,10 @@ impl RefClient {
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
         client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
     ) -> PacketRoute {
+        if dst.ip_addr().is_some_and(|ip| ip.is_multicast()) {
+            return PacketRoute::Drop;
+        }
+
         // Peer tunnel IPs first mean client-to-client device-pool routing. A
         // tunnel IP without a matching pool may still belong to a gateway.
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
@@ -713,11 +775,24 @@ impl RefClient {
             return PacketRoute::Drop;
         };
 
-        if strictly_allowed {
-            PacketRoute::Resource { resource, gateway }
-        } else {
-            PacketRoute::ResourceRejectedByGateway { resource, gateway }
+        if self.internet_resource().is_some_and(|id| id == resource) {
+            match dst.ip_addr() {
+                Some(ip) if is_resource_proxy(ip) => {
+                    return PacketRoute::ResourceRejectedByGateway { resource, gateway };
+                }
+                Some(ip) if internet_resource_rejects(ip) => {
+                    return PacketRoute::ResourceUnreachableByGateway { resource, gateway };
+                }
+                Some(_) => {}
+                None => {}
+            }
         }
+
+        if strictly_allowed {
+            return PacketRoute::Resource { resource, gateway };
+        }
+
+        PacketRoute::ResourceRejectedByGateway { resource, gateway }
     }
 
     fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
@@ -1340,6 +1415,60 @@ impl ExecMutScope for RefClient {
     type Guard = ();
 
     fn enter(&self) -> Self::Guard {}
+}
+
+fn internet_resource_rejects(addr: IpAddr) -> bool {
+    match addr {
+        IpAddr::V4(addr) => {
+            addr.is_private()
+                || addr.is_loopback()
+                || addr.is_link_local()
+                || is_cgnat(addr)
+                || addr.is_multicast()
+                || is_reserved(addr)
+        }
+        IpAddr::V6(addr) => {
+            addr.is_loopback()
+                || addr.to_ipv4_mapped().is_some()
+                || addr.is_unique_local()
+                || addr.is_unicast_link_local()
+                || addr.is_multicast()
+        }
+    }
+}
+
+fn is_cgnat(addr: Ipv4Addr) -> bool {
+    matches!(addr.octets(), [100, 64..=127, _, _])
+}
+
+fn is_reserved(addr: Ipv4Addr) -> bool {
+    matches!(addr.octets(), [240..=255, _, _, _])
+}
+
+fn is_resource_proxy(addr: IpAddr) -> bool {
+    match addr {
+        IpAddr::V4(addr) => tunnel_proto::IPV4_RESOURCES.contains(addr),
+        IpAddr::V6(addr) => tunnel_proto::IPV6_RESOURCES.contains(addr),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ExpectedRejection {
+    pub(crate) response: RejectionResponse,
+    pub(crate) remote: RejectionRemote,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RejectionRemote {
+    Local,
+    Gateway(GatewayId),
+    Client(ClientId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RejectionResponse {
+    Prohibited,
+    Unreachable,
 }
 
 fn default_routes_v4() -> Vec<IpNetwork> {
