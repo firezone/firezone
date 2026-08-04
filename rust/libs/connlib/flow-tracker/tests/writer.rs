@@ -28,15 +28,12 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
         inner_dst_ip: "10.0.0.5".parse().unwrap(),
         inner_dst_port: 443,
         domain: Some("download.httpbin".parse().unwrap()),
-        outer_tuples: vec![
-            FlowContext {
-                src: "198.51.100.1:51820".parse().unwrap(),
-                dst: "203.0.113.7:51820".parse().unwrap(),
-            },
-            FlowContext {
-                src: "198.51.100.2:45000".parse().unwrap(),
-                dst: "203.0.113.7:51820".parse().unwrap(),
-            },
+        outers: vec![
+            FlowContext::new(
+                Some("198.51.100.1:51820".parse().unwrap()),
+                "203.0.113.7:51820".parse().unwrap(),
+            ),
+            FlowContext::new(None, "203.0.113.7:51820".parse().unwrap()),
         ],
         flow_start: chrono::Utc.timestamp_opt(1_700_000_000, 500).unwrap(),
         close: Some(FlowClose {
@@ -61,10 +58,10 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
     assert_eq!(payload["inner_dst_port"], record.inner_dst_port);
     assert_eq!(payload["domain"], "download.httpbin");
     assert_eq!(
-        payload["outer_tuples"],
+        payload["outers"],
         serde_json::json!([
-            {"src": "198.51.100.1:51820", "dst": "203.0.113.7:51820"},
-            {"src": "198.51.100.2:45000", "dst": "203.0.113.7:51820"},
+            {"src_ip": "198.51.100.1", "src_port": 51820, "dst_ip": "203.0.113.7", "dst_port": 51820},
+            {"dst_ip": "203.0.113.7", "dst_port": 51820},
         ])
     );
     assert_eq!(payload["flow_start"], format!("{:?}", record.flow_start));
@@ -132,9 +129,9 @@ fn tracked_packets_spool_open_and_completed_reports() {
     assert_eq!(open["inner_dst_ip"], "10.0.0.5");
     assert_eq!(open["inner_dst_port"], 5201);
     assert_eq!(
-        open["outer_tuples"],
+        open["outers"],
         serde_json::json!([
-            {"src": "198.51.100.1:45000", "dst": "203.0.113.1:51820"}
+            {"src_ip": "198.51.100.1", "src_port": 45000, "dst_ip": "203.0.113.1", "dst_port": 51820}
         ])
     );
     assert!(open.get("flow_end").is_none());

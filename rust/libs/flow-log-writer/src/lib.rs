@@ -24,8 +24,8 @@
 //! directive would copy it into log files); the eventloops receive it in the
 //! portal's authorization messages and persist it via [`write_token`] instead.
 //! A report's payload is the event's record fields as emitted (see
-//! [`RECORD_FIELDS`]), with the JSON-encoded `outer_tuples` field decoded into
-//! its array; attribution deliberately rides only the token, and the portal
+//! [`RECORD_FIELDS`]), with the JSON-encoded `outers` field decoded into its
+//! array; attribution deliberately rides only the token, and the portal
 //! validates the payload on ingest, so beyond that the writer only interprets
 //! what routing and naming need.
 //!
@@ -267,7 +267,7 @@ const RECORD_FIELDS: &[&str] = &[
     "inner_dst_ip",
     "inner_dst_port",
     "domain",
-    "outer_tuples",
+    "outers",
     "flow_start",
     "flow_end",
     "last_packet",
@@ -335,12 +335,12 @@ impl FieldVisitor {
         // The record's outer tuples ride the event as one JSON-encoded field (a
         // tracing field holds a single scalar); decode it so the report payload
         // carries the array itself.
-        if let Some(outer_tuples) = self.fields.get_mut("outer_tuples") {
-            let decoded = outer_tuples
+        if let Some(outers) = self.fields.get_mut("outers") {
+            let decoded = outers
                 .as_str()
                 .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())?;
 
-            *outer_tuples = decoded;
+            *outers = decoded;
         }
 
         // The only other field the writer interprets: the file name needs it so
@@ -627,7 +627,7 @@ mod tests {
             inner_src_port = %1234,
             inner_dst_ip = %"10.0.0.5",
             inner_dst_port = %443,
-            outer_tuples = %r#"[{"src":"198.51.100.1:51820","dst":"203.0.113.7:51820"}]"#,
+            outers = %r#"[{"src_ip":"198.51.100.1","src_port":51820,"dst_ip":"203.0.113.7","dst_port":51820}]"#,
             actor_id = "a-1",
             flow_start = ?flow_start,
             flow_end = flow_end.map(tracing::field::debug),

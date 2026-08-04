@@ -28,7 +28,7 @@ use std::{
     collections::{HashMap, hash_map},
     fmt::Debug,
     hash::Hash,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
 
@@ -279,7 +279,7 @@ where
                 self.record_tx(
                     TxPacket {
                         scope,
-                        context: FlowContext::new(remote, local),
+                        context: FlowContext::new(Some(remote), local),
                         src_ip,
                         dst_ip,
                         src_proto,
@@ -785,10 +785,10 @@ pub fn record_translated_packet(packet: &IpPacket) {
 }
 
 /// Records that the current packet was encapsulated and sent from `src` to `dst`.
+///
+/// `src` is unknown for relayed sends and omitted from the flow's outer tuple.
 pub fn record_transmit(src: Option<SocketAddr>, dst: SocketAddr) {
     update_current_flow(|data| {
-        let src = src.unwrap_or_else(|| unspecified_socket_like(dst));
-
         data.outer_tx = Some(FlowContext::new(src, dst));
     });
 }
@@ -802,15 +802,6 @@ pub fn record_icmp_error(packet: &IpPacket) {
     update_current_flow(|data| {
         data.icmp_error = Some(icmp_error);
     });
-}
-
-/// The local address is unknown when the socket layer has not bound one yet
-/// (e.g. a relayed transmit).
-fn unspecified_socket_like(addr: SocketAddr) -> SocketAddr {
-    match addr {
-        SocketAddr::V4(_) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
-        SocketAddr::V6(_) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
-    }
 }
 
 /// The flow-relevant fields of one inner (application) IP packet, in the packet's
@@ -889,7 +880,7 @@ pub struct Record {
     pub domain: Option<DomainName>,
 
     /// The outer (transport) 4-tuples the flow has used, in order of first use.
-    pub outer_tuples: Vec<FlowContext>,
+    pub outers: Vec<FlowContext>,
 
     pub flow_start: DateTime<Utc>,
     pub close: Option<FlowClose>,
@@ -969,7 +960,7 @@ impl Record {
         inner_dst_port: u16,
         ingest_token: IngestToken,
         domain: Option<DomainName>,
-        outer_tuples: Vec<FlowContext>,
+        outers: Vec<FlowContext>,
         flow_start: DateTime<Utc>,
         close: Option<FlowClose>,
     ) -> Self {
@@ -981,7 +972,7 @@ impl Record {
             inner_dst_ip,
             inner_dst_port,
             domain,
-            outer_tuples,
+            outers,
             flow_start,
             close,
         }
@@ -1049,7 +1040,7 @@ pub fn emit(record: &Record) {
                 inner_dst_port = record.inner_dst_port,
                 domain = record.domain.as_ref().map(tracing::field::display),
 
-                outer_tuples = %OuterTuples(&record.outer_tuples),
+                outers = %Outers(&record.outers),
 
                 flow_start = ?record.flow_start,
                 flow_end = close.map(|c| tracing::field::debug(c.flow_end)),
@@ -1075,9 +1066,9 @@ pub fn emit(record: &Record) {
 ///
 /// A tracing-event field holds a single scalar value, so the list rides as one
 /// JSON-encoded field that `flow-log-writer` decodes into the report payload.
-struct OuterTuples<'a>(&'a [FlowContext]);
+struct Outers<'a>(&'a [FlowContext]);
 
-impl std::fmt::Display for OuterTuples<'_> {
+impl std::fmt::Display for Outers<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let json = serde_json::to_string(self.0).map_err(|_| std::fmt::Error)?;
 
@@ -1163,19 +1154,28 @@ impl FlowStats {
 }
 
 /// The outer (transport) 4-tuple a flow is tunneled over.
+///
+/// The source is unknown for relayed sends; it is `None` there and omitted
+/// from the serialised tuple.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize)]
 pub struct FlowContext {
-    pub src: SocketAddr,
-    pub dst: SocketAddr,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub src_ip: Option<IpAddr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub src_port: Option<u16>,
+    pub dst_ip: IpAddr,
+    pub dst_port: u16,
 }
 
 impl FlowContext {
     /// Builds a context from the outer addresses as seen by the initiator: the
     /// initiator side is the source, the responder side the destination.
-    pub fn new(initiator: SocketAddr, responder: SocketAddr) -> Self {
+    pub fn new(initiator: Option<SocketAddr>, responder: SocketAddr) -> Self {
         Self {
-            src: initiator,
-            dst: responder,
+            src_ip: initiator.map(|initiator| initiator.ip()),
+            src_port: initiator.map(|initiator| initiator.port()),
+            dst_ip: responder.ip(),
+            dst_port: responder.port(),
         }
     }
 }
@@ -1212,18 +1212,24 @@ fn push_context(key: &impl Debug, contexts: &mut Contexts, context: FlowContext)
 
 #[derive(PartialEq, Eq)]
 struct FlowContextDiff {
-    src: Option<(SocketAddr, SocketAddr)>,
-    dst: Option<(SocketAddr, SocketAddr)>,
+    src_ip: Option<(Option<IpAddr>, Option<IpAddr>)>,
+    src_port: Option<(Option<u16>, Option<u16>)>,
+    dst_ip: Option<(IpAddr, IpAddr)>,
+    dst_port: Option<(u16, u16)>,
 }
 
 impl FlowContextDiff {
     fn new(old: FlowContext, new: FlowContext) -> Self {
-        let src_diff = (old.src != new.src).then_some((old.src, new.src));
-        let dst_diff = (old.dst != new.dst).then_some((old.dst, new.dst));
+        let src_ip_diff = (old.src_ip != new.src_ip).then_some((old.src_ip, new.src_ip));
+        let src_port_diff = (old.src_port != new.src_port).then_some((old.src_port, new.src_port));
+        let dst_ip_diff = (old.dst_ip != new.dst_ip).then_some((old.dst_ip, new.dst_ip));
+        let dst_port_diff = (old.dst_port != new.dst_port).then_some((old.dst_port, new.dst_port));
 
         Self {
-            src: src_diff,
-            dst: dst_diff,
+            src_ip: src_ip_diff,
+            src_port: src_port_diff,
+            dst_ip: dst_ip_diff,
+            dst_port: dst_port_diff,
         }
     }
 }
@@ -1232,11 +1238,25 @@ impl std::fmt::Debug for FlowContextDiff {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut debug_struct = f.debug_struct("FlowContextDiff");
 
-        if let Some((old, new)) = self.src {
-            debug_struct.field("old_src", &old).field("new_src", &new);
+        if let Some((old, new)) = self.src_ip {
+            debug_struct
+                .field("old_src_ip", &old)
+                .field("new_src_ip", &new);
         }
-        if let Some((old, new)) = self.dst {
-            debug_struct.field("old_dst", &old).field("new_dst", &new);
+        if let Some((old, new)) = self.src_port {
+            debug_struct
+                .field("old_src_port", &old)
+                .field("new_src_port", &new);
+        }
+        if let Some((old, new)) = self.dst_ip {
+            debug_struct
+                .field("old_dst_ip", &old)
+                .field("new_dst_ip", &new);
+        }
+        if let Some((old, new)) = self.dst_port {
+            debug_struct
+                .field("old_dst_port", &old)
+                .field("new_dst_port", &new);
         }
 
         debug_struct.finish()
@@ -1249,19 +1269,19 @@ mod tests {
 
     #[test]
     fn flow_context_diff_rendering() {
-        let old = FlowContext {
-            src: "10.0.0.1:8080".parse().unwrap(),
-            dst: "192.168.0.1:443".parse().unwrap(),
-        };
-        let new = FlowContext {
-            src: "1.1.1.1:50000".parse().unwrap(),
-            dst: "192.168.0.1:443".parse().unwrap(),
-        };
+        let old = FlowContext::new(
+            Some("10.0.0.1:8080".parse().unwrap()),
+            "192.168.0.1:443".parse().unwrap(),
+        );
+        let new = FlowContext::new(
+            Some("1.1.1.1:50000".parse().unwrap()),
+            "192.168.0.1:443".parse().unwrap(),
+        );
 
         let diff = FlowContextDiff::new(old, new);
 
         assert_eq!(
-            "FlowContextDiff { old_src: 10.0.0.1:8080, new_src: 1.1.1.1:50000 }",
+            "FlowContextDiff { old_src_ip: Some(10.0.0.1), new_src_ip: Some(1.1.1.1), old_src_port: Some(8080), new_src_port: Some(50000) }",
             format!("{diff:?}")
         );
     }
