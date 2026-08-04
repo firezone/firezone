@@ -74,7 +74,7 @@ aya-log = { git = "https://github.com/aya-rs/aya" }
 aya-log-ebpf = { git = "https://github.com/aya-rs/aya" }
 backoff = { path = "libs/backoff" }
 backon = { version = "1.6.0", default-features = false, features = ["std"] }
-base64 = { version = "0.22.1", default-features = false }
+base64 = { version = "0.23.0", default-features = false }
 bimap = "0.6.3"
 bin-shared = { path = "libs/bin-shared" }
 bnum = "0.14.4"
