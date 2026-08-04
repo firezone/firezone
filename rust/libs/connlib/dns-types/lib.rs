@@ -70,10 +70,7 @@ impl Query {
         // See: https://stackoverflow.com/a/55093896
         let _ = message.sole_question()?; // Verify that there is exactly one question.
 
-        // Verify that we can parse the answers + all records
-        for record in message.answer()? {
-            record?.into_any_record::<AllRecordData<_, _>>()?;
-        }
+        // Any other sections of a query are irrelevant to us: we never read them.
 
         Ok(Self {
             inner: message.octets_into(),
@@ -554,6 +551,62 @@ mod tests {
         assert!(parsed_response.truncated());
         assert_eq!(parsed_response.records().count(), 0);
         assert_eq!(parsed_response.domain(), domain);
+    }
+
+    #[test]
+    fn rejects_query_with_qr_bit_set() {
+        let domain = DomainName::vec_from_str("example.com").unwrap();
+        let query = Query::new(domain, RecordType::A);
+        let response = Response::no_error(&query).into_bytes(u16::MAX);
+
+        assert!(matches!(Query::parse(&response), Err(Error::NotAQuery)));
+    }
+
+    #[test]
+    fn rejects_query_without_question() {
+        let message = MessageBuilder::new_vec().question().into_message();
+
+        assert!(matches!(
+            Query::parse(message.as_slice()),
+            Err(Error::Parse(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_query_with_two_questions() {
+        let domain = DomainName::vec_from_str("example.com").unwrap();
+
+        let mut builder = MessageBuilder::new_vec().question();
+        builder.push((domain.clone(), RecordType::A)).unwrap();
+        builder.push((domain, RecordType::AAAA)).unwrap();
+        let message = builder.into_message();
+
+        assert!(matches!(
+            Query::parse(message.as_slice()),
+            Err(Error::Parse(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_query_shorter_than_header() {
+        assert!(matches!(Query::parse(&[0u8; 11]), Err(Error::TooShort)));
+    }
+
+    #[test]
+    fn ignores_answers_in_query() {
+        let domain = DomainName::vec_from_str("example.com").unwrap();
+
+        let mut builder = MessageBuilder::new_vec().question();
+        builder.push((domain.clone(), RecordType::A)).unwrap();
+        let mut builder = builder.answer();
+        builder
+            .push((domain.clone(), 300, records::a(Ipv4Addr::LOCALHOST)))
+            .unwrap();
+        let message = builder.into_message();
+
+        let query = Query::parse(message.as_slice()).unwrap();
+
+        assert_eq!(query.domain(), domain);
     }
 
     #[test]
