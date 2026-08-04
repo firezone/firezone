@@ -11,7 +11,7 @@ use boringtun::noise::Index;
 use is::stun::{StunMessage, TransId};
 
 use crate::{
-    ConnectionStats, Event,
+    Event,
     node::{Connection, allocations::Allocations, inflight_stun_requests::InflightStunRequests},
 };
 
@@ -160,10 +160,6 @@ where
 
             c.migrate_relay(cid, new_relay, allocations, pending_events, now);
         }
-    }
-
-    pub(crate) fn stats(&self) -> impl Iterator<Item = (TId, ConnectionStats)> + '_ {
-        self.established.iter().map(move |(id, c)| (*id, c.stats))
     }
 
     pub(crate) fn insert_established(
@@ -677,7 +673,6 @@ mod tests {
                 wg_buffer: AllocRingBuffer::new(1),
             },
             disconnected_at: None,
-            stats: Default::default(),
             intent_sent_at: Instant::now(),
             candidate_timeout: None,
             first_handshake_completed_at: None,
