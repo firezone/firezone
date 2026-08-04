@@ -79,6 +79,119 @@ defmodule PortalAPI.ClientControllerTest do
       assert equal_ids?(data_ids, client_ids)
     end
 
+    test "filters by name", %{conn: conn, actor: actor, account: account} do
+      match = client_fixture(account: account, name: "jane-laptop")
+      _other = client_fixture(account: account, name: "field-tablet")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", name: "jane-laptop")
+
+      assert %{"data" => [data], "metadata" => %{"count" => 1}} = json_response(conn, 200)
+      assert data["id"] == match.id
+    end
+
+    test "filters by firezone_id", %{conn: conn, actor: actor, account: account} do
+      match = client_fixture(account: account, firezone_id: "client_filter_target")
+      _other = client_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", firezone_id: "client_filter_target")
+
+      assert %{"data" => [data], "metadata" => %{"count" => 1}} = json_response(conn, 200)
+      assert data["id"] == match.id
+      assert data["firezone_id"] == "client_filter_target"
+    end
+
+    test "combines name and firezone_id filters", %{conn: conn, actor: actor, account: account} do
+      match = client_fixture(account: account, name: "shared-name", firezone_id: "client_a")
+      _same_name = client_fixture(account: account, name: "shared-name", firezone_id: "client_b")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", name: "shared-name", firezone_id: "client_a")
+
+      assert %{"data" => [data], "metadata" => %{"count" => 1}} = json_response(conn, 200)
+      assert data["id"] == match.id
+    end
+
+    test "returns an empty list when nothing matches", %{
+      conn: conn,
+      actor: actor,
+      account: account
+    } do
+      _client = client_fixture(account: account, name: "jane-laptop")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", name: "nonexistent")
+
+      assert %{"data" => [], "metadata" => %{"count" => 0}} = json_response(conn, 200)
+    end
+
+    test "does not match a Client in another account", %{
+      conn: conn,
+      actor: actor,
+      account: account
+    } do
+      _local = client_fixture(account: account, name: "unique-here")
+      other = client_fixture(account: account_fixture(), name: "unique-here")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", name: "unique-here")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      refute data["id"] == other.id
+    end
+
+    test "does not match a Gateway sharing a firezone_id", %{
+      conn: conn,
+      actor: actor,
+      account: account
+    } do
+      site = Portal.SiteFixtures.site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site, firezone_id: "shared_fz_id")
+      client = client_fixture(account: account, firezone_id: "shared_fz_id")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", firezone_id: "shared_fz_id")
+
+      assert %{"data" => [data], "metadata" => %{"count" => 1}} = json_response(conn, 200)
+      assert data["id"] == client.id
+      refute data["id"] == gateway.id
+    end
+
+    # coerce_filters/1 only reads the parameters it knows about, so an
+    # unrecognized one is ignored rather than erroring - matching every
+    # other filtered index in this API.
+    test "ignores an unrecognized query parameter", %{conn: conn, actor: actor, account: account} do
+      client = client_fixture(account: account, name: "jane-laptop")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", name: "jane-laptop", nope: "value")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == client.id
+    end
+
     test "lists clients with limit", %{
       conn: conn,
       actor: actor,

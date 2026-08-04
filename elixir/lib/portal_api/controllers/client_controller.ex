@@ -3,6 +3,7 @@ defmodule PortalAPI.ClientController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
   alias Portal.Presence.Clients
   alias __MODULE__.Database
@@ -21,7 +22,13 @@ defmodule PortalAPI.ClientController do
         type: :integer,
         example: 10
       ],
-      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
+      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
+      name: [in: :query, description: "Filter to Clients with this exact name", type: :string],
+      firezone_id: [
+        in: :query,
+        description: "Filter to the Client with this exact Firezone ID",
+        type: :string
+      ]
     ],
     responses:
       [ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.ListResponse}] ++
@@ -34,11 +41,18 @@ defmodule PortalAPI.ClientController do
   def index(conn, params) do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :preload, [:online?]),
+         list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, clients, metadata} <- Database.list_clients(conn.assigns.subject, list_opts) do
       render(conn, :index, clients: clients, metadata: metadata)
     else
       error -> Error.handle(conn, error)
     end
+  end
+
+  defp coerce_filters(params) do
+    []
+    |> Filters.maybe_append(:name, params["name"])
+    |> Filters.maybe_append(:firezone_id, params["firezone_id"])
   end
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
@@ -225,6 +239,36 @@ defmodule PortalAPI.ClientController do
       |> where([clients: d], d.type == :client)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
+    end
+
+    def filters do
+      [
+        %Portal.Repo.Filter{
+          name: :name,
+          title: "Name",
+          type: :string,
+          fun: &filter_by_name/2
+        },
+        %Portal.Repo.Filter{
+          name: :firezone_id,
+          title: "Firezone ID",
+          type: :string,
+          fun: &filter_by_firezone_id/2
+        }
+      ]
+    end
+
+    defp filter_by_name(queryable, name) do
+      dynamic = dynamic([clients: d], d.name == ^name)
+      {queryable, dynamic}
+    end
+
+    # firezone_id is unique per (account_id, actor_id) for Clients, not
+    # per account, so this can still match more than one row - callers
+    # must handle that rather than assuming a single result.
+    defp filter_by_firezone_id(queryable, firezone_id) do
+      dynamic = dynamic([clients: d], d.firezone_id == ^firezone_id)
+      {queryable, dynamic}
     end
 
     def cursor_fields do
