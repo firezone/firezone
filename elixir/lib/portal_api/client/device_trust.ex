@@ -2,15 +2,15 @@ defmodule PortalAPI.Client.DeviceTrust do
   @moduledoc """
   Device attestation from the client certificate presented at connect.
 
-  Accounts with trust anchors uploaded require their clients to connect over
-  mutual TLS to the dedicated `x509_external_url` host. The load balancer
+  Clients holding an MDM-provisioned certificate connect over mutual TLS to
+  the dedicated `mtls_external_url` host on `/client/v3`. The load balancer
   terminates the handshake, so TLS has already proven the client holds the
   certificate's private key, and passes the leaf up as base64-encoded DER in
   the `x-client-cert` header.
 
   The header is honored only when the request host matches that URL, so a
   forged `x-client-cert` on the plain API host is ignored. That holds as long
-  as the load balancer overwrites the header on the attestation host from the
+  as the load balancer overwrites the header on the mutual-TLS host from the
   real handshake rather than passing through whatever the client sent, and
   does not forward a client-supplied `x-forwarded-host`, which is where
   `Plug.RewriteOn` takes the request host from.
@@ -29,8 +29,11 @@ defmodule PortalAPI.Client.DeviceTrust do
   that the holder has some certificate from the anchor CA, not which device
   it is, so it cannot attest anything.
 
-  Attestation is required rather than advisory: once an account has trust
-  anchors, a connect that cannot produce a trusted certificate is refused.
+  Reaching the portal through that host is the client stating it has a
+  certificate to present, so failing to prove one there is fatal to the
+  connect rather than a silent downgrade. Connects that arrive anywhere else
+  are simply unattested, and whether an unattested device may reach a given
+  resource is a policy decision, not a socket one.
   """
 
   alias Portal.Crypto.X509
@@ -120,7 +123,8 @@ defmodule PortalAPI.Client.DeviceTrust do
         }
 
   @type reason ::
-          :untrusted_host
+          :not_attestation_host
+          | :no_trust_anchors
           | :no_certificate_presented
           | :invalid_certificate
           | :missing_client_auth_eku
@@ -133,29 +137,17 @@ defmodule PortalAPI.Client.DeviceTrust do
   Attests the connecting device from the certificate the load balancer passed
   up.
 
-  Returns `{:ok, nil}` when the account is not gated: no attestation host is
-  configured, the global `trust_anchors` feature is off, or the account has
-  uploaded no anchors. Returns `{:ok, verified}` when the presented
-  certificate is trusted, and `{:error, reason}` when the account is gated
-  and it is not.
+  `{:error, :not_attestation_host}` means the connect did not arrive on the
+  mutual-TLS host, or no such host is configured, so there was nothing to
+  attest. Every other error means the connect did arrive there and failed to
+  prove a device identity, which the caller treats as fatal.
   """
   @spec attest(map(), Portal.Authentication.Subject.t()) ::
-          {:ok, verified() | nil} | {:error, reason()}
+          {:ok, verified()} | {:error, reason()}
   def attest(connect_info, subject) do
-    with host when is_binary(host) <- attestation_host(),
-         [_anchor | _rest] = anchors <- Database.fetch_enabled_anchors(subject) do
-      verify_certificate(connect_info, host, anchors)
-    else
-      _not_gated -> {:ok, nil}
-    end
-  end
-
-  ####################################
-  ##### Certificate verification #####
-  ####################################
-
-  defp verify_certificate(connect_info, host, anchors) do
-    with {:ok, der} <- presented_certificate(connect_info, host),
+    with :ok <- validate_attestation_host(connect_info),
+         {:ok, anchors} <- fetch_anchors(subject),
+         {:ok, der} <- presented_certificate(connect_info),
          {:ok, leaf} <- decode_leaf(der),
          :ok <- validate_leaf(leaf, der, anchors),
          {:ok, identifiers} <- device_identifiers(leaf) do
@@ -168,15 +160,34 @@ defmodule PortalAPI.Client.DeviceTrust do
     end
   end
 
-  defp presented_certificate(connect_info, host) do
-    with :ok <- validate_host(connect_info, host),
-         {:ok, encoded} <- fetch_certificate_header(connect_info) do
+  ####################################
+  ##### Certificate verification #####
+  ####################################
+
+  # Checked before anything touches the database: a connect on the plain API
+  # host never pays for the anchor lookup.
+  defp validate_attestation_host(connect_info) do
+    case attestation_host() do
+      nil -> {:error, :not_attestation_host}
+      host -> validate_host(connect_info, host)
+    end
+  end
+
+  defp fetch_anchors(subject) do
+    case Database.fetch_enabled_anchors(subject) do
+      [] -> {:error, :no_trust_anchors}
+      anchors -> {:ok, anchors}
+    end
+  end
+
+  defp presented_certificate(connect_info) do
+    with {:ok, encoded} <- fetch_certificate_header(connect_info) do
       decode_certificate(encoded)
     end
   end
 
   defp attestation_host do
-    with url when is_binary(url) <- Portal.Config.get_env(:portal, :x509_external_url),
+    with url when is_binary(url) <- Portal.Config.get_env(:portal, :mtls_external_url),
          %URI{host: host} when is_binary(host) <- URI.parse(url) do
       String.downcase(host)
     else
@@ -188,11 +199,11 @@ defmodule PortalAPI.Client.DeviceTrust do
     if String.downcase(host) == attestation_host do
       :ok
     else
-      {:error, :untrusted_host}
+      {:error, :not_attestation_host}
     end
   end
 
-  defp validate_host(_connect_info, _attestation_host), do: {:error, :untrusted_host}
+  defp validate_host(_connect_info, _attestation_host), do: {:error, :not_attestation_host}
 
   # The load balancer sets the header to an empty value when the handshake
   # carried no client certificate.
