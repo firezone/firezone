@@ -1,12 +1,16 @@
 defmodule PortalAPI.Client.SocketTest do
   use PortalAPI.ChannelCase, async: true
 
+  import ExUnit.CaptureLog
   import PortalAPI.Client.Socket, only: [id: 1]
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.TokenFixtures
   import Portal.DeviceFixtures
+  import Portal.DeviceTrustFixtures
+  import Portal.FeaturesFixtures
   import Portal.SubjectFixtures
+  import Portal.TrustAnchorFixtures
   alias PortalAPI.Client.Socket
 
   # The actual client IP used for tests that verify remote_ip tracking
@@ -499,6 +503,101 @@ defmodule PortalAPI.Client.SocketTest do
     end
   end
 
+  describe "connect/3 device trust" do
+    setup do
+      Portal.Config.put_env_override(:portal, :x509_external_url, "https://x509.firezone.test/")
+
+      account = account_fixture()
+      enable_feature(:trust_anchors)
+      pki = pki()
+      trust_anchor_fixture(account: account, certs: [pki.ca_der])
+
+      actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: actor)
+
+      %{account: account, actor: actor, pki: pki, token: encode_token(token)}
+    end
+
+    test "attests the device from the presented certificate", %{pki: pki, token: token} do
+      connect_info = attested_connect_info(pki, token)
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.attested?
+      assert socket.assigns.client.last_attested_device_serial == "C02XK1ZGJGH5"
+      assert socket.assigns.client.last_attested_cert_fingerprint
+    end
+
+    test "refuses a connect without a certificate", %{token: token} do
+      connect_info = build_connect_info(token: token, host: "x509.firezone.test")
+
+      assert capture_log(fn ->
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :device_untrusted}
+             end) =~ "no_certificate_presented"
+    end
+
+    test "refuses a connect on the plain API host", %{pki: pki, token: token} do
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "api.firezone.test",
+          client_cert: client_cert_header(pki, :rsa)
+        )
+
+      assert capture_log(fn ->
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :device_untrusted}
+             end) =~ "untrusted_host"
+    end
+
+    test "refuses a certificate that does not chain to an anchor", %{pki: pki, token: token} do
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "x509.firezone.test",
+          client_cert: client_cert_header(pki, :untrusted)
+        )
+
+      assert capture_log(fn ->
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :device_untrusted}
+             end) =~ "untrusted_chain"
+    end
+
+    test "connects unattested when the account has no anchors", %{pki: pki} do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: actor)
+      connect_info = attested_connect_info(pki, encode_token(token))
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      refute socket.assigns.attested?
+      assert is_nil(socket.assigns.client.last_attested_device_serial)
+    end
+
+    test "merges a reinstalled client back onto its attested device row", %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          firezone_id: "fz-old",
+          last_attested_device_serial: "C02XK1ZGJGH5"
+        )
+
+      connect_info = attested_connect_info(pki, token)
+      attrs = connect_attrs(external_id: "fz-new")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert socket.assigns.client.id == existing.id
+      assert socket.assigns.client.firezone_id == "fz-new"
+    end
+  end
+
   describe "id/1" do
     test "creates a channel for a client" do
       subject = subject_fixture(type: :client)
@@ -508,7 +607,7 @@ defmodule PortalAPI.Client.SocketTest do
     end
   end
 
-  describe "find_or_create_client/3" do
+  describe "resolve_client/4" do
     setup do
       account = account_fixture()
       actor = actor_fixture(account: account)
@@ -536,7 +635,7 @@ defmodule PortalAPI.Client.SocketTest do
           "last_attested_device_serial" => "SN-ATT-1"
         })
 
-      assert {:ok, client} = Socket.Database.find_or_create_client(changeset, %{}, subject)
+      assert {:ok, client} = Socket.Database.resolve_client(changeset, %{}, nil, subject)
       assert client.id == existing.id
       assert client.firezone_id == "fz-new"
       assert [_only_one] = Portal.Repo.all(actor_devices_query(account, actor))
@@ -559,7 +658,7 @@ defmodule PortalAPI.Client.SocketTest do
           "last_attested_device_serial" => "SN-NEW-1"
         })
 
-      assert {:ok, client} = Socket.Database.find_or_create_client(changeset, %{}, subject)
+      assert {:ok, client} = Socket.Database.resolve_client(changeset, %{}, nil, subject)
       assert client.last_attested_device_serial == "SN-NEW-1"
       assert client.firezone_id == "fz-1"
     end
@@ -577,7 +676,7 @@ defmodule PortalAPI.Client.SocketTest do
           "firezone_id" => "fz-same"
         })
 
-      assert {:ok, client} = Socket.Database.find_or_create_client(changeset, %{}, subject)
+      assert {:ok, client} = Socket.Database.resolve_client(changeset, %{}, nil, subject)
       assert client.id == existing.id
     end
 
@@ -634,7 +733,7 @@ defmodule PortalAPI.Client.SocketTest do
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
-          assert {:ok, client} = Socket.Database.find_or_create_client(changeset, %{}, subject)
+          assert {:ok, client} = Socket.Database.resolve_client(changeset, %{}, nil, subject)
 
           # Falls back to the firezone_id path: a fresh row, with the attested
           # fields stripped so the insert cannot collide with A's or B's
@@ -794,5 +893,13 @@ defmodule PortalAPI.Client.SocketTest do
     |> Map.put(:public_key, Portal.DeviceFixtures.generate_public_key())
     |> Map.merge(Enum.into(attrs, %{}))
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
+  end
+
+  defp attested_connect_info(pki, token) do
+    build_connect_info(
+      token: token,
+      host: "x509.firezone.test",
+      client_cert: client_cert_header(pki, :rsa)
+    )
   end
 end
