@@ -31,7 +31,9 @@ defmodule PortalWeb.Logs.FlowLogsTest do
         resource_id: Ecto.UUID.generate(),
         flow_start: ~U[2026-07-30 10:00:00.000000Z],
         flow_end: ~U[2026-07-30 10:01:00.000000Z],
-        outer_src_ip: %Postgrex.INET{address: {203, 0, 113, 10}},
+        outers: [
+          %{src_ip: "203.0.113.10", src_port: 51_820, dst_ip: "198.51.100.5", dst_port: 51_820}
+        ],
         tx_bytes: 1_600_000,
         rx_bytes: 10_400_000
       }
@@ -216,7 +218,9 @@ defmodule PortalWeb.Logs.FlowLogsTest do
           account: account,
           inner_dst_ip: %Postgrex.INET{address: {10, 20, 30, 40}},
           inner_dst_port: 8_443,
-          outer_src_ip: %Postgrex.INET{address: {203, 0, 113, 77}}
+          outers: [
+            %{src_ip: "203.0.113.77", src_port: 51_820, dst_ip: "198.51.100.5", dst_port: 51_820}
+          ]
         )
 
       wrong_port =
@@ -224,7 +228,9 @@ defmodule PortalWeb.Logs.FlowLogsTest do
           account: account,
           inner_dst_ip: %Postgrex.INET{address: {10, 20, 30, 40}},
           inner_dst_port: 443,
-          outer_src_ip: %Postgrex.INET{address: {203, 0, 113, 77}}
+          outers: [
+            %{src_ip: "203.0.113.77", src_port: 51_820, dst_ip: "198.51.100.5", dst_port: 51_820}
+          ]
         )
 
       wrong_ip =
@@ -232,7 +238,9 @@ defmodule PortalWeb.Logs.FlowLogsTest do
           account: account,
           inner_dst_ip: %Postgrex.INET{address: {10, 20, 30, 41}},
           inner_dst_port: 8_443,
-          outer_src_ip: %Postgrex.INET{address: {203, 0, 113, 78}}
+          outers: [
+            %{src_ip: "203.0.113.78", src_port: 51_820, dst_ip: "198.51.100.5", dst_port: 51_820}
+          ]
         )
 
       conn = authorize_conn(conn, actor)
@@ -332,10 +340,14 @@ defmodule PortalWeb.Logs.FlowLogsTest do
         inner_src_port: 51_234,
         inner_dst_ip: %Postgrex.INET{address: {10, 0, 0, 9}},
         inner_dst_port: 443,
-        outer_src_ip: %Postgrex.INET{address: {203, 0, 113, 44}},
-        outer_src_port: 62_000,
-        outer_dst_ip: %Postgrex.INET{address: {189, 172, 73, 153}},
-        outer_dst_port: 51_820,
+        outers: [
+          %{
+            src_ip: "203.0.113.44",
+            src_port: 62_000,
+            dst_ip: "189.172.73.153",
+            dst_port: 51_820
+          }
+        ],
         domain: nil
       }
 
@@ -407,8 +419,14 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       assert api_json["policy_authorization_id"] == initiator.policy_authorization_id
       assert api_json["policy_id"] == initiator.policy_id
       assert Map.has_key?(api_json, "initiator_client_version")
-      assert Map.has_key?(api_json, "outer_src_ip")
-      assert Map.has_key?(api_json, "outer_dst_ip")
+      assert api_json["outers"] == [
+               %{
+                 "src_ip" => "203.0.113.44",
+                 "src_port" => 62_000,
+                 "dst_ip" => "189.172.73.153",
+                 "dst_port" => 51_820
+               }
+             ]
       refute Map.has_key?(api_json, "data")
       refute Map.has_key?(api_json, "seq")
       refute Map.has_key?(api_json, "start_seq")
@@ -516,10 +534,14 @@ defmodule PortalWeb.Logs.FlowLogsTest do
         flow_log_fixture(
           identity
           |> Map.put(:role, :initiator)
-          |> Map.put(:outer_src_ip, %Postgrex.INET{address: {192, 168, 1, 86}})
-          |> Map.put(:outer_src_port, 52_625)
-          |> Map.put(:outer_dst_ip, %Postgrex.INET{address: {203, 0, 113, 5}})
-          |> Map.put(:outer_dst_port, 52_625)
+          |> Map.put(:outers, [
+            %{
+              src_ip: "192.168.1.86",
+              src_port: 52_625,
+              dst_ip: "203.0.113.5",
+              dst_port: 52_625
+            }
+          ])
           |> Map.put(:flow_start, ~U[2026-07-30 10:00:00.000000Z])
           |> Map.put(:flow_end, ~U[2026-07-30 10:01:00.000000Z])
         )
@@ -528,10 +550,14 @@ defmodule PortalWeb.Logs.FlowLogsTest do
         flow_log_fixture(
           identity
           |> Map.put(:role, :responder)
-          |> Map.put(:outer_src_ip, %Postgrex.INET{address: {198, 51, 100, 130}})
-          |> Map.put(:outer_src_port, 41_001)
-          |> Map.put(:outer_dst_ip, %Postgrex.INET{address: {10, 122, 5, 4}})
-          |> Map.put(:outer_dst_port, 52_625)
+          |> Map.put(:outers, [
+            %{
+              src_ip: "198.51.100.130",
+              src_port: 41_001,
+              dst_ip: "10.122.5.4",
+              dst_port: 52_625
+            }
+          ])
           |> Map.put(:flow_start, ~U[2026-07-30 10:00:02.000000Z])
           |> Map.put(:flow_end, ~U[2026-07-30 10:01:02.000000Z])
         )

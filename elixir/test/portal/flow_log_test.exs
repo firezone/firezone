@@ -30,10 +30,14 @@ defmodule Portal.FlowLogTest do
         flow_start: ~U[2026-03-20 10:00:00.000000Z],
         flow_end: ~U[2026-03-20 10:05:00.000000Z],
         last_packet: ~U[2026-03-20 10:04:59.000000Z],
-        outer_src_ip: %Postgrex.INET{address: {198, 51, 100, 1}},
-        outer_src_port: 51_820,
-        outer_dst_ip: %Postgrex.INET{address: {203, 0, 113, 7}},
-        outer_dst_port: 51_820,
+        outers: [
+          %{
+            src_ip: "198.51.100.1",
+            src_port: 51_820,
+            dst_ip: "203.0.113.7",
+            dst_port: 51_820
+          }
+        ],
         rx_packets: 10,
         tx_packets: 12,
         rx_bytes: 1024,
@@ -48,7 +52,7 @@ defmodule Portal.FlowLogTest do
     attrs = valid_attrs(overrides)
 
     %FlowLog{}
-    |> cast(attrs, Map.keys(attrs))
+    |> cast(attrs, Map.keys(attrs) -- [:outers])
     |> FlowLog.changeset()
   end
 
@@ -89,8 +93,7 @@ defmodule Portal.FlowLogTest do
             :protocol,
             :inner_src_ip,
             :inner_dst_ip,
-            :outer_src_ip,
-            :outer_dst_ip,
+            :outers,
             :flow_start
           ] do
         assert Map.has_key?(errors_on(cs), field)
@@ -113,6 +116,37 @@ defmodule Portal.FlowLogTest do
       cs = changeset(%{inner_dst_port: 70_000})
       refute cs.valid?
       assert Map.has_key?(errors_on(cs), :inner_dst_port)
+    end
+
+    test "preserves outer path order and allows nullable source endpoints" do
+      outers = [
+        %{src_ip: nil, src_port: nil, dst_ip: "203.0.113.7", dst_port: 51_820},
+        %{src_ip: "198.51.100.2", src_port: 42_000, dst_ip: "203.0.113.8", dst_port: 443}
+      ]
+
+      cs = changeset(%{outers: outers})
+
+      assert cs.valid?
+      assert Enum.map(get_field(cs, :outers), & &1.dst_ip) == ["203.0.113.7", "203.0.113.8"]
+    end
+
+    test "invalid with an empty outer path array" do
+      cs = changeset(%{outers: []})
+      refute cs.valid?
+      assert Map.has_key?(errors_on(cs), :outers)
+    end
+
+    test "invalid with malformed outer endpoints" do
+      cs =
+        changeset(%{
+          outers: [
+            %{src_ip: "not-an-ip", src_port: 70_000, dst_ip: nil, dst_port: nil}
+          ]
+        })
+
+      refute cs.valid?
+      assert %{outers: [%{src_ip: [_], src_port: [_], dst_ip: [_], dst_port: [_]}]} =
+               errors_on(cs)
     end
 
     test "invalid with non-UUID initiator_device_id" do

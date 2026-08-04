@@ -153,7 +153,7 @@ defmodule PortalWeb.Logs.FlowLogs do
           <:col :let={row} label="Client" class="w-52">
             <.flow_client_cell
               device_name={device_name(row.initiator_device, "Deleted client")}
-              outer_src_ip={row.log.outer_src_ip}
+              ip={first_outer_src_ip(row.log)}
             />
           </:col>
           <:col :let={row} label="Resource" class="w-72">
@@ -694,21 +694,28 @@ defmodule PortalWeb.Logs.FlowLogs do
           <div class="mb-1 text-xs text-[var(--text-tertiary)]">
             WireGuard endpoints, as seen by this side
           </div>
-          <div class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-            <span class="text-[var(--text-tertiary)]">Initiator</span>
-            <span
-              data-wireguard-endpoint="initiator"
-              class="break-all text-right font-mono text-[var(--text-secondary)]"
+          <div class="space-y-2 text-xs">
+            <div
+              :for={{outer, index} <- Enum.with_index(@log.outers, 1)}
+              data-wireguard-path={index}
+              class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1"
             >
-              {format_endpoint(@log.outer_src_ip, @log.outer_src_port)}
-            </span>
-            <span class="text-[var(--text-tertiary)]">Responder</span>
-            <span
-              data-wireguard-endpoint="responder"
-              class="break-all text-right font-mono text-[var(--text-secondary)]"
-            >
-              {format_endpoint(@log.outer_dst_ip, @log.outer_dst_port)}
-            </span>
+              <span class="col-span-2 text-[var(--text-tertiary)]">Path {index}</span>
+              <span class="text-[var(--text-tertiary)]">Initiator</span>
+              <span
+                data-wireguard-endpoint="initiator"
+                class="break-all text-right font-mono text-[var(--text-secondary)]"
+              >
+                {format_endpoint(outer.src_ip, outer.src_port)}
+              </span>
+              <span class="text-[var(--text-tertiary)]">Responder</span>
+              <span
+                data-wireguard-endpoint="responder"
+                class="break-all text-right font-mono text-[var(--text-secondary)]"
+              >
+                {format_endpoint(outer.dst_ip, outer.dst_port)}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -785,6 +792,9 @@ defmodule PortalWeb.Logs.FlowLogs do
 
   defp device_name(%{name: name}, _fallback) when name not in [nil, ""], do: name
   defp device_name(_, fallback), do: fallback
+
+  defp first_outer_src_ip(%{outers: [%{src_ip: src_ip} | _]}), do: src_ip
+  defp first_outer_src_ip(_log), do: nil
 
   defp format_duration(started_at, ended_at) do
     seconds = DateTime.diff(ended_at, started_at, :second)
@@ -1123,8 +1133,7 @@ defmodule PortalWeb.Logs.FlowLogs do
            fragment("? ILIKE ?", fl.domain, ^pattern) or
            fragment("?::text ILIKE ?", fl.inner_src_ip, ^pattern) or
            fragment("?::text ILIKE ?", fl.inner_dst_ip, ^pattern) or
-           fragment("?::text ILIKE ?", fl.outer_src_ip, ^pattern) or
-           fragment("?::text ILIKE ?", fl.outer_dst_ip, ^pattern) or
+           fragment("?::text ILIKE ?", fl.outers, ^pattern) or
            fragment("encode(?, 'hex') ILIKE ?", fl.log_id, ^pattern)
        )}
     end

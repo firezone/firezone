@@ -3,6 +3,57 @@ defmodule Portal.FlowLog do
   import Ecto.Changeset
   require Logger
 
+  defmodule Outer do
+    use Ecto.Schema
+    import Ecto.Changeset
+
+    @primary_key false
+
+    @type t :: %__MODULE__{
+            src_ip: String.t() | nil,
+            src_port: :inet.port_number() | nil,
+            dst_ip: String.t(),
+            dst_port: :inet.port_number()
+          }
+
+    embedded_schema do
+      field :src_ip, :string
+      field :src_port, :integer
+      field :dst_ip, :string
+      field :dst_port, :integer
+    end
+
+    def changeset(outer, attrs) do
+      outer
+      |> cast(attrs, [:src_ip, :src_port, :dst_ip, :dst_port])
+      |> validate_required([:dst_ip, :dst_port])
+      |> validate_ip(:src_ip)
+      |> validate_ip(:dst_ip)
+      |> validate_number(:src_port,
+        greater_than_or_equal_to: 0,
+        less_than_or_equal_to: 65_535
+      )
+      |> validate_number(:dst_port,
+        greater_than_or_equal_to: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+
+    defp validate_ip(changeset, field) do
+      case get_field(changeset, field) do
+        nil ->
+          changeset
+
+        value ->
+          case Portal.Types.IP.cast(value) do
+            {:ok, ip} -> put_change(changeset, field, Portal.Types.IP.to_string(ip))
+            {:error, opts} -> add_error(changeset, field, "is invalid", opts)
+            :error -> add_error(changeset, field, "is invalid")
+          end
+      end
+    end
+  end
+
   @primary_key false
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
@@ -38,10 +89,7 @@ defmodule Portal.FlowLog do
           inner_src_port: :inet.port_number(),
           inner_dst_port: :inet.port_number(),
           domain: String.t() | nil,
-          outer_src_ip: Portal.Types.IP.t(),
-          outer_dst_ip: Portal.Types.IP.t(),
-          outer_src_port: :inet.port_number(),
-          outer_dst_port: :inet.port_number(),
+          outers: [Outer.t()],
           flow_start: DateTime.t(),
           flow_end: DateTime.t() | nil,
           last_packet: DateTime.t() | nil,
@@ -56,7 +104,7 @@ defmodule Portal.FlowLog do
   @protocols [:tcp, :udp]
 
   # No column is relative to the side that reported the row: connlib orients
-  # both tunnel tuples to (initiator-src, responder-dst) and counts tx as
+  # the inner tunnel tuple to (initiator-src, responder-dst) and counts tx as
   # initiator-to-responder on both sides, so a flow's two rows differ only in
   # `role` and in the counters each side observed independently.
   #
@@ -109,10 +157,7 @@ defmodule Portal.FlowLog do
     field :inner_dst_port, :integer, primary_key: true
     field :domain, :string
 
-    field :outer_src_ip, Portal.Types.IP
-    field :outer_dst_ip, Portal.Types.IP
-    field :outer_src_port, :integer
-    field :outer_dst_port, :integer
+    embeds_many :outers, Outer, on_replace: :delete
 
     field :flow_start, :utc_datetime_usec, primary_key: true
     field :flow_end, :utc_datetime_usec
@@ -131,7 +176,7 @@ defmodule Portal.FlowLog do
 
   @uuid_fields ~w[account_id initiator_device_id responder_device_id policy_authorization_id
                   policy_id initiator_auth_provider_id resource_id initiator_actor_id]a
-  @port_fields ~w[inner_src_port inner_dst_port outer_src_port outer_dst_port]a
+  @port_fields ~w[inner_src_port inner_dst_port]a
   @counter_fields ~w[rx_packets tx_packets rx_bytes tx_bytes]a
   @bounded_string_fields ~w[resource_name resource_address initiator_actor_name
                             initiator_actor_email initiator_client_version
@@ -140,7 +185,7 @@ defmodule Portal.FlowLog do
                             initiator_device_identifier_for_vendor
                             initiator_device_firebase_installation_id domain]a
 
-  # The attribution snapshot, both tunnel tuples, protocol, and flow_start are
+  # The attribution snapshot, inner tunnel tuple, outer paths, protocol, and flow_start are
   # all known when a flow side opens, so they are required. Only the fields that
   # are genuinely unknown until the flow closes (flow_end, last_packet, and the
   # byte/packet counters) are left nullable to support open-then-close
@@ -150,6 +195,7 @@ defmodule Portal.FlowLog do
   # or credential has one.
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
+    |> cast_embed(:outers, with: &Outer.changeset/2, required: true)
     |> validate_required([
       :account_id,
       :log_id,
@@ -169,10 +215,6 @@ defmodule Portal.FlowLog do
       :inner_dst_ip,
       :inner_src_port,
       :inner_dst_port,
-      :outer_src_ip,
-      :outer_dst_ip,
-      :outer_src_port,
-      :outer_dst_port,
       :flow_start
     ])
     |> validate_uuids()
@@ -262,6 +304,17 @@ defmodule Portal.FlowLog do
   defp validate_string_lengths(changeset) do
     Enum.reduce(@bounded_string_fields, changeset, fn field, cs ->
       validate_length(cs, field, max: 255)
+    end)
+  end
+
+  def outers_to_maps(outers) do
+    Enum.map(outers, fn outer ->
+      %{
+        src_ip: outer.src_ip,
+        src_port: outer.src_port,
+        dst_ip: outer.dst_ip,
+        dst_port: outer.dst_port
+      }
     end)
   end
 

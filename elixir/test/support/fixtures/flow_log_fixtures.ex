@@ -46,10 +46,20 @@ defmodule Portal.FlowLogFixtures do
       |> Map.put_new(:inner_dst_ip, %Postgrex.INET{address: {10, 0, 0, 5}})
       |> Map.put_new(:inner_src_port, 54_321)
       |> Map.put_new(:inner_dst_port, 443)
-      |> Map.put_new(:outer_src_ip, %Postgrex.INET{address: {203, 0, 113, 10}})
-      |> Map.put_new(:outer_dst_ip, %Postgrex.INET{address: {198, 51, 100, 5}})
-      |> Map.put_new(:outer_src_port, 51_820)
-      |> Map.put_new(:outer_dst_port, 51_820)
+      |> Map.put_new(:outers, [
+        %FlowLog.Outer{
+          src_ip: "203.0.113.10",
+          src_port: 51_820,
+          dst_ip: "198.51.100.5",
+          dst_port: 51_820
+        }
+      ])
+      |> Map.update!(:outers, fn outers ->
+        Enum.map(outers, fn
+          %FlowLog.Outer{} = outer -> outer
+          outer -> struct!(FlowLog.Outer, outer)
+        end)
+      end)
       |> Map.put_new(:rx_packets, 100)
       |> Map.put_new(:tx_packets, 80)
       |> Map.put_new(:rx_bytes, 102_400)

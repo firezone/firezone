@@ -14,8 +14,8 @@ defmodule PortalAPI.FlowLogController do
   # names one policy authorization, a
   # request may only carry flow logs for that authorization: a record declaring
   # a different `policy_authorization_id` fails the whole request with 422. The
-  # body supplies the network fields: the inner tunnel tuple, the outer
-  # (WireGuard) tuple, the flow window, and the byte/packet counters.
+  # body supplies the network fields: the inner tunnel tuple, the ordered outer
+  # (WireGuard) paths, the flow window, and the byte/packet counters.
   use PortalAPI, :controller
   import Ecto.Changeset
   alias Portal.FlowLog
@@ -39,8 +39,10 @@ defmodule PortalAPI.FlowLogController do
                   initiator_device_uuid initiator_device_identifier_for_vendor
                   initiator_device_firebase_installation_id protocol
                   inner_src_ip inner_dst_ip inner_src_port inner_dst_port domain
-                  outer_src_ip outer_dst_ip outer_src_port outer_dst_port flow_start flow_end
+                  outers flow_start flow_end
                   last_packet rx_packets tx_packets rx_bytes tx_bytes inserted_at]a
+
+  @scalar_cast_fields @cast_fields -- [:outers]
 
   @max_batch_size 10_000
 
@@ -169,7 +171,7 @@ defmodule PortalAPI.FlowLogController do
 
   defp changeset(attrs) do
     %FlowLog{}
-    |> cast(attrs, @cast_fields)
+    |> cast(attrs, @scalar_cast_fields)
     |> FlowLog.changeset()
   end
 
@@ -193,7 +195,7 @@ defmodule PortalAPI.FlowLogController do
   # counters. Everything else (attribution, log_id, inserted_at) is set from
   # the verified token or the server below.
   @body_fields ~w[protocol inner_src_ip inner_dst_ip inner_src_port inner_dst_port domain
-                  outer_src_ip outer_dst_ip outer_src_port outer_dst_port
+                  outers
                   flow_start flow_end last_packet rx_packets tx_packets rx_bytes tx_bytes]
 
   # Attribution comes from the verified token (authoritative); the network
@@ -269,8 +271,9 @@ defmodule PortalAPI.FlowLogController do
     # transition (a still-open row receiving its close); a replayed open, a
     # replayed close, or a late open arriving after the close all leave the row
     # untouched, so an open never churns the row and a closed flow is immutable.
-    # The attribution snapshot, both tunnel tuples, and domain are stable for the
-    # life of a flow and are only ever set on insert.
+    # The attribution snapshot, inner tunnel tuple, and domain are stable for the
+    # life of a flow and are only ever set on insert. A close replaces `outers`
+    # because it may contain paths accumulated after an older open report.
     defp on_conflict_query do
       # The close takes a fresh seq so cursor-based consumers that already
       # delivered the open row see it again and deliver the close; start_seq
@@ -280,6 +283,7 @@ defmodule PortalAPI.FlowLogController do
           set: [
             seq: fragment("nextval('flow_logs_seq_seq')"),
             start_seq: f.seq,
+            outers: fragment("EXCLUDED.outers"),
             flow_end: fragment("EXCLUDED.flow_end"),
             last_packet: fragment("EXCLUDED.last_packet"),
             rx_packets: fragment("EXCLUDED.rx_packets"),

@@ -105,16 +105,16 @@ defmodule PortalWeb.Logs.Components do
 
   def format_ip(other), do: to_string(other)
 
-  @doc "Renders an initiating Client and its outer source IP."
+  @doc "Renders an initiating Client and its first observed outer source IP."
   attr :device_name, :string, required: true
-  attr :outer_src_ip, :any, required: true
+  attr :ip, :any, required: true
 
   def flow_client_cell(assigns) do
     ~H"""
     <div class="min-w-0">
       <div class="truncate text-xs text-[var(--text-primary)]">{@device_name}</div>
       <div class="truncate font-mono text-xs text-[var(--text-tertiary)]">
-        {format_ip(@outer_src_ip) || "-"}
+        {format_ip(@ip) || "-"}
       </div>
     </div>
     """
@@ -141,6 +141,8 @@ defmodule PortalWeb.Logs.Components do
     </div>
     """
   end
+
+  def format_endpoint(nil, nil), do: "-"
 
   def format_endpoint(ip, port) do
     ip = format_ip(ip) || "-"
