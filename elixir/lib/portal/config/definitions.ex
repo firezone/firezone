@@ -144,9 +144,9 @@ defmodule Portal.Config.Definitions do
 
   The load balancer terminates mutual TLS on this host and passes the client
   certificate up as base64-encoded DER in the `x-client-cert` header. It must
-  also strip any inbound `x-client-cert` and `x-forwarded-host` on every host
-  it serves, since a request that can set either header can claim any device
-  identity.
+  strip any inbound `x-client-cert` on this host before setting it, so that a
+  client cannot supply its own, and it must not forward a client-supplied
+  `x-forwarded-host`, which is what the request host is derived from.
 
   When this is not set, certificate-based device trust is disabled: the header
   is ignored and accounts with trust anchors uploaded connect as usual.

@@ -8,9 +8,12 @@ defmodule PortalAPI.Client.DeviceTrust do
   certificate's private key, and passes the leaf up as base64-encoded DER in
   the `x-client-cert` header.
 
-  The header is honored only on that host, and the load balancer must strip
-  any inbound `x-client-cert` and `x-forwarded-host` on every host it serves:
-  a request that can set either header can claim any device identity.
+  The header is honored only when the request host matches that URL, so a
+  forged `x-client-cert` on the plain API host is ignored. That holds as long
+  as the load balancer overwrites the header on the attestation host from the
+  real handshake rather than passing through whatever the client sent, and
+  does not forward a client-supplied `x-forwarded-host`, which is where
+  `Plug.RewriteOn` takes the request host from.
 
   A certificate is trusted when it allows TLS client authentication, permits
   digital signatures (Key Usage absent or including `digitalSignature`), is
