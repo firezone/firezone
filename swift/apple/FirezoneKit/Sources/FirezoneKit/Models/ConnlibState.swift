@@ -19,7 +19,7 @@ public struct ConnlibState: Encodable, Decodable {
     case isLogStreamingActive
   }
 
-  public init(
+  private init(
     resources: [FirezoneKit.Resource]?,  // swiftlint:disable:this discouraged_optional_collection
     connectedDevices: [FirezoneKit.ConnectedDevice],
     isLogStreamingActive: Bool
@@ -39,10 +39,35 @@ public struct ConnlibState: Encodable, Decodable {
       try container.decodeIfPresent(Bool.self, forKey: .isLogStreamingActive) ?? false
   }
 
-  /// A stable content hash used to avoid sending an unchanged snapshot on every poll.
-  public func contentHash() throws -> Data {
-    let encodedData = try PropertyListEncoder().encode(self)
-    return Data(SHA256.hash(data: encodedData))
+  /// A state snapshot that is known to differ from the hash it was compared against.
+  public struct Change {
+    let state: ConnlibState
+    let hash: Data
+
+    fileprivate init(state: ConnlibState, hash: Data) {
+      self.state = state
+      self.hash = hash
+    }
+  }
+
+  /// Creates a state snapshot only when its encoded content differs from `currentHash`.
+  public static func makeIfChanged(
+    resources: [FirezoneKit.Resource]?,  // swiftlint:disable:this discouraged_optional_collection
+    connectedDevices: [FirezoneKit.ConnectedDevice],
+    isLogStreamingActive: Bool,
+    comparedTo currentHash: Data
+  ) throws -> Change? {
+    let state = ConnlibState(
+      resources: resources,
+      connectedDevices: connectedDevices,
+      isLogStreamingActive: isLogStreamingActive
+    )
+    let encodedData = try PropertyListEncoder().encode(state)
+    let hash = Data(SHA256.hash(data: encodedData))
+
+    guard hash != currentHash else { return nil }
+
+    return Change(state: state, hash: hash)
   }
 }
 
@@ -61,12 +86,11 @@ public struct StatePollResponse: Codable {
   public let notifications: [UnreachableResource]
 
   public init(
-    state: ConnlibState?,
-    stateHash: Data?,
+    stateChange: ConnlibState.Change?,
     notifications: [UnreachableResource]
   ) {
-    self.state = state
-    self.stateHash = stateHash
+    self.state = stateChange?.state
+    self.stateHash = stateChange?.hash
     self.notifications = notifications
   }
 }

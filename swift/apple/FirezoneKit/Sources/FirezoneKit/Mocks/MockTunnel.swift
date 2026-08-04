@@ -66,19 +66,17 @@
       switch message {
       case .pollUpdates(let request):
         do {
-          let state = ConnlibState(
+          let stateChange = try ConnlibState.makeIfChanged(
             resources: MockFixtures.resources,
             connectedDevices: MockFixtures.connectedDevices,
-            isLogStreamingActive: false
+            isLogStreamingActive: false,
+            comparedTo: request.stateHash
           )
-          let stateHash = try state.contentHash()
-          let stateChanged = stateHash != request.stateHash
 
           responseHandler(
             try PropertyListEncoder().encode(
               StatePollResponse(
-                state: stateChanged ? state : nil,
-                stateHash: stateChanged ? stateHash : nil,
+                stateChange: stateChange,
                 notifications: []
               )
             )

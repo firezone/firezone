@@ -13,13 +13,13 @@ import Testing
 struct ConnlibStateTests {
   @Test("State round-trips through a property list")
   func stateRoundTrip() throws {
-    let state = ConnlibState(
+    let change = try makeChange(
       resources: [makeTestResource(id: "resource-1", name: "Resource A")],
       connectedDevices: [makeTestConnectedDevice(id: "device-1")],
       isLogStreamingActive: true
     )
 
-    let decoded = try roundTrip(state)
+    let decoded = try roundTrip(change.state)
 
     #expect(decoded.resources?.first?.id == "resource-1")
     #expect(decoded.connectedDevices.first?.id == "device-1")
@@ -28,26 +28,26 @@ struct ConnlibStateTests {
 
   @Test("State round-trips nil resources")
   func nilResourcesRoundTrip() throws {
-    let state = ConnlibState(
+    let change = try makeChange(
       resources: nil,
       connectedDevices: [],
       isLogStreamingActive: false
     )
 
-    let decoded = try roundTrip(state)
+    let decoded = try roundTrip(change.state)
 
     #expect(decoded.resources == nil)
   }
 
   @Test("Connected-device fields round-trip")
   func connectedDeviceFieldsRoundTrip() throws {
-    let state = ConnlibState(
+    let change = try makeChange(
       resources: nil,
       connectedDevices: [makeTestConnectedDevice(id: "device-1")],
       isLogStreamingActive: false
     )
 
-    let device = try #require(roundTrip(state).connectedDevices.first)
+    let device = try #require(roundTrip(change.state).connectedDevices.first)
 
     #expect(device.id == "device-1")
     #expect(device.name == "Device device-1")
@@ -56,89 +56,91 @@ struct ConnlibStateTests {
     #expect(device.pools == ["pool-a"])
   }
 
-  @Test("Identical state has an identical content hash")
-  func identicalStateHash() throws {
-    let first = ConnlibState(
+  @Test("Unchanged state returns nil")
+  func unchangedStateReturnsNil() throws {
+    let first = try makeChange(
       resources: [makeTestResource(id: "resource-1", name: "Resource A")],
       connectedDevices: [],
       isLogStreamingActive: false
     )
-    let second = ConnlibState(
+    let second = try ConnlibState.makeIfChanged(
       resources: [makeTestResource(id: "resource-1", name: "Resource A")],
       connectedDevices: [],
-      isLogStreamingActive: false
+      isLogStreamingActive: false,
+      comparedTo: first.hash
     )
 
-    #expect(try first.contentHash() == second.contentHash())
-    #expect(try first.contentHash().count == 32)
+    #expect(second == nil)
+    #expect(first.hash.count == 32)
   }
 
-  @Test("Resource changes alter the content hash")
-  func resourceChangeAltersHash() throws {
-    let first = ConnlibState(
+  @Test("Resource changes return a new state")
+  func resourceChangeReturnsState() throws {
+    let first = try makeChange(
       resources: [makeTestResource(id: "resource-1", name: "Resource A")],
       connectedDevices: [],
       isLogStreamingActive: false
     )
-    let second = ConnlibState(
+    let second = try ConnlibState.makeIfChanged(
       resources: [makeTestResource(id: "resource-2", name: "Resource B")],
       connectedDevices: [],
-      isLogStreamingActive: false
+      isLogStreamingActive: false,
+      comparedTo: first.hash
     )
 
-    #expect(try first.contentHash() != second.contentHash())
+    #expect(second != nil)
   }
 
-  @Test("Connected-device changes alter the content hash")
-  func connectedDeviceChangeAltersHash() throws {
-    let first = ConnlibState(
+  @Test("Connected-device changes return a new state")
+  func connectedDeviceChangeReturnsState() throws {
+    let first = try makeChange(
       resources: nil,
       connectedDevices: [],
       isLogStreamingActive: false
     )
-    let second = ConnlibState(
+    let second = try ConnlibState.makeIfChanged(
       resources: nil,
       connectedDevices: [makeTestConnectedDevice(id: "device-1")],
-      isLogStreamingActive: false
+      isLogStreamingActive: false,
+      comparedTo: first.hash
     )
 
-    #expect(try first.contentHash() != second.contentHash())
+    #expect(second != nil)
   }
 
-  @Test("Log-streaming changes alter the content hash")
-  func logStreamingChangeAltersHash() throws {
-    let first = ConnlibState(
+  @Test("Log-streaming changes return a new state")
+  func logStreamingChangeReturnsState() throws {
+    let first = try makeChange(
       resources: nil,
       connectedDevices: [],
       isLogStreamingActive: false
     )
-    let second = ConnlibState(
+    let second = try ConnlibState.makeIfChanged(
       resources: nil,
       connectedDevices: [],
-      isLogStreamingActive: true
+      isLogStreamingActive: true,
+      comparedTo: first.hash
     )
 
-    #expect(try first.contentHash() != second.contentHash())
+    #expect(second != nil)
   }
 
   @Test("Poll response round-trips state and notifications independently")
   func pollResponseRoundTrip() throws {
-    let state = ConnlibState(
+    let change = try makeChange(
       resources: [makeTestResource(id: "resource-1", name: "Resource A")],
       connectedDevices: [],
       isLogStreamingActive: false
     )
-    let hash = try state.contentHash()
     let response = StatePollResponse(
-      state: state,
-      stateHash: hash,
+      stateChange: change,
       notifications: [UnreachableResource(resourceId: "resource-1", reason: .offline)]
     )
 
     let decoded = try roundTrip(response)
 
     #expect(decoded.state?.resources?.first?.id == "resource-1")
-    #expect(decoded.stateHash == hash)
+    #expect(decoded.stateHash == change.hash)
     #expect(
       decoded.notifications == [
         UnreachableResource(resourceId: "resource-1", reason: .offline)
@@ -148,8 +150,7 @@ struct ConnlibStateTests {
   @Test("Poll response can contain notifications without a state change")
   func pollResponseWithoutState() throws {
     let response = StatePollResponse(
-      state: nil,
-      stateHash: nil,
+      stateChange: nil,
       notifications: [
         UnreachableResource(resourceId: "resource-1", reason: .versionMismatch)
       ]
@@ -160,6 +161,20 @@ struct ConnlibStateTests {
     #expect(decoded.state == nil)
     #expect(decoded.stateHash == nil)
     #expect(decoded.notifications.count == 1)
+  }
+
+  private func makeChange(
+    resources: [FirezoneKit.Resource]?,  // swiftlint:disable:this discouraged_optional_collection
+    connectedDevices: [FirezoneKit.ConnectedDevice],
+    isLogStreamingActive: Bool
+  ) throws -> ConnlibState.Change {
+    try #require(
+      try ConnlibState.makeIfChanged(
+        resources: resources,
+        connectedDevices: connectedDevices,
+        isLogStreamingActive: isLogStreamingActive,
+        comparedTo: Data()
+      ))
   }
 
   private func roundTrip<T: Codable>(_ value: T) throws -> T {

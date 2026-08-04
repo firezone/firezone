@@ -48,29 +48,30 @@ private final class RecordingTunnelSession: TunnelSessionProtocol, @unchecked Se
 struct IPCClientTests {
   @Test("Polling decodes state and notifications from one response")
   func pollUpdates() async throws {
-    let state = ConnlibState(
-      resources: nil,
-      connectedDevices: [],
-      isLogStreamingActive: false
+    let previousHash = Data([0x01, 0x02])
+    let stateChange = try #require(
+      try ConnlibState.makeIfChanged(
+        resources: nil,
+        connectedDevices: [],
+        isLogStreamingActive: false,
+        comparedTo: previousHash
+      )
     )
-    let stateHash = try state.contentHash()
     let response = StatePollResponse(
-      state: state,
-      stateHash: stateHash,
+      stateChange: stateChange,
       notifications: [UnreachableResource(resourceId: "resource-1", reason: .offline)]
     )
     let session = RecordingTunnelSession(
       status: .connected,
       responseData: try PropertyListEncoder().encode(response)
     )
-    let previousHash = Data([0x01, 0x02])
 
     let decoded = try await IPCClient.pollUpdates(
       session: session,
       currentHash: previousHash
     )
 
-    #expect(decoded.stateHash == stateHash)
+    #expect(decoded.stateHash == stateChange.hash)
     #expect(decoded.notifications == response.notifications)
     #expect(session.sentMessages.count == 1)
     guard case .pollUpdates(let request) = session.sentMessages[0] else {

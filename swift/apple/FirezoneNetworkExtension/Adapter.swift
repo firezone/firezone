@@ -314,13 +314,12 @@ actor Adapter {
   /// Returns state changes and consumes fresh notifications in one UI polling operation.
   func pollUpdates(_ request: StatePollRequest) -> Data? {
     do {
-      let state = ConnlibState(
+      let stateChange = try ConnlibState.makeIfChanged(
         resources: self.resources?.map { self.convertResource($0) },
         connectedDevices: self.connectedDevices.map { FirezoneKit.ConnectedDevice($0) },
-        isLogStreamingActive: Log.isStreamingActive
+        isLogStreamingActive: Log.isStreamingActive,
+        comparedTo: request.stateHash
       )
-      let stateHash = try state.contentHash()
-      let stateChanged = stateHash != request.stateHash
 
       let now = notificationClock.now
       let notifications = pendingUnreachableResources.compactMap { pending in
@@ -329,8 +328,7 @@ actor Adapter {
       }
 
       let response = StatePollResponse(
-        state: stateChanged ? state : nil,
-        stateHash: stateChanged ? stateHash : nil,
+        stateChange: stateChange,
         notifications: notifications
       )
       let encodedResponse = try PropertyListEncoder().encode(response)
