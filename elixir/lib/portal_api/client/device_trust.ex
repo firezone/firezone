@@ -3,7 +3,7 @@ defmodule PortalAPI.Client.DeviceTrust do
   Device attestation from the client certificate presented at connect.
 
   Clients holding an MDM-provisioned certificate connect over mutual TLS to
-  the dedicated `mtls_external_url` host on `/client/v3`. The load balancer
+  the dedicated `mtls_external_url` host. The load balancer
   terminates the handshake, so TLS has already proven the client holds the
   certificate's private key, and passes the leaf up as base64-encoded DER in
   the `x-client-cert` header.
