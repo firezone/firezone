@@ -541,7 +541,7 @@ pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimCli
         let src = SocketAddr::new(*src, sport.0);
         let received_icmp_error_for_tuple = sim_client.failed_tcp_packets.get(&(*sport, *dport));
 
-        let Some((socket, local)) = sim_client.tcp_client.iter_sockets().find_map(|s| {
+        let Some((socket, local)) = sim_client.iter_tcp_sockets().find_map(|s| {
             let endpoint = s.local_endpoint()?;
 
             (l3_tcp::IpEndpoint::from(src) == endpoint).then_some((s, endpoint))

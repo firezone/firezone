@@ -37,7 +37,7 @@ fuzz_target!(|data: &[u8]| {
 
         if transition.should_clear_packets() {
             ReferenceState::clear_packets(&mut reference);
-            TunnelTest::clear_packets(&mut tunnel);
+            TunnelTest::teardown(&mut tunnel);
         }
 
         reference = ReferenceState::apply(reference, &transition, flux_capacitor.now_instant());

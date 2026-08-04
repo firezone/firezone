@@ -9,10 +9,11 @@ use dns_types::prelude::*;
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
 
 use super::dns_records::DnsRecords;
+use super::endpoint::Endpoint;
 
 pub struct TcpDnsServerResource {
     socket: SocketAddr,
-    server: Option<dns_over_tcp::Server>,
+    server: Endpoint<dns_over_tcp::Server>,
 }
 
 #[derive(Debug, Default)]
@@ -25,24 +26,37 @@ impl TcpDnsServerResource {
     pub fn new(socket: SocketAddr) -> Self {
         Self {
             socket,
-            server: None,
+            server: Endpoint::Inactive,
         }
     }
 
     pub fn handle_input(&mut self, packet: IpPacket, now: Instant) {
-        let server = self.server.get_or_insert_with(|| {
+        if self.server.is_retired() {
+            let is_syn = packet.as_tcp().is_some_and(|tcp| tcp.syn() && !tcp.ack());
+            if !is_syn {
+                tracing::debug!(?packet, "Ignoring packet for retired TCP DNS server");
+                return;
+            }
+
+            self.server = Endpoint::Inactive;
+        }
+
+        if self.server.active().is_none() {
             let mut server = dns_over_tcp::Server::new(now);
             // Each simulated client maintains at most one connection to a DNS
             // server, and the generated topology contains exactly two clients.
             server.set_listen_addresses::<2>(BTreeSet::from([self.socket]));
-            server
-        });
+            self.server.activate(server);
+        }
 
-        server.handle_inbound(packet);
+        self.server
+            .active_mut()
+            .expect("TCP DNS server should be active after initialization")
+            .handle_inbound(packet);
     }
 
     pub fn handle_timeout(&mut self, global_dns_records: &DnsRecords, now: Instant) {
-        let Some(server) = self.server.as_mut() else {
+        let Some(server) = self.server.active_mut() else {
             return;
         };
 
@@ -58,12 +72,21 @@ impl TcpDnsServerResource {
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
         self.server
-            .as_mut()
+            .active_mut()
             .and_then(dns_over_tcp::Server::poll_outbound)
+    }
+
+    pub(crate) fn retire(&mut self) {
+        self.server.retire();
     }
 }
 
 impl UdpDnsServerResource {
+    pub(crate) fn clear(&mut self) {
+        self.inbound_packets.clear();
+        self.outbound_packets.clear();
+    }
+
     pub fn handle_input(&mut self, packet: IpPacket) {
         self.inbound_packets.push_back(packet);
     }

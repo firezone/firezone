@@ -370,7 +370,7 @@ impl TunnelTest {
                     .clients
                     .get_mut(&client_id)
                     .unwrap()
-                    .exec_mut(|sim| sim.connect_tcp(src, dst, sport, dport));
+                    .exec_mut(|sim| sim.connect_tcp(src, dst, sport, dport, now));
             }
             Transition::SendDnsQuery {
                 client_id,
@@ -700,7 +700,7 @@ impl TunnelTest {
         }
     }
 
-    pub fn clear_packets(state: &mut TunnelTest) {
+    pub fn teardown(state: &mut TunnelTest) {
         for client in state.clients.values_mut() {
             client.exec_mut(|c| c.clear_packets());
         }
@@ -944,7 +944,11 @@ impl TunnelTest {
         // Handle the TCP DNS client, i.e. simulate applications making TCP DNS queries.
         for client in self.clients.values_mut() {
             client.exec_mut(|c| {
-                while let Some(result) = c.tcp_dns_client.poll_query_result() {
+                while let Some(result) = c
+                    .tcp_dns_client
+                    .active_mut()
+                    .and_then(|client| client.poll_query_result())
+                {
                     match result.result {
                         Ok(message) => {
                             let upstream = c
@@ -1372,8 +1376,7 @@ impl TunnelTest {
                     c.set_new_dns_servers(config.dns_by_sentinel);
                     c.routes = config.routes;
                     c.search_domain = config.search_domain;
-                    c.tcp_dns_client
-                        .set_source_interface(config.ip.v4, config.ip.v6);
+                    c.set_tcp_dns_source_interface(config.ip.v4, config.ip.v6, now);
                 });
 
                 Ok(())

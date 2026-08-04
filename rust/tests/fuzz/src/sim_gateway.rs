@@ -2,6 +2,7 @@ use super::{
     dns_records::DnsRecords,
     dns_server_resource::{TcpDnsServerResource, UdpDnsServerResource},
     echo::echo_reply,
+    endpoint::Endpoint,
     icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
@@ -36,13 +37,22 @@ pub(crate) struct SimGateway {
     udp_dns_server_resources: BTreeMap<SocketAddr, UdpDnsServerResource>,
     tcp_dns_server_resources: BTreeMap<SocketAddr, TcpDnsServerResource>,
 
-    tcp_resources: BTreeMap<SocketAddr, crate::tcp::Server>,
+    tcp_resources: BTreeMap<SocketAddr, Endpoint<crate::tcp::Server>>,
 
     /// Collects datagrams encapsulated via [`GatewayState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
 }
 
 impl SimGateway {
+    fn new_tcp_resource(address: SocketAddr, now: Instant) -> crate::tcp::Server {
+        let mut server = crate::tcp::Server::new(now);
+        if let Err(e) = server.listen(address) {
+            tracing::error!(%address, "Failed to listen on address: {e}");
+        }
+
+        server
+    }
+
     pub(crate) fn new(
         id: GatewayId,
         sut: GatewayState,
@@ -62,12 +72,10 @@ impl SimGateway {
             tcp_resources: tcp_resources
                 .into_iter()
                 .map(|address| {
-                    let mut server = crate::tcp::Server::new(now);
-                    if let Err(e) = server.listen(address) {
-                        tracing::error!(%address, "Failed to listen on address: {e}")
-                    }
-
-                    (address, server)
+                    (
+                        address,
+                        Endpoint::Active(Self::new_tcp_resource(address, now)),
+                    )
                 })
                 .collect(),
             transmit_buffer: snownet::TransmitBuffer::new(),
@@ -128,11 +136,15 @@ impl SimGateway {
 
                     std::iter::from_fn(|| server.poll_outbound())
                 });
-        let tcp_resource_packets = self.tcp_resources.values_mut().flat_map(|server| {
-            server.handle_timeout(now);
+        let tcp_resource_packets = self
+            .tcp_resources
+            .values_mut()
+            .filter_map(|server| server.active_mut())
+            .flat_map(|server| {
+                server.handle_timeout(now);
 
-            std::iter::from_fn(|| server.poll_outbound())
-        });
+                std::iter::from_fn(|| server.poll_outbound())
+            });
 
         // Collect first to end the mutable borrows of the resource maps before encapsulating.
         let packets = udp_server_packets
@@ -258,9 +270,25 @@ impl SimGateway {
 
         if let Some(tcp) = packet.as_tcp() {
             let socket = SocketAddr::new(dst_ip, tcp.destination_port());
+            let is_syn = tcp.syn() && !tcp.ack();
 
-            if let Some(server) = self.tcp_resources.get_mut(&socket) {
-                server.handle_inbound(packet);
+            if let Some(endpoint) = self.tcp_resources.get_mut(&socket) {
+                match endpoint {
+                    Endpoint::Active(server) => server.handle_inbound(packet),
+                    Endpoint::Retired if is_syn => {
+                        endpoint.activate(Self::new_tcp_resource(socket, now));
+                        endpoint
+                            .active_mut()
+                            .expect("TCP resource should be active after a new SYN")
+                            .handle_inbound(packet);
+                    }
+                    Endpoint::Retired => {
+                        tracing::debug!(?packet, "Ignoring packet for retired TCP resource");
+                    }
+                    Endpoint::Inactive => {
+                        unreachable!("TCP resources are initialized with an active endpoint")
+                    }
+                }
                 return None;
             }
 
@@ -307,7 +335,15 @@ impl SimGateway {
     pub(crate) fn clear_packets(&mut self) {
         self.received_icmp_requests.clear();
         self.received_udp_requests.clear();
-        self.tcp_resources.clear();
+        for resource in self.udp_dns_server_resources.values_mut() {
+            resource.clear();
+        }
+        for resource in self.tcp_dns_server_resources.values_mut() {
+            resource.retire();
+        }
+        for resource in self.tcp_resources.values_mut() {
+            resource.retire();
+        }
     }
 
     fn handle_icmp_request(

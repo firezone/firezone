@@ -403,7 +403,8 @@ impl PollTimeout for SimClient {
             .chain(self.sut.poll_timeout())
             .chain(
                 self.tcp_dns_client
-                    .poll_timeout()
+                    .active_mut()
+                    .and_then(|client| client.poll_timeout())
                     .map(|instant| (instant, "Application TCP DNS client")),
             )
             .min_by_key(|(instant, _)| *instant)
