@@ -10,7 +10,7 @@ use tunnel_proto::dns;
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
 use crate::reference::ReferenceState;
-use crate::transition::{DnsQuery, DnsTransport, IpFamily, Transition};
+use crate::transition::{DnsQuery, DnsTransport, IpFamily, MalformedDnsQuery, Transition};
 
 #[derive(Clone)]
 pub(super) struct DnsQueryTarget {
@@ -175,6 +175,23 @@ pub(super) fn generate(
             dns_server: target.dns_server,
             transport: arb_dns_transport(g),
         },
+    }
+}
+
+pub(super) fn generate_malformed(g: &mut Generator, target: DnsQueryTarget) -> Transition {
+    let kinds = [
+        MalformedDnsQuery::QrBitSet,
+        MalformedDnsQuery::NoQuestion,
+        MalformedDnsQuery::TwoQuestions,
+        MalformedDnsQuery::TruncatedHeader,
+    ];
+
+    Transition::SendMalformedDnsQuery {
+        client_id: target.client_id,
+        kind: kinds[g.choose_index(kinds.len())],
+        query_id: arb_dns_query_id(g),
+        dns_server: target.dns_server,
+        local_port: g.u16(),
     }
 }
 

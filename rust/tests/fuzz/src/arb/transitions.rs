@@ -49,6 +49,7 @@ enum TransitionKind {
     UpdateDnsRecords,
     SendPacket,
     SendDnsQuery,
+    SendMalformedDnsQuery,
     // Static device pool membership update.
     UpdateStaticDevicePool,
 }
@@ -100,11 +101,12 @@ pub(super) fn generate(
         (!dns_record_domains.is_empty()).then_some((K::UpdateDnsRecords, 5)),
         (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQuery, 10)),
+        (!dns_query_targets.is_empty()).then_some((K::SendMalformedDnsQuery, 2)),
         (!static_device_pools.is_empty()).then_some((K::UpdateStaticDevicePool, 2)),
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 23]>>();
+    .collect::<SmallVec<[_; 24]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -252,6 +254,10 @@ pub(super) fn generate(
         K::SendDnsQuery => {
             let target = dns_query_targets[g.choose_index(dns_query_targets.len())].clone();
             dns_queries::generate(g, target, state)
+        }
+        K::SendMalformedDnsQuery => {
+            let target = dns_query_targets[g.choose_index(dns_query_targets.len())].clone();
+            dns_queries::generate_malformed(g, target)
         }
         K::UpdateStaticDevicePool => {
             let pool = static_device_pools[g.choose_index(static_device_pools.len())].clone();

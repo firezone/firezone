@@ -257,6 +257,11 @@ impl ReferenceState {
                     c.on_dns_resource_ptr_query(dns_server, *query_id, *transport);
                 });
             }
+            Transition::SendMalformedDnsQuery { .. } => {
+                // The client must drop structurally invalid queries, so there is
+                // nothing to record: without an expected UDP DNS handshake, any
+                // response is flagged as an unexpected reply.
+            }
             Transition::SendIcmpPacket {
                 client_id,
                 src,
