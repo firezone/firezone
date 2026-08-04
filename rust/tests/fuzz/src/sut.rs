@@ -537,6 +537,13 @@ impl TunnelTest {
 
                 state.deploy_new_relays(new_relays, now, to_remove);
             }
+            Transition::PartialRelaysPresence {
+                disconnected,
+                new_relays,
+                reselected,
+            } => {
+                state.partial_relays_presence(disconnected, new_relays, reselected, now);
+            }
             Transition::Idle => {
                 const IDLE_DURATION: Duration = Duration::from_secs(6 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
                 let cut_off = state.flux_capacitor.now::<Instant>() + IDLE_DURATION;
@@ -1474,6 +1481,66 @@ impl TunnelTest {
             gateway.exec_mut(|g| g.update_relays(to_remove.iter().copied(), online.iter(), now));
         }
         self.relays = online; // Override all relays.
+    }
+
+    /// Applies a `relays_presence` message that does not mention every relay in use.
+    ///
+    /// The `disconnected` relays go offline while all others keep serving.
+    /// Peers learn about the `new_relays` and `reselected` relays;
+    /// allocations on relays that are mentioned in neither set get refreshed.
+    fn partial_relays_presence(
+        &mut self,
+        disconnected: BTreeSet<RelayId>,
+        new_relays: BTreeMap<RelayId, Host<u64>>,
+        reselected: BTreeSet<RelayId>,
+        now: Instant,
+    ) {
+        for rid in &disconnected {
+            if let Some(relay) = self.relays.remove(rid) {
+                self.network.remove_host(&relay);
+            }
+        }
+
+        let new_relays = new_relays
+            .into_iter()
+            .map(|(rid, relay)| (rid, relay.map(SimRelay::new, debug_span!("relay", %rid))))
+            .collect::<BTreeMap<_, _>>();
+
+        for (rid, relay) in &new_relays {
+            let added = self.network.add_host(*rid, relay);
+            debug_assert!(added);
+        }
+
+        let selected = new_relays
+            .keys()
+            .chain(&reselected)
+            .copied()
+            .collect::<BTreeSet<_>>();
+
+        self.relays.extend(new_relays);
+
+        for client in self.clients.values_mut() {
+            client.exec_mut(|c| {
+                c.update_relays(
+                    disconnected.iter().copied(),
+                    self.relays
+                        .iter()
+                        .filter(|(rid, _)| selected.contains(*rid)),
+                    now,
+                )
+            });
+        }
+        for gateway in self.gateways.values_mut() {
+            gateway.exec_mut(|g| {
+                g.update_relays(
+                    disconnected.iter().copied(),
+                    self.relays
+                        .iter()
+                        .filter(|(rid, _)| selected.contains(*rid)),
+                    now,
+                )
+            });
+        }
     }
 }
 

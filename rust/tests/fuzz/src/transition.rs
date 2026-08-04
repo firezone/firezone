@@ -101,6 +101,19 @@ pub enum Transition {
     PartitionRelaysFromPortal,
     Idle,
     RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
+    /// The portal sends a `relays_presence` message that does not mention every relay in use.
+    ///
+    /// The `connected` relays in a `relays_presence` message are a load-balanced selection
+    /// and may therefore omit relays that a peer still holds an allocation on.
+    /// Peers refresh the allocations on such unmentioned relays.
+    PartialRelaysPresence {
+        /// Relays that went offline.
+        disconnected: BTreeSet<RelayId>,
+        /// Newly-deployed relays that are part of the portal's new selection.
+        new_relays: BTreeMap<RelayId, Host<u64>>,
+        /// Still-online relays that are part of the portal's new selection.
+        reselected: BTreeSet<RelayId>,
+    },
     DeauthorizeWhileGatewayIsPartitioned(ResourceId),
     UpdateDnsRecords {
         domain: DomainName,
@@ -135,6 +148,7 @@ impl Transition {
             Transition::PartitionRelaysFromPortal => false,
             Transition::Idle => false,
             Transition::RebootRelaysWhilePartitioned(_) => false,
+            Transition::PartialRelaysPresence { .. } => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
             Transition::UpdateDnsRecords { .. } => false,
         }

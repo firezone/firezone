@@ -357,6 +357,11 @@ impl ReferenceState {
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 state.deploy_new_relays(new_relays)
             }
+            Transition::PartialRelaysPresence {
+                disconnected,
+                new_relays,
+                reselected: _,
+            } => state.partial_relays_presence(disconnected, new_relays),
             Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
                 // With ICE-less connections, losing all relays does not fail
@@ -956,6 +961,24 @@ impl ReferenceState {
             self.network.remove_host(relay);
         }
         self.relays.clear();
+
+        for (rid, new_relay) in new_relays {
+            self.relays.insert(*rid, new_relay.clone());
+            let added = self.network.add_host(*rid, new_relay);
+            debug_assert!(added);
+        }
+    }
+
+    fn partial_relays_presence(
+        &mut self,
+        disconnected: &BTreeSet<RelayId>,
+        new_relays: &BTreeMap<RelayId, Host<u64>>,
+    ) {
+        for rid in disconnected {
+            if let Some(relay) = self.relays.remove(rid) {
+                self.network.remove_host(&relay);
+            }
+        }
 
         for (rid, new_relay) in new_relays {
             self.relays.insert(*rid, new_relay.clone());

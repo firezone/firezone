@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     time::{Duration, Instant},
 };
 
@@ -33,6 +33,7 @@ enum TransitionKind {
     DeployNewRelays,
     PartitionRelaysFromPortal,
     RebootRelaysWhilePartitioned,
+    PartialRelaysPresence,
     Idle,
     // State-gated.
     AddResource,
@@ -84,6 +85,7 @@ pub(super) fn generate(
         Some((K::DeployNewRelays, 1)),
         Some((K::PartitionRelaysFromPortal, 1)),
         Some((K::RebootRelaysWhilePartitioned, 1)),
+        Some((K::PartialRelaysPresence, 1)),
         Some((K::Idle, 1)),
         (!addable_resources.is_empty()).then_some((K::AddResource, 5)),
         (!cidr_resources.is_empty()).then_some((K::ChangeCidrResourceAddress, 1)),
@@ -103,7 +105,7 @@ pub(super) fn generate(
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 23]>>();
+    .collect::<SmallVec<[_; 24]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -167,6 +169,44 @@ pub(super) fn generate(
                 })
                 .collect::<BTreeMap<_, _>>();
             Transition::RebootRelaysWhilePartitioned(relays)
+        }
+        K::PartialRelaysPresence => {
+            let current = state.relays.keys().copied().collect::<Vec<_>>();
+
+            let mut disconnected = current
+                .iter()
+                .filter(|_| g.flip(50))
+                .copied()
+                .collect::<BTreeSet<_>>();
+            let mut new_relays = if g.flip(50) {
+                arb_relays(g)
+            } else {
+                BTreeMap::default()
+            };
+            let reselected = current
+                .iter()
+                .filter(|id| !disconnected.contains(id))
+                .filter(|_| g.flip(50))
+                .copied()
+                .collect::<BTreeSet<_>>();
+
+            // Keep at least one relay online; a total outage is covered by
+            // `PartitionRelaysFromPortal`.
+            if !current.is_empty() && disconnected.len() == current.len() && new_relays.is_empty() {
+                let stays = current[g.choose_index(current.len())];
+                disconnected.remove(&stays);
+            }
+
+            // The portal only pushes `relays_presence` when something changed.
+            if disconnected.is_empty() && new_relays.is_empty() {
+                new_relays = arb_relays(g);
+            }
+
+            Transition::PartialRelaysPresence {
+                disconnected,
+                new_relays,
+                reselected,
+            }
         }
         K::Idle => Transition::Idle,
         K::AddResource => {
