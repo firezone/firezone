@@ -13,10 +13,10 @@ use l3_tcp::{
 };
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 
-/// How long [`Client::reset`] remembers the remotes of dropped connections.
+/// How many remotes of closed connections we remember at once.
 ///
-/// A late ICMP error for such a connection is still consumed within this period instead of surfacing on the TUN device.
-const CLOSED_REMOTE_GRACE_PERIOD: Duration = Duration::from_secs(60);
+/// A late ICMP error for a closed connection is consumed instead of surfacing on the TUN device.
+const MAX_CLOSED_REMOTES: usize = 32;
 
 /// A sans-io DNS-over-TCP client.
 ///
@@ -36,9 +36,10 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     source_ips: Option<(Ipv4Addr, Ipv6Addr)>,
 
     sockets: SocketSet<'static>,
-    sockets_by_remote: BTreeMap<SocketAddr, l3_tcp::SocketHandle>,
-    /// Remotes whose connections [`Client::reset`] dropped, so late ICMP errors for them are still consumed.
-    recently_closed_remotes: BTreeMap<SocketAddr, Instant>,
+    /// The TCP socket for each remote, or `None` for a connection that [`Client::reset`] dropped.
+    ///
+    /// Closed remotes are kept so late ICMP errors for them are still consumed.
+    sockets_by_remote: BTreeMap<SocketAddr, Option<l3_tcp::SocketHandle>>,
     local_ports_by_socket: BTreeMap<l3_tcp::SocketHandle, u16>,
     /// Queries we should send to a DNS resolver.
     pending_queries_by_remote_and_local: BTreeMap<(SocketAddr, SocketAddr), VecDeque<PendingQuery>>,
@@ -92,7 +93,6 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             query_results: Default::default(),
             rng: StdRng::from_seed(seed),
             sockets_by_remote: Default::default(),
-            recently_closed_remotes: Default::default(),
             local_ports_by_socket: Default::default(),
             pending_queries_by_remote_and_local: Default::default(),
             query_timeout,
@@ -120,7 +120,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
         let deadline = self.last_now + self.query_timeout;
 
-        if let Some(s) = self.sockets_by_remote.get(&server)
+        if let Some(Some(s)) = self.sockets_by_remote.get(&server)
             && let Some(local_port) = self.local_ports_by_socket.get(s).copied()
         {
             let local_endpoint = local_endpoint(server, ipv4_source, ipv6_source, local_port);
@@ -156,7 +156,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
         let handle = self.sockets.add(socket);
 
-        self.sockets_by_remote.insert(server, handle);
+        self.sockets_by_remote.insert(server, Some(handle));
         self.local_ports_by_socket.insert(handle, local_port);
 
         Ok(local_endpoint)
@@ -182,9 +182,9 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
         if let Ok(Some((failed_packet, _))) = packet.icmp_error()
             && let Layer4Protocol::Tcp { dst, .. } = failed_packet.layer4_protocol()
-            && let server = SocketAddr::new(failed_packet.dst(), dst)
-            && (self.sockets_by_remote.contains_key(&server)
-                || self.recently_closed_remotes.contains_key(&server))
+            && self
+                .sockets_by_remote
+                .contains_key(&SocketAddr::new(failed_packet.dst(), dst))
         {
             return true;
         }
@@ -229,10 +229,12 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             return false;
         };
 
-        self.sockets_by_remote.contains_key(&SocketAddr::new(
-            packet.destination(),
-            tcp.destination_port(),
-        ))
+        self.sockets_by_remote
+            .get(&SocketAddr::new(
+                packet.destination(),
+                tcp.destination_port(),
+            ))
+            .is_some_and(|socket| socket.is_some())
     }
 
     /// Handle the [`IpPacket`].
@@ -245,9 +247,16 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         if let Ok(Some((failed_packet, icmp_error))) = packet.icmp_error()
             && let Layer4Protocol::Tcp { dst, .. } = failed_packet.layer4_protocol()
             && let server = SocketAddr::new(failed_packet.dst(), dst)
-            && let Some(handle) = self.sockets_by_remote.get(&server)
+            && let Some(maybe_socket) = self.sockets_by_remote.get(&server)
             && let Some((ipv4_source, ipv6_source)) = self.source_ips
         {
+            let Some(handle) = maybe_socket else {
+                // The connection was dropped by `reset`; its queries have already been failed.
+                tracing::debug!(%server, "Ignoring ICMP error for closed connection");
+
+                return;
+            };
+
             let socket = self.sockets.get_mut::<l3_tcp::Socket>(*handle);
             socket.abort();
 
@@ -278,14 +287,6 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             return;
         }
 
-        // An ICMP error without a live connection refers to one that [`Client::reset`] dropped.
-        // Its queries have already been failed; there is nothing left to do.
-        if packet.icmp_error().is_ok_and(|error| error.is_some()) {
-            tracing::debug!("Ignoring ICMP error for closed connection");
-
-            return;
-        }
-
         self.device.receive(packet);
     }
 
@@ -305,8 +306,6 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.last_now = now;
         self.fail_expired_queries(now);
-        self.recently_closed_remotes
-            .retain(|_, closed_at| now.duration_since(*closed_at) < CLOSED_REMOTE_GRACE_PERIOD);
 
         let Some((ipv4_source, ipv6_source)) = self.source_ips else {
             return;
@@ -322,7 +321,11 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             return;
         }
 
-        for (remote, handle) in self.sockets_by_remote.iter_mut() {
+        for (remote, maybe_socket) in self.sockets_by_remote.iter_mut() {
+            let Some(handle) = maybe_socket else {
+                continue;
+            };
+
             let _guard = tracing::trace_span!("socket", %handle).entered();
 
             let socket = self.sockets.get_mut::<l3_tcp::Socket>(*handle);
@@ -458,16 +461,15 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         self.query_results
             .extend(aborted_pending_queries.chain(aborted_sent_queries));
 
-        let closed_at = self.last_now;
-        self.recently_closed_remotes.extend(
-            self.sockets_by_remote
-                .keys()
-                .map(|remote| (*remote, closed_at)),
-        );
-
         self.sockets = SocketSet::new(vec![]);
-        self.sockets_by_remote.clear();
         self.local_ports_by_socket.clear();
+
+        for maybe_socket in self.sockets_by_remote.values_mut() {
+            *maybe_socket = None;
+        }
+        while self.sockets_by_remote.len() > MAX_CLOSED_REMOTES {
+            self.sockets_by_remote.pop_first();
+        }
     }
 
     fn sample_new_unique_port(&mut self) -> Result<u16> {
