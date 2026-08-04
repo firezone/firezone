@@ -730,6 +730,10 @@ impl RefClient {
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
         client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
     ) -> PacketRoute {
+        if dst.ip_addr().is_some_and(|ip| ip.is_multicast()) {
+            return PacketRoute::Drop;
+        }
+
         // Peer tunnel IPs first mean client-to-client device-pool routing. A
         // tunnel IP without a matching pool may still belong to a gateway.
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
@@ -1415,13 +1419,30 @@ impl ExecMutScope for RefClient {
 
 fn internet_resource_rejects(addr: IpAddr) -> bool {
     match addr {
-        IpAddr::V4(addr) => addr.is_private() || addr.is_link_local() || is_cgnat(addr),
-        IpAddr::V6(addr) => addr.is_unicast_link_local(),
+        IpAddr::V4(addr) => {
+            addr.is_private()
+                || addr.is_loopback()
+                || addr.is_link_local()
+                || is_cgnat(addr)
+                || addr.is_multicast()
+                || is_reserved(addr)
+        }
+        IpAddr::V6(addr) => {
+            addr.is_loopback()
+                || addr.to_ipv4_mapped().is_some()
+                || addr.is_unique_local()
+                || addr.is_unicast_link_local()
+                || addr.is_multicast()
+        }
     }
 }
 
 fn is_cgnat(addr: Ipv4Addr) -> bool {
     matches!(addr.octets(), [100, 64..=127, _, _])
+}
+
+fn is_reserved(addr: Ipv4Addr) -> bool {
+    matches!(addr.octets(), [240..=255, _, _, _])
 }
 
 fn is_resource_proxy(addr: IpAddr) -> bool {

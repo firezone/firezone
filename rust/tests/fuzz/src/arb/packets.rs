@@ -257,18 +257,29 @@ fn internet_resource_rejected_destination(g: &mut Generator, source: IpAddr) -> 
             let networks = [
                 Ipv4Network::new(Ipv4Addr::new(10, 0, 0, 0), 8).unwrap(),
                 Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 10).unwrap(),
+                Ipv4Network::new(Ipv4Addr::new(127, 0, 0, 0), 8).unwrap(),
                 Ipv4Network::new(Ipv4Addr::new(169, 254, 0, 0), 16).unwrap(),
                 Ipv4Network::new(Ipv4Addr::new(172, 16, 0, 0), 12).unwrap(),
                 Ipv4Network::new(Ipv4Addr::new(192, 168, 0, 0), 16).unwrap(),
+                Ipv4Network::new(Ipv4Addr::new(224, 0, 0, 0), 4).unwrap(),
+                Ipv4Network::new(Ipv4Addr::new(240, 0, 0, 0), 4).unwrap(),
             ];
             let network = networks[g.choose_index(networks.len())];
 
             IpAddr::V4(host_in_v4(g, network))
         }
-        IpAddr::V6(_) => IpAddr::V6(host_in_v6(
-            g,
-            Ipv6Network::new(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0), 10).unwrap(),
-        )),
+        IpAddr::V6(_) => {
+            let networks = [
+                Ipv6Network::new(Ipv6Addr::LOCALHOST, 128).unwrap(),
+                Ipv6Network::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0, 0), 96).unwrap(),
+                Ipv6Network::new(Ipv6Addr::new(0xfc00, 0, 0, 0, 0, 0, 0, 0), 7).unwrap(),
+                Ipv6Network::new(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0), 10).unwrap(),
+                Ipv6Network::new(Ipv6Addr::new(0xff00, 0, 0, 0, 0, 0, 0, 0), 8).unwrap(),
+            ];
+            let network = networks[g.choose_index(networks.len())];
+
+            IpAddr::V6(host_in_v6(g, network))
+        }
     }
 }
 
