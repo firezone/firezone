@@ -2,6 +2,6 @@ allowBuilds:
   "@parcel/watcher": true
   esbuild: true
 overrides:
-  "brace-expansion@<=5.0.7": 5.0.8
+  "brace-expansion@<=5.0.7": 5.0.9
 patchedDependencies:
   minimatch@3.1.5: patches/minimatch@3.1.5.patch
