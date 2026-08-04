@@ -732,6 +732,8 @@ impl TunnelTest {
         buffered_transmits: &mut BufferedTransmits,
         cut_off: Instant,
     ) {
+        let mut stalled = 0u32;
+
         'outer: while self.flux_capacitor.now::<Instant>() < cut_off {
             let now = self.flux_capacitor.now();
 
@@ -894,8 +896,8 @@ impl TunnelTest {
                 continue;
             }
 
-            if !buffered_transmits.is_empty() {
-                self.flux_capacitor.small_tick(); // Small tick to get to the next transmit.
+            if let Some(next_transmit) = buffered_transmits.next_transmit() {
+                self.flux_capacitor.skip_to(next_transmit); // Jump to when it arrives.
                 continue;
             }
 
@@ -907,10 +909,25 @@ impl TunnelTest {
                 break; // Nothing to do before cut-off.
             }
 
-            // The buffer is empty here (see the `is_empty` guard above), so nothing
-            // is in flight; jump to the next deadline and fire whatever is due.
-            self.flux_capacitor.advance_until(time_to_next_action);
+            // The buffer is empty here (see the `next_transmit` guard above), so
+            // nothing is in flight; jump to the next deadline and fire what is due.
+            let before = self.flux_capacitor.now::<Instant>();
+            self.flux_capacitor.skip_to(time_to_next_action);
             self.handle_timeout(self.flux_capacitor.now());
+
+            // The old fixed-grid tick always moved the clock, so a deadline that
+            // firing does not clear could not spin. Landing exactly on it can, so
+            // say which component is doing it rather than hanging.
+            if self.flux_capacitor.now::<Instant>() == before {
+                stalled += 1;
+                assert!(
+                    stalled < 10_000,
+                    "`poll_timeout` keeps reporting a deadline that `handle_timeout` does not clear: {:?}",
+                    self.poll_timeout()
+                );
+            } else {
+                stalled = 0;
+            }
         }
 
         for (transmit, at) in buffered_transmits.drain() {
