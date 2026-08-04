@@ -67,6 +67,17 @@ defmodule PortalAPI.Error do
     })
   end
 
+  # For validation failures that aren't backed by a changeset. The
+  # documented 422 schema requires validation_errors (see
+  # ProblemDetails.ValidationError), so callers pass the same
+  # field => [message] shape traverse_errors/2 produces rather than a
+  # bare detail string.
+  def handle(conn, {:error, :unprocessable_entity, validation_errors: validation_errors}) do
+    ProblemDetails.send(conn, 422, "The request body failed validation.", %{
+      validation_errors: validation_errors
+    })
+  end
+
   def handle(conn, error) do
     Logger.error("Unhandled API error", error: inspect(error))
 
