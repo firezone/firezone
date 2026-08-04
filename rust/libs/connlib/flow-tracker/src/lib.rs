@@ -879,7 +879,8 @@ pub struct Record {
     pub inner_dst_port: u16,
     pub domain: Option<DomainName>,
 
-    /// The outer (transport) 4-tuples the flow has used, in order of first use.
+    /// The outer (transport) tuples the flow has used, appended on every change,
+    /// so a tuple the flow returned to appears again.
     pub outers: Vec<FlowContext>,
 
     pub flow_start: DateTime<Utc>,
@@ -1119,7 +1120,8 @@ struct TcpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
     stats: FlowStats,
-    /// The outer (transport) 4-tuples the flow has used, in order of first use.
+    /// The outer (transport) tuples the flow has used, appended on every change,
+    /// so a tuple the flow returned to appears again.
     contexts: Contexts,
 
     domain: Option<DomainName>,
@@ -1136,7 +1138,8 @@ struct UdpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
     stats: FlowStats,
-    /// The outer (transport) 4-tuples the flow has used, in order of first use.
+    /// The outer (transport) tuples the flow has used, appended on every change,
+    /// so a tuple the flow returned to appears again.
     contexts: Contexts,
 
     domain: Option<DomainName>,
