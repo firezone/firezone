@@ -254,41 +254,59 @@ defmodule PortalWeb.Logs.FlowLogs do
 
           <section>
             <.section_heading label="Connection details" />
-            <div class="rounded border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-              <div class="flex items-center gap-3 min-w-0">
-                <div class="min-w-0 flex-1">
-                  <div class="text-xs text-[var(--text-tertiary)]">
-                    Initiator
+            <div class="space-y-3">
+              <div class="overflow-hidden rounded border border-[var(--border)] bg-[var(--surface)]">
+                <div class="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2">
+                  <div class="flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]">
+                    <.icon name="ri-shield-keyhole-line" class="h-3.5 w-3.5 text-[var(--brand)]" />
+                    Inner tunnel
                   </div>
-                  <div class="mt-1 truncate font-mono text-xs text-[var(--text-primary)]">
-                    {format_endpoint(
-                      @selected_report.log.inner_src_ip,
-                      @selected_report.log.inner_src_port
-                    )}
-                  </div>
+                  <span class="font-mono text-[10px] uppercase text-[var(--text-tertiary)]">
+                    {@selected_report.log.protocol}
+                  </span>
                 </div>
-                <.icon name="ri-arrow-right-line" class="w-4 h-4 shrink-0 text-[var(--brand)]" />
-                <div class="min-w-0 flex-1 text-right">
-                  <div class="truncate text-xs text-[var(--text-tertiary)]">
-                    {destination_label(@selected_report.log)}
+                <div class="px-4 py-3">
+                  <div class="flex items-center gap-3 min-w-0">
+                    <div class="min-w-0 flex-1">
+                      <div class="text-xs text-[var(--text-tertiary)]">
+                        Initiator
+                      </div>
+                      <div class="mt-1 truncate font-mono text-xs text-[var(--text-primary)]">
+                        {format_endpoint(
+                          @selected_report.log.inner_src_ip,
+                          @selected_report.log.inner_src_port
+                        )}
+                      </div>
+                    </div>
+                    <.icon name="ri-arrow-right-line" class="w-4 h-4 shrink-0 text-[var(--brand)]" />
+                    <div class="min-w-0 flex-1 text-right">
+                      <div class="truncate text-xs text-[var(--text-tertiary)]">
+                        {destination_label(@selected_report.log)}
+                      </div>
+                      <div class="mt-1 truncate font-mono text-xs text-[var(--text-primary)]">
+                        {format_endpoint(
+                          @selected_report.log.inner_dst_ip,
+                          @selected_report.log.inner_dst_port
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div class="mt-1 truncate font-mono text-xs text-[var(--text-primary)]">
-                    {format_endpoint(
-                      @selected_report.log.inner_dst_ip,
-                      @selected_report.log.inner_dst_port
-                    )}
+                  <div
+                    :if={@selected_report.log.domain}
+                    class="mt-3 pt-3 border-t border-[var(--border)] text-xs text-[var(--text-secondary)]"
+                  >
+                    Resolved domain:
+                    <span class="font-mono text-[var(--text-primary)]">
+                      {@selected_report.log.domain}
+                    </span>
                   </div>
                 </div>
               </div>
-              <div
-                :if={@selected_report.log.domain}
-                class="mt-3 pt-3 border-t border-[var(--border)] text-xs text-[var(--text-secondary)]"
-              >
-                Resolved domain:
-                <span class="font-mono text-[var(--text-primary)]">
-                  {@selected_report.log.domain}
-                </span>
-              </div>
+
+              <.outer_path_history
+                id={"flow-log-path-history-#{@selected_report.log.log_id}"}
+                outers={@selected_report.log.outers}
+              />
             </div>
           </section>
 
@@ -690,36 +708,164 @@ defmodule PortalWeb.Logs.FlowLogs do
           <.metric label="Responder → initiator" value={format_bytes(@log.rx_bytes)} secondary={format_packets(@log.rx_packets)} />
         </div>
 
-        <div class="pt-3 border-t border-[var(--border)]">
-          <div class="mb-1 text-xs text-[var(--text-tertiary)]">
-            WireGuard endpoints, as seen by this side
-          </div>
-          <div class="space-y-2 text-xs">
-            <div
-              :for={{outer, index} <- Enum.with_index(@log.outers, 1)}
-              data-wireguard-path={index}
-              class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1"
-            >
-              <span class="col-span-2 text-[var(--text-tertiary)]">Path {index}</span>
-              <span class="text-[var(--text-tertiary)]">Initiator</span>
-              <span
-                data-wireguard-endpoint="initiator"
-                class="break-all text-right font-mono text-[var(--text-secondary)]"
-              >
-                {format_endpoint(outer.src_ip, outer.src_port)}
-              </span>
-              <span class="text-[var(--text-tertiary)]">Responder</span>
-              <span
-                data-wireguard-endpoint="responder"
-                class="break-all text-right font-mono text-[var(--text-secondary)]"
-              >
-                {format_endpoint(outer.dst_ip, outer.dst_port)}
-              </span>
+        <.outer_path_summary
+          id={"flow-log-card-paths-#{@log.log_id}"}
+          outers={@log.outers}
+        />
+      </div>
+    </.link>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :outers, :list, required: true
+
+  defp outer_path_history(assigns) do
+    assigns = assign(assigns, :path_count, length(assigns.outers))
+
+    ~H"""
+    <div
+      id={@id}
+      class="rounded border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
+    >
+      <div class="mb-3 flex items-start justify-between gap-3">
+        <div class="flex min-w-0 items-start gap-2">
+          <.icon name="ri-route-line" class="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand)]" />
+          <div class="min-w-0">
+            <div class="text-xs font-medium text-[var(--text-primary)]">
+              WireGuard path history
+            </div>
+            <div class="text-[10px] text-[var(--text-tertiary)]">
+              Ordered from first to last observed
             </div>
           </div>
         </div>
+        <.badge :if={@path_count > 0} type="neutral" size="xs">
+          {@path_count} {if(@path_count == 1, do: "path", else: "paths")}
+        </.badge>
       </div>
-    </.link>
+
+      <div
+        :if={@path_count == 0}
+        class="flex items-center gap-2 rounded bg-[var(--surface-raised)] px-3 py-2 text-xs text-[var(--text-tertiary)]"
+      >
+        <.icon name="ri-time-line" class="h-3.5 w-3.5 shrink-0" />
+        Paths are reported when the flow closes.
+      </div>
+
+      <ol :if={@path_count > 0} class="space-y-2" aria-label="WireGuard path history">
+        <li
+          :for={{outer, index} <- Enum.with_index(@outers, 1)}
+          data-wireguard-path={index}
+          class="relative flex gap-3 pb-2 last:pb-0"
+        >
+          <div class="relative flex w-6 shrink-0 justify-center">
+            <span
+              :if={index < @path_count}
+              class="absolute left-1/2 top-6 -bottom-2 w-px -translate-x-1/2 bg-[var(--border)]"
+            >
+            </span>
+            <span class="relative z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-brand/30 bg-brand-subtle font-mono text-[10px] font-semibold text-brand">
+              {index}
+            </span>
+          </div>
+
+          <div class="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5">
+            <div class="mb-2 text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">
+              {if(index == 1, do: "Initial path", else: "Path change")}
+            </div>
+            <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+              <div class="min-w-0">
+                <div class="text-[10px] text-[var(--text-tertiary)]">Initiator</div>
+                <div
+                  :if={outer.src_ip}
+                  data-wireguard-endpoint="initiator"
+                  class="mt-0.5 break-all font-mono text-xs text-[var(--text-primary)]"
+                >
+                  {format_endpoint(outer.src_ip, outer.src_port)}
+                </div>
+                <div
+                  :if={is_nil(outer.src_ip)}
+                  data-wireguard-endpoint="initiator"
+                  class="mt-0.5 text-xs italic text-[var(--text-tertiary)]"
+                >
+                  Not observed
+                </div>
+              </div>
+              <.icon name="ri-arrow-right-line" class="h-4 w-4 shrink-0 text-[var(--brand)]" />
+              <div class="min-w-0 text-right">
+                <div class="text-[10px] text-[var(--text-tertiary)]">Responder</div>
+                <div
+                  data-wireguard-endpoint="responder"
+                  class="mt-0.5 break-all font-mono text-xs text-[var(--text-primary)]"
+                >
+                  {format_endpoint(outer.dst_ip, outer.dst_port)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </li>
+      </ol>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :outers, :list, required: true
+
+  defp outer_path_summary(assigns) do
+    assigns = assign(assigns, :path_count, length(assigns.outers))
+
+    ~H"""
+    <div id={@id} class="border-t border-[var(--border)] pt-3">
+      <div class="mb-2 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
+          <.icon name="ri-route-line" class="h-3.5 w-3.5" />
+          WireGuard paths
+        </div>
+        <span :if={@path_count > 0} class="text-[10px] text-[var(--text-tertiary)]">
+          {@path_count} observed
+        </span>
+      </div>
+
+      <div :if={@path_count == 0} class="text-xs italic text-[var(--text-tertiary)]">
+        Reported when the flow closes
+      </div>
+
+      <ol :if={@path_count > 0} class="max-h-52 space-y-1.5 overflow-y-auto pr-1">
+        <li
+          :for={{outer, index} <- Enum.with_index(@outers, 1)}
+          data-wireguard-path={index}
+          class="grid grid-cols-[1.25rem_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded bg-[var(--surface-raised)] px-2 py-1.5"
+        >
+          <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--surface)] font-mono text-[10px] text-[var(--text-tertiary)]">
+            {index}
+          </span>
+          <span
+            data-wireguard-endpoint="initiator"
+            class={[
+              "min-w-0 break-all text-xs",
+              if(outer.src_ip,
+                do: "font-mono text-[var(--text-secondary)]",
+                else: "italic text-[var(--text-tertiary)]"
+              )
+            ]}
+          >
+            {if(outer.src_ip,
+              do: format_endpoint(outer.src_ip, outer.src_port),
+              else: "Not observed"
+            )}
+          </span>
+          <.icon name="ri-arrow-right-line" class="h-3.5 w-3.5 shrink-0 text-[var(--brand)]" />
+          <span
+            data-wireguard-endpoint="responder"
+            class="min-w-0 break-all text-right font-mono text-xs text-[var(--text-secondary)]"
+          >
+            {format_endpoint(outer.dst_ip, outer.dst_port)}
+          </span>
+        </li>
+      </ol>
+    </div>
     """
   end
 

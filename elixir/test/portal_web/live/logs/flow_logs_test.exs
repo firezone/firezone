@@ -324,6 +324,96 @@ defmodule PortalWeb.Logs.FlowLogsTest do
   end
 
   describe "show" do
+    test "renders outer paths as an ordered history", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      log =
+        flow_log_fixture(
+          account: account,
+          outers: [
+            %{
+              src_ip: "192.0.2.10",
+              src_port: 41_001,
+              dst_ip: "198.51.100.10",
+              dst_port: 51_820
+            },
+            %{
+              src_ip: nil,
+              src_port: nil,
+              dst_ip: "198.51.100.11",
+              dst_port: 51_820
+            },
+            %{
+              src_ip: "2001:db8::10",
+              src_port: 41_003,
+              dst_ip: "2001:db8::20",
+              dst_port: 51_820
+            }
+          ]
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/logs/flow_logs/#{log.log_id}")
+
+      history_selector = "#flow-log-path-history-#{log.log_id}"
+      history = lv |> element(history_selector) |> render() |> Floki.parse_fragment!()
+
+      assert has_element?(lv, history_selector, "3 paths")
+      assert has_element?(lv, "#{history_selector} [data-wireguard-path='1']", "Initial path")
+      assert has_element?(lv, "#{history_selector} [data-wireguard-path='2']", "Path change")
+
+      assert history
+             |> Floki.find("[data-wireguard-path]")
+             |> Enum.flat_map(&Floki.attribute(&1, "data-wireguard-path")) == ["1", "2", "3"]
+
+      assert history
+             |> Floki.find("[data-wireguard-endpoint='initiator']")
+             |> Enum.map(&(&1 |> Floki.text() |> String.trim())) == [
+               "192.0.2.10:41001",
+               "Not observed",
+               "[2001:db8::10]:41003"
+             ]
+
+      assert history
+             |> Floki.find("[data-wireguard-endpoint='responder']")
+             |> Enum.map(&(&1 |> Floki.text() |> String.trim())) == [
+               "198.51.100.10:51820",
+               "198.51.100.11:51820",
+               "[2001:db8::20]:51820"
+             ]
+
+      assert has_element?(lv, "#flow-log-card-paths-#{log.log_id}", "3 observed")
+    end
+
+    test "explains when an open flow has no outer paths yet", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      log = flow_log_fixture(account: account, flow_end: nil)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/logs/flow_logs/#{log.log_id}")
+
+      assert has_element?(
+               lv,
+               "#flow-log-path-history-#{log.log_id}",
+               "Paths are reported when the flow closes."
+             )
+
+      assert has_element?(
+               lv,
+               "#flow-log-card-paths-#{log.log_id}",
+               "Reported when the flow closes"
+             )
+    end
+
     test "shows a plausible overlapping report without claiming a definite pair", %{
       conn: conn,
       account: account,
