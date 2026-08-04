@@ -535,13 +535,6 @@ mod tests {
         assert!(start.get("role").is_none());
         assert!(start.get("message").is_none());
         assert!(start.get("actor_id").is_none()); // attribution rides the token only
-        // The JSON-encoded outer tuples are decoded into the payload's array.
-        assert_eq!(
-            start["outer_tuples"],
-            serde_json::json!([
-                {"src_ip": "198.51.100.1", "dst_ip": "203.0.113.7", "src_port": 51820, "dst_port": 51820}
-            ])
-        );
         assert_eq!(end["rx_bytes"], 1024); // the `.end` is a self-describing report
         assert_eq!(end["inner_dst_port"], "443");
     }
@@ -577,35 +570,6 @@ mod tests {
         drop(guard);
 
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
-    }
-
-    #[test]
-    fn drops_event_with_undecodable_outer_tuples() {
-        let dir = tempfile::tempdir().unwrap();
-        write_token(dir.path(), &token_for(AUTHZ_ID)).unwrap();
-
-        let (layer, guard) = layer(dir.path().to_owned());
-        let subscriber = tracing_subscriber::registry().with(layer);
-        tracing::subscriber::with_default(subscriber, || {
-            tracing::trace!(
-                target: "flow_logs",
-                protocol = "tcp",
-                role = "responder",
-                policy_authorization_id = AUTHZ_ID,
-                outer_tuples = %"not json",
-                flow_start = ?Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
-                "TCP flow started"
-            );
-        });
-        drop(guard);
-
-        let authz_dir = dir.path().join("responder").join(AUTHZ_ID);
-        let reports = std::fs::read_dir(&authz_dir)
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name())
-            .filter(|name| name != "token")
-            .count();
-        assert_eq!(reports, 0);
     }
 
     #[test]

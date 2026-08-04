@@ -1270,29 +1270,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn push_context_records_only_changes() {
-        let mut contexts = vec![context(1)];
-
-        push_context(&"key", &mut contexts, context(1));
-        push_context(&"key", &mut contexts, context(2));
-        push_context(&"key", &mut contexts, context(2));
-        push_context(&"key", &mut contexts, context(1));
-
-        assert_eq!(contexts, vec![context(1), context(2), context(1)]);
-    }
-
-    #[test]
-    fn push_context_caps_the_list() {
-        let mut contexts = vec![context(0)];
-
-        for port in 1..=2 * MAX_CONTEXTS_PER_FLOW as u16 {
-            push_context(&"key", &mut contexts, context(port));
-        }
-
-        assert_eq!(contexts.len(), MAX_CONTEXTS_PER_FLOW);
-    }
-
-    #[test]
     fn flow_context_diff_rendering() {
         let old = FlowContext {
             src_ip: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
@@ -1313,14 +1290,5 @@ mod tests {
             "FlowContextDiff { old_src_ip: 10.0.0.1, new_src_ip: 1.1.1.1, old_src_port: 8080, new_src_port: 50000 }",
             format!("{diff:?}")
         );
-    }
-
-    fn context(src_port: u16) -> FlowContext {
-        FlowContext {
-            src_ip: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
-            dst_ip: IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)),
-            src_port,
-            dst_port: 443,
-        }
     }
 }

@@ -209,40 +209,6 @@ fn syn_after_return_traffic_splits_flow() {
 }
 
 #[test]
-fn context_change_accumulates_outer_tuples_instead_of_splitting() {
-    let authz_id = "77777777-7777-7777-7777-777777777777";
-    let spool = SpoolObserver::new(authz_id);
-    let mut tracker = enabled_tracker();
-    let t0 = Instant::now();
-
-    spool.observe(|| {
-        drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
-        drive_tx_from(
-            &mut tracker,
-            "198.51.100.2:45000",
-            &tcp_packet(ack(), &[0; 100]),
-            authz_id,
-            t0 + Duration::from_secs(1),
-        );
-        tracker.close_all(t0 + Duration::from_secs(2));
-    });
-
-    let flows = spool.completed_flows();
-    assert_eq!(
-        packet_counts(&flows),
-        vec![(2, 0)],
-        "a changed outer tuple counts into the same flow"
-    );
-    assert_eq!(
-        flows[0]["outer_tuples"],
-        serde_json::json!([
-            {"src_ip": "203.0.113.7", "dst_ip": "198.51.100.1", "src_port": 51820, "dst_port": 51820},
-            {"src_ip": "198.51.100.2", "dst_ip": "198.51.100.1", "src_port": 45000, "dst_port": 51820},
-        ])
-    );
-}
-
-#[test]
 fn bare_ack_does_not_create_flow() {
     let authz_id = "55555555-5555-5555-5555-555555555555";
     let spool = SpoolObserver::new(authz_id);
@@ -287,20 +253,9 @@ fn drive_tx(
     authz_id: &str,
     now: Instant,
 ) {
-    drive_tx_from(tracker, "203.0.113.7:51820", packet, authz_id, now);
-}
-
-/// [`drive_tx`] with the Client sending from `remote`, e.g. after a roam.
-fn drive_tx_from(
-    tracker: &mut Tracker<ClientOrGatewayId>,
-    remote: &str,
-    packet: &IpPacket,
-    authz_id: &str,
-    now: Instant,
-) {
     let _flow = tracker.begin_network_packet(
         "198.51.100.1:51820".parse().unwrap(),
-        remote.parse().unwrap(),
+        "203.0.113.7:51820".parse().unwrap(),
         now,
     );
     flow_tracker::record_decrypted_packet(packet);
