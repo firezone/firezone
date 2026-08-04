@@ -21,6 +21,7 @@ defmodule Portal.Workers.LogSinkErrorNotification do
     max_attempts: 3,
     unique: [period: :infinity, states: :incomplete]
 
+  alias Portal.Billing
   alias Portal.Mailer
   alias __MODULE__.Database
   require Logger
@@ -73,17 +74,28 @@ defmodule Portal.Workers.LogSinkErrorNotification do
 
     admins = Database.get_account_admin_actors(sink.account_id)
 
-    case admins do
-      [] ->
+    cond do
+      admins == [] ->
         Logger.error("No admin actors found for account",
           account_id: sink.account_id,
           log_sink_id: sink.id
         )
 
-      admins ->
+      # Leave the count alone so a returning account still gets the full series.
+      dormant?(sink.account) ->
+        Logger.info("Skipping log sink error notification for dormant account",
+          account_id: sink.account_id,
+          log_sink_id: sink.id
+        )
+
+      true ->
         record_error_email(sink)
         send_email_notification(admins, sink)
     end
+  end
+
+  defp dormant?(account) do
+    not Billing.paid_plan?(account) and not Database.account_active?(account.id)
   end
 
   defp send_email_notification(admins, sink) do
@@ -172,6 +184,12 @@ defmodule Portal.Workers.LogSinkErrorNotification do
       )
       |> Safe.unscoped()
       |> Safe.all()
+    end
+
+    def account_active?(account_id) do
+      from(sl in Portal.SessionLog, where: sl.account_id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
 
     def delivery_stats(sink) do

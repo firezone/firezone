@@ -1,6 +1,6 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
-  alias Portal.{Banner, EmailSuppression, Mailer}
+  alias Portal.{Banner, Billing, EmailSuppression, Mailer}
   alias Portal.Workers.DeleteAccount
 
   @max_bcc_per_message 50
@@ -198,7 +198,7 @@ defmodule Portal.Ops do
 
   def queue_admin_email(account_ids, subject, html_body, plaintext_body)
       when account_ids == :all or is_list(account_ids) do
-    emails_by_account =
+    {emails_by_account, dormant} =
       Database.get_account_admin_emails_by_account(account_ids)
       |> Enum.map(fn {account_id, admin_emails} ->
         normalized =
@@ -209,13 +209,18 @@ defmodule Portal.Ops do
         {account_id, normalized}
       end)
       |> Enum.reject(fn {_account_id, emails} -> emails == [] end)
+      |> split_dormant_accounts()
 
     total_recipients = Enum.sum(Enum.map(emails_by_account, fn {_, emails} -> length(emails) end))
     total_accounts = length(emails_by_account)
 
+    if dormant != [] do
+      IO.puts("Skipping #{length(dormant)} dormant account(s) with no sessions on record.")
+    end
+
     if total_recipients == 0 do
       IO.puts("No admin recipients found.")
-      :ok
+      {:error, :no_recipients}
     else
       IO.puts(
         "About to send email '#{subject}' to #{total_recipients} unique admin(s) across #{total_accounts} account(s). Continue? [y/N]"
@@ -230,6 +235,25 @@ defmodule Portal.Ops do
           :aborted
       end
     end
+  end
+
+  defp split_dormant_accounts(emails_by_account) do
+    {paid, unpaid} =
+      emails_by_account
+      |> Enum.map(&elem(&1, 0))
+      |> Database.list_accounts()
+      |> Enum.split_with(&Billing.paid_plan?/1)
+
+    notifiable_ids =
+      unpaid
+      |> Enum.map(& &1.id)
+      |> Database.active_account_ids()
+      |> Enum.concat(Enum.map(paid, & &1.id))
+      |> MapSet.new()
+
+    Enum.split_with(emails_by_account, fn {account_id, _emails} ->
+      MapSet.member?(notifiable_ids, account_id)
+    end)
   end
 
   defp enqueue_chunked(emails_by_account, subject, html_body, plaintext_body) do
@@ -361,6 +385,31 @@ defmodule Portal.Ops do
       |> Enum.group_by(fn {account_id, _email} -> account_id end, fn {_account_id, email} ->
         email
       end)
+    end
+
+    def list_accounts(account_ids) do
+      from(a in Account, where: a.id in ^account_ids)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def active_account_ids([]), do: []
+
+    def active_account_ids(account_ids) do
+      from(a in Account, as: :accounts)
+      |> where([accounts: a], a.id in ^account_ids)
+      |> where(
+        [accounts: a],
+        exists(
+          from(sl in Portal.SessionLog,
+            where: sl.account_id == parent_as(:accounts).id,
+            select: 1
+          )
+        )
+      )
+      |> select([accounts: a], a.id)
+      |> Safe.unscoped()
+      |> Safe.all()
     end
 
     def accounts_missing_deletion_jobs do

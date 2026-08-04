@@ -10,6 +10,7 @@ defmodule Portal.OpsTest do
   import Portal.PolicyFixtures
   import Portal.RelayFixtures
   import Portal.ResourceFixtures
+  import Portal.SessionLogFixtures
   import Portal.TokenFixtures
   import Portal.ObanJobFixtures
 
@@ -170,7 +171,7 @@ defmodule Portal.OpsTest do
           scheduled_deletion_at: scheduled_deletion_at
         )
 
-      _active_account = account_fixture()
+      _enabled_account = account_fixture()
 
       assert {:ok, 1} = schedule_missing_account_deletion_jobs()
 
@@ -241,8 +242,8 @@ defmodule Portal.OpsTest do
     import ExUnit.CaptureIO
 
     test "queues one batched email per account with enabled admins" do
-      account1 = account_fixture()
-      account2 = account_fixture()
+      account1 = active_account_fixture()
+      account2 = active_account_fixture()
 
       admin1 = admin_actor_fixture(account: account1)
       disabled_admin = admin_actor_fixture(account: account1)
@@ -284,8 +285,8 @@ defmodule Portal.OpsTest do
     end
 
     test "skips disabled accounts when queuing for :all" do
-      enabled_account = account_fixture()
-      disabled_account = account_fixture()
+      enabled_account = active_account_fixture()
+      disabled_account = active_account_fixture()
 
       enabled_admin = admin_actor_fixture(account: enabled_account)
       _disabled_admin = admin_actor_fixture(account: disabled_account)
@@ -319,7 +320,7 @@ defmodule Portal.OpsTest do
     end
 
     test "aborts when user declines confirmation" do
-      account = account_fixture()
+      account = active_account_fixture()
       admin_actor_fixture(account: account)
 
       capture_io("n\n", fn ->
@@ -336,7 +337,7 @@ defmodule Portal.OpsTest do
     end
 
     test "normalizes admin emails to lowercase" do
-      account = account_fixture()
+      account = active_account_fixture()
       admin_actor_fixture(account: account, email: "Admin.User@Example.COM")
 
       capture_io("y\n", fn ->
@@ -355,8 +356,8 @@ defmodule Portal.OpsTest do
     end
 
     test "keeps each account in one send window" do
-      account1 = account_fixture()
-      account2 = account_fixture()
+      account1 = active_account_fixture()
+      account2 = active_account_fixture()
 
       Enum.each(1..60, fn i ->
         admin_actor_fixture(
@@ -419,5 +420,95 @@ defmodule Portal.OpsTest do
       assert output =~ "120 unique admin(s)"
       assert output =~ "2 account(s)"
     end
+
+    test "skips accounts with no session logs" do
+      active_account = active_account_fixture()
+      dormant_account = account_fixture()
+
+      active_admin = admin_actor_fixture(account: active_account)
+      admin_actor_fixture(account: dormant_account)
+
+      capture_io("y\n", fn ->
+        assert :ok =
+                 queue_admin_email(
+                   [active_account.id, dormant_account.id],
+                   "Admin Subject",
+                   "<p>Admin HTML</p>",
+                   "Admin Text"
+                 )
+
+        assert [%{bcc: [{"", email}]}] = collect_queued_emails(active_account.id)
+        assert email == String.downcase(active_admin.email)
+
+        assert collect_queued_emails(dormant_account.id) == []
+      end)
+    end
+
+    test "emails a paid account with no session logs" do
+      account = team_account_fixture()
+      admin = admin_actor_fixture(account: account)
+
+      output =
+        capture_io("y\n", fn ->
+          assert :ok =
+                   queue_admin_email(
+                     [account.id],
+                     "Admin Subject",
+                     "<p>Admin HTML</p>",
+                     "Admin Text"
+                   )
+
+          assert [%{bcc: [{"", email}]}] = collect_queued_emails(account.id)
+          assert email == String.downcase(admin.email)
+        end)
+
+      refute output =~ "dormant"
+    end
+
+    test "errors without prompting when every account is dormant" do
+      account = account_fixture()
+      admin_actor_fixture(account: account)
+
+      output =
+        capture_io(fn ->
+          assert {:error, :no_recipients} =
+                   queue_admin_email(
+                     [account.id],
+                     "Admin Subject",
+                     "<p>Admin HTML</p>",
+                     "Admin Text"
+                   )
+        end)
+
+      assert output =~ "Skipping 1 dormant account(s)"
+      assert output =~ "No admin recipients found."
+      refute output =~ "Continue?"
+      assert collect_queued_emails(account.id) == []
+    end
+
+    test "errors when no account has an enabled admin" do
+      account = active_account_fixture()
+
+      output =
+        capture_io(fn ->
+          assert {:error, :no_recipients} =
+                   queue_admin_email(
+                     [account.id],
+                     "Admin Subject",
+                     "<p>Admin HTML</p>",
+                     "Admin Text"
+                   )
+        end)
+
+      assert output =~ "No admin recipients found."
+      refute output =~ "dormant"
+    end
+  end
+
+  defp active_account_fixture(attrs \\ %{}) do
+    account = account_fixture(attrs)
+    session_log_fixture(account: account)
+
+    account
   end
 end

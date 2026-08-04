@@ -15,6 +15,7 @@ defmodule Portal.Workers.SyncErrorNotification do
     max_attempts: 3,
     unique: [period: :infinity, states: :incomplete]
 
+  alias Portal.Billing
   alias Portal.Entra
   alias Portal.Google
   alias Portal.Okta
@@ -68,17 +69,28 @@ defmodule Portal.Workers.SyncErrorNotification do
     # Get account admin actors and send notifications
     admins = Database.get_account_admin_actors(directory.account_id)
 
-    case admins do
-      [] ->
+    cond do
+      admins == [] ->
         Logger.error("No admin actors found for account",
           account_id: directory.account_id,
           directory_id: directory.id
         )
 
-      admins ->
+      # Leave the count alone so a returning account still gets the full series.
+      dormant?(directory.account) ->
+        Logger.info("Skipping sync error notification for dormant account",
+          account_id: directory.account_id,
+          directory_id: directory.id
+        )
+
+      true ->
         increment_error_email_count(directory)
         send_email_notification(admins, directory, frequency)
     end
+  end
+
+  defp dormant?(account) do
+    not Billing.paid_plan?(account) and not Database.account_active?(account.id)
   end
 
   defp send_email_notification(admins, directory, frequency) do
@@ -191,6 +203,12 @@ defmodule Portal.Workers.SyncErrorNotification do
       )
       |> Safe.unscoped()
       |> Safe.all()
+    end
+
+    def account_active?(account_id) do
+      from(sl in Portal.SessionLog, where: sl.account_id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
   end
 end
