@@ -27,7 +27,6 @@ defmodule Portal.FlowLog do
       outer
       |> cast(attrs, [:src_ip, :src_port, :dst_ip, :dst_port])
       |> validate_required([:dst_ip, :dst_port])
-      |> validate_source_endpoint()
       |> validate_ip(:src_ip)
       |> validate_ip(:dst_ip)
       |> validate_number(:src_port,
@@ -38,22 +37,6 @@ defmodule Portal.FlowLog do
         greater_than_or_equal_to: 0,
         less_than_or_equal_to: 65_535
       )
-    end
-
-    defp validate_source_endpoint(changeset) do
-      case {get_field(changeset, :src_ip), get_field(changeset, :src_port)} do
-        {nil, nil} ->
-          changeset
-
-        {nil, _src_port} ->
-          add_error(changeset, :src_ip, "must be present when src_port is present")
-
-        {_src_ip, nil} ->
-          add_error(changeset, :src_port, "must be present when src_ip is present")
-
-        {_src_ip, _src_port} ->
-          changeset
-      end
     end
 
     defp validate_ip(changeset, field) do
@@ -106,7 +89,7 @@ defmodule Portal.FlowLog do
           inner_src_port: :inet.port_number(),
           inner_dst_port: :inet.port_number(),
           domain: String.t() | nil,
-          outers: [Outer.t()],
+          outers: [Outer.t()] | nil,
           flow_start: DateTime.t(),
           flow_end: DateTime.t() | nil,
           last_packet: DateTime.t() | nil,
@@ -202,17 +185,17 @@ defmodule Portal.FlowLog do
                             initiator_device_identifier_for_vendor
                             initiator_device_firebase_installation_id domain]a
 
-  # The attribution snapshot, inner tunnel tuple, outer paths, protocol, and flow_start are
-  # all known when a flow side opens, so they are required. Only the fields that
-  # are genuinely unknown until the flow closes (flow_end, last_packet, and the
-  # byte/packet counters) are left nullable to support open-then-close
-  # reporting; domain is nullable because only DNS resources carry one,
+  # The attribution snapshot, inner tunnel tuple, protocol, and flow_start are
+  # all known when a flow side opens, so they are required. The accumulated
+  # outer paths, flow_end, last_packet, and byte/packet counters arrive only on
+  # close and are nullable to support open-then-close reporting; domain is
+  # nullable because only DNS resources carry one,
   # resource_address because internet and device-pool resources have none, and
   # initiator_actor_email / initiator_auth_provider_id because not every actor
   # or credential has one.
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> cast_embed(:outers, with: &Outer.changeset/2, required: true)
+    |> cast_embed(:outers, with: &Outer.changeset/2)
     |> validate_required([
       :account_id,
       :log_id,
@@ -237,6 +220,7 @@ defmodule Portal.FlowLog do
     |> validate_uuids()
     |> validate_ports()
     |> validate_counters()
+    |> validate_outers_match_flow_state()
     |> validate_close_complete()
     |> validate_string_lengths()
     # Structural, clock-independent backstops only. Flow ordering (flow_start vs
@@ -305,6 +289,15 @@ defmodule Portal.FlowLog do
     end)
   end
 
+  defp validate_outers_match_flow_state(changeset) do
+    case {get_field(changeset, :flow_end), get_field(changeset, :outers)} do
+      {nil, []} -> changeset
+      {nil, _outers} -> add_error(changeset, :outers, "must be absent while the flow is open")
+      {_flow_end, []} -> add_error(changeset, :outers, "can't be blank")
+      {_flow_end, _outers} -> changeset
+    end
+  end
+
   # A close (flow_end set) must carry its accounting: the gateway flow tracker
   # always emits last_packet and the counters on a completed flow, so a close
   # missing them is malformed. An open (flow_end nil) leaves them nil. Counters
@@ -324,7 +317,9 @@ defmodule Portal.FlowLog do
     end)
   end
 
-  def outers_to_maps(outers) do
+  def outers_to_maps(%__MODULE__{flow_end: nil}), do: nil
+
+  def outers_to_maps(%__MODULE__{outers: outers}) do
     Enum.map(outers, fn outer ->
       %{
         src_ip: outer.src_ip,

@@ -310,29 +310,28 @@ defmodule PortalAPI.Schemas.Log do
         outers: %Schema{
           type: :array,
           minItems: 1,
+          nullable: true,
           description: """
-          Outer network paths in observation order. Source IP and port are
-          either both populated or both null; source endpoint details may be
-          unavailable, for example while traversing a relay. The two entries of
-          a flow can disagree whenever NAT or a relay sits between the peers.
+          Outer network paths in observation order. Null while the flow is open;
+          the close report replaces it with the complete array. Source IP and
+          port may each be absent or null. The two entries of a flow can disagree
+          whenever NAT or a relay sits between the peers.
           """,
           items: %Schema{
             type: :object,
             properties: %{
               src_ip: %Schema{
                 type: :string,
-                nullable: true,
-                description: "Null exactly when `src_port` is null."
+                nullable: true
               },
               src_port: %Schema{
                 type: :integer,
-                nullable: true,
-                description: "Null exactly when `src_ip` is null."
+                nullable: true
               },
               dst_ip: %Schema{type: :string},
               dst_port: %Schema{type: :integer}
             },
-            required: [:src_ip, :src_port, :dst_ip, :dst_port]
+            required: [:dst_ip, :dst_port]
           }
         },
         rx_packets: %Schema{

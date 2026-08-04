@@ -162,7 +162,13 @@ defmodule PortalAPI.FlowLogController do
       |> changeset()
 
     if changeset.valid? do
-      entry = Map.new(@cast_fields, &{&1, get_field(changeset, &1)})
+      entry =
+        @cast_fields
+        |> Map.new(&{&1, get_field(changeset, &1)})
+        |> Map.update!(:outers, fn outers ->
+          if is_nil(get_field(changeset, :flow_end)), do: nil, else: outers
+        end)
+
       {[{index, entry} | valid], invalid}
     else
       {valid, [{index, changeset} | invalid]}
@@ -170,6 +176,12 @@ defmodule PortalAPI.FlowLogController do
   end
 
   defp changeset(attrs) do
+    # Ecto represents a missing embeds_many value as an empty list but rejects
+    # an explicit JSON null. Both forms mean "not reported yet" on a flow-start
+    # record, so normalize null to omission before casting. A close still fails
+    # validation below when the resulting outer list is empty.
+    attrs = if is_nil(attrs["outers"]), do: Map.delete(attrs, "outers"), else: attrs
+
     %FlowLog{}
     |> cast(attrs, @scalar_cast_fields)
     |> FlowLog.changeset()

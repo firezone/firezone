@@ -19,6 +19,19 @@ defmodule Portal.FlowLogFixtures do
 
     account = Map.get(attrs, :account) || account_fixture()
     now = DateTime.utc_now()
+    flow_end = Map.get(attrs, :flow_end, DateTime.add(now, -30, :second))
+
+    default_outers =
+      if flow_end do
+        [
+          %FlowLog.Outer{
+            src_ip: "203.0.113.10",
+            src_port: 51_820,
+            dst_ip: "198.51.100.5",
+            dst_port: 51_820
+          }
+        ]
+      end
 
     row =
       attrs
@@ -30,7 +43,7 @@ defmodule Portal.FlowLogFixtures do
       |> Map.put_new(:role, :responder)
       |> Map.put_new(:protocol, :tcp)
       |> Map.put_new(:flow_start, DateTime.add(now, -60, :second))
-      |> Map.put_new(:flow_end, DateTime.add(now, -30, :second))
+      |> Map.put_new(:flow_end, flow_end)
       |> Map.put_new(:last_packet, DateTime.add(now, -30, :second))
       |> Map.put_new(:policy_id, Ecto.UUID.generate())
       |> Map.put_new(:policy_authorization_id, Ecto.UUID.generate())
@@ -46,19 +59,14 @@ defmodule Portal.FlowLogFixtures do
       |> Map.put_new(:inner_dst_ip, %Postgrex.INET{address: {10, 0, 0, 5}})
       |> Map.put_new(:inner_src_port, 54_321)
       |> Map.put_new(:inner_dst_port, 443)
-      |> Map.put_new(:outers, [
-        %FlowLog.Outer{
-          src_ip: "203.0.113.10",
-          src_port: 51_820,
-          dst_ip: "198.51.100.5",
-          dst_port: 51_820
-        }
-      ])
+      |> Map.put_new(:outers, default_outers)
       |> Map.update!(:outers, fn outers ->
-        Enum.map(outers, fn
-          %FlowLog.Outer{} = outer -> outer
-          outer -> struct!(FlowLog.Outer, outer)
-        end)
+        if outers do
+          Enum.map(outers, fn
+            %FlowLog.Outer{} = outer -> outer
+            outer -> struct!(FlowLog.Outer, outer)
+          end)
+        end
       end)
       |> Map.put_new(:rx_packets, 100)
       |> Map.put_new(:tx_packets, 80)

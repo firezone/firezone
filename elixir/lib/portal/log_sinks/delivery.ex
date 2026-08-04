@@ -469,7 +469,7 @@ defmodule Portal.LogSinks.Delivery do
        inner_src_port: log.inner_src_port,
        inner_dst_ip: log.inner_dst_ip,
        inner_dst_port: log.inner_dst_port,
-       outers: Portal.FlowLog.outers_to_maps(log.outers),
+       outers: Portal.FlowLog.outers_to_maps(log),
        domain: log.domain,
        rx_packets: log.rx_packets,
        tx_packets: log.tx_packets,

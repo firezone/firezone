@@ -463,13 +463,13 @@ defmodule PortalAPI.LogControllerTest do
 
       assert %{"data" => [data]} = json_response(conn, 200)
 
-      for field <- ~w[flow_end last_packet rx_packets tx_packets rx_bytes tx_bytes resource_address] do
+      for field <- ~w[flow_end last_packet outers rx_packets tx_packets rx_bytes tx_bytes resource_address] do
         assert Map.fetch!(data, field) == nil
       end
 
       schema = PortalAPI.Schemas.Log.Flow.schema()
 
-      for field <- ~w[flow_end last_packet rx_packets tx_packets rx_bytes tx_bytes resource_address]a do
+      for field <- ~w[flow_end last_packet outers rx_packets tx_packets rx_bytes tx_bytes resource_address]a do
         assert schema.properties[field].nullable
         assert field in schema.required
       end

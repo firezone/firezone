@@ -111,6 +111,7 @@ defmodule Portal.HTTP.SyncTest do
 
       assert_receive {:post, _conn, [start1, end1]}
       assert start1["log_id"] == flow1.log_id <> "-s"
+      assert is_nil(start1["outers"])
       assert end1["log_id"] == flow1.log_id <> "-e"
 
       assert end1["outers"] == [

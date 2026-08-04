@@ -94,14 +94,7 @@
       "inner_src_port": 54211,
       "inner_dst_ip": "100.96.0.9",
       "inner_dst_port": 5432,
-      "outers": [
-        {
-          "src_ip": "203.0.113.30",
-          "src_port": 41822,
-          "dst_ip": "198.51.100.44",
-          "dst_port": 51820
-        }
-      ],
+      "outers": null,
       "domain": null,
       "rx_packets": null,
       "tx_packets": null,

@@ -49,8 +49,12 @@ defmodule Portal.FlowLogTest do
   end
 
   defp changeset(overrides \\ %{}) do
-    attrs = valid_attrs(overrides)
+    overrides
+    |> valid_attrs()
+    |> changeset_from_attrs()
+  end
 
+  defp changeset_from_attrs(attrs) do
     %FlowLog{}
     |> cast(attrs, Map.keys(attrs) -- [:outers])
     |> FlowLog.changeset()
@@ -66,7 +70,13 @@ defmodule Portal.FlowLogTest do
     end
 
     test "valid without flow_end (an open flow)" do
-      assert changeset(%{flow_end: nil}).valid?
+      cs =
+        %{flow_end: nil}
+        |> valid_attrs()
+        |> Map.delete(:outers)
+        |> changeset_from_attrs()
+
+      assert cs.valid?
     end
 
     test "invalid without required fields" do
@@ -93,7 +103,6 @@ defmodule Portal.FlowLogTest do
             :protocol,
             :inner_src_ip,
             :inner_dst_ip,
-            :outers,
             :flow_start
           ] do
         assert Map.has_key?(errors_on(cs), field)
@@ -120,7 +129,7 @@ defmodule Portal.FlowLogTest do
 
     test "preserves outer path order and allows nullable source endpoints" do
       outers = [
-        %{src_ip: nil, src_port: nil, dst_ip: "203.0.113.7", dst_port: 51_820},
+        %{dst_ip: "203.0.113.7", dst_port: 51_820},
         %{src_ip: "198.51.100.2", src_port: 42_000, dst_ip: "203.0.113.8", dst_port: 443}
       ]
 
@@ -136,17 +145,22 @@ defmodule Portal.FlowLogTest do
       assert Map.has_key?(errors_on(cs), :outers)
     end
 
-    test "invalid with a partially specified outer source endpoint" do
+    test "valid with independently missing or nullable outer source fields" do
       for outer <- [
             %{src_ip: "198.51.100.2", src_port: nil, dst_ip: "203.0.113.8", dst_port: 443},
-            %{src_ip: nil, src_port: 42_000, dst_ip: "203.0.113.8", dst_port: 443}
+            %{src_ip: nil, src_port: 42_000, dst_ip: "203.0.113.8", dst_port: 443},
+            %{src_port: 42_000, dst_ip: "203.0.113.8", dst_port: 443},
+            %{src_ip: "198.51.100.2", dst_ip: "203.0.113.8", dst_port: 443}
           ] do
         cs = changeset(%{outers: [outer]})
-
-        refute cs.valid?
-        assert [%{} = outer_errors] = errors_on(cs).outers
-        assert Map.has_key?(outer_errors, :src_ip) or Map.has_key?(outer_errors, :src_port)
+        assert cs.valid?
       end
+    end
+
+    test "invalid with outer paths on an open flow" do
+      cs = changeset(%{flow_end: nil})
+      refute cs.valid?
+      assert Map.has_key?(errors_on(cs), :outers)
     end
 
     test "invalid with malformed outer endpoints" do
