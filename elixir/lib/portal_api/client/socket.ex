@@ -30,18 +30,14 @@ defmodule PortalAPI.Client.Socket do
 
   @impl true
   def connect(attrs, socket, connect_info) do
-    unless Application.get_env(:portal, :sql_sandbox) do
-      Portal.Repo.put_dynamic_repo(Portal.Repo.Api)
-    end
+    handle_connect(attrs, socket, connect_info, false)
+  end
 
-    :otel_propagator_text_map.extract(connect_info.trace_context_headers)
-
-    OpenTelemetry.Tracer.with_span "client.connect" do
-      with {:ok, token} <- PortalAPI.Sockets.extract_token(attrs, connect_info),
-           :ok <- PortalAPI.Sockets.RateLimit.check(connect_info, token: token) do
-        do_connect(token, attrs, socket, connect_info)
-      end
-    end
+  @doc false
+  # Entry point for /client/v3 sockets: the only ones whose clients can
+  # present an MDM-provisioned certificate (see PortalAPI.Client.DeviceTrust).
+  def connect_attesting(attrs, socket, connect_info) do
+    handle_connect(attrs, socket, connect_info, true)
   end
 
   @impl true
@@ -51,7 +47,22 @@ defmodule PortalAPI.Client.Socket do
 
   ## Private functions
 
-  defp do_connect(token, attrs, socket, connect_info) do
+  defp handle_connect(attrs, socket, connect_info, attest?) do
+    unless Application.get_env(:portal, :sql_sandbox) do
+      Portal.Repo.put_dynamic_repo(Portal.Repo.Api)
+    end
+
+    :otel_propagator_text_map.extract(connect_info.trace_context_headers)
+
+    OpenTelemetry.Tracer.with_span "client.connect" do
+      with {:ok, token} <- PortalAPI.Sockets.extract_token(attrs, connect_info),
+           :ok <- PortalAPI.Sockets.RateLimit.check(connect_info, token: token) do
+        do_connect(token, attrs, socket, connect_info, attest?)
+      end
+    end
+  end
+
+  defp do_connect(token, attrs, socket, connect_info, attest?) do
     context = PortalAPI.Sockets.auth_context(connect_info, :client)
     attrs = normalize_device_attrs(attrs)
 
@@ -61,7 +72,7 @@ defmodule PortalAPI.Client.Socket do
          {:ok, public_key} <- validate_public_key(attrs),
          changeset = insert_changeset(subject.actor, subject, attrs),
          {:ok, _} <- apply_action(changeset, :validate),
-         {:ok, proof} <- attest_device(connect_info, subject),
+         {:ok, proof} <- attest_device(connect_info, subject, attest?),
          {:ok, client} <- Database.resolve_client(changeset, attrs, proof, subject) do
       version = derive_version(subject.context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
@@ -92,13 +103,20 @@ defmodule PortalAPI.Client.Socket do
     end
   end
 
-  # The specific failure is logged rather than returned: the client learns
-  # only that its certificate was not accepted, while the admin gets the
-  # reason (expired, wrong CA, no identifiers, ...) from the logs.
-  defp attest_device(connect_info, subject) do
+  # Arriving on the mutual-TLS host is the client claiming it holds a device
+  # certificate, so failing to prove one there refuses the connect instead of
+  # silently downgrading to an unattested session. A connect on any other host
+  # is unattested and carries on; whether that device may reach a given
+  # resource is a policy question, not a socket one.
+  defp attest_device(_connect_info, _subject, false), do: {:ok, nil}
+
+  defp attest_device(connect_info, subject, true) do
     case DeviceTrust.attest(connect_info, subject) do
       {:ok, proof} ->
         {:ok, proof}
+
+      {:error, :not_attestation_host} ->
+        {:ok, nil}
 
       {:error, reason} ->
         Logger.warning("Refusing client connect: device certificate is not trusted",

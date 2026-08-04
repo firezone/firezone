@@ -10,10 +10,10 @@ defmodule PortalAPI.Client.DeviceTrustTest do
   alias PortalAPI.Client.DeviceTrust
   alias Portal.Crypto.X509
 
-  @attestation_url "https://x509.firezone.test/"
-  @attestation_host "x509.firezone.test"
+  @attestation_url "https://mtls.firezone.test/"
+  @attestation_host "mtls.firezone.test"
 
-  describe "attest/2 when the account is not gated" do
+  describe "attest/2 when there is nothing to attest" do
     setup do
       account = account_fixture()
       subject = subject_fixture(account: account)
@@ -22,7 +22,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       %{account: account, subject: subject, pki: pki}
     end
 
-    test "attests nothing when no attestation host is configured", %{
+    test "does not attest when no attestation host is configured", %{
       account: account,
       subject: subject,
       pki: pki
@@ -30,10 +30,11 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       enable_feature(:trust_anchors)
       trust_anchor_fixture(account: account, certs: [pki.ca_der])
 
-      assert DeviceTrust.attest(connect_info(leaf(pki, :rsa)), subject) == {:ok, nil}
+      assert DeviceTrust.attest(connect_info(leaf(pki, :rsa)), subject) ==
+               {:error, :not_attestation_host}
     end
 
-    test "attests nothing when the feature is disabled", %{
+    test "does not attest when the feature is off", %{
       account: account,
       subject: subject,
       pki: pki
@@ -41,17 +42,19 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       configure_attestation_host()
       trust_anchor_fixture(account: account, certs: [pki.ca_der])
 
-      assert DeviceTrust.attest(connect_info(leaf(pki, :rsa)), subject) == {:ok, nil}
+      assert DeviceTrust.attest(connect_info(leaf(pki, :rsa)), subject) ==
+               {:error, :no_trust_anchors}
     end
 
-    test "attests nothing when the account has no anchors uploaded", %{
+    test "reports no anchors when the account has none uploaded", %{
       subject: subject,
       pki: pki
     } do
       configure_attestation_host()
       enable_feature(:trust_anchors)
 
-      assert DeviceTrust.attest(connect_info(leaf(pki, :rsa)), subject) == {:ok, nil}
+      assert DeviceTrust.attest(connect_info(leaf(pki, :rsa)), subject) ==
+               {:error, :no_trust_anchors}
     end
   end
 
@@ -189,19 +192,19 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert DeviceTrust.attest(connect_info, subject) == {:error, :untrusted_chain}
     end
 
-    test "ignores the header on any host other than the attestation host", %{
+    test "does not attest on any host other than the attestation host", %{
       pki: pki,
       subject: subject
     } do
       connect_info = connect_info(leaf(pki, :rsa), host: "api.firezone.test")
 
-      assert DeviceTrust.attest(connect_info, subject) == {:error, :untrusted_host}
+      assert DeviceTrust.attest(connect_info, subject) == {:error, :not_attestation_host}
     end
 
-    test "rejects a connect that carries no host", %{pki: pki, subject: subject} do
+    test "does not attest a connect that carries no host", %{pki: pki, subject: subject} do
       connect_info = pki |> leaf(:rsa) |> connect_info() |> Map.delete(:uri)
 
-      assert DeviceTrust.attest(connect_info, subject) == {:error, :untrusted_host}
+      assert DeviceTrust.attest(connect_info, subject) == {:error, :not_attestation_host}
     end
 
     test "rejects a connect without the header", %{subject: subject} do
@@ -323,7 +326,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
   end
 
   defp configure_attestation_host do
-    Portal.Config.put_env_override(:portal, :x509_external_url, @attestation_url)
+    Portal.Config.put_env_override(:portal, :mtls_external_url, @attestation_url)
   end
 
   defp connect_info(der, opts \\ []) do

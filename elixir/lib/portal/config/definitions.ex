@@ -140,7 +140,8 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  The external URL clients use to connect with a device certificate.
+  The external URL clients use to connect with a device certificate, for
+  example `https://mtls.firezone.dev/`.
 
   The load balancer terminates mutual TLS on this host and passes the client
   certificate up as base64-encoded DER in the `x-client-cert` header. It must
@@ -148,11 +149,11 @@ defmodule Portal.Config.Definitions do
   client cannot supply its own, and it must not forward a client-supplied
   `x-forwarded-host`, which is what the request host is derived from.
 
-  When this is not set, certificate-based device trust is disabled: the header
-  is ignored and accounts with trust anchors uploaded connect as usual.
+  When this is not set, certificate-based device trust is disabled and the
+  header is ignored.
   """
 
-  defconfig(:x509_external_url, :string,
+  defconfig(:mtls_external_url, :string,
     default: nil,
     changeset: fn changeset, key ->
       changeset

@@ -12,6 +12,7 @@ defmodule PortalAPI.Client.SocketTest do
   import Portal.SubjectFixtures
   import Portal.TrustAnchorFixtures
   alias PortalAPI.Client.Socket
+  alias PortalAPI.Client.V3
 
   # The actual client IP used for tests that verify remote_ip tracking
   @client_remote_ip {189, 172, 73, 153}
@@ -505,7 +506,7 @@ defmodule PortalAPI.Client.SocketTest do
 
   describe "connect/3 device trust" do
     setup do
-      Portal.Config.put_env_override(:portal, :x509_external_url, "https://x509.firezone.test/")
+      Portal.Config.put_env_override(:portal, :mtls_external_url, "https://mtls.firezone.test/")
 
       account = account_fixture()
       enable_feature(:trust_anchors)
@@ -521,22 +522,50 @@ defmodule PortalAPI.Client.SocketTest do
     test "attests the device from the presented certificate", %{pki: pki, token: token} do
       connect_info = attested_connect_info(pki, token)
 
-      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert {:ok, socket} = connect(V3.Socket, connect_attrs([]), connect_info: connect_info)
       assert socket.assigns.attested?
       assert socket.assigns.client.last_attested_device_serial == "C02XK1ZGJGH5"
       assert socket.assigns.client.last_attested_cert_fingerprint
     end
 
-    test "refuses a connect without a certificate", %{token: token} do
-      connect_info = build_connect_info(token: token, host: "x509.firezone.test")
+    test "refuses a connect through the mutual-TLS host without a certificate", %{token: token} do
+      connect_info = build_connect_info(token: token, host: "mtls.firezone.test")
 
       assert capture_log(fn ->
-               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               assert connect(V3.Socket, connect_attrs([]), connect_info: connect_info) ==
                         {:error, :device_untrusted}
              end) =~ "no_certificate_presented"
     end
 
-    test "refuses a connect on the plain API host", %{pki: pki, token: token} do
+    test "refuses a certificate that does not chain to an anchor", %{pki: pki, token: token} do
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "mtls.firezone.test",
+          client_cert: client_cert_header(pki, :untrusted)
+        )
+
+      assert capture_log(fn ->
+               assert connect(V3.Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :device_untrusted}
+             end) =~ "untrusted_chain"
+    end
+
+    test "refuses a connect through the mutual-TLS host when the account has no anchors", %{
+      pki: pki
+    } do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: actor)
+      connect_info = attested_connect_info(pki, encode_token(token))
+
+      assert capture_log(fn ->
+               assert connect(V3.Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :device_untrusted}
+             end) =~ "no_trust_anchors"
+    end
+
+    test "connects unattested on the plain API host", %{pki: pki, token: token} do
       connect_info =
         build_connect_info(
           token: token,
@@ -544,35 +573,26 @@ defmodule PortalAPI.Client.SocketTest do
           client_cert: client_cert_header(pki, :rsa)
         )
 
-      assert capture_log(fn ->
-               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
-                        {:error, :device_untrusted}
-             end) =~ "untrusted_host"
-    end
-
-    test "refuses a certificate that does not chain to an anchor", %{pki: pki, token: token} do
-      connect_info =
-        build_connect_info(
-          token: token,
-          host: "x509.firezone.test",
-          client_cert: client_cert_header(pki, :untrusted)
-        )
-
-      assert capture_log(fn ->
-               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
-                        {:error, :device_untrusted}
-             end) =~ "untrusted_chain"
-    end
-
-    test "connects unattested when the account has no anchors", %{pki: pki} do
-      account = account_fixture()
-      actor = actor_fixture(account: account)
-      token = client_token_fixture(account: account, actor: actor)
-      connect_info = attested_connect_info(pki, encode_token(token))
-
-      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert {:ok, socket} = connect(V3.Socket, connect_attrs([]), connect_info: connect_info)
       refute socket.assigns.attested?
       assert is_nil(socket.assigns.client.last_attested_device_serial)
+    end
+
+    test "older sockets never attest, even on the mutual-TLS host", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      for socket_module <- [Socket, PortalAPI.Client.V2.Socket] do
+        token = client_token_fixture(account: account, actor: actor)
+        connect_info = attested_connect_info(pki, encode_token(token))
+
+        assert {:ok, socket} =
+                 connect(socket_module, connect_attrs([]), connect_info: connect_info)
+
+        refute socket.assigns.attested?
+        assert is_nil(socket.assigns.client.last_attested_device_serial)
+      end
     end
 
     test "merges a reinstalled client back onto its attested device row", %{
@@ -592,7 +612,7 @@ defmodule PortalAPI.Client.SocketTest do
       connect_info = attested_connect_info(pki, token)
       attrs = connect_attrs(external_id: "fz-new")
 
-      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert {:ok, socket} = connect(V3.Socket, attrs, connect_info: connect_info)
       assert socket.assigns.client.id == existing.id
       assert socket.assigns.client.firezone_id == "fz-new"
     end
@@ -898,7 +918,7 @@ defmodule PortalAPI.Client.SocketTest do
   defp attested_connect_info(pki, token) do
     build_connect_info(
       token: token,
-      host: "x509.firezone.test",
+      host: "mtls.firezone.test",
       client_cert: client_cert_header(pki, :rsa)
     )
   end
