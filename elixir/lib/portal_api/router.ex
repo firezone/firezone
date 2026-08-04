@@ -66,7 +66,11 @@ defmodule PortalAPI.Router do
     get "/logs", LogController, :index
     get "/logs/:log_id", LogController, :show
 
-    resources "/resources", ResourceController, except: [:new, :edit]
+    resources "/resources", ResourceController, except: [:new, :edit] do
+      get "/pool_members", PoolMemberController, :index
+      put "/pool_members", PoolMemberController, :update_put
+      patch "/pool_members", PoolMemberController, :update_patch
+    end
     resources "/policies", PolicyController, except: [:new, :edit]
 
     resources "/sites", SiteController, except: [:new, :edit] do
