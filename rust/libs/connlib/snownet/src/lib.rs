@@ -11,7 +11,6 @@ mod candidate;
 mod channel_data;
 mod index;
 mod node;
-mod stats;
 mod utils;
 
 pub use allocation::RelaySocket;
@@ -20,7 +19,6 @@ pub use node::{
     Credentials, EncapsulateInfo, Event, IceConfig, IceRole, NoTurnServers, Node, StillConnecting,
     Transmit, UnknownConnection,
 };
-pub use stats::{ConnectionStats, NodeStats};
 
 pub fn is_wireguard(payload: &[u8]) -> bool {
     boringtun::noise::Tunn::parse_incoming_packet(payload).is_ok()

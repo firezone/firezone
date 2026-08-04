@@ -15,7 +15,6 @@ use crate::node::connection_state::{ConnectionState, PeerSocket};
 use crate::node::connections::Connections;
 use crate::node::inflight_stun_requests::InflightStunRequests;
 use crate::node::timeout_cache::TimeoutCache;
-use crate::stats::{ConnectionStats, NodeStats};
 use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
 use boringtun::noise::errors::WireGuardError;
@@ -105,7 +104,6 @@ pub struct Node<TId, RId> {
     /// them without delay.
     last_now: Instant,
 
-    stats: NodeStats,
     buffer_pool: BufferPool<Vec<u8>>,
 
     connection_count: Gauge<u64>,
@@ -208,7 +206,6 @@ where
             allocations,
             inflight_stun_requests: Default::default(),
             connections: Default::default(),
-            stats: Default::default(),
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "snownet"),
             connection_count: otel_instruments::connection_count(),
             unix_now: now,
@@ -483,10 +480,6 @@ where
         })
     }
 
-    pub fn stats(&self) -> (NodeStats, impl Iterator<Item = (TId, ConnectionStats)> + '_) {
-        (self.stats, self.connections.stats())
-    }
-
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn add_remote_candidate(&mut self, cid: TId, candidate: String, now: Instant) {
         self.last_now = now;
@@ -713,7 +706,6 @@ where
     #[must_use]
     pub fn poll_transmit(&mut self) -> Option<Transmit> {
         if let Some(transmit) = self.allocations.poll_transmit() {
-            self.stats.stun_bytes_to_relays += transmit.payload.len();
             tracing::trace!(?transmit);
 
             return Some(transmit);
@@ -867,7 +859,6 @@ where
             agent,
             index,
             tunnel,
-            stats: Default::default(),
             buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
             intent_sent_at,
             remote_pub_key: remote,
@@ -1362,7 +1353,6 @@ struct Connection<RId> {
     state: ConnectionState,
     disconnected_at: Option<Instant>,
 
-    stats: ConnectionStats,
     intent_sent_at: Instant,
     candidate_timeout: Option<Instant>,
 
@@ -1639,8 +1629,6 @@ where
 
             // Check if `is` wants us to send from a "remote" socket, i.e. one that we allocated with a relay.
             let Some((relay, allocation)) = allocations.get_mut_by_allocation(source) else {
-                self.stats.stun_bytes_to_peer_direct += stun_packet_bytes.len();
-
                 // `source` did not match any of our allocated sockets, must be a local one then!
                 transmits.push(Transmit {
                     src: Some(source),
@@ -1661,8 +1649,6 @@ where
                 tracing::trace!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
                 continue;
             };
-
-            self.stats.stun_bytes_to_peer_relayed += data_channel_packet.len();
 
             transmits.push(Transmit {
                 src: None,
