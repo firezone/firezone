@@ -30,16 +30,12 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
         domain: Some("download.httpbin".parse().unwrap()),
         outer_tuples: vec![
             FlowContext {
-                src_ip: "198.51.100.1".parse().unwrap(),
-                dst_ip: "203.0.113.7".parse().unwrap(),
-                src_port: 51820,
-                dst_port: 51820,
+                src: "198.51.100.1:51820".parse().unwrap(),
+                dst: "203.0.113.7:51820".parse().unwrap(),
             },
             FlowContext {
-                src_ip: "198.51.100.2".parse().unwrap(),
-                dst_ip: "203.0.113.7".parse().unwrap(),
-                src_port: 45000,
-                dst_port: 51820,
+                src: "198.51.100.2:45000".parse().unwrap(),
+                dst: "203.0.113.7:51820".parse().unwrap(),
             },
         ],
         flow_start: chrono::Utc.timestamp_opt(1_700_000_000, 500).unwrap(),
@@ -67,8 +63,8 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
     assert_eq!(
         payload["outer_tuples"],
         serde_json::json!([
-            {"src_ip": "198.51.100.1", "dst_ip": "203.0.113.7", "src_port": 51820, "dst_port": 51820},
-            {"src_ip": "198.51.100.2", "dst_ip": "203.0.113.7", "src_port": 45000, "dst_port": 51820},
+            {"src": "198.51.100.1:51820", "dst": "203.0.113.7:51820"},
+            {"src": "198.51.100.2:45000", "dst": "203.0.113.7:51820"},
         ])
     );
     assert_eq!(payload["flow_start"], format!("{:?}", record.flow_start));
@@ -138,7 +134,7 @@ fn tracked_packets_spool_open_and_completed_reports() {
     assert_eq!(
         open["outer_tuples"],
         serde_json::json!([
-            {"src_ip": "198.51.100.1", "dst_ip": "203.0.113.1", "src_port": 45000, "dst_port": 51820}
+            {"src": "198.51.100.1:45000", "dst": "203.0.113.1:51820"}
         ])
     );
     assert!(open.get("flow_end").is_none());

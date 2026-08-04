@@ -627,7 +627,7 @@ mod tests {
             inner_src_port = %1234,
             inner_dst_ip = %"10.0.0.5",
             inner_dst_port = %443,
-            outer_tuples = %r#"[{"src_ip":"198.51.100.1","dst_ip":"203.0.113.7","src_port":51820,"dst_port":51820}]"#,
+            outer_tuples = %r#"[{"src":"198.51.100.1:51820","dst":"203.0.113.7:51820"}]"#,
             actor_id = "a-1",
             flow_start = ?flow_start,
             flow_end = flow_end.map(tracing::field::debug),

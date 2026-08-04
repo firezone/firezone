@@ -36,6 +36,7 @@ use chrono::{DateTime, TimeDelta, Utc};
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
+use smallvec::{SmallVec, smallvec};
 
 mod token;
 
@@ -47,9 +48,9 @@ const FLOW_TIMEOUT: TimeDelta = TimeDelta::minutes(2);
 /// A flow records at most this many outer (transport) 4-tuples.
 ///
 /// The outer tuple changes only on rare path events such as roaming or a relay
-/// switchover, so the cap is generous; it bounds the tracker's memory and the
-/// emitted record's size should a flow's path flap indefinitely.
-const MAX_CONTEXTS_PER_FLOW: usize = 64;
+/// switchover; the cap bounds the tracker's memory and the emitted record's
+/// size should a flow's path flap indefinitely.
+const MAX_CONTEXTS_PER_FLOW: usize = 16;
 
 thread_local! {
     /// The [`FlowData`] for the packet currently being processed on this thread.
@@ -432,7 +433,7 @@ where
                             start: now_utc,
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
-                            contexts: vec![context],
+                            contexts: smallvec![context],
                             fin_tx: false,
                             fin_rx: false,
                             domain,
@@ -459,7 +460,7 @@ where
                             start: now_utc,
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
-                            contexts: vec![context],
+                            contexts: smallvec![context],
                             fin_tx: false,
                             fin_rx: false,
                             domain,
@@ -508,7 +509,7 @@ where
                             start: now_utc,
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
-                            contexts: vec![context],
+                            contexts: smallvec![context],
                             domain,
                             ingest_token,
                         };
@@ -904,7 +905,7 @@ impl Record {
             key.dst_port,
             value.ingest_token.clone(),
             value.domain.clone(),
-            value.contexts.clone(),
+            value.contexts.to_vec(),
             value.start,
             None,
         )
@@ -921,7 +922,7 @@ impl Record {
             key.dst_port,
             value.ingest_token,
             value.domain,
-            value.contexts,
+            value.contexts.into_vec(),
             value.start,
             Some(close),
         )
@@ -936,7 +937,7 @@ impl Record {
             key.dst_port,
             value.ingest_token.clone(),
             value.domain.clone(),
-            value.contexts.clone(),
+            value.contexts.to_vec(),
             value.start,
             None,
         )
@@ -953,7 +954,7 @@ impl Record {
             key.dst_port,
             value.ingest_token,
             value.domain,
-            value.contexts,
+            value.contexts.into_vec(),
             value.start,
             Some(close),
         )
@@ -1110,7 +1111,7 @@ struct TcpFlowValue {
     last_packet: DateTime<Utc>,
     stats: FlowStats,
     /// The outer (transport) 4-tuples the flow has used, in order of first use.
-    contexts: Vec<FlowContext>,
+    contexts: Contexts,
 
     domain: Option<DomainName>,
 
@@ -1127,7 +1128,7 @@ struct UdpFlowValue {
     last_packet: DateTime<Utc>,
     stats: FlowStats,
     /// The outer (transport) 4-tuples the flow has used, in order of first use.
-    contexts: Vec<FlowContext>,
+    contexts: Contexts,
 
     domain: Option<DomainName>,
 
@@ -1164,10 +1165,8 @@ impl FlowStats {
 /// The outer (transport) 4-tuple a flow is tunneled over.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize)]
 pub struct FlowContext {
-    pub src_ip: IpAddr,
-    pub dst_ip: IpAddr,
-    pub src_port: u16,
-    pub dst_port: u16,
+    pub src: SocketAddr,
+    pub dst: SocketAddr,
 }
 
 impl FlowContext {
@@ -1175,19 +1174,20 @@ impl FlowContext {
     /// initiator side is the source, the responder side the destination.
     pub fn new(initiator: SocketAddr, responder: SocketAddr) -> Self {
         Self {
-            src_ip: initiator.ip(),
-            dst_ip: responder.ip(),
-            src_port: initiator.port(),
-            dst_port: responder.port(),
+            src: initiator,
+            dst: responder,
         }
     }
 }
+
+/// The outer tuples one flow has used, inline up to the common few path changes.
+type Contexts = SmallVec<[FlowContext; 4]>;
 
 /// Appends `context` to a flow's outer tuples if it differs from the current one.
 ///
 /// The list is capped at [`MAX_CONTEXTS_PER_FLOW`]; changes past the cap are
 /// dropped.
-fn push_context(key: &impl Debug, contexts: &mut Vec<FlowContext>, context: FlowContext) {
+fn push_context(key: &impl Debug, contexts: &mut Contexts, context: FlowContext) {
     let Some(current) = contexts.last().copied() else {
         contexts.push(context);
         return;
@@ -1212,24 +1212,18 @@ fn push_context(key: &impl Debug, contexts: &mut Vec<FlowContext>, context: Flow
 
 #[derive(PartialEq, Eq)]
 struct FlowContextDiff {
-    src_ip: Option<(IpAddr, IpAddr)>,
-    dst_ip: Option<(IpAddr, IpAddr)>,
-    src_port: Option<(u16, u16)>,
-    dst_port: Option<(u16, u16)>,
+    src: Option<(SocketAddr, SocketAddr)>,
+    dst: Option<(SocketAddr, SocketAddr)>,
 }
 
 impl FlowContextDiff {
     fn new(old: FlowContext, new: FlowContext) -> Self {
-        let src_ip_diff = (old.src_ip != new.src_ip).then_some((old.src_ip, new.src_ip));
-        let dst_ip_diff = (old.dst_ip != new.dst_ip).then_some((old.dst_ip, new.dst_ip));
-        let src_port_diff = (old.src_port != new.src_port).then_some((old.src_port, new.src_port));
-        let dst_port_diff = (old.dst_port != new.dst_port).then_some((old.dst_port, new.dst_port));
+        let src_diff = (old.src != new.src).then_some((old.src, new.src));
+        let dst_diff = (old.dst != new.dst).then_some((old.dst, new.dst));
 
         Self {
-            src_ip: src_ip_diff,
-            dst_ip: dst_ip_diff,
-            src_port: src_port_diff,
-            dst_port: dst_port_diff,
+            src: src_diff,
+            dst: dst_diff,
         }
     }
 }
@@ -1238,25 +1232,11 @@ impl std::fmt::Debug for FlowContextDiff {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut debug_struct = f.debug_struct("FlowContextDiff");
 
-        if let Some((old, new)) = self.src_ip {
-            debug_struct
-                .field("old_src_ip", &old)
-                .field("new_src_ip", &new);
+        if let Some((old, new)) = self.src {
+            debug_struct.field("old_src", &old).field("new_src", &new);
         }
-        if let Some((old, new)) = self.dst_ip {
-            debug_struct
-                .field("old_dst_ip", &old)
-                .field("new_dst_ip", &new);
-        }
-        if let Some((old, new)) = self.src_port {
-            debug_struct
-                .field("old_src_port", &old)
-                .field("new_src_port", &new);
-        }
-        if let Some((old, new)) = self.dst_port {
-            debug_struct
-                .field("old_dst_port", &old)
-                .field("new_dst_port", &new);
+        if let Some((old, new)) = self.dst {
+            debug_struct.field("old_dst", &old).field("new_dst", &new);
         }
 
         debug_struct.finish()
@@ -1265,29 +1245,23 @@ impl std::fmt::Debug for FlowContextDiff {
 
 #[cfg(test)]
 mod tests {
-    use std::net::Ipv4Addr;
-
     use super::*;
 
     #[test]
     fn flow_context_diff_rendering() {
         let old = FlowContext {
-            src_ip: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
-            dst_ip: IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)),
-            src_port: 8080,
-            dst_port: 443,
+            src: "10.0.0.1:8080".parse().unwrap(),
+            dst: "192.168.0.1:443".parse().unwrap(),
         };
         let new = FlowContext {
-            src_ip: IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)),
-            dst_ip: IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)),
-            src_port: 50000,
-            dst_port: 443,
+            src: "1.1.1.1:50000".parse().unwrap(),
+            dst: "192.168.0.1:443".parse().unwrap(),
         };
 
         let diff = FlowContextDiff::new(old, new);
 
         assert_eq!(
-            "FlowContextDiff { old_src_ip: 10.0.0.1, new_src_ip: 1.1.1.1, old_src_port: 8080, new_src_port: 50000 }",
+            "FlowContextDiff { old_src: 10.0.0.1:8080, new_src: 1.1.1.1:50000 }",
             format!("{diff:?}")
         );
     }
