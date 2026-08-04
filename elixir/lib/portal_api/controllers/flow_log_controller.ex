@@ -165,9 +165,7 @@ defmodule PortalAPI.FlowLogController do
       entry =
         @cast_fields
         |> Map.new(&{&1, get_field(changeset, &1)})
-        |> Map.update!(:outers, fn outers ->
-          if is_nil(get_field(changeset, :flow_end)), do: nil, else: outers
-        end)
+        |> Map.put(:outers, outers_for_storage(changeset))
 
       {[{index, entry} | valid], invalid}
     else
@@ -185,6 +183,12 @@ defmodule PortalAPI.FlowLogController do
     %FlowLog{}
     |> cast(attrs, @scalar_cast_fields)
     |> FlowLog.changeset()
+  end
+
+  defp outers_for_storage(changeset) do
+    if is_nil(get_field(changeset, :flow_end)),
+      do: nil,
+      else: get_field(changeset, :outers)
   end
 
   defp render_validation_errors(errors) do
