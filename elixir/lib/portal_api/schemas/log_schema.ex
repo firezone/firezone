@@ -311,15 +311,24 @@ defmodule PortalAPI.Schemas.Log do
           type: :array,
           minItems: 1,
           description: """
-          Outer network paths in observation order. Source endpoint details may
-          be unavailable, for example while traversing a relay. The two entries
-          of a flow can disagree whenever NAT or a relay sits between the peers.
+          Outer network paths in observation order. Source IP and port are
+          either both populated or both null; source endpoint details may be
+          unavailable, for example while traversing a relay. The two entries of
+          a flow can disagree whenever NAT or a relay sits between the peers.
           """,
           items: %Schema{
             type: :object,
             properties: %{
-              src_ip: %Schema{type: :string, nullable: true},
-              src_port: %Schema{type: :integer, nullable: true},
+              src_ip: %Schema{
+                type: :string,
+                nullable: true,
+                description: "Null exactly when `src_port` is null."
+              },
+              src_port: %Schema{
+                type: :integer,
+                nullable: true,
+                description: "Null exactly when `src_ip` is null."
+              },
               dst_ip: %Schema{type: :string},
               dst_port: %Schema{type: :integer}
             },

@@ -136,6 +136,19 @@ defmodule Portal.FlowLogTest do
       assert Map.has_key?(errors_on(cs), :outers)
     end
 
+    test "invalid with a partially specified outer source endpoint" do
+      for outer <- [
+            %{src_ip: "198.51.100.2", src_port: nil, dst_ip: "203.0.113.8", dst_port: 443},
+            %{src_ip: nil, src_port: 42_000, dst_ip: "203.0.113.8", dst_port: 443}
+          ] do
+        cs = changeset(%{outers: [outer]})
+
+        refute cs.valid?
+        assert [%{} = outer_errors] = errors_on(cs).outers
+        assert Map.has_key?(outer_errors, :src_ip) or Map.has_key?(outer_errors, :src_port)
+      end
+    end
+
     test "invalid with malformed outer endpoints" do
       cs =
         changeset(%{

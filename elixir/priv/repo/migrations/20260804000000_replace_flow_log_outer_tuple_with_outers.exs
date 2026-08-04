@@ -50,7 +50,15 @@ defmodule Portal.Repo.Migrations.ReplaceFlowLogOuterTupleWithOuters do
 
     create(
       constraint(:flow_logs, :flow_logs_outers_non_empty,
-        check: "jsonb_typeof(outers) = 'array' AND jsonb_array_length(outers) > 0"
+        check: """
+        jsonb_typeof(outers) = 'array' AND
+        jsonb_array_length(outers) > 0 AND
+        NOT jsonb_path_exists(
+          outers,
+          '$[*] ? ((@.src_ip == null && @.src_port != null) ||
+                   (@.src_ip != null && @.src_port == null))'
+        )
+        """
       )
     )
   end
