@@ -26,23 +26,6 @@ pub trait BufferProvider {
         ecn: Ecn,
         len: usize,
     ) -> Self::Reservation<'_>;
-
-    /// Collect an already-formed [`Transmit`].
-    ///
-    /// Used for datagrams that were produced elsewhere as a standalone [`Transmit`] (e.g. a
-    /// handshake that cannot be encrypted in place because there is no session yet). The default
-    /// implementation copies the payload into a fresh reservation; implementers that can take
-    /// ownership of the buffer should override it.
-    fn push(&mut self, transmit: Transmit) {
-        let mut reservation = self.reserve(
-            transmit.src,
-            transmit.dst,
-            transmit.ecn,
-            transmit.payload.len(),
-        );
-        reservation.buffer().copy_from_slice(&transmit.payload);
-        reservation.commit();
-    }
 }
 
 /// A reserved region within a [`BufferProvider`].
@@ -69,6 +52,14 @@ impl TransmitBuffer {
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "transmit-buffer"),
             transmits: VecDeque::default(),
         }
+    }
+
+    /// Collect an already-formed [`Transmit`].
+    ///
+    /// Used for datagrams that were produced elsewhere as a standalone [`Transmit`], e.g. a
+    /// handshake that cannot be encrypted in place because there is no session yet.
+    pub fn push(&mut self, transmit: Transmit) {
+        self.transmits.push_back(transmit);
     }
 
     /// Returns the next collected [`Transmit`], if any.
@@ -121,10 +112,6 @@ impl BufferProvider for TransmitBuffer {
             inner: self,
             committed: false,
         }
-    }
-
-    fn push(&mut self, transmit: Transmit) {
-        self.transmits.push_back(transmit);
     }
 }
 
