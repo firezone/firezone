@@ -76,6 +76,13 @@ pub enum Transition {
         client_id: ClientId,
         query: DnsQuery,
     },
+    SendMalformedDnsQuery {
+        client_id: ClientId,
+        kind: MalformedDnsQuery,
+        query_id: u16,
+        dns_server: dns::Upstream,
+        local_port: u16,
+    },
     UpdateSystemDnsServers {
         servers: Vec<IpAddr>,
     },
@@ -124,6 +131,7 @@ impl Transition {
             Transition::SendUdpPacket { .. } => false,
             Transition::ConnectTcp { .. } => false,
             Transition::SendDnsQuery { .. } => false,
+            Transition::SendMalformedDnsQuery { .. } => false,
             Transition::UpdateSystemDnsServers { .. } => false,
             Transition::UpdateUpstreamDo53Servers(_) => false,
             Transition::UpdateUpstreamDoHServers(_) => false,
@@ -154,6 +162,21 @@ pub(crate) struct DnsQuery {
 pub(crate) enum DnsTransport {
     Udp { local_port: u16 },
     Tcp,
+}
+
+/// The ways in which a DNS query can be structurally invalid.
+///
+/// The client must drop all of these without emitting a response.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum MalformedDnsQuery {
+    /// The QR bit claims the message is a response.
+    QrBitSet,
+    /// The message does not contain a question.
+    NoQuestion,
+    /// The message contains two questions.
+    TwoQuestions,
+    /// The message is shorter than a DNS header.
+    TruncatedHeader,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
