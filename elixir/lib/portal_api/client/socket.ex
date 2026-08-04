@@ -30,24 +30,6 @@ defmodule PortalAPI.Client.Socket do
 
   @impl true
   def connect(attrs, socket, connect_info) do
-    handle_connect(attrs, socket, connect_info, false)
-  end
-
-  @doc false
-  # Entry point for /client/v3 sockets: the only ones whose clients can
-  # present an MDM-provisioned certificate (see PortalAPI.Client.DeviceTrust).
-  def connect_attesting(attrs, socket, connect_info) do
-    handle_connect(attrs, socket, connect_info, true)
-  end
-
-  @impl true
-  def id(socket) do
-    Portal.Sockets.socket_id(socket.assigns.subject.credential.id)
-  end
-
-  ## Private functions
-
-  defp handle_connect(attrs, socket, connect_info, attest?) do
     unless Application.get_env(:portal, :sql_sandbox) do
       Portal.Repo.put_dynamic_repo(Portal.Repo.Api)
     end
@@ -57,12 +39,19 @@ defmodule PortalAPI.Client.Socket do
     OpenTelemetry.Tracer.with_span "client.connect" do
       with {:ok, token} <- PortalAPI.Sockets.extract_token(attrs, connect_info),
            :ok <- PortalAPI.Sockets.RateLimit.check(connect_info, token: token) do
-        do_connect(token, attrs, socket, connect_info, attest?)
+        do_connect(token, attrs, socket, connect_info)
       end
     end
   end
 
-  defp do_connect(token, attrs, socket, connect_info, attest?) do
+  @impl true
+  def id(socket) do
+    Portal.Sockets.socket_id(socket.assigns.subject.credential.id)
+  end
+
+  ## Private functions
+
+  defp do_connect(token, attrs, socket, connect_info) do
     context = PortalAPI.Sockets.auth_context(connect_info, :client)
     attrs = normalize_device_attrs(attrs)
 
@@ -72,7 +61,7 @@ defmodule PortalAPI.Client.Socket do
          {:ok, public_key} <- validate_public_key(attrs),
          changeset = insert_changeset(subject.actor, subject, attrs),
          {:ok, _} <- apply_action(changeset, :validate),
-         {:ok, proof} <- attest_device(connect_info, subject, attest?),
+         {:ok, proof} <- attest_device(connect_info, subject),
          {:ok, client} <- Database.resolve_client(changeset, attrs, proof, subject) do
       version = derive_version(subject.context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
@@ -108,9 +97,7 @@ defmodule PortalAPI.Client.Socket do
   # silently downgrading to an unattested session. A connect on any other host
   # is unattested and carries on; whether that device may reach a given
   # resource is a policy question, not a socket one.
-  defp attest_device(_connect_info, _subject, false), do: {:ok, nil}
-
-  defp attest_device(connect_info, subject, true) do
+  defp attest_device(connect_info, subject) do
     case DeviceTrust.attest(connect_info, subject) do
       {:ok, proof} ->
         {:ok, proof}

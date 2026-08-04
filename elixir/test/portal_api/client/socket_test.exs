@@ -12,7 +12,6 @@ defmodule PortalAPI.Client.SocketTest do
   import Portal.SubjectFixtures
   import Portal.TrustAnchorFixtures
   alias PortalAPI.Client.Socket
-  alias PortalAPI.Client.V3
 
   # The actual client IP used for tests that verify remote_ip tracking
   @client_remote_ip {189, 172, 73, 153}
@@ -522,7 +521,7 @@ defmodule PortalAPI.Client.SocketTest do
     test "attests the device from the presented certificate", %{pki: pki, token: token} do
       connect_info = attested_connect_info(pki, token)
 
-      assert {:ok, socket} = connect(V3.Socket, connect_attrs([]), connect_info: connect_info)
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
       assert socket.assigns.attested?
       assert socket.assigns.client.last_attested_device_serial == "C02XK1ZGJGH5"
       assert socket.assigns.client.last_attested_cert_fingerprint
@@ -532,7 +531,7 @@ defmodule PortalAPI.Client.SocketTest do
       connect_info = build_connect_info(token: token, host: "mtls.firezone.test")
 
       assert capture_log(fn ->
-               assert connect(V3.Socket, connect_attrs([]), connect_info: connect_info) ==
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
                         {:error, :device_untrusted}
              end) =~ "no_certificate_presented"
     end
@@ -546,7 +545,7 @@ defmodule PortalAPI.Client.SocketTest do
         )
 
       assert capture_log(fn ->
-               assert connect(V3.Socket, connect_attrs([]), connect_info: connect_info) ==
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
                         {:error, :device_untrusted}
              end) =~ "untrusted_chain"
     end
@@ -560,7 +559,7 @@ defmodule PortalAPI.Client.SocketTest do
       connect_info = attested_connect_info(pki, encode_token(token))
 
       assert capture_log(fn ->
-               assert connect(V3.Socket, connect_attrs([]), connect_info: connect_info) ==
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
                         {:error, :device_untrusted}
              end) =~ "no_trust_anchors"
     end
@@ -573,25 +572,36 @@ defmodule PortalAPI.Client.SocketTest do
           client_cert: client_cert_header(pki, :rsa)
         )
 
-      assert {:ok, socket} = connect(V3.Socket, connect_attrs([]), connect_info: connect_info)
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
       refute socket.assigns.attested?
       assert is_nil(socket.assigns.client.last_attested_device_serial)
     end
 
-    test "older sockets never attest, even on the mutual-TLS host", %{
+    test "every client socket enforces the mutual-TLS host", %{
       account: account,
       actor: actor,
       pki: pki
     } do
       for socket_module <- [Socket, PortalAPI.Client.V2.Socket] do
         token = client_token_fixture(account: account, actor: actor)
-        connect_info = attested_connect_info(pki, encode_token(token))
+        attrs = connect_attrs([])
 
         assert {:ok, socket} =
-                 connect(socket_module, connect_attrs([]), connect_info: connect_info)
+                 connect(socket_module, attrs,
+                   connect_info: attested_connect_info(pki, encode_token(token))
+                 )
 
-        refute socket.assigns.attested?
-        assert is_nil(socket.assigns.client.last_attested_device_serial)
+        assert socket.assigns.attested?
+
+        bare_token = client_token_fixture(account: account, actor: actor)
+
+        connect_info =
+          build_connect_info(token: encode_token(bare_token), host: "mtls.firezone.test")
+
+        assert capture_log(fn ->
+                 assert connect(socket_module, attrs, connect_info: connect_info) ==
+                          {:error, :device_untrusted}
+               end) =~ "no_certificate_presented"
       end
     end
 
@@ -612,7 +622,7 @@ defmodule PortalAPI.Client.SocketTest do
       connect_info = attested_connect_info(pki, token)
       attrs = connect_attrs(external_id: "fz-new")
 
-      assert {:ok, socket} = connect(V3.Socket, attrs, connect_info: connect_info)
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert socket.assigns.client.id == existing.id
       assert socket.assigns.client.firezone_id == "fz-new"
     end
