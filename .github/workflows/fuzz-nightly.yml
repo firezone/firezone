@@ -1,9 +1,12 @@
 ---
 name: Fuzz corpora (nightly)
-run-name: Triggered from ${{ github.event_name }}
-# Grows and minimizes every committed fuzz corpus, then opens one bot PR with
-# the results and refreshed uncovered-region ceilings. Pull-request CI only
-# replays these inputs; coverage discovery happens here, from main.
+run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
+# Grows and minimizes every committed fuzz corpus, refreshing the
+# uncovered-region ceilings alongside. The scheduled run works on main and
+# proposes the result as one bot PR; dispatching the workflow on any other
+# branch pushes the result back to that branch instead, e.g. to re-grow the
+# corpus for a PR that changes the harness. Pull-request CI only replays
+# committed inputs; coverage discovery happens here.
 "on":
   schedule:
     - cron: "0 4 * * *" # daily, 04:00 UTC
@@ -17,7 +20,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: fuzz-nightly
+  # Per ref, so a branch dispatch and the scheduled run on main cannot cancel
+  # each other.
+  group: fuzz-nightly-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -80,9 +85,11 @@ jobs:
         with:
           key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
           email: github-bot@firezone.dev
-      - name: Open corpus update PR
+      - name: Push corpus update
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+          REF: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
 
@@ -91,11 +98,9 @@ jobs:
           git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
           git config --local commit.gpgsign true
 
-          branch="chore/fuzz-corpora"
-          git checkout -B "$branch"
           git add -A tests/fuzz/corpora tests/fuzz/expected-coverage
           if git diff --cached --quiet; then
-            echo "Corpora unchanged; nothing to open a PR for."
+            echo "Corpora unchanged; nothing to push."
             exit 0
           fi
           git commit -m "chore(fuzz): grow committed corpora"
@@ -104,6 +109,18 @@ jobs:
           # it do not trigger the pull request's workflows.
           git config --local http.https://github.com/.extraheader ""
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          if [ "$REF" != "$DEFAULT_BRANCH" ]; then
+            # The dispatching branch may have moved while the fuzz jobs ran, so
+            # replay the update onto its tip rather than overwriting it.
+            git fetch origin "$REF"
+            git rebase "origin/$REF"
+            git push origin "HEAD:$REF"
+            exit 0
+          fi
+
+          branch="chore/fuzz-corpora"
+          git checkout -B "$branch"
           git push -u origin HEAD --force
 
           if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
