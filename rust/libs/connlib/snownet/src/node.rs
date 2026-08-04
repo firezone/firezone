@@ -2034,7 +2034,7 @@ where
     fn initiate_wg_session(
         &mut self,
         allocations: &mut Allocations<RId>,
-        provider: &mut impl BufferProvider,
+        transmits: &mut TransmitBuffer,
         now: Instant,
     ) where
         RId: Copy,
@@ -2083,7 +2083,7 @@ where
             allocations,
             now,
         ) {
-            provider.push(transmit);
+            transmits.push(transmit);
         }
     }
 
