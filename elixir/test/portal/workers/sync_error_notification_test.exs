@@ -166,6 +166,21 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
       assert Repo.get!(Portal.Entra.Directory, directory.id).error_email_count == 0
     end
 
+    test "notifies a paid account with no session logs" do
+      account = team_account_fixture(features: %{idp_sync: true})
+      admin_actor_fixture(account: account)
+
+      directory =
+        entra_directory_fixture(
+          sync_error_attrs(account: account, error_email_count: 0, error_message: "paid")
+        )
+
+      assert :ok = perform_job(SyncErrorNotification, notification_args("entra", "daily"))
+
+      assert [_email] = collect_queued_emails(account.id)
+      assert Repo.get!(Portal.Entra.Directory, directory.id).error_email_count == 1
+    end
+
     test "logs enqueue failures and still increments error_email_count" do
       Portal.Config.put_env_override(:portal, SyncErrorNotification,
         mailer_module: FailingMailer,

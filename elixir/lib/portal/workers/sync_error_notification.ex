@@ -15,6 +15,7 @@ defmodule Portal.Workers.SyncErrorNotification do
     max_attempts: 3,
     unique: [period: :infinity, states: :incomplete]
 
+  alias Portal.Billing
   alias Portal.Entra
   alias Portal.Google
   alias Portal.Okta
@@ -76,7 +77,7 @@ defmodule Portal.Workers.SyncErrorNotification do
         )
 
       # Leave the count alone so a returning account still gets the full series.
-      not Database.account_active?(directory.account_id) ->
+      dormant?(directory.account) ->
         Logger.info("Skipping sync error notification for dormant account",
           account_id: directory.account_id,
           directory_id: directory.id
@@ -86,6 +87,10 @@ defmodule Portal.Workers.SyncErrorNotification do
         increment_error_email_count(directory)
         send_email_notification(admins, directory, frequency)
     end
+  end
+
+  defp dormant?(account) do
+    not Billing.paid_plan?(account) and not Database.account_active?(account.id)
   end
 
   defp send_email_notification(admins, directory, frequency) do

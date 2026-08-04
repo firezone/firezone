@@ -21,6 +21,7 @@ defmodule Portal.Workers.LogSinkErrorNotification do
     max_attempts: 3,
     unique: [period: :infinity, states: :incomplete]
 
+  alias Portal.Billing
   alias Portal.Mailer
   alias __MODULE__.Database
   require Logger
@@ -81,7 +82,7 @@ defmodule Portal.Workers.LogSinkErrorNotification do
         )
 
       # Leave the count alone so a returning account still gets the full series.
-      not Database.account_active?(sink.account_id) ->
+      dormant?(sink.account) ->
         Logger.info("Skipping log sink error notification for dormant account",
           account_id: sink.account_id,
           log_sink_id: sink.id
@@ -91,6 +92,10 @@ defmodule Portal.Workers.LogSinkErrorNotification do
         record_error_email(sink)
         send_email_notification(admins, sink)
     end
+  end
+
+  defp dormant?(account) do
+    not Billing.paid_plan?(account) and not Database.account_active?(account.id)
   end
 
   defp send_email_notification(admins, sink) do

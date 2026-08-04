@@ -203,5 +203,34 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
       account = Portal.Repo.get!(Portal.Account, account.id)
       assert is_nil(account.config.notifications.outdated_gateway.last_notified)
     end
+
+    test "notifies a paid account with no session logs" do
+      account =
+        team_account_fixture(
+          config: %{
+            notifications: %{
+              outdated_gateway: %{enabled: true}
+            }
+          }
+        )
+
+      admin = admin_actor_fixture(account: account)
+      site = site_fixture(account: account)
+
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          last_seen_version: "0.9.0"
+        )
+
+      assert :ok = Portal.Presence.Gateways.connect(gateway, gateway.gateway_token_id)
+
+      assert :ok = perform_job(OutdatedGateways, %{})
+
+      assert_email_queued(account.id, fn email ->
+        assert email.bcc == [{"", admin.email}]
+      end)
+    end
   end
 end

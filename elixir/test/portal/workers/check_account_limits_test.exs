@@ -136,6 +136,28 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       refute account.warning_last_sent_at
     end
 
+    test "sends email to a paid account with no session logs" do
+      account =
+        dormant_provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Team"}}})
+
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+
+      update_account(account, %{
+        limits: %{
+          account_admin_users_count: 1
+        }
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert [_email] = collect_queued_emails(account.id)
+
+      account = Repo.get!(Portal.Account, account.id)
+      assert account.warning_last_sent_at
+    end
+
     test "does not send email if warning_last_sent_at is less than 3 days ago" do
       account = provisioned_account_fixture()
       admin_actor_fixture(account: account)
@@ -480,7 +502,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
         %{
           customer_id: "cus_#{System.unique_integer([:positive])}",
           subscription_id: "sub_#{System.unique_integer([:positive])}",
-          product_name: "Team"
+          product_name: "Starter"
         },
         get_in(attrs, [:metadata, :stripe]) || %{}
       )

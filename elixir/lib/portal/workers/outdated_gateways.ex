@@ -12,7 +12,7 @@ defmodule Portal.Workers.OutdatedGateways do
   require Logger
 
   alias __MODULE__.Database
-  alias Portal.{Device, Mailer}
+  alias Portal.{Billing, Device, Mailer}
 
   @impl Oban.Worker
   def perform(_job) do
@@ -24,6 +24,7 @@ defmodule Portal.Workers.OutdatedGateways do
     latest_version = Portal.ComponentVersions.gateway_version()
 
     Database.all_accounts_pending_notification!()
+    |> Enum.reject(&dormant?/1)
     |> Enum.each(fn account ->
       incompatible_client_count = Database.count_incompatible_for(account, latest_version)
 
@@ -31,6 +32,12 @@ defmodule Portal.Workers.OutdatedGateways do
       |> Enum.filter(&Device.gateway_outdated?/1)
       |> send_notifications(account, incompatible_client_count)
     end)
+  end
+
+  # Dropped before anything is sent so last_notified stays unset and the account
+  # is notified the first time it comes back.
+  defp dormant?(account) do
+    not Billing.paid_plan?(account) and not Database.account_active?(account.id)
   end
 
   defp all_online_gateways_for_account(account) do
@@ -121,11 +128,8 @@ defmodule Portal.Workers.OutdatedGateways do
     alias Portal.Safe
     alias Portal.Device
 
-    # Accounts with no session logs are dormant and are left out entirely, so
-    # their last_notified stays unset and they are notified once they return.
     def all_accounts_pending_notification! do
       from(a in Portal.Account,
-        as: :accounts,
         where: fragment("?->'notifications'->'outdated_gateway'->>'enabled' = 'true'", a.config),
         where:
           fragment(
@@ -135,17 +139,16 @@ defmodule Portal.Workers.OutdatedGateways do
             fragment(
               "(?->'notifications'->'outdated_gateway'->>'last_notified')::timestamp < timezone('UTC', NOW()) - interval '24 hours'",
               a.config
-            ),
-        where:
-          exists(
-            from(sl in Portal.SessionLog,
-              where: sl.account_id == parent_as(:accounts).id,
-              select: 1
             )
-          )
       )
       |> Safe.unscoped()
       |> Safe.all()
+    end
+
+    def account_active?(account_id) do
+      from(sl in Portal.SessionLog, where: sl.account_id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
 
     def all_admins_for_account!(account) do

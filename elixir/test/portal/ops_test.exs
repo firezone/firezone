@@ -444,6 +444,27 @@ defmodule Portal.OpsTest do
       end)
     end
 
+    test "emails a paid account with no session logs" do
+      account = team_account_fixture()
+      admin = admin_actor_fixture(account: account)
+
+      output =
+        capture_io("y\n", fn ->
+          assert :ok =
+                   queue_admin_email(
+                     [account.id],
+                     "Admin Subject",
+                     "<p>Admin HTML</p>",
+                     "Admin Text"
+                   )
+
+          assert [%{bcc: [{"", email}]}] = collect_queued_emails(account.id)
+          assert email == String.downcase(admin.email)
+        end)
+
+      refute output =~ "dormant"
+    end
+
     test "errors without prompting when every account is dormant" do
       account = account_fixture()
       admin_actor_fixture(account: account)

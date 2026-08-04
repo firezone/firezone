@@ -1,6 +1,6 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
-  alias Portal.{Banner, EmailSuppression, Mailer}
+  alias Portal.{Banner, Billing, EmailSuppression, Mailer}
   alias Portal.Workers.DeleteAccount
 
   @max_bcc_per_message 50
@@ -238,14 +238,21 @@ defmodule Portal.Ops do
   end
 
   defp split_dormant_accounts(emails_by_account) do
-    active_ids =
+    {paid, unpaid} =
       emails_by_account
       |> Enum.map(&elem(&1, 0))
+      |> Database.list_accounts()
+      |> Enum.split_with(&Billing.paid_plan?/1)
+
+    notifiable_ids =
+      unpaid
+      |> Enum.map(& &1.id)
       |> Database.active_account_ids()
+      |> Enum.concat(Enum.map(paid, & &1.id))
       |> MapSet.new()
 
     Enum.split_with(emails_by_account, fn {account_id, _emails} ->
-      MapSet.member?(active_ids, account_id)
+      MapSet.member?(notifiable_ids, account_id)
     end)
   end
 
@@ -378,6 +385,12 @@ defmodule Portal.Ops do
       |> Enum.group_by(fn {account_id, _email} -> account_id end, fn {_account_id, email} ->
         email
       end)
+    end
+
+    def list_accounts(account_ids) do
+      from(a in Account, where: a.id in ^account_ids)
+      |> Safe.unscoped()
+      |> Safe.all()
     end
 
     def active_account_ids([]), do: []

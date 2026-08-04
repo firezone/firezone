@@ -137,6 +137,18 @@ defmodule Portal.Workers.LogSinkErrorNotificationTest do
       assert reload_sink(sink).error_email_count == 0
     end
 
+    test "notifies a paid account with no session logs" do
+      account = team_account_fixture(features: %{log_sinks: true})
+      admin_actor_fixture(account: account)
+
+      sink = errored_sink_fixture(account, error_email_count: 0)
+
+      assert :ok = perform_job(LogSinkErrorNotification, %{})
+
+      assert [_email] = collect_queued_emails(account.id)
+      assert reload_sink(sink).error_email_count == 1
+    end
+
     test "email frequency follows the error_email_count bucket" do
       account = account_fixture(features: %{log_sinks: true})
       session_log_fixture(account: account)

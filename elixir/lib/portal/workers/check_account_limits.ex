@@ -119,10 +119,14 @@ defmodule Portal.Workers.CheckAccountLimits do
     |> Map.put(:warning_last_sent_at, nil)
   end
 
-  # Dormant accounts are checked last so the reminder clock only starts once
-  # there is somebody to remind.
+  # Dormancy is checked last so the reminder clock only starts once there is
+  # somebody to remind.
   defp should_send_email?(account) do
-    due_for_email?(account) and Database.account_active?(account.id)
+    due_for_email?(account) and not dormant?(account)
+  end
+
+  defp dormant?(account) do
+    not Billing.paid_plan?(account) and not Database.account_active?(account.id)
   end
 
   defp due_for_email?(%{warning_last_sent_at: nil}), do: true
