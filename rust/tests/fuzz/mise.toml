@@ -6,6 +6,12 @@
 # The toolchain is not a `rust` entry in `[tools]` because rustup-managed
 # toolchains have no download URL for mise to pin in `mise.lock`, which strict
 # lockfile mode requires.
+#
+# Every `cargo fuzz` invocation below passes `--sanitizer none`. These targets
+# assert against a reference model rather than hunt for memory errors, and what
+# they drive is safe Rust, so the sanitizer costs 4.6x the execution rate to
+# guard nothing. Keep the flag on all of them: they share a target directory,
+# and a differing sanitizer rebuilds the entire dependency graph.
 
 [tools]
 # `cargo-fuzz` tags releases without a `v` prefix. Spelling that out keeps mise
@@ -57,7 +63,7 @@ if [ "$target" = "tunnel-proto" ]; then
   set -- -max_len=8192 -len_control=0 "$@"
 fi
 
-./interruptible.sh cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$target" -- "$@"
+./interruptible.sh cargo fuzz run --sanitizer none --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$target" -- "$@"
 '''
 
 [tasks.cmin]
@@ -69,11 +75,10 @@ depends = [
 ]
 usage = 'arg "<target>"'
 raw = true
-env = { ASAN_OPTIONS = "detect_leaks=0" }
 run = '''
 set -euo pipefail
 
-./interruptible.sh cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target"
+./interruptible.sh cargo fuzz cmin --sanitizer none --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target"
 '''
 
 [tasks.grow]
@@ -209,7 +214,7 @@ arg "<target>"
 arg "<testcase>"
 '''
 raw = true
-run = './interruptible.sh cargo fuzz tmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target" "$usage_testcase"'
+run = './interruptible.sh cargo fuzz tmin --sanitizer none --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target" "$usage_testcase"'
 
 [tasks.repro]
 description = "Replay one fuzz input with tracing; override RUST_LOG for more detail"
@@ -220,7 +225,7 @@ arg "<target>"
 arg "<testcase>"
 '''
 raw = true
-run = 'RUST_LOG="${RUST_LOG:-debug}" cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target" "$usage_testcase"'
+run = 'RUST_LOG="${RUST_LOG:-debug}" cargo fuzz run --sanitizer none --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target" "$usage_testcase"'
 
 [tasks.replay-crashes]
 description = "Replay all crash artifacts for a fuzz target with tracing"
@@ -270,11 +275,10 @@ depends = [
 ]
 usage = 'arg "<target>"'
 raw = true
-env = { ASAN_OPTIONS = "detect_leaks=0" }
 run = '''
 set -euo pipefail
 
-cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target"
+cargo fuzz coverage --sanitizer none --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target"
 '''
 
 [tasks.coverage-report]
