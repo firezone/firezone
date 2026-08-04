@@ -1070,10 +1070,28 @@ struct Outers<'a>(&'a [FlowContext]);
 
 impl std::fmt::Display for Outers<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let json = serde_json::to_string(self.0).map_err(|_| std::fmt::Error)?;
+        serde_json::to_writer(FmtWriter(f), self.0).map_err(|_| std::fmt::Error)?;
 
-        f.write_str(&json)?;
+        Ok(())
+    }
+}
 
+/// Adapts a [`std::fmt::Formatter`] to [`std::io::Write`] so serialising can
+/// stream into it without an intermediate `String`.
+///
+/// `serde_json` guarantees it feeds only valid UTF-8 sequences to the writer.
+struct FmtWriter<'a, 'b>(&'a mut std::fmt::Formatter<'b>);
+
+impl std::io::Write for FmtWriter<'_, '_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let utf8 = std::str::from_utf8(buf).map_err(std::io::Error::other)?;
+
+        self.0.write_str(utf8).map_err(std::io::Error::other)?;
+
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
 }
