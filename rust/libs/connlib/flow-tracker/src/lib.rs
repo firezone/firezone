@@ -44,6 +44,13 @@ pub use token::{IngestToken, IngestTokenClaims, IngestTokenRole, TEST_INGEST_TOK
 /// A flow is closed if no packet is seen for this long.
 const FLOW_TIMEOUT: TimeDelta = TimeDelta::minutes(2);
 
+/// A flow records at most this many outer (transport) 4-tuples.
+///
+/// The outer tuple changes only on rare path events such as roaming or a relay
+/// switchover, so the cap is generous; it bounds the tracker's memory and the
+/// emitted record's size should a flow's path flap indefinitely.
+const MAX_CONTEXTS_PER_FLOW: usize = 64;
+
 thread_local! {
     /// The [`FlowData`] for the packet currently being processed on this thread.
     static CURRENT_FLOW: RefCell<Option<FlowData>> = const { RefCell::new(None) };
@@ -93,7 +100,7 @@ pub struct Tracker<S> {
 /// Recording this creates, updates or splits a flow.
 struct TxPacket<S> {
     scope: S,
-    /// The outer (transport) 4-tuple this flow is tunneled over.
+    /// The outer (transport) 4-tuple this packet was tunneled over.
     context: FlowContext,
     src_ip: IpAddr,
     dst_ip: IpAddr,
@@ -425,7 +432,7 @@ where
                             start: now_utc,
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
-                            context,
+                            contexts: vec![context],
                             fin_tx: false,
                             fin_rx: false,
                             domain,
@@ -435,33 +442,6 @@ where
                         emit(&Record::tcp_open(&key, &value));
 
                         vacant.insert(value);
-                    }
-                    hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
-                        let (key, value) = occupied.remove_entry();
-                        let context_diff = FlowContextDiff::new(value.context, context);
-
-                        tracing::debug!(
-                            ?key,
-                            ?context_diff,
-                            "Splitting existing TCP flow; context changed"
-                        );
-
-                        emit(&Record::tcp_close(key, value, now_utc));
-
-                        let value = TcpFlowValue {
-                            start: now_utc,
-                            last_packet: now_utc,
-                            stats: FlowStats::default().with_tx(payload_len as u64),
-                            context,
-                            fin_tx: false,
-                            fin_rx: false,
-                            domain,
-                            ingest_token,
-                        };
-
-                        emit(&Record::tcp_open(&key, &value));
-
-                        self.active_tcp_flows.insert(key, value);
                     }
                     // A SYN only starts a new connection if the existing flow has
                     // seen return traffic; on a half-open flow it is a
@@ -479,7 +459,7 @@ where
                             start: now_utc,
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
-                            context,
+                            contexts: vec![context],
                             fin_tx: false,
                             fin_rx: false,
                             domain,
@@ -491,8 +471,10 @@ where
                         self.active_tcp_flows.insert(key, value);
                     }
                     hash_map::Entry::Occupied(mut occupied) => {
+                        let key = *occupied.key();
                         let value = occupied.get_mut();
 
+                        push_context(&key, &mut value.contexts, context);
                         value.stats.inc_tx(payload_len as u64);
                         value.last_packet = now_utc;
                         if tcp_fin {
@@ -526,7 +508,7 @@ where
                             start: now_utc,
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
-                            context,
+                            contexts: vec![context],
                             domain,
                             ingest_token,
                         };
@@ -535,34 +517,11 @@ where
 
                         vacant.insert(value);
                     }
-                    hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
-                        let (key, value) = occupied.remove_entry();
-                        let context_diff = FlowContextDiff::new(value.context, context);
-
-                        tracing::debug!(
-                            ?key,
-                            ?context_diff,
-                            "Splitting existing UDP flow; context changed"
-                        );
-
-                        emit(&Record::udp_close(key, value, now_utc));
-
-                        let value = UdpFlowValue {
-                            start: now_utc,
-                            last_packet: now_utc,
-                            stats: FlowStats::default().with_tx(payload_len as u64),
-                            context,
-                            domain,
-                            ingest_token,
-                        };
-
-                        emit(&Record::udp_open(&key, &value));
-
-                        self.active_udp_flows.insert(key, value);
-                    }
                     hash_map::Entry::Occupied(mut occupied) => {
+                        let key = *occupied.key();
                         let value = occupied.get_mut();
 
+                        push_context(&key, &mut value.contexts, context);
                         value.stats.inc_tx(payload_len as u64);
                         value.last_packet = now_utc;
                     }
@@ -928,10 +887,8 @@ pub struct Record {
     pub inner_dst_port: u16,
     pub domain: Option<DomainName>,
 
-    pub outer_src_ip: IpAddr,
-    pub outer_src_port: u16,
-    pub outer_dst_ip: IpAddr,
-    pub outer_dst_port: u16,
+    /// The outer (transport) 4-tuples the flow has used, in order of first use.
+    pub outer_tuples: Vec<FlowContext>,
 
     pub flow_start: DateTime<Utc>,
     pub close: Option<FlowClose>,
@@ -947,7 +904,7 @@ impl Record {
             key.dst_port,
             value.ingest_token.clone(),
             value.domain.clone(),
-            value.context,
+            value.contexts.clone(),
             value.start,
             None,
         )
@@ -964,7 +921,7 @@ impl Record {
             key.dst_port,
             value.ingest_token,
             value.domain,
-            value.context,
+            value.contexts,
             value.start,
             Some(close),
         )
@@ -979,7 +936,7 @@ impl Record {
             key.dst_port,
             value.ingest_token.clone(),
             value.domain.clone(),
-            value.context,
+            value.contexts.clone(),
             value.start,
             None,
         )
@@ -996,7 +953,7 @@ impl Record {
             key.dst_port,
             value.ingest_token,
             value.domain,
-            value.context,
+            value.contexts,
             value.start,
             Some(close),
         )
@@ -1011,7 +968,7 @@ impl Record {
         inner_dst_port: u16,
         ingest_token: IngestToken,
         domain: Option<DomainName>,
-        context: FlowContext,
+        outer_tuples: Vec<FlowContext>,
         flow_start: DateTime<Utc>,
         close: Option<FlowClose>,
     ) -> Self {
@@ -1023,10 +980,7 @@ impl Record {
             inner_dst_ip,
             inner_dst_port,
             domain,
-            outer_src_ip: context.src_ip,
-            outer_src_port: context.src_port,
-            outer_dst_ip: context.dst_ip,
-            outer_dst_port: context.dst_port,
+            outer_tuples,
             flow_start,
             close,
         }
@@ -1094,10 +1048,7 @@ pub fn emit(record: &Record) {
                 inner_dst_port = record.inner_dst_port,
                 domain = record.domain.as_ref().map(tracing::field::display),
 
-                outer_src_ip = %record.outer_src_ip,
-                outer_src_port = record.outer_src_port,
-                outer_dst_ip = %record.outer_dst_ip,
-                outer_dst_port = record.outer_dst_port,
+                outer_tuples = %OuterTuples(&record.outer_tuples),
 
                 flow_start = ?record.flow_start,
                 flow_end = close.map(|c| tracing::field::debug(c.flow_end)),
@@ -1116,6 +1067,22 @@ pub fn emit(record: &Record) {
         (FlowProtocol::Tcp, true) => emit!("TCP flow completed"),
         (FlowProtocol::Udp, false) => emit!("UDP flow started"),
         (FlowProtocol::Udp, true) => emit!("UDP flow completed"),
+    }
+}
+
+/// Renders a record's outer tuples as one compact JSON array.
+///
+/// A tracing-event field holds a single scalar value, so the list rides as one
+/// JSON-encoded field that `flow-log-writer` decodes into the report payload.
+struct OuterTuples<'a>(&'a [FlowContext]);
+
+impl std::fmt::Display for OuterTuples<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let json = serde_json::to_string(self.0).map_err(|_| std::fmt::Error)?;
+
+        f.write_str(&json)?;
+
+        Ok(())
     }
 }
 
@@ -1142,7 +1109,8 @@ struct TcpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
     stats: FlowStats,
-    context: FlowContext,
+    /// The outer (transport) 4-tuples the flow has used, in order of first use.
+    contexts: Vec<FlowContext>,
 
     domain: Option<DomainName>,
 
@@ -1158,7 +1126,8 @@ struct UdpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
     stats: FlowStats,
-    context: FlowContext,
+    /// The outer (transport) 4-tuples the flow has used, in order of first use.
+    contexts: Vec<FlowContext>,
 
     domain: Option<DomainName>,
 
@@ -1193,7 +1162,7 @@ impl FlowStats {
 }
 
 /// The outer (transport) 4-tuple a flow is tunneled over.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize)]
 pub struct FlowContext {
     pub src_ip: IpAddr,
     pub dst_ip: IpAddr,
@@ -1212,6 +1181,33 @@ impl FlowContext {
             dst_port: responder.port(),
         }
     }
+}
+
+/// Appends `context` to a flow's outer tuples if it differs from the current one.
+///
+/// The list is capped at [`MAX_CONTEXTS_PER_FLOW`]; changes past the cap are
+/// dropped.
+fn push_context(key: &impl Debug, contexts: &mut Vec<FlowContext>, context: FlowContext) {
+    let Some(current) = contexts.last().copied() else {
+        contexts.push(context);
+        return;
+    };
+
+    if current == context {
+        return;
+    }
+
+    if contexts.len() >= MAX_CONTEXTS_PER_FLOW {
+        tracing::debug!(?key, "Flow reached its context cap; dropping the change");
+
+        return;
+    }
+
+    let context_diff = FlowContextDiff::new(current, context);
+
+    tracing::debug!(?key, ?context_diff, "Context of flow changed");
+
+    contexts.push(context);
 }
 
 #[derive(PartialEq, Eq)]
@@ -1274,6 +1270,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn push_context_records_only_changes() {
+        let mut contexts = vec![context(1)];
+
+        push_context(&"key", &mut contexts, context(1));
+        push_context(&"key", &mut contexts, context(2));
+        push_context(&"key", &mut contexts, context(2));
+        push_context(&"key", &mut contexts, context(1));
+
+        assert_eq!(contexts, vec![context(1), context(2), context(1)]);
+    }
+
+    #[test]
+    fn push_context_caps_the_list() {
+        let mut contexts = vec![context(0)];
+
+        for port in 1..=2 * MAX_CONTEXTS_PER_FLOW as u16 {
+            push_context(&"key", &mut contexts, context(port));
+        }
+
+        assert_eq!(contexts.len(), MAX_CONTEXTS_PER_FLOW);
+    }
+
+    #[test]
     fn flow_context_diff_rendering() {
         let old = FlowContext {
             src_ip: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
@@ -1294,5 +1313,14 @@ mod tests {
             "FlowContextDiff { old_src_ip: 10.0.0.1, new_src_ip: 1.1.1.1, old_src_port: 8080, new_src_port: 50000 }",
             format!("{diff:?}")
         );
+    }
+
+    fn context(src_port: u16) -> FlowContext {
+        FlowContext {
+            src_ip: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+            dst_ip: IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)),
+            src_port,
+            dst_port: 443,
+        }
     }
 }

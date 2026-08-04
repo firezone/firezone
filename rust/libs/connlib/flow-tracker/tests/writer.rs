@@ -11,7 +11,7 @@ use std::{
 use base64::Engine as _;
 use chrono::TimeZone as _;
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
-use flow_tracker::{FlowClose, FlowProtocol, IngestToken, Record, Role, Tracker};
+use flow_tracker::{FlowClose, FlowContext, FlowProtocol, IngestToken, Record, Role, Tracker};
 use ip_packet::IpPacket;
 use tracing_subscriber::layer::SubscriberExt as _;
 
@@ -28,10 +28,20 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
         inner_dst_ip: "10.0.0.5".parse().unwrap(),
         inner_dst_port: 443,
         domain: Some("download.httpbin".parse().unwrap()),
-        outer_src_ip: "198.51.100.1".parse().unwrap(),
-        outer_src_port: 51820,
-        outer_dst_ip: "203.0.113.7".parse().unwrap(),
-        outer_dst_port: 51820,
+        outer_tuples: vec![
+            FlowContext {
+                src_ip: "198.51.100.1".parse().unwrap(),
+                dst_ip: "203.0.113.7".parse().unwrap(),
+                src_port: 51820,
+                dst_port: 51820,
+            },
+            FlowContext {
+                src_ip: "198.51.100.2".parse().unwrap(),
+                dst_ip: "203.0.113.7".parse().unwrap(),
+                src_port: 45000,
+                dst_port: 51820,
+            },
+        ],
         flow_start: chrono::Utc.timestamp_opt(1_700_000_000, 500).unwrap(),
         close: Some(FlowClose {
             flow_end: chrono::Utc.timestamp_opt(1_700_000_060, 0).unwrap(),
@@ -54,10 +64,13 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
     assert_eq!(payload["inner_dst_ip"], record.inner_dst_ip.to_string());
     assert_eq!(payload["inner_dst_port"], record.inner_dst_port);
     assert_eq!(payload["domain"], "download.httpbin");
-    assert_eq!(payload["outer_src_ip"], record.outer_src_ip.to_string());
-    assert_eq!(payload["outer_src_port"], record.outer_src_port);
-    assert_eq!(payload["outer_dst_ip"], record.outer_dst_ip.to_string());
-    assert_eq!(payload["outer_dst_port"], record.outer_dst_port);
+    assert_eq!(
+        payload["outer_tuples"],
+        serde_json::json!([
+            {"src_ip": "198.51.100.1", "dst_ip": "203.0.113.7", "src_port": 51820, "dst_port": 51820},
+            {"src_ip": "198.51.100.2", "dst_ip": "203.0.113.7", "src_port": 45000, "dst_port": 51820},
+        ])
+    );
     assert_eq!(payload["flow_start"], format!("{:?}", record.flow_start));
     // Attribution rides the token, not the spooled record.
     assert!(payload.get("initiator_actor_id").is_none());
@@ -122,10 +135,12 @@ fn tracked_packets_spool_open_and_completed_reports() {
     assert_eq!(open["inner_src_port"], 1234);
     assert_eq!(open["inner_dst_ip"], "10.0.0.5");
     assert_eq!(open["inner_dst_port"], 5201);
-    assert_eq!(open["outer_src_ip"], "198.51.100.1");
-    assert_eq!(open["outer_src_port"], 45000);
-    assert_eq!(open["outer_dst_ip"], "203.0.113.1");
-    assert_eq!(open["outer_dst_port"], 51820);
+    assert_eq!(
+        open["outer_tuples"],
+        serde_json::json!([
+            {"src_ip": "198.51.100.1", "dst_ip": "203.0.113.1", "src_port": 45000, "dst_port": 51820}
+        ])
+    );
     assert!(open.get("flow_end").is_none());
 
     let completed = spool.report(".end.json");
@@ -194,6 +209,40 @@ fn syn_after_return_traffic_splits_flow() {
 }
 
 #[test]
+fn context_change_accumulates_outer_tuples_instead_of_splitting() {
+    let authz_id = "77777777-7777-7777-7777-777777777777";
+    let spool = SpoolObserver::new(authz_id);
+    let mut tracker = enabled_tracker();
+    let t0 = Instant::now();
+
+    spool.observe(|| {
+        drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
+        drive_tx_from(
+            &mut tracker,
+            "198.51.100.2:45000",
+            &tcp_packet(ack(), &[0; 100]),
+            authz_id,
+            t0 + Duration::from_secs(1),
+        );
+        tracker.close_all(t0 + Duration::from_secs(2));
+    });
+
+    let flows = spool.completed_flows();
+    assert_eq!(
+        packet_counts(&flows),
+        vec![(2, 0)],
+        "a changed outer tuple counts into the same flow"
+    );
+    assert_eq!(
+        flows[0]["outer_tuples"],
+        serde_json::json!([
+            {"src_ip": "203.0.113.7", "dst_ip": "198.51.100.1", "src_port": 51820, "dst_port": 51820},
+            {"src_ip": "198.51.100.2", "dst_ip": "198.51.100.1", "src_port": 45000, "dst_port": 51820},
+        ])
+    );
+}
+
+#[test]
 fn bare_ack_does_not_create_flow() {
     let authz_id = "55555555-5555-5555-5555-555555555555";
     let spool = SpoolObserver::new(authz_id);
@@ -238,9 +287,20 @@ fn drive_tx(
     authz_id: &str,
     now: Instant,
 ) {
+    drive_tx_from(tracker, "203.0.113.7:51820", packet, authz_id, now);
+}
+
+/// [`drive_tx`] with the Client sending from `remote`, e.g. after a roam.
+fn drive_tx_from(
+    tracker: &mut Tracker<ClientOrGatewayId>,
+    remote: &str,
+    packet: &IpPacket,
+    authz_id: &str,
+    now: Instant,
+) {
     let _flow = tracker.begin_network_packet(
         "198.51.100.1:51820".parse().unwrap(),
-        "203.0.113.7:51820".parse().unwrap(),
+        remote.parse().unwrap(),
         now,
     );
     flow_tracker::record_decrypted_packet(packet);

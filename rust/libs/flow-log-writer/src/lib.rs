@@ -24,9 +24,10 @@
 //! directive would copy it into log files); the eventloops receive it in the
 //! portal's authorization messages and persist it via [`write_token`] instead.
 //! A report's payload is the event's record fields as emitted (see
-//! [`RECORD_FIELDS`]); attribution deliberately rides only the token, and the
-//! portal validates the payload on ingest, so the writer only interprets what
-//! routing and naming need.
+//! [`RECORD_FIELDS`]), with the JSON-encoded `outer_tuples` field decoded into
+//! its array; attribution deliberately rides only the token, and the portal
+//! validates the payload on ingest, so beyond that the writer only interprets
+//! what routing and naming need.
 //!
 //! `<flow_start>` is the flow's start time as zero-padded unix seconds, so a
 //! lexical sort of the report names is oldest-first and the uploader needs no
@@ -266,10 +267,7 @@ const RECORD_FIELDS: &[&str] = &[
     "inner_dst_ip",
     "inner_dst_port",
     "domain",
-    "outer_src_ip",
-    "outer_src_port",
-    "outer_dst_ip",
-    "outer_dst_port",
+    "outer_tuples",
     "flow_start",
     "flow_end",
     "last_packet",
@@ -334,8 +332,19 @@ impl FieldVisitor {
         self.fields
             .retain(|name, _| RECORD_FIELDS.contains(&name.as_str()));
 
-        // The only field the writer interprets: the file name needs it so a
-        // lexical sort of the reports is oldest-first.
+        // The record's outer tuples ride the event as one JSON-encoded field (a
+        // tracing field holds a single scalar); decode it so the report payload
+        // carries the array itself.
+        if let Some(outer_tuples) = self.fields.get_mut("outer_tuples") {
+            let decoded = outer_tuples
+                .as_str()
+                .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())?;
+
+            *outer_tuples = decoded;
+        }
+
+        // The only other field the writer interprets: the file name needs it so
+        // a lexical sort of the reports is oldest-first.
         let flow_start = DateTime::parse_from_rfc3339(self.fields.get("flow_start")?.as_str()?)
             .ok()?
             .timestamp();
@@ -526,6 +535,13 @@ mod tests {
         assert!(start.get("role").is_none());
         assert!(start.get("message").is_none());
         assert!(start.get("actor_id").is_none()); // attribution rides the token only
+        // The JSON-encoded outer tuples are decoded into the payload's array.
+        assert_eq!(
+            start["outer_tuples"],
+            serde_json::json!([
+                {"src_ip": "198.51.100.1", "dst_ip": "203.0.113.7", "src_port": 51820, "dst_port": 51820}
+            ])
+        );
         assert_eq!(end["rx_bytes"], 1024); // the `.end` is a self-describing report
         assert_eq!(end["inner_dst_port"], "443");
     }
@@ -561,6 +577,35 @@ mod tests {
         drop(guard);
 
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn drops_event_with_undecodable_outer_tuples() {
+        let dir = tempfile::tempdir().unwrap();
+        write_token(dir.path(), &token_for(AUTHZ_ID)).unwrap();
+
+        let (layer, guard) = layer(dir.path().to_owned());
+        let subscriber = tracing_subscriber::registry().with(layer);
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::trace!(
+                target: "flow_logs",
+                protocol = "tcp",
+                role = "responder",
+                policy_authorization_id = AUTHZ_ID,
+                outer_tuples = %"not json",
+                flow_start = ?Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
+                "TCP flow started"
+            );
+        });
+        drop(guard);
+
+        let authz_dir = dir.path().join("responder").join(AUTHZ_ID);
+        let reports = std::fs::read_dir(&authz_dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .filter(|name| name != "token")
+            .count();
+        assert_eq!(reports, 0);
     }
 
     #[test]
@@ -618,10 +663,7 @@ mod tests {
             inner_src_port = %1234,
             inner_dst_ip = %"10.0.0.5",
             inner_dst_port = %443,
-            outer_src_ip = %"198.51.100.1",
-            outer_src_port = %51820,
-            outer_dst_ip = %"203.0.113.7",
-            outer_dst_port = %51820,
+            outer_tuples = %r#"[{"src_ip":"198.51.100.1","dst_ip":"203.0.113.7","src_port":51820,"dst_port":51820}]"#,
             actor_id = "a-1",
             flow_start = ?flow_start,
             flow_end = flow_end.map(tracing::field::debug),
