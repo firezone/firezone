@@ -30,56 +30,6 @@ defmodule PortalAPI.Client.Socket do
 
   @impl true
   def connect(attrs, socket, connect_info) do
-    handle_connect(attrs, socket, connect_info, :resolve)
-  end
-
-  @doc false
-  # Entry point for /client/v3 sockets: token auth as usual, but on accounts
-  # with the device-trust gate enabled the device resolution is deferred until
-  # after the channel's challenge round trip (see PortalAPI.Client.V3.Channel).
-  def connect_deferring(attrs, socket, connect_info) do
-    handle_connect(attrs, socket, connect_info, :defer_if_enabled)
-  end
-
-  @impl true
-  def id(socket) do
-    Portal.Sockets.socket_id(socket.assigns.subject.credential.id)
-  end
-
-  @doc false
-  # Resolves a deferred device after the challenge round trip (or its
-  # timeout). `proof` is the DeviceTrust possession proof or nil when the
-  # challenge failed, timed out, or produced no usable certificate.
-  # The `:attested?` assign (live connection state, rides presence metadata)
-  # is true only when the resolved row adopted the proven identity: possession
-  # alone does not vouch for a row whose adoption was refused as a conflict.
-  def resolve_deferred_client(socket, proof) do
-    %{
-      changeset: changeset,
-      attrs: attrs,
-      token_id: token_id,
-      public_key: public_key,
-      version: version
-    } = socket.assigns.pending_device
-
-    with {:ok, client} <-
-           Database.resolve_client(changeset, attrs, proof, socket.assigns.subject) do
-      client = apply_session(client, token_id, public_key, socket.assigns.subject, version)
-      set_connect_attributes(token_id, client, socket.assigns.subject, version)
-
-      socket =
-        socket
-        |> assign(:client, client)
-        |> assign(:attested?, identity_adopted?(client, proof))
-        |> assign(:pending_device, nil)
-
-      {:ok, socket}
-    end
-  end
-
-  ## Private functions
-
-  defp handle_connect(attrs, socket, connect_info, mode) do
     unless Application.get_env(:portal, :sql_sandbox) do
       Portal.Repo.put_dynamic_repo(Portal.Repo.Api)
     end
@@ -89,12 +39,19 @@ defmodule PortalAPI.Client.Socket do
     OpenTelemetry.Tracer.with_span "client.connect" do
       with {:ok, token} <- PortalAPI.Sockets.extract_token(attrs, connect_info),
            :ok <- PortalAPI.Sockets.RateLimit.check(connect_info, token: token) do
-        do_connect(token, attrs, socket, connect_info, mode)
+        do_connect(token, attrs, socket, connect_info)
       end
     end
   end
 
-  defp do_connect(token, attrs, socket, connect_info, mode) do
+  @impl true
+  def id(socket) do
+    Portal.Sockets.socket_id(socket.assigns.subject.credential.id)
+  end
+
+  ## Private functions
+
+  defp do_connect(token, attrs, socket, connect_info) do
     context = PortalAPI.Sockets.auth_context(connect_info, :client)
     attrs = normalize_device_attrs(attrs)
 
@@ -104,29 +61,16 @@ defmodule PortalAPI.Client.Socket do
          {:ok, public_key} <- validate_public_key(attrs),
          changeset = insert_changeset(subject.actor, subject, attrs),
          {:ok, _} <- apply_action(changeset, :validate),
-         {:ok, outcome} <- resolve_or_defer(changeset, attrs, subject, mode) do
+         {:ok, proof} <- attest_device(connect_info, subject),
+         {:ok, client} <- Database.resolve_client(changeset, attrs, proof, subject) do
       version = derive_version(subject.context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
       subject = %{subject | context: context}
 
-      case outcome do
-        {:resolved, client} ->
-          client = apply_session(client, token_id, public_key, subject, version)
-          set_connect_attributes(token_id, client, subject, version)
-          {:ok, assign_connect(socket, subject, client, version)}
+      client = apply_session(client, token_id, public_key, subject, version)
+      set_connect_attributes(token_id, client, subject, version)
 
-        {:deferred, anchors} ->
-          pending = %{
-            changeset: changeset,
-            attrs: attrs,
-            token_id: token_id,
-            public_key: public_key,
-            version: version,
-            anchors: anchors
-          }
-
-          {:ok, assign_connect_deferred(socket, subject, pending)}
-      end
+      {:ok, assign_connect(socket, subject, client, version, identity_adopted?(client, proof))}
     else
       {:error, :invalid_token} ->
         OpenTelemetry.Tracer.set_status(:error, "invalid_token")
@@ -136,6 +80,10 @@ defmodule PortalAPI.Client.Socket do
         OpenTelemetry.Tracer.set_status(:error, "limits_exceeded")
         {:error, :limits_exceeded}
 
+      {:error, :device_untrusted} ->
+        OpenTelemetry.Tracer.set_status(:error, "device_untrusted")
+        {:error, :device_untrusted}
+
       {:error, %Ecto.Changeset{} = changeset} ->
         changeset = public_socket_changeset(changeset)
         OpenTelemetry.Tracer.set_status(:error, inspect(changeset))
@@ -144,22 +92,28 @@ defmodule PortalAPI.Client.Socket do
     end
   end
 
-  # One query decides the gate AND fetches the verification material: empty
-  # anchors (feature off or none uploaded) resolve at connect exactly as
-  # before, non-empty anchors ride the pending state so the challenge
-  # response never re-fetches them.
-  defp resolve_or_defer(changeset, attrs, subject, mode) do
-    with :defer_if_enabled <- mode,
-         [_ | _] = anchors <- DeviceTrust.fetch_enabled_anchors(subject) do
-      {:ok, {:deferred, anchors}}
-    else
-      _resolve_now ->
-        with {:ok, client} <- Database.find_or_create_client(changeset, attrs, subject) do
-          {:ok, {:resolved, client}}
-        end
+  # The specific failure is logged rather than returned: the client learns
+  # only that its certificate was not accepted, while the admin gets the
+  # reason (expired, wrong CA, no identifiers, ...) from the logs.
+  defp attest_device(connect_info, subject) do
+    case DeviceTrust.attest(connect_info, subject) do
+      {:ok, proof} ->
+        {:ok, proof}
+
+      {:error, reason} ->
+        Logger.warning("Refusing client connect: device certificate is not trusted",
+          account_id: subject.account.id,
+          actor_id: subject.actor.id,
+          reason: reason
+        )
+
+        {:error, :device_untrusted}
     end
   end
 
+  # Live connection state that rides presence metadata: true only when the
+  # resolved row adopted the proven identity, since a valid certificate does
+  # not vouch for a row whose adoption was refused as a conflict.
   defp identity_adopted?(_client, nil), do: false
 
   defp identity_adopted?(client, proof) do
@@ -299,22 +253,13 @@ defmodule PortalAPI.Client.Socket do
     })
   end
 
-  defp assign_connect(socket, subject, client, version) do
+  defp assign_connect(socket, subject, client, version, attested?) do
     socket
     |> assign(:subject, subject)
     |> assign(:client, client)
+    |> assign(:attested?, attested?)
     |> assign(:session_ref, make_ref())
     |> assign(:client_version, version)
-    |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
-    |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
-  end
-
-  defp assign_connect_deferred(socket, subject, pending) do
-    socket
-    |> assign(:subject, subject)
-    |> assign(:pending_device, pending)
-    |> assign(:session_ref, make_ref())
-    |> assign(:client_version, pending.version)
     |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
     |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
   end
@@ -417,14 +362,10 @@ defmodule PortalAPI.Client.Socket do
     @attested_id_fields ~w[last_attested_device_serial last_attested_device_uuid last_attested_mdm_device_id]a
     @proof_fields @attested_id_fields ++ ~w[last_attested_cert_serial last_attested_cert_fingerprint last_attested_at]a
 
-    @dialyzer {:no_opaque,
-               [find_or_create_client: 3, resolve_client: 4, find_by_attested_ids: 3]}
-    def find_or_create_client(changeset, attrs, subject) do
-      resolve_client(changeset, attrs, nil, subject)
-    end
+    @dialyzer {:no_opaque, [resolve_client: 4, find_by_attested_ids: 3]}
 
-    # Resolves the connecting device. `proof` carries the DeviceTrust
-    # possession proof (attested identifiers + pinned cert) or nil for
+    # Resolves the connecting device. `proof` carries the attested identifiers
+    # and pinned certificate from `PortalAPI.Client.DeviceTrust`, or nil for
     # unattested connects, in which case this behaves exactly like the classic
     # firezone_id find-or-create.
     def resolve_client(changeset, attrs, proof, subject) do
