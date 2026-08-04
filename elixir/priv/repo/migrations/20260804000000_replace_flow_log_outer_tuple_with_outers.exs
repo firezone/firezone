@@ -59,6 +59,22 @@ defmodule Portal.Repo.Migrations.ReplaceFlowLogOuterTupleWithOuters do
         """
       )
     )
+
+    create(
+      constraint(:flow_logs, :flow_logs_outer_source_endpoint_complete,
+        check: """
+        NOT jsonb_path_exists(
+          outers,
+          '$[*] ? (
+             ((exists(@.src_ip) && @.src_ip != null) &&
+              !(exists(@.src_port) && @.src_port != null)) ||
+             (!(exists(@.src_ip) && @.src_ip != null) &&
+              (exists(@.src_port) && @.src_port != null))
+           )'
+        )
+        """
+      )
+    )
   end
 
   def down do

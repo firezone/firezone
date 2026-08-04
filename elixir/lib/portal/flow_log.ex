@@ -27,6 +27,7 @@ defmodule Portal.FlowLog do
       outer
       |> cast(attrs, [:src_ip, :src_port, :dst_ip, :dst_port])
       |> validate_required([:dst_ip, :dst_port])
+      |> validate_source_endpoint()
       |> validate_ip(:src_ip)
       |> validate_ip(:dst_ip)
       |> validate_number(:src_port,
@@ -37,6 +38,22 @@ defmodule Portal.FlowLog do
         greater_than_or_equal_to: 0,
         less_than_or_equal_to: 65_535
       )
+    end
+
+    defp validate_source_endpoint(changeset) do
+      case {get_field(changeset, :src_ip), get_field(changeset, :src_port)} do
+        {nil, nil} ->
+          changeset
+
+        {nil, _src_port} ->
+          add_error(changeset, :src_ip, "must be present when src_port is present")
+
+        {_src_ip, nil} ->
+          add_error(changeset, :src_port, "must be present when src_ip is present")
+
+        {_src_ip, _src_port} ->
+          changeset
+      end
     end
 
     defp validate_ip(changeset, field) do
@@ -317,9 +334,9 @@ defmodule Portal.FlowLog do
     end)
   end
 
-  def outers_to_maps(%__MODULE__{flow_end: nil}), do: nil
+  def outers_to_maps(nil), do: nil
 
-  def outers_to_maps(%__MODULE__{outers: outers}) do
+  def outers_to_maps(outers) do
     Enum.map(outers, fn outer ->
       %{
         src_ip: outer.src_ip,

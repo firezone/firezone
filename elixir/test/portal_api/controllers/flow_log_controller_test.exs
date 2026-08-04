@@ -586,6 +586,29 @@ defmodule PortalAPI.FlowLogControllerTest do
              } = hd(errors["0"]["outers"])
     end
 
+    test "returns 422 with a partially specified outer source endpoint", %{
+      conn: conn,
+      account: account
+    } do
+      record =
+        build_record(%{
+          "outers" => [
+            %{
+              "src_ip" => "198.51.100.2",
+              "dst_ip" => "203.0.113.8",
+              "dst_port" => 443
+            }
+          ]
+        })
+
+      conn = conn |> authorize(account) |> post_logs([record])
+
+      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
+
+      assert [%{"src_port" => ["must be present when src_ip is present"]}] =
+               errors["0"]["outers"]
+    end
+
     test "returns 422 when a close omits its outer paths", %{conn: conn, account: account} do
       record = build_record() |> Map.delete("outers")
       conn = conn |> authorize(account) |> post_logs([record])

@@ -309,13 +309,12 @@ defmodule PortalAPI.Schemas.Log do
         },
         outers: %Schema{
           type: :array,
-          minItems: 1,
-          nullable: true,
           description: """
-          Outer network paths in observation order. Null while the flow is open;
+          Outer network paths in observation order. Empty while the flow is open;
           the close report replaces it with the complete array. Source IP and
-          port may each be absent or null. The two entries of a flow can disagree
-          whenever NAT or a relay sits between the peers.
+          port must either both be populated or both be absent/null. The two
+          entries of a flow can disagree whenever NAT or a relay sits between
+          the peers.
           """,
           items: %Schema{
             type: :object,

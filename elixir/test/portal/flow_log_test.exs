@@ -127,16 +127,21 @@ defmodule Portal.FlowLogTest do
       assert Map.has_key?(errors_on(cs), :inner_dst_port)
     end
 
-    test "preserves outer path order and allows nullable source endpoints" do
+    test "preserves outer path order and allows absent source endpoints" do
       outers = [
         %{dst_ip: "203.0.113.7", dst_port: 51_820},
+        %{src_ip: nil, src_port: nil, dst_ip: "203.0.113.9", dst_port: 53},
         %{src_ip: "198.51.100.2", src_port: 42_000, dst_ip: "203.0.113.8", dst_port: 443}
       ]
 
       cs = changeset(%{outers: outers})
 
       assert cs.valid?
-      assert Enum.map(get_field(cs, :outers), & &1.dst_ip) == ["203.0.113.7", "203.0.113.8"]
+      assert Enum.map(get_field(cs, :outers), & &1.dst_ip) == [
+               "203.0.113.7",
+               "203.0.113.9",
+               "203.0.113.8"
+             ]
     end
 
     test "invalid with an empty outer path array" do
@@ -145,7 +150,7 @@ defmodule Portal.FlowLogTest do
       assert Map.has_key?(errors_on(cs), :outers)
     end
 
-    test "valid with independently missing or nullable outer source fields" do
+    test "invalid with a partially specified outer source endpoint" do
       for outer <- [
             %{src_ip: "198.51.100.2", src_port: nil, dst_ip: "203.0.113.8", dst_port: 443},
             %{src_ip: nil, src_port: 42_000, dst_ip: "203.0.113.8", dst_port: 443},
@@ -153,7 +158,10 @@ defmodule Portal.FlowLogTest do
             %{src_ip: "198.51.100.2", dst_ip: "203.0.113.8", dst_port: 443}
           ] do
         cs = changeset(%{outers: [outer]})
-        assert cs.valid?
+
+        refute cs.valid?
+        assert [%{} = outer_errors] = errors_on(cs).outers
+        assert Map.has_key?(outer_errors, :src_ip) or Map.has_key?(outer_errors, :src_port)
       end
     end
 

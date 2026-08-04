@@ -440,7 +440,7 @@ defmodule PortalAPI.LogControllerTest do
       refute Map.has_key?(data, "start_seq")
     end
 
-    test "renders and documents incomplete flow fields as null", %{
+    test "renders and documents incomplete flow fields", %{
       conn: conn,
       account: account,
       actor: actor
@@ -463,16 +463,21 @@ defmodule PortalAPI.LogControllerTest do
 
       assert %{"data" => [data]} = json_response(conn, 200)
 
-      for field <- ~w[flow_end last_packet outers rx_packets tx_packets rx_bytes tx_bytes resource_address] do
+      assert data["outers"] == []
+
+      for field <- ~w[flow_end last_packet rx_packets tx_packets rx_bytes tx_bytes resource_address] do
         assert Map.fetch!(data, field) == nil
       end
 
       schema = PortalAPI.Schemas.Log.Flow.schema()
 
-      for field <- ~w[flow_end last_packet outers rx_packets tx_packets rx_bytes tx_bytes resource_address]a do
+      for field <- ~w[flow_end last_packet rx_packets tx_packets rx_bytes tx_bytes resource_address]a do
         assert schema.properties[field].nullable
         assert field in schema.required
       end
+
+      refute schema.properties.outers.nullable
+      assert :outers in schema.required
     end
 
     test "filters by actor_id", %{conn: conn, account: account, actor: actor} do
