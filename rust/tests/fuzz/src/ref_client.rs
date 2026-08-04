@@ -404,6 +404,7 @@ impl RefClient {
 
         if self.expected_tcp_connections.values().contains(&rid) {
             self.set_resource_online(rid);
+            self.connected_cidr_resources.insert(rid); // The surviving TCP connection keeps the site in use.
         }
     }
 
@@ -424,6 +425,7 @@ impl RefClient {
 
         if self.expected_tcp_connections.values().contains(&rid) {
             self.set_resource_online(rid);
+            self.connected_dns_resources.insert(rid); // The surviving TCP connection keeps the site in use.
         }
     }
 
