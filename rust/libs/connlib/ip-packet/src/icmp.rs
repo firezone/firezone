@@ -14,7 +14,7 @@ pub struct IcmpEchoHeader {
 }
 
 impl IcmpEchoHeader {
-    fn from_bytes(bytes: [u8; 4]) -> Self {
+    pub(crate) fn from_bytes(bytes: [u8; 4]) -> Self {
         Self {
             id: u16::from_be_bytes([bytes[0], bytes[1]]),
             seq: u16::from_be_bytes([bytes[2], bytes[3]]),

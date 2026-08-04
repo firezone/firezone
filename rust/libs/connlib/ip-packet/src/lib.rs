@@ -8,6 +8,7 @@ mod fz_p2p_control_slice;
 mod icmp;
 mod icmp_error;
 mod slices;
+mod transport;
 
 #[cfg(feature = "proptest")]
 #[allow(clippy::unwrap_used)]
@@ -25,11 +26,14 @@ pub use slices::{
     Icmpv4Slice, Icmpv4SliceMut, Icmpv6Slice, Icmpv6SliceMut, Ipv4HeaderSlice, Ipv6HeaderSlice,
     TcpSlice, TcpSliceMut, UdpSlice, UdpSliceMut,
 };
+pub use transport::{
+    IcmpEchoSlice, IcmpErrorSlice, IcmpOtherSlice, OriginalPacketSlice, OtherSlice, Transport,
+};
 
 use anyhow::{Context as _, Result, bail};
 use bufferpool::{Buffer, BufferPool};
 use incremental_inet_checksum::ChecksumUpdate;
-use ingot::icmp::{ValidIcmpV4, ValidIcmpV6};
+use ingot::icmp::{IcmpV4Ref as _, IcmpV6Ref as _, ValidIcmpV4, ValidIcmpV6};
 use ingot::ip::{
     IpV6ExtFragmentRef, Ipv4Flags, Ipv4Mut, Ipv4Ref, Ipv6Mut, Ipv6Ref, ValidIpv4, ValidIpv6,
     ValidLowRentV6Eh,
@@ -130,6 +134,28 @@ pub enum Layer4Protocol {
     Icmp { seq: u16, id: u16 },
 }
 
+impl Layer4Protocol {
+    /// The source endpoint of the flow.
+    ///
+    /// ICMP echo messages carry a single identifier, so it doubles as source and destination.
+    pub fn source(&self) -> Protocol {
+        match *self {
+            Layer4Protocol::Udp { src, .. } => Protocol::Udp(src),
+            Layer4Protocol::Tcp { src, .. } => Protocol::Tcp(src),
+            Layer4Protocol::Icmp { id, .. } => Protocol::IcmpEcho(id),
+        }
+    }
+
+    /// The destination endpoint of the flow.
+    pub fn destination(&self) -> Protocol {
+        match *self {
+            Layer4Protocol::Udp { dst, .. } => Protocol::Udp(dst),
+            Layer4Protocol::Tcp { dst, .. } => Protocol::Tcp(dst),
+            Layer4Protocol::Icmp { id, .. } => Protocol::IcmpEcho(id),
+        }
+    }
+}
+
 /// A buffer for reading a new [`IpPacket`] from the network.
 pub struct IpPacketBuf {
     inner: Buffer<Vec<u8>>,
@@ -162,25 +188,49 @@ pub struct IpPacket {
     ///
     /// For IPv6, this includes any extension headers.
     ip_header_length: usize,
-    transport: Transport,
+    transport: TransportMeta,
     version: IpVersion,
 }
 
-/// The transport protocol of an [`IpPacket`], determined and validated on creation.
+/// The transport-layer state of an [`IpPacket`], determined and validated on creation.
 ///
-/// For the first four variants, the transport header (and its length field, where
-/// the protocol has one) is known to be consistent with the packet length, so
-/// views over the transport layer can be created without further checks.
+/// For all variants but [`TransportMeta::Other`], the transport header (and its length
+/// field, where the protocol has one) is known to be consistent with the packet length,
+/// so views over the transport layer can be created without further checks.
+///
+/// ICMP(v6) messages are classified once, here, into the three states the rest of the
+/// stack distinguishes: echo messages (which have a flow identifier), supported error
+/// messages with a parseable original packet (which belong to the flow of that packet)
+/// and everything else.
 #[derive(Debug, PartialEq, Clone, Copy)]
-enum Transport {
+pub(crate) enum TransportMeta {
     Udp,
     Tcp,
-    Icmpv4,
-    Icmpv6,
+    /// An ICMP(v6) echo request or reply.
+    IcmpEcho,
+    /// A supported ICMP(v6) error message whose payload contains a parseable original packet.
+    IcmpError(IcmpErrorMeta),
+    /// Any other ICMP(v6) message.
+    ///
+    /// This includes unsupported message types as well as supported error types whose
+    /// payload we failed to parse as an IP packet.
+    IcmpOther,
     Other(IpProtocol),
 }
 
-#[derive(PartialEq, Clone, Copy)]
+/// Facts about the original packet embedded in an ICMP error, extracted on creation.
+///
+/// Everything else about the error can be read through fixed offsets;
+/// these two require walking the embedded packet's headers.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub(crate) struct IcmpErrorMeta {
+    /// The flow endpoints of the original packet.
+    pub(crate) original_l4: Layer4Protocol,
+    /// Offset of the original packet's transport header, relative to the ICMP payload.
+    pub(crate) original_l4_offset: u16,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum IpVersion {
     V4,
     V6,
@@ -313,24 +363,30 @@ impl IpPacket {
                     l4.len()
                 );
 
-                Transport::Udp
+                TransportMeta::Udp
             }
             (_, IpProtocol::TCP) => {
                 let (tcp, _, _) = ValidTcp::parse(l4).context("Failed to parse TCP header")?;
 
                 anyhow::ensure!(tcp.data_offset() >= 5, "TCP data offset must be at least 5");
 
-                Transport::Tcp
+                TransportMeta::Tcp
             }
             (IpVersion::V4, IpProtocol::ICMP) => {
-                ValidIcmpV4::parse(l4).context("Failed to parse ICMPv4 header")?;
+                let (icmp, _, icmp_payload) =
+                    ValidIcmpV4::parse(l4).context("Failed to parse ICMPv4 header")?;
 
-                Transport::Icmpv4
+                let icmp_type = Icmpv4Type::from_wire(icmp.ty().0, icmp.code(), icmp.rest_of_hdr());
+
+                icmp_error::classify_icmpv4(icmp_type, icmp_payload)
             }
             (IpVersion::V6, IpProtocol::ICMP_V6) => {
-                ValidIcmpV6::parse(l4).context("Failed to parse ICMPv6 header")?;
+                let (icmp, _, icmp_payload) =
+                    ValidIcmpV6::parse(l4).context("Failed to parse ICMPv6 header")?;
 
-                Transport::Icmpv6
+                let icmp_type = Icmpv6Type::from_wire(icmp.ty().0, icmp.code(), icmp.rest_of_hdr());
+
+                icmp_error::classify_icmpv6(icmp_type, icmp_payload)
             }
             (IpVersion::V6, IpProtocol::ICMP) => {
                 bail!("ICMPv4 is only allowed in IPv4 packets")
@@ -338,7 +394,7 @@ impl IpPacket {
             (IpVersion::V4, IpProtocol::ICMP_V6) => {
                 bail!("ICMPv6 is only allowed in IPv6 packets")
             }
-            (_, other) => Transport::Other(other),
+            (_, other) => TransportMeta::Other(other),
         };
 
         Ok(Self {
@@ -376,76 +432,99 @@ impl IpPacket {
         }
     }
 
+    /// A typed view of the transport layer of this packet.
+    ///
+    /// The classification happened when the packet was created; constructing the view
+    /// is cheap and infallible. Match on this to handle all transport-layer states a
+    /// packet can be in, instead of probing with the `as_` / `is_` accessors.
+    pub fn transport(&self) -> Transport<'_> {
+        match self.transport {
+            TransportMeta::Udp => Transport::Udp(UdpSlice::from_l4(self.payload())),
+            TransportMeta::Tcp => Transport::Tcp(TcpSlice::from_l4(self.payload())),
+            TransportMeta::IcmpEcho => {
+                Transport::IcmpEcho(IcmpEchoSlice::from_l4(self.payload(), self.version))
+            }
+            TransportMeta::IcmpError(meta) => {
+                Transport::IcmpError(IcmpErrorSlice::from_l4(self.payload(), self.version, meta))
+            }
+            TransportMeta::IcmpOther => {
+                Transport::IcmpOther(IcmpOtherSlice::from_l4(self.payload(), self.version))
+            }
+            TransportMeta::Other(protocol) => {
+                Transport::Other(OtherSlice::from_l4(self.payload(), protocol))
+            }
+        }
+    }
+
+    /// The flow endpoints of this packet, if its transport layer has them.
+    ///
+    /// The transport was classified when the packet was created, so this only
+    /// reads the endpoints from their (fixed) offsets.
+    pub fn layer4_protocol(&self) -> Result<Layer4Protocol, UnsupportedProtocol> {
+        match self.transport {
+            // Source and destination port are the first two fields of UDP and TCP alike.
+            TransportMeta::Udp => Ok(Layer4Protocol::Udp {
+                src: self.l4_be_u16(0),
+                dst: self.l4_be_u16(2),
+            }),
+            TransportMeta::Tcp => Ok(Layer4Protocol::Tcp {
+                src: self.l4_be_u16(0),
+                dst: self.l4_be_u16(2),
+            }),
+            // Identifier and sequence number follow type, code and checksum.
+            TransportMeta::IcmpEcho => Ok(Layer4Protocol::Icmp {
+                seq: self.l4_be_u16(6),
+                id: self.l4_be_u16(4),
+            }),
+            TransportMeta::IcmpError(_) | TransportMeta::IcmpOther => {
+                Err(self.unsupported_icmp_type())
+            }
+            TransportMeta::Other(protocol) => {
+                Err(UnsupportedProtocol::UnsupportedIpPayload(protocol))
+            }
+        }
+    }
+
+    /// Reads a big-endian `u16` at `offset` within the transport layer.
+    #[inline]
+    fn l4_be_u16(&self, offset: usize) -> u16 {
+        let l4 = self.payload();
+
+        u16::from_be_bytes([l4[offset], l4[offset + 1]])
+    }
+
+    #[cold]
+    fn unsupported_icmp_type(&self) -> UnsupportedProtocol {
+        match self.version {
+            IpVersion::V4 => UnsupportedProtocol::UnsupportedIcmpv4Type(
+                self.as_icmpv4()
+                    .expect("ICMP transport implies ICMPv4 packet")
+                    .icmp_type(),
+            ),
+            IpVersion::V6 => UnsupportedProtocol::UnsupportedIcmpv6Type(
+                self.as_icmpv6()
+                    .expect("ICMP transport implies ICMPv6 packet")
+                    .icmp_type(),
+            ),
+        }
+    }
+
     pub fn source_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
-        if let Some(p) = self.as_tcp() {
-            return Ok(Protocol::Tcp(p.source_port()));
-        }
-
-        if let Some(p) = self.as_udp() {
-            return Ok(Protocol::Udp(p.source_port()));
-        }
-
-        if let Some(p) = self.as_icmpv4() {
-            let id = self
-                .icmpv4_echo_header()
-                .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv4Type(p.icmp_type()))?
-                .id;
-
-            return Ok(Protocol::IcmpEcho(id));
-        }
-
-        if let Some(p) = self.as_icmpv6() {
-            let id = self
-                .icmpv6_echo_header()
-                .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv6Type(p.icmp_type()))?
-                .id;
-
-            return Ok(Protocol::IcmpEcho(id));
-        }
-
-        Err(UnsupportedProtocol::UnsupportedIpPayload(
-            self.next_header(),
-        ))
+        Ok(self.layer4_protocol()?.source())
     }
 
     pub fn destination_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
-        if let Some(p) = self.as_tcp() {
-            return Ok(Protocol::Tcp(p.destination_port()));
-        }
-
-        if let Some(p) = self.as_udp() {
-            return Ok(Protocol::Udp(p.destination_port()));
-        }
-
-        if let Some(p) = self.as_icmpv4() {
-            let id = self
-                .icmpv4_echo_header()
-                .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv4Type(p.icmp_type()))?
-                .id;
-
-            return Ok(Protocol::IcmpEcho(id));
-        }
-
-        if let Some(p) = self.as_icmpv6() {
-            let id = self
-                .icmpv6_echo_header()
-                .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv6Type(p.icmp_type()))?
-                .id;
-
-            return Ok(Protocol::IcmpEcho(id));
-        }
-
-        Err(UnsupportedProtocol::UnsupportedIpPayload(
-            self.next_header(),
-        ))
+        Ok(self.layer4_protocol()?.destination())
     }
 
     pub fn layer4_payload_len(&self) -> usize {
         match self.transport {
-            Transport::Udp => self.payload().len() - UdpSlice::HEADER_LEN,
-            Transport::Tcp => self.as_tcp_unchecked().payload().len(),
-            Transport::Icmpv4 | Transport::Icmpv6 => self.payload().len() - Icmpv4Slice::HEADER_LEN,
-            Transport::Other(_) => self.payload().len(),
+            TransportMeta::Udp => self.payload().len() - UdpSlice::HEADER_LEN,
+            TransportMeta::Tcp => self.as_tcp_unchecked().payload().len(),
+            TransportMeta::IcmpEcho | TransportMeta::IcmpError(_) | TransportMeta::IcmpOther => {
+                self.payload().len() - Icmpv4Slice::HEADER_LEN
+            }
+            TransportMeta::Other(_) => self.payload().len(),
         }
     }
 
@@ -802,9 +881,28 @@ impl IpPacket {
         Some(Icmpv4SliceMut::from_l4(self.payload_mut()))
     }
 
-    /// In case the packet is an ICMP error with a failed packet, parses the failed packet from the ICMP payload.
+    /// In case the packet is an ICMP error with a failed packet, returns the failed packet from the ICMP payload.
+    ///
+    /// The parsing already happened when the packet was created; this only copies the
+    /// payload into an owned [`FailedPacket`]. Prefer matching on [`IpPacket::transport`]
+    /// to borrow the original packet instead.
     pub fn icmp_error(&self) -> Result<Option<(FailedPacket, IcmpError)>> {
-        icmp_error::parse_icmp_error(self)
+        match self.transport {
+            TransportMeta::IcmpError(meta) => {
+                let error = IcmpErrorSlice::from_l4(self.payload(), self.version, meta);
+
+                Ok(Some((error.original().to_failed_packet(), error.error())))
+            }
+            TransportMeta::IcmpOther => bail!(
+                "ICMP message (type {}, code {}) is not a supported error message with a parseable original packet",
+                self.payload()[0],
+                self.payload()[1],
+            ),
+            TransportMeta::Udp
+            | TransportMeta::Tcp
+            | TransportMeta::IcmpEcho
+            | TransportMeta::Other(_) => Ok(None),
+        }
     }
 
     pub fn as_icmpv6(&self) -> Option<Icmpv6Slice<'_>> {
@@ -829,32 +927,6 @@ impl IpPacket {
         }
 
         FzP2pControlSlice::from_slice(self.payload()).ok()
-    }
-
-    fn icmpv4_echo_header(&self) -> Option<IcmpEchoHeader> {
-        let p = self.as_icmpv4()?;
-
-        use Icmpv4Type::*;
-        let icmp_type = p.icmp_type();
-
-        let (EchoReply(header) | EchoRequest(header)) = icmp_type else {
-            return None;
-        };
-
-        Some(header)
-    }
-
-    fn icmpv6_echo_header(&self) -> Option<IcmpEchoHeader> {
-        let p = self.as_icmpv6()?;
-
-        use Icmpv6Type::*;
-        let icmp_type = p.icmp_type();
-
-        let (EchoReply(header) | EchoRequest(header)) = icmp_type else {
-            return None;
-        };
-
-        Some(header)
     }
 
     pub fn translate_destination(&mut self, src_proto: Protocol, dst: IpAddr) -> Result<()> {
@@ -1064,25 +1136,37 @@ impl IpPacket {
 
     /// The protocol of the transport layer, after any IPv6 extension headers.
     pub fn next_header(&self) -> IpProtocol {
-        match self.transport {
-            Transport::Udp => IpProtocol::UDP,
-            Transport::Tcp => IpProtocol::TCP,
-            Transport::Icmpv4 => IpProtocol::ICMP,
-            Transport::Icmpv6 => IpProtocol::ICMP_V6,
-            Transport::Other(protocol) => protocol,
+        match (self.transport, self.version) {
+            (TransportMeta::Udp, _) => IpProtocol::UDP,
+            (TransportMeta::Tcp, _) => IpProtocol::TCP,
+            (
+                TransportMeta::IcmpEcho | TransportMeta::IcmpError(_) | TransportMeta::IcmpOther,
+                IpVersion::V4,
+            ) => IpProtocol::ICMP,
+            (
+                TransportMeta::IcmpEcho | TransportMeta::IcmpError(_) | TransportMeta::IcmpOther,
+                IpVersion::V6,
+            ) => IpProtocol::ICMP_V6,
+            (TransportMeta::Other(protocol), _) => protocol,
         }
     }
 
     pub fn is_udp(&self) -> bool {
-        matches!(self.transport, Transport::Udp)
+        matches!(self.transport, TransportMeta::Udp)
     }
 
     pub fn is_tcp(&self) -> bool {
-        matches!(self.transport, Transport::Tcp)
+        matches!(self.transport, TransportMeta::Tcp)
     }
 
     pub fn is_icmp(&self) -> bool {
-        matches!(self.transport, Transport::Icmpv4)
+        matches!(
+            (self.transport, self.version),
+            (
+                TransportMeta::IcmpEcho | TransportMeta::IcmpError(_) | TransportMeta::IcmpOther,
+                IpVersion::V4
+            )
+        )
     }
 
     /// Whether the packet is a Firezone p2p control protocol packet.
@@ -1093,7 +1177,13 @@ impl IpPacket {
     }
 
     pub fn is_icmpv6(&self) -> bool {
-        matches!(self.transport, Transport::Icmpv6)
+        matches!(
+            (self.transport, self.version),
+            (
+                TransportMeta::IcmpEcho | TransportMeta::IcmpError(_) | TransportMeta::IcmpOther,
+                IpVersion::V6
+            )
+        )
     }
 
     pub fn packet(&self) -> &[u8] {

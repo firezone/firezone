@@ -9,7 +9,7 @@ use ingot::ip::{IpProtocol, Ipv4Ref, Ipv6Ref, ValidIpv4, ValidIpv6};
 use ingot::types::{HeaderParse as _, NextLayer as _};
 
 use crate::icmp::{Icmpv4Type, Icmpv6Type, icmpv4, icmpv6};
-use crate::{IpPacket, Layer4Protocol, Protocol};
+use crate::{IcmpErrorMeta, Layer4Protocol, Protocol, TransportMeta};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IcmpError {
@@ -95,98 +95,90 @@ impl fmt::Display for IcmpError {
     }
 }
 
-/// In case the packet is an ICMP error with a failed packet, parses the failed packet from the ICMP payload.
-pub(crate) fn parse_icmp_error(packet: &IpPacket) -> Result<Option<(FailedPacket, IcmpError)>> {
-    if let Some(icmp) = packet.as_icmpv4() {
-        let icmp_type = icmp.icmp_type();
-
-        // Handle success case early to avoid erroring below.
-        if matches!(
-            icmp_type,
-            Icmpv4Type::EchoReply(_) | Icmpv4Type::EchoRequest(_)
-        ) {
-            return Ok(None);
+/// Classifies an ICMPv4 message into a [`TransportMeta`] variant.
+pub(crate) fn classify_icmpv4(icmp_type: Icmpv4Type, icmp_payload: &[u8]) -> TransportMeta {
+    match icmp_type {
+        Icmpv4Type::EchoReply(_) | Icmpv4Type::EchoRequest(_) => TransportMeta::IcmpEcho,
+        Icmpv4Type::DestinationUnreachable(_) | Icmpv4Type::TimeExceeded(_) => {
+            match parse_original_packet_v4(icmp_payload) {
+                Some(meta) => TransportMeta::IcmpError(meta),
+                None => TransportMeta::IcmpOther,
+            }
         }
-
-        #[expect(
-            clippy::wildcard_enum_match_arm,
-            reason = "We only want to match on these variants"
-        )]
-        let icmp_error = match icmp_type {
-            Icmpv4Type::DestinationUnreachable(error) => IcmpError::V4Unreachable(error),
-            Icmpv4Type::TimeExceeded(code) => IcmpError::V4TimeExceeded(code),
-            other => bail!("ICMP message {other:?} is not supported"),
-        };
-
-        // The ICMP payload contains (a portion of) the packet that failed to route,
-        // which may be truncated: only the headers are required to be complete.
-        let (header, _, l4) = ValidIpv4::parse(icmp.payload())
-            .ok()
-            .context("Failed to parse payload of ICMPv4 error message as IPv4 packet")?;
-
-        let src = IpAddr::V4(header.source().into());
-        let failed_dst = IpAddr::V4(header.destination().into());
-        let l4_proto =
-            extract_l4_proto(l4, header.protocol()).context("Failed to extract protocol")?;
-
-        return Ok(Some((
-            FailedPacket {
-                src,
-                failed_dst,
-                l4_proto,
-                raw: icmp.payload().to_vec(),
-            },
-            icmp_error,
-        )));
+        Icmpv4Type::Unknown { .. } => TransportMeta::IcmpOther,
     }
+}
 
-    if let Some(icmp) = packet.as_icmpv6() {
-        let icmp_type = icmp.icmp_type();
-
-        // Handle success case early to avoid erroring below.
-        if matches!(
-            icmp_type,
-            Icmpv6Type::EchoReply(_) | Icmpv6Type::EchoRequest(_)
-        ) {
-            return Ok(None);
-        }
-
-        #[expect(
-            clippy::wildcard_enum_match_arm,
-            reason = "We only want to match on these variants"
-        )]
-        let icmp_error = match icmp_type {
-            Icmpv6Type::DestinationUnreachable(error) => IcmpError::V6Unreachable(error),
-            Icmpv6Type::PacketTooBig { mtu } => IcmpError::V6PacketTooBig { mtu },
-            Icmpv6Type::TimeExceeded(code) => IcmpError::V6TimeExceeded(code),
-            other => bail!("ICMPv6 message {other:?} is not supported"),
-        };
-
-        // The ICMPv6 payload contains (a portion of) the packet that failed to route,
-        // which may be truncated: only the headers are required to be complete.
-        let (header, _, l4) = ValidIpv6::parse(icmp.payload())
-            .ok()
-            .context("Failed to parse payload of ICMPv6 error message as IPv6 packet")?;
-
-        let src = IpAddr::V6(header.source().into());
-        let failed_dst = IpAddr::V6(header.destination().into());
-        let protocol = header
-            .next_layer()
-            .context("Failed to determine transport protocol of failed packet")?;
-        let l4_proto = extract_l4_proto(l4, protocol).context("Failed to extract protocol")?;
-
-        return Ok(Some((
-            FailedPacket {
-                src,
-                failed_dst,
-                l4_proto,
-                raw: icmp.payload().to_vec(),
-            },
-            icmp_error,
-        )));
+/// Classifies an ICMPv6 message into a [`TransportMeta`] variant.
+pub(crate) fn classify_icmpv6(icmp_type: Icmpv6Type, icmp_payload: &[u8]) -> TransportMeta {
+    match icmp_type {
+        Icmpv6Type::EchoReply(_) | Icmpv6Type::EchoRequest(_) => TransportMeta::IcmpEcho,
+        Icmpv6Type::DestinationUnreachable(_)
+        | Icmpv6Type::PacketTooBig { .. }
+        | Icmpv6Type::TimeExceeded(_) => match parse_original_packet_v6(icmp_payload) {
+            Some(meta) => TransportMeta::IcmpError(meta),
+            None => TransportMeta::IcmpOther,
+        },
+        Icmpv6Type::Unknown { .. } => TransportMeta::IcmpOther,
     }
+}
 
-    Ok(None)
+/// The [`IcmpError`] represented by a (previously classified) ICMPv4 error message.
+pub(crate) fn icmpv4_error(icmp_type: Icmpv4Type) -> Option<IcmpError> {
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "All other variants are not error messages"
+    )]
+    match icmp_type {
+        Icmpv4Type::DestinationUnreachable(error) => Some(IcmpError::V4Unreachable(error)),
+        Icmpv4Type::TimeExceeded(code) => Some(IcmpError::V4TimeExceeded(code)),
+        _ => None,
+    }
+}
+
+/// The [`IcmpError`] represented by a (previously classified) ICMPv6 error message.
+pub(crate) fn icmpv6_error(icmp_type: Icmpv6Type) -> Option<IcmpError> {
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "All other variants are not error messages"
+    )]
+    match icmp_type {
+        Icmpv6Type::DestinationUnreachable(error) => Some(IcmpError::V6Unreachable(error)),
+        Icmpv6Type::PacketTooBig { mtu } => Some(IcmpError::V6PacketTooBig { mtu }),
+        Icmpv6Type::TimeExceeded(code) => Some(IcmpError::V6TimeExceeded(code)),
+        _ => None,
+    }
+}
+
+/// Parses the original IPv4 packet embedded in the payload of an ICMP error message.
+///
+/// The embedded packet may be truncated: only the headers are required to be complete.
+fn parse_original_packet_v4(icmp_payload: &[u8]) -> Option<IcmpErrorMeta> {
+    let (header, _, l4) = ValidIpv4::parse(icmp_payload).ok()?;
+
+    let original_l4 = extract_l4_proto(l4, header.protocol()).ok()?;
+    let original_l4_offset = (icmp_payload.len() - l4.len()) as u16;
+
+    Some(IcmpErrorMeta {
+        original_l4,
+        original_l4_offset,
+    })
+}
+
+/// Parses the original IPv6 packet embedded in the payload of an ICMPv6 error message.
+///
+/// The embedded packet may be truncated: only the headers are required to be complete.
+fn parse_original_packet_v6(icmp_payload: &[u8]) -> Option<IcmpErrorMeta> {
+    let (header, _, l4) = ValidIpv6::parse(icmp_payload).ok()?;
+
+    let protocol = header.next_layer()?;
+    let original_l4 = extract_l4_proto(l4, protocol).ok()?;
+    let original_l4_offset = (icmp_payload.len() - l4.len()) as u16;
+
+    Some(IcmpErrorMeta {
+        original_l4,
+        original_l4_offset,
+    })
 }
 
 fn extract_l4_proto(payload: &[u8], protocol: IpProtocol) -> Result<Layer4Protocol> {
@@ -271,20 +263,12 @@ impl FailedPacket {
 
     /// The source protocol of the packet.
     pub fn src_proto(&self) -> Protocol {
-        match self.l4_proto {
-            Layer4Protocol::Udp { src, .. } => Protocol::Udp(src),
-            Layer4Protocol::Tcp { src, .. } => Protocol::Tcp(src),
-            Layer4Protocol::Icmp { id, .. } => Protocol::IcmpEcho(id),
-        }
+        self.l4_proto.source()
     }
 
     /// The destination protocol of the packet.
     pub fn dst_proto(&self) -> Protocol {
-        match self.l4_proto {
-            Layer4Protocol::Udp { dst, .. } => Protocol::Udp(dst),
-            Layer4Protocol::Tcp { dst, .. } => Protocol::Tcp(dst),
-            Layer4Protocol::Icmp { id, .. } => Protocol::IcmpEcho(id),
-        }
+        self.l4_proto.destination()
     }
 
     pub fn layer4_protocol(&self) -> Layer4Protocol {

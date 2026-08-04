@@ -24,16 +24,18 @@ enum Kind {
     TcpV6,
     IcmpV4,
     IcmpV6,
+    IcmpV4Error,
     UdpV4Jumbo,
 }
 
-const KINDS: [Kind; 7] = [
+const KINDS: [Kind; 8] = [
     Kind::UdpV4,
     Kind::UdpV6,
     Kind::TcpV4,
     Kind::TcpV6,
     Kind::IcmpV4,
     Kind::IcmpV6,
+    Kind::IcmpV4Error,
     Kind::UdpV4Jumbo,
 ];
 
@@ -68,6 +70,24 @@ fn route(bencher: divan::Bencher, kind: Kind) {
             divan::black_box(packet.destination()),
             divan::black_box(packet.source_protocol()),
             divan::black_box(packet.destination_protocol()),
+        )
+    });
+}
+
+/// Probes an already-parsed packet for an ICMP error, i.e. the check `connlib`
+/// performs on packets entering routing.
+///
+/// The packet is black-boxed inside the timed closure, see [`route`].
+#[divan::bench(args = KINDS)]
+fn probe_icmp_error(bencher: divan::Bencher, kind: Kind) {
+    let (buf, len) = kind.buf();
+    let packet = IpPacket::new(buf, len).unwrap();
+
+    bencher.bench_local(|| {
+        divan::black_box(
+            divan::black_box(&packet)
+                .icmp_error()
+                .is_ok_and(|e| e.is_some()),
         )
     });
 }
@@ -115,6 +135,7 @@ impl Kind {
             Kind::TcpV6 => ipv6(TCP, &tcp(PAYLOAD_LEN)),
             Kind::IcmpV4 => ipv4(ICMP, &icmp(8)),
             Kind::IcmpV6 => ipv6(ICMP_V6, &icmp(128)),
+            Kind::IcmpV4Error => ipv4(ICMP, &icmpv4_unreachable(&ipv4(UDP, &udp(0)))),
             Kind::UdpV4Jumbo => ipv4(UDP, &udp(JUMBO_PAYLOAD_LEN)),
         }
     }
@@ -129,6 +150,7 @@ impl std::fmt::Display for Kind {
             Kind::TcpV6 => "tcp_v6",
             Kind::IcmpV4 => "icmp_v4",
             Kind::IcmpV6 => "icmp_v6",
+            Kind::IcmpV4Error => "icmp_v4_error",
             Kind::UdpV4Jumbo => "udp_v4_jumbo",
         };
 
@@ -196,6 +218,16 @@ fn icmp(ty: u8) -> Vec<u8> {
     message[4..6].copy_from_slice(&1u16.to_be_bytes()); // Identifier.
     message[6..8].copy_from_slice(&1u16.to_be_bytes()); // Sequence number.
     message.resize(8 + PAYLOAD_LEN, 0);
+
+    message
+}
+
+/// An ICMPv4 "destination host unreachable" message quoting `original` as its payload.
+fn icmpv4_unreachable(original: &[u8]) -> Vec<u8> {
+    let mut message = vec![0u8; 8];
+    message[0] = 3; // Destination unreachable.
+    message[1] = 1; // Host unreachable.
+    message.extend_from_slice(original);
 
     message
 }
