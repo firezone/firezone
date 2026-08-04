@@ -19,8 +19,8 @@ use std::{
     time::{Duration, Instant},
 };
 use tunnel_proto::{
-    ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
-    MaliciousBehaviour, MaliciousBehaviourGuard as Guard, dns,
+    ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord, IPV4_RESOURCES,
+    IPV6_RESOURCES, MaliciousBehaviour, MaliciousBehaviourGuard as Guard, dns,
 };
 
 /// Simulation state for a particular client.
@@ -475,6 +475,24 @@ impl SimClient {
             }
         {
             tracing::debug!(?packet, "Ignoring TCP teardown from DNS sentinel");
+            return None;
+        }
+
+        // Equally ignore late TCP segments from connlib's proxy IP ranges for
+        // DNS resources. The TCP client only `accepts` packets matching a
+        // currently-open socket, so a retransmission or teardown that arrives
+        // after the socket is gone (for example when the connection predates a
+        // `RestartClient` and the socket timed out while the tunnel was being
+        // re-established) has nothing to be matched against. A real host
+        // answers such a segment with a RST; dropping it is equivalent for the
+        // reference model.
+        if packet.as_tcp().is_some()
+            && match packet.source() {
+                IpAddr::V4(v4) => IPV4_RESOURCES.contains(v4),
+                IpAddr::V6(v6) => IPV6_RESOURCES.contains(v6),
+            }
+        {
+            tracing::debug!(?packet, "Ignoring late TCP segment from resource");
             return None;
         }
 
