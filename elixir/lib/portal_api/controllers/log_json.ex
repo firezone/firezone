@@ -77,7 +77,7 @@ defmodule PortalAPI.LogJSON do
       inner_src_port: log.inner_src_port,
       inner_dst_port: log.inner_dst_port,
       inner_domain: log.domain,
-      outers: FlowLog.outers_to_maps(log.outers),
+      outers: flow_outers(log),
       rx_packets: log.rx_packets,
       tx_packets: log.tx_packets,
       rx_bytes: log.rx_bytes,
@@ -104,4 +104,7 @@ defmodule PortalAPI.LogJSON do
       ip_lon: log.ip_lon
     }
   end
+
+  defp flow_outers(%FlowLog{flow_end: nil}), do: nil
+  defp flow_outers(%FlowLog{outers: outers}), do: FlowLog.outers_to_maps(outers)
 end
