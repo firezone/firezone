@@ -280,7 +280,7 @@ where
                 self.record_tx(
                     TxPacket {
                         scope,
-                        context: FlowContext::new(Some(remote), local),
+                        context: FlowContext::new(remote, local),
                         src_ip,
                         dst_ip,
                         src_proto,
@@ -1175,7 +1175,7 @@ struct TcpFlowValue {
     stats: FlowStats,
     /// The outer (transport) tuples the flow has used, appended on every change,
     /// so a tuple the flow returned to appears again.
-    contexts: Contexts,
+    contexts: SmallVec<[FlowContext; 4]>,
 
     domain: Option<DomainName>,
 
@@ -1193,7 +1193,7 @@ struct UdpFlowValue {
     stats: FlowStats,
     /// The outer (transport) tuples the flow has used, appended on every change,
     /// so a tuple the flow returned to appears again.
-    contexts: Contexts,
+    contexts: SmallVec<[FlowContext; 4]>,
 
     domain: Option<DomainName>,
 
@@ -1244,7 +1244,9 @@ pub struct FlowContext {
 impl FlowContext {
     /// Builds a context from the outer addresses as seen by the initiator: the
     /// initiator side is the source, the responder side the destination.
-    pub fn new(initiator: Option<SocketAddr>, responder: SocketAddr) -> Self {
+    pub fn new(initiator: impl Into<Option<SocketAddr>>, responder: SocketAddr) -> Self {
+        let initiator = initiator.into();
+
         Self {
             src_ip: initiator.map(|initiator| initiator.ip()),
             src_port: initiator.map(|initiator| initiator.port()),
@@ -1254,14 +1256,11 @@ impl FlowContext {
     }
 }
 
-/// The outer tuples one flow has used, inline up to the common few path changes.
-type Contexts = SmallVec<[FlowContext; 4]>;
-
 /// Appends `context` to a flow's outer tuples if it differs from the current one.
 ///
 /// Callers split the flow before the list would grow past
 /// [`MAX_CONTEXTS_PER_FLOW`], see [`context_overflows`].
-fn push_context(key: &impl Debug, contexts: &mut Contexts, context: FlowContext) {
+fn push_context(key: &impl Debug, contexts: &mut SmallVec<[FlowContext; 4]>, context: FlowContext) {
     let Some(current) = contexts.last().copied() else {
         contexts.push(context);
         return;
@@ -1282,7 +1281,7 @@ fn push_context(key: &impl Debug, contexts: &mut Contexts, context: FlowContext)
 
 /// Whether recording `context` would grow the flow's outer tuples past
 /// [`MAX_CONTEXTS_PER_FLOW`].
-fn context_overflows(contexts: &Contexts, context: FlowContext) -> bool {
+fn context_overflows(contexts: &SmallVec<[FlowContext; 4]>, context: FlowContext) -> bool {
     contexts.last() != Some(&context) && contexts.len() >= MAX_CONTEXTS_PER_FLOW
 }
 
@@ -1346,11 +1345,11 @@ mod tests {
     #[test]
     fn flow_context_diff_rendering() {
         let old = FlowContext::new(
-            Some("10.0.0.1:8080".parse().unwrap()),
+            "10.0.0.1:8080".parse::<SocketAddr>().unwrap(),
             "192.168.0.1:443".parse().unwrap(),
         );
         let new = FlowContext::new(
-            Some("1.1.1.1:50000".parse().unwrap()),
+            "1.1.1.1:50000".parse::<SocketAddr>().unwrap(),
             "192.168.0.1:443".parse().unwrap(),
         );
 

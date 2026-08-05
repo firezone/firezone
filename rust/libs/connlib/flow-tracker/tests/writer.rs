@@ -30,7 +30,7 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
         domain: Some("download.httpbin".parse().unwrap()),
         outers: vec![
             FlowContext::new(
-                Some("198.51.100.1:51820".parse().unwrap()),
+                "198.51.100.1:51820".parse::<SocketAddr>().unwrap(),
                 "203.0.113.7:51820".parse().unwrap(),
             ),
             FlowContext::new(None, "203.0.113.7:51820".parse().unwrap()),
