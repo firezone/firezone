@@ -767,6 +767,58 @@ defmodule PortalWeb.FormComponents do
     """
   end
 
+  @doc """
+  Renders the action row at the bottom of a slide-over panel.
+
+  Use `panel_footer_button/1` for the actions so every panel uses the same
+  button size.
+
+  ## Examples
+
+      <.panel_footer>
+        <.panel_footer_button phx-click="close_panel">Cancel</.panel_footer_button>
+        <.panel_footer_button type="submit" style="primary">Save</.panel_footer_button>
+      </.panel_footer>
+  """
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  def panel_footer(assigns) do
+    ~H"""
+    <div class={[
+      "shrink-0 flex items-center justify-end gap-2 px-5 py-3",
+      "border-t border-border bg-elevated",
+      @class
+    ]}>
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a consistently sized action in a slide-over panel footer.
+
+  This delegates to `button/1`, including its link variants, while fixing the
+  contextual size to `sm`.
+  """
+  attr :type, :string, default: nil
+  attr :style, :string, default: nil
+  attr :icon, :string, default: nil
+  attr :class, :string, default: ""
+
+  attr :rest, :global,
+    include: ~w(disabled form name value navigate href patch title)
+
+  slot :inner_block, required: true
+
+  def panel_footer_button(assigns) do
+    ~H"""
+    <.button type={@type} style={@style} icon={@icon} size="sm" class={@class} {@rest}>
+      {render_slot(@inner_block)}
+    </.button>
+    """
+  end
+
   defp icon_button_style(nil) do
     ["text-subtle hover:text-heading hover:bg-raised"]
   end

@@ -1014,14 +1014,14 @@ defmodule PortalWeb.Resources.Components do
           <.resource_site_selector form={@resource_form} sites={@resource_form_sites} />
         </div>
 
-        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-          <.button type="button" phx-click="cancel_resource_form" size="sm">
+        <.panel_footer>
+          <.panel_footer_button type="button" phx-click="cancel_resource_form">
             Cancel
-          </.button>
-          <.button type="submit" style="primary" size="sm">
+          </.panel_footer_button>
+          <.panel_footer_button type="submit" style="primary">
             {if @panel_view == :new_form, do: "Create Resource", else: "Save Changes"}
-          </.button>
-        </div>
+          </.panel_footer_button>
+        </.panel_footer>
       </.form>
     </div>
     """
@@ -1717,14 +1717,18 @@ defmodule PortalWeb.Resources.Components do
       >
         <p :for={{_field, {msg, _}} <- @grant_form.errors}>{msg}</p>
       </div>
-      <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-        <.button type="button" phx-click="close_grant_form" size="xs">
+      <.panel_footer>
+        <.panel_footer_button type="button" phx-click="close_grant_form">
           Cancel
-        </.button>
-        <.button type="submit" style="primary" disabled={@grant_selected_group_ids == []} size="xs">
+        </.panel_footer_button>
+        <.panel_footer_button
+          type="submit"
+          style="primary"
+          disabled={@grant_selected_group_ids == []}
+        >
           Grant access
-        </.button>
-      </div>
+        </.panel_footer_button>
+      </.panel_footer>
     </.form>
     """
   end

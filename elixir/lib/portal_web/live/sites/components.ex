@@ -1750,14 +1750,14 @@ defmodule PortalWeb.Sites.Components do
 
   def resource_form_actions(assigns) do
     ~H"""
-    <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-      <.button type="button" phx-click="close_add_resource" size="xs">
+    <.panel_footer>
+      <.panel_footer_button type="button" phx-click="close_add_resource">
         Cancel
-      </.button>
-      <.button type="submit" style="primary" size="xs">
+      </.panel_footer_button>
+      <.panel_footer_button type="submit" style="primary">
         Create Resource
-      </.button>
-    </div>
+      </.panel_footer_button>
+    </.panel_footer>
     """
   end
 
@@ -1804,14 +1804,14 @@ defmodule PortalWeb.Sites.Components do
             </p>
           </div>
         </div>
-        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-          <.button type="button" phx-click="cancel_site_edit_form" size="sm">
+        <.panel_footer>
+          <.panel_footer_button type="button" phx-click="cancel_site_edit_form">
             Cancel
-          </.button>
-          <.button type="submit" style="primary" size="sm" class="font-medium">
+          </.panel_footer_button>
+          <.panel_footer_button type="submit" style="primary" class="font-medium">
             Save
-          </.button>
-        </div>
+          </.panel_footer_button>
+        </.panel_footer>
       </.form>
     </div>
     """
