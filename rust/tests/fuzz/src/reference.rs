@@ -231,9 +231,10 @@ impl ReferenceState {
             }),
             Transition::SendDnsQuery { client_id, query } => {
                 let upstream_do53 = state.portal.upstream_do53();
+                let icmp_error_hosts = &state.icmp_error_hosts;
 
                 state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                    c.on_dns_query(query, upstream_do53);
+                    c.on_dns_query(query, upstream_do53, icmp_error_hosts);
                 });
             }
             Transition::SendIcmpPacket {

@@ -173,6 +173,7 @@ impl SimGateway {
     pub(crate) fn deploy_new_dns_servers(
         &mut self,
         dns_servers: impl IntoIterator<Item = SocketAddr>,
+        icmp_error_hosts: &IcmpErrorHosts,
     ) {
         self.udp_dns_server_resources.clear();
         self.tcp_dns_server_resources.clear();
@@ -194,6 +195,12 @@ impl SimGateway {
                 tun_dns_server_port,
             ))))
         {
+            // A resolver that answers with ICMP errors is unreachable from the
+            // Gateway's network; nothing listens on its sockets.
+            if icmp_error_hosts.icmp_error_for_ip(server.ip()).is_some() {
+                continue;
+            }
+
             self.udp_dns_server_resources
                 .insert(server, UdpDnsServerResource::default());
             self.tcp_dns_server_resources
@@ -253,6 +260,17 @@ impl SimGateway {
             if let Some(server) = self.udp_dns_server_resources.get_mut(&socket) {
                 server.handle_input(packet);
                 return None;
+            }
+
+            // Port 53 is excluded from generated packets, so this is a recursive
+            // query to a resolver without a deployed DNS server, i.e. one that
+            // answers with ICMP errors. connlib consumes the error internally,
+            // so the reference does not track this exchange as a request.
+            if udp.destination_port() == 53 {
+                let reply = icmp_error?;
+                let transmit = self.handle_tun_input(reply, now).unwrap()?;
+
+                return Some(transmit);
             }
         }
 

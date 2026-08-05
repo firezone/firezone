@@ -457,16 +457,16 @@ impl SimClient {
         }
 
         // Silently ignore TCP packets on port 53 originating from connlib's DNS
-        // sentinel range. The TCP-DNS client only `accepts` packets matching a
-        // currently-open socket, so a teardown (e.g. RST) that arrives after the
-        // query's socket has already been closed — or after the sentinel mapping
-        // changed (`UpdateSystemDnsServers` / `UpdateUpstream*`) — would otherwise
-        // fall through to the `Unhandled packet` error below. This is connlib's
-        // DNS infrastructure closing a connection, not application traffic the
-        // reference models, so it must not fail the test. We match the fixed
-        // sentinel *range* rather than the current mapping precisely because the
-        // mapping may no longer contain the (old) sentinel by the time the RST
-        // arrives.
+        // sentinel range. The TCP-DNS client consumes packets for connections it
+        // still remembers, but a teardown (e.g. RST) can arrive after the remote
+        // was evicted from its bounded map of closed connections, e.g. following
+        // repeated sentinel mapping changes (`UpdateSystemDnsServers` /
+        // `UpdateUpstream*`), and would otherwise fall through to the
+        // `Unhandled packet` error below. This is connlib's DNS infrastructure
+        // closing a connection, not application traffic the reference models, so
+        // it must not fail the test. We match the fixed sentinel *range* rather
+        // than the current mapping precisely because the mapping may no longer
+        // contain the (old) sentinel by the time the RST arrives.
         if let Some(tcp) = packet.as_tcp()
             && tcp.source_port() == 53
             && match packet.source() {
