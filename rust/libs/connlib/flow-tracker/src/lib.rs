@@ -437,6 +437,7 @@ where
                             contexts: smallvec![context],
                             fin_tx: false,
                             fin_rx: false,
+                            non_syn_tx: !tcp_syn,
                             domain,
                             ingest_token,
                         };
@@ -464,6 +465,7 @@ where
                             contexts: smallvec![context],
                             fin_tx: false,
                             fin_rx: false,
+                            non_syn_tx: !tcp_syn,
                             domain,
                             ingest_token,
                         };
@@ -472,12 +474,13 @@ where
 
                         self.active_tcp_flows.insert(key, value);
                     }
-                    // A SYN only starts a new connection if the existing flow has
-                    // seen return traffic; on a half-open flow it is a
-                    // retransmission and just counts as another packet.
-                    hash_map::Entry::Occupied(occupied)
-                        if tcp_syn && occupied.get().stats.rx_packets > 0 =>
-                    {
+                    // A SYN only starts a new connection (i.e. reuses the tuple)
+                    // if the initiator moved past the handshake by sending a
+                    // non-SYN packet. Until then, a SYN is a retransmission and
+                    // just counts as another packet; return traffic proves
+                    // nothing because a SYN-ACK may get lost on its way back to
+                    // the initiator.
+                    hash_map::Entry::Occupied(occupied) if tcp_syn && occupied.get().non_syn_tx => {
                         let (key, value) = occupied.remove_entry();
 
                         tracing::debug!(?key, "Splitting existing TCP flow; new TCP SYN");
@@ -491,6 +494,7 @@ where
                             contexts: smallvec![context],
                             fin_tx: false,
                             fin_rx: false,
+                            non_syn_tx: !tcp_syn,
                             domain,
                             ingest_token,
                         };
@@ -508,6 +512,9 @@ where
                         value.last_packet = now_utc;
                         if tcp_fin {
                             value.fin_tx = true;
+                        }
+                        if !tcp_syn {
+                            value.non_syn_tx = true;
                         }
 
                         if tcp_rst {
@@ -1184,6 +1191,8 @@ struct TcpFlowValue {
 
     fin_tx: bool,
     fin_rx: bool,
+    /// Whether the initiator has sent a packet other than a SYN.
+    non_syn_tx: bool,
 }
 
 #[derive(Debug)]
