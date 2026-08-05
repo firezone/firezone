@@ -364,7 +364,8 @@ defmodule PortalAPI.Client.Socket do
     require Logger
 
     @hardware_id_fields ~w[device_serial device_uuid identifier_for_vendor firebase_installation_id]a
-    @attested_id_fields ~w[last_attested_device_serial last_attested_device_uuid last_attested_mdm_device_id]a
+    @attested_hardware_fields ~w[last_attested_device_serial last_attested_device_uuid]a
+    @attested_id_fields @attested_hardware_fields ++ [:last_attested_mdm_device_id]
     @proof_fields @attested_id_fields ++ ~w[last_attested_cert_serial last_attested_cert_fingerprint last_attested_at]a
 
     @dialyzer {:no_opaque, [resolve_client: 4, find_by_attested_ids: 3]}
@@ -490,8 +491,15 @@ defmodule PortalAPI.Client.Socket do
       :identity_conflict
     end
 
+    # Only the hardware identifiers have to agree. The MDM's device id is a
+    # record id, not a property of the machine: it changes whenever the device
+    # is re-enrolled, and the column is fed by whichever of intune-id /
+    # entra-id / jamf-id / ws1-uuid / kandji-id the certificate happens to
+    # list first. Treating either as a mismatch would strand a re-enrolled
+    # device unattested forever, since the refusal also keeps the row from
+    # ever learning the new value.
     defp consistent_attested?(client, cert_identifiers) do
-      Enum.all?(@attested_id_fields, fn field ->
+      Enum.all?(@attested_hardware_fields, fn field ->
         row_value = Map.get(client, field)
         cert_value = Map.get(cert_identifiers, field)
 
