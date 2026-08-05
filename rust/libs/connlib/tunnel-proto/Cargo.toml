@@ -9,6 +9,9 @@ divan = ["dep:divan"]
 # Allows callers to bypass client-side resource filters. Only used by the
 # tunnel fuzzer to exercise the remote filtering path.
 malicious-behaviour = []
+# Consult telemetry's feature flags and report their use. Without this,
+# every flag keeps its default value.
+telemetry = ["dep:telemetry"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -42,7 +45,7 @@ serde_json = { workspace = true }
 serde_with = { workspace = true }
 smallvec = { workspace = true, features = ["const_generics"] }
 snownet = { workspace = true }
-telemetry = { workspace = true }
+telemetry = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 

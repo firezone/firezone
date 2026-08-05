@@ -21,7 +21,17 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use event_message_contains_filter::EventMessageContains;
 use sentry_tracing::EventFilter;
+
+#[cfg(feature = "telemetry")]
 use telemetry::feature_flags;
+
+/// Without the `telemetry` feature, log streaming stays at its default: off.
+#[cfg(not(feature = "telemetry"))]
+mod feature_flags {
+    pub fn stream_logs(_: &tracing::Metadata<'_>) -> bool {
+        false
+    }
+}
 use tracing::{Subscriber, subscriber::DefaultGuard};
 use tracing_log::LogTracer;
 use tracing_subscriber::{

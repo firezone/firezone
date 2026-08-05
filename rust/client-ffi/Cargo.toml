@@ -20,7 +20,7 @@ ip-packet = { workspace = true }
 ip_network = { workspace = true }
 itertools = { workspace = true }
 libc = { workspace = true }
-logging = { workspace = true }
+logging = { workspace = true, features = ["telemetry"] }
 opentelemetry = { workspace = true }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }

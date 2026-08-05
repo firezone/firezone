@@ -58,7 +58,27 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
+
+#[cfg(feature = "telemetry")]
 use telemetry::{analytics, feature_flags};
+
+/// Without the `telemetry` feature, every flag keeps its default value: off.
+#[cfg(not(feature = "telemetry"))]
+mod feature_flags {
+    pub fn icmp_error_unreachable_prohibited_create_new_flow() -> bool {
+        false
+    }
+
+    pub fn drop_llmnr_nxdomain_responses() -> bool {
+        false
+    }
+}
+
+/// Without the `telemetry` feature, there is nowhere to report flag use to.
+#[cfg(not(feature = "telemetry"))]
+mod analytics {
+    pub fn feature_flag_called(_: impl Into<String>) {}
+}
 
 pub const IPV4_RESOURCES: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
     Ok(n) => n,
@@ -1897,7 +1917,7 @@ impl ClientState {
         match self.resource_stub_resolver.handle_query(&message) {
             resource_stub_resolver::ResolveStrategy::LocalResponse(response) => {
                 if response.response_code() == ResponseCode::NXDOMAIN
-                    && telemetry::feature_flags::drop_llmnr_nxdomain_responses()
+                    && feature_flags::drop_llmnr_nxdomain_responses()
                 {
                     return;
                 }
