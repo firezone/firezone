@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Flow log report",
+  "description": "One record of the `flow_logs` array POSTed to the portal's /ingestion/flow_logs endpoint. connlib's flow-tracker emits it, flow-log-writer spools it, and PortalAPI.FlowLogController ingests it; the test suites on both sides check against this file, so a field one side renames or drops fails that side's CI. Attribution deliberately rides the request's ingest token, not the record.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "inner_src_ip",
+    "inner_src_port",
+    "inner_dst_ip",
+    "inner_dst_port",
+    "outers",
+    "flow_start"
+  ],
+  "dependentRequired": {
+    "flow_end": ["last_packet", "rx_packets", "tx_packets", "rx_bytes", "tx_bytes"],
+    "last_packet": ["flow_end"],
+    "rx_packets": ["flow_end"],
+    "tx_packets": ["flow_end"],
+    "rx_bytes": ["flow_end"],
+    "tx_bytes": ["flow_end"]
+  },
+  "properties": {
+    "protocol": {
+      "enum": ["tcp", "udp"]
+    },
+    "inner_src_ip": {
+      "type": "string",
+      "description": "Tunnel IP of the initiator, on both sides' reports."
+    },
+    "inner_src_port": {
+      "$ref": "#/$defs/port"
+    },
+    "inner_dst_ip": {
+      "type": "string",
+      "description": "Tunnel IP of the responder, on both sides' reports."
+    },
+    "inner_dst_port": {
+      "$ref": "#/$defs/port"
+    },
+    "domain": {
+      "type": "string",
+      "description": "Domain name for flows to DNS Resources; absent otherwise."
+    },
+    "outers": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Outer (transport) paths in observation order, appended on every change, so a path the flow returned to appears again.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["dst_ip", "dst_port", "path_activated_at"],
+        "dependentRequired": {
+          "src_ip": ["src_port"],
+          "src_port": ["src_ip"]
+        },
+        "properties": {
+          "src_ip": {
+            "type": "string",
+            "description": "Absent together with src_port when the source is unknown, i.e. for relayed sends."
+          },
+          "src_port": {
+            "$ref": "#/$defs/port"
+          },
+          "dst_ip": {
+            "type": "string"
+          },
+          "dst_port": {
+            "$ref": "#/$defs/port"
+          },
+          "path_activated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time of the packet that revealed the path: the flow's first packet for the initial entry, the first packet after a change for every later one."
+          }
+        }
+      }
+    },
+    "flow_start": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "flow_end": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Absent on the open report; the close report carries it together with last_packet and the counters."
+    },
+    "last_packet": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "rx_packets": {
+      "$ref": "#/$defs/counter"
+    },
+    "tx_packets": {
+      "$ref": "#/$defs/counter"
+    },
+    "rx_bytes": {
+      "$ref": "#/$defs/counter"
+    },
+    "tx_bytes": {
+      "$ref": "#/$defs/counter"
+    }
+  },
+  "$defs": {
+    "port": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "counter": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

@@ -214,6 +214,10 @@ defmodule PortalAPI.FlowLogController do
                   outers
                   flow_start flow_end last_packet rx_packets tx_packets rx_bytes tx_bytes]
 
+  # Exposed so the ingest contract test can compare the accepted fields to the
+  # committed schema in contracts/flow-log-report.schema.json.
+  def body_fields, do: @body_fields
+
   # Attribution comes from the verified token (authoritative); the network
   # fields, flow window, and counters come from the body. Taking the body fields
   # as an explicit whitelist means a record can never supply its own attribution
