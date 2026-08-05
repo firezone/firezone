@@ -232,7 +232,7 @@ where
             // network (packets buffered during connection setup are recorded by
             // the responder once they arrive).
             (Entry::Tun, Role::Initiator) => {
-                let Some(context) = outer_tx else {
+                let Some((src, dst)) = outer_tx else {
                     tracing::trace!("Not recording flow for packet that was never sent");
 
                     return;
@@ -250,7 +250,7 @@ where
                 self.record_tx(
                     TxPacket {
                         scope,
-                        context,
+                        context: FlowContext::new(src, dst, self.now_utc(now)),
                         src_ip,
                         dst_ip,
                         src_proto,
@@ -280,7 +280,7 @@ where
                 self.record_tx(
                     TxPacket {
                         scope,
-                        context: FlowContext::new(remote, local),
+                        context: FlowContext::new(remote, local, self.now_utc(now)),
                         src_ip,
                         dst_ip,
                         src_proto,
@@ -727,9 +727,10 @@ struct FlowData {
     entry: Entry,
     /// The inner (application) packet's flow fields.
     inner: Option<InnerFlow>,
-    /// The outer (transport) 4-tuple a TUN-entry packet was encapsulated to,
-    /// oriented initiator-to-responder. Absence means the packet was never sent.
-    outer_tx: Option<FlowContext>,
+    /// The outer (transport) endpoints a TUN-entry packet was encapsulated to,
+    /// as an (initiator, responder) pair. Absence means the packet was never
+    /// sent.
+    outer_tx: Option<(Option<SocketAddr>, SocketAddr)>,
     /// The peer the packet is tunneled through and our role in the flow.
     peer: Option<(ClientOrGatewayId, Role)>,
     resource: Option<ResourceId>,
@@ -849,7 +850,7 @@ pub fn record_translated_packet(packet: &IpPacket) {
 /// `src` is unknown for relayed sends and omitted from the flow's outer tuple.
 pub fn record_transmit(src: Option<SocketAddr>, dst: SocketAddr) {
     update_current_flow(|data| {
-        data.outer_tx = Some(FlowContext::new(src, dst));
+        data.outer_tx = Some((src, dst));
     });
 }
 
@@ -939,8 +940,9 @@ pub struct Record {
     pub inner_dst_port: u16,
     pub domain: Option<DomainName>,
 
-    /// The outer (transport) tuples the flow has used, appended on every change,
-    /// so a tuple the flow returned to appears again.
+    /// The outer (transport) tuples the flow has used, appended on every change
+    /// with the time each was selected, so a tuple the flow returned to
+    /// appears again.
     pub outers: Vec<FlowContext>,
 
     pub flow_start: DateTime<Utc>,
@@ -1180,8 +1182,9 @@ struct TcpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
     stats: FlowStats,
-    /// The outer (transport) tuples the flow has used, appended on every change,
-    /// so a tuple the flow returned to appears again.
+    /// The outer (transport) tuples the flow has used, appended on every change
+    /// with the time each was selected, so a tuple the flow returned to
+    /// appears again.
     contexts: SmallVec<[FlowContext; 4]>,
 
     domain: Option<DomainName>,
@@ -1200,8 +1203,9 @@ struct UdpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
     stats: FlowStats,
-    /// The outer (transport) tuples the flow has used, appended on every change,
-    /// so a tuple the flow returned to appears again.
+    /// The outer (transport) tuples the flow has used, appended on every change
+    /// with the time each was selected, so a tuple the flow returned to
+    /// appears again.
     contexts: SmallVec<[FlowContext; 4]>,
 
     domain: Option<DomainName>,
@@ -1236,10 +1240,13 @@ impl FlowStats {
     }
 }
 
-/// The outer (transport) 4-tuple a flow is tunneled over.
+/// The outer (transport) 4-tuple a flow is tunneled over and the time the flow
+/// selected it.
 ///
 /// The source is unknown for relayed sends; it is `None` there and omitted
-/// from the serialised tuple.
+/// from the serialised tuple. `path_selected_at` is the time of the packet
+/// that revealed the tuple: the flow's first packet for the initial entry of
+/// [`Record::outers`], the first packet after a change for every later one.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize)]
 pub struct FlowContext {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1248,12 +1255,17 @@ pub struct FlowContext {
     pub src_port: Option<u16>,
     pub dst_ip: IpAddr,
     pub dst_port: u16,
+    pub path_selected_at: DateTime<Utc>,
 }
 
 impl FlowContext {
     /// Builds a context from the outer addresses as seen by the initiator: the
     /// initiator side is the source, the responder side the destination.
-    pub fn new(initiator: impl Into<Option<SocketAddr>>, responder: SocketAddr) -> Self {
+    pub fn new(
+        initiator: impl Into<Option<SocketAddr>>,
+        responder: SocketAddr,
+        path_selected_at: DateTime<Utc>,
+    ) -> Self {
         let initiator = initiator.into();
 
         Self {
@@ -1261,7 +1273,23 @@ impl FlowContext {
             src_port: initiator.map(|initiator| initiator.port()),
             dst_ip: responder.ip(),
             dst_port: responder.port(),
+            path_selected_at,
         }
+    }
+
+    /// Whether `other` names the same outer tuple, regardless of when each was
+    /// selected.
+    fn same_tuple(&self, other: &Self) -> bool {
+        let Self {
+            src_ip,
+            src_port,
+            dst_ip,
+            dst_port,
+            path_selected_at: _,
+        } = self;
+
+        (*src_ip, *src_port, *dst_ip, *dst_port)
+            == (other.src_ip, other.src_port, other.dst_ip, other.dst_port)
     }
 }
 
@@ -1275,7 +1303,7 @@ fn push_context(key: &impl Debug, contexts: &mut SmallVec<[FlowContext; 4]>, con
         return;
     };
 
-    if current == context {
+    if current.same_tuple(&context) {
         return;
     }
 
@@ -1291,7 +1319,11 @@ fn push_context(key: &impl Debug, contexts: &mut SmallVec<[FlowContext; 4]>, con
 /// Whether recording `context` would grow the flow's outer tuples past
 /// [`MAX_CONTEXTS_PER_FLOW`].
 fn context_overflows(contexts: &SmallVec<[FlowContext; 4]>, context: FlowContext) -> bool {
-    contexts.last() != Some(&context) && contexts.len() >= MAX_CONTEXTS_PER_FLOW
+    let same_as_current = contexts
+        .last()
+        .is_some_and(|current| current.same_tuple(&context));
+
+    !same_as_current && contexts.len() >= MAX_CONTEXTS_PER_FLOW
 }
 
 #[derive(PartialEq, Eq)]
@@ -1356,10 +1388,12 @@ mod tests {
         let old = FlowContext::new(
             "10.0.0.1:8080".parse::<SocketAddr>().unwrap(),
             "192.168.0.1:443".parse().unwrap(),
+            DateTime::UNIX_EPOCH,
         );
         let new = FlowContext::new(
             "1.1.1.1:50000".parse::<SocketAddr>().unwrap(),
             "192.168.0.1:443".parse().unwrap(),
+            DateTime::UNIX_EPOCH,
         );
 
         let diff = FlowContextDiff::new(old, new);

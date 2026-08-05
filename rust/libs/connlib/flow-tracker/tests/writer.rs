@@ -32,8 +32,13 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
             FlowContext::new(
                 "198.51.100.1:51820".parse::<SocketAddr>().unwrap(),
                 "203.0.113.7:51820".parse().unwrap(),
+                chrono::Utc.timestamp_opt(1_700_000_000, 500).unwrap(),
             ),
-            FlowContext::new(None, "203.0.113.7:51820".parse().unwrap()),
+            FlowContext::new(
+                None,
+                "203.0.113.7:51820".parse().unwrap(),
+                chrono::Utc.timestamp_opt(1_700_000_030, 0).unwrap(),
+            ),
         ],
         flow_start: chrono::Utc.timestamp_opt(1_700_000_000, 500).unwrap(),
         close: Some(FlowClose {
@@ -60,8 +65,8 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
     assert_eq!(
         payload["outers"],
         serde_json::json!([
-            {"src_ip": "198.51.100.1", "src_port": 51820, "dst_ip": "203.0.113.7", "dst_port": 51820},
-            {"dst_ip": "203.0.113.7", "dst_port": 51820},
+            {"src_ip": "198.51.100.1", "src_port": 51820, "dst_ip": "203.0.113.7", "dst_port": 51820, "path_selected_at": "2023-11-14T22:13:20.000000500Z"},
+            {"dst_ip": "203.0.113.7", "dst_port": 51820, "path_selected_at": "2023-11-14T22:13:50Z"},
         ])
     );
     assert_eq!(payload["flow_start"], format!("{:?}", record.flow_start));
@@ -85,8 +90,8 @@ fn tracked_packets_spool_open_and_completed_reports() {
     let token = test_token(authz_id, "responder");
 
     let spool = SpoolObserver::new(authz_id);
-    let mut tracker = enabled_tracker::<(ClientId, ResourceId)>();
     let now = Instant::now();
+    let mut tracker = enabled_tracker::<(ClientId, ResourceId)>(now);
 
     let client = ClientId::from_u128(1);
     let resource = ResourceId::from_u128(2);
@@ -131,7 +136,7 @@ fn tracked_packets_spool_open_and_completed_reports() {
     assert_eq!(
         open["outers"],
         serde_json::json!([
-            {"src_ip": "198.51.100.1", "src_port": 45000, "dst_ip": "203.0.113.1", "dst_port": 51820}
+            {"src_ip": "198.51.100.1", "src_port": 45000, "dst_ip": "203.0.113.1", "dst_port": 51820, "path_selected_at": "2023-11-14T22:13:20Z"}
         ])
     );
     assert!(open.get("flow_end").is_none());
@@ -148,8 +153,8 @@ fn tracked_packets_spool_open_and_completed_reports() {
 fn syn_retransmit_updates_flow_instead_of_splitting() {
     let authz_id = "33333333-3333-3333-3333-333333333333";
     let spool = SpoolObserver::new(authz_id);
-    let mut tracker = enabled_tracker();
     let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
         drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
@@ -174,8 +179,8 @@ fn syn_retransmit_updates_flow_instead_of_splitting() {
 fn syn_retransmit_after_syn_ack_updates_flow() {
     let authz_id = "44444444-4444-4444-4444-444444444444";
     let spool = SpoolObserver::new(authz_id);
-    let mut tracker = enabled_tracker();
     let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
         drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
@@ -205,8 +210,8 @@ fn syn_retransmit_after_syn_ack_updates_flow() {
 fn syn_after_established_connection_splits_flow() {
     let authz_id = "88888888-8888-8888-8888-888888888888";
     let spool = SpoolObserver::new(authz_id);
-    let mut tracker = enabled_tracker();
     let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
         drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
@@ -239,11 +244,47 @@ fn syn_after_established_connection_splits_flow() {
 }
 
 #[test]
+fn context_change_stamps_the_path_selection_time() {
+    let authz_id = "99999999-9999-9999-9999-999999999999";
+    let spool = SpoolObserver::new(authz_id);
+    let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
+
+    spool.observe(|| {
+        drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
+        // A packet on the unchanged path keeps the original stamp.
+        drive_tx(
+            &mut tracker,
+            &tcp_packet(ack(), &[0; 10]),
+            authz_id,
+            t0 + Duration::from_secs(5),
+        );
+        drive_tx_from(
+            &mut tracker,
+            "203.0.113.7:52000",
+            &tcp_packet(ack(), &[0; 10]),
+            authz_id,
+            t0 + Duration::from_secs(9),
+        );
+        tracker.close_all(t0 + Duration::from_secs(10));
+    });
+
+    let [flow]: [serde_json::Value; 1] = spool.completed_flows().try_into().unwrap();
+    assert_eq!(
+        flow["outers"],
+        serde_json::json!([
+            {"src_ip": "203.0.113.7", "src_port": 51820, "dst_ip": "198.51.100.1", "dst_port": 51820, "path_selected_at": "2023-11-14T22:13:20Z"},
+            {"src_ip": "203.0.113.7", "src_port": 52000, "dst_ip": "198.51.100.1", "dst_port": 51820, "path_selected_at": "2023-11-14T22:13:29Z"},
+        ])
+    );
+}
+
+#[test]
 fn context_change_past_the_cap_splits_flow() {
     let authz_id = "77777777-7777-7777-7777-777777777777";
     let spool = SpoolObserver::new(authz_id);
-    let mut tracker = enabled_tracker();
     let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
         // The 17th distinct tuple does not fit the cap of 16 and splits the flow.
@@ -270,8 +311,8 @@ fn context_change_past_the_cap_splits_flow() {
 fn bare_ack_does_not_create_flow() {
     let authz_id = "55555555-5555-5555-5555-555555555555";
     let spool = SpoolObserver::new(authz_id);
-    let mut tracker = enabled_tracker();
     let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
         drive_tx(&mut tracker, &tcp_packet(ack(), &[]), authz_id, t0);
@@ -285,8 +326,8 @@ fn bare_ack_does_not_create_flow() {
 fn data_packet_creates_flow_without_syn() {
     let authz_id = "66666666-6666-6666-6666-666666666666";
     let spool = SpoolObserver::new(authz_id);
-    let mut tracker = enabled_tracker();
     let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
         drive_tx(&mut tracker, &tcp_packet(ack(), &[0; 100]), authz_id, t0);
@@ -296,8 +337,9 @@ fn data_packet_creates_flow_without_syn() {
     assert_eq!(packet_counts(&spool.completed_flows()), vec![(1, 0)]);
 }
 
-fn enabled_tracker<S>() -> Tracker<S> {
-    let mut tracker = Tracker::new(Instant::now(), Duration::from_secs(1_700_000_000));
+/// A tracker whose UTC clock reads exactly 1_700_000_000 at `now`.
+fn enabled_tracker<S>(now: Instant) -> Tracker<S> {
+    let mut tracker = Tracker::new(now, Duration::from_secs(1_700_000_000));
     tracker.set_enabled(true);
 
     tracker
