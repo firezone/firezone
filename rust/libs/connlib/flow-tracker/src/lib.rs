@@ -170,7 +170,11 @@ where
     /// Dropping the returned guard inserts the gathered flow data.
     pub fn begin_tun_packet(&mut self, packet: &IpPacket, now: Instant) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
-            set_current_flow(FlowData::new(Entry::Tun, Some(InnerFlow::from(packet))));
+            set_current_flow(FlowData::new(
+                Entry::Tun,
+                Some(InnerFlow::from(packet)),
+                self.now_utc(now),
+            ));
         }
 
         CurrentFlowGuard { tracker: self, now }
@@ -186,7 +190,11 @@ where
         now: Instant,
     ) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
-            set_current_flow(FlowData::new(Entry::Network { local, remote }, None));
+            set_current_flow(FlowData::new(
+                Entry::Network { local, remote },
+                None,
+                self.now_utc(now),
+            ));
         }
 
         CurrentFlowGuard { tracker: self, now }
@@ -195,6 +203,7 @@ where
     fn insert_flow(&mut self, data: FlowData, now: Instant) {
         let FlowData {
             entry,
+            now_utc,
             inner:
                 Some(InnerFlow {
                     src_ip,
@@ -232,7 +241,7 @@ where
             // network (packets buffered during connection setup are recorded by
             // the responder once they arrive).
             (Entry::Tun, Role::Initiator) => {
-                let Some((src, dst)) = outer_tx else {
+                let Some(context) = outer_tx else {
                     tracing::trace!("Not recording flow for packet that was never sent");
 
                     return;
@@ -250,7 +259,7 @@ where
                 self.record_tx(
                     TxPacket {
                         scope,
-                        context: FlowContext::new(src, dst, self.now_utc(now)),
+                        context,
                         src_ip,
                         dst_ip,
                         src_proto,
@@ -280,7 +289,7 @@ where
                 self.record_tx(
                     TxPacket {
                         scope,
-                        context: FlowContext::new(remote, local, self.now_utc(now)),
+                        context: FlowContext::new(remote, local, now_utc),
                         src_ip,
                         dst_ip,
                         src_proto,
@@ -725,11 +734,13 @@ enum Entry {
 /// role; [`Tracker::insert_flow`] interprets them (see the module docs).
 struct FlowData {
     entry: Entry,
+    /// The tracker's UTC clock reading for this packet.
+    now_utc: DateTime<Utc>,
     /// The inner (application) packet's flow fields.
     inner: Option<InnerFlow>,
-    /// The outer (transport) endpoints a TUN-entry packet was encapsulated to,
-    /// as a (src, dst) pair. Absence means the packet was never sent.
-    outer_tx: Option<(Option<SocketAddr>, SocketAddr)>,
+    /// The outer (transport) 4-tuple a TUN-entry packet was encapsulated to,
+    /// in transmit direction. Absence means the packet was never sent.
+    outer_tx: Option<FlowContext>,
     /// The peer the packet is tunneled through and our role in the flow.
     peer: Option<(ClientOrGatewayId, Role)>,
     resource: Option<ResourceId>,
@@ -746,6 +757,7 @@ impl Debug for FlowData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FlowData")
             .field("entry", &self.entry)
+            .field("now_utc", &self.now_utc)
             .field("inner", &self.inner)
             .field("outer_tx", &self.outer_tx)
             .field("peer", &self.peer)
@@ -761,9 +773,10 @@ impl Debug for FlowData {
 }
 
 impl FlowData {
-    fn new(entry: Entry, inner: Option<InnerFlow>) -> Self {
+    fn new(entry: Entry, inner: Option<InnerFlow>, now_utc: DateTime<Utc>) -> Self {
         Self {
             entry,
+            now_utc,
             inner,
             outer_tx: None,
             peer: None,
@@ -849,7 +862,7 @@ pub fn record_translated_packet(packet: &IpPacket) {
 /// `src` is unknown for relayed sends and omitted from the flow's outer tuple.
 pub fn record_transmit(src: Option<SocketAddr>, dst: SocketAddr) {
     update_current_flow(|data| {
-        data.outer_tx = Some((src, dst));
+        data.outer_tx = Some(FlowContext::new(src, dst, data.now_utc));
     });
 }
 
