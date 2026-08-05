@@ -12,7 +12,7 @@ use super::dns_records::DnsRecords;
 
 pub struct TcpDnsServerResource {
     socket: SocketAddr,
-    server: Option<dns_over_tcp::Server>,
+    server: dns_over_tcp::Server,
 }
 
 #[derive(Debug, Default)]
@@ -25,7 +25,7 @@ impl TcpDnsServerResource {
     pub fn new(socket: SocketAddr, now: Instant) -> Self {
         Self {
             socket,
-            server: Some(Self::new_server(socket, now)),
+            server: Self::new_server(socket, now),
         }
     }
 
@@ -37,46 +37,27 @@ impl TcpDnsServerResource {
         server
     }
 
-    pub fn handle_input(&mut self, packet: IpPacket, now: Instant) {
-        if self.server.is_none() {
-            let is_syn = packet.as_tcp().is_some_and(|tcp| tcp.syn() && !tcp.ack());
-            if !is_syn {
-                tracing::debug!(?packet, "Ignoring packet for reset TCP DNS server");
-                return;
-            }
-
-            self.server = Some(Self::new_server(self.socket, now));
-        }
-
-        self.server
-            .as_mut()
-            .expect("TCP DNS server should be active after initialization")
-            .handle_inbound(packet);
+    pub fn handle_input(&mut self, packet: IpPacket) {
+        self.server.handle_inbound(packet);
     }
 
     pub fn handle_timeout(&mut self, global_dns_records: &DnsRecords, now: Instant) {
-        let Some(server) = self.server.as_mut() else {
-            return;
-        };
-
-        server.handle_timeout(now);
-        while let Some(query) = server.poll_queries() {
+        self.server.handle_timeout(now);
+        while let Some(query) = self.server.poll_queries() {
             let response = handle_dns_query(&query.message, global_dns_records, now);
 
-            server
+            self.server
                 .send_message(query.local, query.remote, response)
                 .unwrap();
         }
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
-        self.server
-            .as_mut()
-            .and_then(dns_over_tcp::Server::poll_outbound)
+        self.server.poll_outbound()
     }
 
-    pub(crate) fn reset(&mut self) {
-        self.server = None;
+    pub(crate) fn reset(&mut self, now: Instant) {
+        self.server = Self::new_server(self.socket, now);
     }
 }
 

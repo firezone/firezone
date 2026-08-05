@@ -702,11 +702,13 @@ impl TunnelTest {
     }
 
     pub fn teardown(state: &mut TunnelTest) {
+        let now = state.flux_capacitor.now_instant();
+
         for client in state.clients.values_mut() {
             client.exec_mut(|c| c.clear_packets());
         }
         for gateway in state.gateways.values_mut() {
-            gateway.exec_mut(|g| g.clear_packets());
+            gateway.exec_mut(|g| g.clear_packets(now));
         }
     }
 }

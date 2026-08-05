@@ -20,7 +20,7 @@ pub struct Client {
 
 pub struct Server {
     listen_address: SocketAddr,
-    inner: Option<ServerState>,
+    state: ServerState,
 }
 
 struct ServerState {
@@ -172,48 +172,30 @@ impl Server {
     pub fn new(listen_address: SocketAddr, now: Instant) -> Self {
         Self {
             listen_address,
-            inner: Some(ServerState::new(listen_address, now)),
+            state: ServerState::new(listen_address, now),
         }
     }
 
-    pub fn handle_inbound(&mut self, packet: IpPacket, now: Instant) {
-        if self.inner.is_none() {
-            let is_syn = packet.as_tcp().is_some_and(|tcp| tcp.syn() && !tcp.ack());
-            if !is_syn {
-                tracing::debug!(?packet, "Ignoring packet for reset TCP server");
-                return;
-            }
-
-            self.inner = Some(ServerState::new(self.listen_address, now));
-        }
-
-        self.inner
-            .as_mut()
-            .expect("TCP server should be active after initialization")
-            .device
-            .receive(packet);
+    pub fn handle_inbound(&mut self, packet: IpPacket) {
+        self.state.device.receive(packet);
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
-        let Some(server) = self.inner.as_mut() else {
-            return;
-        };
+        self.state.last_now = now;
 
-        server.last_now = now;
-
-        let _result = server.interface.poll(
-            l3_tcp::now(server.created_at, now),
-            &mut server.device,
-            &mut server.sockets,
+        let _result = self.state.interface.poll(
+            l3_tcp::now(self.state.created_at, now),
+            &mut self.state.device,
+            &mut self.state.sockets,
         );
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
-        self.inner.as_mut()?.device.next_send()
+        self.state.device.next_send()
     }
 
-    pub fn reset(&mut self) {
-        self.inner = None;
+    pub fn reset(&mut self, now: Instant) {
+        self.state = ServerState::new(self.listen_address, now);
     }
 }
 
@@ -242,7 +224,10 @@ impl ServerState {
 mod tests {
     use super::*;
     use ip_packet::make::{TcpFlags, tcp_packet};
-    use std::net::{IpAddr, Ipv4Addr};
+    use std::{
+        net::{IpAddr, Ipv4Addr},
+        time::Duration,
+    };
 
     #[test]
     fn reset_consumes_late_packets_for_closed_connections() {
@@ -274,32 +259,14 @@ mod tests {
     }
 
     #[test]
-    fn reset_server_restarts_on_new_syn() {
+    fn reset_recreates_listener() {
         let now = Instant::now();
+        let later = now + Duration::from_secs(1);
         let local = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)), 2689);
         let remote = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 34542);
         let mut server = Server::new(local, now);
 
-        server.reset();
-        server.handle_inbound(
-            tcp_packet(
-                remote.ip(),
-                local.ip(),
-                remote.port(),
-                local.port(),
-                TcpFlags {
-                    ack: true,
-                    ..Default::default()
-                },
-                &[1],
-            )
-            .unwrap(),
-            now,
-        );
-        server.handle_timeout(now);
-
-        assert!(server.poll_outbound().is_none());
-
+        server.reset(later);
         server.handle_inbound(
             tcp_packet(
                 remote.ip(),
@@ -313,9 +280,8 @@ mod tests {
                 &[],
             )
             .unwrap(),
-            now,
         );
-        server.handle_timeout(now);
+        server.handle_timeout(later);
 
         assert!(server.poll_outbound().is_some());
     }

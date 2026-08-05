@@ -253,13 +253,13 @@ impl SimGateway {
         if let Some(tcp) = packet.as_tcp() {
             let socket = SocketAddr::new(dst_ip, tcp.destination_port());
             if let Some(server) = self.tcp_resources.get_mut(&socket) {
-                server.handle_inbound(packet, now);
+                server.handle_inbound(packet);
                 return None;
             }
 
             // NOTE: we can make this assumption because port 53 is excluded from non-dns query packets
             if let Some(server) = self.tcp_dns_server_resources.get_mut(&socket) {
-                server.handle_input(packet, now);
+                server.handle_input(packet);
                 return None;
             }
         }
@@ -297,17 +297,17 @@ impl SimGateway {
         }
     }
 
-    pub(crate) fn clear_packets(&mut self) {
+    pub(crate) fn clear_packets(&mut self, now: Instant) {
         self.received_icmp_requests.clear();
         self.received_udp_requests.clear();
         for resource in self.udp_dns_server_resources.values_mut() {
             resource.clear();
         }
         for resource in self.tcp_dns_server_resources.values_mut() {
-            resource.reset();
+            resource.reset(now);
         }
         for resource in self.tcp_resources.values_mut() {
-            resource.reset();
+            resource.reset(now);
         }
     }
 
