@@ -9,7 +9,7 @@ use super::{
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
-    transition::{DPort, DnsTransport, Identifier, IpFamily, MalformedDnsQuery, SPort, Seq},
+    transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceList};
@@ -241,8 +241,7 @@ impl SimClient {
 
     pub(crate) fn send_malformed_dns_query(
         &mut self,
-        kind: MalformedDnsQuery,
-        query_id: u16,
+        payload: &[u8],
         upstream: dns::Upstream,
         local_port: u16,
         now: Instant,
@@ -252,15 +251,14 @@ impl SimClient {
             return None;
         };
 
-        tracing::debug!(%sentinel, ?kind, "Sending malformed DNS query");
+        tracing::debug!(%sentinel, len = %payload.len(), "Sending malformed DNS query");
 
         let src = self
             .sut
             .tunnel_ip_for(sentinel)
             .expect("tunnel should be initialised");
 
-        let payload = malformed_dns_query(kind, query_id);
-        let packet = ip_packet::make::udp_packet(src, sentinel, local_port, 53, &payload).unwrap();
+        let packet = ip_packet::make::udp_packet(src, sentinel, local_port, 53, payload).unwrap();
 
         // Deliberately not tracked in `sent_udp_dns_queries`: the client must drop
         // the query, and any response shows up as an unexpected UDP DNS reply.
@@ -686,36 +684,4 @@ impl ExecMutScope for SimClient {
     fn enter(&self) -> Self::Guard {
         self.malicious_behaviour.guard()
     }
-}
-
-/// Serializes a structurally invalid DNS query of the given kind.
-///
-/// Starts from a valid single-question query and patches the wire format;
-/// the header is id (2 bytes), flags (2 bytes) and four section counts
-/// (2 bytes each), followed by the question section.
-fn malformed_dns_query(kind: MalformedDnsQuery, query_id: u16) -> Vec<u8> {
-    let domain = DomainName::vec_from_str("malformed.example.com").unwrap();
-    let mut bytes = Query::new(domain, RecordType::A)
-        .with_id(query_id)
-        .into_bytes();
-
-    match kind {
-        MalformedDnsQuery::QrBitSet => {
-            bytes[2] |= 0b1000_0000; // The QR bit is the top bit of the flags.
-        }
-        MalformedDnsQuery::NoQuestion => {
-            bytes.truncate(12); // Just the header ...
-            bytes[5] = 0; // ... with QDCOUNT set to match.
-        }
-        MalformedDnsQuery::TwoQuestions => {
-            let question = bytes[12..].to_vec();
-            bytes.extend_from_slice(&question); // Repeat the question ...
-            bytes[5] = 2; // ... with QDCOUNT set to match.
-        }
-        MalformedDnsQuery::TruncatedHeader => {
-            bytes.truncate(11); // One byte short of a full header.
-        }
-    }
-
-    bytes
 }

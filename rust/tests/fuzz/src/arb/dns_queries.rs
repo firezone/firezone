@@ -10,7 +10,7 @@ use tunnel_proto::dns;
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
 use crate::reference::ReferenceState;
-use crate::transition::{DnsQuery, DnsTransport, IpFamily, MalformedDnsQuery, Transition};
+use crate::transition::{DnsQuery, DnsTransport, IpFamily, Transition};
 
 #[derive(Clone)]
 pub(super) struct DnsQueryTarget {
@@ -178,18 +178,22 @@ pub(super) fn generate(
     }
 }
 
+/// Sends arbitrary bytes to a stub resolver instead of a well-formed query.
+///
+/// Which byte patterns reach which of the structural checks in `dns_types::Query::parse`
+/// is left to the fuzzer; enumerating them here would only cover the ways we thought of.
 pub(super) fn generate_malformed(g: &mut Generator, target: DnsQueryTarget) -> Transition {
-    let kinds = [
-        MalformedDnsQuery::QrBitSet,
-        MalformedDnsQuery::NoQuestion,
-        MalformedDnsQuery::TwoQuestions,
-        MalformedDnsQuery::TruncatedHeader,
-    ];
+    let payload = g.bytes(0, 64);
+
+    // Bytes that happen to parse are a valid query like any other, which the client
+    // answers. Modelling that is `SendDnsQuery`'s job, so leave those to it.
+    if dns_types::Query::parse(&payload).is_ok() {
+        return Transition::Idle;
+    }
 
     Transition::SendMalformedDnsQuery {
         client_id: target.client_id,
-        kind: kinds[g.choose_index(kinds.len())],
-        query_id: arb_dns_query_id(g),
+        payload,
         dns_server: target.dns_server,
         local_port: g.u16(),
     }

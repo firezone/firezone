@@ -418,14 +418,13 @@ impl TunnelTest {
             }
             Transition::SendMalformedDnsQuery {
                 client_id,
-                kind,
-                query_id,
+                payload,
                 dns_server,
                 local_port,
             } => {
                 let client = state.clients.get_mut(&client_id).unwrap();
                 let transmit = client.exec_mut(|sim| {
-                    sim.send_malformed_dns_query(kind, query_id, dns_server, local_port, now)
+                    sim.send_malformed_dns_query(&payload, dns_server, local_port, now)
                 });
 
                 buffered_transmits.push_from(transmit, client, now);
