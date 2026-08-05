@@ -11,9 +11,6 @@ defmodule Portal.FirezoneSupport.AuthProvider do
 
   @access_window_secs 86_400
 
-  @portal_session_lifetime_secs 28_800
-  @client_session_lifetime_secs 604_800
-
   schema "firezone_support_auth_providers" do
     # Allows setting the ID manually in changesets
     field :id, :binary_id, primary_key: true
@@ -41,15 +38,5 @@ defmodule Portal.FirezoneSupport.AuthProvider do
     )
   end
 
-  def cap_expires_at(%__MODULE__{expires_at: cap}, %DateTime{} = proposed) do
-    if DateTime.after?(proposed, cap) do
-      cap
-    else
-      proposed
-    end
-  end
-
   def access_window_secs, do: @access_window_secs
-  def portal_session_lifetime_secs, do: @portal_session_lifetime_secs
-  def client_session_lifetime_secs, do: @client_session_lifetime_secs
 end

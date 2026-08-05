@@ -290,7 +290,7 @@ defmodule PortalWeb.SupportControllerTest do
       assert session.auth_provider_id
     end
 
-    test "caps the portal session at the provider expiry", %{
+    test "portal sessions expire with the provider window", %{
       conn: conn,
       support_admin: support_admin,
       authenticator: authenticator

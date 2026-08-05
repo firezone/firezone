@@ -218,17 +218,7 @@ defmodule PortalWeb.SupportController do
     headers = conn.req_headers
     context = Portal.Authentication.Context.build(remote_ip, user_agent, headers, type)
 
-    session_lifetime_secs =
-      case type do
-        :portal -> Portal.FirezoneSupport.AuthProvider.portal_session_lifetime_secs()
-        _client -> Portal.FirezoneSupport.AuthProvider.client_session_lifetime_secs()
-      end
-
-    expires_at =
-      Portal.FirezoneSupport.AuthProvider.cap_expires_at(
-        provider,
-        DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
-      )
+    expires_at = provider.expires_at
 
     case type do
       :portal ->

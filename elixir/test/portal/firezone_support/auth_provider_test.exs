@@ -63,22 +63,4 @@ defmodule Portal.FirezoneSupport.AuthProviderTest do
     end
   end
 
-  describe "cap_expires_at/2" do
-    test "returns the proposed datetime when it is before the provider expiry" do
-      provider = %FirezoneSupport.AuthProvider{
-        expires_at: DateTime.add(DateTime.utc_now(), 86_400, :second)
-      }
-
-      proposed = DateTime.add(DateTime.utc_now(), 3_600, :second)
-      assert FirezoneSupport.AuthProvider.cap_expires_at(provider, proposed) == proposed
-    end
-
-    test "caps the proposed datetime at the provider expiry" do
-      expires_at = DateTime.add(DateTime.utc_now(), 600, :second)
-      provider = %FirezoneSupport.AuthProvider{expires_at: expires_at}
-
-      proposed = DateTime.add(DateTime.utc_now(), 28_800, :second)
-      assert FirezoneSupport.AuthProvider.cap_expires_at(provider, proposed) == expires_at
-    end
-  end
 end
