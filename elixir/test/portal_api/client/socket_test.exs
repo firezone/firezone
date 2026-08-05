@@ -856,7 +856,68 @@ defmodule PortalAPI.Client.SocketTest do
       assert log =~ "split across multiple devices"
     end
 
-    test "refuses to adopt identity when a non-null identifier disagrees", %{
+    test "a re-enrolled device keeps its row and takes the new MDM device id", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SN-REENROLL",
+          last_attested_mdm_device_id: "mdm-old",
+          firezone_id: "fz-old"
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-old"})
+
+      proof = %{
+        identifiers: %{
+          last_attested_device_serial: "SN-REENROLL",
+          last_attested_mdm_device_id: "mdm-new"
+        },
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "bb"
+      }
+
+      assert {:ok, client} = Socket.Database.resolve_client(changeset, %{}, proof, subject)
+      assert client.id == existing.id
+      assert client.last_attested_mdm_device_id == "mdm-new"
+      assert client.last_attested_at
+    end
+
+    test "a device with only an MDM id takes the new one on re-enrollment", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      # Android personally-owned work profiles cannot report hardware ids, so
+      # the MDM device id is the only identifier the certificate carries.
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_mdm_device_id: "mdm-only-old",
+          firezone_id: "fz-android"
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-android"})
+
+      proof = %{
+        identifiers: %{last_attested_mdm_device_id: "mdm-only-new"},
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "bb"
+      }
+
+      assert {:ok, client} = Socket.Database.resolve_client(changeset, %{}, proof, subject)
+      assert client.id == existing.id
+      assert client.last_attested_mdm_device_id == "mdm-only-new"
+    end
+
+    test "refuses to adopt identity when a hardware identifier disagrees", %{
       account: account,
       actor: actor,
       subject: subject
