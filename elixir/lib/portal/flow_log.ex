@@ -13,7 +13,8 @@ defmodule Portal.FlowLog do
             src_ip: String.t() | nil,
             src_port: :inet.port_number() | nil,
             dst_ip: String.t(),
-            dst_port: :inet.port_number()
+            dst_port: :inet.port_number(),
+            path_activated_at: DateTime.t() | nil
           }
 
     embedded_schema do
@@ -21,11 +22,12 @@ defmodule Portal.FlowLog do
       field :src_port, :integer
       field :dst_ip, :string
       field :dst_port, :integer
+      field :path_activated_at, :utc_datetime_usec
     end
 
     def changeset(outer, attrs) do
       outer
-      |> cast(attrs, [:src_ip, :src_port, :dst_ip, :dst_port])
+      |> cast(attrs, [:src_ip, :src_port, :dst_ip, :dst_port, :path_activated_at])
       |> validate_required([:dst_ip, :dst_port])
       |> validate_source_endpoint()
       |> validate_ip(:src_ip)
@@ -342,7 +344,8 @@ defmodule Portal.FlowLog do
         src_ip: outer.src_ip,
         src_port: outer.src_port,
         dst_ip: outer.dst_ip,
-        dst_port: outer.dst_port
+        dst_port: outer.dst_port,
+        path_activated_at: outer.path_activated_at
       }
     end)
   end

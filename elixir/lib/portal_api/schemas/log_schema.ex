@@ -330,7 +330,13 @@ defmodule PortalAPI.Schemas.Log do
                 nullable: true
               },
               dst_ip: %Schema{type: :string},
-              dst_port: %Schema{type: :integer}
+              dst_port: %Schema{type: :integer},
+              path_activated_at: %Schema{
+                type: :string,
+                format: :"date-time",
+                nullable: true,
+                description: "RFC 3339 timestamp of when the path was selected."
+              }
             },
             required: [:dst_ip, :dst_port]
           }

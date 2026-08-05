@@ -286,6 +286,19 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       assert html =~ complete.log_id
       refute html =~ incomplete.log_id
 
+      html = toggle_show_incomplete(lv, "true")
+
+      assert has_element?(lv, "#flow_logs-show_incomplete-toggle[checked]")
+      assert html =~ complete.log_id
+      assert html =~ incomplete.log_id
+      assert has_element?(lv, "#flow-log-#{incomplete.log_id}", "Incomplete")
+
+      html = toggle_show_incomplete(lv, "false")
+
+      assert has_element?(lv, "#flow_logs-show_incomplete-toggle:not([checked])")
+      assert html =~ complete.log_id
+      refute html =~ incomplete.log_id
+
       {:ok, lv, html} =
         live(
           conn,
@@ -295,7 +308,6 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       assert has_element?(lv, "#flow_logs-show_incomplete-toggle[checked]")
       assert html =~ complete.log_id
       assert html =~ incomplete.log_id
-      assert has_element?(lv, "#flow-log-#{incomplete.log_id}", "Incomplete")
     end
 
     test "shows clock skew in the duration cell", %{
@@ -349,7 +361,8 @@ defmodule PortalWeb.Logs.FlowLogsTest do
               src_ip: "2001:db8::10",
               src_port: 41_003,
               dst_ip: "2001:db8::20",
-              dst_port: 51_820
+              dst_port: 51_820,
+              path_activated_at: ~U[2026-07-30 10:00:30.000000Z]
             }
           ]
         )
@@ -386,7 +399,26 @@ defmodule PortalWeb.Logs.FlowLogsTest do
                "[2001:db8::20]:51820"
              ]
 
-      assert has_element?(lv, "#flow-log-card-paths-#{log.log_id}", "3 observed")
+      assert has_element?(lv, "#path-activated-3-#{log.log_id}", "7/30/26, 10:00 AM")
+      refute has_element?(lv, "#path-activated-1-#{log.log_id}")
+    end
+
+    test "shows the full timestamp in a popover", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      log = flow_log_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/logs/flow_logs/#{log.log_id}")
+
+      panel_html = lv |> element("#flow-log-panel") |> render()
+
+      assert has_element?(lv, "#panel-start-#{log.log_id}")
+      assert panel_html =~ DateTime.to_iso8601(log.flow_start)
     end
 
     test "explains when an open flow has no outer paths yet", %{
@@ -405,12 +437,6 @@ defmodule PortalWeb.Logs.FlowLogsTest do
                lv,
                "#flow-log-path-history-#{log.log_id}",
                "Paths are reported when the flow closes."
-             )
-
-      assert has_element?(
-               lv,
-               "#flow-log-card-paths-#{log.log_id}",
-               "Reported when the flow closes"
              )
     end
 
@@ -473,7 +499,7 @@ defmodule PortalWeb.Logs.FlowLogsTest do
              )
 
       assert html =~ "Flow logs are paired on a best-effort basis."
-      assert html =~ "Initiator and responder logs"
+      assert html =~ "Matching log"
       assert html =~ "Connection details"
       assert panel_html =~ "Flow log JSON"
       assert has_element?(lv, "#flow-log-json .json-key")
@@ -514,7 +540,8 @@ defmodule PortalWeb.Logs.FlowLogsTest do
                  "src_ip" => "203.0.113.44",
                  "src_port" => 62_000,
                  "dst_ip" => "189.172.73.153",
-                 "dst_port" => 51_820
+                 "dst_port" => 51_820,
+                 "path_activated_at" => nil
                }
              ]
       refute Map.has_key?(api_json, "data")
@@ -528,27 +555,29 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       assert panel_html =~ initiator.log_id
       assert panel_html =~ responder.log_id
       assert panel_html =~ "12.5 KB"
-      assert panel_html =~ "12.0 KB"
       assert has_element?(
                lv,
-               "#flow-log-card-#{initiator.log_id} [data-wireguard-endpoint='initiator']",
+               "#flow-log-path-history-#{initiator.log_id} [data-wireguard-endpoint='initiator']",
                "203.0.113.44:62000"
              )
 
       assert has_element?(
                lv,
-               "#flow-log-card-#{initiator.log_id} [data-wireguard-endpoint='responder']",
+               "#flow-log-path-history-#{initiator.log_id} [data-wireguard-endpoint='responder']",
                "189.172.73.153:51820"
              )
 
-      assert has_element?(lv, "#flow-log-card-#{responder.log_id}[href*='#{responder.log_id}']")
+      assert has_element?(lv, "#flow-log-match-#{responder.log_id}[href*='#{responder.log_id}']")
+      refute has_element?(lv, "#flow-log-match-#{initiator.log_id}")
 
       lv
-      |> element("#flow-log-card-#{responder.log_id}")
+      |> element("#flow-log-match-#{responder.log_id}")
       |> render_click()
 
       assert_patch(lv, ~p"/#{account}/logs/flow_logs/#{responder.log_id}")
-      assert has_element?(lv, "#flow-log-card-#{responder.log_id}[aria-current=page]")
+      assert has_element?(lv, "#flow-log-path-history-#{responder.log_id}")
+      assert has_element?(lv, "#flow-log-match-#{initiator.log_id}")
+      refute has_element?(lv, "#flow-log-match-#{responder.log_id}")
     end
 
     test "does not match a non-overlapping reused tuple", %{
@@ -661,11 +690,12 @@ defmodule PortalWeb.Logs.FlowLogsTest do
 
       refute html =~ "No matching responder log"
       assert panel_html =~ other.log_id
+      assert has_element?(lv, "#flow-log-match-#{other.log_id}")
 
       assert has_element?(
                lv,
-               "#flow-log-card-#{other.log_id} [data-wireguard-endpoint='initiator']",
-               "198.51.100.130:41001"
+               "#flow-log-path-history-#{selected.log_id} [data-wireguard-endpoint='initiator']",
+               "192.168.1.86:52625"
              )
     end
 
@@ -762,5 +792,14 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       assert html =~ "No matching responder log"
       refute panel_html =~ other.log_id
     end
+  end
+
+  defp toggle_show_incomplete(lv, value) do
+    lv
+    |> element("#flow_logs-filters")
+    |> render_change(%{
+      "table_id" => "flow_logs",
+      "flow_logs" => %{"show_incomplete" => value}
+    })
   end
 end

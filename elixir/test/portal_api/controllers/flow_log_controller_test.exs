@@ -347,7 +347,8 @@ defmodule PortalAPI.FlowLogControllerTest do
               "src_ip" => "198.51.100.9",
               "src_port" => 42_000,
               "dst_ip" => "203.0.113.8",
-              "dst_port" => 443
+              "dst_port" => 443,
+              "path_activated_at" => "2026-03-20T10:03:15.000000Z"
             }
           ],
           "last_packet" => "2026-03-20T10:04:30.000000Z"
@@ -361,13 +362,23 @@ defmodule PortalAPI.FlowLogControllerTest do
       assert log.rx_packets == 7
       assert log.tx_packets == 9
       assert log.domain == "db.example.com"
-      assert Enum.map(log.outers, &Map.take(&1, [:src_ip, :src_port, :dst_ip, :dst_port])) == [
-               %{src_ip: nil, src_port: nil, dst_ip: "203.0.113.7", dst_port: 51_820},
+      assert Enum.map(
+               log.outers,
+               &Map.take(&1, [:src_ip, :src_port, :dst_ip, :dst_port, :path_activated_at])
+             ) == [
+               %{
+                 src_ip: nil,
+                 src_port: nil,
+                 dst_ip: "203.0.113.7",
+                 dst_port: 51_820,
+                 path_activated_at: nil
+               },
                %{
                  src_ip: "198.51.100.9",
                  src_port: 42_000,
                  dst_ip: "203.0.113.8",
-                 dst_port: 443
+                 dst_port: 443,
+                 path_activated_at: ~U[2026-03-20 10:03:15.000000Z]
                }
              ]
       assert log.last_packet == ~U[2026-03-20 10:04:30.000000Z]

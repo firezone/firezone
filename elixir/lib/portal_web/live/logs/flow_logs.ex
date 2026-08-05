@@ -228,32 +228,11 @@ defmodule PortalWeb.Logs.FlowLogs do
           :if={@selected_report}
           class="flex-1 min-w-0 overflow-y-auto p-5 space-y-5"
         >
-          <.match_notice
-            matching_logs={@selected_report.matching_logs}
-            selected_role={@selected_report.log.role}
-          />
-
           <section>
-            <div class="flex items-center justify-between gap-3 mb-2">
-              <.section_heading label="Initiator and responder logs" />
-              <span class="text-xs text-[var(--text-tertiary)]">
-                Directions are normalized to initiator → responder
-              </span>
-            </div>
-            <div class="grid grid-cols-1 2xl:grid-cols-2 gap-3">
-              <.report_card
-                :for={log <- comparison_logs(@selected_report)}
-                log={log}
-                selected?={log.log_id == @selected_report.log.log_id}
-                path={~p"/#{@account}/logs/flow_logs/#{log.log_id}?#{@query_params}"}
-                tz_mode={@tz_mode}
-                display_tz={@display_tz}
-              />
-            </div>
-          </section>
-
-          <section>
-            <.section_heading label="Connection details" />
+            <.section_heading
+              label="Connection details"
+              hint="Directions are normalized to initiator → responder"
+            />
             <div class="space-y-3">
               <div class="overflow-hidden rounded border border-[var(--border)] bg-[var(--surface)]">
                 <div class="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2">
@@ -303,9 +282,97 @@ defmodule PortalWeb.Logs.FlowLogs do
                 </div>
               </div>
 
+              <div class="overflow-hidden rounded border border-[var(--border)] bg-[var(--surface)]">
+                <div class="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2">
+                  <div class="flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]">
+                    <.icon name="ri-time-line" class="h-3.5 w-3.5 text-[var(--brand)]" />
+                    Timing and traffic
+                  </div>
+                  <.flow_state log={@selected_report.log} />
+                </div>
+                <div class="space-y-3 px-4 py-3">
+                  <dl class="grid grid-cols-3 gap-x-4 gap-y-2">
+                    <.detail_row label="Started">
+                      <.timestamp_cell
+                        id_prefix="panel-start"
+                        log_id={@selected_report.log.log_id}
+                        timestamp={@selected_report.log.flow_start}
+                        tz_mode={@tz_mode}
+                        display_tz={@display_tz}
+                      />
+                    </.detail_row>
+                    <.detail_row label="Ended">
+                      <.timestamp_cell
+                        :if={@selected_report.log.flow_end}
+                        id_prefix="panel-end"
+                        log_id={@selected_report.log.log_id}
+                        timestamp={@selected_report.log.flow_end}
+                        tz_mode={@tz_mode}
+                        display_tz={@display_tz}
+                      />
+                      <span
+                        :if={is_nil(@selected_report.log.flow_end)}
+                        class="text-xs text-[var(--text-tertiary)]"
+                      >
+                        Open
+                      </span>
+                    </.detail_row>
+                    <.detail_row label="Last packet">
+                      <.timestamp_cell
+                        :if={@selected_report.log.last_packet}
+                        id_prefix="panel-packet"
+                        log_id={@selected_report.log.log_id}
+                        timestamp={@selected_report.log.last_packet}
+                        tz_mode={@tz_mode}
+                        display_tz={@display_tz}
+                      />
+                      <span
+                        :if={is_nil(@selected_report.log.last_packet)}
+                        class="text-xs text-[var(--text-tertiary)]"
+                      >
+                        -
+                      </span>
+                    </.detail_row>
+                  </dl>
+
+                  <div class="grid grid-cols-2 gap-2">
+                    <.metric
+                      label="Initiator → responder"
+                      value={format_bytes(@selected_report.log.tx_bytes)}
+                      secondary={format_packets(@selected_report.log.tx_packets)}
+                    />
+                    <.metric
+                      label="Responder → initiator"
+                      value={format_bytes(@selected_report.log.rx_bytes)}
+                      secondary={format_packets(@selected_report.log.rx_packets)}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <.outer_path_history
                 id={"flow-log-path-history-#{@selected_report.log.log_id}"}
+                log_id={@selected_report.log.log_id}
                 outers={@selected_report.log.outers}
+                tz_mode={@tz_mode}
+                display_tz={@display_tz}
+              />
+            </div>
+          </section>
+
+          <section>
+            <.section_heading label={matching_heading(@selected_report.matching_logs)} />
+            <.match_notice
+              matching_logs={@selected_report.matching_logs}
+              selected_role={@selected_report.log.role}
+            />
+            <div :if={@selected_report.matching_logs != []} class="mt-2 space-y-2">
+              <.matching_log_card
+                :for={log <- @selected_report.matching_logs}
+                log={log}
+                path={~p"/#{@account}/logs/flow_logs/#{log.log_id}?#{@query_params}"}
+                tz_mode={@tz_mode}
+                display_tz={@display_tz}
               />
             </div>
           </section>
@@ -630,46 +697,32 @@ defmodule PortalWeb.Logs.FlowLogs do
   end
 
   attr :log, :any, required: true
-  attr :selected?, :boolean, required: true
   attr :path, :string, required: true
   attr :tz_mode, :string, required: true
   attr :display_tz, :string, required: true
 
-  defp report_card(assigns) do
+  defp matching_log_card(assigns) do
     ~H"""
     <.link
-      id={"flow-log-card-#{@log.log_id}"}
+      id={"flow-log-match-#{@log.log_id}"}
       patch={@path}
       data-role={@log.role}
-      aria-current={if(@selected?, do: "page")}
-      class={[
-        "block rounded border bg-[var(--surface)] overflow-hidden transition-colors",
-        if(@selected?,
-          do: "border-[var(--brand)]/50",
-          else: "border-[var(--border)] hover:border-[var(--brand)]/50"
-        )
-      ]}
+      class="block overflow-hidden rounded border border-[var(--border)] bg-[var(--surface)] transition-colors hover:border-[var(--brand)]/50"
     >
-      <div class="flex items-center justify-between gap-3 px-3 py-2 border-b border-[var(--border)] bg-[var(--surface-raised)]">
-        <div class="flex items-center gap-2 min-w-0">
+      <div class="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2">
+        <div class="flex min-w-0 items-center gap-2">
           <.role_badge role={@log.role} />
-          <span :if={@selected?} class="text-xs text-[var(--text-tertiary)]">
-            Selected log
-          </span>
-          <span
-            :if={not @selected?}
-            class="inline-flex items-center gap-1 text-xs text-[var(--brand)]"
-          >
-            View log <.icon name="ri-arrow-right-line" class="w-3 h-3" />
-          </span>
+          <.flow_state log={@log} />
         </div>
-        <.flow_state log={@log} />
+        <span class="inline-flex shrink-0 items-center gap-1 text-xs text-[var(--brand)]">
+          View log <.icon name="ri-arrow-right-line" class="h-3 w-3" />
+        </span>
       </div>
-      <div class="p-3 space-y-3">
-        <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
+      <div class="px-3 py-2.5">
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-2 xl:grid-cols-4">
           <.detail_row label="Started">
             <.timestamp_cell
-              id_prefix={"report-start-#{@log.role}"}
+              id_prefix="match-start"
               log_id={@log.log_id}
               timestamp={@log.flow_start}
               tz_mode={@tz_mode}
@@ -679,7 +732,7 @@ defmodule PortalWeb.Logs.FlowLogs do
           <.detail_row label="Ended">
             <.timestamp_cell
               :if={@log.flow_end}
-              id_prefix={"report-end-#{@log.role}"}
+              id_prefix="match-end"
               log_id={@log.log_id}
               timestamp={@log.flow_end}
               tz_mode={@tz_mode}
@@ -687,38 +740,25 @@ defmodule PortalWeb.Logs.FlowLogs do
             />
             <span :if={is_nil(@log.flow_end)} class="text-xs text-[var(--text-tertiary)]">Open</span>
           </.detail_row>
-          <.detail_row label="Last packet">
-            <.timestamp_cell
-              :if={@log.last_packet}
-              id_prefix={"report-packet-#{@log.role}"}
-              log_id={@log.log_id}
-              timestamp={@log.last_packet}
-              tz_mode={@tz_mode}
-              display_tz={@display_tz}
-            />
-            <span :if={is_nil(@log.last_packet)} class="text-xs text-[var(--text-tertiary)]">-</span>
+          <.detail_row label="Traffic">
+            <span class="font-mono text-xs tabular-nums text-[var(--text-secondary)]">
+              {format_bytes(total_bytes(@log))}
+            </span>
           </.detail_row>
           <.detail_row label="Log ID">
             <.identifier value={@log.log_id} />
           </.detail_row>
         </dl>
-
-        <div class="grid grid-cols-2 gap-2">
-          <.metric label="Initiator → responder" value={format_bytes(@log.tx_bytes)} secondary={format_packets(@log.tx_packets)} />
-          <.metric label="Responder → initiator" value={format_bytes(@log.rx_bytes)} secondary={format_packets(@log.rx_packets)} />
-        </div>
-
-        <.outer_path_summary
-          id={"flow-log-card-paths-#{@log.log_id}"}
-          outers={@log.outers}
-        />
       </div>
     </.link>
     """
   end
 
   attr :id, :string, required: true
+  attr :log_id, :string, required: true
   attr :outers, :list, required: true
+  attr :tz_mode, :string, required: true
+  attr :display_tz, :string, required: true
 
   defp outer_path_history(assigns) do
     assigns = assign(assigns, :path_count, length(assigns.outers))
@@ -771,8 +811,18 @@ defmodule PortalWeb.Logs.FlowLogs do
           </div>
 
           <div class="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5">
-            <div class="mb-2 text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">
-              {if(index == 1, do: "Initial path", else: "Path change")}
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <div class="text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">
+                {if(index == 1, do: "Initial path", else: "Path change")}
+              </div>
+              <.timestamp_cell
+                :if={outer.path_activated_at}
+                id_prefix={"path-activated-#{index}"}
+                log_id={@log_id}
+                timestamp={outer.path_activated_at}
+                tz_mode={@tz_mode}
+                display_tz={@display_tz}
+              />
             </div>
             <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
               <div class="min-w-0">
@@ -804,65 +854,6 @@ defmodule PortalWeb.Logs.FlowLogs do
               </div>
             </div>
           </div>
-        </li>
-      </ol>
-    </div>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :outers, :list, required: true
-
-  defp outer_path_summary(assigns) do
-    assigns = assign(assigns, :path_count, length(assigns.outers))
-
-    ~H"""
-    <div id={@id} class="border-t border-[var(--border)] pt-3">
-      <div class="mb-2 flex items-center justify-between gap-2">
-        <div class="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
-          <.icon name="ri-route-line" class="h-3.5 w-3.5" />
-          WireGuard paths
-        </div>
-        <span :if={@path_count > 0} class="text-[10px] text-[var(--text-tertiary)]">
-          {@path_count} observed
-        </span>
-      </div>
-
-      <div :if={@path_count == 0} class="text-xs italic text-[var(--text-tertiary)]">
-        Reported when the flow closes
-      </div>
-
-      <ol :if={@path_count > 0} class="max-h-52 space-y-1.5 overflow-y-auto pr-1">
-        <li
-          :for={{outer, index} <- Enum.with_index(@outers, 1)}
-          data-wireguard-path={index}
-          class="grid grid-cols-[1.25rem_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded bg-[var(--surface-raised)] px-2 py-1.5"
-        >
-          <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--surface)] font-mono text-[10px] text-[var(--text-tertiary)]">
-            {index}
-          </span>
-          <span
-            data-wireguard-endpoint="initiator"
-            class={[
-              "min-w-0 break-all text-xs",
-              if(outer.src_ip,
-                do: "font-mono text-[var(--text-secondary)]",
-                else: "italic text-[var(--text-tertiary)]"
-              )
-            ]}
-          >
-            {if(outer.src_ip,
-              do: format_endpoint(outer.src_ip, outer.src_port),
-              else: "Not observed"
-            )}
-          </span>
-          <.icon name="ri-arrow-right-line" class="h-3.5 w-3.5 shrink-0 text-[var(--brand)]" />
-          <span
-            data-wireguard-endpoint="responder"
-            class="min-w-0 break-all text-right font-mono text-xs text-[var(--text-secondary)]"
-          >
-            {format_endpoint(outer.dst_ip, outer.dst_port)}
-          </span>
         </li>
       </ol>
     </div>
@@ -901,10 +892,8 @@ defmodule PortalWeb.Logs.FlowLogs do
     """
   end
 
-  defp comparison_logs(report) do
-    [report.log | report.matching_logs]
-    |> Enum.sort_by(&if(&1.role == :initiator, do: 0, else: 1))
-  end
+  defp matching_heading([_, _ | _]), do: "Matching logs"
+  defp matching_heading(_matching_logs), do: "Matching log"
 
   defp role_row_class(%{log: %{role: :initiator}}),
     do:

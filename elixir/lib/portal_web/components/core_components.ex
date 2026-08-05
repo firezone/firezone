@@ -816,8 +816,8 @@ defmodule PortalWeb.CoreComponents do
       role={if @menu?, do: "menu", else: "tooltip"}
       class={~w[
         fixed z-10 invisible inline-block
-        text-xs text-neutral-500 transition-opacity
-        duration-50 bg-white border border-neutral-200
+        text-xs text-body transition-opacity
+        duration-50 bg-elevated border border-border
         rounded-md shadow-xs opacity-0
       ]}
     >
@@ -1636,6 +1636,7 @@ defmodule PortalWeb.CoreComponents do
   attr :id, :string, required: true
   attr :checked, :boolean, default: false
   attr :label, :string, default: nil
+  attr :label_class, :string, default: "text-sm font-medium text-heading"
   attr :disabled, :boolean, default: false
   attr :size, :string, default: "md", values: ~w[sm md]
   attr :label_position, :string, default: "after", values: ~w[before after]
@@ -1652,7 +1653,7 @@ defmodule PortalWeb.CoreComponents do
       not @disabled && "cursor-pointer",
       @class
     ]}>
-      <span :if={@label && @label_position == "before"} class="me-2 text-sm font-medium text-heading">
+      <span :if={@label && @label_position == "before"} class={["me-2", @label_class]}>
         {@label}
       </span>
       <input
@@ -1676,7 +1677,7 @@ defmodule PortalWeb.CoreComponents do
         toggle_size(@size)
       ]}>
       </span>
-      <span :if={@label && @label_position == "after"} class="ms-2 text-sm font-medium text-heading">
+      <span :if={@label && @label_position == "after"} class={["ms-2", @label_class]}>
         {@label}
       </span>
     </label>

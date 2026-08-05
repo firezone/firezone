@@ -648,6 +648,7 @@ defmodule PortalWeb.LiveTable do
         checked={@checked}
         size="sm"
         label={@filter.title}
+        label_class="text-xs font-medium text-[var(--text-secondary)] select-none"
         label_position="before"
         class="h-8 px-2.5 rounded border border-input-border bg-input"
       />

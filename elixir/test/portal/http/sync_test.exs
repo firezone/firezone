@@ -100,7 +100,8 @@ defmodule Portal.HTTP.SyncTest do
               src_ip: "198.51.100.9",
               src_port: 42_000,
               dst_ip: "203.0.113.8",
-              dst_port: 443
+              dst_port: 443,
+              path_activated_at: ~U[2026-07-30 10:00:30.000000Z]
             }
           ]
         )
@@ -115,12 +116,19 @@ defmodule Portal.HTTP.SyncTest do
       assert end1["log_id"] == flow1.log_id <> "-e"
 
       assert end1["outers"] == [
-               %{"src_ip" => nil, "src_port" => nil, "dst_ip" => "203.0.113.7", "dst_port" => 51_820},
+               %{
+                 "src_ip" => nil,
+                 "src_port" => nil,
+                 "dst_ip" => "203.0.113.7",
+                 "dst_port" => 51_820,
+                 "path_activated_at" => nil
+               },
                %{
                  "src_ip" => "198.51.100.9",
                  "src_port" => 42_000,
                  "dst_ip" => "203.0.113.8",
-                 "dst_port" => 443
+                 "dst_port" => 443,
+                 "path_activated_at" => "2026-07-30T10:00:30.000000Z"
                }
              ]
 
