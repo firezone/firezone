@@ -5606,6 +5606,7 @@ dependencies = [
  "logging",
  "os_info",
  "rand 0.10.2",
+ "rustls",
  "secrecy",
  "serde",
  "serde_json",
