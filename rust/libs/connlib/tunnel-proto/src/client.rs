@@ -16,7 +16,7 @@ use resource::{InternetResource, Resource, StaticDevicePoolResource};
 use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
 use crate::client::dns_config::DnsConfig;
-use crate::client::pending_authorizations::{DnsQueryForSite, PendingAuthorizations, Trigger};
+use crate::client::pending_authorizations::{DnsQueryForSite, PendingAuthorizations};
 use crate::client::routing::{Route, RoutingTables};
 use crate::client::tracked_state::TrackedState;
 use crate::conn_track::Originator;
@@ -44,7 +44,7 @@ use connlib_model::{
 };
 use connlib_model::{Site, SiteId};
 use dns_resource_nat::DnsResourceNat;
-use dns_types::{DomainName, ResponseCode};
+use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
@@ -58,7 +58,6 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
-use telemetry::{analytics, feature_flags};
 
 pub const IPV4_RESOURCES: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
     Ok(n) => n,
@@ -884,19 +883,27 @@ impl ClientState {
                 // borrow is free for the `&mut self` calls below.
                 drop(_guard);
 
-                if feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
+                #[cfg(feature = "telemetry")]
+                if telemetry::feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
                     && let Ok(Some((failed_packet, error))) = packet.icmp_error()
                     && error.is_unreachable_prohibited()
+                    && let internet_resource = self.active_internet_resource().map(|r| r.id)
                     && let Some(resource) = self
-                        .get_resource_by_destination(failed_packet.dst(), failed_packet.dst_proto())
+                        .routing_tables
+                        .resolve_resource(
+                            failed_packet.dst(),
+                            failed_packet.dst_proto(),
+                            internet_resource,
+                        )
+                        .map(|route| route.resource_id())
                 {
-                    analytics::feature_flag_called(
+                    telemetry::analytics::feature_flag_called(
                         "icmp-error-unreachable-prohibited-create-new-flow",
                     );
 
                     self.pending_authorizations.on_not_authorized_resource(
                         resource,
-                        Trigger::IcmpDestinationUnreachableProhibited,
+                        pending_authorizations::Trigger::IcmpDestinationUnreachableProhibited,
                         &self.resources_by_id,
                         now,
                     );
@@ -1526,18 +1533,6 @@ impl ClientState {
             )
     }
 
-    fn get_resource_by_destination(
-        &mut self,
-        destination: IpAddr,
-        protocol: Protocol,
-    ) -> Option<ResourceId> {
-        let internet_resource = self.active_internet_resource().map(|resource| resource.id);
-
-        self.routing_tables
-            .resolve_resource(destination, protocol, internet_resource)
-            .map(|route| route.resource_id())
-    }
-
     fn active_internet_resource(&self) -> Option<&InternetResource> {
         if !self.is_internet_resource_active {
             return None;
@@ -1896,7 +1891,8 @@ impl ClientState {
 
         match self.resource_stub_resolver.handle_query(&message) {
             resource_stub_resolver::ResolveStrategy::LocalResponse(response) => {
-                if response.response_code() == ResponseCode::NXDOMAIN
+                #[cfg(feature = "telemetry")]
+                if response.response_code() == dns_types::ResponseCode::NXDOMAIN
                     && telemetry::feature_flags::drop_llmnr_nxdomain_responses()
                 {
                     return;

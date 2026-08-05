@@ -21,7 +21,6 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use event_message_contains_filter::EventMessageContains;
 use sentry_tracing::EventFilter;
-use telemetry::feature_flags;
 use tracing::{Subscriber, subscriber::DefaultGuard};
 use tracing_log::LogTracer;
 use tracing_subscriber::{
@@ -245,7 +244,8 @@ where
                 event_filter |= EventFilter::Breadcrumb;
             }
 
-            if feature_flags::stream_logs(md) {
+            #[cfg(feature = "telemetry")]
+            if telemetry::feature_flags::stream_logs(md) {
                 event_filter |= EventFilter::Log
             }
 

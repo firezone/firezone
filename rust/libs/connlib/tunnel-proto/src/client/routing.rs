@@ -26,6 +26,7 @@ pub(super) enum Route {
 }
 
 impl Route {
+    #[cfg_attr(not(feature = "telemetry"), expect(dead_code))]
     pub(super) fn resource_id(&self) -> ResourceId {
         match self {
             Self::Client { resource_id, .. } | Self::Gateway { resource_id, .. } => *resource_id,
