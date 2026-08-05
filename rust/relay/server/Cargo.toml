@@ -5,8 +5,16 @@ edition = { workspace = true }
 license = { workspace = true }
 
 [features]
-default = ["ebpf"]
+default = ["ebpf", "binary"]
 ebpf = ["dep:aya", "dep:aya-log", "dep:ebpf-shared"]
+# Everything only the `firezone-relay` binary needs. The library exposes the
+# TURN server itself, e.g. for simulating a relay without portal connectivity.
+binary = ["dep:bin-shared", "dep:phoenix-channel", "dep:socket-factory", "dep:telemetry"]
+
+[[bin]]
+name = "firezone-relay"
+path = "src/main.rs"
+required-features = ["binary"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -14,7 +22,7 @@ axum = { workspace = true, features = ["http1", "tokio", "query"] }
 backoff = { workspace = true }
 base64 = { workspace = true }
 bimap = { workspace = true }
-bin-shared = { workspace = true }
+bin-shared = { workspace = true, optional = true }
 bytecodec = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
@@ -29,7 +37,7 @@ once_cell = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 opentelemetry_sdk = { workspace = true }
-phoenix-channel = { workspace = true }
+phoenix-channel = { workspace = true, optional = true }
 proptest = { workspace = true, optional = true }
 rand = { workspace = true }
 rustls = { workspace = true }
@@ -37,10 +45,10 @@ secrecy = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 sha2 = { workspace = true }
 smallvec = { workspace = true }
-socket-factory = { workspace = true }
+socket-factory = { workspace = true, optional = true }
 socket2 = { workspace = true }
 stun_codec = { workspace = true }
-telemetry = { workspace = true }
+telemetry = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "signal"] }
 tracing = { workspace = true, features = ["log"] }
