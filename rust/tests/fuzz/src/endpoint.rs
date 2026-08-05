@@ -1,5 +1,4 @@
 pub(crate) enum Endpoint<T> {
-    Inactive,
     Active(T),
     Retired,
 }
@@ -8,14 +7,14 @@ impl<T> Endpoint<T> {
     pub(crate) fn active(&self) -> Option<&T> {
         match self {
             Self::Active(endpoint) => Some(endpoint),
-            Self::Inactive | Self::Retired => None,
+            Self::Retired => None,
         }
     }
 
     pub(crate) fn active_mut(&mut self) -> Option<&mut T> {
         match self {
             Self::Active(endpoint) => Some(endpoint),
-            Self::Inactive | Self::Retired => None,
+            Self::Retired => None,
         }
     }
 

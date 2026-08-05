@@ -185,6 +185,7 @@ impl SimGateway {
     pub(crate) fn deploy_new_dns_servers(
         &mut self,
         dns_servers: impl IntoIterator<Item = SocketAddr>,
+        now: Instant,
     ) {
         self.udp_dns_server_resources.clear();
         self.tcp_dns_server_resources.clear();
@@ -209,7 +210,7 @@ impl SimGateway {
             self.udp_dns_server_resources
                 .insert(server, UdpDnsServerResource::default());
             self.tcp_dns_server_resources
-                .insert(server, TcpDnsServerResource::new(server));
+                .insert(server, TcpDnsServerResource::new(server, now));
         }
     }
 
@@ -284,9 +285,6 @@ impl SimGateway {
                     }
                     Endpoint::Retired => {
                         tracing::debug!(?packet, "Ignoring packet for retired TCP resource");
-                    }
-                    Endpoint::Inactive => {
-                        unreachable!("TCP resources are initialized with an active endpoint")
                     }
                 }
                 return None;
