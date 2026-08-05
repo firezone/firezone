@@ -10,13 +10,9 @@ use std::time::Duration;
 use opentelemetry::KeyValue;
 pub use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter, UpDownCounter};
 
-fn meter() -> Meter {
-    opentelemetry::global::meter("connlib")
-}
-
 /// How many packets we have processed.
 pub fn network_packets() -> Counter<u64> {
-    meter()
+    connlib_meter()
         .u64_counter("connlib.network.packets")
         .with_description("The number of packets processed.")
         .with_unit("{packet}")
@@ -25,7 +21,7 @@ pub fn network_packets() -> Counter<u64> {
 
 /// How many packets were dropped or discarded.
 pub fn network_packet_dropped() -> Counter<u64> {
-    meter()
+    connlib_meter()
         .u64_counter("connlib.network.dropped")
         .with_description("Count of packets that are dropped or discarded")
         .with_unit("{packet}")
@@ -34,7 +30,7 @@ pub fn network_packet_dropped() -> Counter<u64> {
 
 /// How many IO errors we have encountered.
 pub fn network_errors() -> Counter<u64> {
-    meter()
+    connlib_meter()
         .u64_counter("connlib.network.errors")
         .with_description("Number of IO errors encountered")
         .with_unit("{error}")
@@ -45,7 +41,7 @@ pub fn network_errors() -> Counter<u64> {
 ///
 /// Shared across IO paths (UDP sockets, the TUN device); distinguish them via attributes.
 pub fn network_retries() -> Histogram<u64> {
-    meter()
+    connlib_meter()
         .u64_histogram("connlib.network.retries")
         .with_description(
             "How many times a network write was retried (spun) after a transient queue-full error before it succeeded or was dropped.",
@@ -59,7 +55,7 @@ pub fn network_retries() -> Histogram<u64> {
 ///
 /// The batch is the syscall: one packet per record means the IO path is not batching at all.
 pub fn network_packets_batch_count() -> Histogram<u64> {
-    meter()
+    connlib_meter()
         .u64_histogram("connlib.network.packets.batch_count")
         .with_description("How many packets we have processed in a single syscall.")
         .with_unit("{packet}")
@@ -83,7 +79,7 @@ pub fn network_packets_batch_count() -> Histogram<u64> {
 /// on a network change discards the whole pool and does not count; this measures cache
 /// churn - sockets displaced to make room for another pair.
 pub fn flow_socket_evictions() -> Counter<u64> {
-    meter()
+    connlib_meter()
         .u64_counter("connlib.flow_sockets.evicted")
         .with_description(
             "Number of connected flow sockets evicted from the socket pool's cache to make room for another pair.",
@@ -94,7 +90,7 @@ pub fn flow_socket_evictions() -> Counter<u64> {
 
 /// Number of errors encountered while processing a packet batch.
 pub fn tunnel_errors() -> Counter<u64> {
-    meter()
+    connlib_meter()
         .u64_counter("tunnel.error")
         .with_description("Number of errors encountered while processing a packet batch.")
         .with_unit("{error}")
@@ -103,7 +99,7 @@ pub fn tunnel_errors() -> Counter<u64> {
 
 /// Number of portal connection hiccups by cause.
 pub fn portal_connection_hiccups() -> Counter<u64> {
-    meter()
+    connlib_meter()
         .u64_counter("portal.connection.hiccup")
         .with_description("Number of portal connection hiccups by cause.")
         .with_unit("{hiccup}")
@@ -112,7 +108,7 @@ pub fn portal_connection_hiccups() -> Counter<u64> {
 
 /// Number of connections by the network path in use.
 pub fn connection_count() -> Gauge<u64> {
-    meter()
+    connlib_meter()
         .u64_gauge("tunnel.connection.count")
         .with_description("Number of connections by the network path in use.")
         .with_unit("{connection}")
@@ -121,7 +117,7 @@ pub fn connection_count() -> Gauge<u64> {
 
 /// Measures how long connlib takes to recursively resolve a DNS query against an upstream resolver.
 pub fn dns_lookup_duration() -> Histogram<f64> {
-    meter()
+    connlib_meter()
         .f64_histogram("dns.lookup.duration")
         .with_description("Duration of a recursive DNS lookup against an upstream resolver.")
         .with_unit("s")
@@ -133,7 +129,7 @@ pub fn dns_lookup_duration() -> Histogram<f64> {
 
 /// The length of a queue.
 pub fn queue_length() -> Gauge<u64> {
-    meter()
+    connlib_meter()
         .u64_gauge("connlib.queue.length")
         .with_description("The length of a queue.")
         .build()
@@ -141,7 +137,7 @@ pub fn queue_length() -> Gauge<u64> {
 
 /// The number of buffers allocated in a buffer pool.
 pub fn buffer_count() -> UpDownCounter<i64> {
-    buffer_count_with(&meter())
+    buffer_count_with(&connlib_meter())
 }
 
 /// [`buffer_count`] recorded through the given `meter` rather than the global meter.
@@ -155,7 +151,7 @@ pub fn buffer_count_with(meter: &Meter) -> UpDownCounter<i64> {
 
 /// Duration of a single event-loop poll.
 pub fn eventloop_poll_duration() -> Histogram<f64> {
-    meter()
+    connlib_meter()
         .f64_histogram("eventloop.poll.duration")
         .with_description("Duration of a single event-loop poll.")
         .with_unit("s")
@@ -197,10 +193,6 @@ pub async fn periodic_queue_length<const N: usize>(
     .await;
 }
 
-fn relay_meter() -> Meter {
-    opentelemetry::global::meter("relay")
-}
-
 /// Up/down counter of currently active relay allocations.
 pub fn relay_active_allocations() -> UpDownCounter<i64> {
     relay_meter()
@@ -223,7 +215,8 @@ pub fn relay_responses() -> Counter<u64> {
 ///
 /// Both call-sites build the instrument from this function so the metric definition
 /// (name, unit, buckets) stays identical; tag each measurement with
-/// `relay_datapath_userspace` or `relay_datapath_xdp` to tell the two datapaths apart.
+/// `otel-attributes`' `relay_datapath_userspace` or `relay_datapath_xdp` to tell
+/// the two datapaths apart.
 pub fn relay_packet_size() -> Histogram<u64> {
     relay_meter()
         .u64_histogram("relay.packet.size")
@@ -275,4 +268,12 @@ where
 
         Some(len as u64)
     }
+}
+
+fn connlib_meter() -> Meter {
+    opentelemetry::global::meter("connlib")
+}
+
+fn relay_meter() -> Meter {
+    opentelemetry::global::meter("relay")
 }
