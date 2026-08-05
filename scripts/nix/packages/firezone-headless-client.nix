@@ -1,14 +1,12 @@
 { lib, fzLib }:
 
-fzLib.rustPlatform.buildRustPackage {
+fzLib.buildRustPackage {
   pname = "firezone-headless-client";
   version = fzLib.versions.headless;
 
-  inherit (fzLib) src cargoLock;
+  cargoArtifacts = fzLib.cargoArtifactsFor { crate = "firezone-headless-client"; };
 
   buildAndTestSubdir = "headless-client";
-
-  env.RUSTFLAGS = fzLib.rustflags;
 
   postPatch = ''
     rm .cargo/config.toml

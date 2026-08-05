@@ -1,14 +1,12 @@
 { lib, fzLib }:
 
-fzLib.rustPlatform.buildRustPackage {
+fzLib.buildRustPackage {
   pname = "firezone-gateway";
   version = fzLib.versions.gateway;
 
-  inherit (fzLib) src cargoLock;
+  cargoArtifacts = fzLib.cargoArtifactsFor { crate = "firezone-gateway"; };
 
   buildAndTestSubdir = "gateway";
-
-  env.RUSTFLAGS = fzLib.rustflags;
 
   postPatch = ''
     rm .cargo/config.toml

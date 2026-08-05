@@ -84,9 +84,18 @@ jobs:
           set -o pipefail
 
           build() {
+            # The dependency-only closure is a build-time input, so it is not
+            # part of ./result's runtime closure and the cache upload below
+            # would never see it. Realising it under its own out-link is what
+            # lets later builds substitute the compiled dependency graph
+            # instead of recompiling it.
             nix build \
-              .#${{ matrix.package }} \
-              --print-build-logs 2>&1 | tee build.log
+              --out-link result-cargo-artifacts \
+              .#${{ matrix.package }}.cargoArtifacts \
+              --print-build-logs 2>&1 | tee build.log &&
+              nix build \
+                .#${{ matrix.package }} \
+                --print-build-logs 2>&1 | tee -a build.log
           }
 
           if build; then

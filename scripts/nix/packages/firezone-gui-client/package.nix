@@ -21,11 +21,35 @@
   kdePackages,
 }:
 
-fzLib.rustPlatform.buildRustPackage {
+let
+  # The `*-sys` build scripts need these on both sides of the dependency split.
+  buildInputs = [
+    dbus
+    gdk-pixbuf
+    glib
+    gobject-introspection
+    gtk3
+    libayatana-appindicator
+    libsoup_3
+    openssl
+    webkitgtk_4_1
+  ];
+in
+fzLib.buildRustPackage {
   pname = "firezone-gui-client";
   version = fzLib.versions.gui;
 
-  inherit (fzLib) src cargoLock;
+  cargoArtifacts = fzLib.cargoArtifactsFor {
+    crate = "firezone-gui-client";
+    # What `cargo tauri build` adds to a desktop release build (see
+    # tauri-cli's `Rust::build_options`); the dependency graph has to be
+    # resolved with the same features to be reusable.
+    features = [ "tauri/custom-protocol" ];
+    doCheck = false;
+
+    nativeBuildInputs = [ pkg-config ];
+    inherit buildInputs;
+  };
 
   # The workspace Cargo.lock lives at the source root, so cargoRoot stays
   # unset; the Tauri hook cd's into the project via buildAndTestSubdir.
@@ -38,20 +62,9 @@ fzLib.rustPlatform.buildRustPackage {
     copyDesktopItems
   ];
 
-  buildInputs = [
-    dbus
-    gdk-pixbuf
-    glib
-    gobject-introspection
-    gtk3
-    libayatana-appindicator
-    libsoup_3
-    openssl
-    webkitgtk_4_1
-  ];
+  inherit buildInputs;
 
   env = {
-    RUSTFLAGS = fzLib.rustflags;
     # The tunnel daemon only accepts IPC connections from this exact
     # executable path (see gui-client/src-tauri/src/ipc/unix/peer_check).
     # wrapGAppsHook3 turns bin/firezone-client-gui into a shell wrapper, so

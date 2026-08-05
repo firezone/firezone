@@ -1,6 +1,8 @@
+{ crane }:
 final: prev:
 let
   fzLib = import ./lib.nix {
+    inherit crane;
     inherit (final) lib;
     pkgs = final;
   };
