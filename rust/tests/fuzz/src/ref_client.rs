@@ -929,9 +929,17 @@ impl RefClient {
         }
     }
 
-    fn is_dynamic_device_pool_dns_query(&mut self, query: &DnsQuery) -> bool {
+    fn is_dynamic_device_pool_dns_query(&self, query: &DnsQuery) -> bool {
+        self.is_device_pool_domain(&query.domain)
+    }
+
+    /// Returns whether a dynamic device pool claims the domain.
+    ///
+    /// Device pools resolve ahead of DNS resources, so a domain matching both is
+    /// answered from the pool and never resolves to a resource's proxy IPs.
+    fn is_device_pool_domain(&self, domain: &DomainName) -> bool {
         self.resources.iter().any(|resource| match resource {
-            Resource::DynamicDevicePool(pool) => dns::is_subdomain(&query.domain, &pool.address),
+            Resource::DynamicDevicePool(pool) => dns::is_subdomain(domain, &pool.address),
             Resource::Dns(_) => false,
             Resource::Cidr(_) => false,
             Resource::Internet(_) => false,
@@ -1095,6 +1103,7 @@ impl RefClient {
         self.dns_records
             .iter()
             .filter(|(domain, _)| self.dns_resource_by_domain(domain, |_| true).is_some())
+            .filter(|(domain, _)| !self.is_device_pool_domain(domain))
             .map(|(domain, ips)| (domain.clone(), ips.clone()))
     }
 
