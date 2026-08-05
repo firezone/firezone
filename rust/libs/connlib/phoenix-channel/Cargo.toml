@@ -17,6 +17,7 @@ libc = { workspace = true }
 logging = { workspace = true }
 os_info = { workspace = true }
 rand = { workspace = true }
+rustls = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
