@@ -7,7 +7,7 @@ use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram, UpDownCounter};
 
 /// Up/down counter of currently active allocations.
-pub(crate) fn active_allocations() -> UpDownCounter<i64> {
+pub fn active_allocations() -> UpDownCounter<i64> {
     opentelemetry::global::meter("relay")
         .i64_up_down_counter("relay.active_allocations")
         .with_description("The number of active allocations")
@@ -16,7 +16,7 @@ pub(crate) fn active_allocations() -> UpDownCounter<i64> {
 }
 
 /// Counter of responses sent by the relay.
-pub(crate) fn responses() -> Counter<u64> {
+pub fn responses() -> Counter<u64> {
     opentelemetry::global::meter("relay")
         .u64_counter("relay.responses")
         .with_description("The number of responses")
@@ -29,7 +29,7 @@ pub(crate) fn responses() -> Counter<u64> {
 /// Both call-sites build the instrument from this function so the metric definition
 /// (name, unit, buckets) stays identical; tag each measurement with
 /// `datapath_userspace` or `datapath_xdp` to tell the two datapaths apart.
-pub(crate) fn packet_size() -> Histogram<u64> {
+pub fn packet_size() -> Histogram<u64> {
     opentelemetry::global::meter("relay")
         .u64_histogram("relay.packet.size")
         .with_description("Size of relayed packets")
@@ -42,8 +42,7 @@ pub(crate) fn packet_size() -> Histogram<u64> {
 }
 
 /// Histogram of the time the eBPF XDP program spent processing one relayed packet.
-#[cfg(all(target_os = "linux", feature = "ebpf"))]
-pub(crate) fn xdp_processing_duration() -> Histogram<u64> {
+pub fn xdp_processing_duration() -> Histogram<u64> {
     opentelemetry::global::meter("relay")
         .u64_histogram("relay.xdp.processing.duration")
         .with_description("Time the eBPF XDP program spent processing one relayed packet")
@@ -56,12 +55,11 @@ pub(crate) fn xdp_processing_duration() -> Histogram<u64> {
 }
 
 /// `relay.datapath = userspace`: relayed by the userspace TURN server.
-pub(crate) fn datapath_userspace() -> KeyValue {
+pub fn datapath_userspace() -> KeyValue {
     KeyValue::new("relay.datapath", "userspace")
 }
 
 /// `relay.datapath = xdp`: relayed by the in-kernel XDP program.
-#[cfg(all(target_os = "linux", feature = "ebpf"))]
-pub(crate) fn datapath_xdp() -> KeyValue {
+pub fn datapath_xdp() -> KeyValue {
     KeyValue::new("relay.datapath", "xdp")
 }

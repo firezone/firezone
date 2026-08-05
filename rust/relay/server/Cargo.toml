@@ -4,56 +4,42 @@ version = "0.1.0"
 edition = { workspace = true }
 license = { workspace = true }
 
-[features]
-default = ["ebpf"]
-ebpf = ["dep:aya", "dep:aya-log", "dep:ebpf-shared"]
-
 [dependencies]
 anyhow = { workspace = true }
 axum = { workspace = true, features = ["http1", "tokio", "query"] }
 backoff = { workspace = true }
-base64 = { workspace = true }
-bimap = { workspace = true }
 bin-shared = { workspace = true }
-bytecodec = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
-derive_more = { workspace = true, features = ["from"] }
 eventloop-budget = { workspace = true }
 futures = { workspace = true }
-hex = { workspace = true }
 logging = { workspace = true }
 mimalloc = { workspace = true }
 mio = { workspace = true, features = ["net"] }
-once_cell = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 opentelemetry_sdk = { workspace = true }
 phoenix-channel = { workspace = true }
-proptest = { workspace = true, optional = true }
 rand = { workspace = true }
+relay-proto = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-sha2 = { workspace = true }
-smallvec = { workspace = true }
 socket-factory = { workspace = true }
 socket2 = { workspace = true }
 stun_codec = { workspace = true }
 telemetry = { workspace = true }
-thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "signal"] }
 tracing = { workspace = true, features = ["log"] }
 tracing-core = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json", "fmt"] }
 url = { workspace = true }
-uuid = { workspace = true, features = ["v4"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-aya = { workspace = true, optional = true }
-aya-log = { workspace = true, optional = true }
-ebpf-shared = { workspace = true, features = ["std"], optional = true }
+aya = { workspace = true }
+aya-log = { workspace = true }
+ebpf-shared = { workspace = true, features = ["std"] }
 mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # `local_dynamic_tls` keeps the allocator's TLS model compatible with our static musl builds.
 
 [target.'cfg(target_os = "linux")'.build-dependencies]
@@ -61,14 +47,8 @@ anyhow = { workspace = true }
 aya-build = { workspace = true }
 
 [dev-dependencies]
-difference = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing", "metrics"] }
-test-strategy = { workspace = true }
 tokio = { workspace = true, features = ["process", "macros", "net"] }
-
-[[test]]
-name = "regression"
-required-features = ["proptest"]
 
 [lints]
 workspace = true
