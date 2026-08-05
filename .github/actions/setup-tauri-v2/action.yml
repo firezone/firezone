@@ -48,37 +48,39 @@ runs:
         mkdir -p ~/apt-cache
         sudo cp /var/cache/apt/archives/*.deb ~/apt-cache/ 2>/dev/null || true
       shell: bash
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - name: Detect the WebView2 runtime
       if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' }}
+      id: webview2
+      # The `pv` regkeys are Microsoft's documented detection method:
+      # <https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution>
+      # The runner images ship the runtime, so the install below is a fallback.
+      run: |
+        $versions = @(
+          'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+          'HKCU:\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+        ) | ForEach-Object { (Get-ItemProperty -Path $_ -Name pv -ErrorAction SilentlyContinue).pv }
+        $installed = @($versions | Where-Object { $_ -and $_ -ne '0.0.0.0' })
+        Write-Host "WebView2 runtime versions found: $($installed -join ', ')"
+        "installed=$(if ($installed) { 'true' } else { 'false' })" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      shell: pwsh
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' && steps.webview2.outputs.installed != 'true' }}
       id: cache-webview2-installer
       with:
         path: WebView2Installer.exe
         key: webview2-offline-installer
-    - name: Download WebView2 bootstrapper
-      if: ${{ runner.os == 'Windows' && steps.cache-webview2-installer.outputs.cache-hit != 'true' && inputs.runtime == 'true' }}
-      # This is the "Evergreen" bootstrapper from Microsoft
+    - name: Download the WebView2 standalone installer
+      if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' && steps.webview2.outputs.installed != 'true' && steps.cache-webview2-installer.outputs.cache-hit != 'true' }}
+      # The "Evergreen" standalone installer from Microsoft
       # <https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH#download>
-      # Unfortunately, this makes the test non-deterministic.
-      # Controlling the version would be difficult.
+      # It always serves the current version, so the installed version is not pinned.
       run: Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?linkid=2124701 -OutFile WebView2Installer.exe
       shell: pwsh
     - name: Install WebView2
-      if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' }}
-      # This downloads about 200 MB and takes about 5 minutes on my VM
-      # So we could fault in WebView2 from the client exe without the MSI if we needed.
-      # Currently the MSI does this and it's a little janky.
+      if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' && steps.webview2.outputs.installed != 'true' }}
       run: |
-        function Show-WebView2Version($when) {
-          foreach ($path in @(
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
-            'HKCU:\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
-          )) {
-            $pv = (Get-ItemProperty -Path $path -Name pv -ErrorAction SilentlyContinue).pv
-            Write-Host "DIAG $when pv=[$pv] $path"
-          }
-        }
-        Show-WebView2Version "before"
         $installer = Start-Process .\WebView2Installer.exe -ArgumentList "/silent","/install" -Wait -PassThru
-        Write-Host "DIAG installer exit code: $($installer.ExitCode)"
-        Show-WebView2Version "after"
+        if ($installer.ExitCode -ne 0) {
+          throw "WebView2 installer failed with exit code $($installer.ExitCode)"
+        }
       shell: pwsh
