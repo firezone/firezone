@@ -23,19 +23,19 @@ pub struct UdpDnsServerResource {
 }
 
 impl TcpDnsServerResource {
+    pub fn new(socket: SocketAddr, now: Instant) -> Self {
+        Self {
+            socket,
+            server: Endpoint::Active(Self::new_server(socket, now)),
+        }
+    }
+
     fn new_server(socket: SocketAddr, now: Instant) -> dns_over_tcp::Server {
         let mut server = dns_over_tcp::Server::new(now);
         // Each simulated client maintains at most one connection to a DNS
         // server, and the generated topology contains exactly two clients.
         server.set_listen_addresses::<2>(BTreeSet::from([socket]));
         server
-    }
-
-    pub fn new(socket: SocketAddr, now: Instant) -> Self {
-        Self {
-            socket,
-            server: Endpoint::Active(Self::new_server(socket, now)),
-        }
     }
 
     pub fn handle_input(&mut self, packet: IpPacket, now: Instant) {
