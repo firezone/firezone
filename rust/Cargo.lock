@@ -2537,46 +2537,34 @@ dependencies = [
  "aya-build",
  "aya-log",
  "backoff",
- "base64 0.23.0",
- "bimap",
  "bin-shared",
- "bytecodec",
  "bytes",
  "clap",
- "derive_more",
- "difference",
  "ebpf-shared",
  "eventloop-budget",
  "futures",
- "hex",
  "logging",
  "mimalloc",
  "mio",
- "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "phoenix-channel",
- "proptest",
  "rand 0.10.2",
+ "relay-proto",
  "rustls",
  "secrecy",
  "serde",
- "sha2 0.11.0",
- "smallvec",
  "socket-factory",
  "socket2",
  "stun_codec",
  "telemetry",
- "test-strategy",
- "thiserror 2.0.19",
  "tokio",
  "tracing",
  "tracing-core",
  "tracing-opentelemetry",
  "tracing-subscriber",
  "url",
- "uuid",
 ]
 
 [[package]]
@@ -2853,7 +2841,6 @@ dependencies = [
  "derive_more",
  "dns-over-tcp",
  "dns-types",
- "firezone-relay",
  "flow-tracker",
  "hex",
  "ip-packet",
@@ -2863,6 +2850,7 @@ dependencies = [
  "l3-tcp",
  "libfuzzer-sys",
  "rand 0.10.2",
+ "relay-proto",
  "secrecy",
  "serde_json",
  "sha2 0.11.0",
@@ -6037,6 +6025,32 @@ name = "regex-syntax"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
+
+[[package]]
+name = "relay-proto"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "base64 0.23.0",
+ "bimap",
+ "bytecodec",
+ "derive_more",
+ "difference",
+ "hex",
+ "logging",
+ "once_cell",
+ "opentelemetry",
+ "proptest",
+ "rand 0.10.2",
+ "secrecy",
+ "sha2 0.11.0",
+ "smallvec",
+ "stun_codec",
+ "test-strategy",
+ "thiserror 2.0.19",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "reqwest"

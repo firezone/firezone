@@ -839,7 +839,7 @@ impl TunnelTest {
                 };
 
                 match message {
-                    firezone_relay::Command::SendMessage { payload, recipient } => {
+                    relay_proto::Command::SendMessage { payload, recipient } => {
                         let dst = recipient.into_socket();
                         let src = relay
                             .sending_socket_for(dst.ip())
@@ -857,16 +857,16 @@ impl TunnelTest {
                         );
                     }
 
-                    firezone_relay::Command::CreateAllocation { port, family } => {
+                    relay_proto::Command::CreateAllocation { port, family } => {
                         relay.allocate_port(port.value(), family);
                         relay.exec_mut(|r| r.allocations.insert((family, port)));
                     }
-                    firezone_relay::Command::FreeAllocation { port, family } => {
+                    relay_proto::Command::FreeAllocation { port, family } => {
                         relay.deallocate_port(port.value(), family);
                         relay.exec_mut(|r| r.allocations.remove(&(family, port)));
                     }
-                    firezone_relay::Command::CreateChannelBinding { .. }
-                    | firezone_relay::Command::DeleteChannelBinding { .. } => {}
+                    relay_proto::Command::CreateChannelBinding { .. }
+                    | relay_proto::Command::DeleteChannelBinding { .. } => {}
                 }
 
                 continue 'outer;

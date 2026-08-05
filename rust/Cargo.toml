@@ -46,6 +46,7 @@ members = [
     "libs/windows-security",
     "relay/ebpf-shared",
     "relay/ebpf-turn-router",
+    "relay/proto",
     "relay/server",
     "tests/fuzz",
     "tests/gui-smoke-test",
@@ -106,7 +107,6 @@ etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 eventloop-budget = { path = "libs/eventloop-budget" }
 fd-lock = "4.0.4"
 filetime = "0.2.29"
-firezone-relay = { path = "relay/server", default-features = false }
 flow-log-spool = { path = "libs/flow-log-spool" }
 flow-log-upload = { path = "libs/flow-log-upload" }
 flow-log-writer = { path = "libs/flow-log-writer" }
@@ -176,6 +176,7 @@ quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
 rand = "0.10.1"
 rangemap = "1.7.1"
+relay-proto = { path = "relay/proto" }
 reqwest = { version = "0.13.4", default-features = false }
 resolv-conf = "0.7.6"
 ringbuffer = "0.16.0"
