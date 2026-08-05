@@ -65,8 +65,8 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
     assert_eq!(
         payload["outers"],
         serde_json::json!([
-            {"src_ip": "198.51.100.1", "src_port": 51820, "dst_ip": "203.0.113.7", "dst_port": 51820, "path_selected_at": "2023-11-14T22:13:20.000000500Z"},
-            {"dst_ip": "203.0.113.7", "dst_port": 51820, "path_selected_at": "2023-11-14T22:13:50Z"},
+            {"src_ip": "198.51.100.1", "src_port": 51820, "dst_ip": "203.0.113.7", "dst_port": 51820, "path_activated_at": "2023-11-14T22:13:20.000000500Z"},
+            {"dst_ip": "203.0.113.7", "dst_port": 51820, "path_activated_at": "2023-11-14T22:13:50Z"},
         ])
     );
     assert_eq!(payload["flow_start"], format!("{:?}", record.flow_start));
@@ -136,7 +136,7 @@ fn tracked_packets_spool_open_and_completed_reports() {
     assert_eq!(
         open["outers"],
         serde_json::json!([
-            {"src_ip": "198.51.100.1", "src_port": 45000, "dst_ip": "203.0.113.1", "dst_port": 51820, "path_selected_at": "2023-11-14T22:13:20Z"}
+            {"src_ip": "198.51.100.1", "src_port": 45000, "dst_ip": "203.0.113.1", "dst_port": 51820, "path_activated_at": "2023-11-14T22:13:20Z"}
         ])
     );
     assert!(open.get("flow_end").is_none());
@@ -244,7 +244,7 @@ fn syn_after_established_connection_splits_flow() {
 }
 
 #[test]
-fn context_change_stamps_the_path_selection_time() {
+fn context_change_stamps_the_path_activation_time() {
     let authz_id = "99999999-9999-9999-9999-999999999999";
     let spool = SpoolObserver::new(authz_id);
     let t0 = Instant::now();
@@ -273,8 +273,8 @@ fn context_change_stamps_the_path_selection_time() {
     assert_eq!(
         flow["outers"],
         serde_json::json!([
-            {"src_ip": "203.0.113.7", "src_port": 51820, "dst_ip": "198.51.100.1", "dst_port": 51820, "path_selected_at": "2023-11-14T22:13:20Z"},
-            {"src_ip": "203.0.113.7", "src_port": 52000, "dst_ip": "198.51.100.1", "dst_port": 51820, "path_selected_at": "2023-11-14T22:13:29Z"},
+            {"src_ip": "203.0.113.7", "src_port": 51820, "dst_ip": "198.51.100.1", "dst_port": 51820, "path_activated_at": "2023-11-14T22:13:20Z"},
+            {"src_ip": "203.0.113.7", "src_port": 52000, "dst_ip": "198.51.100.1", "dst_port": 51820, "path_activated_at": "2023-11-14T22:13:29Z"},
         ])
     );
 }

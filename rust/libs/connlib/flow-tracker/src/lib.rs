@@ -1252,7 +1252,7 @@ impl FlowStats {
 /// The outer (transport) 4-tuple a flow is tunneled over.
 ///
 /// The source is unknown for relayed sends; it is `None` there and omitted
-/// from the serialised tuple. `path_selected_at` is the time of the packet
+/// from the serialised tuple. `path_activated_at` is the time of the packet
 /// that revealed the tuple: the flow's first packet for the initial entry of
 /// [`Record::outers`], the first packet after a change for every later one.
 #[derive(Debug, Clone, Copy, serde::Serialize)]
@@ -1263,7 +1263,7 @@ pub struct FlowContext {
     pub src_port: Option<u16>,
     pub dst_ip: IpAddr,
     pub dst_port: u16,
-    pub path_selected_at: DateTime<Utc>,
+    pub path_activated_at: DateTime<Utc>,
 }
 
 impl FlowContext {
@@ -1272,7 +1272,7 @@ impl FlowContext {
     pub fn new(
         initiator: impl Into<Option<SocketAddr>>,
         responder: SocketAddr,
-        path_selected_at: DateTime<Utc>,
+        path_activated_at: DateTime<Utc>,
     ) -> Self {
         let initiator = initiator.into();
 
@@ -1281,12 +1281,12 @@ impl FlowContext {
             src_port: initiator.map(|initiator| initiator.port()),
             dst_ip: responder.ip(),
             dst_port: responder.port(),
-            path_selected_at,
+            path_activated_at,
         }
     }
 }
 
-/// Contexts compare by their tuple alone; `path_selected_at` only records when
+/// Contexts compare by their tuple alone; `path_activated_at` only records when
 /// the flow started using it.
 impl PartialEq for FlowContext {
     fn eq(&self, other: &Self) -> bool {
@@ -1295,7 +1295,7 @@ impl PartialEq for FlowContext {
             src_port,
             dst_ip,
             dst_port,
-            path_selected_at: _,
+            path_activated_at: _,
         } = self;
 
         (*src_ip, *src_port, *dst_ip, *dst_port)
