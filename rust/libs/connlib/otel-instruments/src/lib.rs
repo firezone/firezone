@@ -1,4 +1,4 @@
-//! Centralised definitions of the OpenTelemetry instruments recorded throughout connlib.
+//! Centralised definitions of the OpenTelemetry instruments recorded throughout Firezone's Rust components.
 //!
 //! An instrument is identified by its name, kind and unit.
 //! All call sites recording to the same instrument must use a single, consistent definition.
@@ -8,7 +8,7 @@ use std::ops::ControlFlow;
 use std::time::Duration;
 
 use opentelemetry::KeyValue;
-use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter, UpDownCounter};
+pub use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter, UpDownCounter};
 
 fn meter() -> Meter {
     opentelemetry::global::meter("connlib")
@@ -195,6 +195,58 @@ pub async fn periodic_queue_length<const N: usize>(
         Duration::from_secs(1),
     )
     .await;
+}
+
+fn relay_meter() -> Meter {
+    opentelemetry::global::meter("relay")
+}
+
+/// Up/down counter of currently active relay allocations.
+pub fn relay_active_allocations() -> UpDownCounter<i64> {
+    relay_meter()
+        .i64_up_down_counter("relay.active_allocations")
+        .with_description("The number of active allocations")
+        .with_unit("{allocation}")
+        .build()
+}
+
+/// Counter of responses sent by the relay.
+pub fn relay_responses() -> Counter<u64> {
+    relay_meter()
+        .u64_counter("relay.responses")
+        .with_description("The number of responses")
+        .with_unit("{response}")
+        .build()
+}
+
+/// Histogram of relayed packet sizes, recorded on both the userspace and the XDP datapath.
+///
+/// Both call-sites build the instrument from this function so the metric definition
+/// (name, unit, buckets) stays identical; tag each measurement with
+/// `relay_datapath_userspace` or `relay_datapath_xdp` to tell the two datapaths apart.
+pub fn relay_packet_size() -> Histogram<u64> {
+    relay_meter()
+        .u64_histogram("relay.packet.size")
+        .with_description("Size of relayed packets")
+        .with_unit("By")
+        .with_boundaries(vec![
+            100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0, 900.0, 1000.0, 1100.0, 1200.0,
+            1300.0, 1400.0, 1500.0,
+        ])
+        .build()
+}
+
+/// Histogram of the time the eBPF XDP program spent processing one relayed packet.
+pub fn relay_xdp_processing_duration() -> Histogram<u64> {
+    relay_meter()
+        .u64_histogram("relay.xdp.processing.duration")
+        .with_description("Time the eBPF XDP program spent processing one relayed packet")
+        .with_unit("ns")
+        .with_boundaries(vec![
+            50.0, 100.0, 200.0, 500.0, 1_000.0, 2_000.0, 5_000.0, 10_000.0, 20_000.0, 50_000.0,
+            100_000.0,
+        ])
+        .build()
 }
 
 /// Invokes `callback` to record to `gauge` every `interval` until it signals completion.
