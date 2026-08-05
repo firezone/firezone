@@ -445,15 +445,15 @@ where
 
                         vacant.insert(value);
                     }
-                    // A SYN only starts a new connection if the existing flow has
-                    // seen return traffic; on a half-open flow it is a
-                    // retransmission and just counts as another packet.
+                    // A changed outer tuple splits the flow once the context
+                    // list is full, so a peer that keeps flapping its path
+                    // cannot make later tuples go unrecorded.
                     hash_map::Entry::Occupied(occupied)
-                        if tcp_syn && occupied.get().stats.rx_packets > 0 =>
+                        if context_overflows(&occupied.get().contexts, context) =>
                     {
                         let (key, value) = occupied.remove_entry();
 
-                        tracing::debug!(?key, "Splitting existing TCP flow; new TCP SYN");
+                        tracing::debug!(?key, "Splitting existing TCP flow; context cap reached");
 
                         emit(&Record::tcp_close(key, value, now_utc));
 
@@ -472,15 +472,15 @@ where
 
                         self.active_tcp_flows.insert(key, value);
                     }
-                    // A changed outer tuple splits the flow once the context
-                    // list is full, so a peer that keeps flapping its path
-                    // cannot make later tuples go unrecorded.
+                    // A SYN only starts a new connection if the existing flow has
+                    // seen return traffic; on a half-open flow it is a
+                    // retransmission and just counts as another packet.
                     hash_map::Entry::Occupied(occupied)
-                        if context_overflows(&occupied.get().contexts, context) =>
+                        if tcp_syn && occupied.get().stats.rx_packets > 0 =>
                     {
                         let (key, value) = occupied.remove_entry();
 
-                        tracing::debug!(?key, "Splitting existing TCP flow; context cap reached");
+                        tracing::debug!(?key, "Splitting existing TCP flow; new TCP SYN");
 
                         emit(&Record::tcp_close(key, value, now_utc));
 
