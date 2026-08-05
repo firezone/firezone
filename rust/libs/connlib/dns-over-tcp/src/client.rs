@@ -287,6 +287,18 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             return;
         }
 
+        // A late packet for a connection that [`Client::reset`] dropped, e.g. a
+        // retransmission or teardown of the old connection. No socket exists for
+        // it, so there is nothing to receive it.
+        if let Some(tcp) = packet.as_tcp()
+            && let remote = SocketAddr::new(packet.source(), tcp.source_port())
+            && let Some(None) = self.sockets_by_remote.get(&remote)
+        {
+            tracing::debug!(%remote, "Ignoring packet for closed connection");
+
+            return;
+        }
+
         self.device.receive(packet);
     }
 
@@ -714,6 +726,44 @@ mod tests {
         client.handle_inbound(icmp_error_response);
 
         assert!(client.poll_query_result().is_none());
+    }
+
+    #[test]
+    fn consumes_late_packet_for_reset_connection() {
+        let _guard = logging::test("trace");
+
+        let now = Instant::now();
+        let mut client = create_test_client(now);
+        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+
+        let local = client.send_query(server, create_test_query()).unwrap();
+        client.handle_timeout(now);
+        client.handle_timeout(now);
+        let _syn = client.poll_outbound().unwrap();
+
+        client.reset();
+        while client.poll_query_result().is_some() {} // Drain the `Aborted` results.
+
+        let late_packet = ip_packet::make::tcp_packet(
+            server.ip(),
+            local.ip(),
+            server.port(),
+            local.port(),
+            ip_packet::make::TcpFlags {
+                syn: false,
+                ack: true,
+                rst: false,
+            },
+            &[],
+        )
+        .unwrap();
+
+        assert!(client.accepts(&late_packet));
+
+        client.handle_inbound(late_packet);
+        client.handle_timeout(now);
+
+        assert!(client.poll_outbound().is_none()); // In particular, no RST is sent.
     }
 
     #[test]
