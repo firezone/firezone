@@ -386,9 +386,9 @@ fn try_main() -> Result<()> {
     rt.block_on(async {
         if let Some(backend) = cli.metrics {
             let resource = otel::default_resource_with([
-                otel::attr::service_name!(),
-                otel::attr::service_version!(),
-                otel::attr::service_instance_id(firezone_id.clone()),
+                otel_attributes::service_name!(),
+                otel_attributes::service_version!(),
+                otel::service_instance_id(firezone_id.clone()),
             ]);
 
             match (backend, cli.otlp_grpc_endpoint) {

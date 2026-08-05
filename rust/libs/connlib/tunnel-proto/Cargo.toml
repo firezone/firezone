@@ -31,6 +31,7 @@ l3-udp-dns-client = { workspace = true }
 logging = { workspace = true }
 lru = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
+otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 rand = { workspace = true }
 rangemap = { workspace = true }

@@ -1,5 +1,5 @@
 pub mod attr {
-    pub use telemetry::otel::attr::*;
+    pub use otel_attributes::*;
 
     use opentelemetry::KeyValue;
 

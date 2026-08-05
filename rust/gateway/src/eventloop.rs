@@ -296,7 +296,7 @@ impl Eventloop {
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
             self.tunnel_errors
-                .add(1, &telemetry::otel::error_layers(&e));
+                .add(1, &otel_attributes::error_layers(&e));
 
             if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
@@ -605,7 +605,7 @@ async fn phoenix_channel_event_loop(
                     body = phoenix_channel::http_error_body(&error).map(tracing::field::display),
                     "Hiccup in portal connection: {error:#}"
                 );
-                hiccups.add(1, &telemetry::otel::error_layers(&error));
+                hiccups.add(1, &otel_attributes::error_layers(&error));
 
                 let _ = event_tx.send(Ok(PortalEvent::Disconnected)).await;
 
