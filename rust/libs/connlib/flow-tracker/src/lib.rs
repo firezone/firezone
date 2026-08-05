@@ -170,7 +170,11 @@ where
     /// Dropping the returned guard inserts the gathered flow data.
     pub fn begin_tun_packet(&mut self, packet: &IpPacket, now: Instant) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
-            set_current_flow(FlowData::new(Entry::Tun, Some(InnerFlow::from(packet))));
+            set_current_flow(FlowData::new(
+                Entry::Tun,
+                Some(InnerFlow::from(packet)),
+                self.now_utc(now),
+            ));
         }
 
         CurrentFlowGuard { tracker: self, now }
@@ -186,7 +190,11 @@ where
         now: Instant,
     ) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
-            set_current_flow(FlowData::new(Entry::Network { local, remote }, None));
+            set_current_flow(FlowData::new(
+                Entry::Network { local, remote },
+                None,
+                self.now_utc(now),
+            ));
         }
 
         CurrentFlowGuard { tracker: self, now }
@@ -195,6 +203,7 @@ where
     fn insert_flow(&mut self, data: FlowData, now: Instant) {
         let FlowData {
             entry,
+            now_utc,
             inner:
                 Some(InnerFlow {
                     src_ip,
@@ -280,7 +289,7 @@ where
                 self.record_tx(
                     TxPacket {
                         scope,
-                        context: FlowContext::new(remote, local),
+                        context: FlowContext::new(remote, local, now_utc),
                         src_ip,
                         dst_ip,
                         src_proto,
@@ -725,10 +734,12 @@ enum Entry {
 /// role; [`Tracker::insert_flow`] interprets them (see the module docs).
 struct FlowData {
     entry: Entry,
+    /// The tracker's UTC clock reading for this packet.
+    now_utc: DateTime<Utc>,
     /// The inner (application) packet's flow fields.
     inner: Option<InnerFlow>,
     /// The outer (transport) 4-tuple a TUN-entry packet was encapsulated to,
-    /// oriented initiator-to-responder. Absence means the packet was never sent.
+    /// in transmit direction. Absence means the packet was never sent.
     outer_tx: Option<FlowContext>,
     /// The peer the packet is tunneled through and our role in the flow.
     peer: Option<(ClientOrGatewayId, Role)>,
@@ -746,6 +757,7 @@ impl Debug for FlowData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FlowData")
             .field("entry", &self.entry)
+            .field("now_utc", &self.now_utc)
             .field("inner", &self.inner)
             .field("outer_tx", &self.outer_tx)
             .field("peer", &self.peer)
@@ -761,9 +773,10 @@ impl Debug for FlowData {
 }
 
 impl FlowData {
-    fn new(entry: Entry, inner: Option<InnerFlow>) -> Self {
+    fn new(entry: Entry, inner: Option<InnerFlow>, now_utc: DateTime<Utc>) -> Self {
         Self {
             entry,
+            now_utc,
             inner,
             outer_tx: None,
             peer: None,
@@ -849,7 +862,7 @@ pub fn record_translated_packet(packet: &IpPacket) {
 /// `src` is unknown for relayed sends and omitted from the flow's outer tuple.
 pub fn record_transmit(src: Option<SocketAddr>, dst: SocketAddr) {
     update_current_flow(|data| {
-        data.outer_tx = Some(FlowContext::new(src, dst));
+        data.outer_tx = Some(FlowContext::new(src, dst, data.now_utc));
     });
 }
 
@@ -1239,8 +1252,10 @@ impl FlowStats {
 /// The outer (transport) 4-tuple a flow is tunneled over.
 ///
 /// The source is unknown for relayed sends; it is `None` there and omitted
-/// from the serialised tuple.
-#[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize)]
+/// from the serialised tuple. `path_selected_at` is the time of the packet
+/// that revealed the tuple: the flow's first packet for the initial entry of
+/// [`Record::outers`], the first packet after a change for every later one.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
 pub struct FlowContext {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub src_ip: Option<IpAddr>,
@@ -1248,12 +1263,17 @@ pub struct FlowContext {
     pub src_port: Option<u16>,
     pub dst_ip: IpAddr,
     pub dst_port: u16,
+    pub path_selected_at: DateTime<Utc>,
 }
 
 impl FlowContext {
     /// Builds a context from the outer addresses as seen by the initiator: the
     /// initiator side is the source, the responder side the destination.
-    pub fn new(initiator: impl Into<Option<SocketAddr>>, responder: SocketAddr) -> Self {
+    pub fn new(
+        initiator: impl Into<Option<SocketAddr>>,
+        responder: SocketAddr,
+        path_selected_at: DateTime<Utc>,
+    ) -> Self {
         let initiator = initiator.into();
 
         Self {
@@ -1261,9 +1281,29 @@ impl FlowContext {
             src_port: initiator.map(|initiator| initiator.port()),
             dst_ip: responder.ip(),
             dst_port: responder.port(),
+            path_selected_at,
         }
     }
 }
+
+/// Contexts compare by their tuple alone; `path_selected_at` only records when
+/// the flow started using it.
+impl PartialEq for FlowContext {
+    fn eq(&self, other: &Self) -> bool {
+        let Self {
+            src_ip,
+            src_port,
+            dst_ip,
+            dst_port,
+            path_selected_at: _,
+        } = self;
+
+        (*src_ip, *src_port, *dst_ip, *dst_port)
+            == (other.src_ip, other.src_port, other.dst_ip, other.dst_port)
+    }
+}
+
+impl Eq for FlowContext {}
 
 /// Appends `context` to a flow's outer tuples if it differs from the current one.
 ///
@@ -1356,10 +1396,12 @@ mod tests {
         let old = FlowContext::new(
             "10.0.0.1:8080".parse::<SocketAddr>().unwrap(),
             "192.168.0.1:443".parse().unwrap(),
+            DateTime::UNIX_EPOCH,
         );
         let new = FlowContext::new(
             "1.1.1.1:50000".parse::<SocketAddr>().unwrap(),
             "192.168.0.1:443".parse().unwrap(),
+            DateTime::UNIX_EPOCH,
         );
 
         let diff = FlowContextDiff::new(old, new);
