@@ -145,10 +145,11 @@ defmodule PortalAPI.Schemas.Log do
       Both endpoints of a flow report it independently, so a flow yields up to
       two entries that differ only in `role` and in the counters each side
       observed. Every other field is oriented from the initiator regardless of
-      which side reported the entry: `inner_src_*` and `outer_src_*` are always
-      the initiator, `inner_dst_*` and `outer_dst_*` always the responder, and
-      `tx_*` always counts initiator-to-responder traffic. Comparing the two
-      entries of a flow is how reported traffic is cross-checked.
+      which side reported the entry: `inner_src_*` is always the initiator,
+      `inner_dst_*` always the responder, and `tx_*` always counts
+      initiator-to-responder traffic. `outers` records each outer network path
+      in the order it was observed. Comparing the two entries of a flow is how
+      reported traffic is cross-checked.
       """,
       type: :object,
       properties: %{
@@ -306,24 +307,34 @@ defmodule PortalAPI.Schemas.Log do
           nullable: true,
           description: "Domain name for flows to DNS Resources."
         },
-        outer_src_ip: %Schema{
-          type: :string,
+        outers: %Schema{
+          type: :array,
+          minItems: 1,
+          nullable: true,
           description: """
-          WireGuard endpoint IP of the initiator, as observed by the reporting
-          side. The two entries of a flow disagree whenever NAT or a relay sits
-          between the peers.
-          """
+          Outer network paths in observation order. Null while the flow is open;
+          the close report replaces it with the complete array. Source IP and
+          port must either both be populated or both be absent/null. The two
+          entries of a flow can disagree whenever NAT or a relay sits between
+          the peers.
+          """,
+          items: %Schema{
+            type: :object,
+            properties: %{
+              src_ip: %Schema{
+                type: :string,
+                nullable: true
+              },
+              src_port: %Schema{
+                type: :integer,
+                nullable: true
+              },
+              dst_ip: %Schema{type: :string},
+              dst_port: %Schema{type: :integer}
+            },
+            required: [:dst_ip, :dst_port]
+          }
         },
-        outer_dst_ip: %Schema{
-          type: :string,
-          description: """
-          WireGuard endpoint IP of the responder, as observed by the reporting
-          side. The two entries of a flow disagree whenever NAT or a relay sits
-          between the peers.
-          """
-        },
-        outer_src_port: %Schema{type: :integer},
-        outer_dst_port: %Schema{type: :integer},
         rx_packets: %Schema{
           type: :integer,
           nullable: true,
@@ -371,10 +382,7 @@ defmodule PortalAPI.Schemas.Log do
         :inner_dst_ip,
         :inner_src_port,
         :inner_dst_port,
-        :outer_src_ip,
-        :outer_dst_ip,
-        :outer_src_port,
-        :outer_dst_port,
+        :outers,
         :rx_packets,
         :tx_packets,
         :rx_bytes,
@@ -406,10 +414,14 @@ defmodule PortalAPI.Schemas.Log do
         "inner_dst_ip" => "10.0.0.5",
         "inner_src_port" => 54_321,
         "inner_dst_port" => 443,
-        "outer_src_ip" => "203.0.113.10",
-        "outer_dst_ip" => "198.51.100.5",
-        "outer_src_port" => 51_820,
-        "outer_dst_port" => 51_820,
+        "outers" => [
+          %{
+            "src_ip" => "203.0.113.10",
+            "src_port" => 51_820,
+            "dst_ip" => "198.51.100.5",
+            "dst_port" => 51_820
+          }
+        ],
         "rx_packets" => 100,
         "tx_packets" => 80,
         "rx_bytes" => 102_400,

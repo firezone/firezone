@@ -494,10 +494,17 @@ defmodule Portal.Repo.Seeds do
       domain: context.domain,
       # connlib normalizes both logs to initiator -> responder, including the
       # WireGuard tuple, so paired logs intentionally carry the same values.
-      outer_src_ip: {203, 0, 113, 44},
-      outer_src_port: 62_000,
-      outer_dst_ip: {189, 172, 73, 153},
-      outer_dst_port: 51_820,
+      outers:
+        if(closed?,
+          do: [
+            %FlowLog.Outer{
+              src_ip: "203.0.113.44",
+              src_port: 62_000,
+              dst_ip: "189.172.73.153",
+              dst_port: 51_820
+            }
+          ]
+        ),
       flow_start: Map.fetch!(attrs, :flow_start),
       flow_end: flow_end,
       last_packet: if(closed?, do: Map.get(attrs, :last_packet, DateTime.add(flow_end, -1, :second))),

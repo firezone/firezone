@@ -423,8 +423,14 @@ defmodule PortalAPI.LogControllerTest do
       assert data["inner_dst_ip"] == "10.0.0.5"
       assert data["inner_src_port"] == 54_321
       assert data["inner_dst_port"] == 443
-      assert data["outer_src_ip"] == "203.0.113.10"
-      assert data["outer_dst_ip"] == "198.51.100.5"
+      assert data["outers"] == [
+               %{
+                 "src_ip" => "203.0.113.10",
+                 "src_port" => 51_820,
+                 "dst_ip" => "198.51.100.5",
+                 "dst_port" => 51_820
+               }
+             ]
       assert data["rx_packets"] == 100
       assert data["tx_packets"] == 80
       assert data["rx_bytes"] == 102_400
@@ -457,13 +463,13 @@ defmodule PortalAPI.LogControllerTest do
 
       assert %{"data" => [data]} = json_response(conn, 200)
 
-      for field <- ~w[flow_end last_packet rx_packets tx_packets rx_bytes tx_bytes resource_address] do
+      for field <- ~w[flow_end last_packet outers rx_packets tx_packets rx_bytes tx_bytes resource_address] do
         assert Map.fetch!(data, field) == nil
       end
 
       schema = PortalAPI.Schemas.Log.Flow.schema()
 
-      for field <- ~w[flow_end last_packet rx_packets tx_packets rx_bytes tx_bytes resource_address]a do
+      for field <- ~w[flow_end last_packet outers rx_packets tx_packets rx_bytes tx_bytes resource_address]a do
         assert schema.properties[field].nullable
         assert field in schema.required
       end

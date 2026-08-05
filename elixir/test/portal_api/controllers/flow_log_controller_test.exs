@@ -32,10 +32,14 @@ defmodule PortalAPI.FlowLogControllerTest do
         "inner_src_port" => 12_345,
         "inner_dst_ip" => "10.0.0.5",
         "inner_dst_port" => 443,
-        "outer_src_ip" => "198.51.100.1",
-        "outer_src_port" => 51_820,
-        "outer_dst_ip" => "203.0.113.7",
-        "outer_dst_port" => 51_820,
+        "outers" => [
+          %{
+            "src_ip" => "198.51.100.1",
+            "src_port" => 51_820,
+            "dst_ip" => "203.0.113.7",
+            "dst_port" => 51_820
+          }
+        ],
         "flow_start" => "2026-03-20T10:00:00.000000Z",
         "flow_end" => "2026-03-20T10:05:00.000000Z",
         "last_packet" => "2026-03-20T10:04:59.000000Z",
@@ -334,7 +338,18 @@ defmodule PortalAPI.FlowLogControllerTest do
           "rx_packets" => 7,
           "tx_packets" => 9,
           "domain" => "db.example.com",
-          "outer_src_ip" => "198.51.100.9",
+          "outers" => [
+            %{
+              "dst_ip" => "203.0.113.7",
+              "dst_port" => 51_820
+            },
+            %{
+              "src_ip" => "198.51.100.9",
+              "src_port" => 42_000,
+              "dst_ip" => "203.0.113.8",
+              "dst_port" => 443
+            }
+          ],
           "last_packet" => "2026-03-20T10:04:30.000000Z"
         })
 
@@ -346,7 +361,15 @@ defmodule PortalAPI.FlowLogControllerTest do
       assert log.rx_packets == 7
       assert log.tx_packets == 9
       assert log.domain == "db.example.com"
-      assert log.outer_src_ip == %Postgrex.INET{address: {198, 51, 100, 9}}
+      assert Enum.map(log.outers, &Map.take(&1, [:src_ip, :src_port, :dst_ip, :dst_port])) == [
+               %{src_ip: nil, src_port: nil, dst_ip: "203.0.113.7", dst_port: 51_820},
+               %{
+                 src_ip: "198.51.100.9",
+                 src_port: 42_000,
+                 dst_ip: "203.0.113.8",
+                 dst_port: 443
+               }
+             ]
       assert log.last_packet == ~U[2026-03-20 10:04:30.000000Z]
     end
 
@@ -404,17 +427,37 @@ defmodule PortalAPI.FlowLogControllerTest do
       resource_id = Ecto.UUID.generate()
       claims = %{"initiator_device_id" => initiator_device_id, "resource_id" => resource_id}
 
-      open = build_record(%{"flow_end" => nil, "tx_bytes" => 100})
+      open = build_record(%{"flow_end" => nil, "outers" => nil, "tx_bytes" => 100})
 
       assert %{"data" => %{"status" => "ok"}} =
                build_conn() |> authorize(account, claims) |> post_logs([open]) |> json_response(200)
 
       [log] = Repo.all(FlowLog)
       assert is_nil(log.flow_end)
+      assert log.outers == []
+      assert [[true]] = Repo.query!("SELECT outers IS NULL FROM flow_logs").rows
       assert log.tx_bytes == 100
       open_seq = log.seq
 
-      close = build_record(%{"flow_end" => "2026-03-20T10:05:00.000000Z", "tx_bytes" => 999})
+      close =
+        build_record(%{
+          "flow_end" => "2026-03-20T10:05:00.000000Z",
+          "tx_bytes" => 999,
+          "outers" => [
+            %{
+              "src_ip" => "198.51.100.1",
+              "src_port" => 51_820,
+              "dst_ip" => "203.0.113.7",
+              "dst_port" => 51_820
+            },
+            %{
+              "src_ip" => nil,
+              "src_port" => nil,
+              "dst_ip" => "203.0.113.8",
+              "dst_port" => 443
+            }
+          ]
+        })
 
       assert %{"data" => %{"status" => "ok"}} =
                build_conn() |> authorize(account, claims) |> post_logs([close]) |> json_response(200)
@@ -422,6 +465,8 @@ defmodule PortalAPI.FlowLogControllerTest do
       [log] = Repo.all(FlowLog)
       assert log.flow_end == ~U[2026-03-20 10:05:00.000000Z]
       assert log.tx_bytes == 999
+      assert Enum.map(log.outers, & &1.dst_ip) == ["203.0.113.7", "203.0.113.8"]
+      assert [[false]] = Repo.query!("SELECT outers IS NULL FROM flow_logs").rows
       assert log.seq > open_seq
       assert log.start_seq == open_seq
     end
@@ -448,7 +493,7 @@ defmodule PortalAPI.FlowLogControllerTest do
       close = build_record(%{"flow_end" => "2026-03-20T10:05:00.000000Z"})
       build_conn() |> authorize(account, claims) |> post_logs([close])
 
-      open = build_record(%{"flow_end" => nil})
+      open = build_record(%{"flow_end" => nil, "outers" => nil})
       build_conn() |> authorize(account, claims) |> post_logs([open])
 
       [log] = Repo.all(FlowLog)
@@ -514,6 +559,70 @@ defmodule PortalAPI.FlowLogControllerTest do
 
       assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
       assert Map.has_key?(errors, "0")
+    end
+
+    test "returns 422 with an invalid outer path", %{conn: conn, account: account} do
+      record =
+        build_record(%{
+          "outers" => [
+            %{
+              "src_ip" => "not-an-ip",
+              "src_port" => 70_000,
+              "dst_ip" => nil,
+              "dst_port" => nil
+            }
+          ]
+        })
+
+      conn = conn |> authorize(account) |> post_logs([record])
+
+      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
+
+      assert %{
+               "src_ip" => [_],
+               "src_port" => [_],
+               "dst_ip" => [_],
+               "dst_port" => [_]
+             } = hd(errors["0"]["outers"])
+    end
+
+    test "returns 422 with a partially specified outer source endpoint", %{
+      conn: conn,
+      account: account
+    } do
+      record =
+        build_record(%{
+          "outers" => [
+            %{
+              "src_ip" => "198.51.100.2",
+              "dst_ip" => "203.0.113.8",
+              "dst_port" => 443
+            }
+          ]
+        })
+
+      conn = conn |> authorize(account) |> post_logs([record])
+
+      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
+
+      assert [%{"src_port" => ["must be present when src_ip is present"]}] =
+               errors["0"]["outers"]
+    end
+
+    test "returns 422 when a close omits its outer paths", %{conn: conn, account: account} do
+      record = build_record() |> Map.delete("outers")
+      conn = conn |> authorize(account) |> post_logs([record])
+
+      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
+      assert errors["0"]["outers"] == ["can't be blank"]
+    end
+
+    test "returns 422 when an open includes outer paths", %{conn: conn, account: account} do
+      record = build_record(%{"flow_end" => nil})
+      conn = conn |> authorize(account) |> post_logs([record])
+
+      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
+      assert errors["0"]["outers"] == ["must be absent while the flow is open"]
     end
 
     test "accepts a skewed flow_end before flow_start", %{conn: conn, account: account} do

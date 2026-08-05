@@ -91,14 +91,40 @@ defmodule Portal.HTTP.SyncTest do
 
       assert :ok = perform_job(HTTP.Sync, %{log_sink_id: sink.id})
 
-      flow1 = flow_log_fixture(account: account)
+      flow1 =
+        flow_log_fixture(
+          account: account,
+          outers: [
+            %{src_ip: nil, src_port: nil, dst_ip: "203.0.113.7", dst_port: 51_820},
+            %{
+              src_ip: "198.51.100.9",
+              src_port: 42_000,
+              dst_ip: "203.0.113.8",
+              dst_port: 443
+            }
+          ]
+        )
+
       flow2 = flow_log_fixture(account: account)
 
       assert :ok = perform_job(HTTP.Sync, %{log_sink_id: sink.id})
 
       assert_receive {:post, _conn, [start1, end1]}
       assert start1["log_id"] == flow1.log_id <> "-s"
+      assert is_nil(start1["outers"])
       assert end1["log_id"] == flow1.log_id <> "-e"
+
+      assert end1["outers"] == [
+               %{"src_ip" => nil, "src_port" => nil, "dst_ip" => "203.0.113.7", "dst_port" => 51_820},
+               %{
+                 "src_ip" => "198.51.100.9",
+                 "src_port" => 42_000,
+                 "dst_ip" => "203.0.113.8",
+                 "dst_port" => 443
+               }
+             ]
+
+      refute Map.has_key?(end1, "outer_src_ip")
 
       assert_receive {:post, _conn, [start2, end2]}
       assert start2["log_id"] == flow2.log_id <> "-s"
