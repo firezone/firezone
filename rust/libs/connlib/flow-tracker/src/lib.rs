@@ -28,7 +28,7 @@ use std::{
     collections::{HashMap, hash_map},
     fmt::Debug,
     hash::Hash,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
 
@@ -36,6 +36,7 @@ use chrono::{DateTime, TimeDelta, Utc};
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
+use smallvec::{SmallVec, smallvec};
 
 mod token;
 
@@ -43,6 +44,14 @@ pub use token::{IngestToken, IngestTokenClaims, IngestTokenRole, TEST_INGEST_TOK
 
 /// A flow is closed if no packet is seen for this long.
 const FLOW_TIMEOUT: TimeDelta = TimeDelta::minutes(2);
+
+/// A flow records at most this many outer (transport) tuples.
+///
+/// The outer tuple changes only on rare path events such as roaming or a relay
+/// switchover; the cap bounds the tracker's memory and the emitted record's
+/// size. A change past the cap splits the flow instead of going unrecorded, so
+/// a peer cannot flap its path to keep later tuples out of the log.
+const MAX_CONTEXTS_PER_FLOW: usize = 16;
 
 thread_local! {
     /// The [`FlowData`] for the packet currently being processed on this thread.
@@ -93,7 +102,7 @@ pub struct Tracker<S> {
 /// Recording this creates, updates or splits a flow.
 struct TxPacket<S> {
     scope: S,
-    /// The outer (transport) 4-tuple this flow is tunneled over.
+    /// The outer (transport) 4-tuple this packet was tunneled over.
     context: FlowContext,
     src_ip: IpAddr,
     dst_ip: IpAddr,
@@ -425,7 +434,7 @@ where
                             start: now_utc,
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
-                            context,
+                            contexts: smallvec![context],
                             fin_tx: false,
                             fin_rx: false,
                             domain,
@@ -436,15 +445,15 @@ where
 
                         vacant.insert(value);
                     }
-                    hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
+                    // A changed outer tuple splits the flow once the context
+                    // list is full, so a peer that keeps flapping its path
+                    // cannot make later tuples go unrecorded.
+                    hash_map::Entry::Occupied(occupied)
+                        if context_overflows(&occupied.get().contexts, context) =>
+                    {
                         let (key, value) = occupied.remove_entry();
-                        let context_diff = FlowContextDiff::new(value.context, context);
 
-                        tracing::debug!(
-                            ?key,
-                            ?context_diff,
-                            "Splitting existing TCP flow; context changed"
-                        );
+                        tracing::debug!(?key, "Splitting existing TCP flow; context cap reached");
 
                         emit(&Record::tcp_close(key, value, now_utc));
 
@@ -452,7 +461,7 @@ where
                             start: now_utc,
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
-                            context,
+                            contexts: smallvec![context],
                             fin_tx: false,
                             fin_rx: false,
                             domain,
@@ -479,7 +488,7 @@ where
                             start: now_utc,
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
-                            context,
+                            contexts: smallvec![context],
                             fin_tx: false,
                             fin_rx: false,
                             domain,
@@ -491,8 +500,10 @@ where
                         self.active_tcp_flows.insert(key, value);
                     }
                     hash_map::Entry::Occupied(mut occupied) => {
+                        let key = *occupied.key();
                         let value = occupied.get_mut();
 
+                        push_context(&key, &mut value.contexts, context);
                         value.stats.inc_tx(payload_len as u64);
                         value.last_packet = now_utc;
                         if tcp_fin {
@@ -526,7 +537,7 @@ where
                             start: now_utc,
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
-                            context,
+                            contexts: smallvec![context],
                             domain,
                             ingest_token,
                         };
@@ -535,15 +546,15 @@ where
 
                         vacant.insert(value);
                     }
-                    hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
+                    // A changed outer tuple splits the flow once the context
+                    // list is full, so a peer that keeps flapping its path
+                    // cannot make later tuples go unrecorded.
+                    hash_map::Entry::Occupied(occupied)
+                        if context_overflows(&occupied.get().contexts, context) =>
+                    {
                         let (key, value) = occupied.remove_entry();
-                        let context_diff = FlowContextDiff::new(value.context, context);
 
-                        tracing::debug!(
-                            ?key,
-                            ?context_diff,
-                            "Splitting existing UDP flow; context changed"
-                        );
+                        tracing::debug!(?key, "Splitting existing UDP flow; context cap reached");
 
                         emit(&Record::udp_close(key, value, now_utc));
 
@@ -551,7 +562,7 @@ where
                             start: now_utc,
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
-                            context,
+                            contexts: smallvec![context],
                             domain,
                             ingest_token,
                         };
@@ -561,8 +572,10 @@ where
                         self.active_udp_flows.insert(key, value);
                     }
                     hash_map::Entry::Occupied(mut occupied) => {
+                        let key = *occupied.key();
                         let value = occupied.get_mut();
 
+                        push_context(&key, &mut value.contexts, context);
                         value.stats.inc_tx(payload_len as u64);
                         value.last_packet = now_utc;
                     }
@@ -825,10 +838,10 @@ pub fn record_translated_packet(packet: &IpPacket) {
 }
 
 /// Records that the current packet was encapsulated and sent from `src` to `dst`.
+///
+/// `src` is unknown for relayed sends and omitted from the flow's outer tuple.
 pub fn record_transmit(src: Option<SocketAddr>, dst: SocketAddr) {
     update_current_flow(|data| {
-        let src = src.unwrap_or_else(|| unspecified_socket_like(dst));
-
         data.outer_tx = Some(FlowContext::new(src, dst));
     });
 }
@@ -842,15 +855,6 @@ pub fn record_icmp_error(packet: &IpPacket) {
     update_current_flow(|data| {
         data.icmp_error = Some(icmp_error);
     });
-}
-
-/// The local address is unknown when the socket layer has not bound one yet
-/// (e.g. a relayed transmit).
-fn unspecified_socket_like(addr: SocketAddr) -> SocketAddr {
-    match addr {
-        SocketAddr::V4(_) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
-        SocketAddr::V6(_) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
-    }
 }
 
 /// The flow-relevant fields of one inner (application) IP packet, in the packet's
@@ -928,10 +932,9 @@ pub struct Record {
     pub inner_dst_port: u16,
     pub domain: Option<DomainName>,
 
-    pub outer_src_ip: IpAddr,
-    pub outer_src_port: u16,
-    pub outer_dst_ip: IpAddr,
-    pub outer_dst_port: u16,
+    /// The outer (transport) tuples the flow has used, appended on every change,
+    /// so a tuple the flow returned to appears again.
+    pub outers: Vec<FlowContext>,
 
     pub flow_start: DateTime<Utc>,
     pub close: Option<FlowClose>,
@@ -947,7 +950,7 @@ impl Record {
             key.dst_port,
             value.ingest_token.clone(),
             value.domain.clone(),
-            value.context,
+            value.contexts.to_vec(),
             value.start,
             None,
         )
@@ -964,7 +967,7 @@ impl Record {
             key.dst_port,
             value.ingest_token,
             value.domain,
-            value.context,
+            value.contexts.into_vec(),
             value.start,
             Some(close),
         )
@@ -979,7 +982,7 @@ impl Record {
             key.dst_port,
             value.ingest_token.clone(),
             value.domain.clone(),
-            value.context,
+            value.contexts.to_vec(),
             value.start,
             None,
         )
@@ -996,7 +999,7 @@ impl Record {
             key.dst_port,
             value.ingest_token,
             value.domain,
-            value.context,
+            value.contexts.into_vec(),
             value.start,
             Some(close),
         )
@@ -1011,7 +1014,7 @@ impl Record {
         inner_dst_port: u16,
         ingest_token: IngestToken,
         domain: Option<DomainName>,
-        context: FlowContext,
+        outers: Vec<FlowContext>,
         flow_start: DateTime<Utc>,
         close: Option<FlowClose>,
     ) -> Self {
@@ -1023,10 +1026,7 @@ impl Record {
             inner_dst_ip,
             inner_dst_port,
             domain,
-            outer_src_ip: context.src_ip,
-            outer_src_port: context.src_port,
-            outer_dst_ip: context.dst_ip,
-            outer_dst_port: context.dst_port,
+            outers,
             flow_start,
             close,
         }
@@ -1094,10 +1094,7 @@ pub fn emit(record: &Record) {
                 inner_dst_port = record.inner_dst_port,
                 domain = record.domain.as_ref().map(tracing::field::display),
 
-                outer_src_ip = %record.outer_src_ip,
-                outer_src_port = record.outer_src_port,
-                outer_dst_ip = %record.outer_dst_ip,
-                outer_dst_port = record.outer_dst_port,
+                outers = %Outers(&record.outers),
 
                 flow_start = ?record.flow_start,
                 flow_end = close.map(|c| tracing::field::debug(c.flow_end)),
@@ -1116,6 +1113,40 @@ pub fn emit(record: &Record) {
         (FlowProtocol::Tcp, true) => emit!("TCP flow completed"),
         (FlowProtocol::Udp, false) => emit!("UDP flow started"),
         (FlowProtocol::Udp, true) => emit!("UDP flow completed"),
+    }
+}
+
+/// Renders a record's outer tuples as one compact JSON array.
+///
+/// A tracing-event field holds a single scalar value, so the list rides as one
+/// JSON-encoded field that `flow-log-writer` decodes into the report payload.
+struct Outers<'a>(&'a [FlowContext]);
+
+impl std::fmt::Display for Outers<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        serde_json::to_writer(FmtWriter(f), self.0).map_err(|_| std::fmt::Error)?;
+
+        Ok(())
+    }
+}
+
+/// Adapts a [`std::fmt::Formatter`] to [`std::io::Write`] so serialising can
+/// stream into it without an intermediate `String`.
+///
+/// `serde_json` guarantees it feeds only valid UTF-8 sequences to the writer.
+struct FmtWriter<'a, 'b>(&'a mut std::fmt::Formatter<'b>);
+
+impl std::io::Write for FmtWriter<'_, '_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let utf8 = std::str::from_utf8(buf).map_err(std::io::Error::other)?;
+
+        self.0.write_str(utf8).map_err(std::io::Error::other)?;
+
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
 }
 
@@ -1142,7 +1173,9 @@ struct TcpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
     stats: FlowStats,
-    context: FlowContext,
+    /// The outer (transport) tuples the flow has used, appended on every change,
+    /// so a tuple the flow returned to appears again.
+    contexts: SmallVec<[FlowContext; 4]>,
 
     domain: Option<DomainName>,
 
@@ -1158,7 +1191,9 @@ struct UdpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
     stats: FlowStats,
-    context: FlowContext,
+    /// The outer (transport) tuples the flow has used, appended on every change,
+    /// so a tuple the flow returned to appears again.
+    contexts: SmallVec<[FlowContext; 4]>,
 
     domain: Option<DomainName>,
 
@@ -1193,46 +1228,82 @@ impl FlowStats {
 }
 
 /// The outer (transport) 4-tuple a flow is tunneled over.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+///
+/// The source is unknown for relayed sends; it is `None` there and omitted
+/// from the serialised tuple.
+#[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize)]
 pub struct FlowContext {
-    pub src_ip: IpAddr,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub src_ip: Option<IpAddr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub src_port: Option<u16>,
     pub dst_ip: IpAddr,
-    pub src_port: u16,
     pub dst_port: u16,
 }
 
 impl FlowContext {
     /// Builds a context from the outer addresses as seen by the initiator: the
     /// initiator side is the source, the responder side the destination.
-    pub fn new(initiator: SocketAddr, responder: SocketAddr) -> Self {
+    pub fn new(initiator: impl Into<Option<SocketAddr>>, responder: SocketAddr) -> Self {
+        let initiator = initiator.into();
+
         Self {
-            src_ip: initiator.ip(),
+            src_ip: initiator.map(|initiator| initiator.ip()),
+            src_port: initiator.map(|initiator| initiator.port()),
             dst_ip: responder.ip(),
-            src_port: initiator.port(),
             dst_port: responder.port(),
         }
     }
 }
 
+/// Appends `context` to a flow's outer tuples if it differs from the current one.
+///
+/// Callers split the flow before the list would grow past
+/// [`MAX_CONTEXTS_PER_FLOW`], see [`context_overflows`].
+fn push_context(key: &impl Debug, contexts: &mut SmallVec<[FlowContext; 4]>, context: FlowContext) {
+    let Some(current) = contexts.last().copied() else {
+        contexts.push(context);
+        return;
+    };
+
+    if current == context {
+        return;
+    }
+
+    let context_diff = FlowContextDiff::new(current, context);
+
+    tracing::debug!(?key, ?context_diff, "Context of flow changed");
+
+    contexts.push(context);
+
+    debug_assert!(contexts.len() <= MAX_CONTEXTS_PER_FLOW);
+}
+
+/// Whether recording `context` would grow the flow's outer tuples past
+/// [`MAX_CONTEXTS_PER_FLOW`].
+fn context_overflows(contexts: &SmallVec<[FlowContext; 4]>, context: FlowContext) -> bool {
+    contexts.last() != Some(&context) && contexts.len() >= MAX_CONTEXTS_PER_FLOW
+}
+
 #[derive(PartialEq, Eq)]
 struct FlowContextDiff {
-    src_ip: Option<(IpAddr, IpAddr)>,
+    src_ip: Option<(Option<IpAddr>, Option<IpAddr>)>,
+    src_port: Option<(Option<u16>, Option<u16>)>,
     dst_ip: Option<(IpAddr, IpAddr)>,
-    src_port: Option<(u16, u16)>,
     dst_port: Option<(u16, u16)>,
 }
 
 impl FlowContextDiff {
     fn new(old: FlowContext, new: FlowContext) -> Self {
         let src_ip_diff = (old.src_ip != new.src_ip).then_some((old.src_ip, new.src_ip));
-        let dst_ip_diff = (old.dst_ip != new.dst_ip).then_some((old.dst_ip, new.dst_ip));
         let src_port_diff = (old.src_port != new.src_port).then_some((old.src_port, new.src_port));
+        let dst_ip_diff = (old.dst_ip != new.dst_ip).then_some((old.dst_ip, new.dst_ip));
         let dst_port_diff = (old.dst_port != new.dst_port).then_some((old.dst_port, new.dst_port));
 
         Self {
             src_ip: src_ip_diff,
-            dst_ip: dst_ip_diff,
             src_port: src_port_diff,
+            dst_ip: dst_ip_diff,
             dst_port: dst_port_diff,
         }
     }
@@ -1247,15 +1318,15 @@ impl std::fmt::Debug for FlowContextDiff {
                 .field("old_src_ip", &old)
                 .field("new_src_ip", &new);
         }
-        if let Some((old, new)) = self.dst_ip {
-            debug_struct
-                .field("old_dst_ip", &old)
-                .field("new_dst_ip", &new);
-        }
         if let Some((old, new)) = self.src_port {
             debug_struct
                 .field("old_src_port", &old)
                 .field("new_src_port", &new);
+        }
+        if let Some((old, new)) = self.dst_ip {
+            debug_struct
+                .field("old_dst_ip", &old)
+                .field("new_dst_ip", &new);
         }
         if let Some((old, new)) = self.dst_port {
             debug_struct
@@ -1269,29 +1340,23 @@ impl std::fmt::Debug for FlowContextDiff {
 
 #[cfg(test)]
 mod tests {
-    use std::net::Ipv4Addr;
-
     use super::*;
 
     #[test]
     fn flow_context_diff_rendering() {
-        let old = FlowContext {
-            src_ip: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
-            dst_ip: IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)),
-            src_port: 8080,
-            dst_port: 443,
-        };
-        let new = FlowContext {
-            src_ip: IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)),
-            dst_ip: IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)),
-            src_port: 50000,
-            dst_port: 443,
-        };
+        let old = FlowContext::new(
+            "10.0.0.1:8080".parse::<SocketAddr>().unwrap(),
+            "192.168.0.1:443".parse().unwrap(),
+        );
+        let new = FlowContext::new(
+            "1.1.1.1:50000".parse::<SocketAddr>().unwrap(),
+            "192.168.0.1:443".parse().unwrap(),
+        );
 
         let diff = FlowContextDiff::new(old, new);
 
         assert_eq!(
-            "FlowContextDiff { old_src_ip: 10.0.0.1, new_src_ip: 1.1.1.1, old_src_port: 8080, new_src_port: 50000 }",
+            "FlowContextDiff { old_src_ip: Some(10.0.0.1), new_src_ip: Some(1.1.1.1), old_src_port: Some(8080), new_src_port: Some(50000) }",
             format!("{diff:?}")
         );
     }

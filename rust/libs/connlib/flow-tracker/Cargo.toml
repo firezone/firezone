@@ -12,6 +12,7 @@ dns-types = { workspace = true }
 ip-packet = { workspace = true }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true }
+smallvec = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

@@ -54,17 +54,20 @@ fi
 sleep 3
 readarray -t flows < <(get_flow_logs "tcp")
 
-assert_gteq "${#flows[@]}" 2
+# A roam must not split the flow: the whole download is one flow that
+# accumulates the reconnected path as another outer tuple.
+assert_eq "${#flows[@]}" 1
 
-declare -i non_standard_ports=0
+flow="${flows[0]}"
 
-for flow in "${flows[@]}"; do
-    # All flows should have same inner_dst_ip
-    assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
+assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
 
-    if [ "$(get_flow_field "$flow" "outer_src_port")" != "52625" ]; then
-        non_standard_ports+=1
-    fi
-done
+outers="$(get_flow_field "$flow" "outers")"
 
+num_tuples="$(echo "$outers" | grep -o '"dst_ip":' | wc -l || true)"
+assert_gteq "$num_tuples" 2
+
+# At least one tuple must come from the reconnected path, i.e. not from the
+# client's standard p2p port.
+non_standard_ports="$(echo "$outers" | grep -oP '"src_port":\K[0-9]+' | grep -cv '^52625$' || true)"
 assert_gteq "$non_standard_ports" 1

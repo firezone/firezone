@@ -149,11 +149,15 @@ jobs:
             rust_log: debug,path_agent=trace
             iceless: true
           - script: download-roaming-network
-            min_gateway_version: 1.4.18
+            # The flow-log assertions require a gateway that accumulates outer
+            # tuples instead of splitting the flow on a roam.
+            min_gateway_version: 1.6.0
             rust_log: debug,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
           - name: download-roaming-network-iceless
             script: download-roaming-network
-            min_gateway_version: 1.4.18
+            # The flow-log assertions require a gateway that accumulates outer
+            # tuples instead of splitting the flow on a roam.
+            min_gateway_version: 1.6.0
             iceless: true
             rust_log: debug,path_agent=trace,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
     steps:

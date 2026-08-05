@@ -2650,6 +2650,7 @@ dependencies = [
  "ip-packet",
  "serde",
  "serde_json",
+ "smallvec",
  "tempfile",
  "tracing",
  "tracing-subscriber",

@@ -24,9 +24,10 @@
 //! directive would copy it into log files); the eventloops receive it in the
 //! portal's authorization messages and persist it via [`write_token`] instead.
 //! A report's payload is the event's record fields as emitted (see
-//! [`RECORD_FIELDS`]); attribution deliberately rides only the token, and the
-//! portal validates the payload on ingest, so the writer only interprets what
-//! routing and naming need.
+//! [`RECORD_FIELDS`]), with the JSON-encoded `outers` field decoded into its
+//! array; attribution deliberately rides only the token, and the portal
+//! validates the payload on ingest, so beyond that the writer only interprets
+//! what routing and naming need.
 //!
 //! `<flow_start>` is the flow's start time as zero-padded unix seconds, so a
 //! lexical sort of the report names is oldest-first and the uploader needs no
@@ -266,10 +267,7 @@ const RECORD_FIELDS: &[&str] = &[
     "inner_dst_ip",
     "inner_dst_port",
     "domain",
-    "outer_src_ip",
-    "outer_src_port",
-    "outer_dst_ip",
-    "outer_dst_port",
+    "outers",
     "flow_start",
     "flow_end",
     "last_packet",
@@ -334,8 +332,19 @@ impl FieldVisitor {
         self.fields
             .retain(|name, _| RECORD_FIELDS.contains(&name.as_str()));
 
-        // The only field the writer interprets: the file name needs it so a
-        // lexical sort of the reports is oldest-first.
+        // The record's outer tuples ride the event as one JSON-encoded field (a
+        // tracing field holds a single scalar); decode it so the report payload
+        // carries the array itself.
+        if let Some(outers) = self.fields.get_mut("outers") {
+            let decoded = outers
+                .as_str()
+                .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())?;
+
+            *outers = decoded;
+        }
+
+        // The only other field the writer interprets: the file name needs it so
+        // a lexical sort of the reports is oldest-first.
         let flow_start = DateTime::parse_from_rfc3339(self.fields.get("flow_start")?.as_str()?)
             .ok()?
             .timestamp();
@@ -618,10 +627,7 @@ mod tests {
             inner_src_port = %1234,
             inner_dst_ip = %"10.0.0.5",
             inner_dst_port = %443,
-            outer_src_ip = %"198.51.100.1",
-            outer_src_port = %51820,
-            outer_dst_ip = %"203.0.113.7",
-            outer_dst_port = %51820,
+            outers = %r#"[{"src_ip":"198.51.100.1","src_port":51820,"dst_ip":"203.0.113.7","dst_port":51820}]"#,
             actor_id = "a-1",
             flow_start = ?flow_start,
             flow_end = flow_end.map(tracing::field::debug),
