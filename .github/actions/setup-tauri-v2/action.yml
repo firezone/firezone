@@ -20,7 +20,9 @@ runs:
           ${{ runner.os }}-apt-tauri-
 
     - name: Restore cached apt packages
-      if: ${{ runner.os == 'Linux' && steps.apt-cache.outputs.cache-hit == 'true' }}
+      # `cache-hit` is only true on an exact key match, so this also runs for the
+      # `restore-keys` fallback, where the `.deb`s are restored but the key differs.
+      if: ${{ runner.os == 'Linux' }}
       run: |
         sudo cp ~/apt-cache/*.deb /var/cache/apt/archives/ 2>/dev/null || true
       shell: bash
