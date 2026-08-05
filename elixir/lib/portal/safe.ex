@@ -839,6 +839,14 @@ defmodule Portal.Safe do
   def permit(:read, Portal.Userpass.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Entra.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Entra.Directory, :api_client), do: :ok
+  def permit(_action, Portal.DeviceIntegration, :account_admin_user), do: :ok
+  def permit(:read, Portal.DeviceIntegration, :api_client), do: :ok
+  def permit(_action, Portal.Intune.Integration, :account_admin_user), do: :ok
+  def permit(:read, Portal.Intune.Integration, :api_client), do: :ok
+  def permit(:read, Portal.Intune.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.Intune.Device, :api_client), do: :ok
+  def permit(:read, Portal.DeviceInventory, :account_admin_user), do: :ok
+  def permit(:read, Portal.DeviceInventory, :api_client), do: :ok
   def permit(_action, Portal.Google.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Google.Directory, :api_client), do: :ok
   def permit(_action, Portal.Okta.Directory, :account_admin_user), do: :ok

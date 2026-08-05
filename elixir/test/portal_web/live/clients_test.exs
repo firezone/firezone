@@ -24,7 +24,7 @@ defmodule PortalWeb.ClientsTest do
 
   describe "unauthorized" do
     test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
-      path = ~p"/#{account}/clients"
+      path = ~p"/#{account}/devices"
 
       assert live(conn, path) ==
                {:error,
@@ -45,10 +45,10 @@ defmodule PortalWeb.ClientsTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients")
+        |> live(~p"/#{account}/devices")
 
-      assert html =~ "Clients"
-      assert html =~ "No clients yet"
+      assert html =~ "Devices"
+      assert html =~ "No devices yet"
     end
 
     test "renders client list page", %{conn: conn, account: account, actor: actor} do
@@ -57,9 +57,9 @@ defmodule PortalWeb.ClientsTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients")
+        |> live(~p"/#{account}/devices")
 
-      assert html =~ "Clients"
+      assert html =~ "Devices"
       assert html =~ client.name
     end
 
@@ -76,7 +76,7 @@ defmodule PortalWeb.ClientsTest do
 
       for search <- [client.name, owner.name, owner.email] do
         {:ok, _lv, html} =
-          live(conn, ~p"/#{account}/clients?#{%{"clients_filter[search]" => search}}")
+          live(conn, ~p"/#{account}/devices?#{%{"clients_filter[search]" => search}}")
 
         assert html =~ client.name
         refute html =~ other_client.name
@@ -98,7 +98,7 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients")
+        |> live(~p"/#{account}/devices")
 
       html = render(lv)
       assert html =~ verified_client.name
@@ -118,12 +118,12 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients")
+        |> live(~p"/#{account}/devices")
 
       html =
         element(
           lv,
-          "button[phx-click='order_by'][phx-value-table_id='clients'][phx-value-order_by='devices:asc:name']"
+          "button[phx-click='order_by'][phx-value-table_id='clients'][phx-value-order_by='device_inventory:asc:name']"
         )
         |> render_click()
 
@@ -135,7 +135,7 @@ defmodule PortalWeb.ClientsTest do
 
       assert_patch(
         lv,
-        ~p"/#{account}/clients/#{omega.id}?#{%{clients_order_by: "devices:desc:name"}}"
+        ~p"/#{account}/devices/#{omega.id}?#{%{clients_order_by: "device_inventory:desc:name"}}"
       )
 
       assert render(lv) =~ omega.name
@@ -177,7 +177,7 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}")
+        |> live(~p"/#{account}/devices/#{client.id}")
 
       assert html =~ client.name
       assert html =~ owner.name
@@ -197,7 +197,7 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ session.last_seen_version
 
       render_click(lv, "close_panel")
-      assert_patch(lv, ~p"/#{account}/clients")
+      assert_patch(lv, ~p"/#{account}/devices")
     end
 
     test "ignores a tab switch queued while the client panel is closing", %{
@@ -210,10 +210,10 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}")
+        |> live(~p"/#{account}/devices/#{client.id}")
 
       render_click(lv, "close_panel")
-      assert_patch(lv, ~p"/#{account}/clients")
+      assert_patch(lv, ~p"/#{account}/devices")
 
       render_click(lv, "switch_client_tab", %{"tab" => "authorizations"})
 
@@ -259,18 +259,18 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}")
+        |> live(~p"/#{account}/devices/#{client.id}")
 
       html = render_click(lv, "confirm_delete_client")
-      assert html =~ "Delete this client?"
+      assert html =~ "Delete this device?"
 
       html = render_click(lv, "cancel_delete_client")
-      refute html =~ "Delete this client?"
+      refute html =~ "Delete this device?"
 
       render_click(lv, "confirm_delete_client")
       render_click(lv, "delete_client")
 
-      assert_patch(lv, ~p"/#{account}/clients")
+      assert_patch(lv, ~p"/#{account}/devices")
       assert is_nil(Repo.get_by(Device, account_id: account.id, id: client.id))
     end
 
@@ -284,14 +284,14 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}")
+        |> live(~p"/#{account}/devices/#{client.id}")
 
       assert has_element?(lv, "button[phx-click='verify_client']", "Verify")
 
       html = render_click(lv, "verify_client")
       updated_client = Repo.get_by!(Device, account_id: account.id, id: client.id)
 
-      assert html =~ "Client &quot;#{client.name}&quot; was verified."
+      assert html =~ "Device &quot;#{client.name}&quot; was verified."
       assert html =~ "Verified"
       assert updated_client.verified_at
       refute has_element?(lv, "button[phx-click='verify_client']", "Verify")
@@ -312,16 +312,16 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}")
+        |> live(~p"/#{account}/devices/#{client.id}")
 
       html = render_click(lv, "confirm_unverify_client")
-      assert html =~ "Revoke verification for this client?"
-      assert html =~ "Current authorizations for this client may be revoked."
+      assert html =~ "Revoke verification for this device?"
+      assert html =~ "Current authorizations for this device may be revoked."
 
       html = render_click(lv, "cancel_unverify_client")
       updated_client = Repo.get_by!(Device, account_id: account.id, id: client.id)
 
-      refute html =~ "Revoke verification for this client?"
+      refute html =~ "Revoke verification for this device?"
       assert updated_client.verified_at
       assert has_element?(
                lv,
@@ -342,14 +342,14 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}")
+        |> live(~p"/#{account}/devices/#{client.id}")
 
       render_click(lv, "confirm_unverify_client")
       html = render_click(lv, "unverify_client")
       updated_client = Repo.get_by!(Device, account_id: account.id, id: client.id)
 
-      assert html =~ "Client &quot;#{client.name}&quot; was unverified."
-      refute html =~ "Revoke verification for this client?"
+      assert html =~ "Device &quot;#{client.name}&quot; was unverified."
+      refute html =~ "Revoke verification for this device?"
       assert is_nil(updated_client.verified_at)
       assert has_element?(lv, "button[phx-click='verify_client']", "Verify")
       refute has_element?(
@@ -369,10 +369,10 @@ defmodule PortalWeb.ClientsTest do
       assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
                conn
                |> authorize_conn(actor)
-               |> live(~p"/#{account}/clients/#{missing_id}")
+               |> live(~p"/#{account}/devices/#{missing_id}")
 
-      assert to == ~p"/#{account}/clients"
-      assert flash["error"] =~ "Client does not exist"
+      assert to == ~p"/#{account}/devices"
+      assert flash["error"] =~ "Device does not exist"
     end
   end
 
@@ -387,9 +387,9 @@ defmodule PortalWeb.ClientsTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}/edit")
+        |> live(~p"/#{account}/devices/#{client.id}/edit")
 
-      assert html =~ "Edit Client"
+      assert html =~ "Edit Device"
       assert html =~ "Save"
       assert html =~ client.name
     end
@@ -404,10 +404,10 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}")
+        |> live(~p"/#{account}/devices/#{client.id}")
 
       render_click(lv, "open_client_edit_form")
-      assert_patch(lv, ~p"/#{account}/clients/#{client.id}/edit")
+      assert_patch(lv, ~p"/#{account}/devices/#{client.id}/edit")
 
       html =
         lv
@@ -417,7 +417,7 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "can&#39;t be blank"
 
       render_click(lv, "cancel_client_edit_form")
-      assert_patch(lv, ~p"/#{account}/clients/#{client.id}")
+      assert_patch(lv, ~p"/#{account}/devices/#{client.id}")
 
       render_click(lv, "open_client_edit_form")
 
@@ -428,10 +428,10 @@ defmodule PortalWeb.ClientsTest do
 
       updated_client = Repo.get_by!(Device, account_id: account.id, id: client.id)
 
-      assert html =~ "Client updated successfully."
+      assert html =~ "Device updated successfully."
       assert html =~ "Updated Client Name"
       assert updated_client.name == "Updated Client Name"
-      assert_patch(lv, ~p"/#{account}/clients/#{client.id}")
+      assert_patch(lv, ~p"/#{account}/devices/#{client.id}")
     end
   end
 
@@ -446,7 +446,7 @@ defmodule PortalWeb.ClientsTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}")
+        |> live(~p"/#{account}/devices/#{client.id}")
 
       assert html =~ "Overview"
       assert html =~ "Authorizations"
@@ -462,13 +462,13 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}")
+        |> live(~p"/#{account}/devices/#{client.id}")
 
       lv
       |> element("button[phx-click='switch_client_tab'][phx-value-tab='authorizations']")
       |> render_click()
 
-      assert_patch(lv, ~p"/#{account}/clients/#{client.id}?tab=authorizations")
+      assert_patch(lv, ~p"/#{account}/devices/#{client.id}?tab=authorizations")
     end
 
     test "switching back to Overview tab patches URL", %{
@@ -481,13 +481,13 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}?tab=authorizations")
+        |> live(~p"/#{account}/devices/#{client.id}?tab=authorizations")
 
       lv
       |> element("button[phx-click='switch_client_tab'][phx-value-tab='overview']")
       |> render_click()
 
-      assert_patch(lv, ~p"/#{account}/clients/#{client.id}?tab=overview")
+      assert_patch(lv, ~p"/#{account}/devices/#{client.id}?tab=overview")
     end
 
     test "Authorizations tab shows empty state when no authorizations exist", %{
@@ -500,7 +500,7 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}?tab=authorizations")
+        |> live(~p"/#{account}/devices/#{client.id}?tab=authorizations")
 
       assert html =~ "No recent authorizations"
 
@@ -540,7 +540,7 @@ defmodule PortalWeb.ClientsTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}?tab=authorizations")
+        |> live(~p"/#{account}/devices/#{client.id}?tab=authorizations")
 
       assert html =~ resource.name
       assert html =~ group.name
@@ -561,7 +561,7 @@ defmodule PortalWeb.ClientsTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}")
+        |> live(~p"/#{account}/devices/#{client.id}")
 
       assert html =~ "Regression Laptop"
       assert html =~ "Tunnel IPv4"
@@ -576,7 +576,7 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients")
+        |> live(~p"/#{account}/devices")
 
       assert html =~ "Loading..."
 
@@ -595,13 +595,14 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients")
+        |> live(~p"/#{account}/devices")
 
       render_async(lv)
 
-      send(lv.pid, %Change{op: :insert, struct: %Device{type: :client}})
+      client = client_fixture(account: account, actor: actor)
+      send(lv.pid, %Change{op: :insert, struct: client})
 
-      html = render(lv)
+      html = render_async(lv)
       assert html =~ "1"
       assert html =~ "Total"
     end
@@ -611,23 +612,24 @@ defmodule PortalWeb.ClientsTest do
       account: account,
       actor: actor
     } do
-      _client = client_fixture(account: account, actor: actor)
+      client = client_fixture(account: account, actor: actor)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients")
+        |> live(~p"/#{account}/devices")
 
       render_async(lv)
 
-      send(lv.pid, %Change{op: :delete, old_struct: %Device{type: :client}})
+      Repo.delete!(client)
+      send(lv.pid, %Change{op: :delete, old_struct: client})
 
-      html = render(lv)
+      html = render_async(lv)
       assert html =~ "0"
       assert html =~ "Total"
     end
 
-    test "marks the table stale on client update change", %{
+    test "reloads the device projection on client update change", %{
       conn: conn,
       account: account,
       actor: actor
@@ -637,7 +639,7 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients")
+        |> live(~p"/#{account}/devices")
 
       render_async(lv)
       refute has_element?(lv, "#clients-reload-btn")
@@ -649,9 +651,7 @@ defmodule PortalWeb.ClientsTest do
 
       send(lv.pid, %Change{op: :update, struct: %Device{type: :client, id: client.id}})
 
-      assert has_element?(lv, "#clients-reload-btn")
-
-      render_click(lv, "reload", %{"table_id" => "clients"})
+      refute has_element?(lv, "#clients-reload-btn")
       assert render(lv) =~ "Renamed Client"
     end
 
@@ -659,7 +659,7 @@ defmodule PortalWeb.ClientsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients")
+        |> live(~p"/#{account}/devices")
 
       render_async(lv)
 

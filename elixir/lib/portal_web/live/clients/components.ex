@@ -196,6 +196,7 @@ defmodule PortalWeb.Clients.Components do
 
   attr :account, :any, required: true
   attr :client, :any, required: true
+  attr :inventory, :any, default: nil
   attr :panel, :map, required: true
   attr :confirm_state, :map, required: true
   attr :query_params, :map, default: %{}
@@ -233,6 +234,7 @@ defmodule PortalWeb.Clients.Components do
           :if={@panel_view != :edit_client}
           account={@account}
           client={@client}
+          inventory={@inventory}
           tab={@panel_tab}
           confirm_delete_client={@confirm_delete_client}
           confirm_unverify_client={@confirm_unverify_client}
@@ -251,7 +253,7 @@ defmodule PortalWeb.Clients.Components do
   def client_edit_view(assigns) do
     ~H"""
     <div class="flex flex-1 min-h-0 flex-col overflow-hidden">
-      <.panel_header title="Edit Client" close_event="cancel_client_edit_form" />
+      <.panel_header title="Edit Device" close_event="cancel_client_edit_form" />
       <.form
         :if={@client_edit_form}
         id="client-edit-form"
@@ -282,7 +284,7 @@ defmodule PortalWeb.Clients.Components do
         <.input
           field={@client_edit_form[:name]}
           type="text"
-          placeholder="Client name"
+          placeholder="Device name"
           phx-debounce="300"
           required
         />
@@ -306,6 +308,7 @@ defmodule PortalWeb.Clients.Components do
 
   attr :account, :any, required: true
   attr :client, :any, required: true
+  attr :inventory, :any, default: nil
   attr :tab, :atom, default: :overview
   attr :confirm_delete_client, :boolean, default: false
   attr :confirm_unverify_client, :boolean, default: false
@@ -357,6 +360,7 @@ defmodule PortalWeb.Clients.Components do
           </div>
           <div :if={@tab == :overview} class="flex-1 overflow-y-auto">
             <.client_owner_section account={@account} client={@client} />
+            <.intune_inventory_section :if={@inventory && @inventory.intune_device_id} inventory={@inventory} />
             <.client_device_section client={@client} />
             <.client_network_section client={@client} />
           </div>
@@ -645,6 +649,259 @@ defmodule PortalWeb.Clients.Components do
     """
   end
 
+  attr :account, :any, required: true
+  attr :inventory, :any, required: true
+
+  def inventory_device_panel(assigns) do
+    ~H"""
+    <div
+      id="inventory-device-panel"
+      class={[
+        "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-2/3",
+        "bg-elevated border-l border-border-strong",
+        "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
+        "transition-transform duration-200 ease-in-out",
+        if(@inventory, do: "translate-x-0", else: "translate-x-full")
+      ]}
+      phx-window-keydown="handle_keydown"
+      phx-key="Escape"
+    >
+      <div :if={@inventory} class="flex flex-col h-full overflow-hidden">
+        <div class="shrink-0 px-5 py-4 border-b border-border bg-elevated">
+          <div class="flex items-center gap-4">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-semibold text-heading truncate">{@inventory.name}</h2>
+                <.inventory_source_badges inventory={@inventory} />
+                <.inventory_connection_badge inventory={@inventory} />
+              </div>
+              <p class="font-mono text-xs text-subtle mt-0.5 truncate">{@inventory.id}</p>
+            </div>
+            <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          </div>
+        </div>
+
+        <div class="flex flex-1 min-h-0 divide-x divide-border">
+          <div class="flex-1 overflow-y-auto">
+            <.inventory_owner_section account={@account} inventory={@inventory} />
+            <.intune_inventory_section inventory={@inventory} />
+            <div class="px-5 pt-4 pb-3">
+              <.section_heading title="Connection" />
+              <p class="text-xs text-subtle">
+                This device has not connected to Firezone yet. Tunnel addresses are allocated when the client first signs in.
+              </p>
+            </div>
+          </div>
+
+          <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
+            <section>
+              <.section_heading title="Details" />
+              <dl class="space-y-2.5">
+                <.client_detail_row label="Inventory ID">
+                  <span class="font-mono text-[11px] text-body break-all">{@inventory.id}</span>
+                </.client_detail_row>
+                <.client_detail_row label="Intune Device ID">
+                  <span class="font-mono text-[11px] text-body break-all">{@inventory.intune_id}</span>
+                </.client_detail_row>
+                <.client_detail_row label="Connection">
+                  <.inventory_connection_badge inventory={@inventory} />
+                </.client_detail_row>
+                <.client_detail_row :if={@inventory.intune_last_sync_at} label="Intune Last Sync">
+                  <span class="text-xs text-body">
+                    <.relative_datetime datetime={@inventory.intune_last_sync_at} />
+                  </span>
+                </.client_detail_row>
+              </dl>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :inventory, :any, required: true
+
+  def inventory_owner_section(assigns) do
+    ~H"""
+    <div class="px-5 pt-4 pb-3 border-b border-border">
+      <.section_heading title="Owner" />
+      <.link
+        :if={@inventory.actor}
+        navigate={~p"/#{@account}/actors/#{@inventory.actor.id}"}
+        class="text-sm text-brand hover:underline"
+      >
+        {@inventory.actor.name}
+      </.link>
+      <div :if={is_nil(@inventory.actor)} class="rounded border border-border bg-raised px-3 py-2.5">
+        <p class="text-sm font-medium text-heading">
+          {@inventory.intune_user_display_name || @inventory.intune_user_principal_name || "Unassigned"}
+        </p>
+        <p :if={@inventory.intune_email_address || @inventory.intune_user_principal_name} class="text-xs text-subtle mt-0.5">
+          {@inventory.intune_email_address || @inventory.intune_user_principal_name}
+        </p>
+      </div>
+    </div>
+    """
+  end
+
+  attr :inventory, :any, required: true
+
+  def intune_inventory_section(assigns) do
+    ~H"""
+    <div class="px-5 pt-4 pb-3 border-b border-border">
+      <div class="flex items-center justify-between">
+        <.section_heading title="Microsoft Intune" />
+        <.inventory_compliance_badge inventory={@inventory} />
+      </div>
+      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+        <.client_detail_row :if={@inventory.intune_device_name} label="Device Name">
+          <span class="text-sm text-heading">{@inventory.intune_device_name}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={@inventory.intune_managed_device_name} label="Managed Device Name">
+          <span class="text-sm text-heading">{@inventory.intune_managed_device_name}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={@inventory.intune_serial_number} label="Serial Number">
+          <span class="font-mono text-xs text-body">{@inventory.intune_serial_number}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={@inventory.intune_entra_device_id} label="Entra Device ID">
+          <span class="font-mono text-xs text-body break-all">{@inventory.intune_entra_device_id}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={@inventory.intune_operating_system} label="Operating System">
+          <span class="text-xs text-body">
+            {Enum.join(Enum.reject([@inventory.intune_operating_system, @inventory.intune_os_version], &is_nil/1), " ")}
+          </span>
+        </.client_detail_row>
+        <.client_detail_row :if={@inventory.intune_manufacturer || @inventory.intune_model} label="Hardware">
+          <span class="text-xs text-body">
+            {Enum.join(Enum.reject([@inventory.intune_manufacturer, @inventory.intune_model], &is_nil/1), " ")}
+          </span>
+        </.client_detail_row>
+        <.client_detail_row :if={@inventory.intune_user_principal_name} label="Intune User">
+          <span class="text-xs text-body break-all">{@inventory.intune_user_principal_name}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={@inventory.intune_management_agent} label="Management Agent">
+          <span class="text-xs text-body">{@inventory.intune_management_agent}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={@inventory.intune_managed_device_owner_type} label="Ownership">
+          <span class="text-xs text-body">{@inventory.intune_managed_device_owner_type}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={@inventory.intune_device_enrollment_type} label="Enrollment Type">
+          <span class="text-xs text-body">{@inventory.intune_device_enrollment_type}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={@inventory.intune_device_registration_state} label="Registration State">
+          <span class="text-xs text-body">{@inventory.intune_device_registration_state}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={@inventory.intune_partner_reported_threat_state} label="Threat State">
+          <span class="text-xs text-body">{@inventory.intune_partner_reported_threat_state}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={@inventory.intune_jail_broken} label="Jailbroken">
+          <span class="text-xs text-body">{@inventory.intune_jail_broken}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={not is_nil(@inventory.intune_is_encrypted)} label="Encrypted">
+          <span class="text-xs text-body">{yes_no(@inventory.intune_is_encrypted)}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={not is_nil(@inventory.intune_is_supervised)} label="Supervised">
+          <span class="text-xs text-body">{yes_no(@inventory.intune_is_supervised)}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={@inventory.intune_enrolled_at} label="Enrolled">
+          <span class="text-xs text-body"><.relative_datetime datetime={@inventory.intune_enrolled_at} /></span>
+        </.client_detail_row>
+        <.client_detail_row :if={@inventory.intune_last_sync_at} label="Last Intune Sync">
+          <span class="text-xs text-body"><.relative_datetime datetime={@inventory.intune_last_sync_at} /></span>
+        </.client_detail_row>
+        <.client_detail_row
+          :if={@inventory.intune_compliance_grace_period_expiration_at}
+          label="Compliance Grace Period"
+        >
+          <span class="text-xs text-body">
+            <.relative_datetime datetime={@inventory.intune_compliance_grace_period_expiration_at} />
+          </span>
+        </.client_detail_row>
+      </dl>
+    </div>
+    """
+  end
+
+  attr :inventory, :any, required: true
+
+  def inventory_source_badges(assigns) do
+    ~H"""
+    <div class="flex flex-wrap gap-1">
+      <span :if={@inventory.intune_device_id} class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-info bg-info-light">
+        Intune
+      </span>
+      <span :if={@inventory.connected} class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-raised">
+        Firezone
+      </span>
+    </div>
+    """
+  end
+
+  attr :inventory, :any, required: true
+
+  def inventory_compliance_badge(assigns) do
+    compliance = assigns.inventory.intune_compliance_state
+
+    style =
+      case compliance && String.downcase(compliance) do
+        "compliant" -> :success
+        value when value in [nil, "unknown"] -> :neutral
+        _ -> :warning
+      end
+
+    assigns = assign(assigns, compliance: compliance, style: style)
+
+    ~H"""
+    <.status_badge :if={@compliance} style={@style}>
+      {Phoenix.Naming.humanize(@compliance)}
+    </.status_badge>
+    <span :if={is_nil(@compliance)} class="text-xs text-muted">—</span>
+    """
+  end
+
+  attr :inventory, :any, required: true
+
+  def inventory_connection_badge(assigns) do
+    ~H"""
+    <.client_status_badge :if={@inventory.connected} online?={@inventory.online?} />
+    <.status_badge :if={not @inventory.connected} style={:neutral}>Not connected</.status_badge>
+    """
+  end
+
+  attr :inventory, :any, required: true
+
+  def inventory_os_icon(assigns) do
+    name =
+      if assigns.inventory.last_seen_user_agent do
+        client_os_icon_name(assigns.inventory.last_seen_user_agent)
+      else
+        intune_os_icon_name(assigns.inventory.intune_operating_system)
+    end
+
+    assigns = assign(assigns, :name, name)
+
+    ~H"""
+    <.icon name={@name} class="w-5 h-5" />
+    """
+  end
+
+  defp intune_os_icon_name(value) when is_binary(value) do
+    case String.downcase(value) do
+      "windows" <> _ -> "icon-os-windows"
+      "macos" <> _ -> "icon-os-macos"
+      "ios" <> _ -> "icon-os-ios"
+      "android" <> _ -> "icon-os-android"
+      "linux" <> _ -> "icon-os-linux"
+      _ -> "ri-computer-line"
+    end
+  end
+
+  defp intune_os_icon_name(_), do: "ri-computer-line"
+  defp yes_no(true), do: "Yes"
+  defp yes_no(false), do: "No"
+
   attr :client, :any, required: true
   attr :confirm_delete_client, :boolean, default: false
   attr :confirm_unverify_client, :boolean, default: false
@@ -668,7 +925,7 @@ defmodule PortalWeb.Clients.Components do
     <section>
       <.section_heading title="Details" />
       <dl class="space-y-2.5">
-        <.client_detail_row label="Client ID">
+        <.client_detail_row label="Firezone Device ID">
           <span class="font-mono text-[11px] text-body break-all">
             {@client.id}
           </span>
@@ -729,10 +986,10 @@ defmodule PortalWeb.Clients.Components do
           class="px-3 py-2.5 rounded border border-border bg-raised"
         >
           <p class="text-xs font-medium text-heading mb-1">
-            Revoke verification for this client?
+            Revoke verification for this device?
           </p>
           <p class="text-xs text-body mb-3">
-            Current authorizations for this client may be revoked.
+            Current authorizations for this device may be revoked.
           </p>
           <div class="flex items-center gap-1.5">
             <.button type="button" phx-click="cancel_unverify_client" size="xs">
@@ -762,14 +1019,14 @@ defmodule PortalWeb.Clients.Components do
         phx-click="confirm_delete_client"
         class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
       >
-        <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete client
+        <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete device
       </button>
       <div
         :if={@confirm_delete_client}
         class="px-3 py-2.5 rounded border border-error/20 bg-error-light"
       >
         <p class="text-xs font-medium text-error mb-1">
-          Delete this client?
+          Delete this device?
         </p>
         <p class="text-xs text-error/70 mb-3">
           This won't prevent the owner from signing in again; to block access, disable the owning actor instead.

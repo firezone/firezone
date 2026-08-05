@@ -233,7 +233,12 @@ defmodule PortalWeb.Router do
       live "/groups/:id/edit", Groups, :edit
       live "/groups/:id", Groups, :show
 
-      # Clients
+      # Devices
+      live "/devices", Clients
+      live "/devices/:id/edit", Clients, :edit
+      live "/devices/:id", Clients, :show
+
+      # Legacy client URLs
       live "/clients", Clients
       live "/clients/:id/edit", Clients, :edit
       live "/clients/:id", Clients, :show
@@ -297,6 +302,12 @@ defmodule PortalWeb.Router do
           live "/new", DirectorySync, :select_type
           live "/:type/new", DirectorySync, :new
           live "/:type/:id/edit", DirectorySync, :edit
+        end
+
+        scope "/device_integrations" do
+          live "/", DeviceIntegrations
+          live "/intune/new", DeviceIntegrations, :new
+          live "/intune/:id/edit", DeviceIntegrations, :edit
         end
 
         # Log Sinks

@@ -113,6 +113,10 @@ defmodule Portal.Device do
       foreign_key: :device_id,
       references: :id
 
+    has_one :intune_device, Portal.Intune.Device,
+      foreign_key: :device_id,
+      references: :id
+
     # Latest-session fields, written by the connect flush. The flush probes
     # the token columns' referents and fails entries whose token was deleted;
     # the FKs nilify on token delete so the columns never dangle.

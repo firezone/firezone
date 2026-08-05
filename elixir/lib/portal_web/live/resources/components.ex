@@ -1325,7 +1325,7 @@ defmodule PortalWeb.Resources.Components do
                     <div>
                       <p class="text-subtle font-medium mb-1">Client</p>
                       <.link
-                        navigate={~p"/#{@account}/clients/#{client.id}"}
+                        navigate={~p"/#{@account}/devices/#{client.id}"}
                         class="text-brand hover:underline font-mono break-all"
                       >
                         {client.id}

@@ -254,6 +254,7 @@ defmodule PortalWeb.OIDC do
   - "google", "okta", "oidc" — OIDC authorization code + PKCE flow
   - "entra" — Entra auth_provider admin consent flow
   - "entra_directory_sync" — Entra directory_sync admin consent flow
+  - "intune_device_integration" — Intune device inventory admin consent flow
 
   Options:
   - :okta_domain - Required for Okta providers
@@ -263,6 +264,11 @@ defmodule PortalWeb.OIDC do
   """
   def setup_verification("entra_directory_sync", _opts) do
     config = Portal.Config.fetch_env!(:portal, Portal.Entra.APIClient) |> Enum.into(%{})
+    {:ok, %{config: config}}
+  end
+
+  def setup_verification("intune_device_integration", _opts) do
+    config = Portal.Config.fetch_env!(:portal, Portal.Intune.APIClient) |> Enum.into(%{})
     {:ok, %{config: config}}
   end
 
@@ -298,6 +304,7 @@ defmodule PortalWeb.OIDC do
   """
   def verification_state_type("entra"), do: "entra-auth-provider"
   def verification_state_type("entra_directory_sync"), do: "entra-directory-sync"
+  def verification_state_type("intune_device_integration"), do: "intune-device-integration"
 
   def verification_state_type(type) when type in ["google", "okta", "oidc"],
     do: "oidc-auth-provider"
@@ -314,7 +321,8 @@ defmodule PortalWeb.OIDC do
   Builds the IdP URI for the verification flow. For OIDC types this is an
   authorization URI with PKCE; for Entra types it is an admin consent URI.
   The state_token (from sign_verification_state/2) is passed through the IdP unchanged.
-  Accepts types: "google", "okta", "oidc", "entra", "entra_directory_sync".
+  Accepts types: "google", "okta", "oidc", "entra", "entra_directory_sync",
+  and "intune_device_integration".
   Returns {:ok, uri} or {:error, reason}.
   """
   def build_verification_uri(type, config, verifier, state_token)
@@ -340,6 +348,14 @@ defmodule PortalWeb.OIDC do
   end
 
   def build_verification_uri("entra_directory_sync", config, _verifier, state_token) do
+    build_entra_adminconsent_uri(
+      config,
+      state_token,
+      "https://graph.microsoft.com/.default"
+    )
+  end
+
+  def build_verification_uri("intune_device_integration", config, _verifier, state_token) do
     build_entra_adminconsent_uri(
       config,
       state_token,
