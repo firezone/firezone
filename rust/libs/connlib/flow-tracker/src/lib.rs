@@ -728,8 +728,7 @@ struct FlowData {
     /// The inner (application) packet's flow fields.
     inner: Option<InnerFlow>,
     /// The outer (transport) endpoints a TUN-entry packet was encapsulated to,
-    /// as an (initiator, responder) pair. Absence means the packet was never
-    /// sent.
+    /// as a (src, dst) pair. Absence means the packet was never sent.
     outer_tx: Option<(Option<SocketAddr>, SocketAddr)>,
     /// The peer the packet is tunneled through and our role in the flow.
     peer: Option<(ClientOrGatewayId, Role)>,
@@ -940,9 +939,8 @@ pub struct Record {
     pub inner_dst_port: u16,
     pub domain: Option<DomainName>,
 
-    /// The outer (transport) tuples the flow has used, appended on every change
-    /// with the time each was selected, so a tuple the flow returned to
-    /// appears again.
+    /// The outer (transport) tuples the flow has used, appended on every change,
+    /// so a tuple the flow returned to appears again.
     pub outers: Vec<FlowContext>,
 
     pub flow_start: DateTime<Utc>,
@@ -1182,9 +1180,8 @@ struct TcpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
     stats: FlowStats,
-    /// The outer (transport) tuples the flow has used, appended on every change
-    /// with the time each was selected, so a tuple the flow returned to
-    /// appears again.
+    /// The outer (transport) tuples the flow has used, appended on every change,
+    /// so a tuple the flow returned to appears again.
     contexts: SmallVec<[FlowContext; 4]>,
 
     domain: Option<DomainName>,
@@ -1203,9 +1200,8 @@ struct UdpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
     stats: FlowStats,
-    /// The outer (transport) tuples the flow has used, appended on every change
-    /// with the time each was selected, so a tuple the flow returned to
-    /// appears again.
+    /// The outer (transport) tuples the flow has used, appended on every change,
+    /// so a tuple the flow returned to appears again.
     contexts: SmallVec<[FlowContext; 4]>,
 
     domain: Option<DomainName>,
@@ -1240,14 +1236,13 @@ impl FlowStats {
     }
 }
 
-/// The outer (transport) 4-tuple a flow is tunneled over and the time the flow
-/// selected it.
+/// The outer (transport) 4-tuple a flow is tunneled over.
 ///
 /// The source is unknown for relayed sends; it is `None` there and omitted
 /// from the serialised tuple. `path_selected_at` is the time of the packet
 /// that revealed the tuple: the flow's first packet for the initial entry of
 /// [`Record::outers`], the first packet after a change for every later one.
-#[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize)]
+#[derive(Debug, Clone, Copy, serde::Serialize)]
 pub struct FlowContext {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub src_ip: Option<IpAddr>,
@@ -1276,10 +1271,12 @@ impl FlowContext {
             path_selected_at,
         }
     }
+}
 
-    /// Whether `other` names the same outer tuple, regardless of when each was
-    /// selected.
-    fn same_tuple(&self, other: &Self) -> bool {
+/// Contexts compare by their tuple alone; `path_selected_at` only records when
+/// the flow started using it.
+impl PartialEq for FlowContext {
+    fn eq(&self, other: &Self) -> bool {
         let Self {
             src_ip,
             src_port,
@@ -1293,6 +1290,8 @@ impl FlowContext {
     }
 }
 
+impl Eq for FlowContext {}
+
 /// Appends `context` to a flow's outer tuples if it differs from the current one.
 ///
 /// Callers split the flow before the list would grow past
@@ -1303,7 +1302,7 @@ fn push_context(key: &impl Debug, contexts: &mut SmallVec<[FlowContext; 4]>, con
         return;
     };
 
-    if current.same_tuple(&context) {
+    if current == context {
         return;
     }
 
@@ -1319,11 +1318,7 @@ fn push_context(key: &impl Debug, contexts: &mut SmallVec<[FlowContext; 4]>, con
 /// Whether recording `context` would grow the flow's outer tuples past
 /// [`MAX_CONTEXTS_PER_FLOW`].
 fn context_overflows(contexts: &SmallVec<[FlowContext; 4]>, context: FlowContext) -> bool {
-    let same_as_current = contexts
-        .last()
-        .is_some_and(|current| current.same_tuple(&context));
-
-    !same_as_current && contexts.len() >= MAX_CONTEXTS_PER_FLOW
+    contexts.last() != Some(&context) && contexts.len() >= MAX_CONTEXTS_PER_FLOW
 }
 
 #[derive(PartialEq, Eq)]
