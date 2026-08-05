@@ -185,6 +185,10 @@ jobs:
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
+        # `linux-group.sh` builds `firezone-client-tunnel`, which is a bin of the
+        # `firezone-gui-client` package and therefore compiles `tauri`. The other
+        # tests build `firezone-headless-client`, which has no such dependency.
+        if: matrix.test == 'linux-group.sh'
         timeout-minutes: 15
       - run: scripts/tests/${{ matrix.test }}
         name: "test script"
