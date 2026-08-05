@@ -11,7 +11,7 @@ divan = ["dep:divan"]
 malicious-behaviour = []
 # Consult telemetry's feature flags and report their use. Without this,
 # every flag keeps its default value.
-telemetry = ["dep:telemetry"]
+telemetry = ["dep:telemetry", "logging/telemetry"]
 
 [dependencies]
 anyhow = { workspace = true }

@@ -219,7 +219,7 @@ pub enum Trigger {
     /// We have received an ICMP error that is marked as "access prohibited".
     ///
     /// Most likely, the Gateway is filtering these packets because the Client doesn't have access (anymore).
-    #[cfg_attr(not(feature = "telemetry"), allow(dead_code))]
+    #[cfg_attr(not(feature = "telemetry"), expect(dead_code))]
     IcmpDestinationUnreachableProhibited,
 }
 
