@@ -51,72 +51,24 @@ rec {
   # delete because its per-target rustflags conflict with buildRustPackage).
   rustflags = "--cfg system_certs -C force-frame-pointers=yes";
 
-  # Everything cargo folds into a unit's fingerprint has to match between the
-  # dependency-only build below and the package build, or nothing is reused.
+  # `cargoBuildHook` always passes `--target`, and sets `strip` so that stdenv
+  # does the stripping instead of cargo. `strip` is part of the profile and the
+  # profile is hashed into every unit's fingerprint, so the dependency-only
+  # build below has to agree or nothing it produces is reused.
   cargoEnv = {
     RUSTFLAGS = rustflags;
-
-    # `cargoBuildHook` always passes `--target`; matching it keeps the target
-    # directory layout the same on both sides.
     CARGO_BUILD_TARGET = pkgs.stdenv.hostPlatform.rust.rustcTarget;
-
-    # `cargoBuildHook` sets this so stdenv handles stripping instead of cargo.
-    # `strip` is part of the profile, and the profile is part of every unit's
-    # fingerprint.
     CARGO_PROFILE_RELEASE_STRIP = "false";
   };
 
-  # Dependency-only build of one workspace member.
-  #
-  # `buildRustPackage` compiles the whole dependency graph inside the package
-  # derivation, whose hash covers all of rust/, so any source change recompiles
-  # ~900 crates from scratch and the binary cache never helps. crane builds the
-  # same graph against a stubbed-out copy of the workspace instead: the result
-  # depends only on Cargo.lock, the manifests, the toolchain and the flags
-  # above, so it survives ordinary source changes and is substituted from the
-  # cache.
-  #
-  # Scoped per member rather than once for the whole workspace: the resolver
-  # unifies features across all members of a `--workspace` build, and artifacts
-  # compiled under a different feature set get recompiled anyway.
-  cargoArtifactsFor =
-    {
-      crate,
-      features ? [ ],
-      ...
-    }@args:
-    craneLib.buildDepsOnly (
-      {
-        inherit src;
-
-        cargoVendorDir = craneVendorDir;
-
-        pname = crate;
-        # Deliberately fixed: `versions` below moves on every release, and
-        # naming these after it would miss the cache each time.
-        version = "0";
-
-        cargoExtraArgs =
-          "--locked -p ${crate}"
-          + lib.optionalString (features != [ ]) " --features ${lib.concatStringsSep "," features}";
-
-        env = cargoEnv;
-
-        postPatch = "rm -f .cargo/config.toml";
-      }
-      // builtins.removeAttrs args [
-        "crate"
-        "features"
-      ]
-    );
-
-  # `buildRustPackage`, wired up to reuse the artifacts above.
+  # Common wiring for every Rust derivation here: the vendored sources above
+  # and, when `cargoArtifacts` is given, the pre-built target directory.
   buildRustPackage =
     args:
     rustPlatform.buildRustPackage (
       args
       // {
-        inherit src;
+        src = args.src or src;
 
         # Relative to the source root, where postUnpack links it into place.
         cargoVendorDir = "vendor";
@@ -126,13 +78,68 @@ rec {
         ''
         + (args.postUnpack or "");
 
-        nativeBuildInputs = (args.nativeBuildInputs or [ ]) ++ [
-          craneLib.inheritCargoArtifactsHook
-          pkgs.rsync
-          pkgs.zstd
-        ];
+        # Its per-target rustflags conflict with the ones set below, and cargo
+        # folds the resolved config into every unit's fingerprint, so both
+        # sides of the dependency split have to drop it alike.
+        postPatch = ''
+          rm -f .cargo/config.toml
+        ''
+        + (args.postPatch or "");
+
+        nativeBuildInputs =
+          (args.nativeBuildInputs or [ ])
+          ++ [
+            pkgs.rsync
+            pkgs.zstd
+          ]
+          ++ lib.optional (args ? cargoArtifacts) craneLib.inheritCargoArtifactsHook;
 
         env = cargoEnv // (args.env or { });
+      }
+    );
+
+  # Dependency-only build of one workspace member.
+  #
+  # `buildRustPackage` compiles the whole dependency graph inside the package
+  # derivation, whose hash covers all of rust/, so any source change recompiles
+  # ~900 crates from scratch and the binary cache never helps. crane's
+  # `mkDummySrc` stubs out every workspace member, leaving the manifests,
+  # Cargo.lock and .cargo/config.toml, so the same graph can be compiled by a
+  # derivation that ignores ordinary source changes and is substituted from the
+  # cache instead.
+  #
+  # Deliberately still `buildRustPackage`: cargo folds the resolved cargo
+  # config into every unit's fingerprint, and `cargoSetupHook` writes a
+  # `[target.<triple>]` block of its own. Anything that assembled the build
+  # differently would have to reproduce that block to be reusable.
+  #
+  # Scoped per member rather than once for the whole workspace: the resolver
+  # unifies features across all members of a `--workspace` build, and artifacts
+  # compiled under a different feature set get recompiled anyway.
+  cargoArtifactsFor =
+    args:
+    buildRustPackage (
+      args
+      // {
+        pname = "${args.pname}-deps";
+        # Deliberately fixed: `versions` below moves on every release, and
+        # naming these after it would miss the cache each time.
+        version = "0";
+
+        src = craneLib.mkDummySrc { inherit src; };
+
+        nativeBuildInputs = (args.nativeBuildInputs or [ ]) ++ [
+          craneLib.installCargoArtifactsHook
+        ];
+
+        # Only the target directory is wanted; the stub binaries are garbage.
+        doInstallCargoArtifacts = true;
+        dontCargoInstall = true;
+        installPhase = ''
+          runHook preInstall
+          mkdir -p $out
+          runHook postInstall
+        '';
       }
     );
 
