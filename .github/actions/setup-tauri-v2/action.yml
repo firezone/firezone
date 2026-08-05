@@ -67,5 +67,9 @@ runs:
       # This downloads about 200 MB and takes about 5 minutes on my VM
       # So we could fault in WebView2 from the client exe without the MSI if we needed.
       # Currently the MSI does this and it's a little janky.
-      run: Start-Process WebView2Installer.exe -ArgumentList "/silent","/install" -Wait
+      run: |
+        $installer = Start-Process .\WebView2Installer.exe -ArgumentList "/silent","/install" -Wait -PassThru
+        if ($installer.ExitCode -ne 0) {
+          throw "WebView2 installer failed with exit code $($installer.ExitCode)"
+        }
       shell: pwsh
