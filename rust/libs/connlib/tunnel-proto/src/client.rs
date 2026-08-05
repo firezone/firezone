@@ -887,10 +887,8 @@ impl ClientState {
                 if telemetry::feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
                     && let Ok(Some((failed_packet, error))) = packet.icmp_error()
                     && error.is_unreachable_prohibited()
-                {
-                    let internet_resource = self.active_internet_resource().map(|r| r.id);
-
-                    if let Some(resource) = self
+                    && let internet_resource = self.active_internet_resource().map(|r| r.id)
+                    && let Some(resource) = self
                         .routing_tables
                         .resolve_resource(
                             failed_packet.dst(),
@@ -898,18 +896,17 @@ impl ClientState {
                             internet_resource,
                         )
                         .map(|route| route.resource_id())
-                    {
-                        telemetry::analytics::feature_flag_called(
-                            "icmp-error-unreachable-prohibited-create-new-flow",
-                        );
+                {
+                    telemetry::analytics::feature_flag_called(
+                        "icmp-error-unreachable-prohibited-create-new-flow",
+                    );
 
-                        self.pending_authorizations.on_not_authorized_resource(
-                            resource,
-                            pending_authorizations::Trigger::IcmpDestinationUnreachableProhibited,
-                            &self.resources_by_id,
-                            now,
-                        );
-                    }
+                    self.pending_authorizations.on_not_authorized_resource(
+                        resource,
+                        pending_authorizations::Trigger::IcmpDestinationUnreachableProhibited,
+                        &self.resources_by_id,
+                        now,
+                    );
                 }
             }
         }
