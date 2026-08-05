@@ -368,7 +368,16 @@ defmodule PortalAPI.LogControllerTest do
           initiator_device_serial: "C02ABC123",
           initiator_device_uuid: "0C4A8D24-FA9F-4E56-9B57-40D0D46A245E",
           initiator_device_identifier_for_vendor: "C242BC21-AB4A-4F6D-B755-F50E2B5B51B7",
-          initiator_device_firebase_installation_id: "firebase-installation-id"
+          initiator_device_firebase_installation_id: "firebase-installation-id",
+          outers: [
+            %{
+              src_ip: "203.0.113.10",
+              src_port: 51_820,
+              dst_ip: "198.51.100.5",
+              dst_port: 51_820,
+              path_activated_at: ~U[2026-06-03 00:00:00.000000Z]
+            }
+          ]
         )
 
       conn =
@@ -428,7 +437,8 @@ defmodule PortalAPI.LogControllerTest do
                  "src_ip" => "203.0.113.10",
                  "src_port" => 51_820,
                  "dst_ip" => "198.51.100.5",
-                 "dst_port" => 51_820
+                 "dst_port" => 51_820,
+                 "path_activated_at" => "2026-06-03T00:00:00.000000Z"
                }
              ]
       assert data["rx_packets"] == 100

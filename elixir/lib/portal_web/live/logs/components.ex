@@ -13,9 +13,10 @@ defmodule PortalWeb.Logs.Components do
   alias PortalWeb.CoreComponents
 
   @doc """
-  Single timestamp table cell. `log_id` keeps the wrapper's id unique so LV's
-  diff can patch it independently. `tz_mode`/`display_tz` flow as explicit
-  props so column re-rendering picks up timezone toggles.
+  Single timestamp cell, abbreviated with the full value in a hover popover.
+  `log_id` keeps the wrapper's id unique so LV's diff can patch it
+  independently. `tz_mode`/`display_tz` flow as explicit props so column
+  re-rendering picks up timezone toggles.
   """
   attr :log_id, :string, required: true
   attr :timestamp, DateTime, required: true
@@ -25,14 +26,22 @@ defmodule PortalWeb.Logs.Components do
 
   def timestamp_cell(assigns) do
     ~H"""
-    <span
-      id={"#{@id_prefix}-#{@log_id}"}
-      data-tz-mode={@tz_mode}
-      title={"#{DateTime.to_iso8601(@timestamp)} (#{@display_tz})"}
-      class="text-xs text-[var(--text-primary)] tabular-nums"
-    >
-      {PortalWeb.Format.short_datetime(@timestamp, @display_tz)}
-    </span>
+    <CoreComponents.popover>
+      <:target>
+        <span
+          id={"#{@id_prefix}-#{@log_id}"}
+          data-tz-mode={@tz_mode}
+          class="text-xs text-[var(--text-primary)] tabular-nums underline underline-offset-2 decoration-1 decoration-dotted"
+        >
+          {PortalWeb.Format.short_datetime(@timestamp, @display_tz)}
+        </span>
+      </:target>
+      <:content>
+        <span class="whitespace-nowrap font-mono">
+          {PortalWeb.Format.iso_datetime(@timestamp, @display_tz)}
+        </span>
+      </:content>
+    </CoreComponents.popover>
     """
   end
 
@@ -196,12 +205,16 @@ defmodule PortalWeb.Logs.Components do
   Section heading in a show panel sidebar.
   """
   attr :label, :string, required: true
+  attr :hint, :string, default: nil
 
   def section_heading(assigns) do
     ~H"""
-    <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-3">
-      {@label}
-    </h3>
+    <div class="mb-3 flex items-center justify-between gap-3">
+      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+        {@label}
+      </h3>
+      <span :if={@hint} class="text-[10px] text-[var(--text-tertiary)]">{@hint}</span>
+    </div>
     """
   end
 

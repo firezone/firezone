@@ -35,6 +35,18 @@ defmodule PortalWeb.Format do
   end
 
   @doc """
+  Formats a `%DateTime{}` as a full ISO 8601 string in the given IANA timezone,
+  for places where the abbreviated form is not precise enough. Falls back to
+  UTC if the zone cannot be shifted.
+  """
+  def iso_datetime(%DateTime{} = datetime, tz) when is_binary(tz) do
+    case DateTime.shift_zone(datetime, tz, Tz.TimeZoneDatabase) do
+      {:ok, shifted} -> DateTime.to_iso8601(shifted)
+      _ -> DateTime.to_iso8601(datetime)
+    end
+  end
+
+  @doc """
   Returns a relative time string like "2 hours ago" or "in 3 days".
   """
   def relative_datetime(datetime, relative_to \\ nil) do
