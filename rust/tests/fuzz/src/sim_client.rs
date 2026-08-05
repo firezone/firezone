@@ -1,11 +1,11 @@
 use super::{
     QueryId,
     echo::echo_reply,
-    endpoint::Endpoint,
     icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
+    tcp_dns_client::TcpDnsClient,
     transition::{DPort, DnsTransport, Identifier, SPort, Seq},
 };
 use chrono::{DateTime, Utc};
@@ -17,7 +17,7 @@ use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     net::{IpAddr, SocketAddr},
-    time::{Duration, Instant},
+    time::Instant,
 };
 use tunnel_proto::{
     ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
@@ -72,8 +72,7 @@ pub(crate) struct SimClient {
     pub(crate) sent_udp_requests: BTreeMap<(SPort, DPort), (Instant, IpPacket)>,
     pub(crate) received_udp_replies: BTreeMap<(SPort, DPort), IpPacket>,
 
-    pub(crate) tcp_dns_client: Endpoint<dns_over_tcp::Client>,
-    tcp_dns_source_interface: Option<(std::net::Ipv4Addr, std::net::Ipv6Addr)>,
+    tcp_dns_client: TcpDnsClient,
 
     /// TCP connections to resources.
     pub(crate) tcp_client: crate::tcp::Client,
@@ -109,12 +108,7 @@ impl SimClient {
             routes: Default::default(),
             search_domain: Default::default(),
             resource_status: Default::default(),
-            tcp_dns_client: Endpoint::Active(dns_over_tcp::Client::new(
-                now,
-                Duration::from_secs(15),
-                [0u8; 32],
-            )),
-            tcp_dns_source_interface: None,
+            tcp_dns_client: TcpDnsClient::new(now),
             tcp_client: crate::tcp::Client::new(now),
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
@@ -150,8 +144,7 @@ impl SimClient {
         self.search_domain = None;
         self.dns_by_sentinel = DnsMapping::default();
         self.routes.clear();
-        self.tcp_dns_source_interface = None;
-        self.tcp_dns_client.retire();
+        self.tcp_dns_client.reset_and_clear_source_interface();
         self.tcp_client.reset();
     }
 
@@ -166,7 +159,7 @@ impl SimClient {
 
     pub(crate) fn set_new_dns_servers(&mut self, mapping: DnsMapping) {
         self.dns_by_sentinel = mapping;
-        self.tcp_dns_client.retire();
+        self.tcp_dns_client.reset();
     }
 
     pub(crate) fn set_tcp_dns_source_interface(
@@ -175,30 +168,7 @@ impl SimClient {
         ipv6: std::net::Ipv6Addr,
         now: Instant,
     ) {
-        self.tcp_dns_source_interface = Some((ipv4, ipv6));
-        self.ensure_tcp_dns_client(now)
-            .set_source_interface(ipv4, ipv6);
-    }
-
-    fn ensure_tcp_dns_client(&mut self, now: Instant) -> &mut dns_over_tcp::Client {
-        if self.tcp_dns_client.active().is_none() {
-            self.tcp_dns_client.activate(dns_over_tcp::Client::new(
-                now,
-                Duration::from_secs(15),
-                [0u8; 32],
-            ));
-
-            if let Some((ipv4, ipv6)) = self.tcp_dns_source_interface {
-                self.tcp_dns_client
-                    .active_mut()
-                    .expect("TCP DNS client was just activated")
-                    .set_source_interface(ipv4, ipv6);
-            }
-        }
-
-        self.tcp_dns_client
-            .active_mut()
-            .expect("TCP DNS client should be active after initialization")
+        self.tcp_dns_client.set_source_interface(ipv4, ipv6, now);
     }
 
     pub(crate) fn iter_tcp_sockets(&self) -> impl Iterator<Item = &l3_tcp::Socket<'_>> {
@@ -207,6 +177,14 @@ impl SimClient {
 
     pub(crate) fn dns_mapping(&self) -> &DnsMapping {
         &self.dns_by_sentinel
+    }
+
+    pub(crate) fn poll_tcp_dns_query_result(&mut self) -> Option<dns_over_tcp::QueryResult> {
+        self.tcp_dns_client.poll_query_result()
+    }
+
+    pub(crate) fn poll_tcp_dns_timeout(&mut self) -> Option<Instant> {
+        self.tcp_dns_client.poll_timeout()
     }
 
     pub(crate) fn send_dns_query_for(
@@ -244,8 +222,8 @@ impl SimClient {
                 self.encapsulate(packet, now)
             }
             DnsTransport::Tcp => {
-                self.ensure_tcp_dns_client(now)
-                    .send_query(SocketAddr::new(sentinel, 53), query)
+                self.tcp_dns_client
+                    .send_query(SocketAddr::new(sentinel, 53), query, now)
                     .unwrap();
                 self.sent_tcp_dns_queries.insert((upstream, query_id));
 
@@ -302,15 +280,12 @@ impl SimClient {
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
         self.tcp_dns_client
-            .active_mut()
-            .and_then(dns_over_tcp::Client::poll_outbound)
+            .poll_outbound()
             .or_else(|| self.tcp_client.poll_outbound())
     }
 
     pub fn drive_tcp(&mut self, now: Instant) {
-        if let Some(client) = self.tcp_dns_client.active_mut() {
-            client.handle_timeout(now);
-        }
+        self.tcp_dns_client.handle_timeout(now);
         self.tcp_client.handle_timeout(now);
     }
 
@@ -454,15 +429,8 @@ impl SimClient {
             return self.handle_tun_input(reply, now).ok().flatten();
         }
 
-        if self
-            .tcp_dns_client
-            .active()
-            .is_some_and(|client| client.accepts(&packet))
-        {
-            self.tcp_dns_client
-                .active_mut()
-                .expect("TCP DNS client was active when it accepted the packet")
-                .handle_inbound(packet);
+        if self.tcp_dns_client.accepts(&packet) {
+            self.tcp_dns_client.handle_inbound(packet);
             return None;
         }
 
@@ -615,7 +583,7 @@ impl SimClient {
         self.received_udp_dns_responses.clear();
         self.sent_tcp_dns_queries.clear();
         self.received_tcp_dns_responses.clear();
-        self.tcp_dns_client.retire();
+        self.tcp_dns_client.reset();
         self.tcp_client.reset();
         self.failed_tcp_packets.clear();
     }

@@ -9,7 +9,6 @@ mod buffered_transmits;
 mod dns_records;
 mod dns_server_resource;
 mod echo;
-mod endpoint;
 mod flux_capacitor;
 mod icmp_error_hosts;
 mod ref_client;
@@ -23,6 +22,7 @@ mod sim_relay;
 mod stub_portal;
 mod sut;
 mod tcp;
+mod tcp_dns_client;
 mod transition;
 
 type QueryId = u16;

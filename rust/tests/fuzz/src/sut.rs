@@ -945,11 +945,7 @@ impl TunnelTest {
         // Handle the TCP DNS client, i.e. simulate applications making TCP DNS queries.
         for client in self.clients.values_mut() {
             client.exec_mut(|c| {
-                while let Some(result) = c
-                    .tcp_dns_client
-                    .active_mut()
-                    .and_then(|client| client.poll_query_result())
-                {
+                while let Some(result) = c.poll_tcp_dns_query_result() {
                     match result.result {
                         Ok(message) => {
                             let upstream = c

@@ -9,11 +9,10 @@ use dns_types::prelude::*;
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
 
 use super::dns_records::DnsRecords;
-use super::endpoint::Endpoint;
 
 pub struct TcpDnsServerResource {
     socket: SocketAddr,
-    server: Endpoint<dns_over_tcp::Server>,
+    server: Option<dns_over_tcp::Server>,
 }
 
 #[derive(Debug, Default)]
@@ -26,7 +25,7 @@ impl TcpDnsServerResource {
     pub fn new(socket: SocketAddr, now: Instant) -> Self {
         Self {
             socket,
-            server: Endpoint::Active(Self::new_server(socket, now)),
+            server: Some(Self::new_server(socket, now)),
         }
     }
 
@@ -39,24 +38,24 @@ impl TcpDnsServerResource {
     }
 
     pub fn handle_input(&mut self, packet: IpPacket, now: Instant) {
-        if self.server.is_retired() {
+        if self.server.is_none() {
             let is_syn = packet.as_tcp().is_some_and(|tcp| tcp.syn() && !tcp.ack());
             if !is_syn {
-                tracing::debug!(?packet, "Ignoring packet for retired TCP DNS server");
+                tracing::debug!(?packet, "Ignoring packet for reset TCP DNS server");
                 return;
             }
 
-            self.server.activate(Self::new_server(self.socket, now));
+            self.server = Some(Self::new_server(self.socket, now));
         }
 
         self.server
-            .active_mut()
+            .as_mut()
             .expect("TCP DNS server should be active after initialization")
             .handle_inbound(packet);
     }
 
     pub fn handle_timeout(&mut self, global_dns_records: &DnsRecords, now: Instant) {
-        let Some(server) = self.server.active_mut() else {
+        let Some(server) = self.server.as_mut() else {
             return;
         };
 
@@ -72,12 +71,12 @@ impl TcpDnsServerResource {
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
         self.server
-            .active_mut()
+            .as_mut()
             .and_then(dns_over_tcp::Server::poll_outbound)
     }
 
-    pub(crate) fn retire(&mut self) {
-        self.server.retire();
+    pub(crate) fn reset(&mut self) {
+        self.server = None;
     }
 }
 

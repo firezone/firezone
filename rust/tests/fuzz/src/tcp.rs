@@ -19,8 +19,12 @@ pub struct Client {
 }
 
 pub struct Server {
+    listen_address: SocketAddr,
+    inner: Option<ServerState>,
+}
+
+struct ServerState {
     sockets: l3_tcp::SocketSet<'static>,
-    listen_endpoints: BTreeMap<l3_tcp::SocketHandle, SocketAddr>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
 
@@ -165,48 +169,72 @@ impl Client {
 }
 
 impl Server {
-    pub fn new(now: Instant) -> Self {
+    pub fn new(listen_address: SocketAddr, now: Instant) -> Self {
+        Self {
+            listen_address,
+            inner: Some(ServerState::new(listen_address, now)),
+        }
+    }
+
+    pub fn handle_inbound(&mut self, packet: IpPacket, now: Instant) {
+        if self.inner.is_none() {
+            let is_syn = packet.as_tcp().is_some_and(|tcp| tcp.syn() && !tcp.ack());
+            if !is_syn {
+                tracing::debug!(?packet, "Ignoring packet for reset TCP server");
+                return;
+            }
+
+            self.inner = Some(ServerState::new(self.listen_address, now));
+        }
+
+        self.inner
+            .as_mut()
+            .expect("TCP server should be active after initialization")
+            .device
+            .receive(packet);
+    }
+
+    pub fn handle_timeout(&mut self, now: Instant) {
+        let Some(server) = self.inner.as_mut() else {
+            return;
+        };
+
+        server.last_now = now;
+
+        let _result = server.interface.poll(
+            l3_tcp::now(server.created_at, now),
+            &mut server.device,
+            &mut server.sockets,
+        );
+    }
+
+    pub fn poll_outbound(&mut self) -> Option<IpPacket> {
+        self.inner.as_mut()?.device.next_send()
+    }
+
+    pub fn reset(&mut self) {
+        self.inner = None;
+    }
+}
+
+impl ServerState {
+    fn new(listen_address: SocketAddr, now: Instant) -> Self {
         let mut device = l3_tcp::InMemoryDevice::default();
         let interface = l3_tcp::create_interface(&mut device);
+        let mut socket = l3_tcp::create_tcp_socket();
+        socket
+            .listen(listen_address)
+            .expect("a fresh TCP socket should always be able to listen");
+        let mut sockets = l3_tcp::SocketSet::new(Vec::default());
+        sockets.add(socket);
 
         Self {
-            sockets: l3_tcp::SocketSet::new(Vec::default()),
-            listen_endpoints: Default::default(),
+            sockets,
             device,
             interface,
             created_at: now,
             last_now: now,
         }
-    }
-
-    pub fn listen(&mut self, address: SocketAddr) -> Result<()> {
-        let mut socket = l3_tcp::create_tcp_socket();
-        socket
-            .listen(address)
-            .with_context(|| format!("Failed to listen on {address}"))?;
-
-        let handle = self.sockets.add(socket);
-        self.listen_endpoints.insert(handle, address);
-
-        Ok(())
-    }
-
-    pub fn handle_inbound(&mut self, packet: IpPacket) {
-        self.device.receive(packet);
-    }
-
-    pub fn handle_timeout(&mut self, now: Instant) {
-        self.last_now = now;
-
-        let _result = self.interface.poll(
-            l3_tcp::now(self.created_at, now),
-            &mut self.device,
-            &mut self.sockets,
-        );
-    }
-
-    pub fn poll_outbound(&mut self) -> Option<IpPacket> {
-        self.device.next_send()
     }
 }
 
@@ -243,5 +271,52 @@ mod tests {
         assert!(!client.handle_inbound(packet));
         client.handle_timeout(now);
         assert!(client.poll_outbound().is_none());
+    }
+
+    #[test]
+    fn reset_server_restarts_on_new_syn() {
+        let now = Instant::now();
+        let local = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)), 2689);
+        let remote = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 34542);
+        let mut server = Server::new(local, now);
+
+        server.reset();
+        server.handle_inbound(
+            tcp_packet(
+                remote.ip(),
+                local.ip(),
+                remote.port(),
+                local.port(),
+                TcpFlags {
+                    ack: true,
+                    ..Default::default()
+                },
+                &[1],
+            )
+            .unwrap(),
+            now,
+        );
+        server.handle_timeout(now);
+
+        assert!(server.poll_outbound().is_none());
+
+        server.handle_inbound(
+            tcp_packet(
+                remote.ip(),
+                local.ip(),
+                remote.port(),
+                local.port(),
+                TcpFlags {
+                    syn: true,
+                    ..Default::default()
+                },
+                &[],
+            )
+            .unwrap(),
+            now,
+        );
+        server.handle_timeout(now);
+
+        assert!(server.poll_outbound().is_some());
     }
 }
