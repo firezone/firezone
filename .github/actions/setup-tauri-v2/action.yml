@@ -68,8 +68,17 @@ runs:
       # So we could fault in WebView2 from the client exe without the MSI if we needed.
       # Currently the MSI does this and it's a little janky.
       run: |
-        $installer = Start-Process .\WebView2Installer.exe -ArgumentList "/silent","/install" -Wait -PassThru
-        if ($installer.ExitCode -ne 0) {
-          throw "WebView2 installer failed with exit code $($installer.ExitCode)"
+        function Show-WebView2Version($when) {
+          foreach ($path in @(
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+            'HKCU:\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          )) {
+            $pv = (Get-ItemProperty -Path $path -Name pv -ErrorAction SilentlyContinue).pv
+            Write-Host "DIAG $when pv=[$pv] $path"
+          }
         }
+        Show-WebView2Version "before"
+        $installer = Start-Process .\WebView2Installer.exe -ArgumentList "/silent","/install" -Wait -PassThru
+        Write-Host "DIAG installer exit code: $($installer.ExitCode)"
+        Show-WebView2Version "after"
       shell: pwsh
