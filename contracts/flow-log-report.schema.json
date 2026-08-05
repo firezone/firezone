@@ -14,7 +14,13 @@
     "flow_start"
   ],
   "dependentRequired": {
-    "flow_end": ["last_packet", "rx_packets", "tx_packets", "rx_bytes", "tx_bytes"],
+    "flow_end": [
+      "last_packet",
+      "rx_packets",
+      "tx_packets",
+      "rx_bytes",
+      "tx_bytes"
+    ],
     "last_packet": ["flow_end"],
     "rx_packets": ["flow_end"],
     "tx_packets": ["flow_end"],
