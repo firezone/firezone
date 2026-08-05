@@ -301,37 +301,37 @@ echo "Coverage report: $PWD/$report_dir/index.html"
 '''
 
 [tasks.coverage-summary]
-description = "Print region coverage for the crate with the same name as the fuzz target"
+description = "Print region coverage of our own crates for a fuzz target"
 shell = "bash -c"
-usage = 'arg "<crate>"'
+usage = 'arg "<target>"'
 raw = true
 run = '''
 set -euo pipefail
 
-crate="$usage_crate"
-profile="coverage/$crate/coverage.profdata"
-binary="../../target/x86_64-unknown-linux-gnu/release/$crate"
+target="$usage_target"
+profile="coverage/$target/coverage.profdata"
+binary="../../target/x86_64-unknown-linux-gnu/release/$target"
 llvm_cov="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov"
 
 if [ ! -f "$profile" ]; then
-  echo "error: coverage profile is missing; run mise run //rust/tests/fuzz:coverage $crate first" >&2
+  echo "error: coverage profile is missing; run mise run //rust/tests/fuzz:coverage $target first" >&2
   exit 1
 fi
 
-manifest="$(
-  cargo metadata --format-version=1 --no-deps |
-    jq -er --arg crate "$crate" '.packages[] | select(.name == $crate) | .manifest_path'
-)"
-crate_dir="${manifest%/Cargo.toml}/"
+# A fuzz build instruments the dependencies too, so the profile already covers
+# every workspace crate the target links. Keeping all of them means the baseline
+# tracks the code we own rather than the one crate sharing the target's name.
+crates="$(mise run -q //rust:workspace-crates)"
 
 "$llvm_cov" export -instr-profile="$profile" "$binary" |
-  jq -e --arg crate_dir "$crate_dir" '
+  jq -e --argjson crates "$crates" '
     [.data[].files[]
-      | select(.filename | startswith($crate_dir))
+      | .filename as $file
+      | select($crates | any(.dir as $dir | $file | startswith($dir)))
       | .summary.regions
     ]
     | if length == 0 then
-        error("coverage profile contains no files for " + $crate_dir)
+        error("coverage profile contains no files from this workspace")
       else
         {
           covered: (map(.covered) | add),
@@ -342,16 +342,16 @@ crate_dir="${manifest%/Cargo.toml}/"
 '''
 
 [tasks.coverage-check]
-description = "Fail if a crate exceeds its committed uncovered-region ceiling"
+description = "Fail if a fuzz target exceeds its committed uncovered-region ceiling"
 shell = "bash -c"
-usage = 'arg "<crate>"'
+usage = 'arg "<target>"'
 raw = true
 run = '''
 set -euo pipefail
 
-crate="$usage_crate"
-expected_file="expected-coverage/$crate.json"
-measured="$(mise run -q //rust/tests/fuzz:coverage-summary "$crate")"
+target="$usage_target"
+expected_file="expected-coverage/$target.json"
+measured="$(mise run -q //rust/tests/fuzz:coverage-summary "$target")"
 expected="$(<"$expected_file")"
 measured_uncovered="$(jq '.total - .covered' <<<"$measured")"
 expected_uncovered="$(jq '.total - .covered' <<<"$expected")"
@@ -367,7 +367,7 @@ if (( measured_uncovered <= expected_uncovered )); then
   exit 0
 fi
 
-echo "error: $crate has $measured_uncovered uncovered regions; $expected_file allows $expected_uncovered" >&2
+echo "error: $target has $measured_uncovered uncovered regions; $expected_file allows $expected_uncovered" >&2
 exit 1
 '''
 
@@ -375,18 +375,18 @@ exit 1
 description = "Export an existing fuzz coverage profile as lcov, restricted to our own sources"
 shell = "bash -c"
 depends = ["install-toolchain"]
-usage = 'arg "<crate>"'
+usage = 'arg "<target>"'
 raw = true
 run = '''
 set -euo pipefail
 
-crate="$usage_crate"
-profile="coverage/$crate/coverage.profdata"
-binary="../../target/x86_64-unknown-linux-gnu/release/$crate"
+target="$usage_target"
+profile="coverage/$target/coverage.profdata"
+binary="../../target/x86_64-unknown-linux-gnu/release/$target"
 llvm_cov="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov"
 
 if [ ! -f "$profile" ]; then
-  echo "error: coverage profile is missing; run mise run //rust/tests/fuzz:coverage $crate first" >&2
+  echo "error: coverage profile is missing; run mise run //rust/tests/fuzz:coverage $target first" >&2
   exit 1
 fi
 
