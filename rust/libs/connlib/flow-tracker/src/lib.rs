@@ -45,11 +45,12 @@ pub use token::{IngestToken, IngestTokenClaims, IngestTokenRole, TEST_INGEST_TOK
 /// A flow is closed if no packet is seen for this long.
 const FLOW_TIMEOUT: TimeDelta = TimeDelta::minutes(2);
 
-/// A flow records at most this many outer (transport) 4-tuples.
+/// A flow records at most this many outer (transport) tuples.
 ///
 /// The outer tuple changes only on rare path events such as roaming or a relay
 /// switchover; the cap bounds the tracker's memory and the emitted record's
-/// size should a flow's path flap indefinitely.
+/// size. A change past the cap splits the flow instead of going unrecorded, so
+/// a peer cannot flap its path to keep later tuples out of the log.
 const MAX_CONTEXTS_PER_FLOW: usize = 16;
 
 thread_local! {
@@ -471,6 +472,33 @@ where
 
                         self.active_tcp_flows.insert(key, value);
                     }
+                    // A changed outer tuple splits the flow once the context
+                    // list is full, so a peer that keeps flapping its path
+                    // cannot make later tuples go unrecorded.
+                    hash_map::Entry::Occupied(occupied)
+                        if context_overflows(&occupied.get().contexts, context) =>
+                    {
+                        let (key, value) = occupied.remove_entry();
+
+                        tracing::debug!(?key, "Splitting existing TCP flow; context cap reached");
+
+                        emit(&Record::tcp_close(key, value, now_utc));
+
+                        let value = TcpFlowValue {
+                            start: now_utc,
+                            last_packet: now_utc,
+                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            contexts: smallvec![context],
+                            fin_tx: false,
+                            fin_rx: false,
+                            domain,
+                            ingest_token,
+                        };
+
+                        emit(&Record::tcp_open(&key, &value));
+
+                        self.active_tcp_flows.insert(key, value);
+                    }
                     hash_map::Entry::Occupied(mut occupied) => {
                         let key = *occupied.key();
                         let value = occupied.get_mut();
@@ -517,6 +545,31 @@ where
                         emit(&Record::udp_open(&key, &value));
 
                         vacant.insert(value);
+                    }
+                    // A changed outer tuple splits the flow once the context
+                    // list is full, so a peer that keeps flapping its path
+                    // cannot make later tuples go unrecorded.
+                    hash_map::Entry::Occupied(occupied)
+                        if context_overflows(&occupied.get().contexts, context) =>
+                    {
+                        let (key, value) = occupied.remove_entry();
+
+                        tracing::debug!(?key, "Splitting existing UDP flow; context cap reached");
+
+                        emit(&Record::udp_close(key, value, now_utc));
+
+                        let value = UdpFlowValue {
+                            start: now_utc,
+                            last_packet: now_utc,
+                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            contexts: smallvec![context],
+                            domain,
+                            ingest_token,
+                        };
+
+                        emit(&Record::udp_open(&key, &value));
+
+                        self.active_udp_flows.insert(key, value);
                     }
                     hash_map::Entry::Occupied(mut occupied) => {
                         let key = *occupied.key();
@@ -1206,8 +1259,8 @@ type Contexts = SmallVec<[FlowContext; 4]>;
 
 /// Appends `context` to a flow's outer tuples if it differs from the current one.
 ///
-/// The list is capped at [`MAX_CONTEXTS_PER_FLOW`]; changes past the cap are
-/// dropped.
+/// Callers split the flow before the list would grow past
+/// [`MAX_CONTEXTS_PER_FLOW`], see [`context_overflows`].
 fn push_context(key: &impl Debug, contexts: &mut Contexts, context: FlowContext) {
     let Some(current) = contexts.last().copied() else {
         contexts.push(context);
@@ -1218,17 +1271,19 @@ fn push_context(key: &impl Debug, contexts: &mut Contexts, context: FlowContext)
         return;
     }
 
-    if contexts.len() >= MAX_CONTEXTS_PER_FLOW {
-        tracing::debug!(?key, "Flow reached its context cap; dropping the change");
-
-        return;
-    }
-
     let context_diff = FlowContextDiff::new(current, context);
 
     tracing::debug!(?key, ?context_diff, "Context of flow changed");
 
     contexts.push(context);
+
+    debug_assert!(contexts.len() <= MAX_CONTEXTS_PER_FLOW);
+}
+
+/// Whether recording `context` would grow the flow's outer tuples past
+/// [`MAX_CONTEXTS_PER_FLOW`].
+fn context_overflows(contexts: &Contexts, context: FlowContext) -> bool {
+    contexts.last() != Some(&context) && contexts.len() >= MAX_CONTEXTS_PER_FLOW
 }
 
 #[derive(PartialEq, Eq)]

@@ -202,6 +202,34 @@ fn syn_after_return_traffic_splits_flow() {
 }
 
 #[test]
+fn context_change_past_the_cap_splits_flow() {
+    let authz_id = "77777777-7777-7777-7777-777777777777";
+    let spool = SpoolObserver::new(authz_id);
+    let mut tracker = enabled_tracker();
+    let t0 = Instant::now();
+
+    spool.observe(|| {
+        // The 17th distinct tuple does not fit the cap of 16 and splits the flow.
+        for i in 0..17u16 {
+            drive_tx_from(
+                &mut tracker,
+                &format!("203.0.113.7:{}", 51820 + i),
+                &tcp_packet(ack(), &[0; 10]),
+                authz_id,
+                t0 + Duration::from_secs(u64::from(i)),
+            );
+        }
+        tracker.close_all(t0 + Duration::from_secs(30));
+    });
+
+    assert_eq!(
+        packet_counts(&spool.completed_flows()),
+        vec![(1, 0), (16, 0)],
+        "the flow splits only once the context list is full"
+    );
+}
+
+#[test]
 fn bare_ack_does_not_create_flow() {
     let authz_id = "55555555-5555-5555-5555-555555555555";
     let spool = SpoolObserver::new(authz_id);
@@ -246,9 +274,20 @@ fn drive_tx(
     authz_id: &str,
     now: Instant,
 ) {
+    drive_tx_from(tracker, "203.0.113.7:51820", packet, authz_id, now);
+}
+
+/// [`drive_tx`] with the Client sending from `remote`, e.g. after a roam.
+fn drive_tx_from(
+    tracker: &mut Tracker<ClientOrGatewayId>,
+    remote: &str,
+    packet: &IpPacket,
+    authz_id: &str,
+    now: Instant,
+) {
     let _flow = tracker.begin_network_packet(
         "198.51.100.1:51820".parse().unwrap(),
-        "203.0.113.7:51820".parse().unwrap(),
+        remote.parse().unwrap(),
         now,
     );
     flow_tracker::record_decrypted_packet(packet);
