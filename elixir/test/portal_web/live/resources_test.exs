@@ -1416,7 +1416,7 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "1 / 1 online"
     end
 
-    test "shows an empty state when the pool has no clients", %{
+    test "warns when the pool has no clients", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1428,7 +1428,24 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}")
 
-      assert html =~ "No clients in this pool"
+      assert html =~ "No devices in this pool"
+      assert html =~ "An empty pool has nothing to connect to"
+    end
+
+    test "warns in the resources list when the pool has no clients", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      static_device_pool_resource_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      assert html =~ "No devices"
+      refute html =~ "0 / 0 online"
     end
 
     test "expands and collapses a client row to reveal details", %{
