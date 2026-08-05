@@ -171,7 +171,7 @@ fn syn_retransmit_updates_flow_instead_of_splitting() {
 }
 
 #[test]
-fn syn_after_return_traffic_splits_flow() {
+fn syn_retransmit_after_syn_ack_updates_flow() {
     let authz_id = "44444444-4444-4444-4444-444444444444";
     let spool = SpoolObserver::new(authz_id);
     let mut tracker = enabled_tracker();
@@ -181,7 +181,7 @@ fn syn_after_return_traffic_splits_flow() {
         drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
         drive_rx(
             &mut tracker,
-            &tcp_return_packet(&[0; 100]),
+            &tcp_return_packet(syn_ack(), &[]),
             t0 + Duration::from_secs(1),
         );
         drive_tx(
@@ -196,8 +196,45 @@ fn syn_after_return_traffic_splits_flow() {
     let flows = spool.completed_flows();
     assert_eq!(
         packet_counts(&flows),
-        vec![(1, 0), (1, 1)],
-        "a new SYN closes the old flow and starts a fresh one"
+        vec![(2, 1)],
+        "a SYN retransmitted because the SYN-ACK got lost counts into the same flow"
+    );
+}
+
+#[test]
+fn syn_after_established_connection_splits_flow() {
+    let authz_id = "88888888-8888-8888-8888-888888888888";
+    let spool = SpoolObserver::new(authz_id);
+    let mut tracker = enabled_tracker();
+    let t0 = Instant::now();
+
+    spool.observe(|| {
+        drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
+        drive_rx(
+            &mut tracker,
+            &tcp_return_packet(syn_ack(), &[]),
+            t0 + Duration::from_secs(1),
+        );
+        drive_tx(
+            &mut tracker,
+            &tcp_packet(ack(), &[]),
+            authz_id,
+            t0 + Duration::from_secs(2),
+        );
+        drive_tx(
+            &mut tracker,
+            &tcp_packet(syn(), &[]),
+            authz_id,
+            t0 + Duration::from_secs(3),
+        );
+        tracker.close_all(t0 + Duration::from_secs(4));
+    });
+
+    let flows = spool.completed_flows();
+    assert_eq!(
+        packet_counts(&flows),
+        vec![(1, 0), (2, 1)],
+        "a SYN after the handshake completed reuses the tuple for a new connection"
     );
 }
 
@@ -320,6 +357,14 @@ fn ack() -> ip_packet::make::TcpFlags {
     }
 }
 
+fn syn_ack() -> ip_packet::make::TcpFlags {
+    ip_packet::make::TcpFlags {
+        syn: true,
+        ack: true,
+        ..Default::default()
+    }
+}
+
 fn tcp_packet(flags: ip_packet::make::TcpFlags, payload: &[u8]) -> IpPacket {
     ip_packet::make::tcp_packet(
         "100.64.0.1".parse::<Ipv4Addr>().unwrap(),
@@ -334,13 +379,13 @@ fn tcp_packet(flags: ip_packet::make::TcpFlags, payload: &[u8]) -> IpPacket {
 
 /// The matching return packet for [`tcp_packet`], in its natural
 /// (responder-to-initiator) orientation.
-fn tcp_return_packet(payload: &[u8]) -> IpPacket {
+fn tcp_return_packet(flags: ip_packet::make::TcpFlags, payload: &[u8]) -> IpPacket {
     ip_packet::make::tcp_packet(
         "10.0.0.5".parse::<Ipv4Addr>().unwrap(),
         "100.64.0.1".parse::<Ipv4Addr>().unwrap(),
         443,
         1234,
-        ip_packet::make::TcpFlags::default(),
+        flags,
         payload,
     )
     .unwrap()
