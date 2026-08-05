@@ -127,7 +127,12 @@ defmodule PortalWeb.Actors.Components do
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <.button type="button" phx-click="open_actor_edit_form" size="xs">
+          <.button
+            :if={not Portal.Actor.support?(@actor)}
+            type="button"
+            phx-click="open_actor_edit_form"
+            size="xs"
+          >
             <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </.button>
           <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
@@ -923,7 +928,7 @@ defmodule PortalWeb.Actors.Components do
           <.action_button
             :if={
               !@actor.is_disabled and @actor.id != @subject.actor.id and
-                not @confirm_disable_actor
+                not @confirm_disable_actor and not Portal.Actor.support?(@actor)
             }
             style="warning"
             icon="ri-pause-line"
@@ -951,7 +956,7 @@ defmodule PortalWeb.Actors.Components do
             </div>
           </div>
           <.action_button
-            :if={@actor.is_disabled}
+            :if={@actor.is_disabled and not Portal.Actor.support?(@actor)}
             style="success"
             icon="ri-play-line"
             phx-click="enable"
@@ -962,8 +967,12 @@ defmodule PortalWeb.Actors.Components do
         </div>
       </section>
 
-      <div :if={@actor.id != @subject.actor.id} class="border-t border-border"></div>
-      <section :if={@actor.id != @subject.actor.id}>
+      <div
+        :if={@actor.id != @subject.actor.id and not Portal.Actor.support?(@actor)}
+        class="border-t border-border"
+      >
+      </div>
+      <section :if={@actor.id != @subject.actor.id and not Portal.Actor.support?(@actor)}>
         <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
           Danger Zone
         </h3>
@@ -1583,12 +1592,14 @@ defmodule PortalWeb.Actors.Components do
 
   defp actor_type_icon(assigns) do
     ~H"""
-    <%= case @actor.type do %>
-      <% :service_account -> %>
+    <%= cond do %>
+      <% Portal.Actor.support?(@actor) -> %>
+        <.icon name="ri-first-aid-kit-line" class={@class} />
+      <% @actor.type == :service_account -> %>
         <.icon name="ri-server-line" class={@class} />
-      <% :account_admin_user -> %>
+      <% @actor.type == :account_admin_user -> %>
         <.icon name="ri-shield-check-line" class={@class} />
-      <% _ -> %>
+      <% true -> %>
         <.icon name="ri-user-line" class={@class} />
     <% end %>
     """
@@ -1600,9 +1611,9 @@ defmodule PortalWeb.Actors.Components do
     ~H"""
     <div class={[
       "inline-flex items-center justify-center w-8 h-8 rounded-full",
-      actor_type_icon_bg_color(@actor.type)
+      actor_type_icon_bg_color(@actor)
     ]}>
-      <.actor_type_icon actor={@actor} class={"w-5 h-5 #{actor_type_icon_text_color(@actor.type)}"} />
+      <.actor_type_icon actor={@actor} class={"w-5 h-5 #{actor_type_icon_text_color(@actor)}"} />
     </div>
     """
   end
@@ -1614,9 +1625,9 @@ defmodule PortalWeb.Actors.Components do
     <div class="relative inline-flex shrink-0">
       <div class={[
         "inline-flex items-center justify-center w-8 h-8 rounded-full",
-        actor_type_icon_bg_color(@actor.type)
+        actor_type_icon_bg_color(@actor)
       ]}>
-        <.actor_type_icon actor={@actor} class={"w-5 h-5 #{actor_type_icon_text_color(@actor.type)}"} />
+        <.actor_type_icon actor={@actor} class={"w-5 h-5 #{actor_type_icon_text_color(@actor)}"} />
       </div>
       <span
         :if={@actor.identity_count > 0}
@@ -1634,7 +1645,7 @@ defmodule PortalWeb.Actors.Components do
     ~H"""
     <span class={[
       "inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-medium",
-      actor_type_badge_color(@actor.type)
+      actor_type_badge_color(@actor)
     ]}>
       <.actor_type_icon actor={@actor} class="w-3 h-3" />
       {actor_display_type(@actor)}
@@ -1642,22 +1653,43 @@ defmodule PortalWeb.Actors.Components do
     """
   end
 
-  defp actor_type_icon_bg_color(:service_account), do: "bg-blue-100"
-  defp actor_type_icon_bg_color(:account_admin_user), do: "bg-purple-100"
-  defp actor_type_icon_bg_color(_), do: "bg-neutral-100"
+  defp actor_type_icon_bg_color(actor) do
+    cond do
+      Portal.Actor.support?(actor) -> "bg-orange-100"
+      actor.type == :service_account -> "bg-blue-100"
+      actor.type == :account_admin_user -> "bg-purple-100"
+      true -> "bg-neutral-100"
+    end
+  end
 
-  defp actor_type_icon_text_color(:service_account), do: "text-blue-800"
-  defp actor_type_icon_text_color(:account_admin_user), do: "text-purple-800"
-  defp actor_type_icon_text_color(_), do: "text-neutral-800"
+  defp actor_type_icon_text_color(actor) do
+    cond do
+      Portal.Actor.support?(actor) -> "text-orange-800"
+      actor.type == :service_account -> "text-blue-800"
+      actor.type == :account_admin_user -> "text-purple-800"
+      true -> "text-neutral-800"
+    end
+  end
 
-  defp actor_type_badge_color(:service_account), do: "bg-blue-100 text-blue-800"
-  defp actor_type_badge_color(:account_admin_user), do: "bg-purple-100 text-purple-800"
-  defp actor_type_badge_color(_), do: "bg-neutral-100 text-neutral-800"
+  defp actor_type_badge_color(actor) do
+    cond do
+      Portal.Actor.support?(actor) -> "bg-orange-100 text-orange-800"
+      actor.type == :service_account -> "bg-blue-100 text-blue-800"
+      actor.type == :account_admin_user -> "bg-purple-100 text-purple-800"
+      true -> "bg-neutral-100 text-neutral-800"
+    end
+  end
 
-  defp actor_display_type(%{type: :service_account}), do: "Service Account"
-  defp actor_display_type(%{type: :account_admin_user}), do: "Admin"
-  defp actor_display_type(%{type: :account_user}), do: "User"
-  defp actor_display_type(_), do: "User"
+  defp actor_display_type(%{type: type} = actor) do
+    cond do
+      Portal.Actor.support?(actor) -> "Firezone Support"
+      type == :service_account -> "Service Account"
+      type == :account_admin_user -> "Admin"
+      true -> "User"
+    end
+  end
+
+  defp actor_display_type(_actor), do: "User"
 
   attr :device, :any, required: true
   attr :location, :string, default: nil

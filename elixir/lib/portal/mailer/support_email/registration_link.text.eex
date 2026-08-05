@@ -1,0 +1,12 @@
+Register your Firezone Support passkey
+
+You've been provisioned as a Firezone Support admin for <%= @recipient_email %>.
+
+Open the link below to register your passkey. The link expires in 1 hour.
+
+<%= @registration_url %>
+
+If a passkey is already registered for this address, completing a new
+registration replaces it.
+
+If you did not expect this email, contact the Firezone team immediately.

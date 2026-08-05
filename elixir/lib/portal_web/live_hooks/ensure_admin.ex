@@ -6,8 +6,9 @@ defmodule PortalWeb.LiveHooks.EnsureAdmin do
         :default,
         _params,
         _session,
-        %{assigns: %{subject: %Subject{actor: %Actor{type: :account_admin_user}}}} = socket
-      ) do
+        %{assigns: %{subject: %Subject{actor: %Actor{type: type}}}} = socket
+      )
+      when type in [:account_admin_user, :firezone_support] do
     {:cont, socket}
   end
 

@@ -9,12 +9,14 @@ defmodule Portal.Actor do
 
   @type t :: %__MODULE__{}
 
+  @support_email_suffix "+firezone-support@firezone.dev"
+
   schema "actors" do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
 
     field :type, Ecto.Enum,
-      values: [:account_user, :account_admin_user, :service_account, :api_client]
+      values: [:account_user, :account_admin_user, :service_account, :api_client, :firezone_support]
 
     field :email, :string
     field :password_hash, :string, redact: true
@@ -48,12 +50,14 @@ defmodule Portal.Actor do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
+    |> validate_not_support_actor()
     |> validate_required(~w[name type]a)
     |> trim_change(~w[name email]a)
     |> validate_length(:name, max: 255)
     |> validate_type_transition()
     |> normalize_email(:email)
     |> validate_email(:email)
+    |> validate_not_support_email()
     |> assoc_constraint(:account)
     |> assoc_constraint(:directory, name: :actors_created_by_directory_id_fkey)
     |> unique_constraint(:email, name: :actors_account_id_email_index)
@@ -67,6 +71,19 @@ defmodule Portal.Actor do
     end
   end
 
+  def support_email(email) when is_binary(email) do
+    [local, "firezone.dev"] = email |> String.downcase() |> String.split("@", parts: 2)
+    local <> @support_email_suffix
+  end
+
+  def support?(%__MODULE__{type: type}), do: type == :firezone_support
+
+  def support?(email) when is_binary(email) do
+    email |> String.downcase() |> String.ends_with?(@support_email_suffix)
+  end
+
+  def support?(_other), do: false
+
   defp validate_type_transition(changeset) do
     old_type = changeset.data.type
     new_type = get_change(changeset, :type)
@@ -74,6 +91,9 @@ defmodule Portal.Actor do
     cond do
       is_nil(new_type) ->
         changeset
+
+      new_type == :firezone_support ->
+        add_error(changeset, :type, "is reserved")
 
       is_nil(old_type) ->
         changeset
@@ -84,6 +104,9 @@ defmodule Portal.Actor do
       old_type == :service_account ->
         add_error(changeset, :type, "cannot change the type of a service account")
 
+      old_type == :firezone_support ->
+        add_error(changeset, :type, "cannot change the type of a Firezone Support actor")
+
       old_type in [:account_user, :account_admin_user] and
           new_type in [:api_client, :service_account] ->
         add_error(changeset, :type, "cannot change a user to a service account or API client")
@@ -91,6 +114,24 @@ defmodule Portal.Actor do
       true ->
         changeset
     end
+  end
+
+  defp validate_not_support_actor(changeset) do
+    if changeset.data.type == :firezone_support do
+      add_error(changeset, :type, "Firezone Support actors cannot be modified")
+    else
+      changeset
+    end
+  end
+
+  defp validate_not_support_email(changeset) do
+    validate_change(changeset, :email, fn :email, email ->
+      if support?(email) do
+        [email: "is reserved"]
+      else
+        []
+      end
+    end)
   end
 
   defp normalize_for_compare(nil), do: ""

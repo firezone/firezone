@@ -24,12 +24,30 @@ defmodule PortalWeb.NavigationComponents do
   Renders the top navigation bar.
   """
   attr :subject, :any, required: true
+  attr :account, :any, required: true
+  attr :support_provider, :any, default: nil
+  attr :current_path, :string, required: true
 
   def topbar(assigns) do
     ~H"""
     <header class="flex items-center justify-between h-14 px-6 border-b border-border bg-surface shrink-0 z-30">
       <div class="flex items-center gap-2 text-sm text-body"></div>
       <div class="flex items-center gap-3">
+        <%= if @support_provider do %>
+          <div class="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded border text-xs font-medium border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+            <.icon name="ri-lifebuoy-line" class="w-3.5 h-3.5" /> Support active
+          </div>
+        <% else %>
+          <button
+            id="request-support"
+            type="button"
+            phx-hook="ConfirmDialog"
+            class="hidden md:flex items-center gap-1.5 text-sm text-body hover:text-heading transition-colors"
+          >
+            <.icon name="ri-lifebuoy-line" class="w-4 h-4" /> Request Support
+          </button>
+          <.request_support_dialog account={@account} subject={@subject} current_path={@current_path} />
+        <% end %>
         <a
           target="_blank"
           href="https://www.firezone.dev/kb?utm_source=product"
@@ -116,6 +134,90 @@ defmodule PortalWeb.NavigationComponents do
         </.dropdown>
       </div>
     </header>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :subject, :any, required: true
+  attr :current_path, :string, required: true
+
+  defp request_support_dialog(assigns) do
+    ~H"""
+    <dialog
+      id="request-support_dialog"
+      class="backdrop:bg-gray-800/75 bg-transparent w-full md:inset-0 max-h-full overflow-y-auto overflow-x-hidden"
+    >
+      <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="relative bg-elevated border border-border rounded-md shadow-sm w-full max-w-lg">
+          <div class="flex items-center justify-between p-4 md:p-5 border-b border-border rounded-t">
+            <h3 class="text-xl font-semibold text-heading">Request Support</h3>
+            <form method="dialog">
+              <button
+                class="text-subtle bg-transparent hover:text-heading ml-2"
+                type="submit"
+                value="cancel"
+              >
+                <.icon name="ri-close-line" class="h-4 w-4" />
+                <span class="sr-only">Close modal</span>
+              </button>
+            </form>
+          </div>
+          <form
+            id="support-request-form"
+            action={~p"/#{@account}/support_request"}
+            method="post"
+          >
+            <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+            <input type="hidden" name="redirect_to" value={@current_path} />
+            <div class="p-4 md:p-5 space-y-4">
+              <p class="text-sm text-body">
+                Describe the problem you're seeing and our team will get back to you at
+                <strong class="text-heading">{@subject.actor.email}</strong>.
+              </p>
+              <textarea
+                name="support_request[problem]"
+                required
+                rows="5"
+                placeholder="What's going wrong?"
+                class="w-full px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-muted"
+              ></textarea>
+              <label class="flex items-start gap-2.5 text-sm text-body">
+                <input
+                  type="checkbox"
+                  name="support_request[grant_access]"
+                  value="true"
+                  class="mt-0.5 rounded border-input-border"
+                />
+                <span>
+                  Allow Firezone Support to access this account for 24 hours.
+                  This adds a temporary sign-in method used by Firezone Support to securely
+                  access your account. You can end it at any time.
+                </span>
+              </label>
+            </div>
+          </form>
+          <div class="flex items-center justify-end p-4 md:p-5 border-t border-border rounded-b gap-3">
+            <form method="dialog">
+              <button
+                data-dialog-action="cancel"
+                type="submit"
+                value="cancel"
+                class="px-5 py-2.5 rounded text-sm font-medium border border-border-strong bg-surface hover:bg-raised transition-colors text-heading"
+              >
+                Cancel
+              </button>
+            </form>
+            <button
+              type="submit"
+              form="support-request-form"
+              class="px-5 py-2.5 rounded text-sm font-medium bg-brand text-white hover:bg-brand-dark transition-colors"
+            >
+              Send request
+            </button>
+          </div>
+        </div>
+      </div>
+    </dialog>
     """
   end
 
