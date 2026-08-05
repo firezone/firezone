@@ -918,7 +918,7 @@ impl ClientState {
         ];
         match &response.message {
             Ok(message) => attributes.push(otel::attr::dns_response_code(message.response_code())),
-            Err(e) => attributes.extend(telemetry::otel::error_layers(e)),
+            Err(e) => attributes.extend(otel_attributes::error_layers(e)),
         }
         self.dns_lookup_duration.record(
             now.saturating_duration_since(response.started_at)

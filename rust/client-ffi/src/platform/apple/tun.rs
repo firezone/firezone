@@ -1,6 +1,5 @@
 use libc::{F_GETFL, F_SETFL, O_NONBLOCK, fcntl};
 use std::{io, os::fd::RawFd};
-use telemetry::otel;
 
 /// Receive buffer we request for the utun control socket via `SO_RCVBUF`.
 ///
@@ -64,15 +63,15 @@ impl Tun {
         runtime.spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),
             [
-                otel::attr::queue_item_ip_packet_batch(),
-                otel::attr::network_io_direction_transmit(),
+                otel_attributes::queue_item_ip_packet_batch(),
+                otel_attributes::network_io_direction_transmit(),
             ],
         ));
         runtime.spawn(otel_instruments::periodic_queue_length(
             inbound_tx.downgrade(),
             [
-                otel::attr::queue_item_ip_packet_batch(),
-                otel::attr::network_io_direction_receive(),
+                otel_attributes::queue_item_ip_packet_batch(),
+                otel_attributes::network_io_direction_receive(),
             ],
         ));
 

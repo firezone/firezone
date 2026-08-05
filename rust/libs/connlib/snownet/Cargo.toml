@@ -19,6 +19,7 @@ is = { workspace = true }
 itertools = { workspace = true }
 logging = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
+otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 path-agent = { workspace = true }
 rand = { workspace = true }
@@ -26,7 +27,6 @@ ringbuffer = { workspace = true }
 smallvec = { workspace = true }
 str0m-proto = { workspace = true }
 stun_codec = { workspace = true }
-telemetry = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 

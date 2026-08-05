@@ -17,7 +17,7 @@ pub mod attr {
             Ok(_) => attributes.push(dns_response_code(ResponseCode::NoError)),
             Err(e) => match response_code(e) {
                 Some(code) => attributes.push(dns_response_code(code)),
-                None => attributes.extend(telemetry::otel::error_layers(&anyhow::Error::new(
+                None => attributes.extend(otel_attributes::error_layers(&anyhow::Error::new(
                     e.clone(),
                 ))),
             },

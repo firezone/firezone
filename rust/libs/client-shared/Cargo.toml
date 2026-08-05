@@ -16,6 +16,7 @@ flow-log-writer = { workspace = true }
 futures = { workspace = true }
 logging = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
+otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }

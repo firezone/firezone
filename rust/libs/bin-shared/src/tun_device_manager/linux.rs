@@ -36,7 +36,6 @@ use std::{
     os::{fd::RawFd, unix::fs::PermissionsExt},
 };
 use std::{net::IpAddr, time::Duration};
-use telemetry::otel;
 use tokio::time::Instant;
 use tun::ioctl;
 
@@ -727,15 +726,15 @@ impl Tun {
         tokio::spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),
             [
-                otel::attr::queue_item_ip_packet_batch(),
-                otel::attr::network_io_direction_transmit(),
+                otel_attributes::queue_item_ip_packet_batch(),
+                otel_attributes::network_io_direction_transmit(),
             ],
         ));
         tokio::spawn(otel_instruments::periodic_queue_length(
             inbound_tx.downgrade(),
             [
-                otel::attr::queue_item_ip_packet_batch(),
-                otel::attr::network_io_direction_receive(),
+                otel_attributes::queue_item_ip_packet_batch(),
+                otel_attributes::network_io_direction_receive(),
             ],
         ));
 

@@ -161,9 +161,9 @@ async fn try_main(cli: Cli) -> Result<()> {
 
     if let Some(backend) = cli.metrics {
         let resource = telemetry::otel::default_resource_with([
-            telemetry::otel::attr::service_name!(),
-            telemetry::otel::attr::service_version!(),
-            telemetry::otel::attr::service_instance_id(firezone_id.clone()),
+            otel_attributes::service_name!(),
+            otel_attributes::service_version!(),
+            telemetry::otel::service_instance_id(firezone_id.clone()),
         ]);
 
         match (backend, cli.otlp_grpc_endpoint) {

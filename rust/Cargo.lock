@@ -712,6 +712,7 @@ dependencies = [
  "netlink-packet-route",
  "nix 0.31.3",
  "opentelemetry",
+ "otel-attributes",
  "otel-instruments",
  "packet-coalescer",
  "resolv-conf",
@@ -1247,6 +1248,7 @@ dependencies = [
  "mimalloc",
  "opentelemetry",
  "oslog",
+ "otel-attributes",
  "otel-instruments",
  "phoenix-channel",
  "rustls",
@@ -1278,6 +1280,7 @@ dependencies = [
  "futures",
  "logging",
  "opentelemetry",
+ "otel-attributes",
  "otel-instruments",
  "parking_lot",
  "phoenix-channel",
@@ -2350,6 +2353,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
+ "otel-attributes",
  "otel-instruments",
  "phoenix-channel",
  "resolv-conf",
@@ -2477,6 +2481,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
+ "otel-attributes",
  "phoenix-channel",
  "rpassword",
  "rustls",
@@ -5303,6 +5308,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "otel-attributes"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "ip-packet",
+ "opentelemetry",
+ "thiserror 2.0.19",
+ "tokio-tungstenite",
+ "uuid",
+]
+
+[[package]]
 name = "otel-instruments"
 version = "0.1.0"
 dependencies = [
@@ -6933,6 +6950,7 @@ dependencies = [
  "itertools 0.15.0",
  "logging",
  "opentelemetry",
+ "otel-attributes",
  "otel-instruments",
  "path-agent",
  "rand 0.10.2",
@@ -6940,7 +6958,6 @@ dependencies = [
  "smallvec",
  "str0m-proto",
  "stun_codec",
- "telemetry",
  "thiserror 2.0.19",
  "tracing",
 ]
@@ -7728,7 +7745,6 @@ dependencies = [
  "hex",
  "http",
  "http-client",
- "ip-packet",
  "moka",
  "opentelemetry",
  "opentelemetry_sdk",
@@ -7743,7 +7759,6 @@ dependencies = [
  "socket-factory",
  "thiserror 2.0.19",
  "tokio",
- "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
  "tunnel-bypass-resolver",
@@ -8507,6 +8522,7 @@ dependencies = [
  "logging",
  "lru",
  "opentelemetry",
+ "otel-attributes",
  "otel-instruments",
  "proptest",
  "rand 0.10.2",

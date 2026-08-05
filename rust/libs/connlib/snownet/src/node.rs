@@ -680,7 +680,7 @@ where
         // last non-zero value.
         for (kind, count) in PeerSocket::KINDS.into_iter().zip(connections_by_path) {
             self.connection_count
-                .record(count, &[telemetry::otel::attr::connection_socket(kind)]);
+                .record(count, &[otel_attributes::connection_socket(kind)]);
         }
 
         let gc = self.allocations.gc();
