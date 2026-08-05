@@ -4,9 +4,13 @@ use anyhow::{Context, Result};
 use ip_packet::{IpPacket, Layer4Protocol};
 use l3_tcp::Socket;
 
+const MAX_CLOSED_CONNECTIONS: usize = 32;
+
 pub struct Client {
     sockets: l3_tcp::SocketSet<'static>,
-    sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), l3_tcp::SocketHandle>,
+    /// The socket for each connection, or `None` for a connection reset while packets could still
+    /// be in flight.
+    sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), Option<l3_tcp::SocketHandle>>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
 
@@ -43,7 +47,11 @@ impl Client {
         // Sockets are keyed by the full `(local, remote)` 4-tuple, so the client
         // can hold several connections to one remote from different local ports.
         // Re-connecting an already-open 4-tuple is a no-op.
-        if self.sockets_by_conn.contains_key(&(local, remote)) {
+        if self
+            .sockets_by_conn
+            .get(&(local, remote))
+            .is_some_and(Option::is_some)
+        {
             return Ok(());
         }
 
@@ -60,12 +68,21 @@ impl Client {
 
         let handle = self.sockets.add(socket);
 
-        self.sockets_by_conn.insert((local, remote), handle);
+        self.sockets_by_conn.insert((local, remote), Some(handle));
 
         Ok(())
     }
 
     pub fn accepts(&self, packet: &IpPacket) -> bool {
+        if let Ok(Some((failed_packet, _))) = packet.icmp_error()
+            && let Layer4Protocol::Tcp { src, dst } = failed_packet.layer4_protocol()
+        {
+            let local = SocketAddr::new(failed_packet.src(), src);
+            let remote = SocketAddr::new(failed_packet.dst(), dst);
+
+            return self.sockets_by_conn.contains_key(&(local, remote));
+        }
+
         let Some(tcp) = packet.as_tcp() else {
             return false;
         };
@@ -76,20 +93,43 @@ impl Client {
         self.sockets_by_conn.contains_key(&(local, remote))
     }
 
-    pub fn handle_inbound(&mut self, packet: IpPacket) {
-        // TODO: Upstream ICMP error handling to `smoltcp`.
+    pub fn handle_inbound(&mut self, packet: IpPacket) -> bool {
         if let Ok(Some((failed_packet, _))) = packet.icmp_error()
             && let Layer4Protocol::Tcp { src, dst } = failed_packet.layer4_protocol()
             && let local = SocketAddr::new(failed_packet.src(), src)
             && let remote = SocketAddr::new(failed_packet.dst(), dst)
-            && let Some(handle) = self.sockets_by_conn.get(&(local, remote))
+            && let Some(maybe_handle) = self.sockets_by_conn.get(&(local, remote))
         {
+            let Some(handle) = maybe_handle else {
+                tracing::debug!(%local, %remote, "Ignoring packet for reset TCP connection");
+                return false;
+            };
+
             tracing::debug!(%local, %remote, "Received ICMP error");
 
             self.sockets.get_mut::<l3_tcp::Socket>(*handle).abort();
+            self.device.receive(packet);
+            return true;
         }
 
+        let Some(tcp) = packet.as_tcp() else {
+            return false;
+        };
+
+        let local = SocketAddr::new(packet.destination(), tcp.destination_port());
+        let remote = SocketAddr::new(packet.source(), tcp.source_port());
+
+        let Some(maybe_handle) = self.sockets_by_conn.get(&(local, remote)) else {
+            return false;
+        };
+
+        let Some(_) = maybe_handle else {
+            tracing::debug!(%local, %remote, "Ignoring packet for reset TCP connection");
+            return false;
+        };
+
         self.device.receive(packet);
+        true
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -114,7 +154,12 @@ impl Client {
 
     pub fn reset(&mut self) {
         self.sockets = l3_tcp::SocketSet::new(Vec::default());
-        self.sockets_by_conn.clear();
+        for handle in self.sockets_by_conn.values_mut() {
+            *handle = None;
+        }
+        while self.sockets_by_conn.len() > MAX_CLOSED_CONNECTIONS {
+            self.sockets_by_conn.pop_first();
+        }
         self.device.clear();
     }
 }
@@ -162,5 +207,41 @@ impl Server {
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
         self.device.next_send()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ip_packet::make::{TcpFlags, tcp_packet};
+    use std::net::{IpAddr, Ipv4Addr};
+
+    #[test]
+    fn reset_consumes_late_packets_for_closed_connections() {
+        let now = Instant::now();
+        let local = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 34542);
+        let remote = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)), 2689);
+        let mut client = Client::new(now);
+
+        client.connect(local, remote).unwrap();
+        client.reset();
+
+        let packet = tcp_packet(
+            remote.ip(),
+            local.ip(),
+            remote.port(),
+            local.port(),
+            TcpFlags {
+                ack: true,
+                ..Default::default()
+            },
+            &[1],
+        )
+        .unwrap();
+
+        assert!(client.accepts(&packet));
+        assert!(!client.handle_inbound(packet));
+        client.handle_timeout(now);
+        assert!(client.poll_outbound().is_none());
     }
 }

@@ -371,7 +371,7 @@ impl TunnelTest {
                     .clients
                     .get_mut(&client_id)
                     .unwrap()
-                    .exec_mut(|sim| sim.connect_tcp(src, dst, sport, dport, now));
+                    .exec_mut(|sim| sim.connect_tcp(src, dst, sport, dport));
             }
             Transition::SendDnsQuery {
                 client_id,

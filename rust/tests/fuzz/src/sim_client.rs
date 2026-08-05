@@ -76,7 +76,7 @@ pub(crate) struct SimClient {
     tcp_dns_source_interface: Option<(std::net::Ipv4Addr, std::net::Ipv6Addr)>,
 
     /// TCP connections to resources.
-    pub(crate) tcp_client: Endpoint<crate::tcp::Client>,
+    pub(crate) tcp_client: crate::tcp::Client,
     pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IcmpError>,
 
     /// Collects datagrams encapsulated via [`ClientState::handle_tun_input`].
@@ -115,7 +115,7 @@ impl SimClient {
                 [0u8; 32],
             )),
             tcp_dns_source_interface: None,
-            tcp_client: Endpoint::Active(crate::tcp::Client::new(now)),
+            tcp_client: crate::tcp::Client::new(now),
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
             transmit_buffer: snownet::TransmitBuffer::new(),
@@ -152,7 +152,7 @@ impl SimClient {
         self.routes.clear();
         self.tcp_dns_source_interface = None;
         self.tcp_dns_client.retire();
-        self.tcp_client.retire();
+        self.tcp_client.reset();
     }
 
     /// Returns the _effective_ DNS servers that connlib is using.
@@ -201,21 +201,8 @@ impl SimClient {
             .expect("TCP DNS client should be active after initialization")
     }
 
-    fn ensure_tcp_client(&mut self, now: Instant) -> &mut crate::tcp::Client {
-        if self.tcp_client.active().is_none() {
-            self.tcp_client.activate(crate::tcp::Client::new(now));
-        }
-
-        self.tcp_client
-            .active_mut()
-            .expect("TCP client should be active after initialization")
-    }
-
     pub(crate) fn iter_tcp_sockets(&self) -> impl Iterator<Item = &l3_tcp::Socket<'_>> {
-        self.tcp_client
-            .active()
-            .into_iter()
-            .flat_map(|client| client.iter_sockets())
+        self.tcp_client.iter_sockets()
     }
 
     pub(crate) fn dns_mapping(&self) -> &DnsMapping {
@@ -267,18 +254,11 @@ impl SimClient {
         }
     }
 
-    pub fn connect_tcp(
-        &mut self,
-        src: IpAddr,
-        dst: IpAddr,
-        sport: SPort,
-        dport: DPort,
-        now: Instant,
-    ) {
+    pub fn connect_tcp(&mut self, src: IpAddr, dst: IpAddr, sport: SPort, dport: DPort) {
         let local = SocketAddr::new(src, sport.0);
         let remote = SocketAddr::new(dst, dport.0);
 
-        if let Err(e) = self.ensure_tcp_client(now).connect(local, remote) {
+        if let Err(e) = self.tcp_client.connect(local, remote) {
             tracing::error!("TCP connect failed: {e:#}")
         }
     }
@@ -324,20 +304,14 @@ impl SimClient {
         self.tcp_dns_client
             .active_mut()
             .and_then(dns_over_tcp::Client::poll_outbound)
-            .or_else(|| {
-                self.tcp_client
-                    .active_mut()
-                    .and_then(crate::tcp::Client::poll_outbound)
-            })
+            .or_else(|| self.tcp_client.poll_outbound())
     }
 
     pub fn drive_tcp(&mut self, now: Instant) {
         if let Some(client) = self.tcp_dns_client.active_mut() {
             client.handle_timeout(now);
         }
-        if let Some(client) = self.tcp_client.active_mut() {
-            client.handle_timeout(now);
-        }
+        self.tcp_client.handle_timeout(now);
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -408,17 +382,9 @@ impl SimClient {
                             .insert((SPort(dst), DPort(src)), packet);
                     }
                     Layer4Protocol::Tcp { src, dst } => {
-                        if self.tcp_client.is_retired() {
-                            tracing::debug!(?packet, "Ignoring ICMP error for retired TCP client");
-                            return None;
-                        }
-
-                        self.failed_tcp_packets
-                            .insert((SPort(src), DPort(dst)), icmp_error);
-
-                        // Allow the client to process the ICMP error.
-                        if let Some(client) = self.tcp_client.active_mut() {
-                            client.handle_inbound(packet);
+                        if self.tcp_client.handle_inbound(packet) {
+                            self.failed_tcp_packets
+                                .insert((SPort(src), DPort(dst)), icmp_error);
                         }
                     }
                     Layer4Protocol::Icmp { seq, id } => {
@@ -500,20 +466,8 @@ impl SimClient {
             return None;
         }
 
-        if self
-            .tcp_client
-            .active()
-            .is_some_and(|client| client.accepts(&packet))
-        {
-            self.tcp_client
-                .active_mut()
-                .expect("TCP client was active when it accepted the packet")
-                .handle_inbound(packet);
-            return None;
-        }
-
-        if packet.as_tcp().is_some() && self.tcp_client.is_retired() {
-            tracing::debug!(?packet, "Ignoring packet for retired TCP client");
+        if self.tcp_client.accepts(&packet) {
+            self.tcp_client.handle_inbound(packet);
             return None;
         }
 
@@ -662,7 +616,7 @@ impl SimClient {
         self.sent_tcp_dns_queries.clear();
         self.received_tcp_dns_responses.clear();
         self.tcp_dns_client.retire();
-        self.tcp_client.retire();
+        self.tcp_client.reset();
         self.failed_tcp_packets.clear();
     }
 }
