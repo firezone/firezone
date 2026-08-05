@@ -88,10 +88,10 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
 /// fields against the same file, so either side drifting fails its own CI.
 #[test]
 fn spooled_reports_conform_to_the_committed_ingest_contract() {
-    let schema = std::fs::read(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../../../contracts/flow-log-report.schema.json"
-    ))
+    let schema = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../../contracts/flow-log-report.schema.json"),
+    )
     .unwrap();
     let validator = jsonschema::options()
         .should_validate_formats(true)
@@ -142,6 +142,8 @@ fn spooled_reports_conform_to_the_committed_ingest_contract() {
         tracker.close_all(t0 + Duration::from_secs(5));
     });
 
+    // The manual close plus the driven flow's open and close reports; a
+    // fourth report for the same input should fail loudly.
     let reports = spool.reports();
     assert_eq!(reports.len(), 3);
 
