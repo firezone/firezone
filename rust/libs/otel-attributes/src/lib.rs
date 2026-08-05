@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 //! Constructors for the OpenTelemetry attributes shared across Firezone's components.
 //!
 //! Attribute values must have a bounded set of possible values: they end up as
@@ -123,9 +125,9 @@ fn error_value(error: &(dyn std::error::Error + 'static)) -> Value {
 /// Replaces variable tokens in an error message with static placeholders.
 ///
 /// Splits on whitespace and classifies each token via the stdlib network parsers
-/// and the `uuid` crate.  Tokens that parse as a `SocketAddr` or `IpAddr` become
-/// `{addr}`, UUIDs become `{uuid}`, and bare integers become `{num}`.  Leading and
-/// trailing punctuation is preserved around a replaced token.
+/// and the `uuid` crate.  Tokens that parse as a `SocketAddr` become `{ip}:{port}`,
+/// bare `IpAddr`s become `{ip}`, UUIDs become `{uuid}`, and bare integers become
+/// `{num}`.  Leading and trailing punctuation is preserved around a replaced token.
 fn normalize(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
