@@ -495,35 +495,38 @@ dependencies = [
 
 [[package]]
 name = "aya"
-version = "0.13.1"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.14.0"
+source = "git+https://github.com/aya-rs/aya#7dab6884827ab5c63a524a9e24f7ab5c72f6391a"
 dependencies = [
  "assert_matches",
  "aya-obj",
  "bitflags 2.10.0",
- "bytes",
- "hashbrown 0.16.0",
+ "hashbrown 0.17.0",
  "libc",
  "log",
- "object 0.37.3",
+ "object 0.39.1",
  "once_cell",
+ "scopeguard",
  "thiserror 2.0.19",
 ]
 
 [[package]]
 name = "aya-build"
-version = "0.1.2"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.2.0"
+source = "git+https://github.com/aya-rs/aya#7dab6884827ab5c63a524a9e24f7ab5c72f6391a"
 dependencies = [
  "anyhow",
  "cargo_metadata 0.23.0",
+ "rustc_version",
+ "which 8.0.5",
 ]
 
 [[package]]
 name = "aya-ebpf"
-version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.2.1"
+source = "git+https://github.com/aya-rs/aya#7dab6884827ab5c63a524a9e24f7ab5c72f6391a"
 dependencies = [
+ "aya-build",
  "aya-ebpf-bindings",
  "aya-ebpf-cty",
  "aya-ebpf-macros",
@@ -532,32 +535,35 @@ dependencies = [
 
 [[package]]
 name = "aya-ebpf-bindings"
-version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.2.0"
+source = "git+https://github.com/aya-rs/aya#7dab6884827ab5c63a524a9e24f7ab5c72f6391a"
 dependencies = [
+ "aya-build",
  "aya-ebpf-cty",
 ]
 
 [[package]]
 name = "aya-ebpf-cty"
-version = "0.2.2"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.3.0"
+source = "git+https://github.com/aya-rs/aya#7dab6884827ab5c63a524a9e24f7ab5c72f6391a"
+dependencies = [
+ "aya-build",
+]
 
 [[package]]
 name = "aya-ebpf-macros"
-version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.2.0"
+source = "git+https://github.com/aya-rs/aya#7dab6884827ab5c63a524a9e24f7ab5c72f6391a"
 dependencies = [
  "proc-macro2",
- "proc-macro2-diagnostics",
  "quote",
- "syn 2.0.119",
+ "syn 3.0.3",
 ]
 
 [[package]]
 name = "aya-log"
-version = "0.2.1"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.3.0"
+source = "git+https://github.com/aya-rs/aya#7dab6884827ab5c63a524a9e24f7ab5c72f6391a"
 dependencies = [
  "aya",
  "aya-log-common",
@@ -567,16 +573,16 @@ dependencies = [
 
 [[package]]
 name = "aya-log-common"
-version = "0.1.15"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.2.0"
+source = "git+https://github.com/aya-rs/aya#7dab6884827ab5c63a524a9e24f7ab5c72f6391a"
 dependencies = [
  "num_enum",
 ]
 
 [[package]]
 name = "aya-log-ebpf"
-version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.2.0"
+source = "git+https://github.com/aya-rs/aya#7dab6884827ab5c63a524a9e24f7ab5c72f6391a"
 dependencies = [
  "aya-ebpf",
  "aya-log-common",
@@ -585,33 +591,32 @@ dependencies = [
 
 [[package]]
 name = "aya-log-ebpf-macros"
-version = "0.1.0"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.2.0"
+source = "git+https://github.com/aya-rs/aya#7dab6884827ab5c63a524a9e24f7ab5c72f6391a"
 dependencies = [
  "aya-log-common",
  "aya-log-parser",
  "proc-macro2",
  "quote",
- "syn 2.0.119",
+ "syn 3.0.3",
 ]
 
 [[package]]
 name = "aya-log-parser"
-version = "0.1.13"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.2.0"
+source = "git+https://github.com/aya-rs/aya#7dab6884827ab5c63a524a9e24f7ab5c72f6391a"
 dependencies = [
  "aya-log-common",
 ]
 
 [[package]]
 name = "aya-obj"
-version = "0.2.1"
-source = "git+https://github.com/aya-rs/aya#fc5387c80626957017ceeb988322bc288f438059"
+version = "0.3.0"
+source = "git+https://github.com/aya-rs/aya#7dab6884827ab5c63a524a9e24f7ab5c72f6391a"
 dependencies = [
  "bytes",
- "hashbrown 0.16.0",
  "log",
- "object 0.37.3",
+ "object 0.39.1",
  "thiserror 2.0.19",
 ]
 
@@ -2113,7 +2118,7 @@ dependencies = [
  "incremental-inet-checksum",
  "ip-packet",
  "network-types",
- "which",
+ "which 7.0.3",
 ]
 
 [[package]]
@@ -3249,16 +3254,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84b26c544d002229e640969970a2e74021aadf6e2f96372b9c58eff97de08eb3"
 dependencies = [
  "foldhash 0.1.5",
-]
-
-[[package]]
-name = "hashbrown"
-version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5419bdc4f6a9207fbeba6d11b604d481addf78ecd10c11ad51e76c2f6482748d"
-dependencies = [
- "equivalent",
- "foldhash 0.2.0",
 ]
 
 [[package]]
@@ -4619,7 +4614,7 @@ dependencies = [
  "thiserror 2.0.19",
  "versions",
  "wfd",
- "which",
+ "which 7.0.3",
  "winapi",
 ]
 
@@ -4889,7 +4884,7 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af1844ef2428cc3e1cb900be36181049ef3d3193c63e43026cfe202983b27a56"
 dependencies = [
- "proc-macro-crate 3.3.0",
+ "proc-macro-crate 1.3.1",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -5112,12 +5107,12 @@ dependencies = [
 
 [[package]]
 name = "object"
-version = "0.37.3"
+version = "0.39.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff76201f031d8863c38aa7f905eca4f53abbfa15f609db4277d44cd8938f33fe"
+checksum = "2e5a6c098c7a3b6547378093f5cc30bc54fd361ce711e05293a5cc589562739b"
 dependencies = [
  "crc32fast",
- "hashbrown 0.15.3",
+ "hashbrown 0.17.0",
  "indexmap 2.14.0",
  "memchr",
 ]
@@ -5763,18 +5758,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "proc-macro2-diagnostics"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af066a9c399a26e020ada66a034357a868728e72cd426f3adcd35f80d88d88c8"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
- "version_check",
 ]
 
 [[package]]
@@ -9279,6 +9262,15 @@ dependencies = [
  "env_home",
  "rustix 1.1.4",
  "winsafe",
+]
+
+[[package]]
+name = "which"
+version = "8.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f3ef584124b911bcc3875c2f1472e80f24361ceb789bd1c62b3e9a3df9ff43c"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
