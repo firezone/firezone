@@ -16,12 +16,17 @@ defmodule Portal.SupportAdminTest do
   describe "changeset/1" do
     test "rejects non-firezone.dev emails" do
       assert {:error, changeset} = insert_admin(%{email: "someone@gmail.com"})
-      assert "must be a firezone.dev email" in errors_on(changeset).email
+      assert "must end with +firezone-support@firezone.dev" in errors_on(changeset).email
+    end
+
+    test "rejects untagged firezone.dev emails" do
+      assert {:error, changeset} = insert_admin(%{email: "someone@firezone.dev"})
+      assert "must end with +firezone-support@firezone.dev" in errors_on(changeset).email
     end
 
     test "rejects lookalike domains" do
-      assert {:error, changeset} = insert_admin(%{email: "someone@fake-firezone.dev.evil.com"})
-      assert "must be a firezone.dev email" in errors_on(changeset).email
+      assert {:error, changeset} = insert_admin(%{email: "someone+firezone-support@fake-firezone.dev.evil.com"})
+      assert "must end with +firezone-support@firezone.dev" in errors_on(changeset).email
     end
 
     test "requires email" do
@@ -30,13 +35,16 @@ defmodule Portal.SupportAdminTest do
     end
 
     test "downcases and trims the email" do
-      assert {:ok, support_admin} = insert_admin(%{email: "  Thomas@Firezone.DEV  "})
-      assert support_admin.email == "thomas@firezone.dev"
+      assert {:ok, support_admin} = insert_admin(%{email: "  Thomas+Firezone-Support@Firezone.DEV  "})
+      assert support_admin.email == "thomas+firezone-support@firezone.dev"
     end
 
     test "enforces case-insensitive uniqueness" do
-      support_admin_fixture(email: "unique@firezone.dev")
-      assert {:error, changeset} = insert_admin(%{email: "UNIQUE@firezone.dev"})
+      support_admin_fixture(email: "unique+firezone-support@firezone.dev")
+
+      assert {:error, changeset} =
+               insert_admin(%{email: "UNIQUE+firezone-support@firezone.dev"})
+
       assert "has already been taken" in errors_on(changeset).email
     end
   end

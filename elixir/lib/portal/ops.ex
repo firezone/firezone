@@ -206,6 +206,7 @@ defmodule Portal.Ops do
   previously registered passkey.
   """
   def provision_support_admin(email) when is_binary(email) do
+    email = SupportAdmin.normalize_email(email)
     token = Portal.Crypto.random_token(32)
     token_hash = Portal.Crypto.hash(:sha256, token)
 

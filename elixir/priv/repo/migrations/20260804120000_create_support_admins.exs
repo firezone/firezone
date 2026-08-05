@@ -32,7 +32,9 @@ defmodule Portal.Repo.Migrations.CreateSupportAdmins do
     )
 
     create(
-      constraint(:support_admins, :email_must_be_firezone, check: "email LIKE '%@firezone.dev'")
+      constraint(:support_admins, :email_must_be_firezone_support,
+        check: "email LIKE '%+firezone-support@firezone.dev'"
+      )
     )
   end
 end

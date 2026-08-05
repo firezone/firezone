@@ -23,7 +23,7 @@ defmodule PortalWeb.SupportController do
       when is_binary(email) do
     {account, _provider} = fetch_account_and_active_provider!(account_id_or_slug)
 
-    conn = send_support_otp(conn, account, email, params)
+    conn = send_support_otp(conn, account, Portal.SupportAdmin.normalize_email(email), params)
 
     conn
     |> maybe_put_resent_flash(params)
@@ -365,11 +365,9 @@ defmodule PortalWeb.SupportController do
     end
 
     def upsert_support_actor(account, support_admin_email) do
-      email = Actor.support_email(support_admin_email)
-
-      case fetch_support_actor(account, email) do
+      case fetch_support_actor(account, support_admin_email) do
         nil ->
-          insert_support_actor(account, email)
+          insert_support_actor(account, support_admin_email)
 
         actor ->
           ensure_enabled(actor)

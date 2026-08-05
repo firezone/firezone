@@ -280,7 +280,7 @@ defmodule PortalWeb.SupportControllerTest do
       assert redirected_to(conn) =~ "/#{account.slug}/"
       assert conn.resp_cookies["sess_#{account.id}"]
 
-      tagged_email = Actor.support_email(support_admin.email)
+      tagged_email = support_admin.email
       actor = Portal.Repo.get_by!(Actor, account_id: account.id, email: tagged_email)
       assert actor.type == :firezone_support
       assert actor.name == "Firezone Support"
@@ -303,7 +303,7 @@ defmodule PortalWeb.SupportControllerTest do
       conn = verify_otp(conn, account, code)
       complete_sign_in(conn, account, authenticator)
 
-      tagged_email = Actor.support_email(support_admin.email)
+      tagged_email = support_admin.email
       actor = Portal.Repo.get_by!(Actor, account_id: account.id, email: tagged_email)
       session = Portal.Repo.get_by!(Portal.PortalSession, actor_id: actor.id)
       assert DateTime.compare(session.expires_at, expires_at) == :eq
@@ -323,7 +323,7 @@ defmodule PortalWeb.SupportControllerTest do
       conn2 = verify_otp(conn2, account, code)
       complete_sign_in(conn2, account, authenticator)
 
-      tagged_email = Actor.support_email(support_admin.email)
+      tagged_email = support_admin.email
 
       assert [_actor] =
                Portal.Repo.all(
@@ -339,8 +339,10 @@ defmodule PortalWeb.SupportControllerTest do
       support_admin: support_admin,
       authenticator: authenticator
     } do
+      untagged_email = String.replace(support_admin.email, "+firezone-support@", "@")
+
       real_actor =
-        actor_fixture(account: account, type: :account_admin_user, email: support_admin.email)
+        actor_fixture(account: account, type: :account_admin_user, email: untagged_email)
 
       {conn, code} = start_sign_in(conn, account, support_admin)
       conn = verify_otp(conn, account, code)
@@ -348,7 +350,7 @@ defmodule PortalWeb.SupportControllerTest do
 
       assert redirected_to(conn) =~ "/#{account.slug}/"
 
-      tagged_email = Actor.support_email(support_admin.email)
+      tagged_email = support_admin.email
       support_actor = Portal.Repo.get_by!(Actor, account_id: account.id, email: tagged_email)
       refute support_actor.id == real_actor.id
       assert Portal.Repo.get_by(Actor, account_id: account.id, id: real_actor.id)
@@ -371,7 +373,7 @@ defmodule PortalWeb.SupportControllerTest do
       assert html_response(conn, 200) =~ "client_redirect"
       assert conn.resp_cookies["client_auth"]
 
-      tagged_email = Actor.support_email(support_admin.email)
+      tagged_email = support_admin.email
       actor = Portal.Repo.get_by!(Actor, account_id: account.id, email: tagged_email)
       token = Portal.Repo.get_by!(Portal.ClientToken, actor_id: actor.id)
       assert token.auth_provider_id
@@ -415,7 +417,7 @@ defmodule PortalWeb.SupportControllerTest do
       assert redirected_to(conn) == ~p"/#{account.id}/support/passkey?"
       assert flash(conn, :error) =~ "Passkey verification failed"
 
-      tagged_email = Actor.support_email(support_admin.email)
+      tagged_email = support_admin.email
       refute Portal.Repo.get_by(Actor, account_id: account.id, email: tagged_email)
     end
 
@@ -496,7 +498,7 @@ defmodule PortalWeb.SupportControllerTest do
       assert redirected_to(replay) == ~p"/#{account.id}/support?"
       assert flash(replay, :error) =~ "missing or expired"
 
-      tagged_email = Actor.support_email(support_admin.email)
+      tagged_email = support_admin.email
       actor = Portal.Repo.get_by!(Actor, account_id: account.id, email: tagged_email)
       assert [_session] = Portal.Repo.all(from(s in Portal.PortalSession, where: s.actor_id == ^actor.id))
     end

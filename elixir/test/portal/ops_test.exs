@@ -511,9 +511,9 @@ defmodule Portal.OpsTest do
       :ok
     end
 
-    test "creates a support admin and emails a registration link" do
+    test "creates a support admin with a tagged email and emails a registration link" do
       assert {:ok, support_admin} = provision_support_admin("thomas@firezone.dev")
-      assert support_admin.email == "thomas@firezone.dev"
+      assert support_admin.email == "thomas+firezone-support@firezone.dev"
       assert support_admin.registration_token_hash
 
       assert DateTime.after?(
@@ -523,7 +523,7 @@ defmodule Portal.OpsTest do
 
       assert_received {:email, email}
       assert email.subject == "Register your Firezone Support passkey"
-      assert "thomas@firezone.dev" in Enum.map(email.to, &elem(&1, 1))
+      assert "thomas+firezone-support@firezone.dev" in Enum.map(email.to, &elem(&1, 1))
       assert email.text_body =~ "/support_admin/register/"
     end
 
@@ -537,7 +537,7 @@ defmodule Portal.OpsTest do
 
     test "rejects non-firezone.dev emails" do
       assert {:error, changeset} = provision_support_admin("outsider@gmail.com")
-      assert "must be a firezone.dev email" in errors_on(changeset).email
+      assert "must end with +firezone-support@firezone.dev" in errors_on(changeset).email
       refute_received {:email, _email}
     end
   end

@@ -5,7 +5,7 @@ defmodule Portal.SupportAdminFixtures do
 
   def valid_support_admin_attrs(attrs \\ %{}) do
     unique_num = System.unique_integer([:positive, :monotonic])
-    Enum.into(attrs, %{email: "support.admin.#{unique_num}@firezone.dev"})
+    Enum.into(attrs, %{email: "support.admin.#{unique_num}+firezone-support@firezone.dev"})
   end
 
   def support_admin_fixture(attrs \\ %{}) do

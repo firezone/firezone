@@ -41,13 +41,30 @@ defmodule Portal.SupportAdmin do
     |> update_change(:email, &String.downcase/1)
     |> validate_required(~w[email]a)
     |> validate_email(:email)
-    |> validate_format(:email, ~r/@firezone\.dev$/i, message: "must be a firezone.dev email")
+    |> validate_format(:email, ~r/\+firezone-support@firezone\.dev$/i,
+      message: "must end with +firezone-support@firezone.dev"
+    )
     |> validate_number(:otp_attempts, greater_than_or_equal_to: 0)
     |> unique_constraint(:email, name: :support_admins_email_index)
     |> unique_constraint(:passkey_credential_id,
       name: :support_admins_passkey_credential_id_index
     )
-    |> check_constraint(:email, name: :email_must_be_firezone)
+    |> check_constraint(:email, name: :email_must_be_firezone_support)
+  end
+
+  @doc """
+  Tags a plain firezone.dev staff email with the reserved +firezone-support
+  suffix. Already-tagged and non-firezone.dev inputs pass through unchanged
+  (the latter get rejected by changeset validation).
+  """
+  def normalize_email(email) when is_binary(email) do
+    email = email |> String.trim() |> String.downcase()
+
+    if String.ends_with?(email, "@firezone.dev") and not Portal.Actor.support?(email) do
+      Portal.Actor.support_email(email)
+    else
+      email
+    end
   end
 
   def max_otp_attempts, do: @max_otp_attempts
