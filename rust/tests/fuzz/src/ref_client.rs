@@ -30,6 +30,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// The handshakes we expect to observe with a particular remote, keyed by the unique payload of each packet.
+///
+/// `ID` identifies the request (and thereby its reply) from the sending client's perspective:
+/// `(Seq, Identifier)` for ICMP and `(SPort, DPort)` for UDP.
+pub(crate) type ExpectedHandshakes<ID> = BTreeMap<u64, (Destination, ID)>;
+
 /// Reference state for a particular client.
 ///
 /// The reference state machine is designed to be as abstract as possible over connlib's functionality.
@@ -85,12 +91,12 @@ pub struct RefClient {
     /// The expected ICMP handshakes with Gateways.
     #[debug(skip)]
     pub(crate) expected_gateway_icmp_handshakes:
-        BTreeMap<GatewayId, BTreeMap<u64, (Destination, Seq, Identifier)>>,
+        BTreeMap<GatewayId, ExpectedHandshakes<(Seq, Identifier)>>,
 
     /// The expected ICMP handshakes with Clients.
     #[debug(skip)]
     pub(crate) expected_client_icmp_handshakes:
-        BTreeMap<ClientId, BTreeMap<u64, (Destination, Seq, Identifier)>>,
+        BTreeMap<ClientId, ExpectedHandshakes<(Seq, Identifier)>>,
 
     /// Tracks ICMP packets expected to receive an error response.
     #[debug(skip)]
@@ -99,12 +105,12 @@ pub struct RefClient {
     /// The expected UDP handshakes with Gateways.
     #[debug(skip)]
     pub(crate) expected_gateway_udp_handshakes:
-        BTreeMap<GatewayId, BTreeMap<u64, (Destination, SPort, DPort)>>,
+        BTreeMap<GatewayId, ExpectedHandshakes<(SPort, DPort)>>,
 
     /// The expected UDP handshakes with Clients.
     #[debug(skip)]
     pub(crate) expected_client_udp_handshakes:
-        BTreeMap<ClientId, BTreeMap<u64, (Destination, SPort, DPort)>>,
+        BTreeMap<ClientId, ExpectedHandshakes<(SPort, DPort)>>,
 
     /// Tracks UDP packets expected to receive an ICMP error response.
     #[debug(skip)]
@@ -529,7 +535,7 @@ impl RefClient {
         self.on_packet(
             dst.clone(),
             expected_route,
-            (dst, seq, identifier),
+            (dst, (seq, identifier)),
             |ref_client| &mut ref_client.expected_gateway_icmp_handshakes,
             |ref_client| &mut ref_client.expected_client_icmp_handshakes,
             |ref_client| &mut ref_client.expected_icmp_rejections,
@@ -551,7 +557,7 @@ impl RefClient {
         self.on_packet(
             dst.clone(),
             expected_route,
-            (dst, sport, dport),
+            (dst, (sport, dport)),
             |ref_client| &mut ref_client.expected_gateway_udp_handshakes,
             |ref_client| &mut ref_client.expected_client_udp_handshakes,
             |ref_client| &mut ref_client.expected_udp_rejections,

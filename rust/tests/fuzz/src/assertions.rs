@@ -2,17 +2,20 @@ use crate::ref_gateway::RefGateway;
 
 use super::{
     dns_records::DnsRecords,
-    ref_client::{ExpectedRejection, RefClient, RejectionRemote, RejectionResponse},
+    ref_client::{
+        ExpectedHandshakes, ExpectedRejection, RefClient, RejectionRemote, RejectionResponse,
+    },
     sim_client::SimClient,
     sim_gateway::SimGateway,
     stub_portal::StubPortal,
-    transition::{Destination, ReplyTo},
+    transition::{DPort, Destination, Identifier, ReplyTo, SPort, Seq},
 };
 use connlib_model::{ClientId, GatewayId};
 use ip_packet::IpPacket;
 use itertools::Itertools;
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque, hash_map::Entry},
+    collections::{BTreeMap, BTreeSet, HashMap, hash_map::Entry},
+    fmt,
     hash::Hash,
     iter,
     marker::PhantomData,
@@ -39,12 +42,117 @@ use tracing_subscriber::Layer;
 /// connection may land in it. See #13957.
 const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 
-/// Asserts the following properties for all ICMP handshakes:
-/// 1. An ICMP request on the client MUST result in an ICMP response using the same sequence, identifier and flipped src & dst IP.
-/// 2. An ICMP request on the gateway MUST target the intended resource:
-///     - For CIDR resources, that is the actual CIDR resource IP.
-///     - For DNS resources, the IP must match one of the resolved IPs for the domain.
-/// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
+/// A protocol whose request / reply handshakes we track end-to-end.
+///
+/// ICMP and UDP handshakes follow the same pattern:
+/// The client sends a request that is either echoed back by the destination, answered with an ICMP error or dropped.
+/// Implementations of this trait bundle the per-protocol bookkeeping of [`RefClient`], [`SimClient`] and [`SimGateway`]
+/// so [`assert_packets_properties`] can assert both protocols with the same logic.
+trait EchoProtocol {
+    const NAME: &'static str;
+
+    /// Identifies a request (and via [`ReplyTo`] its reply) from the sending client's perspective.
+    type FlowId: ReplyTo + Copy + fmt::Debug + Hash + Eq + Ord;
+
+    fn sent_requests(client: &SimClient) -> &BTreeMap<Self::FlowId, (Instant, IpPacket)>;
+    fn received_replies(client: &SimClient) -> &BTreeMap<Self::FlowId, IpPacket>;
+    fn received_requests_on_client(client: &SimClient) -> &BTreeMap<u64, (Instant, IpPacket)>;
+    fn received_requests_on_gateway(gateway: &SimGateway) -> &BTreeMap<u64, (Instant, IpPacket)>;
+    fn expected_gateway_handshakes(
+        client: &RefClient,
+    ) -> &BTreeMap<GatewayId, ExpectedHandshakes<Self::FlowId>>;
+    fn expected_client_handshakes(
+        client: &RefClient,
+    ) -> &BTreeMap<ClientId, ExpectedHandshakes<Self::FlowId>>;
+    fn expected_rejections(client: &RefClient) -> &BTreeMap<Self::FlowId, ExpectedRejection>;
+
+    /// Extracts the payload that the remote echoes back to the sender.
+    fn payload(packet: &IpPacket) -> Option<&[u8]>;
+    fn span(flow: Self::FlowId) -> Span;
+}
+
+enum Icmp {}
+
+impl EchoProtocol for Icmp {
+    const NAME: &'static str = "ICMP";
+    type FlowId = (Seq, Identifier);
+
+    fn sent_requests(client: &SimClient) -> &BTreeMap<Self::FlowId, (Instant, IpPacket)> {
+        &client.sent_icmp_requests
+    }
+    fn received_replies(client: &SimClient) -> &BTreeMap<Self::FlowId, IpPacket> {
+        &client.received_icmp_replies
+    }
+    fn received_requests_on_client(client: &SimClient) -> &BTreeMap<u64, (Instant, IpPacket)> {
+        &client.received_icmp_requests
+    }
+    fn received_requests_on_gateway(gateway: &SimGateway) -> &BTreeMap<u64, (Instant, IpPacket)> {
+        &gateway.received_icmp_requests
+    }
+    fn expected_gateway_handshakes(
+        client: &RefClient,
+    ) -> &BTreeMap<GatewayId, ExpectedHandshakes<Self::FlowId>> {
+        &client.expected_gateway_icmp_handshakes
+    }
+    fn expected_client_handshakes(
+        client: &RefClient,
+    ) -> &BTreeMap<ClientId, ExpectedHandshakes<Self::FlowId>> {
+        &client.expected_client_icmp_handshakes
+    }
+    fn expected_rejections(client: &RefClient) -> &BTreeMap<Self::FlowId, ExpectedRejection> {
+        &client.expected_icmp_rejections
+    }
+    fn payload(packet: &IpPacket) -> Option<&[u8]> {
+        packet
+            .as_icmpv4()
+            .map(|icmp| icmp.payload())
+            .or_else(|| packet.as_icmpv6().map(|icmp| icmp.payload()))
+    }
+    fn span((seq, identifier): Self::FlowId) -> Span {
+        tracing::info_span!(target: "assertions", "ICMP", ?seq, ?identifier)
+    }
+}
+
+enum Udp {}
+
+impl EchoProtocol for Udp {
+    const NAME: &'static str = "UDP";
+    type FlowId = (SPort, DPort);
+
+    fn sent_requests(client: &SimClient) -> &BTreeMap<Self::FlowId, (Instant, IpPacket)> {
+        &client.sent_udp_requests
+    }
+    fn received_replies(client: &SimClient) -> &BTreeMap<Self::FlowId, IpPacket> {
+        &client.received_udp_replies
+    }
+    fn received_requests_on_client(client: &SimClient) -> &BTreeMap<u64, (Instant, IpPacket)> {
+        &client.received_udp_requests
+    }
+    fn received_requests_on_gateway(gateway: &SimGateway) -> &BTreeMap<u64, (Instant, IpPacket)> {
+        &gateway.received_udp_requests
+    }
+    fn expected_gateway_handshakes(
+        client: &RefClient,
+    ) -> &BTreeMap<GatewayId, ExpectedHandshakes<Self::FlowId>> {
+        &client.expected_gateway_udp_handshakes
+    }
+    fn expected_client_handshakes(
+        client: &RefClient,
+    ) -> &BTreeMap<ClientId, ExpectedHandshakes<Self::FlowId>> {
+        &client.expected_client_udp_handshakes
+    }
+    fn expected_rejections(client: &RefClient) -> &BTreeMap<Self::FlowId, ExpectedRejection> {
+        &client.expected_udp_rejections
+    }
+    fn payload(packet: &IpPacket) -> Option<&[u8]> {
+        packet.as_udp().map(|udp| udp.payload())
+    }
+    fn span((sport, dport): Self::FlowId) -> Span {
+        tracing::info_span!(target: "assertions", "UDP", ?sport, ?dport)
+    }
+}
+
+/// Asserts the properties of all ICMP handshakes; see [`assert_packets_properties`].
 pub(crate) fn assert_icmp_packets_properties(
     ref_clients: &BTreeMap<ClientId, &RefClient>,
     ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
@@ -52,30 +160,16 @@ pub(crate) fn assert_icmp_packets_properties(
     sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &DnsRecords,
 ) {
-    assert_packets_properties(
+    assert_packets_properties::<Icmp>(
         ref_clients,
         ref_gateways,
         sim_clients,
         sim_gateways,
         global_dns_records,
-        |sim_client| &sim_client.sent_icmp_requests,
-        |ref_client| &ref_client.expected_gateway_icmp_handshakes,
-        |ref_client| &ref_client.expected_client_icmp_handshakes,
-        |ref_client| &ref_client.expected_icmp_rejections,
-        |sim_client| &sim_client.received_icmp_replies,
-        |sim_gateway| &sim_gateway.received_icmp_requests,
-        |sim_client| &sim_client.received_icmp_requests,
-        "ICMP",
-        |seq, identifier| tracing::info_span!(target: "assertions", "ICMP", ?seq, ?identifier),
     );
 }
 
-/// Asserts the following properties for all UDP handshakes:
-/// 1. An UDP request on the client MUST result in an UDP response using the flipped src & dst IP and sport and dport.
-/// 2. An UDP request on the gateway MUST target the intended resource:
-///     - For CIDR resources, that is the actual CIDR resource IP.
-///     - For DNS resources, the IP must match one of the resolved IPs for the domain.
-/// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
+/// Asserts the properties of all UDP handshakes; see [`assert_packets_properties`].
 pub(crate) fn assert_udp_packets_properties(
     ref_clients: &BTreeMap<ClientId, &RefClient>,
     ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
@@ -83,216 +177,208 @@ pub(crate) fn assert_udp_packets_properties(
     sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &DnsRecords,
 ) {
-    assert_packets_properties(
+    assert_packets_properties::<Udp>(
         ref_clients,
         ref_gateways,
         sim_clients,
         sim_gateways,
         global_dns_records,
-        |sim_client| &sim_client.sent_udp_requests,
-        |ref_client| &ref_client.expected_gateway_udp_handshakes,
-        |ref_client| &ref_client.expected_client_udp_handshakes,
-        |ref_client| &ref_client.expected_udp_rejections,
-        |sim_client| &sim_client.received_udp_replies,
-        |sim_gateway| &sim_gateway.received_udp_requests,
-        |sim_client| &sim_client.received_udp_requests,
-        "UDP",
-        |sport, dport| tracing::info_span!(target: "assertions", "UDP", ?sport, ?dport),
     );
 }
 
-fn assert_packets_properties<T, U>(
+/// Asserts the following properties for all handshakes of the given protocol:
+///
+/// 1. A request expected to be rejected MUST be answered with the expected ICMP error (or tolerably dropped).
+/// 2. A reply received by a client MUST correspond to a request that same client sent and use the flipped src & dst IP (and ports for UDP, via the flow ID).
+/// 3. A successful reply MUST echo the request's payload.
+/// 4. A request arriving at a gateway MUST target the intended resource:
+///     - For CIDR resources, that is the actual CIDR resource IP.
+///     - For DNS resources, the IP must match one of the IPs the domain resolved to at the time.
+/// 5. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
+/// 6. A request arriving at a gateway or peer client MUST have been predicted by the reference model, and vice versa.
+fn assert_packets_properties<P: EchoProtocol>(
     ref_clients: &BTreeMap<ClientId, &RefClient>,
     ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
     sim_clients: &BTreeMap<ClientId, &SimClient>,
     sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &DnsRecords,
-    get_sent_requests: impl Fn(&SimClient) -> &BTreeMap<(T, U), (Instant, IpPacket)>,
-    get_expected_gateway_handshakes: impl Fn(
-        &RefClient,
-    )
-        -> &BTreeMap<GatewayId, BTreeMap<u64, (Destination, T, U)>>,
-    get_expected_client_handshakes: impl Fn(
-        &RefClient,
-    )
-        -> &BTreeMap<ClientId, BTreeMap<u64, (Destination, T, U)>>,
-    get_expected_rejections: impl Fn(&RefClient) -> &BTreeMap<(T, U), ExpectedRejection>,
-    get_received_replies: impl Fn(&SimClient) -> &BTreeMap<(T, U), IpPacket>,
-    get_received_requests_on_gateway: impl Fn(&SimGateway) -> &BTreeMap<u64, (Instant, IpPacket)>,
-    get_received_requests_on_client: impl Fn(&SimClient) -> &BTreeMap<u64, (Instant, IpPacket)>,
-    packet_protocol: &str,
-    make_span: impl Fn(T, U) -> Span,
-) where
-    T: Copy + std::fmt::Debug,
-    U: Copy + std::fmt::Debug,
-    (T, U): ReplyTo + Hash + Eq + Ord,
-{
+) {
+    let protocol = P::NAME;
+
     let all_sent_requests = sim_clients
         .iter()
         .flat_map(|(cid, sim_client)| {
-            get_sent_requests(sim_client)
+            P::sent_requests(sim_client)
                 .iter()
-                .map(move |(key, packet)| ((*cid, *key), packet.clone()))
+                .map(move |(flow, request)| ((*cid, *flow), request.clone()))
         })
         .collect::<BTreeMap<_, _>>();
 
-    let all_expected_gateway_handshakes = ref_clients
-        .iter()
-        .flat_map(|(cid, ref_client)| {
-            get_expected_gateway_handshakes(ref_client).iter().flat_map(
-                move |(gateway_id, handshakes)| {
-                    handshakes
-                        .iter()
-                        .map(move |(payload, (destination, t, u))| {
-                            (*gateway_id, *payload, (*cid, destination.clone(), *t, *u))
-                        })
-                },
-            )
-        })
-        .fold(
-            BTreeMap::<_, BTreeMap<_, _>>::new(),
-            |mut acc, (gateway_id, payload, value)| {
-                acc.entry(gateway_id).or_default().insert(payload, value);
-                acc
-            },
-        );
-
-    let all_expected_client_handshakes = ref_clients
-        .iter()
-        .flat_map(|(cid, ref_client)| {
-            get_expected_client_handshakes(ref_client).iter().flat_map(
-                move |(client_id, handshakes)| {
-                    handshakes
-                        .iter()
-                        .map(move |(payload, (destination, t, u))| {
-                            (*client_id, *payload, (*cid, destination.clone(), *t, *u))
-                        })
-                },
-            )
-        })
-        .fold(
-            BTreeMap::<_, BTreeMap<_, _>>::new(),
-            |mut acc, (client_id, payload, value)| {
-                acc.entry(client_id).or_default().insert(payload, value);
-                acc
-            },
-        );
-
-    let all_received_replies_on_client = sim_clients
+    let all_received_replies = sim_clients
         .iter()
         .flat_map(|(cid, sim_client)| {
-            get_received_replies(sim_client)
+            P::received_replies(sim_client)
                 .iter()
-                .map(move |(key, packet)| ((*cid, *key), packet.clone()))
+                .map(move |(flow, reply)| ((*cid, *flow), reply.clone()))
         })
         .collect::<BTreeMap<_, _>>();
 
+    // Rejections are keyed by the flow ID of the ICMP error we expect to receive, i.e. the reply.
     let all_expected_rejections = ref_clients
         .iter()
         .flat_map(|(cid, ref_client)| {
-            get_expected_rejections(ref_client)
+            P::expected_rejections(ref_client)
                 .iter()
-                .map(move |(request, response)| ((*cid, request.reply_to()), *response))
+                .map(move |(flow, rejection)| ((*cid, flow.reply_to()), *rejection))
         })
         .collect::<BTreeMap<_, _>>();
 
-    let received_requests_by_gateway = sim_gateways
-        .iter()
-        .map(|(g, s)| (*g, get_received_requests_on_gateway(s)))
-        .collect::<BTreeMap<_, _>>();
-    let received_requests_by_client = sim_clients
-        .iter()
-        .map(|(g, s)| (*g, get_received_requests_on_client(s)))
-        .collect::<BTreeMap<_, _>>();
-    let dns_query_timestamps = sim_gateways
-        .iter()
-        .map(|(g, s)| (*g, &s.dns_query_timestamps))
-        .collect::<BTreeMap<_, _>>();
+    let expected_gateway_handshakes =
+        merge_expected_handshakes(ref_clients, P::expected_gateway_handshakes);
+    let expected_client_handshakes =
+        merge_expected_handshakes(ref_clients, P::expected_client_handshakes);
 
-    for (expected, rejection) in &all_expected_rejections {
-        let Some(reply) = all_received_replies_on_client.get(expected) else {
-            let (cid, reply) = *expected;
-            let Some((sent_at, _)) = all_sent_requests.get(&(cid, reply.reply_to())) else {
-                tracing::error!(target: "assertions", ?expected, "❌ Missing rejected {packet_protocol} request on client");
+    for ((cid, reply_flow), rejection) in &all_expected_rejections {
+        let Some(reply) = all_received_replies.get(&(*cid, *reply_flow)) else {
+            let Some((sent_at, _)) = all_sent_requests.get(&(*cid, reply_flow.reply_to())) else {
+                tracing::error!(target: "assertions", %cid, ?reply_flow, "❌ Missing rejected {protocol} request on client");
                 continue;
             };
-            let ref_client = ref_clients.get(&cid).unwrap();
+            let ref_client = ref_clients.get(cid).unwrap();
 
             if can_drop_during_rekey(ref_client, rejection.remote, *sent_at) {
-                tracing::debug!(target: "assertions", %cid, remote = ?rejection.remote, "Tolerating rejected {packet_protocol} packet dropped in the WireGuard re-key window");
+                tracing::debug!(target: "assertions", %cid, remote = ?rejection.remote, "Tolerating rejected {protocol} packet dropped in the WireGuard re-key window");
                 continue;
             }
 
-            tracing::error!(target: "assertions", ?expected, response = ?rejection.response, "❌ Missing ICMP error for rejected {packet_protocol} packet");
+            tracing::error!(target: "assertions", %cid, ?reply_flow, response = ?rejection.response, "❌ Missing ICMP error for rejected {protocol} packet");
             continue;
         };
 
         if rejection_response(reply) != Some(rejection.response) {
-            tracing::error!(target: "assertions", ?expected, response = ?rejection.response, "❌ Received wrong ICMP error for rejected {packet_protocol} packet");
+            tracing::error!(target: "assertions", %cid, ?reply_flow, response = ?rejection.response, "❌ Received wrong ICMP error for rejected {protocol} packet");
         }
     }
 
-    // Rejected packets are not handshakes, so validate their ICMP errors
-    // separately before comparing successful replies below.
-    let received_replies_excluding_rejections = all_received_replies_on_client
+    // Rejected packets are not handshakes, so their ICMP errors were validated
+    // above; exclude them before comparing successful replies below.
+    let received_replies_excluding_rejections = all_received_replies
         .iter()
-        .filter(|(key, packet)| {
+        .filter(|(key, reply)| {
             if all_expected_rejections.contains_key(*key) {
                 return false;
             }
 
-            if rejection_response(packet) == Some(RejectionResponse::Prohibited) {
-                tracing::error!(target: "assertions", ?key, "❌ Unexpected ICMP error for {packet_protocol} packet");
+            if rejection_response(reply) == Some(RejectionResponse::Prohibited) {
+                tracing::error!(target: "assertions", ?key, "❌ Unexpected ICMP error for {protocol} packet");
 
                 return false;
             }
 
             true
         })
-        .map(|(k, v)| (*k, v.clone()))
+        .map(|(key, reply)| (*key, reply.clone()))
         .collect::<BTreeMap<_, _>>();
 
-    let unexpected_replies = find_unexpected_entries(
-        &iter::empty()
-            .chain(all_expected_gateway_handshakes.values().flatten())
-            .chain(all_expected_client_handshakes.values().flatten())
-            .collect(),
-        &received_replies_excluding_rejections,
-        |(_, (_, _, t_a, u_a)), (_, b)| (*t_a, *u_a) == b.reply_to(),
-    );
+    // A reply must belong to a request for which the same client expects an answer.
+    let expected_reply_flows = iter::empty()
+        .chain(expected_gateway_handshakes.values().flatten())
+        .chain(expected_client_handshakes.values().flatten())
+        .map(|(_, (cid, _, flow))| (*cid, flow.reply_to()))
+        .collect::<BTreeSet<_>>();
 
-    if !unexpected_replies.is_empty() {
-        tracing::error!(target: "assertions", ?unexpected_replies, ?all_expected_gateway_handshakes, ?all_received_replies_on_client, "❌ Unexpected {packet_protocol} replies on client");
+    for (key @ (cid, flow), reply) in &received_replies_excluding_rejections {
+        if !expected_reply_flows.contains(key) {
+            tracing::error!(target: "assertions", %cid, ?flow, ?reply, "❌ Unexpected {protocol} reply on client");
+        }
     }
 
-    let mut mappings = HashMap::new();
+    assert_gateway_handshakes::<P>(
+        &expected_gateway_handshakes,
+        ref_clients,
+        ref_gateways,
+        sim_gateways,
+        &all_sent_requests,
+        &all_received_replies,
+        global_dns_records,
+    );
+    assert_client_handshakes::<P>(
+        &expected_client_handshakes,
+        ref_clients,
+        sim_clients,
+        &all_sent_requests,
+        &all_received_replies,
+    );
+}
 
-    // Assert properties of the individual handshakes per gateway.
-    // Due to connlib's implementation of NAT64, we cannot match the packets sent by the client to the packets arriving at the resource by port or ICMP identifier.
-    // Thus, we rely on a custom u64 payload attached to all packets to uniquely identify every individual packet.
-    for (gateway, expected_handshakes) in &all_expected_gateway_handshakes {
+/// Merges the per-client handshake expectations into a single map per remote, tagging each entry with the sending client.
+fn merge_expected_handshakes<ID, F>(
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    expected_handshakes: impl Fn(&RefClient) -> &BTreeMap<ID, ExpectedHandshakes<F>>,
+) -> BTreeMap<ID, BTreeMap<u64, (ClientId, Destination, F)>>
+where
+    ID: Copy + Ord,
+    F: Copy,
+{
+    let mut merged: BTreeMap<ID, BTreeMap<u64, (ClientId, Destination, F)>> = BTreeMap::new();
+
+    for (cid, ref_client) in ref_clients {
+        for (remote, handshakes) in expected_handshakes(ref_client) {
+            for (payload, (destination, flow)) in handshakes {
+                merged
+                    .entry(*remote)
+                    .or_default()
+                    .insert(*payload, (*cid, destination.clone(), *flow));
+            }
+        }
+    }
+
+    merged
+}
+
+/// Asserts the handshakes between clients and gateways.
+///
+/// Due to connlib's implementation of NAT64, we cannot match the packets sent by the client to the packets arriving at the resource by port or ICMP identifier.
+/// Thus, we rely on a custom u64 payload attached to all packets to uniquely identify every individual packet.
+fn assert_gateway_handshakes<P: EchoProtocol>(
+    expected_handshakes_by_gateway: &BTreeMap<
+        GatewayId,
+        BTreeMap<u64, (ClientId, Destination, P::FlowId)>,
+    >,
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
+    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
+    sent_requests: &BTreeMap<(ClientId, P::FlowId), (Instant, IpPacket)>,
+    received_replies: &BTreeMap<(ClientId, P::FlowId), IpPacket>,
+    global_dns_records: &DnsRecords,
+) {
+    let protocol = P::NAME;
+
+    for gateway in expected_handshakes_by_gateway.keys() {
         if !ref_gateways.contains_key(gateway) {
             tracing::error!(target: "assertions", %gateway, "❌ Unknown Gateway");
-            continue;
         }
-        let received_requests_for_gateway = received_requests_by_gateway.get(gateway).unwrap();
-        let dns_query_timestamps_for_gateway = dns_query_timestamps.get(gateway).unwrap();
+    }
 
-        let mut num_expected_handshakes = expected_handshakes.len();
+    // The proxy IP mapping must be stable per client and DNS record snapshot; see `assert_proxy_ip_mapping_is_stable`.
+    let mut proxy_ip_mappings = HashMap::new();
 
-        for (payload, (cid, resource_dst, t, u)) in expected_handshakes {
-            let _guard = make_span(*t, *u).entered();
+    for (gateway, sim_gateway) in sim_gateways {
+        let expected_handshakes = expected_handshakes_by_gateway.get(gateway);
+        let received_requests = P::received_requests_on_gateway(sim_gateway);
+
+        let mut num_expected_handshakes = expected_handshakes.map_or(0, |e| e.len());
+
+        for (payload, (cid, resource_dst, flow)) in expected_handshakes.into_iter().flatten() {
+            let _guard = P::span(*flow).entered();
 
             let ref_client = ref_clients.get(cid).unwrap();
 
-            let Some((sent_at, client_sent_request)) = all_sent_requests.get(&(*cid, (*t, *u)))
-            else {
-                tracing::error!(target: "assertions", %cid, "❌ Missing {packet_protocol} request on client");
+            let Some((sent_at, client_sent_request)) = sent_requests.get(&(*cid, *flow)) else {
+                tracing::error!(target: "assertions", %cid, "❌ Missing {protocol} request on client");
                 continue;
             };
-            let Some(client_received_reply) =
-                all_received_replies_on_client.get(&(*cid, (*t, *u).reply_to()))
-            else {
+            let Some(client_received_reply) = received_replies.get(&(*cid, flow.reply_to())) else {
                 // A client→gateway connection that was idle long enough for its
                 // WireGuard session to enter the re-key dead window drops this
                 // one packet without a reply (see `MIN_IDLE_FOR_REKEY_DROP`). Tolerate
@@ -308,18 +394,19 @@ fn assert_packets_properties<T, U>(
                 //
                 // TODO: Delete once ICEless is the default.
                 if can_drop_during_rekey(ref_client, RejectionRemote::Gateway(*gateway), *sent_at) {
-                    tracing::debug!(target: "assertions", %cid, "Tolerating {packet_protocol} packet dropped in the WireGuard re-key window");
+                    tracing::debug!(target: "assertions", %cid, "Tolerating {protocol} packet dropped in the WireGuard re-key window");
                     num_expected_handshakes -= 1;
                     continue;
                 }
 
-                tracing::error!(target: "assertions", %cid, "❌ Missing {packet_protocol} reply on client");
+                tracing::error!(target: "assertions", %cid, "❌ Missing {protocol} reply on client");
                 continue;
             };
             assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
+            assert_reply_echoes_payload::<P>(client_sent_request, client_received_reply);
 
-            let Some((packet_sent_at, gateway_received_request)) =
-                received_requests_for_gateway.get(payload)
+            let Some((request_received_at, gateway_received_request)) =
+                received_requests.get(payload)
             else {
                 if let Ok(Some((_, icmp_error))) = client_received_reply.icmp_error()
                     && icmp_error.is_unreachable_prohibited()
@@ -336,7 +423,7 @@ fn assert_packets_properties<T, U>(
                     continue;
                 }
 
-                tracing::error!(target: "assertions", %cid, "❌ Missing {packet_protocol} request on gateway");
+                tracing::error!(target: "assertions", %cid, "❌ Missing {protocol} request on gateway");
                 continue;
             };
 
@@ -345,35 +432,37 @@ fn assert_packets_properties<T, U>(
                 let actual = gateway_received_request.source();
 
                 if expected != actual {
-                    tracing::error!(target: "assertions", %cid, %expected, %actual, "❌ Unexpected {packet_protocol} request source");
+                    tracing::error!(target: "assertions", %cid, %expected, %actual, "❌ Unexpected {protocol} request source");
                 }
             }
 
             match resource_dst {
                 Destination::IpAddr(resource_dst) => {
-                    assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
+                    assert_destination_is_cidr_resource(gateway_received_request, resource_dst)
                 }
                 Destination::DomainName { name, .. } => {
-                    let Some(query_timestamps) = dns_query_timestamps_for_gateway.get(name) else {
-                        tracing::error!(%cid, %name, "Should have resolved domain at least once");
+                    let Some(query_timestamps) = sim_gateway.dns_query_timestamps.get(name) else {
+                        tracing::error!(target: "assertions", %cid, %name, "Should have resolved domain at least once");
                         continue;
                     };
 
-                    // To correct assert whether the packet was routed to the correct IP, we need to find the timestamp of the DNS query closest to the packet timestamp.
+                    // To correctly assert whether the packet was routed to the correct IP, we need to find the timestamp of the DNS query closest to the packet timestamp.
                     // In other words: Packets should always use the IPs that were most recently resolved when they were sent.
                     let Some(dns_record_snapshot) = query_timestamps
                         .iter()
-                        .filter(|query_timestamp| *query_timestamp <= packet_sent_at)
+                        .filter(|query_timestamp| *query_timestamp <= request_received_at)
                         .max()
                     else {
-                        tracing::error!(%cid, %name, "Should have a relevant query timestamp");
+                        tracing::error!(target: "assertions", %cid, %name, "Should have a relevant query timestamp");
                         continue;
                     };
 
-                    // Split the proxy IP mapping by DNS record snapshot.
+                    // Split the proxy IP mapping by client and DNS record snapshot.
                     //
-                    // When we re-resolve DNS, the mapping is allowed to change.
-                    let mapping = mappings.entry(dns_record_snapshot).or_default();
+                    // Each client assigns its own proxy IPs, and when we re-resolve DNS, the mapping is allowed to change.
+                    let mapping = proxy_ip_mappings
+                        .entry((*cid, *dns_record_snapshot))
+                        .or_default();
 
                     assert_destination_is_dns_resource(
                         gateway_received_request,
@@ -391,34 +480,60 @@ fn assert_packets_properties<T, U>(
             }
         }
 
-        let num_actual_handshakes = received_requests_for_gateway.len();
+        for (payload, (_, request)) in received_requests {
+            if !expected_handshakes.is_some_and(|e| e.contains_key(payload)) {
+                tracing::error!(target: "assertions", %gateway, %payload, ?request, "❌ Received unexpected {protocol} request on gateway");
+            }
+        }
+
+        let num_actual_handshakes = received_requests.len();
 
         if num_expected_handshakes != num_actual_handshakes {
-            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %gateway, "❌ Unexpected {packet_protocol} requests");
+            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %gateway, "❌ Unexpected {protocol} requests");
         } else {
-            tracing::info!(target: "assertions", %num_expected_handshakes, %gateway, "✅ Performed the expected {packet_protocol} handshakes");
+            tracing::info!(target: "assertions", %num_expected_handshakes, %gateway, "✅ Performed the expected {protocol} handshakes");
+        }
+    }
+}
+
+/// Asserts the handshakes between clients, i.e. traffic within a device pool.
+fn assert_client_handshakes<P: EchoProtocol>(
+    expected_handshakes_by_client: &BTreeMap<
+        ClientId,
+        BTreeMap<u64, (ClientId, Destination, P::FlowId)>,
+    >,
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    sim_clients: &BTreeMap<ClientId, &SimClient>,
+    sent_requests: &BTreeMap<(ClientId, P::FlowId), (Instant, IpPacket)>,
+    received_replies: &BTreeMap<(ClientId, P::FlowId), IpPacket>,
+) {
+    let protocol = P::NAME;
+
+    for client in expected_handshakes_by_client.keys() {
+        if !ref_clients.contains_key(client) {
+            tracing::error!(target: "assertions", %client, "❌ Unknown Client");
         }
     }
 
-    for (dst_client_id, expected_handshakes) in &all_expected_client_handshakes {
-        let mut num_expected_handshakes = expected_handshakes.len();
+    for (dst_client_id, sim_client) in sim_clients {
+        let expected_handshakes = expected_handshakes_by_client.get(dst_client_id);
+        let received_requests = P::received_requests_on_client(sim_client);
 
-        let received_requests_for_client = received_requests_by_client.get(dst_client_id).unwrap();
+        let mut num_expected_handshakes = expected_handshakes.map_or(0, |e| e.len());
 
-        for (payload, (src_client_id, _, t, u)) in expected_handshakes {
-            let _guard = make_span(*t, *u).entered();
+        for (payload, (src_client_id, _, flow)) in expected_handshakes.into_iter().flatten() {
+            let _guard = P::span(*flow).entered();
 
             let src_ref_client = ref_clients.get(src_client_id).unwrap();
             let dst_ref_client = ref_clients.get(dst_client_id).unwrap();
 
-            let Some((sent_at, client_sent_request)) =
-                all_sent_requests.get(&(*src_client_id, (*t, *u)))
+            let Some((sent_at, client_sent_request)) = sent_requests.get(&(*src_client_id, *flow))
             else {
-                tracing::error!(target: "assertions", %src_client_id, "❌ Missing {packet_protocol} request on client");
+                tracing::error!(target: "assertions", %src_client_id, "❌ Missing {protocol} request on client");
                 continue;
             };
             let Some(client_received_reply) =
-                all_received_replies_on_client.get(&(*src_client_id, (*t, *u).reply_to()))
+                received_replies.get(&(*src_client_id, flow.reply_to()))
             else {
                 // If the request was made after we reset our connections, missing a reply is okay.
                 if dst_ref_client.has_reset_connections_within_ice_timeout(*sent_at) {
@@ -437,19 +552,19 @@ fn assert_packets_properties<T, U>(
                     RejectionRemote::Client(*dst_client_id),
                     *sent_at,
                 ) {
-                    tracing::debug!(target: "assertions", %dst_client_id, "Tolerating {packet_protocol} packet dropped in the WireGuard re-key window");
+                    tracing::debug!(target: "assertions", %dst_client_id, "Tolerating {protocol} packet dropped in the WireGuard re-key window");
                     num_expected_handshakes -= 1;
                     continue;
                 }
 
-                tracing::error!(target: "assertions", %src_client_id, "❌ Missing {packet_protocol} reply on client");
+                tracing::error!(target: "assertions", %src_client_id, "❌ Missing {protocol} reply on client");
                 continue;
             };
             assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
+            assert_reply_echoes_payload::<P>(client_sent_request, client_received_reply);
 
-            let Some((_, client_received_request)) = received_requests_for_client.get(payload)
-            else {
-                tracing::error!(target: "assertions", %src_client_id, "❌ Missing {packet_protocol} request on client");
+            let Some((_, client_received_request)) = received_requests.get(payload) else {
+                tracing::error!(target: "assertions", %src_client_id, "❌ Missing {protocol} request on destination client");
                 continue;
             };
 
@@ -458,17 +573,32 @@ fn assert_packets_properties<T, U>(
                 let actual = client_received_request.source();
 
                 if expected != actual {
-                    tracing::error!(target: "assertions", %src_client_id, %expected, %actual, "❌ Unexpected {packet_protocol} request source");
+                    tracing::error!(target: "assertions", %src_client_id, %expected, %actual, "❌ Unexpected {protocol} request source");
+                }
+            }
+
+            {
+                let actual = client_received_request.destination();
+                let expected = dst_ref_client.tunnel_ip_for(actual);
+
+                if expected != actual {
+                    tracing::error!(target: "assertions", %dst_client_id, %expected, %actual, "❌ Unexpected {protocol} request destination");
                 }
             }
         }
 
-        let num_actual_handshakes = received_requests_for_client.len();
+        for (payload, (_, request)) in received_requests {
+            if !expected_handshakes.is_some_and(|e| e.contains_key(payload)) {
+                tracing::error!(target: "assertions", %dst_client_id, %payload, ?request, "❌ Received unexpected {protocol} request on client");
+            }
+        }
+
+        let num_actual_handshakes = received_requests.len();
 
         if num_expected_handshakes != num_actual_handshakes {
-            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %dst_client_id, "❌ Unexpected {packet_protocol} requests");
+            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %dst_client_id, "❌ Unexpected {protocol} requests");
         } else {
-            tracing::info!(target: "assertions", %num_expected_handshakes, %dst_client_id, "✅ Performed the expected {packet_protocol} handshakes");
+            tracing::info!(target: "assertions", %num_expected_handshakes, %dst_client_id, "✅ Performed the expected {protocol} handshakes");
         }
     }
 }
@@ -658,11 +788,11 @@ pub(crate) fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimCl
 }
 
 pub(crate) fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_client: &SimClient) {
-    let unexpected_dns_replies = find_unexpected_entries(
-        &ref_client.expected_udp_dns_handshakes,
-        &sim_client.received_udp_dns_responses,
-        |(_, id_a, _), (_, id_b, _)| id_a == id_b,
-    );
+    let unexpected_dns_replies = sim_client
+        .received_udp_dns_responses
+        .keys()
+        .filter(|response| !ref_client.expected_udp_dns_handshakes.contains(response))
+        .collect::<Vec<_>>();
 
     if !unexpected_dns_replies.is_empty() {
         tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Unexpected UDP DNS replies on client");
@@ -691,6 +821,16 @@ pub(crate) fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_clie
 }
 
 pub(crate) fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
+    let unexpected_dns_responses = sim_client
+        .received_tcp_dns_responses
+        .iter()
+        .filter(|response| !ref_client.expected_tcp_dns_handshakes.contains(response))
+        .collect::<Vec<_>>();
+
+    if !unexpected_dns_responses.is_empty() {
+        tracing::error!(target: "assertions", ?unexpected_dns_responses, "❌ Unexpected TCP DNS responses on client");
+    }
+
     for (dns_server, query_id) in ref_client.expected_tcp_dns_handshakes.iter() {
         let _guard =
             tracing::info_span!(target: "assertions", "tcp_dns", %query_id, %dns_server).entered();
@@ -733,6 +873,34 @@ fn assert_correct_src_and_dst_ips(
     }
 }
 
+/// Asserts that a successful reply echoes back the request's payload.
+///
+/// The simulated gateways and clients only ever echo requests back, so any
+/// difference in payload means packets got corrupted or mixed up in transit.
+///
+/// ICMP errors quote the failed request instead of echoing its payload; they are
+/// validated separately and skipped here.
+fn assert_reply_echoes_payload<P: EchoProtocol>(
+    client_sent_request: &IpPacket,
+    client_received_reply: &IpPacket,
+) {
+    if client_received_reply
+        .icmp_error()
+        .is_ok_and(|error| error.is_some())
+    {
+        return;
+    }
+
+    let expected = P::payload(client_sent_request);
+    let actual = P::payload(client_received_reply);
+
+    if actual != expected {
+        tracing::error!(target: "assertions", ?actual, ?expected, "❌ Reply does not echo the request payload");
+    } else {
+        tracing::info!(target: "assertions", "✅ Reply echoes the request payload");
+    }
+}
+
 fn assert_correct_src_and_dst_udp_ports(
     client_sent_request: &IpPacket,
     client_received_reply: &IpPacket,
@@ -759,13 +927,13 @@ fn assert_correct_src_and_dst_udp_ports(
     }
 }
 
-fn assert_destination_is_cdir_resource(gateway_received_request: &IpPacket, expected: &IpAddr) {
+fn assert_destination_is_cidr_resource(gateway_received_request: &IpPacket, expected: &IpAddr) {
     let actual = gateway_received_request.destination();
 
     if actual != *expected {
         tracing::error!(target: "assertions", %actual, %expected, "❌ Incorrect resource destination");
     } else {
-        tracing::info!(target: "assertions", ip = %actual, "✅ ICMP request targets correct resource");
+        tracing::info!(target: "assertions", ip = %actual, "✅ Request targets correct resource");
     }
 }
 
@@ -817,18 +985,6 @@ fn assert_proxy_ip_mapping_is_stable(
             }
         }
     }
-}
-
-fn find_unexpected_entries<'a, E, K, V>(
-    expected: &VecDeque<E>,
-    actual: &'a BTreeMap<K, V>,
-    is_expected: impl Fn(&E, &K) -> bool,
-) -> Vec<&'a V> {
-    actual
-        .iter()
-        .filter(|(k, _)| !expected.iter().any(|e| is_expected(e, k)))
-        .map(|(_, v)| v)
-        .collect()
 }
 
 /// Tracks whether any [`Level::ERROR`] events are emitted and panics on `Drop` in case.
