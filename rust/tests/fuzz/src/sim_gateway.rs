@@ -3,7 +3,7 @@ use super::{
     dns_server_resource::{TcpDnsServerResource, UdpDnsServerResource},
     echo::echo_reply,
     icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
-    probe::{ProbeEvent, ProbeEventKind, ProbeId, Remote},
+    probe::{ProbeId, ProbeObservation, ProbeObservationKind, Remote},
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
 };
@@ -24,7 +24,7 @@ pub(crate) struct SimGateway {
     id: GatewayId,
     pub(crate) sut: GatewayState,
 
-    pub(crate) probe_events: Vec<ProbeEvent>,
+    pub(crate) probe_observations: Vec<ProbeObservation>,
 
     /// The times we resolved DNS records for a domain.
     pub(crate) dns_query_timestamps: BTreeMap<DomainName, Vec<Instant>>,
@@ -51,7 +51,7 @@ impl SimGateway {
             id,
             sut,
             site_specific_dns_records,
-            probe_events: Default::default(),
+            probe_observations: Default::default(),
             udp_dns_server_resources: Default::default(),
             tcp_dns_server_resources: Default::default(),
             dns_query_timestamps: Default::default(),
@@ -232,14 +232,14 @@ impl SimGateway {
         if let Some(icmp) = packet.as_icmpv4()
             && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
         {
-            self.record_delivered_probe(icmp.payload(), packet.clone(), now);
+            self.record_received_request(icmp.payload(), packet.clone(), now);
             return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
         }
 
         if let Some(icmp) = packet.as_icmpv6()
             && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
         {
-            self.record_delivered_probe(icmp.payload(), packet.clone(), now);
+            self.record_received_request(icmp.payload(), packet.clone(), now);
             return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
         }
 
@@ -305,7 +305,7 @@ impl SimGateway {
 
     fn request_received(&mut self, packet: &IpPacket, now: Instant) {
         if let Some(udp) = packet.as_udp() {
-            self.record_delivered_probe(udp.payload(), packet.clone(), now);
+            self.record_received_request(udp.payload(), packet.clone(), now);
         }
     }
 
@@ -313,16 +313,16 @@ impl SimGateway {
         self.tcp_resources.clear();
     }
 
-    fn record_delivered_probe(&mut self, payload: &[u8], packet: IpPacket, at: Instant) {
+    fn record_received_request(&mut self, payload: &[u8], packet: IpPacket, at: Instant) {
         let Some(id) = ProbeId::from_payload(payload) else {
             tracing::error!("Probe payload does not contain a probe ID");
             return;
         };
 
-        self.probe_events.push(ProbeEvent {
+        self.probe_observations.push(ProbeObservation {
             id,
             at,
-            kind: ProbeEventKind::Delivered {
+            kind: ProbeObservationKind::RequestReceived {
                 remote: Remote::Gateway(self.id),
             },
             packet,

@@ -506,7 +506,7 @@ impl ReferenceState {
     ) -> TraceRequirement {
         let known_loss = match outcome {
             ExpectedOutcome::Dropped => None,
-            ExpectedOutcome::Delivered {
+            ExpectedOutcome::RoundTripCompleted {
                 remote: Remote::Client(client),
                 ..
             } if self
@@ -518,7 +518,7 @@ impl ReferenceState {
             {
                 Some(KnownLoss::ConnectionReset)
             }
-            ExpectedOutcome::Delivered { remote, .. } => self
+            ExpectedOutcome::RoundTripCompleted { remote, .. } => self
                 .can_drop_during_rekey(origin, remote, sent_at)
                 .then_some(KnownLoss::WireGuardRekey),
             ExpectedOutcome::Rejected {
@@ -540,7 +540,7 @@ impl ReferenceState {
         };
 
         match known_loss {
-            Some(loss) => TraceRequirement::ExactOrNoRemoteEvents(loss),
+            Some(loss) => TraceRequirement::ExactOrSubmissionOnly(loss),
             None => TraceRequirement::Exact,
         }
     }

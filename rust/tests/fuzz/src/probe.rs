@@ -114,7 +114,7 @@ pub(crate) enum Remote {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExpectedOutcome {
     Dropped,
-    Delivered {
+    RoundTripCompleted {
         remote: Remote,
         resource: Option<ResourceId>,
     },
@@ -140,7 +140,7 @@ pub(crate) enum RejectionResponse {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TraceRequirement {
     Exact,
-    ExactOrNoRemoteEvents(KnownLoss),
+    ExactOrSubmissionOnly(KnownLoss),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,16 +160,16 @@ pub(crate) struct ExpectedProbe {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ProbeEvent {
+pub(crate) struct ProbeObservation {
     pub(crate) id: ProbeId,
     pub(crate) at: Instant,
-    pub(crate) kind: ProbeEventKind,
+    pub(crate) kind: ProbeObservationKind,
     pub(crate) packet: IpPacket,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProbeEventKind {
-    Injected { client: ClientId },
-    Delivered { remote: Remote },
-    Returned { client: ClientId },
+pub(crate) enum ProbeObservationKind {
+    RequestSubmitted { client: ClientId },
+    RequestReceived { remote: Remote },
+    ResponseReceived { client: ClientId },
 }

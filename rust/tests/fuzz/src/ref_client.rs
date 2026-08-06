@@ -510,7 +510,7 @@ impl RefClient {
                     .or_default()
                     .insert(now);
 
-                ExpectedOutcome::Delivered {
+                ExpectedOutcome::RoundTripCompleted {
                     remote: Remote::Client(remote_id),
                     resource: None,
                 }
@@ -538,7 +538,7 @@ impl RefClient {
                     .or_default()
                     .insert(now);
 
-                ExpectedOutcome::Delivered {
+                ExpectedOutcome::RoundTripCompleted {
                     remote: Remote::Gateway(gateway),
                     resource: None,
                 }
@@ -553,7 +553,7 @@ impl RefClient {
                     .or_default()
                     .insert(now);
 
-                ExpectedOutcome::Delivered {
+                ExpectedOutcome::RoundTripCompleted {
                     remote: Remote::Gateway(gateway),
                     resource: Some(resource),
                 }

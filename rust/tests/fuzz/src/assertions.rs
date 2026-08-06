@@ -2,8 +2,8 @@ use super::{
     dns_records::DnsRecords,
     icmp_error_hosts::IcmpErrorHosts,
     probe::{
-        ExpectedOutcome, ExpectedProbe, ProbeEvent, ProbeEventKind, ProbeId, ProbeProtocol,
-        ProbeRequest, RejectionResponse, Remote, TraceRequirement,
+        ExpectedOutcome, ExpectedProbe, ProbeId, ProbeObservation, ProbeObservationKind,
+        ProbeProtocol, ProbeRequest, RejectionResponse, Remote, TraceRequirement,
     },
     ref_client::RefClient,
     sim_client::SimClient,
@@ -35,22 +35,22 @@ pub(crate) fn assert_probes(
     global_dns_records: &DnsRecords,
     icmp_error_hosts: &IcmpErrorHosts,
 ) {
-    let observed = iter::empty()
+    let observations = iter::empty()
         .chain(
             sim_clients
                 .values()
-                .flat_map(|client| client.probe_events.iter()),
+                .flat_map(|client| client.probe_observations.iter()),
         )
         .chain(
             sim_gateways
                 .values()
-                .flat_map(|gateway| gateway.probe_events.iter()),
+                .flat_map(|gateway| gateway.probe_observations.iter()),
         )
         .collect_vec();
 
-    for id in observed
+    for id in observations
         .iter()
-        .map(|event| event.id)
+        .map(|observation| observation.id)
         .unique()
         .filter(|id| !expected_probes.contains_key(id))
     {
@@ -60,205 +60,216 @@ pub(crate) fn assert_probes(
     let mut mappings = BTreeMap::new();
 
     for expected in expected_probes.values() {
-        let events = observed
+        let probe_observations = observations
             .iter()
             .copied()
-            .filter(|event| event.id == expected.id)
+            .filter(|observation| observation.id == expected.id)
             .collect_vec();
-        let injected = events
+        let submissions = probe_observations
             .iter()
             .copied()
-            .filter(|event| matches!(event.kind, ProbeEventKind::Injected { .. }))
-            .collect_vec();
-        let delivered = events
-            .iter()
-            .copied()
-            .filter_map(|event| match event.kind {
-                ProbeEventKind::Delivered { remote } => Some((event, remote)),
-                ProbeEventKind::Injected { .. } | ProbeEventKind::Returned { .. } => None,
+            .filter(|observation| {
+                matches!(
+                    observation.kind,
+                    ProbeObservationKind::RequestSubmitted { .. }
+                )
             })
             .collect_vec();
-        let returned = events
+        let received_requests = probe_observations
             .iter()
             .copied()
-            .filter_map(|event| match event.kind {
-                ProbeEventKind::Returned { client } => Some((event, client)),
-                ProbeEventKind::Injected { .. } | ProbeEventKind::Delivered { .. } => None,
+            .filter_map(|observation| match observation.kind {
+                ProbeObservationKind::RequestSubmitted { .. } => None,
+                ProbeObservationKind::RequestReceived { remote } => Some((observation, remote)),
+                ProbeObservationKind::ResponseReceived { .. } => None,
+            })
+            .collect_vec();
+        let received_responses = probe_observations
+            .iter()
+            .copied()
+            .filter_map(|observation| match observation.kind {
+                ProbeObservationKind::RequestSubmitted { .. } => None,
+                ProbeObservationKind::RequestReceived { .. } => None,
+                ProbeObservationKind::ResponseReceived { client } => Some((observation, client)),
             })
             .collect_vec();
 
-        let [injected] = injected.as_slice() else {
-            tracing::error!(target: "assertions", id = ?expected.id, ?events, "Probe does not have exactly one injection");
+        let [submitted] = submissions.as_slice() else {
+            tracing::error!(target: "assertions", id = ?expected.id, ?probe_observations, "Probe does not have exactly one request submission");
             continue;
         };
-        let injected = *injected;
+        let submitted = *submitted;
 
-        assert_injected_event(expected, injected);
+        assert_submitted_request(expected, submitted);
 
         match (
             expected.trace_requirement,
-            delivered.as_slice(),
-            returned.as_slice(),
+            received_requests.as_slice(),
+            received_responses.as_slice(),
         ) {
-            (TraceRequirement::ExactOrNoRemoteEvents(reason), [], []) => {
-                tracing::debug!(target: "assertions", id = ?expected.id, ?reason, "Probe has no remote events where loss is allowed");
+            (TraceRequirement::ExactOrSubmissionOnly(reason), [], []) => {
+                tracing::debug!(target: "assertions", id = ?expected.id, ?reason, "Probe has only its request submission where loss is allowed");
                 continue;
             }
-            (TraceRequirement::Exact, _, _)
-            | (TraceRequirement::ExactOrNoRemoteEvents(_), _, _) => {}
+            (TraceRequirement::Exact, _, _) => {}
+            (TraceRequirement::ExactOrSubmissionOnly(_), _, _) => {}
         }
 
         match expected.outcome {
             ExpectedOutcome::Dropped => {
-                let ([], []) = (delivered.as_slice(), returned.as_slice()) else {
-                    tracing::error!(target: "assertions", id = ?expected.id, ?delivered, ?returned, "Dropped probe produced remote events");
+                let ([], []) = (received_requests.as_slice(), received_responses.as_slice()) else {
+                    tracing::error!(target: "assertions", id = ?expected.id, ?received_requests, ?received_responses, "Dropped probe produced remote observations");
                     continue;
                 };
             }
-            ExpectedOutcome::Delivered {
+            ExpectedOutcome::RoundTripCompleted {
                 remote: expected_remote,
                 ..
             } => {
-                let ([(delivered, remote)], [(returned, client)]) =
-                    (delivered.as_slice(), returned.as_slice())
+                let ([(received_request, remote)], [(received_response, client)]) =
+                    (received_requests.as_slice(), received_responses.as_slice())
                 else {
-                    tracing::error!(target: "assertions", id = ?expected.id, ?delivered, ?returned, "Delivered probe does not have exactly one delivery and one return");
+                    tracing::error!(target: "assertions", id = ?expected.id, ?received_requests, ?received_responses, "Completed round trip does not have exactly one received request and one received response");
                     continue;
                 };
-                let delivered = *delivered;
-                let returned = *returned;
+                let received_request = *received_request;
+                let received_response = *received_response;
 
                 if remote != &expected_remote {
-                    tracing::error!(target: "assertions", id = ?expected.id, ?expected_remote, actual = ?remote, "Probe was delivered to the wrong remote");
+                    tracing::error!(target: "assertions", id = ?expected.id, ?expected_remote, actual = ?remote, "Probe request was received by the wrong remote");
                 }
                 if client != &expected.origin {
-                    tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?client, "Probe returned to the wrong client");
+                    tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?client, "Probe response was received by the wrong client");
                 }
 
-                assert_delivered_probe(
+                assert_received_request(
                     expected,
-                    injected,
-                    delivered,
+                    submitted,
+                    received_request,
+                    *remote,
                     ref_clients,
                     sim_gateways,
                     global_dns_records,
                     &mut mappings,
                 );
-                assert_delivered_return(
+                assert_received_response(
                     expected,
-                    injected,
-                    delivered,
-                    returned,
+                    submitted,
+                    received_request,
+                    received_response,
                     expected_remote,
                     icmp_error_hosts,
                 );
             }
             ExpectedOutcome::Rejected { response, .. } => {
-                let ([], [(returned, client)]) = (delivered.as_slice(), returned.as_slice()) else {
-                    tracing::error!(target: "assertions", id = ?expected.id, ?delivered, ?returned, "Rejected probe does not have exactly one return and no deliveries");
+                let ([], [(received_response, client)]) =
+                    (received_requests.as_slice(), received_responses.as_slice())
+                else {
+                    tracing::error!(target: "assertions", id = ?expected.id, ?received_requests, ?received_responses, "Rejected probe does not have exactly one received response and no received requests");
                     continue;
                 };
-                let returned = *returned;
+                let received_response = *received_response;
 
                 if client != &expected.origin {
-                    tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?client, "Rejected probe returned to the wrong client");
+                    tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?client, "Rejection response was received by the wrong client");
                 }
 
-                assert_icmp_error_return(expected, injected, returned, Some(response));
+                assert_icmp_error_response(expected, submitted, received_response, Some(response));
             }
         }
     }
 }
 
-fn assert_injected_event(expected: &ExpectedProbe, injected: &ProbeEvent) {
-    match injected.kind {
-        ProbeEventKind::Injected { client } => {
+fn assert_submitted_request(expected: &ExpectedProbe, submitted: &ProbeObservation) {
+    match submitted.kind {
+        ProbeObservationKind::RequestSubmitted { client } => {
             if client != expected.origin {
-                tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?client, "Probe was injected by the wrong client");
+                tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?client, "Probe request was submitted by the wrong client");
             }
         }
-        ProbeEventKind::Delivered { .. } => {
-            tracing::error!(target: "assertions", id = ?expected.id, "Delivery event used as injection");
+        ProbeObservationKind::RequestReceived { .. } => {
+            tracing::error!(target: "assertions", id = ?expected.id, "Request reception observation used as request submission");
         }
-        ProbeEventKind::Returned { .. } => {
-            tracing::error!(target: "assertions", id = ?expected.id, "Return event used as injection");
+        ProbeObservationKind::ResponseReceived { .. } => {
+            tracing::error!(target: "assertions", id = ?expected.id, "Response reception observation used as request submission");
         }
     }
 
-    if injected.at != expected.sent_at {
-        tracing::error!(target: "assertions", id = ?expected.id, "Probe was injected at the wrong time");
+    if submitted.at != expected.sent_at {
+        tracing::error!(target: "assertions", id = ?expected.id, "Probe request was submitted at the wrong time");
     }
 
-    if injected.packet.source() != expected.request.source() {
-        tracing::error!(target: "assertions", id = ?expected.id, "Probe has the wrong source");
+    if submitted.packet.source() != expected.request.source() {
+        tracing::error!(target: "assertions", id = ?expected.id, "Submitted request has the wrong source");
     }
 
     if let Destination::IpAddr(expected_destination) = expected.request.destination()
-        && injected.packet.destination() != *expected_destination
+        && submitted.packet.destination() != *expected_destination
     {
-        tracing::error!(target: "assertions", id = ?expected.id, "Probe has the wrong destination");
+        tracing::error!(target: "assertions", id = ?expected.id, "Submitted request has the wrong destination");
     }
 
-    assert_probe_payload(expected.id, &injected.packet);
+    assert_probe_payload(expected.id, &submitted.packet);
 
     match &expected.request {
         ProbeRequest::Icmp {
             seq, identifier, ..
-        } => match icmp_echo_request(&injected.packet) {
+        } => match icmp_echo_request(&submitted.packet) {
             Some((actual_seq, actual_identifier, _)) => {
                 if (actual_seq, actual_identifier) != (seq.0, identifier.0) {
                     tracing::error!(target: "assertions", id = ?expected.id, "ICMP probe identifiers do not match");
                 }
             }
             None => {
-                tracing::error!(target: "assertions", id = ?expected.id, "Injected probe is not an ICMP echo request");
+                tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not an ICMP echo request");
             }
         },
-        ProbeRequest::Udp { sport, dport, .. } => match injected.packet.as_udp() {
+        ProbeRequest::Udp { sport, dport, .. } => match submitted.packet.as_udp() {
             Some(udp) => {
                 if (udp.source_port(), udp.destination_port()) != (sport.0, dport.0) {
                     tracing::error!(target: "assertions", id = ?expected.id, "UDP probe ports do not match");
                 }
             }
             None => {
-                tracing::error!(target: "assertions", id = ?expected.id, "Injected probe is not UDP");
+                tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not UDP");
             }
         },
     }
 }
 
-fn assert_delivered_probe(
+fn assert_received_request(
     expected: &ExpectedProbe,
-    injected: &ProbeEvent,
-    delivered: &ProbeEvent,
+    submitted: &ProbeObservation,
+    received: &ProbeObservation,
+    remote: Remote,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
     sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &DnsRecords,
     mappings: &mut BTreeMap<(ClientId, DomainName, Instant), HashMap<IpAddr, IpAddr>>,
 ) {
-    assert_probe_payload(expected.id, &delivered.packet);
+    assert_probe_payload(expected.id, &received.packet);
 
-    if probe_payload(&injected.packet) != probe_payload(&delivered.packet) {
+    if probe_payload(&submitted.packet) != probe_payload(&received.packet) {
         tracing::error!(target: "assertions", id = ?expected.id, "Probe payload changed in transit");
     }
 
     let ref_client = ref_clients.get(&expected.origin).unwrap();
-    let expected_source = ref_client.tunnel_ip_for(delivered.packet.source());
-    if delivered.packet.source() != expected_source {
-        tracing::error!(target: "assertions", id = ?expected.id, "Delivered probe has the wrong source");
+    let expected_source = ref_client.tunnel_ip_for(received.packet.source());
+    if received.packet.source() != expected_source {
+        tracing::error!(target: "assertions", id = ?expected.id, "Received request has the wrong source");
     }
 
     match expected.request.destination() {
         Destination::IpAddr(destination) => {
-            assert_destination_is_ip(&delivered.packet, destination);
+            assert_destination_is_ip(&received.packet, destination);
         }
         Destination::DomainName { name, .. } => {
-            let ProbeEventKind::Delivered {
-                remote: Remote::Gateway(gateway),
-            } = delivered.kind
-            else {
-                tracing::error!(target: "assertions", id = ?expected.id, "DNS probe was not delivered to a gateway");
-                return;
+            let gateway = match remote {
+                Remote::Gateway(gateway) => gateway,
+                Remote::Client(_) => {
+                    tracing::error!(target: "assertions", id = ?expected.id, "DNS probe request was not received through a gateway");
+                    return;
+                }
             };
             let Some(query_timestamps) = sim_gateways
                 .get(&gateway)
@@ -270,7 +281,7 @@ fn assert_delivered_probe(
             let Some(snapshot) = query_timestamps
                 .iter()
                 .copied()
-                .filter(|timestamp| *timestamp <= delivered.at)
+                .filter(|timestamp| *timestamp <= received.at)
                 .max()
             else {
                 tracing::error!(target: "assertions", id = ?expected.id, "DNS probe has no applicable resolution");
@@ -278,7 +289,7 @@ fn assert_delivered_probe(
             };
 
             assert_destination_is_dns_resource(
-                &delivered.packet,
+                &received.packet,
                 global_dns_records,
                 name,
                 snapshot,
@@ -287,30 +298,30 @@ fn assert_delivered_probe(
             let mapping = mappings
                 .entry((expected.origin, name.clone(), snapshot))
                 .or_default();
-            assert_proxy_ip_mapping_is_stable(&injected.packet, &delivered.packet, mapping);
+            assert_proxy_ip_mapping_is_stable(&submitted.packet, &received.packet, mapping);
         }
     }
 }
 
-fn assert_delivered_return(
+fn assert_received_response(
     expected: &ExpectedProbe,
-    injected: &ProbeEvent,
-    delivered: &ProbeEvent,
-    returned: &ProbeEvent,
+    submitted: &ProbeObservation,
+    received_request: &ProbeObservation,
+    received_response: &ProbeObservation,
     remote: Remote,
     icmp_error_hosts: &IcmpErrorHosts,
 ) {
-    if remote_returns_icmp_error(expected, delivered, remote, icmp_error_hosts) {
-        assert_icmp_error_return(expected, injected, returned, None);
+    if remote_responds_with_icmp_error(expected, received_request, remote, icmp_error_hosts) {
+        assert_icmp_error_response(expected, submitted, received_response, None);
         return;
     }
 
-    assert_echo_return(expected, injected, returned);
+    assert_echo_response(expected, submitted, received_response);
 }
 
-fn remote_returns_icmp_error(
+fn remote_responds_with_icmp_error(
     expected: &ExpectedProbe,
-    delivered: &ProbeEvent,
+    received_request: &ProbeObservation,
     remote: Remote,
     icmp_error_hosts: &IcmpErrorHosts,
 ) -> bool {
@@ -323,17 +334,21 @@ fn remote_returns_icmp_error(
 
     !is_icmp_peer
         && icmp_error_hosts
-            .icmp_error_for_ip(delivered.packet.destination())
+            .icmp_error_for_ip(received_request.packet.destination())
             .is_some()
 }
 
-fn assert_echo_return(expected: &ExpectedProbe, injected: &ProbeEvent, returned: &ProbeEvent) {
-    assert_correct_src_and_dst_ips(&injected.packet, &returned.packet);
+fn assert_echo_response(
+    expected: &ExpectedProbe,
+    submitted: &ProbeObservation,
+    received_response: &ProbeObservation,
+) {
+    assert_correct_src_and_dst_ips(&submitted.packet, &received_response.packet);
 
     match &expected.request {
         ProbeRequest::Icmp { .. } => match (
-            icmp_echo_request(&injected.packet),
-            icmp_echo_reply(&returned.packet),
+            icmp_echo_request(&submitted.packet),
+            icmp_echo_reply(&received_response.packet),
         ) {
             (
                 Some((request_seq, request_identifier, request_payload)),
@@ -347,59 +362,64 @@ fn assert_echo_return(expected: &ExpectedProbe, injected: &ProbeEvent, returned:
                 }
             }
             (None, Some(_)) => {
-                tracing::error!(target: "assertions", id = ?expected.id, "Injected probe is not an ICMP echo request");
+                tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not an ICMP echo request");
             }
             (Some(_), None) => {
-                tracing::error!(target: "assertions", id = ?expected.id, "Probe did not return an ICMP echo reply");
+                tracing::error!(target: "assertions", id = ?expected.id, "Received probe response is not an ICMP echo reply");
             }
             (None, None) => {
-                tracing::error!(target: "assertions", id = ?expected.id, "Injected probe is not an ICMP echo request");
-                tracing::error!(target: "assertions", id = ?expected.id, "Probe did not return an ICMP echo reply");
+                tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not an ICMP echo request");
+                tracing::error!(target: "assertions", id = ?expected.id, "Received probe response is not an ICMP echo reply");
             }
         },
-        ProbeRequest::Udp { .. } => match (injected.packet.as_udp(), returned.packet.as_udp()) {
-            (Some(request), Some(reply)) => {
-                assert_correct_src_and_dst_udp_ports(&injected.packet, &returned.packet);
+        ProbeRequest::Udp { .. } => {
+            match (submitted.packet.as_udp(), received_response.packet.as_udp()) {
+                (Some(request), Some(reply)) => {
+                    assert_correct_src_and_dst_udp_ports(
+                        &submitted.packet,
+                        &received_response.packet,
+                    );
 
-                if request.payload() != reply.payload() {
-                    tracing::error!(target: "assertions", id = ?expected.id, "UDP reply payload does not match");
+                    if request.payload() != reply.payload() {
+                        tracing::error!(target: "assertions", id = ?expected.id, "UDP reply payload does not match");
+                    }
+                }
+                (None, Some(_)) => {
+                    tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not UDP");
+                }
+                (Some(_), None) => {
+                    tracing::error!(target: "assertions", id = ?expected.id, "Received probe response is not UDP");
+                }
+                (None, None) => {
+                    tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not UDP");
+                    tracing::error!(target: "assertions", id = ?expected.id, "Received probe response is not UDP");
                 }
             }
-            (None, Some(_)) => {
-                tracing::error!(target: "assertions", id = ?expected.id, "Injected probe is not UDP");
-            }
-            (Some(_), None) => {
-                tracing::error!(target: "assertions", id = ?expected.id, "Probe did not return a UDP reply");
-            }
-            (None, None) => {
-                tracing::error!(target: "assertions", id = ?expected.id, "Injected probe is not UDP");
-                tracing::error!(target: "assertions", id = ?expected.id, "Probe did not return a UDP reply");
-            }
-        },
+        }
     }
 }
 
-fn assert_icmp_error_return(
+fn assert_icmp_error_response(
     expected: &ExpectedProbe,
-    injected: &ProbeEvent,
-    returned: &ProbeEvent,
+    submitted: &ProbeObservation,
+    received_response: &ProbeObservation,
     expected_response: Option<RejectionResponse>,
 ) {
-    assert_correct_src_and_dst_ips(&injected.packet, &returned.packet);
+    assert_correct_src_and_dst_ips(&submitted.packet, &received_response.packet);
 
-    let Ok(Some((failed_packet, error))) = returned.packet.icmp_error() else {
-        tracing::error!(target: "assertions", id = ?expected.id, "Probe did not return an ICMP error");
+    let Ok(Some((failed_packet, error))) = received_response.packet.icmp_error() else {
+        tracing::error!(target: "assertions", id = ?expected.id, "Received probe response is not an ICMP error");
         return;
     };
 
     if let Some(expected_response) = expected_response
-        && rejection_response(&returned.packet) != Some(expected_response)
+        && rejection_response(&received_response.packet) != Some(expected_response)
     {
-        tracing::error!(target: "assertions", id = ?expected.id, ?expected_response, ?error, "Probe returned the wrong ICMP error");
+        tracing::error!(target: "assertions", id = ?expected.id, ?expected_response, ?error, "Received probe response contains the wrong ICMP error");
     }
 
-    if failed_packet.src() != injected.packet.source()
-        || failed_packet.dst() != injected.packet.destination()
+    if failed_packet.src() != submitted.packet.source()
+        || failed_packet.dst() != submitted.packet.destination()
     {
         tracing::error!(target: "assertions", id = ?expected.id, "ICMP error quotes the wrong packet addresses");
     }

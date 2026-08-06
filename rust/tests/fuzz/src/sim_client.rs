@@ -2,7 +2,7 @@ use super::{
     QueryId,
     echo::echo_reply,
     icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
-    probe::{ProbeEvent, ProbeEventKind, ProbeId, ProbeProtocol, Remote},
+    probe::{ProbeId, ProbeObservation, ProbeObservationKind, ProbeProtocol, Remote},
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
@@ -60,7 +60,7 @@ pub(crate) struct SimClient {
     pub(crate) sent_tcp_dns_queries: HashSet<(dns::Upstream, QueryId)>,
     pub(crate) received_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
 
-    pub(crate) probe_events: Vec<ProbeEvent>,
+    pub(crate) probe_observations: Vec<ProbeObservation>,
     sent_probes: BTreeMap<ProbeProtocol, ProbeId>,
 
     pub(crate) tcp_dns_client: dns_over_tcp::Client,
@@ -90,7 +90,7 @@ impl SimClient {
             received_udp_dns_responses: Default::default(),
             sent_tcp_dns_queries: Default::default(),
             received_tcp_dns_responses: Default::default(),
-            probe_events: Default::default(),
+            probe_observations: Default::default(),
             sent_probes: Default::default(),
             routes: Default::default(),
             search_domain: Default::default(),
@@ -237,10 +237,10 @@ impl SimClient {
 
         assert!(previous.is_none(), "probe transport tuples must be unique");
 
-        self.probe_events.push(ProbeEvent {
+        self.probe_observations.push(ProbeObservation {
             id,
             at: now,
-            kind: ProbeEventKind::Injected { client: self.id },
+            kind: ProbeObservationKind::RequestSubmitted { client: self.id },
             packet: packet.clone(),
         });
 
@@ -318,7 +318,7 @@ impl SimClient {
                         };
 
                         if let Some(id) = self.sent_probes.get(&protocol).copied() {
-                            self.record_returned_probe(id, packet, now);
+                            self.record_received_response(id, packet, now);
                         } else if dst != 53 {
                             tracing::error!(?protocol, "Received ICMP error for unknown UDP probe");
                         }
@@ -337,7 +337,7 @@ impl SimClient {
                         };
 
                         if let Some(id) = self.sent_probes.get(&protocol).copied() {
-                            self.record_returned_probe(id, packet, now);
+                            self.record_received_response(id, packet, now);
                         } else {
                             tracing::error!(
                                 ?protocol,
@@ -391,11 +391,11 @@ impl SimClient {
             };
 
             if self.sent_probes.values().any(|sent| *sent == id) {
-                self.record_returned_probe(id, packet, now);
+                self.record_received_response(id, packet, now);
                 return None;
             }
 
-            self.record_delivered_probe(id, packet.clone(), now);
+            self.record_received_request(id, packet.clone(), now);
 
             let reply = icmp_error.or_else(|| echo_reply(packet))?;
             return self.handle_tun_input(reply, now).ok().flatten();
@@ -419,7 +419,7 @@ impl SimClient {
                 return None;
             };
 
-            self.record_delivered_probe(id, packet.clone(), now);
+            self.record_received_request(id, packet.clone(), now);
             let transmit = self.handle_icmp_request(&packet, echo, icmp.payload(), now)?;
 
             return Some(transmit);
@@ -433,7 +433,7 @@ impl SimClient {
                 return None;
             };
 
-            self.record_delivered_probe(id, packet.clone(), now);
+            self.record_received_request(id, packet.clone(), now);
             let transmit = self.handle_icmp_request(&packet, echo, icmp.payload(), now)?;
 
             return Some(transmit);
@@ -447,7 +447,7 @@ impl SimClient {
                 return None;
             };
 
-            self.record_returned_probe(id, packet, now);
+            self.record_received_response(id, packet, now);
             return None;
         }
 
@@ -459,7 +459,7 @@ impl SimClient {
                 return None;
             };
 
-            self.record_returned_probe(id, packet, now);
+            self.record_received_response(id, packet, now);
             return None;
         }
 
@@ -556,22 +556,22 @@ impl SimClient {
         Some(transmit)
     }
 
-    fn record_delivered_probe(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
-        self.probe_events.push(ProbeEvent {
+    fn record_received_request(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
+        self.probe_observations.push(ProbeObservation {
             id,
             at,
-            kind: ProbeEventKind::Delivered {
+            kind: ProbeObservationKind::RequestReceived {
                 remote: Remote::Client(self.id),
             },
             packet,
         });
     }
 
-    fn record_returned_probe(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
-        self.probe_events.push(ProbeEvent {
+    fn record_received_response(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
+        self.probe_observations.push(ProbeObservation {
             id,
             at,
-            kind: ProbeEventKind::Returned { client: self.id },
+            kind: ProbeObservationKind::ResponseReceived { client: self.id },
             packet,
         });
     }
