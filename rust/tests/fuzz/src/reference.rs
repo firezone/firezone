@@ -1,5 +1,9 @@
 use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
+use super::probe::{
+    ExpectedOutcome, ExpectedProbe, KnownLoss, PacketRoute, ProbeId, ProbeRequest, RejectionRemote,
+    Remote, TraceRequirement,
+};
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, StaticSecret};
 use dns_types::{DomainName, RecordType};
@@ -7,7 +11,7 @@ use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
 use itertools::Itertools;
 use std::net::{Ipv4Addr, Ipv6Addr};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
@@ -18,6 +22,8 @@ use tunnel_proto::dns::is_subdomain;
 use tunnel_proto::messages::Filter;
 
 use crate::resource as client;
+
+const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 
 /// The reference state machine of the tunnel.
 ///
@@ -42,6 +48,8 @@ pub struct ReferenceState {
     pub(crate) icmp_error_hosts: IcmpErrorHosts,
 
     pub(crate) network: RoutingTable,
+
+    pub(crate) expected_probes: BTreeMap<ProbeId, ExpectedProbe>,
 }
 
 /// Implementation of our reference state machine.
@@ -72,6 +80,7 @@ impl ReferenceState {
             tcp_resources,
             icmp_error_hosts,
             network,
+            expected_probes: Default::default(),
         }
     }
 
@@ -234,71 +243,66 @@ impl ReferenceState {
                 let icmp_error_hosts = &state.icmp_error_hosts;
 
                 state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                    c.on_dns_query(query, upstream_do53, icmp_error_hosts);
+                    c.on_dns_query(query, upstream_do53, icmp_error_hosts, now);
                 });
             }
             Transition::SendIcmpPacket {
                 client_id,
+                src,
                 dst,
-                expected_route,
                 seq,
                 identifier,
-                payload,
-                ..
-            } => {
-                state
-                    .clients
-                    .get_mut(client_id)
-                    .unwrap()
-                    .exec_mut(|client| {
-                        client.on_icmp_packet(
-                            dst.clone(),
-                            *expected_route,
-                            *seq,
-                            *identifier,
-                            *payload,
-                            now,
-                        )
-                    });
-            }
+                probe_id,
+            } => state.record_probe(
+                *probe_id,
+                *client_id,
+                ProbeRequest::Icmp {
+                    src: *src,
+                    dst: dst.clone(),
+                    seq: *seq,
+                    identifier: *identifier,
+                },
+                now,
+            ),
             Transition::SendUdpPacket {
                 client_id,
+                src,
                 dst,
-                expected_route,
                 sport,
                 dport,
-                payload,
-                ..
-            } => {
-                state
-                    .clients
-                    .get_mut(client_id)
-                    .unwrap()
-                    .exec_mut(|client| {
-                        client.on_udp_packet(
-                            dst.clone(),
-                            *expected_route,
-                            *sport,
-                            *dport,
-                            *payload,
-                            now,
-                        )
-                    });
-            }
+                probe_id,
+            } => state.record_probe(
+                *probe_id,
+                *client_id,
+                ProbeRequest::Udp {
+                    src: *src,
+                    dst: dst.clone(),
+                    sport: *sport,
+                    dport: *dport,
+                },
+                now,
+            ),
             Transition::ConnectTcp {
                 client_id,
                 src,
                 dst,
-                expected_route,
                 sport,
                 dport,
             } => {
+                let route = state.route_for_application_packet(
+                    *client_id,
+                    *src,
+                    dst,
+                    Protocol::Tcp(dport.0),
+                    now,
+                );
+
                 state
                     .clients
                     .get_mut(client_id)
                     .unwrap()
                     .exec_mut(|client| {
-                        client.on_connect_tcp(*src, dst.clone(), *expected_route, *sport, *dport);
+                        client.on_connect_tcp(*src, dst.clone(), route, *sport, *dport);
                     });
             }
             Transition::UpdateSystemDnsServers { servers } => {
@@ -424,6 +428,135 @@ impl ReferenceState {
     pub fn clear_packets(state: &mut ReferenceState) {
         for client in state.clients.values_mut() {
             client.exec_mut(|c| c.clear_packets())
+        }
+    }
+
+    fn record_probe(
+        &mut self,
+        id: ProbeId,
+        origin: ClientId,
+        request: ProbeRequest,
+        sent_at: Instant,
+    ) {
+        let route = self.route_for_application_packet(
+            origin,
+            request.source(),
+            request.destination(),
+            request.protocol(),
+            sent_at,
+        );
+        let outcome = self
+            .clients
+            .get_mut(&origin)
+            .unwrap()
+            .exec_mut(|client| client.on_packet(request.destination().clone(), route, sent_at));
+        let trace_requirement = self.trace_requirement(origin, outcome, sent_at);
+        let previous = self.expected_probes.insert(
+            id,
+            ExpectedProbe {
+                id,
+                origin,
+                sent_at,
+                request,
+                outcome,
+                trace_requirement,
+            },
+        );
+
+        assert!(previous.is_none(), "probe IDs must be unique");
+    }
+
+    fn route_for_application_packet(
+        &mut self,
+        origin: ClientId,
+        source: IpAddr,
+        destination: &Destination,
+        protocol: Protocol,
+        sent_at: Instant,
+    ) -> PacketRoute {
+        let route = self.route_for_packet(origin, source, destination, protocol);
+        let PacketRoute::Resource { resource, gateway } = route else {
+            return route;
+        };
+        let Destination::DomainName { name, .. } = destination else {
+            return route;
+        };
+
+        let resolved_at = self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
+            client.prepare_dns_resource_connection(resource, sent_at);
+            client.dns_resource_resolution(resource, name)
+        });
+        let has_compatible_record = resolved_at.is_some_and(|resolved_at| {
+            self.global_dns_records
+                .domain_ips_iter(name, resolved_at)
+                .any(|ip| ip.is_ipv4() == source.is_ipv4())
+        });
+        if has_compatible_record {
+            return route;
+        }
+
+        PacketRoute::ResourceUnreachableByGateway { resource, gateway }
+    }
+
+    fn trace_requirement(
+        &self,
+        origin: ClientId,
+        outcome: ExpectedOutcome,
+        sent_at: Instant,
+    ) -> TraceRequirement {
+        let known_loss = match outcome {
+            ExpectedOutcome::Dropped => None,
+            ExpectedOutcome::RoundTripCompleted {
+                remote: Remote::Client(client),
+                ..
+            } if self
+                .clients
+                .get(&client)
+                .unwrap()
+                .inner()
+                .has_reset_connections_within_ice_timeout(sent_at) =>
+            {
+                Some(KnownLoss::ConnectionReset)
+            }
+            ExpectedOutcome::RoundTripCompleted { remote, .. } => self
+                .can_drop_during_rekey(origin, remote, sent_at)
+                .then_some(KnownLoss::WireGuardRekey),
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Local,
+                ..
+            } => None,
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Gateway(gateway),
+                ..
+            } => self
+                .can_drop_during_rekey(origin, Remote::Gateway(gateway), sent_at)
+                .then_some(KnownLoss::WireGuardRekey),
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Client(client),
+                ..
+            } => self
+                .can_drop_during_rekey(origin, Remote::Client(client), sent_at)
+                .then_some(KnownLoss::WireGuardRekey),
+        };
+
+        match known_loss {
+            Some(loss) => TraceRequirement::ExactOrSubmissionOnly(loss),
+            None => TraceRequirement::Exact,
+        }
+    }
+
+    fn can_drop_during_rekey(&self, origin: ClientId, remote: Remote, sent_at: Instant) -> bool {
+        let client = self.clients.get(&origin).unwrap().inner();
+
+        match remote {
+            Remote::Gateway(gateway) => client
+                .last_packet_sent_to_gateway_before(gateway, sent_at)
+                .is_none_or(|previous| sent_at.duration_since(previous) >= MIN_IDLE_FOR_REKEY_DROP),
+            Remote::Client(remote) => client
+                .last_packet_sent_to_client_before(remote, sent_at)
+                .is_some_and(|previous| {
+                    sent_at.duration_since(previous) >= MIN_IDLE_FOR_REKEY_DROP
+                }),
         }
     }
 }

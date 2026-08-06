@@ -7,7 +7,6 @@ use std::{
 use connlib_model::ClientId;
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use ip_packet::Protocol;
 use tunnel_proto::messages::{Filter, PortRange, client::DevicePoolMember};
 
 use super::context::Generator;
@@ -182,11 +181,7 @@ pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<PacketTarget>
         .collect::<Vec<_>>()
 }
 
-pub(super) fn generate(
-    g: &mut Generator,
-    state: &ReferenceState,
-    target: PacketTarget,
-) -> Transition {
+pub(super) fn generate(g: &mut Generator, target: PacketTarget) -> Transition {
     match target {
         PacketTarget::Cidr {
             client_id,
@@ -195,7 +190,7 @@ pub(super) fn generate(
             filters,
         } => {
             let dst = DstSpec::Ip(host_in_network(g, network));
-            arb_filtered_packet(g, state, client_id, src, dst, &filters)
+            arb_filtered_packet(g, client_id, src, dst, &filters)
         }
         PacketTarget::Dns {
             client_id,
@@ -212,27 +207,19 @@ pub(super) fn generate(
                 });
 
             if can_connect_tcp && !tcp_service_ports.is_empty() && g.bool() {
-                arb_tcp_connection(
-                    g,
-                    state,
-                    client_id,
-                    src,
-                    domain,
-                    &filters,
-                    &tcp_service_ports,
-                )
+                arb_tcp_connection(g, client_id, src, domain, &filters, &tcp_service_ports)
             } else {
-                arb_filtered_packet(g, state, client_id, src, DstSpec::Domain(domain), &filters)
+                arb_filtered_packet(g, client_id, src, DstSpec::Domain(domain), &filters)
             }
         }
         PacketTarget::NonResource {
             client_id,
             src,
             dst,
-        } => arb_unfiltered_packet(g, state, client_id, src, dst, true),
+        } => arb_unfiltered_packet(g, client_id, src, dst, true),
         PacketTarget::InternetResourceRejectedAddress { client_id, src } => {
             let dst = internet_resource_rejected_destination(g, src);
-            arb_unfiltered_packet(g, state, client_id, src, dst, true)
+            arb_unfiltered_packet(g, client_id, src, dst, true)
         }
         PacketTarget::ConnectedGateway {
             client_id,
@@ -240,14 +227,14 @@ pub(super) fn generate(
             network,
         } => {
             let dst = host_in_network(g, network);
-            arb_unfiltered_packet(g, state, client_id, src, dst, false)
+            arb_unfiltered_packet(g, client_id, src, dst, false)
         }
         PacketTarget::Peer {
             client_id,
             src,
             dst,
             filters,
-        } => arb_filtered_packet(g, state, client_id, src, DstSpec::Ip(dst), &filters),
+        } => arb_filtered_packet(g, client_id, src, DstSpec::Ip(dst), &filters),
     }
 }
 
@@ -367,7 +354,6 @@ fn tcp_service_ports(state: &ReferenceState, domain: &DomainName, ipv4: bool) ->
 
 fn arb_filtered_packet(
     g: &mut Generator,
-    state: &ReferenceState,
     client_id: ClientId,
     src: IpAddr,
     dst: DstSpec,
@@ -397,29 +383,28 @@ fn arb_filtered_packet(
     if use_matching {
         let filter = usable[g.choose_index(usable.len())];
         match filter {
-            Filter::Icmp => arb_icmp_packet(g, state, client_id, src, dst),
+            Filter::Icmp => arb_icmp_packet(g, client_id, src, dst),
             Filter::Udp(PortRange {
                 port_range_start,
                 port_range_end,
             }) => {
                 let dport = g.u16_in(port_range_start..=port_range_end);
-                arb_udp_packet(g, state, client_id, src, dst, dport)
+                arb_udp_packet(g, client_id, src, dst, dport)
             }
             Filter::Tcp(_) => unreachable!("TCP filters were excluded above"),
         }
     } else {
         if g.bool() {
-            arb_icmp_packet(g, state, client_id, src, dst)
+            arb_icmp_packet(g, client_id, src, dst)
         } else {
             let dport = arb_non_dns_port(g);
-            arb_udp_packet(g, state, client_id, src, dst, dport)
+            arb_udp_packet(g, client_id, src, dst, dport)
         }
     }
 }
 
 fn arb_tcp_connection(
     g: &mut Generator,
-    state: &ReferenceState,
     client_id: ClientId,
     src: IpAddr,
     domain: DomainName,
@@ -458,12 +443,10 @@ fn arb_tcp_connection(
 
     let (sport, dport) = g.fresh_tcp_connection(dport);
     let dst = arb_destination(g, DstSpec::Domain(domain));
-    let expected_route = state.route_for_packet(client_id, src, &dst, Protocol::Tcp(dport.0));
     Transition::ConnectTcp {
         client_id,
         src,
         dst,
-        expected_route,
         sport,
         dport,
     }
@@ -471,21 +454,20 @@ fn arb_tcp_connection(
 
 fn arb_unfiltered_packet(
     g: &mut Generator,
-    state: &ReferenceState,
     client_id: ClientId,
     src: IpAddr,
     dst: IpAddr,
     allow_dns_ports: bool,
 ) -> Transition {
     if g.bool() {
-        arb_icmp_packet(g, state, client_id, src, DstSpec::Ip(dst))
+        arb_icmp_packet(g, client_id, src, DstSpec::Ip(dst))
     } else {
         let dport = if allow_dns_ports {
             g.u16()
         } else {
             arb_non_dns_port(g)
         };
-        arb_udp_packet(g, state, client_id, src, DstSpec::Ip(dst), dport)
+        arb_udp_packet(g, client_id, src, DstSpec::Ip(dst), dport)
     }
 }
 fn offline_static_pool_members(
@@ -502,31 +484,26 @@ fn offline_static_pool_members(
 
 fn arb_icmp_packet(
     g: &mut Generator,
-    state: &ReferenceState,
     client_id: ClientId,
     src: IpAddr,
     dst: DstSpec,
 ) -> Transition {
     let (seq, identifier) = g.fresh_icmp_packet();
     let resolved_ip = g.u32();
-    let payload = g.fresh_payload();
+    let probe_id = g.fresh_probe_id();
     let dst = into_destination(dst, resolved_ip);
-    let expected_route =
-        state.route_for_packet(client_id, src, &dst, Protocol::IcmpEcho(identifier.0));
     Transition::SendIcmpPacket {
         client_id,
         src,
         dst,
-        expected_route,
         seq,
         identifier,
-        payload,
+        probe_id,
     }
 }
 
 fn arb_udp_packet(
     g: &mut Generator,
-    state: &ReferenceState,
     client_id: ClientId,
     src: IpAddr,
     dst: DstSpec,
@@ -534,17 +511,15 @@ fn arb_udp_packet(
 ) -> Transition {
     let (sport, dport) = g.fresh_udp_packet(dport);
     let resolved_ip = g.u32();
-    let payload = g.fresh_payload();
+    let probe_id = g.fresh_probe_id();
     let dst = into_destination(dst, resolved_ip);
-    let expected_route = state.route_for_packet(client_id, src, &dst, Protocol::Udp(dport.0));
     Transition::SendUdpPacket {
         client_id,
         src,
         dst,
-        expected_route,
         sport,
         dport,
-        payload,
+        probe_id,
     }
 }
 
