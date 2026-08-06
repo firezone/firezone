@@ -4,6 +4,7 @@
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+mod client_auth;
 mod fd;
 mod platform;
 
@@ -47,6 +48,32 @@ pub struct ConnlibError(anyhow::Error);
 pub enum CallbackError {
     #[error("{0}")]
     Failed(String),
+}
+
+/// TLS handshake signature schemes supported by a platform-managed client identity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum TlsSignatureScheme {
+    RsaPkcs1Sha256,
+    RsaPkcs1Sha384,
+    RsaPkcs1Sha512,
+    RsaPssSha256,
+    RsaPssSha384,
+    RsaPssSha512,
+    EcdsaNistp256Sha256,
+    EcdsaNistp384Sha384,
+    EcdsaNistp521Sha512,
+}
+
+/// A certificate chain and non-exportable platform key used for mutual TLS.
+#[uniffi::export(with_foreign)]
+pub trait ClientTlsIdentity: Send + Sync + fmt::Debug {
+    /// DER-encoded certificate chain, leaf first.
+    fn certificate_chain(&self) -> Result<Vec<Vec<u8>>, CallbackError>;
+
+    fn supported_signature_schemes(&self) -> Vec<TlsSignatureScheme>;
+
+    /// Signs the unhashed TLS handshake message with the requested scheme.
+    fn sign(&self, scheme: TlsSignatureScheme, message: Vec<u8>) -> Result<Vec<u8>, CallbackError>;
 }
 
 #[derive(uniffi::Object, Debug)]
@@ -190,6 +217,10 @@ impl DisconnectError {
     pub fn is_authentication_error(&self) -> bool {
         self.0.is_authentication_error()
     }
+
+    pub fn is_device_trust_error(&self) -> bool {
+        self.0.is_device_trust_error()
+    }
 }
 
 #[uniffi::export(with_foreign)]
@@ -231,6 +262,8 @@ impl Session {
             flow_logs_dir,
             device_info,
             is_internet_resource_active,
+            None,
+            None,
             tcp_socket_factory,
             udp_socket_factory,
         )
@@ -272,6 +305,8 @@ impl Session {
             flow_logs_dir,
             device_info,
             is_internet_resource_active,
+            None,
+            None,
             tcp_socket_factory,
             udp_socket_factory,
         )?;
@@ -318,6 +353,8 @@ impl Session {
             flow_logs_dir,
             device_info,
             is_internet_resource_active,
+            None,
+            None,
             tcp_socket_factory,
             udp_socket_factory,
         )?;
@@ -524,6 +561,8 @@ fn connect(
     flow_logs_dir: Option<String>,
     device_info: DeviceInfo,
     is_internet_resource_active: bool,
+    mdm_device_id: Option<String>,
+    tls_client_config: Option<Arc<rustls::ClientConfig>>,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 ) -> Result<Session, ConnlibError> {
@@ -556,11 +595,13 @@ fn connect(
     telemetry::start(&api_url, RELEASE, platform::DSN);
     telemetry::set_firezone_id(device_id.clone());
     telemetry::set_account_slug(account_slug.clone());
+    telemetry::set_mdm_device_id(mdm_device_id);
 
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
 
+    let portal_api_url = portal_api_url(&api_url, tls_client_config.is_some())?;
     let url = LoginUrl::client(
-        api_url.as_str(),
+        portal_api_url.as_str(),
         device_id.clone(),
         device_name,
         device_info,
@@ -582,6 +623,10 @@ fn connect(
         },
         tcp_socket_factory.clone(),
     );
+    let portal = match tls_client_config {
+        Some(config) => portal.with_tls_client_config(config),
+        None => portal,
+    };
     // The uploader lives and dies with the session (idle, it would only poll
     // and dial); registered so `drain_flow_logs` nudges it instead of racing it.
     let uploader = flow_logs_dir.clone().map(|dir| {
@@ -611,6 +656,43 @@ fn connect(
         runtime: Some(runtime),
         uploader,
     })
+}
+
+#[doc(hidden)]
+pub fn tls_client_config(
+    identity: Arc<dyn ClientTlsIdentity>,
+) -> Result<Arc<rustls::ClientConfig>> {
+    use rustls::sign::SingleCertAndKey;
+    use rustls_platform_verifier::BuilderVerifierExt as _;
+
+    install_rustls_crypto_provider();
+    let certified_key = client_auth::certified_key(identity)?;
+    let resolver = Arc::new(SingleCertAndKey::from(certified_key));
+    let config = rustls::ClientConfig::builder()
+        .with_platform_verifier()
+        .context("Failed to configure the TLS server certificate verifier")?
+        .with_client_cert_resolver(resolver);
+
+    Ok(Arc::new(config))
+}
+
+fn portal_api_url(api_url: &str, use_client_certificate: bool) -> Result<String> {
+    if !use_client_certificate {
+        return Ok(api_url.to_owned());
+    }
+
+    let mut url = url::Url::parse(api_url).context("Failed to parse the API URL")?;
+    let mtls_host = match url.host_str() {
+        Some("api.firez.one") => Some("mtls.firez.one"),
+        Some("api.firezone.dev") => Some("mtls.firezone.dev"),
+        _ => None,
+    };
+    if let Some(host) = mtls_host {
+        url.set_host(Some(host))
+            .map_err(|_| anyhow!("Failed to set the mTLS API host"))?;
+    }
+
+    Ok(url.into())
 }
 
 fn start_telemetry_inner(tcp: Arc<dyn SocketFactory<TcpSocket>>) {
@@ -905,5 +987,36 @@ impl From<anyhow::Error> for ConnlibError {
 impl From<uniffi::UnexpectedUniFFICallbackError> for CallbackError {
     fn from(value: uniffi::UnexpectedUniFFICallbackError) -> Self {
         Self::Failed(format!("Callback failed: {}", value.reason))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn client_certificate_uses_mtls_api_host() {
+        assert_eq!(
+            portal_api_url("wss://api.firez.one:444/custom?foo=bar", true)
+                .expect("valid production API URL"),
+            "wss://mtls.firez.one:444/custom?foo=bar"
+        );
+        assert_eq!(
+            portal_api_url("wss://api.firezone.dev/custom?foo=bar", true)
+                .expect("valid staging API URL"),
+            "wss://mtls.firezone.dev/custom?foo=bar"
+        );
+    }
+
+    #[test]
+    fn unattested_and_custom_api_urls_are_unchanged() {
+        assert_eq!(
+            portal_api_url("wss://api.firezone.dev", false).expect("valid API URL"),
+            "wss://api.firezone.dev"
+        );
+        assert_eq!(
+            portal_api_url("wss://portal.example.com/client", true).expect("valid custom API URL"),
+            "wss://portal.example.com/client"
+        );
     }
 }
