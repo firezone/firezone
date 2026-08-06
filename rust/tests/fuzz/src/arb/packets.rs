@@ -452,8 +452,9 @@ fn arb_tcp_connection(
         let r = tcp_filters[g.choose_index(tcp_filters.len())];
         g.u16_in(r.port_range_start..=r.port_range_end)
     } else {
-        arb_non_dns_port(g).max(1)
+        arb_non_dns_port(g)
     };
+    let dport = dport.max(1);
 
     let (sport, dport) = g.fresh_tcp_connection(dport);
     let dst = arb_destination(g, DstSpec::Domain(domain));
