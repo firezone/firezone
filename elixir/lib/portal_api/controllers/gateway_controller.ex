@@ -261,8 +261,23 @@ defmodule PortalAPI.GatewayController do
     def list_gateways(subject, opts \\ []) do
       from(d in Device, as: :gateways)
       |> where([gateways: d], d.type == :gateway)
+      |> with_token_rotation()
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
+    end
+
+    # Surfaces the rotation state of the token the gateway last connected
+    # with, so a caller can tell a pending rotation from a completed one.
+    # Left join because gateway_token_id is null until the gateway's first
+    # connect, and select_merge because rotated_at lives on the token
+    # rather than the device.
+    defp with_token_rotation(queryable) do
+      queryable
+      |> join(:left, [gateways: d], t in Portal.GatewayToken,
+        on: t.id == d.gateway_token_id and t.account_id == d.account_id,
+        as: :gateway_token
+      )
+      |> select_merge([gateway_token: t], %{gateway_token_rotated_at: t.rotated_at})
     end
 
     def cursor_fields do
@@ -331,6 +346,7 @@ defmodule PortalAPI.GatewayController do
       result =
         from(d in Device, as: :gateways)
         |> where([gateways: d], d.id == ^id and d.type == :gateway and d.site_id == ^site_id)
+        |> with_token_rotation()
         |> Safe.scoped(subject)
         |> Safe.one()
 
