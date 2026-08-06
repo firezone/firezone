@@ -1242,7 +1242,7 @@ defmodule PortalWeb.Resources.Components do
         <p class="text-sm font-medium text-heading">No devices in this pool</p>
         <p class="text-xs text-subtle max-w-sm">
           An empty pool has nothing to connect to, so any Policy granting access to it has no
-          effect. Edit this Resource to add Clients.
+          effect. Edit this Resource to add devices.
         </p>
       </div>
       <div :if={@clients != []} class="flex-1 overflow-y-auto">
