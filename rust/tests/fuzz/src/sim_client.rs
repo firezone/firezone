@@ -2,7 +2,10 @@ use super::{
     QueryId,
     echo::echo_reply,
     icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
-    probe::{ProbeId, ProbeObservation, ProbeProtocol, Remote},
+    probe::{
+        ProbeId, ProbeObservation, ProbeProtocol, ReceivedRequest, ReceivedResponse, Remote,
+        SubmittedRequest,
+    },
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
@@ -238,12 +241,12 @@ impl SimClient {
         assert!(previous.is_none(), "probe transport tuples must be unique");
 
         self.probe_observations
-            .push(ProbeObservation::RequestSubmitted {
+            .push(ProbeObservation::RequestSubmitted(SubmittedRequest {
                 id,
                 at: now,
                 client: self.id,
                 packet: packet.clone(),
-            });
+            }));
 
         self.encapsulate(packet, now)
     }
@@ -559,22 +562,22 @@ impl SimClient {
 
     fn record_received_request(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
         self.probe_observations
-            .push(ProbeObservation::RequestReceived {
+            .push(ProbeObservation::RequestReceived(ReceivedRequest {
                 id,
                 at,
                 remote: Remote::Client(self.id),
                 packet,
-            });
+            }));
     }
 
     fn record_received_response(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
         self.probe_observations
-            .push(ProbeObservation::ResponseReceived {
+            .push(ProbeObservation::ResponseReceived(ReceivedResponse {
                 id,
                 at,
                 client: self.id,
                 packet,
-            });
+            }));
     }
 
     pub(crate) fn clear_packets(&mut self) {
