@@ -779,7 +779,7 @@ impl RefClient {
                 self.expect_dns_response(query);
                 return;
             }
-            DnsQueryName::UnassignedIp(_) => {
+            DnsQueryName::UnassignedIpAfter(_) => {
                 debug_assert_eq!(query.r_type, RecordType::PTR);
 
                 self.on_recursive_dns_query(query, upstream_do53, icmp_error_hosts);

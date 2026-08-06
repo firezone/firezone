@@ -221,12 +221,13 @@ impl SimClient {
 
                 ips.iter().nth(index as usize % ips.len()).copied().unwrap()
             }
-            DnsQueryName::UnassignedIp(mut ip) => {
+            DnsQueryName::UnassignedIpAfter(ip) => {
                 let assigned_ips = self
                     .dns_resource_record_cache
                     .iter()
                     .flat_map(|record| record.ips.iter().copied())
                     .collect::<BTreeSet<_>>();
+                let mut ip = next_ip(ip);
 
                 while assigned_ips.contains(&ip) {
                     ip = next_ip(ip);

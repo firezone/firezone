@@ -153,7 +153,7 @@ impl DnsQuery {
         match &self.name {
             DnsQueryName::Name(domain) => Some(domain),
             DnsQueryName::AssignedProxy { .. } => None,
-            DnsQueryName::UnassignedIp(_) => None,
+            DnsQueryName::UnassignedIpAfter(_) => None,
         }
     }
 }
@@ -162,7 +162,7 @@ impl DnsQuery {
 pub(crate) enum DnsQueryName {
     Name(DomainName),
     AssignedProxy { family: IpFamily, index: u32 },
-    UnassignedIp(IpAddr),
+    UnassignedIpAfter(IpAddr),
 }
 
 #[derive(Debug, Clone, Copy)]

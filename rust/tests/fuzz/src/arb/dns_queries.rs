@@ -157,7 +157,7 @@ pub(super) fn generate(
 
 fn arb_ptr_query_name(g: &mut Generator, has_assigned_proxies: bool) -> DnsQueryName {
     if !has_assigned_proxies || g.bool() {
-        return DnsQueryName::UnassignedIp(arb_ptr_query_ip(g));
+        return DnsQueryName::UnassignedIpAfter(arb_ptr_query_ip(g));
     }
 
     DnsQueryName::AssignedProxy {
