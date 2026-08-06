@@ -1294,6 +1294,7 @@ dependencies = [
  "tun",
  "tunnel-bypass-resolver",
  "uniffi",
+ "url",
 ]
 
 [[package]]
