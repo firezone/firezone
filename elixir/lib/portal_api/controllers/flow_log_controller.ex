@@ -186,9 +186,10 @@ defmodule PortalAPI.FlowLogController do
   end
 
   defp outers_for_storage(changeset) do
-    if is_nil(get_field(changeset, :flow_end)),
-      do: nil,
-      else: get_field(changeset, :outers)
+    case get_field(changeset, :outers) do
+      [] -> nil
+      outers -> outers
+    end
   end
 
   defp render_validation_errors(errors) do
