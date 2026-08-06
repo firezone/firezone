@@ -205,10 +205,10 @@ defmodule Portal.FlowLog do
                             initiator_device_firebase_installation_id domain]a
 
   # The attribution snapshot, inner tunnel tuple, protocol, and flow_start are
-  # all known when a flow side opens, so they are required. The accumulated
-  # outer paths, flow_end, last_packet, and byte/packet counters arrive only on
-  # close and are nullable to support open-then-close reporting; domain is
-  # nullable because only DNS resources carry one,
+  # all known when a flow side opens, so they are required. Outer paths may be
+  # included on open and are replaced by the complete accumulated path list on
+  # close. flow_end, last_packet, and byte/packet counters are nullable to
+  # support open-then-close reporting; domain is nullable because only DNS resources carry one,
   # resource_address because internet and device-pool resources have none, and
   # initiator_actor_email / initiator_auth_provider_id because not every actor
   # or credential has one.
@@ -310,8 +310,7 @@ defmodule Portal.FlowLog do
 
   defp validate_outers_match_flow_state(changeset) do
     case {get_field(changeset, :flow_end), get_field(changeset, :outers)} do
-      {nil, []} -> changeset
-      {nil, _outers} -> add_error(changeset, :outers, "must be absent while the flow is open")
+      {nil, _outers} -> changeset
       {_flow_end, []} -> add_error(changeset, :outers, "can't be blank")
       {_flow_end, _outers} -> changeset
     end
