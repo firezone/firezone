@@ -24,12 +24,12 @@ pub struct DnsResourceNat {
 }
 
 impl DnsResourceNat {
-    pub fn update(
+    pub fn update<'a>(
         &mut self,
         domain: DomainName,
         gid: GatewayId,
         rid: ResourceId,
-        proxy_ips: &[IpAddr],
+        proxy_ips: impl IntoIterator<Item = &'a IpAddr>,
         packets_for_domain: VecDeque<IpPacket>,
         now: Instant,
     ) -> Result<()> {
@@ -44,7 +44,7 @@ impl DnsResourceNat {
                 let assigned_ips = p2p_control::dns_resource_nat::assigned_ips(
                     rid,
                     domain.clone(),
-                    proxy_ips.to_vec(),
+                    proxy_ips.into_iter().copied().collect(),
                 )?;
 
                 v.insert((
