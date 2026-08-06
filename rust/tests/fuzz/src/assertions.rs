@@ -65,66 +65,32 @@ pub(crate) fn assert_probes(
             .copied()
             .filter(|event| event.id == expected.id)
             .collect_vec();
-        let trace = match observed_trace(expected, &events) {
-            Ok(trace) => trace,
-            Err(reason) => {
-                tracing::debug!(target: "assertions", ?expected, ?events, %reason);
-                tracing::error!(target: "assertions", id = ?expected.id, %reason, "Probe trace does not match");
-                continue;
-            }
-        };
 
-        assert_injected_probe(expected, trace.injected);
-
-        match expected.outcome {
-            ExpectedOutcome::Dropped => {}
-            ExpectedOutcome::Delivered { .. } => {
-                let Some(delivered) = trace.delivered else {
-                    continue;
-                };
-                let Some(returned) = trace.returned else {
-                    continue;
-                };
-
-                assert_delivered_probe(
-                    expected,
-                    trace.injected,
-                    delivered,
-                    ref_clients,
-                    sim_gateways,
-                    global_dns_records,
-                    &mut mappings,
-                );
-                assert_delivered_return(
-                    expected,
-                    trace.injected,
-                    delivered,
-                    returned,
-                    icmp_error_hosts,
-                );
-            }
-            ExpectedOutcome::Rejected { response, .. } => {
-                let Some(returned) = trace.returned else {
-                    continue;
-                };
-
-                assert_icmp_error_return(expected, trace.injected, returned, Some(response));
-            }
+        let result = assert_probe(
+            expected,
+            &events,
+            ref_clients,
+            sim_gateways,
+            global_dns_records,
+            icmp_error_hosts,
+            &mut mappings,
+        );
+        if let Err(reason) = result {
+            tracing::debug!(target: "assertions", ?expected, ?events, %reason);
+            tracing::error!(target: "assertions", id = ?expected.id, %reason, "Probe trace does not match");
         }
     }
 }
 
-#[derive(Debug)]
-struct ObservedTrace<'a> {
-    injected: &'a ProbeEvent,
-    delivered: Option<&'a ProbeEvent>,
-    returned: Option<&'a ProbeEvent>,
-}
-
-fn observed_trace<'a>(
+fn assert_probe(
     expected: &ExpectedProbe,
-    events: &'a [&'a ProbeEvent],
-) -> Result<ObservedTrace<'a>, &'static str> {
+    events: &[&ProbeEvent],
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
+    global_dns_records: &DnsRecords,
+    icmp_error_hosts: &IcmpErrorHosts,
+    mappings: &mut BTreeMap<(ClientId, DomainName, Instant), HashMap<IpAddr, IpAddr>>,
+) -> Result<(), &'static str> {
     let injected = events
         .iter()
         .copied()
@@ -141,11 +107,11 @@ fn observed_trace<'a>(
         .filter(|event| matches!(event.kind, ProbeEventKind::Returned { .. }))
         .collect_vec();
 
-    if injected.len() != 1 {
+    let [injected] = injected.as_slice() else {
         return Err("expected exactly one injection");
-    }
+    };
+    let injected = *injected;
 
-    let injected = injected[0];
     if injected.kind
         != (ProbeEventKind::Injected {
             client: expected.origin,
@@ -154,48 +120,41 @@ fn observed_trace<'a>(
         return Err("probe was injected by the wrong client");
     }
 
-    let absence_is_allowed = matches!(
+    assert_injected_probe(expected, injected);
+
+    if let (TraceRequirement::ExactOrNoRemoteEvents(reason), [], []) = (
         expected.trace_requirement,
-        TraceRequirement::ExactOrNoRemoteEvents(_)
-    );
-    if absence_is_allowed && delivered.is_empty() && returned.is_empty() {
-        return Ok(ObservedTrace {
-            injected,
-            delivered: None,
-            returned: None,
-        });
+        delivered.as_slice(),
+        returned.as_slice(),
+    ) {
+        tracing::debug!(target: "assertions", id = ?expected.id, ?reason, "Probe has no remote events where loss is allowed");
+        return Ok(());
     }
 
     match expected.outcome {
         ExpectedOutcome::Dropped => {
-            if !delivered.is_empty() || !returned.is_empty() {
+            let ([], []) = (delivered.as_slice(), returned.as_slice()) else {
                 return Err("dropped probe produced remote events");
-            }
-
-            Ok(ObservedTrace {
-                injected,
-                delivered: None,
-                returned: None,
-            })
+            };
         }
         ExpectedOutcome::Delivered {
             remote: expected_remote,
             ..
         } => {
-            if delivered.len() != 1 {
-                return Err("delivered probe did not have exactly one delivery");
-            }
-            if returned.len() != 1 {
-                return Err("delivered probe did not have exactly one return");
-            }
-            if delivered[0].kind
+            let ([delivered], [returned]) = (delivered.as_slice(), returned.as_slice()) else {
+                return Err("delivered probe did not have exactly one delivery and one return");
+            };
+            let delivered = *delivered;
+            let returned = *returned;
+
+            if delivered.kind
                 != (ProbeEventKind::Delivered {
                     remote: expected_remote,
                 })
             {
                 return Err("probe was delivered to the wrong remote");
             }
-            if returned[0].kind
+            if returned.kind
                 != (ProbeEventKind::Returned {
                     client: expected.origin,
                 })
@@ -203,20 +162,24 @@ fn observed_trace<'a>(
                 return Err("probe returned to the wrong client");
             }
 
-            Ok(ObservedTrace {
+            assert_delivered_probe(
+                expected,
                 injected,
-                delivered: Some(delivered[0]),
-                returned: Some(returned[0]),
-            })
+                delivered,
+                ref_clients,
+                sim_gateways,
+                global_dns_records,
+                mappings,
+            );
+            assert_delivered_return(expected, injected, delivered, returned, icmp_error_hosts);
         }
-        ExpectedOutcome::Rejected { .. } => {
-            if !delivered.is_empty() {
-                return Err("rejected probe was delivered");
-            }
-            if returned.len() != 1 {
-                return Err("rejected probe did not have exactly one return");
-            }
-            if returned[0].kind
+        ExpectedOutcome::Rejected { response, .. } => {
+            let ([], [returned]) = (delivered.as_slice(), returned.as_slice()) else {
+                return Err("rejected probe did not have exactly one return and no deliveries");
+            };
+            let returned = *returned;
+
+            if returned.kind
                 != (ProbeEventKind::Returned {
                     client: expected.origin,
                 })
@@ -224,13 +187,11 @@ fn observed_trace<'a>(
                 return Err("rejected probe returned to the wrong client");
             }
 
-            Ok(ObservedTrace {
-                injected,
-                delivered: None,
-                returned: Some(returned[0]),
-            })
+            assert_icmp_error_return(expected, injected, returned, Some(response));
         }
     }
+
+    Ok(())
 }
 
 fn assert_injected_probe(expected: &ExpectedProbe, injected: &ProbeEvent) {
@@ -363,12 +324,11 @@ fn remote_returns_icmp_error(
     icmp_error_hosts: &IcmpErrorHosts,
 ) -> bool {
     let is_icmp_peer = matches!(
-        (&expected.request, expected.outcome),
+        (&expected.request, delivered.kind),
         (
             ProbeRequest::Icmp { .. },
-            ExpectedOutcome::Delivered {
+            ProbeEventKind::Delivered {
                 remote: Remote::Client(_),
-                ..
             }
         )
     );
