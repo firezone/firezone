@@ -252,8 +252,7 @@ defmodule PortalAPI.Client.Socket do
   defp assign_connect(socket, subject, client, version, attested?) do
     socket
     |> assign(:subject, subject)
-    |> assign(:client, client)
-    |> assign(:attested?, attested?)
+    |> assign(:client, %{client | attested?: attested?})
     |> assign(:session_ref, make_ref())
     |> assign(:client_version, version)
     |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())

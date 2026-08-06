@@ -514,7 +514,7 @@ defmodule PortalAPI.Client.SocketTest do
       connect_info = attested_connect_info(pki, token)
 
       assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
-      assert socket.assigns.attested?
+      assert socket.assigns.client.attested?
       assert socket.assigns.client.last_attested_device_serial == "C02XK1ZGJGH5"
       assert socket.assigns.client.last_attested_cert_fingerprint
     end
@@ -565,7 +565,7 @@ defmodule PortalAPI.Client.SocketTest do
         )
 
       assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
-      refute socket.assigns.attested?
+      refute socket.assigns.client.attested?
       assert is_nil(socket.assigns.client.last_attested_device_serial)
     end
 
@@ -583,7 +583,7 @@ defmodule PortalAPI.Client.SocketTest do
                    connect_info: attested_connect_info(pki, encode_token(token))
                  )
 
-        assert socket.assigns.attested?
+        assert socket.assigns.client.attested?
 
         bare_token = client_token_fixture(account: account, actor: actor)
 

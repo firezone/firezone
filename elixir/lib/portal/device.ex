@@ -40,6 +40,7 @@ defmodule Portal.Device do
           ipv4: Postgrex.INET.t(),
           ipv6: Postgrex.INET.t(),
           online?: boolean(),
+          attested?: boolean(),
           firezone_id_merged?: boolean(),
           public_key: String.t() | nil,
           last_seen_user_agent: String.t() | nil,
@@ -130,6 +131,12 @@ defmodule Portal.Device do
 
     # Virtual fields
     field :online?, :boolean, virtual: true, default: false
+
+    # Whether THIS connection proved possession of an MDM-issued certificate.
+    # Live connection state, unlike last_attested_at, which is the row's
+    # point-in-time history. Policy conditions read this, so it must describe
+    # the session being evaluated and never the device's past.
+    field :attested?, :boolean, virtual: true, default: false
 
     # Set when this connect adopted a new firezone_id (attested-first merge).
     # The session flush persists firezone_id only for merged connects, so the

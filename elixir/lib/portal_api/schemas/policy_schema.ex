@@ -27,7 +27,13 @@ defmodule PortalAPI.Schemas.Policy do
         comma-separated list of `HH:MM-HH:MM` ranges, and `TIMEZONE` is an
         IANA timezone name, e.g. `"M/09:00-17:00/America/New_York"`.
       * `client_verified` with `is`: `values` is a single-element list
-        containing `"true"` or `"false"`.
+        containing `"true"` or `"false"`. An administrator marks a Client
+        verified by hand.
+      * `client_attested` with `is`: `values` is a single-element list
+        containing `"true"` or `"false"`. A Client is attested when the
+        connection itself proved possession of an MDM-issued client
+        certificate, so this is evaluated per connection rather than from
+        anything stored on the Client. It supersedes `client_verified`.
       """,
       type: :object,
       properties: %{
@@ -39,7 +45,8 @@ defmodule PortalAPI.Schemas.Policy do
             "remote_ip",
             "auth_provider_id",
             "current_utc_datetime",
-            "client_verified"
+            "client_verified",
+            "client_attested"
           ]
         },
         operator: %Schema{
