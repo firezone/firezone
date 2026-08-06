@@ -26,6 +26,7 @@ otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 phoenix-channel = { workspace = true }
 rustls = { workspace = true }
+rustls-platform-verifier = { workspace = true }
 secrecy = { workspace = true }
 socket-factory = { workspace = true }
 telemetry = { workspace = true }
@@ -36,6 +37,7 @@ tracing-subscriber = { workspace = true }
 tun = { workspace = true }
 tunnel-bypass-resolver = { workspace = true }
 uniffi = { workspace = true }
+url = { workspace = true }
 
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 oslog = { version = "0.2.0", default-features = false }
@@ -48,7 +50,6 @@ mimalloc = { workspace = true }
 android_log-sys = "0.3.2"
 jni = { workspace = true }
 mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # The Android `cdylib` is `dlopen`-ed, so it needs the dynamic TLS model.
-rustls-platform-verifier = { workspace = true }
 
 [lints]
 workspace = true

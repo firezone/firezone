@@ -125,6 +125,11 @@ impl DisconnectError {
 
         e.is_authentication_error()
     }
+
+    pub fn is_device_trust_error(&self) -> bool {
+        phoenix_channel::http_error_body(&self.0)
+            .is_some_and(|body| body.contains("device_untrusted"))
+    }
 }
 
 impl Eventloop {
