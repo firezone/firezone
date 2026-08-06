@@ -38,6 +38,7 @@ defmodule PortalAPI.Client.DeviceTrust do
 
   alias Portal.Crypto.X509
   alias __MODULE__.Database
+  require Logger
 
   # Mirrors the trust anchor upload bound. Bandit rejects any header over
   # 10_000 bytes on the wire first, so a certificate large enough to reach
@@ -118,7 +119,7 @@ defmodule PortalAPI.Client.DeviceTrust do
 
   @type verified :: %{
           identifiers: identifiers(),
-          last_attested_cert_serial: String.t() | nil,
+          last_attested_cert_serial: String.t(),
           last_attested_cert_fingerprint: String.t()
         }
 
@@ -131,6 +132,7 @@ defmodule PortalAPI.Client.DeviceTrust do
           | :missing_digital_signature_key_usage
           | :outside_validity_window
           | :untrusted_chain
+          | :malformed_cert_serial
           | :no_device_identifiers
 
   @doc """
@@ -146,15 +148,16 @@ defmodule PortalAPI.Client.DeviceTrust do
           {:ok, verified()} | {:error, reason()}
   def attest(connect_info, subject) do
     with :ok <- validate_attestation_host(connect_info),
-         {:ok, anchors} <- fetch_anchors(subject),
          {:ok, der} <- presented_certificate(connect_info),
+         {:ok, anchors} <- fetch_anchors(subject),
          {:ok, leaf} <- decode_leaf(der),
          :ok <- validate_leaf(leaf, der, anchors),
+         {:ok, serial} <- cert_serial(leaf),
          {:ok, identifiers} <- device_identifiers(leaf) do
       {:ok,
        %{
          identifiers: identifiers,
-         last_attested_cert_serial: format_cert_serial(leaf),
+         last_attested_cert_serial: serial,
          last_attested_cert_fingerprint: sha256_hex(der)
        }}
     end
@@ -256,16 +259,21 @@ defmodule PortalAPI.Client.DeviceTrust do
     end
   end
 
-  # A conforming serial is at most 20 octets (RFC 5280), but the column is
-  # the real bound: a serial that cannot fit varchar(255) is dropped rather
-  # than aborting the bulk session flush. The fingerprint remains the pin.
-  defp format_cert_serial(leaf) do
+  # A conforming serial is at most 20 octets (RFC 5280), so 255 hex characters
+  # is already six times the largest legitimate value. A certificate past that
+  # did not come from a working CA, and pinning one whose serial cannot be
+  # recorded would leave the row describing a certificate it cannot identify.
+  defp cert_serial(leaf) do
     serial = leaf |> X509.serial_number() |> Integer.to_string(16)
 
     if byte_size(serial) <= @max_identifier_bytes do
-      serial
+      {:ok, serial}
     else
-      nil
+      Logger.error("Refusing device certificate: serial number is not representable",
+        serial_hex_length: byte_size(serial)
+      )
+
+      {:error, :malformed_cert_serial}
     end
   end
 
@@ -295,9 +303,7 @@ defmodule PortalAPI.Client.DeviceTrust do
   # Only the leaf is presented, so every certificate between it and the anchor
   # has to come from the account's uploaded anchors: admins may upload issuing
   # intermediates alongside (or instead of) roots.
-  defp chain_valid?(leaf_der, anchors) do
-    anchor_ders = Enum.map(anchors, & &1.der)
-
+  defp chain_valid?(leaf_der, anchor_ders) do
     Enum.any?(anchor_ders, fn anchor_der ->
       leaf_der
       |> candidate_chains(
@@ -538,9 +544,6 @@ defmodule PortalAPI.Client.DeviceTrust do
       |> Safe.all()
       |> Enum.flat_map(&decode_anchor_pem/1)
       |> Enum.uniq()
-      |> Enum.map(fn der ->
-        %{der: der, fingerprint: Base.encode16(:crypto.hash(:sha256, der), case: :lower)}
-      end)
     end
 
     defp decode_anchor_pem(pem) do

@@ -8,10 +8,17 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   @max_upload_size 1_000_000
   @max_upload_entries 10
+  @max_trust_anchors 10
 
   defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, TrustAnchor}
+
+    def count_trust_anchors(subject) do
+      from(t in TrustAnchor)
+      |> Safe.scoped(subject)
+      |> Safe.aggregate(:count)
+    end
 
     def list_trust_anchors(subject) do
       from(t in TrustAnchor, order_by: [asc: t.inserted_at, asc: t.id])
@@ -55,7 +62,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :new}} = socket) do
-    changeset = build_creation_changeset(%{})
+    changeset = build_creation_changeset(%{}, socket.assigns.subject)
 
     socket =
       socket
@@ -605,7 +612,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   def handle_event("validate_new", %{"trust_anchor" => attrs}, socket) do
     changeset =
       attrs
-      |> build_creation_changeset()
+      |> build_creation_changeset(socket.assigns.subject)
       |> Map.put(:action, :insert)
 
     socket =
@@ -618,7 +625,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   def handle_event("create_trust_anchor", %{"trust_anchor" => attrs}, socket) do
     attrs = resolve_certs_attrs(socket, attrs)
-    changeset = build_creation_changeset(attrs)
+    changeset = build_creation_changeset(attrs, socket.assigns.subject)
 
     case Safe.scoped(changeset, socket.assigns.subject) |> Safe.insert() do
       {:ok, _trust_anchor} ->
@@ -711,10 +718,25 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       {:noreply, socket}
   end
 
-  defp build_creation_changeset(attrs) do
+  defp build_creation_changeset(attrs, subject) do
     %TrustAnchor{}
     |> cast(attrs, [:name, :certs])
     |> TrustAnchor.changeset()
+    |> validate_anchor_limit(subject)
+  end
+
+  # Every attested connect validates the presented certificate against every
+  # anchor the account holds, so the pool is capped to keep that work bounded.
+  defp validate_anchor_limit(changeset, subject) do
+    if Database.count_trust_anchors(subject) >= @max_trust_anchors do
+      add_error(
+        changeset,
+        :name,
+        "an account may have at most #{@max_trust_anchors} trust anchors"
+      )
+    else
+      changeset
+    end
   end
 
   defp build_edit_changeset(trust_anchor, attrs) do

@@ -60,6 +60,10 @@ defmodule PortalAPI.Sockets.LatestSession do
         device_id: attrs.device_id,
         actor_id: attrs[:actor_id],
         firezone_id: attrs[:firezone_id],
+        device_serial: attrs[:device_serial],
+        device_uuid: attrs[:device_uuid],
+        identifier_for_vendor: attrs[:identifier_for_vendor],
+        firebase_installation_id: attrs[:firebase_installation_id],
         last_attested_device_serial: attested[:last_attested_device_serial],
         last_attested_device_uuid: attested[:last_attested_device_uuid],
         last_attested_mdm_device_id: attested[:last_attested_mdm_device_id],
@@ -131,6 +135,10 @@ defmodule PortalAPI.Sockets.LatestSession do
       device_id: Ecto.UUID,
       actor_id: Ecto.UUID,
       firezone_id: :string,
+      device_serial: :string,
+      device_uuid: :string,
+      identifier_for_vendor: :string,
+      firebase_installation_id: :string,
       last_attested_device_serial: :string,
       last_attested_device_uuid: :string,
       last_attested_mdm_device_id: :string,
@@ -227,12 +235,29 @@ defmodule PortalAPI.Sockets.LatestSession do
 
       set =
         [
-          # The latest session's firezone_id follows the device: an attested
-          # connect merges a reinstalled client (new firezone_id, same attested
-          # identity) onto its existing row in memory, and this flush persists
-          # the new firezone_id. Entries that carry none (gateways) keep the
-          # row's current value.
-          firezone_id: dynamic([d, v], coalesce(v.firezone_id, d.firezone_id)),
+          # A device that proved an MDM device id is identified by its
+          # certificate alone, so its firezone_id column is cleared: nothing
+          # can then resolve the row from a client-supplied value. Otherwise
+          # the latest session's firezone_id follows the device, and entries
+          # that carry none (gateways) keep the row's current value.
+          firezone_id:
+            dynamic(
+              [d, v],
+              fragment(
+                "CASE WHEN ? IS NOT NULL THEN NULL ELSE COALESCE(?, ?) END",
+                v.last_attested_mdm_device_id,
+                v.firezone_id,
+                d.firezone_id
+              )
+            ),
+          # Self-reported and refreshed on every connect. A client that omits
+          # one keeps the row's current value; only the client can correct it.
+          device_serial: dynamic([d, v], coalesce(v.device_serial, d.device_serial)),
+          device_uuid: dynamic([d, v], coalesce(v.device_uuid, d.device_uuid)),
+          identifier_for_vendor:
+            dynamic([d, v], coalesce(v.identifier_for_vendor, d.identifier_for_vendor)),
+          firebase_installation_id:
+            dynamic([d, v], coalesce(v.firebase_installation_id, d.firebase_installation_id)),
           # The attested fields move as one snapshot, keyed by
           # last_attested_at (when the device last proved possession).
           # Entries that carry no snapshot keep the row's current values, and
@@ -348,8 +373,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     end
 
     # A merged firezone_id can collide with another device row of the same
-    # actor (e.g. an unattested row created before the device started
-    # attesting). The colliding entry keeps its session but skips the identity
+    # actor. The colliding entry keeps its session but skips the identity
     # change, so one poisoned entry cannot fail the whole batch; the merge
     # retries on the device's next connect. Entries carry a firezone_id only
     # when their connect actually adopted a new one, so in the steady state
@@ -358,11 +382,8 @@ defmodule PortalAPI.Sockets.LatestSession do
     # between still raises unique_violation, which the caller's rescue turns
     # into failed entries that reconnect and retry.
     #
-    # NOTE (deferred, pending design decision): the intended end state is
-    # attested-row-wins with the stale unattested row absorbed/deleted, rather
-    # than skip-forever. Until that lands, a device whose attested identity
-    # displaced an older row will keep this firezone_id split until the stale
-    # row is removed; the log line below is the actionable signal.
+    # Attested devices never contend here: they carry no firezone_id and the
+    # column is cleared for them, so only unattested merges reach this probe.
     defp strip_conflicting_firezone_ids(rows) do
       probe_rows =
         for row <- rows, not is_nil(row.firezone_id), not is_nil(row.actor_id) do

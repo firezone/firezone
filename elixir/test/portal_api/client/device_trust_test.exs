@@ -127,25 +127,6 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert DeviceTrust.attest(connect_info, subject) == {:error, :no_device_identifiers}
     end
 
-    test "drops a certificate serial exceeding the column limit but still verifies", %{
-      pki: pki,
-      subject: subject
-    } do
-      huge_serial = 192 |> :crypto.strong_rand_bytes() |> :binary.decode_unsigned()
-
-      connect_info =
-        connect_info(
-          leaf(pki,
-            serial: huge_serial,
-            sans: [{:uniformResourceIdentifier, ~c"firezone://serial/C02XK1ZGJGH5"}]
-          )
-        )
-
-      assert {:ok, verified} = DeviceTrust.attest(connect_info, subject)
-      assert verified.identifiers.last_attested_device_serial == "C02XK1ZGJGH5"
-      assert is_nil(verified.last_attested_cert_serial)
-      assert is_binary(verified.last_attested_cert_fingerprint)
-    end
 
     test "rejects a cert whose only identifier exceeds the length bound", %{
       pki: pki,
@@ -190,6 +171,17 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       connect_info = connect_info(leaf(pki, :untrusted))
 
       assert DeviceTrust.attest(connect_info, subject) == {:error, :untrusted_chain}
+    end
+
+    test "rejects a leaf whose serial number cannot be recorded", %{pki: pki, subject: subject} do
+      serial = String.to_integer(String.duplicate("f", 300), 16)
+      sans = [{:uniformResourceIdentifier, ~c"firezone://serial/C02XK1ZGJGH5"}]
+      connect_info = connect_info(leaf(pki, serial: serial, sans: sans))
+
+      assert ExUnit.CaptureLog.capture_log(fn ->
+               assert DeviceTrust.attest(connect_info, subject) ==
+                        {:error, :malformed_cert_serial}
+             end) =~ "serial number is not representable"
     end
 
     test "does not attest on any host other than the attestation host", %{

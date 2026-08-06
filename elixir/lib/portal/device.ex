@@ -143,7 +143,7 @@ defmodule Portal.Device do
     changeset
     |> trim_change(~w[name firezone_id hostname]a)
     |> normalize_hostname()
-    |> validate_required([:type, :name, :firezone_id])
+    |> validate_required([:type, :name])
     |> validate_inclusion(:type, [:client, :gateway])
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:firezone_id, max: 255)
@@ -186,6 +186,7 @@ defmodule Portal.Device do
       :client ->
         changeset
         |> validate_required([:actor_id])
+        |> validate_client_firezone_id()
         |> validate_length(:device_serial, max: 255)
         |> validate_length(:device_uuid, max: 255)
         |> validate_length(:identifier_for_vendor, max: 255)
@@ -207,11 +208,23 @@ defmodule Portal.Device do
 
       :gateway ->
         changeset
-        |> validate_required([:site_id])
+        |> validate_required([:site_id, :firezone_id])
         |> validate_gateway_verification()
 
       _ ->
         changeset
+    end
+  end
+
+  # An attested client is identified by the identifiers proven in its
+  # certificate, so it carries no firezone_id at all: the column stays NULL
+  # and can never resolve the row back to a client-supplied value. Clients
+  # that have not proved an MDM device id still require one.
+  defp validate_client_firezone_id(changeset) do
+    if is_nil(get_field(changeset, :last_attested_mdm_device_id)) do
+      validate_required(changeset, [:firezone_id])
+    else
+      changeset
     end
   end
 

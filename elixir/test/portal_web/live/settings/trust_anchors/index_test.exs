@@ -224,6 +224,30 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       assert html =~ "can&#39;t be blank"
     end
 
+    test "refuses to create an eleventh trust anchor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      for index <- 1..10 do
+        Portal.Repo.insert!(%Portal.TrustAnchor{account_id: account.id, name: "Anchor #{index}"})
+      end
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/new")
+
+      html =
+        lv
+        |> form("#trust-anchor-new-form",
+          trust_anchor: %{name: "Eleventh", certs: [sample_cert_pem()]}
+        )
+        |> render_submit()
+
+      assert html =~ "at most 10 trust anchors"
+    end
+
     test "shows validation error for a non-CA certificate", %{
       conn: conn,
       account: account,
