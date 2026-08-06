@@ -1416,7 +1416,7 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "1 / 1 online"
     end
 
-    test "warns when the pool has no clients", %{
+    test "warns when the pool has no devices", %{
       conn: conn,
       account: account,
       actor: actor
