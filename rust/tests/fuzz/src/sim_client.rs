@@ -360,16 +360,11 @@ impl SimClient {
             .map(|error| icmp_error_reply(&packet, error).unwrap());
 
         if let Some(udp) = packet.as_udp() {
-            if udp.source_port() == 53 {
+            if udp.source_port() == 53
+                && let Some(upstream) = self.dns_by_sentinel.upstream_by_sentinel(packet.source())
+            {
                 let response = dns_types::Response::parse(udp.payload())
-                    .expect("ip packets on port 53 to be DNS packets");
-
-                // Map back to upstream socket so we can assert on it correctly.
-                let sentinel = packet.source();
-                let Some(upstream) = self.dns_by_sentinel.upstream_by_sentinel(sentinel) else {
-                    tracing::error!(%sentinel, mapping = ?self.dns_by_sentinel, "Unknown DNS server");
-                    return None;
-                };
+                    .expect("packets from DNS sentinels on port 53 to be DNS packets");
 
                 self.received_udp_dns_responses.insert(
                     (upstream, response.id(), udp.destination_port()),
