@@ -24,6 +24,32 @@
 	<string name="share_diagnostic_logs">Export Logs</string>
 	<string name="log_directory_size">Log directory size: %1$s</string>
 	<string name="clear_log_directory">Clear Log Directory</string>
+	<!-- X.509 Device Identity -->
+	<string name="x509_identity_title">X.509 Device Identity</string>
+	<string name="x509_identity_description">
+		Firezone uses this system KeyChain identity to prove device enrollment when connecting.
+		Private-key bytes never leave the Android KeyChain.
+	</string>
+	<string name="x509_unsupported_personal_profile">
+		X.509 device identity is supported only in managed work profiles and on corporate-owned
+		Android devices.
+	</string>
+	<string name="x509_select_certificate">Select Certificate</string>
+	<string name="x509_authorize_certificate">Authorize Certificate</string>
+	<string name="x509_forget_certificate">Forget Selection</string>
+	<string name="x509_refresh">Refresh</string>
+	<string name="x509_loading">Reading KeyChain identity…</string>
+	<string name="x509_no_certificate_selected">No RSA or EC certificate was selected.</string>
+	<string name="x509_managed_description">
+		Your organization configured this certificate alias. The administrator must also grant
+		Firezone access to the corresponding KeyChain key.
+	</string>
+	<string name="x509_user_description">
+		Choose a certificate once. Android will ask you to confirm access, and Firezone will remember
+		the selected alias for future connections.
+	</string>
+	<string name="x509_error_title">Unable to read the X.509 identity</string>
+	<string name="x509_contact_admin">Contact your administrator for support.</string>
 
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>
@@ -111,6 +137,11 @@
 	<string name="config_connect_on_start_title">Connect on Start</string>
 	<string name="config_connect_on_start_description">
 		Whether Firezone should automatically try to connect when the app is launched.
+	</string>
+	<string name="config_x509_certificate_alias_title">X.509 Certificate Alias</string>
+	<string name="config_x509_certificate_alias_description">
+		The Android KeyChain alias of the client certificate used for mutual TLS. The device
+		policy controller must install the key pair and grant dev.firezone.android access to it.
 	</string>
 
 	<string name="managed_setting_info_description">

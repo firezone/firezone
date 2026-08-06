@@ -34,6 +34,7 @@ object Log {
     fun setUser(
         firezoneId: String,
         accountSlug: String,
+        mdmDeviceId: String?,
     ) {
         synchronized(attributesLock) {
             attributes = attributes +
@@ -41,12 +42,18 @@ object Log {
                     "user.id" to firezoneId,
                     "user.account_slug" to accountSlug,
                 )
+            attributes =
+                if (mdmDeviceId == null) {
+                    attributes - "user.mdm_device_id"
+                } else {
+                    attributes + ("user.mdm_device_id" to mdmDeviceId)
+                }
         }
     }
 
     fun clearUser() {
         synchronized(attributesLock) {
-            attributes = attributes - "user.id" - "user.account_slug"
+            attributes = attributes - "user.id" - "user.account_slug" - "user.mdm_device_id"
         }
     }
 
