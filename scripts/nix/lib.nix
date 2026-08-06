@@ -92,9 +92,25 @@ rec {
             pkgs.rsync
             pkgs.zstd
           ]
-          ++ lib.optional (args ? cargoArtifacts) craneLib.inheritCargoArtifactsHook;
+          ++ lib.optionals (args ? cargoArtifacts) [
+            craneLib.inheritCargoArtifactsHook
+            pkgs.removeReferencesTo
+          ];
 
         env = cargoEnv // (args.env or { });
+      }
+      # Reading the vendored sources straight from the store (rather than from
+      # a copy in the build tree, as `cargoDeps` would) bakes their paths into
+      # the binaries via panic strings, so Nix keeps the whole ~1G of crate
+      # sources as a runtime dependency of the package.
+      #
+      # Set only where it applies, so the dependency-only build's derivation
+      # stays untouched: its output is a compressed archive that legitimately
+      # contains those paths, and rewriting bytes inside it would corrupt it.
+      // lib.optionalAttrs (args ? cargoArtifacts) {
+        postInstall = (args.postInstall or "") + ''
+          find "$out" -type f -exec remove-references-to -t ${craneVendorDir} '{}' +
+        '';
       }
     );
 
