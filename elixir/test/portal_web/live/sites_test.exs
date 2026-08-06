@@ -120,8 +120,7 @@ defmodule PortalWeb.SitesTest do
             policy_conditions: true,
             traffic_filters: true,
             idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            rest_api: true
           }
         )
 

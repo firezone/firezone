@@ -123,10 +123,6 @@ defmodule PortalWeb.Settings.Account do
               enabled={feature_enabled?(@account, :traffic_filters)}
             />
             <.feature_row
-              label="Client-to-Client"
-              enabled={feature_enabled?(@account, :client_to_client)}
-            />
-            <.feature_row
               label="Internet Resource"
               enabled={feature_enabled?(@account, :internet_resource)}
             />

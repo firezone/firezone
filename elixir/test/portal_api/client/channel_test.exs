@@ -162,7 +162,6 @@ defmodule PortalAPI.Client.ChannelTest do
         },
         features: %{
           internet_resource: true,
-          client_to_client: true,
           iceless: true
         }
       )
@@ -2876,13 +2875,11 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   describe "handle_in/3 new_client_ice_candidates" do
-    test "forwards ice candidates to target client when c2c is enabled", %{
+    test "forwards ice candidates to target client", %{
       account: account,
       client: client,
       subject: subject
     } do
-      enable_feature(:client_to_client)
-
       socket = join_channel(client, subject)
       assert_push "init", _
       candidates = ["cand1", "cand2"]
@@ -2901,31 +2898,11 @@ defmodule PortalAPI.Client.ChannelTest do
       assert sending_client_id == client.id
     end
 
-    test "does nothing when c2c is globally disabled", %{
-      client: client,
-      subject: subject
-    } do
-      # Global feature off (no enable_feature call) — account already has client_to_client: true
-      socket = join_channel(client, subject)
-      assert_push "init", _
-      candidates = ["cand1"]
-      target_client_id = Ecto.UUID.generate()
-
-      push(socket, "new_client_ice_candidates", %{
-        "candidates" => candidates,
-        "client_id" => target_client_id
-      })
-
-      refute_receive {:client_ice_candidates, _, _}
-    end
-
     test "does nothing when target client is offline", %{
       account: account,
       client: client,
       subject: subject
     } do
-      enable_feature(:client_to_client)
-
       socket = join_channel(client, subject)
       assert_push "init", _
 
@@ -2948,8 +2925,6 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      enable_feature(:client_to_client)
-
       socket = join_channel(client, subject)
       assert_push "init", _
       candidates = ["cand1", "cand2"]
@@ -2967,32 +2942,11 @@ defmodule PortalAPI.Client.ChannelTest do
       assert sending_client_id == client.id
     end
 
-    test "pushes client_ice_candidate_error :disabled when c2c is globally disabled", %{
-      client: client,
-      subject: subject
-    } do
-      socket = join_channel(client, subject)
-      assert_push "init", _
-      target_client_id = Ecto.UUID.generate()
-
-      push(socket, "invalidate_client_ice_candidates", %{
-        "candidates" => ["cand1"],
-        "client_id" => target_client_id
-      })
-
-      assert_push "client_ice_candidate_error", %{
-        client_id: ^target_client_id,
-        reason: :disabled
-      }
-    end
-
     test "pushes client_ice_candidate_error :offline when target client is not in PG", %{
       account: account,
       client: client,
       subject: subject
     } do
-      enable_feature(:client_to_client)
-
       socket = join_channel(client, subject)
       assert_push "init", _
 
@@ -5394,8 +5348,6 @@ defmodule PortalAPI.Client.ChannelTest do
 
   describe "handle_in/3 create_flow for static_device_pool" do
     setup %{account: account, group: group, actor: actor, subject: subject} do
-      enable_feature(:client_to_client)
-
       # Override the default subject's user_agent so static_device_pool resources
       # are eligible for the connectable list (apple >= 1.5.16).
       subject = %{
@@ -5617,29 +5569,6 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "flow_creation_failed", %{reason: :not_found}
     end
 
-    test "sends denied with :disabled when account feature is off", %{
-      account: account,
-      client: client,
-      subject: subject,
-      target_client: target_client,
-      pool_resource: pool_resource
-    } do
-      account = update_account(account, %{features: %{client_to_client: false}})
-      subject = %{subject | account: account}
-
-      initiating_socket = join_channel(client, subject)
-      assert_push "init", _
-
-      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
-
-      push(initiating_socket, "create_flow", %{
-        "resource_id" => pool_resource.id,
-        "ipv4" => target_ip
-      })
-
-      assert_push "client_device_access_denied", %{ipv4: ^target_ip, reason: :disabled}
-    end
-
     test "sends denied with :ambiguous_address when both ipv4 and ipv6 are provided",
          %{client: client, subject: subject, pool_resource: pool_resource} do
       socket = join_channel(client, subject)
@@ -5850,8 +5779,6 @@ defmodule PortalAPI.Client.ChannelTest do
 
   describe "handle_in/3 create_flow for dynamic_device_pool" do
     setup %{account: account, group: group, subject: subject} do
-      enable_feature(:client_to_client)
-
       subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
 
       target_actor = actor_fixture(account: account)
@@ -7001,8 +6928,6 @@ defmodule PortalAPI.Client.ChannelTest do
 
   describe "authorizations cache (inbound client-to-client)" do
     setup %{account: account, group: group, subject: subject} do
-      enable_feature(:client_to_client)
-
       subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
 
       target_actor = actor_fixture(account: account)
