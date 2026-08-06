@@ -34,6 +34,8 @@ defmodule PortalAPI.GatewayJSON do
       ipv6: device.ipv6,
       online: device.online?,
       public_key: device.public_key,
+      gateway_token_id: device.gateway_token_id,
+      rotated_at: device.gateway_token_rotated_at,
       last_seen_at: device.last_seen_at,
       last_seen_version: device.last_seen_version,
       last_seen_user_agent: device.last_seen_user_agent,

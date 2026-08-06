@@ -33,6 +33,26 @@ defmodule PortalAPI.Schemas.Gateway do
           nullable: true,
           description: "WireGuard public key from the latest session"
         },
+        gateway_token_id: %Schema{
+          type: :string,
+          format: :uuid,
+          nullable: true,
+          description:
+            "ID of the token this Gateway last connected with. Null until the Gateway " <>
+              "connects for the first time."
+        },
+        rotated_at: %Schema{
+          type: :string,
+          format: :"date-time",
+          nullable: true,
+          description:
+            "When the token identified by `gateway_token_id` was rotated out. Null in " <>
+              "the normal case. When set, a replacement token has been minted and this " <>
+              "one stays valid only until the Gateway connects with the replacement or " <>
+              "#{Portal.GatewayToken.rotation_grace_hours()} hours elapse from this " <>
+              "timestamp, whichever comes first - so a non-null value means a rotation " <>
+              "is pending and the Gateway has not picked it up yet."
+        },
         last_seen_at: %Schema{
           type: :string,
           nullable: true,
@@ -82,6 +102,8 @@ defmodule PortalAPI.Schemas.Gateway do
         "ipv6" => "fd00:2021:1111::1",
         "online" => true,
         "public_key" => "WdKAyoA45xJllRUYnFhI5+Y4EjSTs50MzYYHfrIhVAc=",
+        "gateway_token_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
+        "rotated_at" => nil,
         "last_seen_at" => "2025-01-01T00:00:00Z",
         "last_seen_version" => "1.5.0",
         "last_seen_user_agent" => "Linux/6.1.0 connlib/1.5.0",

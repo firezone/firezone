@@ -6,6 +6,7 @@ defmodule PortalAPI.GatewayControllerTest do
   import Portal.ActorFixtures
   import Portal.SiteFixtures
   import Portal.DeviceFixtures
+  import Portal.TokenFixtures
 
   setup do
     account = account_fixture()
@@ -313,6 +314,8 @@ defmodule PortalAPI.GatewayControllerTest do
                  "ipv4" => Portal.Types.IP.to_string(gateway.ipv4),
                  "ipv6" => Portal.Types.IP.to_string(gateway.ipv6),
                  "online" => false,
+                 "gateway_token_id" => gateway.gateway_token_id,
+                 "rotated_at" => nil,
                  "public_key" => gateway.public_key,
                  "last_seen_at" => DateTime.to_iso8601(gateway.last_seen_at),
                  "last_seen_version" => gateway.last_seen_version,
@@ -356,6 +359,114 @@ defmodule PortalAPI.GatewayControllerTest do
 
       assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
                json_response(conn, 404)
+    end
+  end
+
+  describe "token rotation state" do
+    setup %{account: account, site: site} do
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(account: account, gateway: gateway)
+
+      # A gateway only reports a token once it has connected with one.
+      gateway =
+        gateway
+        |> Ecto.Changeset.change(gateway_token_id: token.id)
+        |> Repo.update!()
+
+      %{gateway: gateway, token: token}
+    end
+
+    test "reports the connected token and a null rotated_at when no rotation is pending", %{
+      conn: conn,
+      actor: actor,
+      site: site,
+      gateway: gateway,
+      token: token
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways/#{gateway.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data["gateway_token_id"] == token.id
+      assert data["rotated_at"] == nil
+    end
+
+    test "reports rotated_at once the connected token has been rotated out", %{
+      conn: conn,
+      actor: actor,
+      site: site,
+      gateway: gateway,
+      token: token
+    } do
+      rotated_at = ~U[2026-01-01 00:00:00.000000Z]
+
+      token
+      |> Ecto.Changeset.change(rotated_at: rotated_at)
+      |> Repo.update!()
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways/#{gateway.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data["gateway_token_id"] == token.id
+      # Non-null is the whole signal: a replacement exists and this
+      # gateway has not picked it up yet.
+      assert data["rotated_at"] == DateTime.to_iso8601(rotated_at)
+    end
+
+    test "index reports rotation state too", %{
+      conn: conn,
+      actor: actor,
+      site: site,
+      gateway: gateway,
+      token: token
+    } do
+      rotated_at = ~U[2026-01-01 00:00:00.000000Z]
+
+      token
+      |> Ecto.Changeset.change(rotated_at: rotated_at)
+      |> Repo.update!()
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["gateway_token_id"] == token.id
+      assert data["rotated_at"] == DateTime.to_iso8601(rotated_at)
+    end
+
+    test "a gateway that has never connected reports nulls", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      # gateway_fixture always records a session, since gateways always
+      # have one in practice. Clear the column to get the genuine
+      # never-connected state a freshly provisioned Gateway has.
+      fresh =
+        gateway_fixture(account: account, site: site)
+        |> Ecto.Changeset.change(gateway_token_id: nil)
+        |> Repo.update!()
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways/#{fresh.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data["gateway_token_id"] == nil
+      assert data["rotated_at"] == nil
     end
   end
 
