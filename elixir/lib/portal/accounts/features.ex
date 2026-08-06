@@ -9,7 +9,6 @@ defmodule Portal.Accounts.Features do
     field :idp_sync, :boolean
     field :rest_api, :boolean
     field :internet_resource, :boolean
-    field :client_to_client, :boolean
     field :iceless, :boolean
     field :log_sinks, :boolean
   end
@@ -21,7 +20,6 @@ defmodule Portal.Accounts.Features do
       idp_sync
       rest_api
       internet_resource
-      client_to_client
       iceless
       log_sinks
     ]a

@@ -947,10 +947,6 @@ defmodule Portal.Repo.Seeds do
     :rand.seed(:exsss, {1, 2, 3})
 
     Repo.query!(
-      "INSERT INTO features (feature, enabled) VALUES ('client_to_client', true) ON CONFLICT (feature) DO UPDATE SET enabled = true"
-    )
-
-    Repo.query!(
       "INSERT INTO features (feature, enabled) VALUES ('trust_anchors', true) ON CONFLICT (feature) DO UPDATE SET enabled = true"
     )
 
@@ -980,7 +976,6 @@ defmodule Portal.Repo.Seeds do
         idp_sync: true,
         rest_api: true,
         internet_resource: true,
-        client_to_client: true,
         iceless: System.get_env("FEATURE_ICELESS_ENABLED") == "true",
         log_sinks: true
       })

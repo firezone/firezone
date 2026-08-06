@@ -126,22 +126,8 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "0 / 2 online"
     end
 
-    test "hides device pool option from the type filter when client_to_client is disabled",
+    test "shows device pool option in the type filter",
          %{conn: conn, account: account, actor: actor} do
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/resources")
-
-      refute has_element?(lv, "#resources-type-static_device_pool")
-      assert has_element?(lv, "#resources-type-dns")
-    end
-
-    test "shows device pool option in the type filter when client_to_client is enabled",
-         %{conn: conn, account: account, actor: actor} do
-      enable_feature(:client_to_client)
-      account = update_account(account, features: %{client_to_client: true})
-
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
@@ -149,6 +135,17 @@ defmodule PortalWeb.ResourcesTest do
 
       assert has_element?(lv, "#resources-type-static_device_pool")
       assert has_element?(lv, "#resources-type-dns")
+    end
+
+    test "offers the device pool type when creating a resource",
+         %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      assert has_element?(lv, "#resource-form-type--static-device-pool")
+      assert has_element?(lv, "#resource-form-type--dns")
     end
 
     test "hides Internet Resource row for starter accounts without the feature", %{conn: conn} do
@@ -159,8 +156,7 @@ defmodule PortalWeb.ResourcesTest do
             policy_conditions: true,
             traffic_filters: true,
             idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            rest_api: true
           }
         )
 
@@ -272,9 +268,6 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:client_to_client)
-      account = update_account(account, features: %{client_to_client: true})
-
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
@@ -399,12 +392,9 @@ defmodule PortalWeb.ResourcesTest do
            account: account,
            actor: actor
          } do
-      enable_feature(:client_to_client)
-
       features =
         account.features
         |> Map.from_struct()
-        |> Map.put(:client_to_client, true)
 
       account = update_account(account, features: features)
 
@@ -457,8 +447,6 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:client_to_client)
-      account = update_account(account, features: %{client_to_client: true})
       client = client_fixture(account: account, actor: actor, name: "Workstation Alpha")
 
       {:ok, lv, _html} =
@@ -681,8 +669,7 @@ defmodule PortalWeb.ResourcesTest do
             policy_conditions: false,
             traffic_filters: true,
             idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            rest_api: true
           }
         )
 

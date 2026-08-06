@@ -201,13 +201,12 @@ defmodule PortalAPI.ResourceController do
     changeset
     |> Ecto.Changeset.validate_required(required)
     |> Portal.Resource.validate_site_matches_type(subject)
-    |> Database.validate_static_device_pool_feature_enabled(subject.account)
     |> Database.validate_traffic_filters_feature_enabled(subject.account)
   end
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Features, Safe}
+    alias Portal.Safe
 
     def list_resources(subject, opts \\ []) do
       from(r in Portal.Resource, as: :resources)
@@ -225,27 +224,6 @@ defmodule PortalAPI.ResourceController do
         nil -> {:error, :not_found}
         resource -> {:ok, resource}
       end
-    end
-
-    def validate_static_device_pool_feature_enabled(changeset, account) do
-      if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool and
-           not client_to_client_enabled?(account) do
-        Ecto.Changeset.add_error(
-          changeset,
-          :type,
-          "device pools are not enabled for this account"
-        )
-      else
-        changeset
-      end
-    end
-
-    def client_to_client_enabled?(account) do
-      query = from(f in Features, where: f.feature == :client_to_client and f.enabled == true)
-
-      account_feature_enabled? = account.features.client_to_client == true
-
-      Safe.unscoped(query) |> Safe.exists?() and account_feature_enabled?
     end
 
     def validate_traffic_filters_feature_enabled(changeset, account) do
@@ -301,7 +279,6 @@ defmodule PortalAPI.ResourceController do
       changeset
       |> Ecto.Changeset.validate_required(required_fields)
       |> Portal.Resource.validate_site_matches_type(subject)
-      |> validate_static_device_pool_feature_enabled(subject.account)
       |> validate_traffic_filters_feature_enabled(subject.account)
     end
 
