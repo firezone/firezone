@@ -84,18 +84,20 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
 
 /// Guards the field contract between the spooled reports and the portal's
 /// ingest endpoint: every report shape the tracker can produce must conform
-/// to the committed schema. The portal's test suite checks its accepted
-/// fields against the same file, so either side drifting fails its own CI.
+/// to the Portal-generated OpenAPI schema committed at the workspace root.
 #[test]
 fn spooled_reports_conform_to_the_committed_ingest_contract() {
-    let schema = std::fs::read(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../../contracts/flow-log-report.schema.json"),
+    let openapi = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../openapi.json"),
     )
     .unwrap();
+    let openapi = serde_json::from_slice::<serde_json::Value>(&openapi).unwrap();
+    let schema = openapi
+        .pointer("/components/schemas/FlowLogIngestRecord")
+        .expect("Portal OpenAPI spec contains the flow-log ingest contract");
     let validator = jsonschema::options()
         .should_validate_formats(true)
-        .build(&serde_json::from_slice(&schema).unwrap())
+        .build(schema)
         .unwrap();
 
     let authz_id = "aaaaaaaa-1111-2222-3333-444444444444";

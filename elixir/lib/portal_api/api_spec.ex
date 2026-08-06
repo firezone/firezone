@@ -3,6 +3,8 @@ defmodule PortalAPI.ApiSpec do
   alias PortalAPI.{Endpoint, Router}
   @behaviour OpenApi
 
+  @private_paths ["/ingestion/flow_logs"]
+
   @impl OpenApi
   def spec do
     %OpenApi{
@@ -20,6 +22,13 @@ defmodule PortalAPI.ApiSpec do
     }
     # Discover request/response schemas from path specs
     |> OpenApiSpex.resolve_schema_modules()
+    |> remove_private_paths()
+  end
+
+  # Private operations are resolved first so their schemas remain available as
+  # contracts without advertising the operations as customer-facing API routes.
+  defp remove_private_paths(spec) do
+    %{spec | paths: Map.drop(spec.paths, @private_paths)}
   end
 
   defp server do

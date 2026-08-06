@@ -663,6 +663,14 @@ defmodule Portal.Splunk.SyncTest do
           seq: fragment("nextval('flow_logs_seq_seq')"),
           flow_end: ^flow_end,
           last_packet: ^flow_end,
+          outers: ^[
+            %FlowLog.Outer{
+              src_ip: "203.0.113.10",
+              src_port: 51_820,
+              dst_ip: "198.51.100.5",
+              dst_port: 51_820
+            }
+          ],
           rx_packets: 10,
           tx_packets: 12,
           rx_bytes: 1024,

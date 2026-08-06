@@ -7,9 +7,9 @@ defmodule Portal.Repo.Migrations.ReplaceFlowLogOuterTupleWithOuters do
   `flow_logs` is partitioned by `flow_start`. Adding and dropping columns on
   the partitioned parent recurses to every attached partition, and updating
   through the parent backfills rows in all of them. Existing scalar tuples are
-  retained as one-element arrays on closed rows; open rows retain the new
-  lifecycle representation of `NULL`. No attempt is made to combine existing
-  rows.
+  retained as one-element arrays on closed rows; existing open rows remain
+  `NULL`, while new open reports may include paths known so far. No attempt is
+  made to combine existing rows.
   """
 
   def up do
@@ -53,7 +53,7 @@ defmodule Portal.Repo.Migrations.ReplaceFlowLogOuterTupleWithOuters do
       constraint(:flow_logs, :flow_logs_outers_match_flow_state,
         check: """
         (flow_end IS NULL AND outers IS NULL) OR
-        (flow_end IS NOT NULL AND
+        (outers IS NOT NULL AND
          jsonb_typeof(outers) = 'array' AND
          jsonb_array_length(outers) > 0)
         """
