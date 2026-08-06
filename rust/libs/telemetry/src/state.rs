@@ -33,6 +33,7 @@ pub(crate) struct State {
     env: Option<Env>,
     firezone_id: Option<String>,
     account_slug: Option<String>,
+    mdm_device_id: Option<String>,
     sentry_guard: Option<sentry::ClientInitGuard>,
 }
 
@@ -42,6 +43,7 @@ impl State {
             env: None,
             firezone_id: None,
             account_slug: None,
+            mdm_device_id: None,
             sentry_guard: None,
         }
     }
@@ -56,6 +58,10 @@ impl State {
 
     pub(crate) fn account_slug(&self) -> Option<String> {
         self.account_slug.clone()
+    }
+
+    pub(crate) fn mdm_device_id(&self) -> Option<String> {
+        self.mdm_device_id.clone()
     }
 
     /// Whether a Sentry session is currently active.
@@ -84,6 +90,10 @@ impl State {
         self.firezone_id = firezone_id;
     }
 
+    pub(crate) fn set_mdm_device_id(&mut self, mdm_device_id: Option<String>) {
+        self.mdm_device_id = mdm_device_id;
+    }
+
     pub(crate) fn set_guard(&mut self, guard: sentry::ClientInitGuard) {
         self.sentry_guard = Some(guard);
     }
@@ -97,6 +107,7 @@ impl State {
     pub(crate) fn clear_identity(&mut self) {
         self.firezone_id = None;
         self.account_slug = None;
+        self.mdm_device_id = None;
     }
 }
 

@@ -25,11 +25,11 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
 use std::task::{Context, Poll, Waker};
 use tokio_tungstenite::tungstenite::http::header::RETRY_AFTER;
+use tokio_tungstenite::{Connector, client_async_tls_with_config, tungstenite};
 use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream,
     tungstenite::{Message, handshake::client::Request},
 };
-use tokio_tungstenite::{client_async_tls, tungstenite};
 use url::Url;
 
 pub use get_user_agent::get_user_agent;
@@ -57,6 +57,7 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     url_prototype: LoginUrl<TFinish>,
     last_url: Option<Url>,
     user_agent: String,
+    tls_client_config: Option<Arc<rustls::ClientConfig>>,
     /// The authentication token, sent via X-Authorization header.
     token: SecretString,
     make_initial_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
@@ -99,6 +100,7 @@ async fn create_and_connect_websocket(
     token: SecretString,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     connect_timeout: Duration,
+    tls_client_config: Option<Arc<rustls::ClientConfig>>,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
     tracing::debug!(%host, ?addresses, %user_agent, "Connecting to portal");
 
@@ -115,9 +117,15 @@ async fn create_and_connect_websocket(
                 )
             })??;
 
-        let (stream, _) = client_async_tls(make_request(url, host, user_agent, &token), socket)
-            .await
-            .map_err(InternalError::WebSocket)?;
+        let connector = tls_client_config.map(Connector::Rustls);
+        let (stream, _) = client_async_tls_with_config(
+            make_request(url, host, user_agent, &token),
+            socket,
+            None,
+            connector,
+        )
+        .await
+        .map_err(InternalError::WebSocket)?;
 
         Ok(stream)
     })
@@ -378,6 +386,7 @@ where
             was_connected: false,
             url_prototype: url,
             user_agent,
+            tls_client_config: None,
             token,
             state: State::Closed,
             socket_factory,
@@ -387,6 +396,16 @@ where
             init_req,
             last_url: None,
         }
+    }
+
+    /// Uses the supplied rustls configuration for TLS connections.
+    ///
+    /// This allows callers to configure client certificate authentication, including
+    /// certificate resolvers backed by platform-managed, non-exportable private keys.
+    /// Without this, the channel uses its existing default TLS configuration.
+    pub fn with_tls_client_config(mut self, config: Arc<rustls::ClientConfig>) -> Self {
+        self.tls_client_config = Some(config);
+        self
     }
 
     /// Join our room.
@@ -475,6 +494,7 @@ where
             let user_agent = self.user_agent.clone();
             let token = self.token.clone();
             let socket_factory = self.socket_factory.clone();
+            let tls_client_config = self.tls_client_config.clone();
 
             async move {
                 if let Err(e) = closing.await {
@@ -490,6 +510,7 @@ where
                     token,
                     socket_factory,
                     CONNECT_TIMEOUT,
+                    tls_client_config,
                 )
                 .await
             }
@@ -1349,6 +1370,7 @@ mod tests {
             SecretString::from("test-token".to_string()),
             Arc::new(socket_factory::tcp),
             Duration::from_secs(2),
+            None,
         )
         .await;
 
