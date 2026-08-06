@@ -9,7 +9,7 @@ use super::{
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
-    transition::{DPort, DnsTransport, Identifier, SPort, Seq},
+    transition::{DPort, DnsQueryName, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceId, ResourceStatus};
@@ -19,7 +19,7 @@ use ip_packet::{IcmpEchoHeader, IcmpError, Icmpv4Type, Icmpv6Type, IpPacket, Lay
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
 };
 use tunnel_proto::{
@@ -156,13 +156,14 @@ impl SimClient {
 
     pub(crate) fn send_dns_query_for(
         &mut self,
-        domain: DomainName,
+        name: DnsQueryName,
         r_type: RecordType,
         query_id: u16,
         upstream: dns::Upstream,
         dns_transport: DnsTransport,
         now: Instant,
     ) -> Option<Transmit> {
+        let domain = self.materialize_dns_query_name(name)?;
         let Some(sentinel) = self.dns_by_sentinel.sentinel_by_upstream(&upstream) else {
             tracing::error!(%upstream, "Unknown DNS server");
             return None;
@@ -197,6 +198,45 @@ impl SimClient {
                 None
             }
         }
+    }
+
+    fn materialize_dns_query_name(&self, name: DnsQueryName) -> Option<DomainName> {
+        let ip = match name {
+            DnsQueryName::Name(domain) => return Some(domain),
+            DnsQueryName::AssignedProxy { family, index } => {
+                let ips = self
+                    .dns_resource_record_cache
+                    .iter()
+                    .flat_map(|record| record.ips.iter().copied())
+                    .filter(|ip| match family {
+                        IpFamily::Ipv4 => ip.is_ipv4(),
+                        IpFamily::Ipv6 => ip.is_ipv6(),
+                    })
+                    .collect::<BTreeSet<_>>();
+
+                if ips.is_empty() {
+                    tracing::error!(?family, "No assigned DNS resource proxy IP");
+                    return None;
+                }
+
+                ips.iter().nth(index as usize % ips.len()).copied().unwrap()
+            }
+            DnsQueryName::UnassignedIp(mut ip) => {
+                let assigned_ips = self
+                    .dns_resource_record_cache
+                    .iter()
+                    .flat_map(|record| record.ips.iter().copied())
+                    .collect::<BTreeSet<_>>();
+
+                while assigned_ips.contains(&ip) {
+                    ip = next_ip(ip);
+                }
+
+                ip
+            }
+        };
+
+        Some(DomainName::reverse_from_addr(ip).expect("reverse DNS names always fit"))
     }
 
     pub fn connect_tcp(&mut self, src: IpAddr, dst: IpAddr, sport: SPort, dport: DPort) {
@@ -610,6 +650,13 @@ fn probe_protocol_from_request(packet: &IpPacket) -> Option<ProbeProtocol> {
         sport: SPort(udp.source_port()),
         dport: DPort(udp.destination_port()),
     })
+}
+
+fn next_ip(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V4(ip) => Ipv4Addr::from(u32::from(ip).wrapping_add(1)).into(),
+        IpAddr::V6(ip) => Ipv6Addr::from(u128::from(ip).wrapping_add(1)).into(),
+    }
 }
 
 impl ExecMutScope for SimClient {

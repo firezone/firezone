@@ -379,7 +379,7 @@ impl TunnelTest {
                 client_id,
                 query:
                     DnsQuery {
-                        domain,
+                        name,
                         r_type,
                         dns_server,
                         query_id,
@@ -388,7 +388,7 @@ impl TunnelTest {
             } => {
                 let client = state.clients.get_mut(&client_id).unwrap();
                 let transmit = client.exec_mut(|sim| {
-                    sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
+                    sim.send_dns_query_for(name, r_type, query_id, dns_server, transport, now)
                 });
 
                 buffered_transmits.push_from(transmit, client, now);

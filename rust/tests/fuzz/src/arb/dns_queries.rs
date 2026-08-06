@@ -10,7 +10,7 @@ use tunnel_proto::dns;
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
 use crate::reference::ReferenceState;
-use crate::transition::{DnsQuery, DnsTransport, Transition};
+use crate::transition::{DnsQuery, DnsQueryName, DnsTransport, IpFamily, Transition};
 
 #[derive(Clone)]
 pub(super) struct DnsQueryTarget {
@@ -98,7 +98,11 @@ pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<DnsQueryTarge
         .collect::<Vec<_>>()
 }
 
-pub(super) fn generate(g: &mut Generator, target: DnsQueryTarget) -> Transition {
+pub(super) fn generate(
+    g: &mut Generator,
+    target: DnsQueryTarget,
+    state: &ReferenceState,
+) -> Transition {
     let (domain, rtypes) = match target.name {
         DnsNameSpec::Concrete { domain, rtypes } => (domain, rtypes),
         DnsNameSpec::Wildcard { base } => {
@@ -128,19 +132,41 @@ pub(super) fn generate(g: &mut Generator, target: DnsQueryTarget) -> Transition 
     };
 
     let r_type = arb_maybe_available_response_rtype(g, &rtypes);
-    let domain = matches!(r_type, RecordType::PTR)
-        .then(|| DomainName::reverse_from_addr(arb_ptr_query_ip(g)).unwrap())
-        .unwrap_or(domain);
+    let name = if r_type == RecordType::PTR {
+        arb_ptr_query_name(
+            g,
+            state.clients[&target.client_id]
+                .inner()
+                .has_dns_resource_proxy_ips(),
+        )
+    } else {
+        DnsQueryName::Name(domain)
+    };
 
     Transition::SendDnsQuery {
         client_id: target.client_id,
         query: DnsQuery {
-            domain,
+            name,
             r_type,
             query_id: arb_dns_query_id(g),
             dns_server: target.dns_server,
             transport: arb_dns_transport(g),
         },
+    }
+}
+
+fn arb_ptr_query_name(g: &mut Generator, has_assigned_proxies: bool) -> DnsQueryName {
+    if !has_assigned_proxies || g.bool() {
+        return DnsQueryName::UnassignedIp(arb_ptr_query_ip(g));
+    }
+
+    DnsQueryName::AssignedProxy {
+        family: if g.bool() {
+            IpFamily::Ipv4
+        } else {
+            IpFamily::Ipv6
+        },
+        index: g.u32(),
     }
 }
 

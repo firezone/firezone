@@ -141,11 +141,34 @@ impl Transition {
 
 #[derive(Debug, Clone)]
 pub(crate) struct DnsQuery {
-    pub(crate) domain: DomainName,
+    pub(crate) name: DnsQueryName,
     pub(crate) r_type: RecordType,
     pub(crate) query_id: u16,
     pub(crate) dns_server: dns::Upstream,
     pub(crate) transport: DnsTransport,
+}
+
+impl DnsQuery {
+    pub(crate) fn domain(&self) -> Option<&DomainName> {
+        match &self.name {
+            DnsQueryName::Name(domain) => Some(domain),
+            DnsQueryName::AssignedProxy { .. } => None,
+            DnsQueryName::UnassignedIp(_) => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum DnsQueryName {
+    Name(DomainName),
+    AssignedProxy { family: IpFamily, index: u32 },
+    UnassignedIp(IpAddr),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum IpFamily {
+    Ipv4,
+    Ipv6,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
