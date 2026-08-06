@@ -860,7 +860,11 @@ impl RefClient {
         }
 
         if self.is_local_dns_resource_query(query) {
-            self.expect_dns_response(query);
+            if self.local_dns_resource_query_has_records(query) {
+                self.expect_dns_response(query);
+            } else {
+                self.expect_dns_handshake(query);
+            }
             return;
         }
 
@@ -1285,6 +1289,21 @@ impl RefClient {
             && self
                 .dns_resource_by_domain(&query.domain, |_| true)
                 .is_some()
+    }
+
+    fn local_dns_resource_query_has_records(&self, query: &DnsQuery) -> bool {
+        self.resources
+            .iter()
+            .filter_map(|resource| match resource {
+                Resource::Dns(resource) if dns::is_subdomain(&query.domain, &resource.address) => {
+                    Some(resource)
+                }
+                _ => None,
+            })
+            .all(|resource| {
+                (query.r_type != RecordType::A || resource.ip_stack.supports_ipv4())
+                    && (query.r_type != RecordType::AAAA || resource.ip_stack.supports_ipv6())
+            })
     }
 
     pub(crate) fn upstream_dns_server_via_resource(
