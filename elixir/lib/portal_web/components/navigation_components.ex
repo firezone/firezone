@@ -214,6 +214,7 @@ defmodule PortalWeb.NavigationComponents do
               current_path={@current_path}
               navigate={~p"/#{@account}/resources"}
               icon="ri-server-line"
+              badge="NEW"
             >
               Resources
             </.sidebar_item>

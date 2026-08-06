@@ -199,6 +199,7 @@ defmodule PortalWeb.Clients.Components do
   attr :panel, :map, required: true
   attr :confirm_state, :map, required: true
   attr :query_params, :map, default: %{}
+  attr :device_pools, :list, default: []
   attr :policy_authorizations, :list, default: []
   attr :policy_authorizations_page, :integer, default: 1
   attr :policy_authorizations_has_next, :boolean, default: false
@@ -236,6 +237,7 @@ defmodule PortalWeb.Clients.Components do
           tab={@panel_tab}
           confirm_delete_client={@confirm_delete_client}
           confirm_unverify_client={@confirm_unverify_client}
+          device_pools={@device_pools}
           policy_authorizations={@policy_authorizations}
           policy_authorizations_page={@policy_authorizations_page}
           policy_authorizations_has_next={@policy_authorizations_has_next}
@@ -309,6 +311,7 @@ defmodule PortalWeb.Clients.Components do
   attr :tab, :atom, default: :overview
   attr :confirm_delete_client, :boolean, default: false
   attr :confirm_unverify_client, :boolean, default: false
+  attr :device_pools, :list, default: []
   attr :policy_authorizations, :list, default: []
   attr :policy_authorizations_page, :integer, default: 1
   attr :policy_authorizations_has_next, :boolean, default: false
@@ -357,6 +360,11 @@ defmodule PortalWeb.Clients.Components do
           </div>
           <div :if={@tab == :overview} class="flex-1 overflow-y-auto">
             <.client_owner_section account={@account} client={@client} />
+            <.client_device_pools_section
+              :if={@device_pools != []}
+              account={@account}
+              device_pools={@device_pools}
+            />
             <.client_device_section client={@client} />
             <.client_network_section client={@client} />
           </div>
@@ -579,6 +587,33 @@ defmodule PortalWeb.Clients.Components do
           </p>
         </div>
       </.link>
+    </div>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :device_pools, :list, required: true
+
+  def client_device_pools_section(assigns) do
+    ~H"""
+    <div class="px-5 pt-4 pb-3 border-b border-border">
+      <.section_heading title="Device Pools" />
+      <p class="mb-2 text-xs text-subtle">
+        Anyone granted access to these pools can reach this Client directly on its tunnel address.
+      </p>
+      <ul class="space-y-1">
+        <li :for={pool <- @device_pools}>
+          <.link
+            navigate={~p"/#{@account}/resources/#{pool.id}"}
+            class="flex items-center gap-2 px-3 py-2 rounded border border-border bg-raised hover:border-border-strong transition-colors group"
+          >
+            <.icon name="ri-computer-line" class="w-4 h-4 shrink-0 text-subtle" />
+            <span class="text-sm text-heading group-hover:text-brand truncate transition-colors">
+              {pool.name}
+            </span>
+          </.link>
+        </li>
+      </ul>
     </div>
     """
   end
