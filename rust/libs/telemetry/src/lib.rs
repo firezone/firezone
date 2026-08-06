@@ -319,6 +319,24 @@ pub fn set_firezone_id(firezone_id: String) {
     feature_flags::reevaluate_current();
 }
 
+/// Attaches the MDM's device identifier to the active Sentry session.
+///
+/// This identifier comes from the client certificate and allows an event to be
+/// correlated with the device attested by the Portal even when multiple
+/// installations share a Firezone ID.
+pub fn set_mdm_device_id(mdm_device_id: Option<String>) {
+    let _ = STATE.try_write(|state| state.set_mdm_device_id(mdm_device_id.clone()));
+
+    update_user(|user| match mdm_device_id {
+        Some(id) => {
+            user.other.insert("mdm_device_id".to_owned(), id.into());
+        }
+        None => {
+            user.other.remove("mdm_device_id");
+        }
+    });
+}
+
 #[doc(hidden)] // Only public for testing.
 pub fn current_env() -> Option<Env> {
     STATE.try_read(|state| state.env()).ok().flatten()
@@ -332,6 +350,11 @@ pub fn current_user() -> Option<String> {
 #[doc(hidden)] // Only public for testing.
 pub fn current_account_slug() -> Option<String> {
     STATE.try_read(|state| state.account_slug()).ok().flatten()
+}
+
+#[doc(hidden)] // Only public for testing.
+pub fn current_mdm_device_id() -> Option<String> {
+    STATE.try_read(|state| state.mdm_device_id()).ok().flatten()
 }
 
 /// The identity feature flags are evaluated for: the current user and environment.
