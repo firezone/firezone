@@ -160,16 +160,33 @@ pub(crate) struct ExpectedProbe {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ProbeObservation {
-    pub(crate) id: ProbeId,
-    pub(crate) at: Instant,
-    pub(crate) kind: ProbeObservationKind,
-    pub(crate) packet: IpPacket,
+pub(crate) enum ProbeObservation {
+    RequestSubmitted {
+        id: ProbeId,
+        at: Instant,
+        client: ClientId,
+        packet: IpPacket,
+    },
+    RequestReceived {
+        id: ProbeId,
+        at: Instant,
+        remote: Remote,
+        packet: IpPacket,
+    },
+    ResponseReceived {
+        id: ProbeId,
+        at: Instant,
+        client: ClientId,
+        packet: IpPacket,
+    },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProbeObservationKind {
-    RequestSubmitted { client: ClientId },
-    RequestReceived { remote: Remote },
-    ResponseReceived { client: ClientId },
+impl ProbeObservation {
+    pub(crate) fn id(&self) -> ProbeId {
+        match self {
+            ProbeObservation::RequestSubmitted { id, .. } => *id,
+            ProbeObservation::RequestReceived { id, .. } => *id,
+            ProbeObservation::ResponseReceived { id, .. } => *id,
+        }
+    }
 }

@@ -3,7 +3,7 @@ use super::{
     dns_server_resource::{TcpDnsServerResource, UdpDnsServerResource},
     echo::echo_reply,
     icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
-    probe::{ProbeId, ProbeObservation, ProbeObservationKind, Remote},
+    probe::{ProbeId, ProbeObservation, Remote},
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
 };
@@ -319,14 +319,13 @@ impl SimGateway {
             return;
         };
 
-        self.probe_observations.push(ProbeObservation {
-            id,
-            at,
-            kind: ProbeObservationKind::RequestReceived {
+        self.probe_observations
+            .push(ProbeObservation::RequestReceived {
+                id,
+                at,
                 remote: Remote::Gateway(self.id),
-            },
-            packet,
-        });
+                packet,
+            });
     }
 
     fn handle_icmp_request(

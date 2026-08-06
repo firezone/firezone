@@ -2,7 +2,7 @@ use super::{
     QueryId,
     echo::echo_reply,
     icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
-    probe::{ProbeId, ProbeObservation, ProbeObservationKind, ProbeProtocol, Remote},
+    probe::{ProbeId, ProbeObservation, ProbeProtocol, Remote},
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
@@ -237,12 +237,13 @@ impl SimClient {
 
         assert!(previous.is_none(), "probe transport tuples must be unique");
 
-        self.probe_observations.push(ProbeObservation {
-            id,
-            at: now,
-            kind: ProbeObservationKind::RequestSubmitted { client: self.id },
-            packet: packet.clone(),
-        });
+        self.probe_observations
+            .push(ProbeObservation::RequestSubmitted {
+                id,
+                at: now,
+                client: self.id,
+                packet: packet.clone(),
+            });
 
         self.encapsulate(packet, now)
     }
@@ -557,23 +558,23 @@ impl SimClient {
     }
 
     fn record_received_request(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
-        self.probe_observations.push(ProbeObservation {
-            id,
-            at,
-            kind: ProbeObservationKind::RequestReceived {
+        self.probe_observations
+            .push(ProbeObservation::RequestReceived {
+                id,
+                at,
                 remote: Remote::Client(self.id),
-            },
-            packet,
-        });
+                packet,
+            });
     }
 
     fn record_received_response(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
-        self.probe_observations.push(ProbeObservation {
-            id,
-            at,
-            kind: ProbeObservationKind::ResponseReceived { client: self.id },
-            packet,
-        });
+        self.probe_observations
+            .push(ProbeObservation::ResponseReceived {
+                id,
+                at,
+                client: self.id,
+                packet,
+            });
     }
 
     pub(crate) fn clear_packets(&mut self) {
