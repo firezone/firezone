@@ -70,10 +70,12 @@ jobs:
         with:
           determinate: false
           diagnostic-endpoint: ""
-          # Substitute from the first-party cache (kept warm by main and
-          # release builds) instead of rebuilding.
+          # Substitute from the first-party caches (kept warm by main and
+          # release builds) instead of rebuilding. `nix-ci` holds the compiled
+          # Cargo dependency snapshots and is only ever read here, never by
+          # anyone installing Firezone from the flake.
           extra-conf: |
-            extra-substituters = https://artifacts.firezone.dev/nix
+            extra-substituters = https://artifacts.firezone.dev/nix https://artifacts.firezone.dev/nix-ci
             extra-trusted-public-keys = artifacts.firezone.dev/nix-1:T4LHdL1HeA6LE9qgu0Po0j3RIlelKZz8pzqnzEAIRfI=
       - name: Check flake
         run: nix flake check --no-build
