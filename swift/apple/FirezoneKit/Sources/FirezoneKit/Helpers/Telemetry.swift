@@ -18,6 +18,15 @@ public enum Telemetry {
     }
   }
 
+  /// Correlates Sentry events with the MDM record represented by the client certificate.
+  public static func setMdmDeviceId(_ mdmDeviceId: String?) {
+    Log.setMdmDeviceId(mdmDeviceId)
+    SentrySDK.configureScope { scope in
+      let context = mdmDeviceId.map { ["mdm_device_id": $0] } ?? [:]
+      scope.setContext(value: context, key: "device_identity")
+    }
+  }
+
   public static func start(enableAppHangTracking: Bool = true) {
     SentrySDK.start { options in
       options.dsn =

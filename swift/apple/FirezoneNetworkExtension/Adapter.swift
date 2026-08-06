@@ -29,6 +29,65 @@ enum AdapterError: Error {
   }
 }
 
+private final class AppleClientTlsIdentity: ClientTlsIdentity, @unchecked Sendable {
+  private let identity: X509ClientTlsIdentity
+
+  init(_ identity: X509ClientTlsIdentity) {
+    self.identity = identity
+  }
+
+  func certificateChain() throws -> [Data] {
+    try identity.certificateChain()
+  }
+
+  func supportedSignatureSchemes() -> [TlsSignatureScheme] {
+    identity.supportedSignatureSchemes().map(\.tlsSignatureScheme)
+  }
+
+  func sign(scheme: TlsSignatureScheme, message: Data) throws -> Data {
+    try identity.sign(scheme: X509SignatureScheme(scheme), message: message)
+  }
+}
+
+private final class NoClientTlsIdentity: ClientTlsIdentity, @unchecked Sendable {
+  func certificateChain() throws -> [Data] { [] }
+  func supportedSignatureSchemes() -> [TlsSignatureScheme] { [] }
+
+  func sign(scheme _: TlsSignatureScheme, message _: Data) throws -> Data {
+    throw X509IdentityError.signingFailed("no client identity is configured")
+  }
+}
+
+extension X509SignatureScheme {
+  fileprivate init(_ scheme: TlsSignatureScheme) {
+    switch scheme {
+    case .rsaPkcs1Sha256: self = .rsaPkcs1Sha256
+    case .rsaPkcs1Sha384: self = .rsaPkcs1Sha384
+    case .rsaPkcs1Sha512: self = .rsaPkcs1Sha512
+    case .rsaPssSha256: self = .rsaPssSha256
+    case .rsaPssSha384: self = .rsaPssSha384
+    case .rsaPssSha512: self = .rsaPssSha512
+    case .ecdsaNistp256Sha256: self = .ecdsaNistp256Sha256
+    case .ecdsaNistp384Sha384: self = .ecdsaNistp384Sha384
+    case .ecdsaNistp521Sha512: self = .ecdsaNistp521Sha512
+    }
+  }
+
+  fileprivate var tlsSignatureScheme: TlsSignatureScheme {
+    switch self {
+    case .rsaPkcs1Sha256: .rsaPkcs1Sha256
+    case .rsaPkcs1Sha384: .rsaPkcs1Sha384
+    case .rsaPkcs1Sha512: .rsaPkcs1Sha512
+    case .rsaPssSha256: .rsaPssSha256
+    case .rsaPssSha384: .rsaPssSha384
+    case .rsaPssSha512: .rsaPssSha512
+    case .ecdsaNistp256Sha256: .ecdsaNistp256Sha256
+    case .ecdsaNistp384Sha384: .ecdsaNistp384Sha384
+    case .ecdsaNistp521Sha512: .ecdsaNistp521Sha512
+    }
+  }
+}
+
 // Loosely inspired from WireGuardAdapter from WireGuardKit
 actor Adapter {
   private struct PendingUnreachableResource {
@@ -134,6 +193,7 @@ actor Adapter {
   private let token: Token
   private let deviceId: String
   private let logFilter: String
+  private let identityReference: Data?
 
   init(
     apiURL: String,
@@ -142,6 +202,7 @@ actor Adapter {
     logFilter: String,
     accountSlug: String,
     internetResourceEnabled: Bool,
+    identityReference: Data?,
     providerCommandSender: Sender<ProviderCommand>
   ) {
     self.apiURL = apiURL
@@ -150,6 +211,7 @@ actor Adapter {
     self.logFilter = logFilter
     self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
+    self.identityReference = identityReference
     self.providerCommandSender = providerCommandSender
     self.pendingUnreachableResources = []
     // Start log cleanup immediately - doesn't depend on tunnel being connected
@@ -194,6 +256,13 @@ actor Adapter {
     // Create the session
     let session: Session
     do {
+      let x509Identity = try X509Identity.clientTlsIdentity(
+        persistentReference: identityReference
+      )
+      Telemetry.setMdmDeviceId(x509Identity?.mdmDeviceId)
+      let clientTlsIdentity: ClientTlsIdentity =
+        x509Identity.map(AppleClientTlsIdentity.init) ?? NoClientTlsIdentity()
+
       session = try Session.newApple(
         apiUrl: apiURL,
         token: token.description,
@@ -204,7 +273,10 @@ actor Adapter {
         logFilter: logFilter,
         flowLogsDir: flowLogsDir,
         deviceInfo: deviceInfo,
-        isInternetResourceActive: internetResourceEnabled
+        isInternetResourceActive: internetResourceEnabled,
+        useClientCertificate: x509Identity != nil,
+        mdmDeviceId: x509Identity?.mdmDeviceId,
+        clientTlsIdentity: clientTlsIdentity
       )
     } catch {
       throw AdapterError.connlibConnectError(String(describing: error))
@@ -480,6 +552,7 @@ actor Adapter {
     case .disconnected(let error):
       let errorMessage = error.message()
       let isAuthenticationError = error.isAuthenticationError()
+      let isDeviceTrustError = error.isDeviceTrustError()
       Log.info("Received Disconnected event: \(errorMessage)")
 
       // iOS shows the notification from the tunnel process because the UI
@@ -487,6 +560,8 @@ actor Adapter {
       #if os(iOS)
         if isAuthenticationError {
           SessionNotification.showSignedOutNotificationiOS()
+        } else if isDeviceTrustError {
+          SessionNotification.showDeviceAttestationFailureNotificationiOS(errorMessage)
         }
       #endif
 

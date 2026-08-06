@@ -90,13 +90,7 @@ extension FirezoneCLI {
       overrides: ProviderOverrides
     ) async throws -> (session: any TunnelSessionProtocol, signIn: SignInSettings) {
       let factory = NETunnelProviderManagerFactory()
-      let vpnManager: VPNConfigurationManager
-      if let existing = try await VPNConfigurationManager.load(using: factory) {
-        vpnManager = existing
-      } else {
-        Log.info("Creating VPN configuration...")
-        vpnManager = try await VPNConfigurationManager(manager: factory.createManager())
-      }
+      let vpnManager = try await VPNConfigurationManager.loadOrCreate(using: factory)
 
       // The extension reads providerConfiguration at start, so save before starting.
       try await vpnManager.save(overrides: overrides)

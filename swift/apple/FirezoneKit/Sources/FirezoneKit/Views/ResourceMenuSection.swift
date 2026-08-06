@@ -46,6 +46,7 @@
           Button(internetResourceToggleTitle) {
             store.configuration.internetResourceEnabled.toggle()
           }
+          .disabled(store.configuration.isInternetResourceEnabledForced)
         } else {
           // Show address - clickable if it's a valid URL
           if let displayAddress = resource.addressDescription ?? resource.address {

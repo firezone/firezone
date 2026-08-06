@@ -62,8 +62,34 @@ private final class MockTunnelProviderManager: TunnelProviderManager {
   }
 }
 
+@MainActor
+private final class MockTunnelProviderManagerFactory: TunnelProviderManagerFactory {
+  var managers: [any TunnelProviderManager]
+  let managerToCreate: MockTunnelProviderManager
+  private(set) var createCount = 0
+
+  init(
+    managers: [any TunnelProviderManager],
+    managerToCreate: MockTunnelProviderManager = MockTunnelProviderManager()
+  ) {
+    self.managers = managers
+    self.managerToCreate = managerToCreate
+  }
+
+  func loadAllFromPreferences() async throws -> [any TunnelProviderManager] {
+    managers
+  }
+
+  func createManager() -> any TunnelProviderManager {
+    createCount += 1
+    return managerToCreate
+  }
+}
+
 @Suite("Configuration Tests")
 struct ConfigurationTests {
+  private static let testProviderBundleIdentifier =
+    "dev.firezone.firezone.network-extension"
 
   // MARK: - Default Values
 
@@ -593,6 +619,133 @@ struct ConfigurationTests {
       providerConfiguration[Configuration.forcedKey(for: Configuration.Keys.logFilter)]
         == "trace")
     #expect(tunnelProviderManager.saveCount == 1)
+  }
+
+  @Test("VPNConfigurationManager prefers identity-bearing MDM configuration over duplicate")
+  @MainActor
+  func vpnConfigurationManagerIdentifiesMDMConfigurationByProviderBundleIdentifier() async throws {
+    let unrelatedManager = MockTunnelProviderManager()
+    unrelatedManager.localizedDescription = VPNConfigurationManager.bundleDescription
+    let unrelatedProtocol = NETunnelProviderProtocol()
+    unrelatedProtocol.providerBundleIdentifier = "com.example.other.network-extension"
+    unrelatedManager.protocolConfiguration = unrelatedProtocol
+
+    let duplicateManager = MockTunnelProviderManager()
+    duplicateManager.localizedDescription = VPNConfigurationManager.bundleDescription
+    let duplicateProtocol = NETunnelProviderProtocol()
+    duplicateProtocol.providerBundleIdentifier = Self.testProviderBundleIdentifier
+    duplicateManager.protocolConfiguration = duplicateProtocol
+
+    let mdmManager = MockTunnelProviderManager()
+    mdmManager.localizedDescription = "Corporate VPN"
+    let mdmProtocol = NETunnelProviderProtocol()
+    // macOS omits this property from the NETunnelProviderProtocol it creates
+    // from a com.apple.vpn.managed payload.
+    mdmProtocol.providerBundleIdentifier = nil
+    mdmProtocol.identityReference = Data([0x01])
+    mdmManager.protocolConfiguration = mdmProtocol
+
+    let factory = MockTunnelProviderManagerFactory(
+      managers: [unrelatedManager, duplicateManager, mdmManager]
+    )
+    let loaded = try #require(
+      await VPNConfigurationManager.load(
+        using: factory,
+        providerBundleIdentifier: Self.testProviderBundleIdentifier
+      )
+    )
+
+    #expect(loaded.manager === mdmManager)
+    #expect(loaded.isManaged)
+    #expect(factory.createCount == 0)
+  }
+
+  @Test("VPNConfigurationManager treats an identity-bearing configuration as managed")
+  @MainActor
+  func vpnConfigurationManagerTreatsIdentityBearingConfigurationAsManaged() async throws {
+    let mdmManager = MockTunnelProviderManager()
+    mdmManager.localizedDescription = "Firezone 1"
+    let mdmProtocol = NETunnelProviderProtocol()
+    mdmProtocol.providerBundleIdentifier = Self.testProviderBundleIdentifier
+    mdmProtocol.identityReference = Data([0x01])
+    mdmManager.protocolConfiguration = mdmProtocol
+
+    let factory = MockTunnelProviderManagerFactory(managers: [mdmManager])
+    let loaded = try #require(
+      await VPNConfigurationManager.load(
+        using: factory,
+        providerBundleIdentifier: Self.testProviderBundleIdentifier
+      )
+    )
+
+    #expect(loaded.manager === mdmManager)
+    #expect(loaded.isManaged)
+    #expect(factory.createCount == 0)
+  }
+
+  @Test("VPNConfigurationManager does not create a duplicate when a configuration exists")
+  @MainActor
+  func vpnConfigurationManagerDoesNotCreateDuplicate() async throws {
+    let existingManager = MockTunnelProviderManager()
+    existingManager.localizedDescription = "Managed Firezone VPN"
+    let existingProtocol = NETunnelProviderProtocol()
+    existingProtocol.providerBundleIdentifier = Self.testProviderBundleIdentifier
+    existingManager.protocolConfiguration = existingProtocol
+
+    let factory = MockTunnelProviderManagerFactory(managers: [existingManager])
+    let loaded = try await VPNConfigurationManager.loadOrCreate(
+      using: factory,
+      providerBundleIdentifier: Self.testProviderBundleIdentifier
+    )
+
+    #expect(loaded.manager === existingManager)
+    #expect(!loaded.isManaged)
+    #expect(factory.createCount == 0)
+    #expect(existingManager.saveCount == 0)
+  }
+
+  @Test("Managed VPN configuration is loaded as read-only")
+  @MainActor
+  func managedVPNConfigurationIsReadOnly() async throws {
+    let defaults = UserDefaults.makeTestDefaults()
+    let configuration = Configuration(userDefaults: defaults)
+    let protocolConfiguration = NETunnelProviderProtocol()
+    protocolConfiguration.providerConfiguration = [
+      Configuration.Keys.authURL: "https://managed.example.com",
+      Configuration.Keys.apiURL: "wss://managed.example.com",
+      Configuration.Keys.accountSlug: "managed-account",
+    ]
+    let tunnelProviderManager = MockTunnelProviderManager()
+    tunnelProviderManager.protocolConfiguration = protocolConfiguration
+    let vpnConfigurationManager = VPNConfigurationManager(
+      from: tunnelProviderManager,
+      isManaged: true
+    )
+
+    try await vpnConfigurationManager.loadConfiguration(
+      into: configuration,
+      userDefaults: defaults
+    )
+    try await vpnConfigurationManager.save(
+      providerConfiguration: [Configuration.Keys.authURL: "https://overwritten.example.com"]
+    )
+
+    #expect(configuration.authURL == "https://managed.example.com")
+    #expect(configuration.apiURL == "wss://managed.example.com")
+    #expect(configuration.accountSlug == "managed-account")
+    #expect(configuration.isAuthURLForced)
+    #expect(configuration.isApiURLForced)
+    #expect(configuration.isLogFilterForced)
+    #expect(configuration.isAccountSlugForced)
+    #expect(configuration.isConnectOnStartForced)
+    #expect(configuration.isStartOnLoginForced)
+    #expect(configuration.isInternetResourceEnabledForced)
+    #expect(tunnelProviderManager.saveCount == 0)
+    let stored = try #require(
+      protocolConfiguration.providerConfiguration as? [String: String]
+    )
+    #expect(stored[Configuration.Keys.authURL] == "https://managed.example.com")
+    #expect(stored[Configuration.Keys.userDefaultsMigrated] == nil)
   }
 
   @Test("VPNConfigurationManager rejects wrong providerConfiguration value types")

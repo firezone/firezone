@@ -401,9 +401,10 @@ public final class Store: ObservableObject {
     }
   }
   func installVPNConfiguration() async throws {
-    // Create a new VPN configuration in system settings.
-    self.vpnConfigurationManager = try await VPNConfigurationManager(
-      manager: tunnelManagerFactory.createManager()
+    // Re-check preferences before saving anything. An MDM profile may already own
+    // the configuration even though the installation screen is still visible.
+    self.vpnConfigurationManager = try await VPNConfigurationManager.loadOrCreate(
+      using: tunnelManagerFactory
     )
 
     try await manager().loadConfiguration(into: configuration, userDefaults: userDefaults)
