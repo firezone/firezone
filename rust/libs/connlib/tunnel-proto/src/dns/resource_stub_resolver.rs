@@ -48,8 +48,11 @@ pub struct ResourceStubResolver {
 /// Tells the Client how to reply to a single DNS query
 #[derive(Debug)]
 pub(crate) enum ResolveStrategy {
-    /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(Response),
+    /// The query is for a Resource and can be answered instantly.
+    LocalResponse {
+        response: Response,
+        routes: Vec<DnsResourceRoute>,
+    },
     /// The query is for a non-Resource, forward it locally to an upstream or system resolver.
     RecurseLocal,
     /// The query is for a DNS resource but for a type that we don't intercept (i.e. SRV, TXT, ...), forward it to the site that hosts the DNS resource and resolve it there.
@@ -61,6 +64,20 @@ struct Resource {
     pattern: Pattern,
     id: ResourceId,
     ip_stack: IpStack,
+}
+
+#[derive(Default)]
+pub(crate) struct AddResourceResult {
+    pub is_new: bool,
+    pub routes: Vec<DnsResourceRoute>,
+}
+
+#[derive(Debug)]
+pub(crate) struct DnsResourceRoute {
+    pub domain: DomainName,
+    pub pattern: Pattern,
+    pub resource_id: ResourceId,
+    pub proxy_ips: SmallVec<[IpAddr; 8]>,
 }
 
 struct ProxyIps {
@@ -75,7 +92,7 @@ impl ProxyIps {
         Self { ipv4, ipv6 }
     }
 
-    fn for_stack(&self, ip_stack: IpStack) -> smallvec::IntoIter<[IpAddr; 8]> {
+    fn for_stack(&self, ip_stack: IpStack) -> SmallVec<[IpAddr; 8]> {
         let mut ips = SmallVec::<[IpAddr; 8]>::new();
 
         if ip_stack.supports_ipv4() {
@@ -85,7 +102,7 @@ impl ProxyIps {
             ips.extend_from_slice(&self.ipv6);
         }
 
-        ips.into_iter()
+        ips
     }
 }
 
@@ -142,13 +159,8 @@ impl ResourceStubResolver {
 
     pub(crate) fn resolved_resources(
         &self,
-    ) -> impl Iterator<
-        Item = (
-            &dns_types::DomainName,
-            &ResourceId,
-            smallvec::IntoIter<[IpAddr; 8]>,
-        ),
-    > + '_ {
+    ) -> impl Iterator<Item = (&dns_types::DomainName, &ResourceId, SmallVec<[IpAddr; 8]>)> + '_
+    {
         self.fqdn_to_ips
             .iter()
             .flat_map(move |(domain, (ips, resources))| {
@@ -165,7 +177,7 @@ impl ResourceStubResolver {
         ips: &ProxyIps,
         pattern: &Pattern,
         rid: &ResourceId,
-    ) -> Option<smallvec::IntoIter<[IpAddr; 8]>> {
+    ) -> Option<SmallVec<[IpAddr; 8]>> {
         let resource = self
             .dns_resources
             .iter()
@@ -179,37 +191,42 @@ impl ResourceStubResolver {
         id: ResourceId,
         pattern: String,
         ip_stack: IpStack,
-    ) -> bool {
+    ) -> AddResourceResult {
         let parsed_pattern = match Pattern::new(&pattern) {
             Ok(p) => p,
             Err(e) => {
                 tracing::warn!(%pattern, "Domain pattern is not valid: {}", err_with_src(&e));
-                return false;
+                return AddResourceResult::default();
             }
         };
 
         let resource = Resource {
-            pattern: parsed_pattern.clone(),
+            pattern: parsed_pattern,
             id,
             ip_stack,
         };
         let is_new = !self.dns_resources.contains(&resource);
 
         self.dns_resources.retain(|resource| resource.id != id);
-        self.dns_resources.insert(resource);
+        self.dns_resources.insert(resource.clone());
 
-        let overlaps_with_resolved_domain = self
-            .fqdn_to_ips
-            .keys()
-            .any(|domain| parsed_pattern.matches(&Candidate::from_domain(domain)));
-        let records = self.records();
+        let assignment = (resource.pattern.clone(), resource.id);
+        let routes = if is_new {
+            self.fqdn_to_ips
+                .iter()
+                .filter(|(_, (_, resources))| resources.contains(&assignment))
+                .map(|(domain, (ips, _))| DnsResourceRoute {
+                    domain: domain.clone(),
+                    pattern: resource.pattern.clone(),
+                    resource_id: resource.id,
+                    proxy_ips: ips.for_stack(resource.ip_stack),
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
 
-        // Required to update the routing table correctly.
-        if (is_new || overlaps_with_resolved_domain) && !records.is_empty() {
-            self.events.push_back(Event::RecordsChanged(records));
-        }
-
-        is_new
+        AddResourceResult { is_new, routes }
     }
 
     pub(crate) fn remove_resource(&mut self, id: ResourceId) {
@@ -222,41 +239,47 @@ impl ResourceStubResolver {
         &mut self,
         fqdn: dns_types::DomainName,
         resources: Vec<Resource>,
-    ) -> Vec<OwnedRecordData> {
+    ) -> (Vec<OwnedRecordData>, Vec<DnsResourceRoute>) {
         let has_ipv4_resource = resources
             .iter()
             .any(|resource| resource.ip_stack.supports_ipv4());
 
-        self.get_or_assign_ips(fqdn, resources)
+        let (ips, routes) = self.get_or_assign_ips(fqdn, resources);
+        let records = ips
             .into_iter()
             .filter_map(get_v4)
             .filter(|_| has_ipv4_resource)
             .map(dns_types::records::a)
-            .collect_vec()
+            .collect_vec();
+
+        (records, routes)
     }
 
     fn get_or_assign_aaaa_records(
         &mut self,
         fqdn: dns_types::DomainName,
         resources: Vec<Resource>,
-    ) -> Vec<OwnedRecordData> {
+    ) -> (Vec<OwnedRecordData>, Vec<DnsResourceRoute>) {
         let has_ipv6_resource = resources
             .iter()
             .any(|resource| resource.ip_stack.supports_ipv6());
 
-        self.get_or_assign_ips(fqdn, resources)
+        let (ips, routes) = self.get_or_assign_ips(fqdn, resources);
+        let records = ips
             .into_iter()
             .filter_map(get_v6)
             .filter(|_| has_ipv6_resource)
             .map(dns_types::records::aaaa)
-            .collect_vec()
+            .collect_vec();
+
+        (records, routes)
     }
 
     fn get_or_assign_ips(
         &mut self,
         fqdn: dns_types::DomainName,
         resources: Vec<Resource>,
-    ) -> Vec<IpAddr> {
+    ) -> (Vec<IpAddr>, Vec<DnsResourceRoute>) {
         let mut records_changed = false;
 
         let (ips, assigned_resources) = self.fqdn_to_ips.entry(fqdn.clone()).or_insert_with(|| {
@@ -273,17 +296,28 @@ impl ResourceStubResolver {
         for ip in ips.for_stack(IpStack::Dual) {
             self.ips_to_fqdn.insert(ip, fqdn.clone());
         }
-        for resource in resources {
-            records_changed |= assigned_resources.insert((resource.pattern, resource.id));
-        }
+        let routes = resources
+            .into_iter()
+            .filter_map(|resource| {
+                let is_new = assigned_resources.insert((resource.pattern.clone(), resource.id));
+                records_changed |= is_new;
 
-        let ips = ips.for_stack(IpStack::Dual).collect();
+                is_new.then(|| DnsResourceRoute {
+                    domain: fqdn.clone(),
+                    pattern: resource.pattern,
+                    resource_id: resource.id,
+                    proxy_ips: ips.for_stack(resource.ip_stack),
+                })
+            })
+            .collect();
+
+        let ips = ips.for_stack(IpStack::Dual).into_vec();
 
         if records_changed {
             self.events.push_back(Event::RecordsChanged(self.records()));
         };
 
-        ips
+        (ips, routes)
     }
 
     /// Attempts to match the given domain against our list of possible patterns.
@@ -330,13 +364,16 @@ impl ResourceStubResolver {
         tracing::trace!("Parsed packet as DNS query: '{qtype} {domain}'");
 
         if domain == DOH_CANARY_DOMAIN {
-            return ResolveStrategy::LocalResponse(Response::nxdomain(query));
+            return ResolveStrategy::LocalResponse {
+                response: Response::nxdomain(query),
+                routes: Vec::new(),
+            };
         }
 
         // `match_resource` is `O(N)` which we deem fine for DNS queries.
         let maybe_resource = self.match_resource_linear(&domain);
 
-        let records = match (qtype, maybe_resource) {
+        let (records, routes) = match (qtype, maybe_resource) {
             (RecordType::A, resources) if !resources.is_empty() => {
                 self.get_or_assign_a_records(domain.clone(), resources)
             }
@@ -363,13 +400,16 @@ impl ResourceStubResolver {
                     return ResolveStrategy::RecurseLocal;
                 };
 
-                vec![dns_types::records::ptr(fqdn)]
+                (vec![dns_types::records::ptr(fqdn)], Vec::new())
             }
             (RecordType::HTTPS, resources) if !resources.is_empty() => {
                 // We must intercept queries for the HTTPS record type to force the client to issue an A / AAAA query instead.
                 // Otherwise, the client won't use the IPs we issue for a particular domain and the traffic cannot be tunneled.
 
-                return ResolveStrategy::LocalResponse(Response::no_error(query));
+                return ResolveStrategy::LocalResponse {
+                    response: Response::no_error(query),
+                    routes: Vec::new(),
+                };
             }
             _ => return ResolveStrategy::RecurseLocal,
         };
@@ -380,7 +420,7 @@ impl ResourceStubResolver {
             .with_records(records.into_iter().map(|r| (domain.clone(), DNS_TTL, r)))
             .build();
 
-        ResolveStrategy::LocalResponse(response)
+        ResolveStrategy::LocalResponse { response, routes }
     }
 
     pub(crate) fn set_search_domain(&mut self, new_search_domain: Option<DomainName>) {
@@ -403,7 +443,7 @@ impl ResourceStubResolver {
             .map(|(name, (ips, resources))| DnsResourceRecord {
                 domain: name.clone(),
                 resources: resources.clone(),
-                ips: ips.for_stack(IpStack::Dual).collect(),
+                ips: ips.for_stack(IpStack::Dual).into_vec(),
             })
             .collect()
     }
@@ -600,7 +640,7 @@ mod tests {
             RecordType::A,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
+        let ResolveStrategy::LocalResponse { response, .. } = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -623,7 +663,7 @@ mod tests {
             RecordType::A,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
+        let ResolveStrategy::LocalResponse { response, .. } = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -646,7 +686,7 @@ mod tests {
             RecordType::AAAA,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
+        let ResolveStrategy::LocalResponse { response, .. } = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -677,7 +717,7 @@ mod tests {
             IpStack::Ipv4Only,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
+        let ResolveStrategy::LocalResponse { response, .. } = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -716,7 +756,7 @@ mod tests {
             RecordType::AAAA,
         );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle_query(&query) else {
+        let ResolveStrategy::LocalResponse { response, .. } = resolver.handle_query(&query) else {
             panic!("Unexpected result")
         };
 
@@ -734,7 +774,7 @@ mod tests {
             IpStack::Dual,
         );
 
-        let ResolveStrategy::LocalResponse(_) = resolver.handle_query(&Query::new(
+        let ResolveStrategy::LocalResponse { .. } = resolver.handle_query(&Query::new(
             "example.com".parse::<dns_types::DomainName>().unwrap(),
             RecordType::A,
         )) else {
@@ -775,7 +815,7 @@ mod tests {
             IpStack::Dual,
         );
 
-        let ResolveStrategy::LocalResponse(_) = resolver.handle_query(&Query::new(
+        let ResolveStrategy::LocalResponse { .. } = resolver.handle_query(&Query::new(
             "example.com".parse::<dns_types::DomainName>().unwrap(),
             RecordType::A,
         )) else {
@@ -784,7 +824,7 @@ mod tests {
 
         assert!(resolver.poll_event().is_some());
 
-        let ResolveStrategy::LocalResponse(_) = resolver.handle_query(&Query::new(
+        let ResolveStrategy::LocalResponse { .. } = resolver.handle_query(&Query::new(
             "example.com".parse::<dns_types::DomainName>().unwrap(),
             RecordType::A,
         )) else {

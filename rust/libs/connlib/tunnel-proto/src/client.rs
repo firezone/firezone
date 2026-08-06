@@ -527,7 +527,7 @@ impl ClientState {
                 domain.clone(),
                 *gid,
                 *rid,
-                proxy_ips.as_slice(),
+                &proxy_ips,
                 packets_for_domain,
                 now,
             ) {
@@ -1890,7 +1890,7 @@ impl ClientState {
         };
 
         match self.resource_stub_resolver.handle_query(&message) {
-            resource_stub_resolver::ResolveStrategy::LocalResponse(response) => {
+            resource_stub_resolver::ResolveStrategy::LocalResponse { response, routes } => {
                 #[cfg(feature = "telemetry")]
                 if response.response_code() == dns_types::ResponseCode::NXDOMAIN
                     && telemetry::feature_flags::drop_llmnr_nxdomain_responses()
@@ -1898,6 +1898,7 @@ impl ClientState {
                     return;
                 }
 
+                self.update_dns_resource_routes(routes);
                 self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
 
@@ -1957,7 +1958,8 @@ impl ClientState {
         }
 
         match self.resource_stub_resolver.handle_query(&message) {
-            resource_stub_resolver::ResolveStrategy::LocalResponse(response) => {
+            resource_stub_resolver::ResolveStrategy::LocalResponse { response, routes } => {
+                self.update_dns_resource_routes(routes);
                 self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
                 self.drain_resource_stub_resolver_events();
@@ -2187,32 +2189,31 @@ impl ClientState {
         }
     }
 
+    fn update_dns_resource_routes(
+        &mut self,
+        routes: Vec<resource_stub_resolver::DnsResourceRoute>,
+    ) {
+        for route in routes {
+            let Some(Resource::Dns(dns)) = self.resources_by_id.get(&route.resource_id) else {
+                continue;
+            };
+
+            for ip in route.proxy_ips {
+                self.routing_tables.upsert_dns(
+                    ip.into(),
+                    route.resource_id,
+                    route.domain.clone(),
+                    route.pattern.clone(),
+                    FilterEngine::new(&dns.filters),
+                );
+            }
+        }
+    }
+
     fn drain_resource_stub_resolver_events(&mut self) {
         while let Some(resource_stub_resolver::Event::RecordsChanged(records)) =
             self.resource_stub_resolver.poll_event()
         {
-            for record in &records {
-                for (pattern, rid) in &record.resources {
-                    let Some(Resource::Dns(dns)) = self.resources_by_id.get(rid) else {
-                        continue; // This may happen when a resource gets removed that we have already assigned IPs for.
-                    };
-
-                    for ip in record
-                        .ips
-                        .iter()
-                        .filter(|ip| dns.ip_stack.supports_ip(**ip))
-                    {
-                        self.routing_tables.upsert_dns(
-                            (*ip).into(),
-                            *rid,
-                            record.domain.clone(),
-                            pattern.clone(),
-                            FilterEngine::new(&dns.filters),
-                        );
-                    }
-                }
-            }
-
             self.buffered_events
                 .push_back(ClientEvent::DnsRecordsChanged { records });
         }
@@ -2441,8 +2442,15 @@ impl ClientState {
 
         let activated = match &new_resource {
             Resource::Dns(dns) => {
-                self.resource_stub_resolver
-                    .add_resource(dns.id, dns.address.clone(), dns.ip_stack)
+                let result = self.resource_stub_resolver.add_resource(
+                    dns.id,
+                    dns.address.clone(),
+                    dns.ip_stack,
+                );
+
+                self.update_dns_resource_routes(result.routes);
+
+                result.is_new
             }
             Resource::Cidr(cidr) => self.routing_tables.upsert_cidr(
                 cidr.address,
