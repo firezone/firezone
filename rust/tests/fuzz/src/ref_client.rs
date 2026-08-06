@@ -860,12 +860,15 @@ impl RefClient {
             return;
         }
 
+        if self.is_local_dns_resource_query(query)
+            && !self.local_dns_resource_query_has_records(query)
+        {
+            self.expect_dns_handshake(query);
+            return;
+        }
+
         if self.is_local_dns_resource_query(query) {
-            if self.local_dns_resource_query_has_records(query) {
-                self.expect_dns_response(query);
-            } else {
-                self.expect_dns_handshake(query);
-            }
+            self.expect_dns_response(query);
             return;
         }
 
