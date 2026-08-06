@@ -42,6 +42,47 @@ pub struct AdvancedSettingsChanged(pub AdvancedSettingsViewModel);
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct LogsRecounted(pub FileCount);
 
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub struct X509Status {
+    pub summary: String,
+    pub sections: Vec<X509DetailSection>,
+}
+
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub struct X509DetailSection {
+    pub title: String,
+    pub fields: Vec<X509DetailField>,
+}
+
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub struct X509DetailField {
+    pub label: String,
+    pub value: String,
+}
+
+impl From<device_trust::Status> for X509Status {
+    fn from(status: device_trust::Status) -> Self {
+        Self {
+            summary: status.summary,
+            sections: status
+                .sections
+                .into_iter()
+                .map(|section| X509DetailSection {
+                    title: section.title,
+                    fields: section
+                        .fields
+                        .into_iter()
+                        .map(|field| X509DetailField {
+                            label: field.label,
+                            value: field.value,
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
+    }
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
@@ -56,6 +97,22 @@ pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
         .map_err(anyhow::Error::msg)?;
 
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn x509_status(managed: tauri::State<'_, Managed>) -> Result<X509Status> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    managed
+        .send_request(ControllerRequest::GetX509Status(tx))
+        .await?;
+
+    let status = rx
+        .await
+        .context("Failed to await X.509 status")?
+        .map_err(anyhow::Error::msg)?;
+
+    Ok(status.into())
 }
 
 #[tauri::command]
