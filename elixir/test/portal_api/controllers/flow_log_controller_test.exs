@@ -628,14 +628,12 @@ defmodule PortalAPI.FlowLogControllerTest do
       assert errors["0"]["outers"] == ["can't be blank"]
     end
 
-    test "accepts an open with outer paths known so far", %{conn: conn, account: account} do
+    test "returns 422 when an open includes outer paths", %{conn: conn, account: account} do
       record = build_record(%{"flow_end" => nil})
+      conn = conn |> authorize(account) |> post_logs([record])
 
-      assert %{"data" => %{"status" => "ok"}} =
-               conn |> authorize(account) |> post_logs([record]) |> json_response(200)
-
-      [log] = Repo.all(FlowLog)
-      assert Enum.map(log.outers, & &1.dst_ip) == ["203.0.113.7"]
+      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
+      assert errors["0"]["outers"] == ["must be absent while the flow is open"]
     end
 
     test "accepts a skewed flow_end before flow_start", %{conn: conn, account: account} do

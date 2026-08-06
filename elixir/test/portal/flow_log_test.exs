@@ -165,11 +165,10 @@ defmodule Portal.FlowLogTest do
       end
     end
 
-    test "valid with outer paths on an open flow" do
+    test "invalid with outer paths on an open flow" do
       cs = changeset(%{flow_end: nil})
-
-      assert cs.valid?
-      assert [%FlowLog.Outer{dst_ip: "203.0.113.7"}] = get_field(cs, :outers)
+      refute cs.valid?
+      assert Map.has_key?(errors_on(cs), :outers)
     end
 
     test "invalid with malformed outer endpoints" do
