@@ -320,7 +320,7 @@ impl ReferenceState {
                 ip4,
                 ip6,
                 nat_ip4,
-                dead_window: _,
+                dead_window,
                 portal_window: _,
             } => {
                 // With ICE-less connections, a roam re-keys in place and keeps
@@ -339,7 +339,7 @@ impl ReferenceState {
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 client.exec_mut(|client| {
                     if !all_iceless {
-                        client.reset_connections(now);
+                        client.reset_connections(now + *dead_window);
                     }
                     client.readd_all_resources();
                 });
