@@ -2,6 +2,7 @@ use super::{
     QueryId,
     dns_records::DnsRecords,
     icmp_error_hosts::IcmpErrorHosts,
+    probe::{ExpectedOutcome, PacketRoute, RejectionRemote, RejectionResponse, Remote},
     reference::PrivateKey,
     resource::{
         CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
@@ -9,7 +10,7 @@ use super::{
     },
     sim_client::SimClient,
     sim_net::ExecMutScope,
-    transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, PacketRoute, SPort, Seq},
+    transition::{DPort, Destination, DnsQuery, DnsTransport, SPort},
 };
 use tunnel_proto::{
     ClientState, MaliciousBehaviour, dns,
@@ -78,37 +79,13 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) connected_dns_resources: BTreeSet<ResourceId>,
 
+    /// The last time a connected gateway resolved each DNS resource domain.
+    #[debug(skip)]
+    dns_resource_resolutions: BTreeMap<(ResourceId, DomainName), Instant>,
+
     /// The [`ResourceStatus`] of each site.
     #[debug(skip)]
     site_status: BTreeMap<SiteId, ResourceStatus>,
-
-    /// The expected ICMP handshakes with Gateways.
-    #[debug(skip)]
-    pub(crate) expected_gateway_icmp_handshakes:
-        BTreeMap<GatewayId, BTreeMap<u64, (Destination, Seq, Identifier)>>,
-
-    /// The expected ICMP handshakes with Clients.
-    #[debug(skip)]
-    pub(crate) expected_client_icmp_handshakes:
-        BTreeMap<ClientId, BTreeMap<u64, (Destination, Seq, Identifier)>>,
-
-    /// Tracks ICMP packets expected to receive an error response.
-    #[debug(skip)]
-    pub(crate) expected_icmp_rejections: BTreeMap<(Seq, Identifier), ExpectedRejection>,
-
-    /// The expected UDP handshakes with Gateways.
-    #[debug(skip)]
-    pub(crate) expected_gateway_udp_handshakes:
-        BTreeMap<GatewayId, BTreeMap<u64, (Destination, SPort, DPort)>>,
-
-    /// The expected UDP handshakes with Clients.
-    #[debug(skip)]
-    pub(crate) expected_client_udp_handshakes:
-        BTreeMap<ClientId, BTreeMap<u64, (Destination, SPort, DPort)>>,
-
-    /// Tracks UDP packets expected to receive an ICMP error response.
-    #[debug(skip)]
-    pub(crate) expected_udp_rejections: BTreeMap<(SPort, DPort), ExpectedRejection>,
 
     /// The expected TCP connections.
     #[debug(skip)]
@@ -164,13 +141,8 @@ impl RefClient {
             dns_records: Default::default(),
             connected_cidr_resources: Default::default(),
             connected_dns_resources: Default::default(),
+            dns_resource_resolutions: Default::default(),
             connected_internet_resource: Default::default(),
-            expected_gateway_icmp_handshakes: Default::default(),
-            expected_client_icmp_handshakes: Default::default(),
-            expected_icmp_rejections: Default::default(),
-            expected_gateway_udp_handshakes: Default::default(),
-            expected_client_udp_handshakes: Default::default(),
-            expected_udp_rejections: Default::default(),
             expected_tcp_connections: Default::default(),
             expected_tcp_rejections: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
@@ -223,6 +195,8 @@ impl RefClient {
 
         self.connected_cidr_resources.remove(resource);
         self.connected_dns_resources.remove(resource);
+        self.dns_resource_resolutions
+            .retain(|(candidate, _), _| candidate != resource);
 
         if self.internet_resource().is_some_and(|r| r == *resource) {
             self.connected_internet_resource = false;
@@ -345,6 +319,8 @@ impl RefClient {
         for resource in affected {
             self.connected_cidr_resources.remove(&resource);
             self.connected_dns_resources.remove(&resource);
+            self.dns_resource_resolutions
+                .retain(|(candidate, _), _| *candidate != resource);
 
             if self.internet_resource().is_some_and(|r| r == resource) {
                 self.connected_internet_resource = false;
@@ -369,6 +345,7 @@ impl RefClient {
 
         self.connected_cidr_resources.clear();
         self.connected_dns_resources.clear();
+        self.dns_resource_resolutions.clear();
         self.connected_internet_resource = false;
 
         for status in self.site_status.values_mut() {
@@ -517,76 +494,26 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn on_icmp_packet(
-        &mut self,
-        dst: Destination,
-        expected_route: PacketRoute,
-        seq: Seq,
-        identifier: Identifier,
-        payload: u64,
-        now: Instant,
-    ) {
-        self.on_packet(
-            dst.clone(),
-            expected_route,
-            (dst, seq, identifier),
-            |ref_client| &mut ref_client.expected_gateway_icmp_handshakes,
-            |ref_client| &mut ref_client.expected_client_icmp_handshakes,
-            |ref_client| &mut ref_client.expected_icmp_rejections,
-            (seq, identifier),
-            payload,
-            now,
-        );
-    }
-
-    pub(crate) fn on_udp_packet(
-        &mut self,
-        dst: Destination,
-        expected_route: PacketRoute,
-        sport: SPort,
-        dport: DPort,
-        payload: u64,
-        now: Instant,
-    ) {
-        self.on_packet(
-            dst.clone(),
-            expected_route,
-            (dst, sport, dport),
-            |ref_client| &mut ref_client.expected_gateway_udp_handshakes,
-            |ref_client| &mut ref_client.expected_client_udp_handshakes,
-            |ref_client| &mut ref_client.expected_udp_rejections,
-            (sport, dport),
-            payload,
-            now,
-        );
-    }
-
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource, gateway, peer))]
-    fn on_packet<E, K: Ord>(
+    pub(crate) fn on_packet(
         &mut self,
         dst: Destination,
-        expected_route: PacketRoute,
-        packet_id: E,
-        gateway_map: impl FnOnce(&mut Self) -> &mut BTreeMap<GatewayId, BTreeMap<u64, E>>,
-        client_map: impl FnOnce(&mut Self) -> &mut BTreeMap<ClientId, BTreeMap<u64, E>>,
-        rejection_map: impl FnOnce(&mut Self) -> &mut BTreeMap<K, ExpectedRejection>,
-        rejection_id: K,
-        payload: u64,
+        route: PacketRoute,
         now: Instant,
-    ) {
-        let gateway = match expected_route {
-            PacketRoute::Drop => return,
+    ) -> ExpectedOutcome {
+        match route {
+            PacketRoute::Drop => ExpectedOutcome::Dropped,
             PacketRoute::Peer(remote_id) => {
                 tracing::Span::current().record("peer", tracing::field::display(remote_id));
-                client_map(self)
-                    .entry(remote_id)
-                    .or_default()
-                    .insert(payload, packet_id);
                 self.client_send_times
                     .entry(remote_id)
                     .or_default()
                     .insert(now);
-                return;
+
+                ExpectedOutcome::Delivered {
+                    remote: Remote::Client(remote_id),
+                    resource: None,
+                }
             }
             PacketRoute::PeerRejectedByPeer(remote_id) => {
                 tracing::Span::current().record("peer", tracing::field::display(remote_id));
@@ -594,31 +521,42 @@ impl RefClient {
                     .entry(remote_id)
                     .or_default()
                     .insert(now);
-                rejection_map(self).insert(
-                    rejection_id,
-                    ExpectedRejection {
-                        response: RejectionResponse::Prohibited,
-                        remote: RejectionRemote::Client(remote_id),
-                    },
-                );
-                return;
+
+                ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Client(remote_id),
+                    response: RejectionResponse::Prohibited,
+                }
             }
-            PacketRoute::RejectedByClient => {
-                rejection_map(self).insert(
-                    rejection_id,
-                    ExpectedRejection {
-                        response: RejectionResponse::Prohibited,
-                        remote: RejectionRemote::Local,
-                    },
-                );
-                return;
+            PacketRoute::RejectedByClient => ExpectedOutcome::Rejected {
+                by: RejectionRemote::Local,
+                response: RejectionResponse::Prohibited,
+            },
+            PacketRoute::Gateway(gateway) => {
+                tracing::Span::current().record("gateway", tracing::field::display(gateway));
+                self.gateway_send_times
+                    .entry(gateway)
+                    .or_default()
+                    .insert(now);
+
+                ExpectedOutcome::Delivered {
+                    remote: Remote::Gateway(gateway),
+                    resource: None,
+                }
             }
-            PacketRoute::Gateway(gateway) => gateway,
             PacketRoute::Resource { resource, gateway } => {
                 tracing::Span::current().record("resource", tracing::field::display(resource));
+                tracing::Span::current().record("gateway", tracing::field::display(gateway));
                 self.connect_to_resource(resource, dst);
                 self.set_resource_online(resource);
-                gateway
+                self.gateway_send_times
+                    .entry(gateway)
+                    .or_default()
+                    .insert(now);
+
+                ExpectedOutcome::Delivered {
+                    remote: Remote::Gateway(gateway),
+                    resource: Some(resource),
+                }
             }
             PacketRoute::ResourceRejectedByGateway { resource, gateway } => {
                 tracing::Span::current().record("resource", tracing::field::display(resource));
@@ -629,14 +567,11 @@ impl RefClient {
                     .entry(gateway)
                     .or_default()
                     .insert(now);
-                rejection_map(self).insert(
-                    rejection_id,
-                    ExpectedRejection {
-                        response: RejectionResponse::Prohibited,
-                        remote: RejectionRemote::Gateway(gateway),
-                    },
-                );
-                return;
+
+                ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Gateway(gateway),
+                    response: RejectionResponse::Prohibited,
+                }
             }
             PacketRoute::ResourceUnreachableByGateway { resource, gateway } => {
                 tracing::Span::current().record("resource", tracing::field::display(resource));
@@ -647,40 +582,24 @@ impl RefClient {
                     .entry(gateway)
                     .or_default()
                     .insert(now);
-                rejection_map(self).insert(
-                    rejection_id,
-                    ExpectedRejection {
-                        response: RejectionResponse::Unreachable,
-                        remote: RejectionRemote::Gateway(gateway),
-                    },
-                );
-                return;
+
+                ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Gateway(gateway),
+                    response: RejectionResponse::Unreachable,
+                }
             }
-        };
-
-        tracing::Span::current().record("gateway", tracing::field::display(gateway));
-        tracing::debug!(%payload, "Sending packet");
-
-        gateway_map(self)
-            .entry(gateway)
-            .or_default()
-            .insert(payload, packet_id);
-
-        self.gateway_send_times
-            .entry(gateway)
-            .or_default()
-            .insert(now);
+        }
     }
 
     pub(crate) fn on_connect_tcp(
         &mut self,
         src: IpAddr,
         dst: Destination,
-        expected_route: PacketRoute,
+        route: PacketRoute,
         sport: SPort,
         dport: DPort,
     ) {
-        match expected_route {
+        match route {
             PacketRoute::Drop => {}
             PacketRoute::Gateway(_) => {}
             PacketRoute::Peer(_) => {}
@@ -846,6 +765,7 @@ impl RefClient {
         query: &DnsQuery,
         upstream_do53: &[UpstreamDo53],
         icmp_error_hosts: &IcmpErrorHosts,
+        now: Instant,
     ) {
         if self.is_dynamic_device_pool_dns_query(query) {
             self.expect_dns_response(query);
@@ -853,6 +773,7 @@ impl RefClient {
         }
 
         if let Some(resource) = self.is_site_specific_dns_query(query) {
+            self.prepare_dns_resource_connection(resource, now);
             self.set_resource_online(resource);
             self.connected_dns_resources.insert(resource);
             self.expect_dns_response(query);
@@ -867,8 +788,16 @@ impl RefClient {
             return;
         }
 
-        if self.is_local_dns_resource_query(query) {
+        if let Some(resource) = self.local_dns_resource(query) {
             self.expect_dns_response(query);
+
+            if self.connected_dns_resources.contains(&resource)
+                && matches!(query.r_type, RecordType::A | RecordType::AAAA)
+            {
+                self.dns_resource_resolutions
+                    .insert((resource, query.domain.clone()), now);
+            }
+
             return;
         }
 
@@ -1314,6 +1243,66 @@ impl RefClient {
                 .is_some()
     }
 
+    fn local_dns_resource(&self, query: &DnsQuery) -> Option<ResourceId> {
+        let is_local_record = query.r_type == RecordType::A
+            || query.r_type == RecordType::AAAA
+            || query.r_type == RecordType::PTR;
+
+        is_local_record
+            .then(|| {
+                self.dns_resource_by_domain(
+                    &query.domain,
+                    |resource| {
+                        (query.r_type != RecordType::A || resource.ip_stack.supports_ipv4())
+                            && (query.r_type != RecordType::AAAA
+                                || resource.ip_stack.supports_ipv6())
+                    },
+                    |_| true,
+                )
+            })
+            .flatten()
+            .map(|resource| resource.id)
+    }
+
+    pub(crate) fn prepare_dns_resource_connection(&mut self, resource: ResourceId, now: Instant) {
+        if self.connected_dns_resources.contains(&resource) {
+            return;
+        }
+
+        let domains = self
+            .resolved_domains()
+            .filter_map(|(domain, records)| {
+                self.dns_resource_by_domain(
+                    &domain,
+                    |candidate| {
+                        candidate.id == resource
+                            && ((records.contains(&RecordType::A)
+                                && candidate.ip_stack.supports_ipv4())
+                                || (records.contains(&RecordType::AAAA)
+                                    && candidate.ip_stack.supports_ipv6()))
+                    },
+                    |_| true,
+                )
+                .map(|_| domain)
+            })
+            .collect_vec();
+
+        for domain in domains {
+            self.dns_resource_resolutions
+                .insert((resource, domain), now);
+        }
+    }
+
+    pub(crate) fn dns_resource_resolution(
+        &self,
+        resource: ResourceId,
+        domain: &DomainName,
+    ) -> Option<Instant> {
+        self.dns_resource_resolutions
+            .get(&(resource, domain.clone()))
+            .copied()
+    }
+
     fn local_dns_resource_query_has_records(&self, query: &DnsQuery) -> bool {
         self.resources
             .iter()
@@ -1447,12 +1436,6 @@ impl RefClient {
     }
 
     pub(crate) fn clear_packets(&mut self) {
-        self.expected_gateway_icmp_handshakes.clear();
-        self.expected_client_icmp_handshakes.clear();
-        self.expected_icmp_rejections.clear();
-        self.expected_gateway_udp_handshakes.clear();
-        self.expected_client_udp_handshakes.clear();
-        self.expected_udp_rejections.clear();
         self.expected_udp_dns_handshakes.clear();
         self.expected_tcp_dns_handshakes.clear();
         self.expected_tcp_connections.clear();
@@ -1533,25 +1516,6 @@ fn is_resource_proxy(addr: IpAddr) -> bool {
         IpAddr::V4(addr) => tunnel_proto::IPV4_RESOURCES.contains(addr),
         IpAddr::V6(addr) => tunnel_proto::IPV6_RESOURCES.contains(addr),
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExpectedRejection {
-    pub(crate) response: RejectionResponse,
-    pub(crate) remote: RejectionRemote,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RejectionRemote {
-    Local,
-    Gateway(GatewayId),
-    Client(ClientId),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RejectionResponse {
-    Prohibited,
-    Unreachable,
 }
 
 fn default_routes_v4() -> Vec<IpNetwork> {

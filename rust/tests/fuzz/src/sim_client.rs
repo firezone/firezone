@@ -2,6 +2,7 @@ use super::{
     QueryId,
     echo::echo_reply,
     icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
+    probe::{ProbeEvent, ProbeEventKind, ProbeId, ProbeProtocol, Remote},
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
@@ -59,17 +60,8 @@ pub(crate) struct SimClient {
     pub(crate) sent_tcp_dns_queries: HashSet<(dns::Upstream, QueryId)>,
     pub(crate) received_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
 
-    pub(crate) sent_icmp_requests: BTreeMap<(Seq, Identifier), (Instant, IpPacket)>,
-    pub(crate) received_icmp_replies: BTreeMap<(Seq, Identifier), IpPacket>,
-
-    /// The received ICMP packets, indexed by our custom ICMP payload.
-    pub(crate) received_icmp_requests: BTreeMap<u64, (Instant, IpPacket)>,
-
-    /// The received UDP packets, indexed by our custom UDP payload.
-    pub(crate) received_udp_requests: BTreeMap<u64, (Instant, IpPacket)>,
-
-    pub(crate) sent_udp_requests: BTreeMap<(SPort, DPort), (Instant, IpPacket)>,
-    pub(crate) received_udp_replies: BTreeMap<(SPort, DPort), IpPacket>,
+    pub(crate) probe_events: Vec<ProbeEvent>,
+    sent_probes: BTreeMap<ProbeProtocol, ProbeId>,
 
     pub(crate) tcp_dns_client: dns_over_tcp::Client,
 
@@ -98,12 +90,8 @@ impl SimClient {
             received_udp_dns_responses: Default::default(),
             sent_tcp_dns_queries: Default::default(),
             received_tcp_dns_responses: Default::default(),
-            sent_icmp_requests: Default::default(),
-            received_icmp_replies: Default::default(),
-            received_icmp_requests: Default::default(),
-            received_udp_requests: Default::default(),
-            sent_udp_requests: Default::default(),
-            received_udp_replies: Default::default(),
+            probe_events: Default::default(),
+            sent_probes: Default::default(),
             routes: Default::default(),
             search_domain: Default::default(),
             resource_status: Default::default(),
@@ -222,8 +210,6 @@ impl SimClient {
         packet: IpPacket,
         now: Instant,
     ) -> Option<snownet::Transmit> {
-        self.update_sent_requests(&packet, now);
-
         match self.handle_tun_input(packet, now) {
             Ok(Some(transmit)) => Some(transmit),
             Ok(None) => {
@@ -237,6 +223,28 @@ impl SimClient {
                 None
             }
         }
+    }
+
+    pub(crate) fn encapsulate_probe(
+        &mut self,
+        id: ProbeId,
+        packet: IpPacket,
+        now: Instant,
+    ) -> Option<snownet::Transmit> {
+        let protocol = probe_protocol_from_request(&packet)
+            .expect("probe packets must be ICMP echo requests or UDP packets");
+        let previous = self.sent_probes.insert(protocol, id);
+
+        assert!(previous.is_none(), "probe transport tuples must be unique");
+
+        self.probe_events.push(ProbeEvent {
+            id,
+            at: now,
+            kind: ProbeEventKind::Injected { client: self.id },
+            packet: packet.clone(),
+        });
+
+        self.encapsulate(packet, now)
     }
 
     /// Drive the SUT's TUN -> network path, collecting the encapsulated datagram (if any).
@@ -268,31 +276,6 @@ impl SimClient {
     pub fn handle_timeout(&mut self, now: Instant) {
         if self.sut.poll_timeout().is_some_and(|(t, _)| t <= now) {
             self.sut.handle_timeout(now)
-        }
-    }
-
-    fn update_sent_requests(&mut self, packet: &IpPacket, now: Instant) {
-        if let Some(icmp) = packet.as_icmpv4()
-            && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
-        {
-            self.sent_icmp_requests
-                .insert((Seq(echo.seq), Identifier(echo.id)), (now, packet.clone()));
-            return;
-        }
-
-        if let Some(icmp) = packet.as_icmpv6()
-            && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
-        {
-            self.sent_icmp_requests
-                .insert((Seq(echo.seq), Identifier(echo.id)), (now, packet.clone()));
-            return;
-        }
-
-        if let Some(udp) = packet.as_udp() {
-            self.sent_udp_requests.insert(
-                (SPort(udp.source_port()), DPort(udp.destination_port())),
-                (now, packet.clone()),
-            );
         }
     }
 
@@ -329,8 +312,16 @@ impl SimClient {
             Ok(Some((failed_packet, icmp_error))) => {
                 match failed_packet.layer4_protocol() {
                     Layer4Protocol::Udp { src, dst } => {
-                        self.received_udp_replies
-                            .insert((SPort(dst), DPort(src)), packet);
+                        let protocol = ProbeProtocol::Udp {
+                            sport: SPort(src),
+                            dport: DPort(dst),
+                        };
+
+                        if let Some(id) = self.sent_probes.get(&protocol).copied() {
+                            self.record_returned_probe(id, packet, now);
+                        } else if dst != 53 {
+                            tracing::error!(?protocol, "Received ICMP error for unknown UDP probe");
+                        }
                     }
                     Layer4Protocol::Tcp { src, dst } => {
                         self.failed_tcp_packets
@@ -340,8 +331,19 @@ impl SimClient {
                         self.tcp_client.handle_inbound(packet);
                     }
                     Layer4Protocol::Icmp { seq, id } => {
-                        self.received_icmp_replies
-                            .insert((Seq(seq), Identifier(id)), packet);
+                        let protocol = ProbeProtocol::Icmp {
+                            seq: Seq(seq),
+                            identifier: Identifier(id),
+                        };
+
+                        if let Some(id) = self.sent_probes.get(&protocol).copied() {
+                            self.record_returned_probe(id, packet, now);
+                        } else {
+                            tracing::error!(
+                                ?protocol,
+                                "Received ICMP error for unknown ICMP probe"
+                            );
+                        }
                     }
                 }
 
@@ -383,24 +385,17 @@ impl SimClient {
                 return None;
             }
 
-            // Distinguish a UDP reply (to a request *we* sent) from a fresh
-            // request from a peer client. The reply's (sport, dport) is the
-            // reverse of an outbound 5-tuple we recorded in `sent_udp_requests`.
-            let outbound_key = (SPort(udp.destination_port()), DPort(udp.source_port()));
-            if self.sent_udp_requests.contains_key(&outbound_key) {
-                self.received_udp_replies.insert(
-                    (SPort(udp.source_port()), DPort(udp.destination_port())),
-                    packet.clone(),
-                );
+            let Some(id) = ProbeId::from_payload(udp.payload()) else {
+                tracing::error!("UDP probe payload does not contain a probe ID");
+                return None;
+            };
+
+            if self.sent_probes.values().any(|sent| *sent == id) {
+                self.record_returned_probe(id, packet, now);
                 return None;
             }
 
-            // Fresh request from a peer: record it and echo back, mirroring
-            // the simulated gateway.
-            let packet_id = u64::from_be_bytes(*udp.payload().first_chunk().unwrap());
-            tracing::debug!(%packet_id, "Received UDP request");
-            self.received_udp_requests
-                .insert(packet_id, (now, packet.clone()));
+            self.record_delivered_probe(id, packet.clone(), now);
 
             let reply = icmp_error.or_else(|| echo_reply(packet))?;
             return self.handle_tun_input(reply, now).ok().flatten();
@@ -419,10 +414,12 @@ impl SimClient {
         if let Some(icmp) = packet.as_icmpv4()
             && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
         {
-            let packet_id = u64::from_be_bytes(*icmp.payload().first_chunk().unwrap());
-            tracing::debug!(%packet_id, "Received ICMP request");
-            self.received_icmp_requests
-                .insert(packet_id, (now, packet.clone()));
+            let Some(id) = ProbeId::from_payload(icmp.payload()) else {
+                tracing::error!("ICMP probe payload does not contain a probe ID");
+                return None;
+            };
+
+            self.record_delivered_probe(id, packet.clone(), now);
             let transmit = self.handle_icmp_request(&packet, echo, icmp.payload(), now)?;
 
             return Some(transmit);
@@ -431,28 +428,38 @@ impl SimClient {
         if let Some(icmp) = packet.as_icmpv6()
             && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
         {
-            let packet_id = u64::from_be_bytes(*icmp.payload().first_chunk().unwrap());
-            tracing::debug!(%packet_id, "Received ICMP request");
-            self.received_icmp_requests
-                .insert(packet_id, (now, packet.clone()));
+            let Some(id) = ProbeId::from_payload(icmp.payload()) else {
+                tracing::error!("ICMP probe payload does not contain a probe ID");
+                return None;
+            };
+
+            self.record_delivered_probe(id, packet.clone(), now);
             let transmit = self.handle_icmp_request(&packet, echo, icmp.payload(), now)?;
 
             return Some(transmit);
         }
 
         if let Some(icmp) = packet.as_icmpv4()
-            && let Icmpv4Type::EchoReply(echo) = icmp.icmp_type()
+            && let Icmpv4Type::EchoReply(_) = icmp.icmp_type()
         {
-            self.received_icmp_replies
-                .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+            let Some(id) = ProbeId::from_payload(icmp.payload()) else {
+                tracing::error!("ICMP probe payload does not contain a probe ID");
+                return None;
+            };
+
+            self.record_returned_probe(id, packet, now);
             return None;
         }
 
         if let Some(icmp) = packet.as_icmpv6()
-            && let Icmpv6Type::EchoReply(echo) = icmp.icmp_type()
+            && let Icmpv6Type::EchoReply(_) = icmp.icmp_type()
         {
-            self.received_icmp_replies
-                .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+            let Some(id) = ProbeId::from_payload(icmp.payload()) else {
+                tracing::error!("ICMP probe payload does not contain a probe ID");
+                return None;
+            };
+
+            self.record_returned_probe(id, packet, now);
             return None;
         }
 
@@ -549,13 +556,27 @@ impl SimClient {
         Some(transmit)
     }
 
+    fn record_delivered_probe(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
+        self.probe_events.push(ProbeEvent {
+            id,
+            at,
+            kind: ProbeEventKind::Delivered {
+                remote: Remote::Client(self.id),
+            },
+            packet,
+        });
+    }
+
+    fn record_returned_probe(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
+        self.probe_events.push(ProbeEvent {
+            id,
+            at,
+            kind: ProbeEventKind::Returned { client: self.id },
+            packet,
+        });
+    }
+
     pub(crate) fn clear_packets(&mut self) {
-        self.sent_icmp_requests.clear();
-        self.received_icmp_replies.clear();
-        self.received_icmp_requests.clear();
-        self.sent_udp_requests.clear();
-        self.received_udp_replies.clear();
-        self.received_udp_requests.clear();
         self.sent_udp_dns_queries.clear();
         self.received_udp_dns_responses.clear();
         self.sent_tcp_dns_queries.clear();
@@ -563,6 +584,33 @@ impl SimClient {
         self.tcp_client.reset();
         self.failed_tcp_packets.clear();
     }
+}
+
+fn probe_protocol_from_request(packet: &IpPacket) -> Option<ProbeProtocol> {
+    if let Some(icmp) = packet.as_icmpv4()
+        && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
+    {
+        return Some(ProbeProtocol::Icmp {
+            seq: Seq(echo.seq),
+            identifier: Identifier(echo.id),
+        });
+    }
+
+    if let Some(icmp) = packet.as_icmpv6()
+        && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
+    {
+        return Some(ProbeProtocol::Icmp {
+            seq: Seq(echo.seq),
+            identifier: Identifier(echo.id),
+        });
+    }
+
+    let udp = packet.as_udp()?;
+
+    Some(ProbeProtocol::Udp {
+        sport: SPort(udp.source_port()),
+        dport: DPort(udp.destination_port()),
+    })
 }
 
 impl ExecMutScope for SimClient {

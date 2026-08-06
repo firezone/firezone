@@ -316,11 +316,9 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
-                expected_route: _,
                 seq,
                 identifier,
-                payload,
-                ..
+                probe_id,
             } => {
                 let dst = address_from_destination(&dst, &state, &src, client_id);
 
@@ -329,12 +327,12 @@ impl TunnelTest {
                     dst,
                     seq.0,
                     identifier.0,
-                    &payload.to_be_bytes(),
+                    &probe_id.to_be_bytes(),
                 )
                 .unwrap();
 
                 let client = state.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| sim.encapsulate(packet, now));
+                let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
 
                 buffered_transmits.push_from(transmit, client, now);
             }
@@ -342,19 +340,23 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
-                expected_route: _,
                 sport,
                 dport,
-                payload,
+                probe_id,
             } => {
                 let dst = address_from_destination(&dst, &state, &src, client_id);
 
-                let packet =
-                    ip_packet::make::udp_packet(src, dst, sport.0, dport.0, &payload.to_be_bytes())
-                        .unwrap();
+                let packet = ip_packet::make::udp_packet(
+                    src,
+                    dst,
+                    sport.0,
+                    dport.0,
+                    &probe_id.to_be_bytes(),
+                )
+                .unwrap();
 
                 let client = state.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| sim.encapsulate(packet, now));
+                let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
 
                 buffered_transmits.push_from(transmit, client, now);
             }
@@ -362,7 +364,6 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
-                expected_route: _,
                 sport,
                 dport,
             } => {
@@ -667,26 +668,13 @@ impl TunnelTest {
             .iter()
             .map(|(id, g)| (*id, g.inner()))
             .collect();
-        let ref_gateways = ref_state
-            .gateways
-            .iter()
-            .map(|(id, g)| (*id, g.inner()))
-            .collect();
-
-        // System-wide packet assertions
-        assert_icmp_packets_properties(
+        assert_probes(
+            &ref_state.expected_probes,
             &all_ref_clients,
-            &ref_gateways,
             &all_sim_clients,
             &sim_gateways,
             &ref_state.global_dns_records,
-        );
-        assert_udp_packets_properties(
-            &all_ref_clients,
-            &ref_gateways,
-            &all_sim_clients,
-            &sim_gateways,
-            &ref_state.global_dns_records,
+            &ref_state.icmp_error_hosts,
         );
 
         // Per-client assertions for client-specific state
