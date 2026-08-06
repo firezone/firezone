@@ -342,6 +342,51 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:error, :no_plan_product} = EventHandler.handle_event(event)
     end
 
+    test "sets the monthly active users limit from Enterprise seats", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 42, %{
+          "monthly_active_users_count" => "7"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.monthly_active_users_count == 42
+    end
+
+    test "leaves the monthly active users limit unset for Team seats", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 42, %{
+          "monthly_active_users_count" => "7"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.monthly_active_users_count == nil
+      assert updated.limits.users_count == 42
+    end
+
     test "clears account limit flags when subscription update increases limits", %{
       account: account,
       customer: customer
