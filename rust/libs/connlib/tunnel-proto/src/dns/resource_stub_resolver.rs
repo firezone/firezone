@@ -113,13 +113,23 @@ impl ResourceStubResolver {
 
     pub(crate) fn resolved_resources(
         &self,
-    ) -> impl Iterator<Item = (&dns_types::DomainName, &ResourceId, &Vec<IpAddr>)> + '_ {
+    ) -> impl Iterator<Item = (&dns_types::DomainName, &ResourceId, Vec<IpAddr>)> + '_ {
         self.fqdn_to_ips
             .iter()
-            .flat_map(|(domain, (ips, resources))| {
-                resources
-                    .iter()
-                    .map(move |(_, resource)| (domain, resource, ips))
+            .flat_map(move |(domain, (ips, resources))| {
+                resources.iter().filter_map(move |(pattern, rid)| {
+                    let resource = self
+                        .dns_resources
+                        .iter()
+                        .find(|resource| resource.id == *rid && &resource.pattern == pattern)?;
+                    let ips = ips
+                        .iter()
+                        .copied()
+                        .filter(|ip| resource.ip_stack.supports_ip(*ip))
+                        .collect_vec();
+
+                    Some((domain, rid, ips))
+                })
             })
     }
 

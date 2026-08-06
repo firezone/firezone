@@ -499,35 +499,25 @@ impl ClientState {
                 },
             );
 
-        for (domain, rid, proxy_ips, resource, gid) in self
+        for (domain, rid, proxy_ips, gid) in self
             .resource_stub_resolver
             .resolved_resources()
-            .map(|(domain, resource, proxy_ips)| {
-                let resource_description = self.resources_by_id.get(resource);
-                let gateway = self
+            .filter_map(|(domain, rid, proxy_ips)| {
+                let Some(gid) = self
                     .authorized_resources
-                    .get(resource)
-                    .and_then(|p| p.as_gateway());
+                    .get(rid)
+                    .and_then(|p| p.as_gateway())
+                else {
+                    tracing::trace!(
+                        %domain, %rid,
+                        "No gateway connected for resource, skipping DNS resource NAT setup"
+                    );
+                    return None;
+                };
 
-                (domain, resource, proxy_ips, resource_description, gateway)
+                Some((domain, rid, proxy_ips, gid))
             })
         {
-            let Some(Resource::Dns(resource)) = resource else {
-                continue;
-            };
-            let Some(gid) = gid else {
-                tracing::trace!(
-                    %domain, %rid,
-                    "No gateway connected for resource, skipping DNS resource NAT setup"
-                );
-                continue;
-            };
-            let proxy_ips = proxy_ips
-                .iter()
-                .copied()
-                .filter(|ip| resource.ip_stack.supports_ip(*ip))
-                .collect_vec();
-
             let packets_for_domain = buffered_packets_by_gateway_domain_and_resource
                 .remove(&(gid, domain.clone(), *rid))
                 .unwrap_or_default();
