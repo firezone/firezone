@@ -17,7 +17,7 @@ pub use view::{
 };
 
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{fmt, net::IpAddr};
 
 make_id!(GatewayId);
 make_id!(ResourceId);
@@ -76,6 +76,13 @@ pub enum IpStack {
 }
 
 impl IpStack {
+    pub fn supports_ip(&self, ip: IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(_) => self.supports_ipv4(),
+            IpAddr::V6(_) => self.supports_ipv6(),
+        }
+    }
+
     pub fn supports_ipv4(&self) -> bool {
         match self {
             IpStack::Ipv4Only | IpStack::Dual => true,

@@ -137,11 +137,16 @@ impl ResourceStubResolver {
             }
         };
 
-        let is_new = self.dns_resources.insert(Resource {
+        let resource = Resource {
             pattern: parsed_pattern.clone(),
             id,
             ip_stack,
-        });
+        };
+        let is_new = !self.dns_resources.contains(&resource);
+
+        self.dns_resources.retain(|resource| resource.id != id);
+        self.dns_resources.insert(resource);
+
         let overlaps_with_resolved_domain = self
             .fqdn_to_ips
             .keys()
@@ -167,14 +172,14 @@ impl ResourceStubResolver {
         fqdn: dns_types::DomainName,
         resources: Vec<Resource>,
     ) -> Vec<OwnedRecordData> {
-        let all_ipv4 = resources
+        let has_ipv4_resource = resources
             .iter()
-            .all(|resource| resource.ip_stack.supports_ipv4());
+            .any(|resource| resource.ip_stack.supports_ipv4());
 
         self.get_or_assign_ips(fqdn, resources)
             .into_iter()
             .filter_map(get_v4)
-            .filter(|_| all_ipv4)
+            .filter(|_| has_ipv4_resource)
             .map(dns_types::records::a)
             .collect_vec()
     }
@@ -184,14 +189,14 @@ impl ResourceStubResolver {
         fqdn: dns_types::DomainName,
         resources: Vec<Resource>,
     ) -> Vec<OwnedRecordData> {
-        let all_ipv6 = resources
+        let has_ipv6_resource = resources
             .iter()
-            .all(|resource| resource.ip_stack.supports_ipv6());
+            .any(|resource| resource.ip_stack.supports_ipv6());
 
         self.get_or_assign_ips(fqdn, resources)
             .into_iter()
             .filter_map(get_v6)
-            .filter(|_| all_ipv6)
+            .filter(|_| has_ipv6_resource)
             .map(dns_types::records::aaaa)
             .collect_vec()
     }

@@ -467,6 +467,7 @@ impl ReferenceState {
     pub(crate) fn route_for_packet(
         &self,
         client_id: ClientId,
+        src: IpAddr,
         dst: &Destination,
         protocol: Protocol,
     ) -> PacketRoute {
@@ -476,6 +477,7 @@ impl ReferenceState {
         let clients_by_ip = self.client_ip_to_id();
 
         client.inner().route_for_packet(
+            src,
             dst,
             protocol,
             |resource| {
@@ -581,9 +583,11 @@ impl ReferenceState {
             .flat_map(|g| g.inner().dns_records().domains_iter())
             .chain(self.global_dns_records.domains_iter())
             .filter(|d| {
-                self.clients
-                    .values()
-                    .any(|c| c.inner().dns_resource_by_domain(d, |_| true).is_some())
+                self.clients.values().any(|c| {
+                    c.inner()
+                        .dns_resource_by_domain(d, |_| true, |_| true)
+                        .is_some()
+                })
             })
             .collect::<BTreeSet<_>>();
 

@@ -499,18 +499,22 @@ impl ClientState {
                 },
             );
 
-        for (domain, rid, proxy_ips, gid) in
-            self.resource_stub_resolver
-                .resolved_resources()
-                .map(|(domain, resource, proxy_ips)| {
-                    let gateway = self
-                        .authorized_resources
-                        .get(resource)
-                        .and_then(|p| p.as_gateway());
+        for (domain, rid, proxy_ips, resource, gid) in self
+            .resource_stub_resolver
+            .resolved_resources()
+            .map(|(domain, resource, proxy_ips)| {
+                let resource_description = self.resources_by_id.get(resource);
+                let gateway = self
+                    .authorized_resources
+                    .get(resource)
+                    .and_then(|p| p.as_gateway());
 
-                    (domain, resource, proxy_ips, gateway)
-                })
+                (domain, resource, proxy_ips, resource_description, gateway)
+            })
         {
+            let Some(Resource::Dns(resource)) = resource else {
+                continue;
+            };
             let Some(gid) = gid else {
                 tracing::trace!(
                     %domain, %rid,
@@ -518,6 +522,11 @@ impl ClientState {
                 );
                 continue;
             };
+            let proxy_ips = proxy_ips
+                .iter()
+                .copied()
+                .filter(|ip| resource.ip_stack.supports_ip(*ip))
+                .collect_vec();
 
             let packets_for_domain = buffered_packets_by_gateway_domain_and_resource
                 .remove(&(gid, domain.clone(), *rid))
@@ -527,7 +536,7 @@ impl ClientState {
                 domain.clone(),
                 *gid,
                 *rid,
-                proxy_ips,
+                &proxy_ips,
                 packets_for_domain,
                 now,
             ) {
@@ -540,7 +549,7 @@ impl ClientState {
 
             if let Some(peer) = self.gateways.peer_by_id_mut(gid) {
                 for ip in proxy_ips {
-                    peer.allow_ip_for_resource(*ip, *rid);
+                    peer.allow_ip_for_resource(ip, *rid);
                 }
             }
         }
@@ -2197,7 +2206,11 @@ impl ClientState {
                         continue; // This may happen when a resource gets removed that we have already assigned IPs for.
                     };
 
-                    for ip in &record.ips {
+                    for ip in record
+                        .ips
+                        .iter()
+                        .filter(|ip| dns.ip_stack.supports_ip(**ip))
+                    {
                         self.routing_tables.upsert_dns(
                             (*ip).into(),
                             *rid,
