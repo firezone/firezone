@@ -457,7 +457,7 @@ fn arb_tcp_connection(
 
     let (sport, dport) = g.fresh_tcp_connection(dport);
     let dst = arb_destination(g, DstSpec::Domain(domain));
-    let expected_route = state.route_for_packet(client_id, &dst, Protocol::Tcp(dport.0));
+    let expected_route = state.route_for_packet(client_id, src, &dst, Protocol::Tcp(dport.0));
     Transition::ConnectTcp {
         client_id,
         src,
@@ -510,7 +510,8 @@ fn arb_icmp_packet(
     let resolved_ip = g.u32();
     let payload = g.fresh_payload();
     let dst = into_destination(dst, resolved_ip);
-    let expected_route = state.route_for_packet(client_id, &dst, Protocol::IcmpEcho(identifier.0));
+    let expected_route =
+        state.route_for_packet(client_id, src, &dst, Protocol::IcmpEcho(identifier.0));
     Transition::SendIcmpPacket {
         client_id,
         src,
@@ -534,7 +535,7 @@ fn arb_udp_packet(
     let resolved_ip = g.u32();
     let payload = g.fresh_payload();
     let dst = into_destination(dst, resolved_ip);
-    let expected_route = state.route_for_packet(client_id, &dst, Protocol::Udp(dport.0));
+    let expected_route = state.route_for_packet(client_id, src, &dst, Protocol::Udp(dport.0));
     Transition::SendUdpPacket {
         client_id,
         src,

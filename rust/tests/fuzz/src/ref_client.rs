@@ -725,6 +725,7 @@ impl RefClient {
 
     pub(crate) fn route_for_packet(
         &self,
+        src: IpAddr,
         dst: &Destination,
         protocol: Protocol,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
@@ -764,7 +765,7 @@ impl RefClient {
         // Resource selection is the one deliberate classifier in the oracle.
         // `resource_by_dst` has small, independently tested precedence rules for
         // overlapping resources; applying a transition does not classify again.
-        let Some(resource) = self.resource_by_dst(dst, protocol) else {
+        let Some(resource) = self.resource_by_dst(src, dst, protocol) else {
             return PacketRoute::Drop;
         };
         let strictly_allowed = self.strict_resource_filter_allows(resource, protocol);
@@ -856,6 +857,13 @@ impl RefClient {
             self.connected_dns_resources.insert(resource);
             self.expect_dns_response(query);
 
+            return;
+        }
+
+        if self.is_local_dns_resource_query(query)
+            && !self.local_dns_resource_query_has_records(query)
+        {
+            self.expect_dns_handshake(query);
             return;
         }
 
@@ -992,10 +1000,15 @@ impl RefClient {
             .flatten()
     }
 
-    fn resource_by_dst(&self, destination: &Destination, proto: Protocol) -> Option<ResourceId> {
+    fn resource_by_dst(
+        &self,
+        src: IpAddr,
+        destination: &Destination,
+        proto: Protocol,
+    ) -> Option<ResourceId> {
         match destination {
             Destination::DomainName { name, .. } => {
-                if let Some(r) = self.dns_resource_by_domain_and_proto(name, proto) {
+                if let Some(r) = self.dns_resource_by_domain_and_proto(name, src, proto) {
                     return Some(r.id);
                 }
             }
@@ -1067,23 +1080,30 @@ impl RefClient {
     pub(crate) fn dns_resource_by_domain_and_proto(
         &self,
         domain: &DomainName,
+        src: IpAddr,
         proto: Protocol,
     ) -> Option<DnsResource> {
-        self.dns_resource_by_domain(domain, |r| protocol_filter_allows(&r.filters, proto))
+        self.dns_resource_by_domain(
+            domain,
+            |resource| resource.ip_stack.supports_ip(src),
+            |resource| protocol_filter_allows(&resource.filters, proto),
+        )
     }
 
     pub(crate) fn dns_resource_by_domain(
         &self,
         domain: &DomainName,
-        predicate: impl Fn(&DnsResource) -> bool,
+        eligible: impl Fn(&DnsResource) -> bool,
+        preferred: impl Fn(&DnsResource) -> bool,
     ) -> Option<DnsResource> {
         self.resources
             .iter()
             .cloned()
             .filter_map(|r| r.into_dns())
             .filter(|r| dns::is_subdomain(domain, &r.address))
+            .filter(|r| eligible(r))
             .max_by(|r1, r2| {
-                let by_predicate = match (predicate(r1), predicate(r2)) {
+                let by_preference = match (preferred(r1), preferred(r2)) {
                     (true, true) => Ordering::Equal,
                     (false, false) => Ordering::Equal,
                     (true, false) => Ordering::Greater,
@@ -1095,14 +1115,17 @@ impl RefClient {
                     .reverse();
                 let by_id = r1.id.cmp(&r2.id);
 
-                by_predicate.then(by_pattern).then(by_id)
+                by_preference.then(by_pattern).then(by_id)
             })
     }
 
     fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, BTreeSet<RecordType>)> + '_ {
         self.dns_records
             .iter()
-            .filter(|(domain, _)| self.dns_resource_by_domain(domain, |_| true).is_some())
+            .filter(|(domain, _)| {
+                self.dns_resource_by_domain(domain, |_| true, |_| true)
+                    .is_some()
+            })
             .filter(|(domain, _)| !self.is_device_pool_domain(domain))
             .map(|(domain, ips)| (domain.clone(), ips.clone()))
     }
@@ -1113,11 +1136,13 @@ impl RefClient {
                 if !records.iter().any(|r| matches!(r, &RecordType::A)) {
                     return None;
                 }
-                let resource = self.dns_resource_by_domain(&domain, |_| true)?;
-                resource
-                    .ip_stack
-                    .supports_ipv4()
-                    .then(|| (domain, resource.filters.clone()))
+                let resource = self.dns_resource_by_domain(
+                    &domain,
+                    |resource| resource.ip_stack.supports_ipv4(),
+                    |_| true,
+                )?;
+
+                Some((domain, resource.filters))
             })
             .collect()
     }
@@ -1128,11 +1153,13 @@ impl RefClient {
                 if !records.iter().any(|r| matches!(r, &RecordType::AAAA)) {
                     return None;
                 }
-                let resource = self.dns_resource_by_domain(&domain, |_| true)?;
-                resource
-                    .ip_stack
-                    .supports_ipv6()
-                    .then(|| (domain, resource.filters.clone()))
+                let resource = self.dns_resource_by_domain(
+                    &domain,
+                    |resource| resource.ip_stack.supports_ipv6(),
+                    |_| true,
+                )?;
+
+                Some((domain, resource.filters))
             })
             .collect()
     }
@@ -1253,7 +1280,7 @@ impl RefClient {
         self.dns_records
             .keys()
             .filter_map(move |domain| {
-                self.dns_resource_by_domain(domain, |_| true)
+                self.dns_resource_by_domain(domain, |_| true, |_| true)
                     .is_none()
                     .then_some(global_dns_records.domain_ips_iter(domain, at))
             })
@@ -1283,8 +1310,24 @@ impl RefClient {
 
         is_local_record
             && self
-                .dns_resource_by_domain(&query.domain, |_| true)
+                .dns_resource_by_domain(&query.domain, |_| true, |_| true)
                 .is_some()
+    }
+
+    fn local_dns_resource_query_has_records(&self, query: &DnsQuery) -> bool {
+        self.resources
+            .iter()
+            .filter_map(|resource| {
+                let Resource::Dns(resource) = resource else {
+                    return None;
+                };
+
+                dns::is_subdomain(&query.domain, &resource.address).then_some(resource)
+            })
+            .any(|resource| {
+                (query.r_type != RecordType::A || resource.ip_stack.supports_ipv4())
+                    && (query.r_type != RecordType::AAAA || resource.ip_stack.supports_ipv6())
+            })
     }
 
     pub(crate) fn upstream_dns_server_via_resource(
@@ -1314,7 +1357,10 @@ impl RefClient {
             return None;
         }
 
-        Some(self.dns_resource_by_domain(&query.domain, |_| true)?.id)
+        Some(
+            self.dns_resource_by_domain(&query.domain, |_| true, |_| true)?
+                .id,
+        )
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
@@ -1594,6 +1640,7 @@ mod tests {
         let dst = Destination::IpAddr("10.0.0.1".parse().unwrap());
         let route = |client: &RefClient, protocol| {
             client.route_for_packet(
+                "100.96.0.1".parse().unwrap(),
                 &dst,
                 protocol,
                 |resource| match resource {
