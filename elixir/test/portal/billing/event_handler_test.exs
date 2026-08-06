@@ -364,10 +364,12 @@ defmodule Portal.Billing.EventHandlerTest do
       assert updated.limits.monthly_active_users_count == 42
     end
 
-    test "leaves the monthly active users limit unset for Team seats", %{
+    test "clears the monthly active users limit for Team seats", %{
       account: account,
       customer: customer
     } do
+      update_account(account, %{limits: %{monthly_active_users_count: 99}})
+
       {product, _price, subscription} =
         Stripe.build_all(:team, account.metadata.stripe.customer_id, 42, %{
           "monthly_active_users_count" => "7"
