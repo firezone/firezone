@@ -34,7 +34,7 @@ const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
 
 pub struct ResourceStubResolver {
-    fqdn_to_ips: BTreeMap<dns_types::DomainName, (Vec<IpAddr>, BTreeSet<(Pattern, ResourceId)>)>,
+    fqdn_to_ips: BTreeMap<dns_types::DomainName, (ProxyIps, BTreeSet<(Pattern, ResourceId)>)>,
     ips_to_fqdn: HashMap<IpAddr, dns_types::DomainName>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, sorted by their glob pattern.
@@ -60,6 +60,29 @@ struct Resource {
     pattern: Pattern,
     id: ResourceId,
     ip_stack: IpStack,
+}
+
+struct ProxyIps {
+    all: Vec<IpAddr>,
+    ipv4: Vec<IpAddr>,
+    ipv6: Vec<IpAddr>,
+}
+
+impl ProxyIps {
+    fn new(ips: Vec<IpAddr>) -> Self {
+        let (ipv4, ipv6): (Vec<_>, Vec<_>) = ips.into_iter().partition(IpAddr::is_ipv4);
+        let all = ipv4.iter().chain(&ipv6).copied().collect();
+
+        Self { all, ipv4, ipv6 }
+    }
+
+    fn for_stack(&self, ip_stack: IpStack) -> &[IpAddr] {
+        match ip_stack {
+            IpStack::Dual => &self.all,
+            IpStack::Ipv4Only => &self.ipv4,
+            IpStack::Ipv6Only => &self.ipv6,
+        }
+    }
 }
 
 impl Default for ResourceStubResolver {
@@ -89,11 +112,13 @@ impl ResourceStubResolver {
                 .count();
 
             for record in records {
-                for ip in record.ips.clone() {
-                    ips_to_fqdn.insert(ip, record.domain.clone());
+                let ips = ProxyIps::new(record.ips);
+
+                for ip in &ips.all {
+                    ips_to_fqdn.insert(*ip, record.domain.clone());
                 }
 
-                fqdn_to_ips.insert(record.domain, (record.ips, record.resources));
+                fqdn_to_ips.insert(record.domain, (ips, record.resources));
             }
 
             // Advance IP provider to make sure future addresses are unique.
@@ -113,24 +138,43 @@ impl ResourceStubResolver {
 
     pub(crate) fn resolved_resources(
         &self,
-    ) -> impl Iterator<Item = (&dns_types::DomainName, &ResourceId, Vec<IpAddr>)> + '_ {
+    ) -> impl Iterator<Item = (&dns_types::DomainName, &ResourceId, &[IpAddr])> + '_ {
         self.fqdn_to_ips
             .iter()
             .flat_map(move |(domain, (ips, resources))| {
                 resources.iter().filter_map(move |(pattern, rid)| {
-                    let resource = self
-                        .dns_resources
-                        .iter()
-                        .find(|resource| resource.id == *rid && &resource.pattern == pattern)?;
-                    let ips = ips
-                        .iter()
-                        .copied()
-                        .filter(|ip| resource.ip_stack.supports_ip(*ip))
-                        .collect_vec();
+                    let ips = self.ips_for_resource(ips, pattern, rid)?;
 
                     Some((domain, rid, ips))
                 })
             })
+    }
+
+    pub(crate) fn proxy_ips(
+        &self,
+        domain: &dns_types::DomainName,
+        pattern: &Pattern,
+        rid: &ResourceId,
+    ) -> &[IpAddr] {
+        let Some((ips, _)) = self.fqdn_to_ips.get(domain) else {
+            return &[];
+        };
+
+        self.ips_for_resource(ips, pattern, rid).unwrap_or_default()
+    }
+
+    fn ips_for_resource<'a>(
+        &self,
+        ips: &'a ProxyIps,
+        pattern: &Pattern,
+        rid: &ResourceId,
+    ) -> Option<&'a [IpAddr]> {
+        let resource = self
+            .dns_resources
+            .iter()
+            .find(|resource| resource.id == *rid && &resource.pattern == pattern)?;
+
+        Some(ips.for_stack(resource.ip_stack))
     }
 
     pub(crate) fn add_resource(
@@ -227,16 +271,16 @@ impl ResourceStubResolver {
 
             records_changed = true;
 
-            (ips, BTreeSet::default())
+            (ProxyIps::new(ips), BTreeSet::default())
         });
-        for ip in &*ips {
+        for ip in &ips.all {
             self.ips_to_fqdn.insert(*ip, fqdn.clone());
         }
         for resource in resources {
             records_changed |= assigned_resources.insert((resource.pattern, resource.id));
         }
 
-        let ips = ips.clone();
+        let ips = ips.all.clone();
 
         if records_changed {
             self.events.push_back(Event::RecordsChanged(self.records()));
@@ -362,7 +406,7 @@ impl ResourceStubResolver {
             .map(|(name, (ips, resources))| DnsResourceRecord {
                 domain: name.clone(),
                 resources: resources.clone(),
-                ips: ips.clone(),
+                ips: ips.all.clone(),
             })
             .collect()
     }

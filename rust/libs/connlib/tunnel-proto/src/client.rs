@@ -526,7 +526,7 @@ impl ClientState {
                 domain.clone(),
                 *gid,
                 *rid,
-                &proxy_ips,
+                proxy_ips,
                 packets_for_domain,
                 now,
             ) {
@@ -539,7 +539,7 @@ impl ClientState {
 
             if let Some(peer) = self.gateways.peer_by_id_mut(gid) {
                 for ip in proxy_ips {
-                    peer.allow_ip_for_resource(ip, *rid);
+                    peer.allow_ip_for_resource(*ip, *rid);
                 }
             }
         }
@@ -2190,17 +2190,14 @@ impl ClientState {
         while let Some(resource_stub_resolver::Event::RecordsChanged(records)) =
             self.resource_stub_resolver.poll_event()
         {
+            let resolver = &self.resource_stub_resolver;
             for record in &records {
                 for (pattern, rid) in &record.resources {
                     let Some(Resource::Dns(dns)) = self.resources_by_id.get(rid) else {
                         continue; // This may happen when a resource gets removed that we have already assigned IPs for.
                     };
 
-                    for ip in record
-                        .ips
-                        .iter()
-                        .filter(|ip| dns.ip_stack.supports_ip(**ip))
-                    {
+                    for ip in resolver.proxy_ips(&record.domain, pattern, rid) {
                         self.routing_tables.upsert_dns(
                             (*ip).into(),
                             *rid,
