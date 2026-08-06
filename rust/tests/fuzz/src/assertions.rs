@@ -69,29 +69,17 @@ pub(crate) fn assert_probes(
         let submissions = probe_observations
             .iter()
             .copied()
-            .filter_map(|observation| match observation {
-                ProbeObservation::RequestSubmitted(submitted) => Some(submitted),
-                ProbeObservation::RequestReceived(_) => None,
-                ProbeObservation::ResponseReceived(_) => None,
-            })
+            .filter_map(ProbeObservation::as_submitted_request)
             .collect_vec();
         let received_requests = probe_observations
             .iter()
             .copied()
-            .filter_map(|observation| match observation {
-                ProbeObservation::RequestSubmitted(_) => None,
-                ProbeObservation::RequestReceived(received) => Some(received),
-                ProbeObservation::ResponseReceived(_) => None,
-            })
+            .filter_map(ProbeObservation::as_received_request)
             .collect_vec();
         let received_responses = probe_observations
             .iter()
             .copied()
-            .filter_map(|observation| match observation {
-                ProbeObservation::RequestSubmitted(_) => None,
-                ProbeObservation::RequestReceived(_) => None,
-                ProbeObservation::ResponseReceived(received) => Some(received),
-            })
+            .filter_map(ProbeObservation::as_received_response)
             .collect_vec();
 
         let [submitted_request] = submissions.as_slice() else {

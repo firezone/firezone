@@ -198,4 +198,28 @@ impl ProbeObservation {
             ProbeObservation::ResponseReceived(observation) => observation.id,
         }
     }
+
+    pub(crate) fn as_submitted_request(&self) -> Option<&SubmittedRequest> {
+        match self {
+            ProbeObservation::RequestSubmitted(submitted) => Some(submitted),
+            ProbeObservation::RequestReceived(_) => None,
+            ProbeObservation::ResponseReceived(_) => None,
+        }
+    }
+
+    pub(crate) fn as_received_request(&self) -> Option<&ReceivedRequest> {
+        match self {
+            ProbeObservation::RequestSubmitted(_) => None,
+            ProbeObservation::RequestReceived(received) => Some(received),
+            ProbeObservation::ResponseReceived(_) => None,
+        }
+    }
+
+    pub(crate) fn as_received_response(&self) -> Option<&ReceivedResponse> {
+        match self {
+            ProbeObservation::RequestSubmitted(_) => None,
+            ProbeObservation::RequestReceived(_) => None,
+            ProbeObservation::ResponseReceived(received) => Some(received),
+        }
+    }
 }
