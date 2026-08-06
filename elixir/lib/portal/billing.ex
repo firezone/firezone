@@ -100,9 +100,14 @@ defmodule Portal.Billing do
   Returns the plan type for the account based on the Stripe product name.
   Returns :enterprise, :team, :starter, or :unknown.
   """
-  @spec plan_type(Portal.Account.t()) :: :enterprise | :team | :starter | :unknown
-  def plan_type(%Portal.Account{metadata: %{stripe: %{product_name: product_name}}})
-      when is_binary(product_name) do
+  @spec plan_type(Portal.Account.t() | String.t() | nil) ::
+          :enterprise | :team | :starter | :unknown
+  def plan_type(%Portal.Account{metadata: %{stripe: %{product_name: product_name}}}),
+    do: plan_type(product_name)
+
+  def plan_type(%Portal.Account{}), do: :unknown
+
+  def plan_type(product_name) when is_binary(product_name) do
     cond do
       String.starts_with?(product_name, "Enterprise") -> :enterprise
       product_name == "Team" -> :team
@@ -111,7 +116,7 @@ defmodule Portal.Billing do
     end
   end
 
-  def plan_type(%Portal.Account{}), do: :unknown
+  def plan_type(nil), do: :unknown
 
   @spec paid_plan?(Portal.Account.t()) :: boolean()
   def paid_plan?(%Portal.Account{} = account), do: plan_type(account) in [:team, :enterprise]

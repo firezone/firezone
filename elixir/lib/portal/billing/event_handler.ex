@@ -592,7 +592,10 @@ defmodule Portal.Billing.EventHandler do
     {limits, params} = Map.split(params, limit_fields)
     {features, _} = Map.split(params, feature_fields)
 
-    limits = Map.merge(limits, %{"users_count" => users_count})
+    limits =
+      limits
+      |> Map.put("users_count", users_count)
+      |> put_seat_limit(Billing.plan_type(stripe_metadata["product_name"]), seats)
 
     %{
       features: features,
@@ -600,6 +603,14 @@ defmodule Portal.Billing.EventHandler do
       metadata: %{stripe: Map.merge(metadata, stripe_metadata)}
     }
   end
+
+  # Enterprise seats are sold as monthly active users, so the limit comes from
+  # the subscription quantity and never from the Stripe metadata.
+  defp put_seat_limit(limits, :enterprise, seats),
+    do: Map.put(limits, "monthly_active_users_count", seats)
+
+  defp put_seat_limit(limits, _plan_type, _seats),
+    do: Map.delete(limits, "monthly_active_users_count")
 
   defp parse_metadata_params(metadata, limit_fields, metadata_fields) do
     metadata
