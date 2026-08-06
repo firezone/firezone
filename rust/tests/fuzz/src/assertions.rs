@@ -112,15 +112,7 @@ fn assert_probe(
     };
     let injected = *injected;
 
-    if injected.kind
-        != (ProbeEventKind::Injected {
-            client: expected.origin,
-        })
-    {
-        return Err("probe was injected by the wrong client");
-    }
-
-    assert_injected_probe(expected, injected);
+    assert_injected_event(expected, injected)?;
 
     if let (TraceRequirement::ExactOrNoRemoteEvents(reason), [], []) = (
         expected.trace_requirement,
@@ -171,7 +163,14 @@ fn assert_probe(
                 global_dns_records,
                 mappings,
             );
-            assert_delivered_return(expected, injected, delivered, returned, icmp_error_hosts);
+            assert_delivered_return(
+                expected,
+                injected,
+                delivered,
+                returned,
+                expected_remote,
+                icmp_error_hosts,
+            );
         }
         ExpectedOutcome::Rejected { response, .. } => {
             let ([], [returned]) = (delivered.as_slice(), returned.as_slice()) else {
@@ -194,7 +193,19 @@ fn assert_probe(
     Ok(())
 }
 
-fn assert_injected_probe(expected: &ExpectedProbe, injected: &ProbeEvent) {
+fn assert_injected_event(
+    expected: &ExpectedProbe,
+    injected: &ProbeEvent,
+) -> Result<(), &'static str> {
+    let client = match injected.kind {
+        ProbeEventKind::Injected { client } => client,
+        ProbeEventKind::Delivered { .. } => return Err("delivery event used as injection"),
+        ProbeEventKind::Returned { .. } => return Err("return event used as injection"),
+    };
+    if client != expected.origin {
+        return Err("probe was injected by the wrong client");
+    }
+
     if injected.at != expected.sent_at {
         tracing::error!(target: "assertions", id = ?expected.id, "Probe was injected at the wrong time");
     }
@@ -218,7 +229,7 @@ fn assert_injected_probe(expected: &ExpectedProbe, injected: &ProbeEvent) {
             let Some((actual_seq, actual_identifier, _)) = icmp_echo_request(&injected.packet)
             else {
                 tracing::error!(target: "assertions", id = ?expected.id, "Injected probe is not an ICMP echo request");
-                return;
+                return Ok(());
             };
 
             if (actual_seq, actual_identifier) != (seq.0, identifier.0) {
@@ -228,7 +239,7 @@ fn assert_injected_probe(expected: &ExpectedProbe, injected: &ProbeEvent) {
         ProbeRequest::Udp { sport, dport, .. } => {
             let Some(udp) = injected.packet.as_udp() else {
                 tracing::error!(target: "assertions", id = ?expected.id, "Injected probe is not UDP");
-                return;
+                return Ok(());
             };
 
             if (udp.source_port(), udp.destination_port()) != (sport.0, dport.0) {
@@ -236,6 +247,8 @@ fn assert_injected_probe(expected: &ExpectedProbe, injected: &ProbeEvent) {
             }
         }
     }
+
+    Ok(())
 }
 
 fn assert_delivered_probe(
@@ -308,9 +321,10 @@ fn assert_delivered_return(
     injected: &ProbeEvent,
     delivered: &ProbeEvent,
     returned: &ProbeEvent,
+    remote: Remote,
     icmp_error_hosts: &IcmpErrorHosts,
 ) {
-    if remote_returns_icmp_error(expected, delivered, icmp_error_hosts) {
+    if remote_returns_icmp_error(expected, delivered, remote, icmp_error_hosts) {
         assert_icmp_error_return(expected, injected, returned, None);
         return;
     }
@@ -321,17 +335,15 @@ fn assert_delivered_return(
 fn remote_returns_icmp_error(
     expected: &ExpectedProbe,
     delivered: &ProbeEvent,
+    remote: Remote,
     icmp_error_hosts: &IcmpErrorHosts,
 ) -> bool {
-    let is_icmp_peer = matches!(
-        (&expected.request, delivered.kind),
-        (
-            ProbeRequest::Icmp { .. },
-            ProbeEventKind::Delivered {
-                remote: Remote::Client(_),
-            }
-        )
-    );
+    let is_icmp_peer = match (&expected.request, remote) {
+        (ProbeRequest::Icmp { .. }, Remote::Gateway(_)) => false,
+        (ProbeRequest::Icmp { .. }, Remote::Client(_)) => true,
+        (ProbeRequest::Udp { .. }, Remote::Gateway(_)) => false,
+        (ProbeRequest::Udp { .. }, Remote::Client(_)) => false,
+    };
 
     !is_icmp_peer
         && icmp_error_hosts
