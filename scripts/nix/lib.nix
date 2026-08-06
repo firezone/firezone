@@ -86,16 +86,23 @@ rec {
         ''
         + (args.postPatch or "");
 
-        nativeBuildInputs =
-          (args.nativeBuildInputs or [ ])
-          ++ [
-            pkgs.rsync
-            pkgs.zstd
-          ]
-          ++ lib.optionals (args ? cargoArtifacts) [
-            craneLib.inheritCargoArtifactsHook
-            pkgs.removeReferencesTo
-          ];
+        # The pinned toolchain goes first: `buildRustPackage` appends its own
+        # cargo last, so anything in `args.nativeBuildInputs` that propagates a
+        # cargo of its own would shadow it. `cargo-tauri` propagates one, and a
+        # cargo version mismatch between this build and the dependency-only one
+        # makes cargo reject every artifact with `ConfigSettingsChanged`.
+        nativeBuildInputs = [
+          toolchain
+        ]
+        ++ (args.nativeBuildInputs or [ ])
+        ++ [
+          pkgs.rsync
+          pkgs.zstd
+        ]
+        ++ lib.optionals (args ? cargoArtifacts) [
+          craneLib.inheritCargoArtifactsHook
+          pkgs.removeReferencesTo
+        ];
 
         env = cargoEnv // (args.env or { });
       }
