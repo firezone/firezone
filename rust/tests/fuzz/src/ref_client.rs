@@ -1048,6 +1048,23 @@ impl RefClient {
             })
     }
 
+    fn dns_resource_by_domain_for_records(
+        &self,
+        domain: &DomainName,
+        has_a_record: bool,
+        has_aaaa_record: bool,
+    ) -> Option<ResourceId> {
+        self.dns_resource_by_domain(
+            domain,
+            |resource| {
+                (has_a_record && resource.ip_stack.supports_ipv4())
+                    || (has_aaaa_record && resource.ip_stack.supports_ipv6())
+            },
+            |_| true,
+        )
+        .map(|resource| resource.id)
+    }
+
     fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, BTreeSet<RecordType>)> + '_ {
         self.dns_records
             .iter()
@@ -1250,18 +1267,13 @@ impl RefClient {
 
         is_local_record
             .then(|| {
-                self.dns_resource_by_domain(
+                self.dns_resource_by_domain_for_records(
                     &query.domain,
-                    |resource| {
-                        (query.r_type != RecordType::A || resource.ip_stack.supports_ipv4())
-                            && (query.r_type != RecordType::AAAA
-                                || resource.ip_stack.supports_ipv6())
-                    },
-                    |_| true,
+                    query.r_type != RecordType::AAAA,
+                    query.r_type != RecordType::A,
                 )
             })
             .flatten()
-            .map(|resource| resource.id)
     }
 
     pub(crate) fn prepare_dns_resource_connection(&mut self, resource: ResourceId, now: Instant) {
@@ -1272,17 +1284,12 @@ impl RefClient {
         let domains = self
             .resolved_domains()
             .filter_map(|(domain, records)| {
-                self.dns_resource_by_domain(
+                self.dns_resource_by_domain_for_records(
                     &domain,
-                    |candidate| {
-                        candidate.id == resource
-                            && ((records.contains(&RecordType::A)
-                                && candidate.ip_stack.supports_ipv4())
-                                || (records.contains(&RecordType::AAAA)
-                                    && candidate.ip_stack.supports_ipv6()))
-                    },
-                    |_| true,
+                    records.contains(&RecordType::A),
+                    records.contains(&RecordType::AAAA),
                 )
+                .filter(|candidate| *candidate == resource)
                 .map(|_| domain)
             })
             .collect_vec();

@@ -232,24 +232,14 @@ impl SimGateway {
         if let Some(icmp) = packet.as_icmpv4()
             && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
         {
-            let Some(id) = ProbeId::from_payload(icmp.payload()) else {
-                tracing::error!("ICMP probe payload does not contain a probe ID");
-                return None;
-            };
-
-            self.record_delivered_probe(id, packet.clone(), now);
+            self.record_delivered_probe(icmp.payload(), packet.clone(), now);
             return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
         }
 
         if let Some(icmp) = packet.as_icmpv6()
             && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
         {
-            let Some(id) = ProbeId::from_payload(icmp.payload()) else {
-                tracing::error!("ICMP probe payload does not contain a probe ID");
-                return None;
-            };
-
-            self.record_delivered_probe(id, packet.clone(), now);
+            self.record_delivered_probe(icmp.payload(), packet.clone(), now);
             return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
         }
 
@@ -315,12 +305,7 @@ impl SimGateway {
 
     fn request_received(&mut self, packet: &IpPacket, now: Instant) {
         if let Some(udp) = packet.as_udp() {
-            let Some(id) = ProbeId::from_payload(udp.payload()) else {
-                tracing::error!("UDP probe payload does not contain a probe ID");
-                return;
-            };
-
-            self.record_delivered_probe(id, packet.clone(), now);
+            self.record_delivered_probe(udp.payload(), packet.clone(), now);
         }
     }
 
@@ -328,7 +313,12 @@ impl SimGateway {
         self.tcp_resources.clear();
     }
 
-    fn record_delivered_probe(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
+    fn record_delivered_probe(&mut self, payload: &[u8], packet: IpPacket, at: Instant) {
+        let Some(id) = ProbeId::from_payload(payload) else {
+            tracing::error!("Probe payload does not contain a probe ID");
+            return;
+        };
+
         self.probe_events.push(ProbeEvent {
             id,
             at,
