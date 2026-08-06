@@ -17,6 +17,7 @@ use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools;
 use std::{
     collections::{BTreeMap, HashMap, VecDeque, hash_map::Entry},
+    iter,
     marker::PhantomData,
     net::{IpAddr, SocketAddr},
     sync::atomic::{AtomicBool, Ordering},
@@ -34,35 +35,37 @@ pub(crate) fn assert_probes(
     global_dns_records: &DnsRecords,
     icmp_error_hosts: &IcmpErrorHosts,
 ) {
-    let mut observed = BTreeMap::<ProbeId, Vec<&ProbeEvent>>::new();
-
-    for event in sim_clients
-        .values()
-        .flat_map(|client| client.probe_events.iter())
+    let observed = iter::empty()
+        .chain(
+            sim_clients
+                .values()
+                .flat_map(|client| client.probe_events.iter()),
+        )
         .chain(
             sim_gateways
                 .values()
                 .flat_map(|gateway| gateway.probe_events.iter()),
         )
-    {
-        observed.entry(event.id).or_default().push(event);
-    }
+        .collect_vec();
 
     for id in observed
-        .keys()
+        .iter()
+        .map(|event| event.id)
+        .unique()
         .filter(|id| !expected_probes.contains_key(id))
     {
         tracing::error!(target: "assertions", ?id, "Unexpected probe observations");
     }
 
-    let mut mappings = BTreeMap::<(ClientId, DomainName, Instant), HashMap<IpAddr, IpAddr>>::new();
+    let mut mappings = BTreeMap::new();
 
     for expected in expected_probes.values() {
         let events = observed
-            .get(&expected.id)
-            .map(Vec::as_slice)
-            .unwrap_or_default();
-        let trace = match observed_trace(expected, events) {
+            .iter()
+            .copied()
+            .filter(|event| event.id == expected.id)
+            .collect_vec();
+        let trace = match observed_trace(expected, &events) {
             Ok(trace) => trace,
             Err(reason) => {
                 tracing::debug!(target: "assertions", ?expected, ?events, %reason);
@@ -126,17 +129,17 @@ fn observed_trace<'a>(
         .iter()
         .copied()
         .filter(|event| matches!(event.kind, ProbeEventKind::Injected { .. }))
-        .collect::<Vec<_>>();
+        .collect_vec();
     let delivered = events
         .iter()
         .copied()
         .filter(|event| matches!(event.kind, ProbeEventKind::Delivered { .. }))
-        .collect::<Vec<_>>();
+        .collect_vec();
     let returned = events
         .iter()
         .copied()
         .filter(|event| matches!(event.kind, ProbeEventKind::Returned { .. }))
-        .collect::<Vec<_>>();
+        .collect_vec();
 
     if injected.len() != 1 {
         return Err("expected exactly one injection");
