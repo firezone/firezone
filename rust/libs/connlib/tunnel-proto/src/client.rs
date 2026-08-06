@@ -499,25 +499,26 @@ impl ClientState {
                 },
             );
 
-        for (domain, rid, proxy_ips, gid) in self
-            .resource_stub_resolver
-            .resolved_resources()
-            .filter_map(|(domain, rid, proxy_ips)| {
-                let Some(gid) = self
-                    .authorized_resources
-                    .get(rid)
-                    .and_then(|p| p.as_gateway())
-                else {
-                    tracing::trace!(
-                        %domain, %rid,
-                        "No gateway connected for resource, skipping DNS resource NAT setup"
-                    );
-                    return None;
-                };
+        for (domain, rid, proxy_ips, gid) in
+            self.resource_stub_resolver
+                .resolved_resources()
+                .map(|(domain, resource, proxy_ips)| {
+                    let gateway = self
+                        .authorized_resources
+                        .get(resource)
+                        .and_then(|p| p.as_gateway());
 
-                Some((domain, rid, proxy_ips, gid))
-            })
+                    (domain, resource, proxy_ips, gateway)
+                })
         {
+            let Some(gid) = gid else {
+                tracing::trace!(
+                    %domain, %rid,
+                    "No gateway connected for resource, skipping DNS resource NAT setup"
+                );
+                continue;
+            };
+
             let packets_for_domain = buffered_packets_by_gateway_domain_and_resource
                 .remove(&(gid, domain.clone(), *rid))
                 .unwrap_or_default();
@@ -526,7 +527,7 @@ impl ClientState {
                 domain.clone(),
                 *gid,
                 *rid,
-                proxy_ips.clone(),
+                proxy_ips.as_slice(),
                 packets_for_domain,
                 now,
             ) {
@@ -539,7 +540,7 @@ impl ClientState {
 
             if let Some(peer) = self.gateways.peer_by_id_mut(gid) {
                 for ip in proxy_ips {
-                    peer.allow_ip_for_resource(*ip, *rid);
+                    peer.allow_ip_for_resource(ip, *rid);
                 }
             }
         }

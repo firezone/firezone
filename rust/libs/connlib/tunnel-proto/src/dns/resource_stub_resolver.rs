@@ -1,8 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
-    iter::Chain,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    slice,
 };
 
 use connlib_model::{IpStack, ResourceId};
@@ -12,6 +10,7 @@ use dns_types::{
 };
 use itertools::Itertools as _;
 use logging::err_with_src;
+use smallvec::SmallVec;
 
 use crate::{
     client::IpProvider,
@@ -65,32 +64,28 @@ struct Resource {
 }
 
 struct ProxyIps {
-    ipv4: Vec<IpAddr>,
-    ipv6: Vec<IpAddr>,
+    ipv4: SmallVec<[IpAddr; 4]>,
+    ipv6: SmallVec<[IpAddr; 4]>,
 }
-
-type ProxyIpIter<'a> = Chain<slice::Iter<'a, IpAddr>, slice::Iter<'a, IpAddr>>;
 
 impl ProxyIps {
     fn new(ips: Vec<IpAddr>) -> Self {
-        let (ipv4, ipv6): (Vec<_>, Vec<_>) = ips.into_iter().partition(IpAddr::is_ipv4);
+        let (ipv4, ipv6): (SmallVec<_>, SmallVec<_>) = ips.into_iter().partition(IpAddr::is_ipv4);
 
         Self { ipv4, ipv6 }
     }
 
-    fn for_stack(&self, ip_stack: IpStack) -> ProxyIpIter<'_> {
-        let ipv4 = if ip_stack.supports_ipv4() {
-            self.ipv4.as_slice()
-        } else {
-            &[]
-        };
-        let ipv6 = if ip_stack.supports_ipv6() {
-            self.ipv6.as_slice()
-        } else {
-            &[]
-        };
+    fn for_stack(&self, ip_stack: IpStack) -> smallvec::IntoIter<[IpAddr; 8]> {
+        let mut ips = SmallVec::<[IpAddr; 8]>::new();
 
-        ipv4.iter().chain(ipv6)
+        if ip_stack.supports_ipv4() {
+            ips.extend_from_slice(&self.ipv4);
+        }
+        if ip_stack.supports_ipv6() {
+            ips.extend_from_slice(&self.ipv6);
+        }
+
+        ips.into_iter()
     }
 }
 
@@ -124,7 +119,7 @@ impl ResourceStubResolver {
                 let ips = ProxyIps::new(record.ips);
 
                 for ip in ips.for_stack(IpStack::Dual) {
-                    ips_to_fqdn.insert(*ip, record.domain.clone());
+                    ips_to_fqdn.insert(ip, record.domain.clone());
                 }
 
                 fqdn_to_ips.insert(record.domain, (ips, record.resources));
@@ -147,7 +142,13 @@ impl ResourceStubResolver {
 
     pub(crate) fn resolved_resources(
         &self,
-    ) -> impl Iterator<Item = (&dns_types::DomainName, &ResourceId, ProxyIpIter<'_>)> + '_ {
+    ) -> impl Iterator<
+        Item = (
+            &dns_types::DomainName,
+            &ResourceId,
+            smallvec::IntoIter<[IpAddr; 8]>,
+        ),
+    > + '_ {
         self.fqdn_to_ips
             .iter()
             .flat_map(move |(domain, (ips, resources))| {
@@ -159,12 +160,12 @@ impl ResourceStubResolver {
             })
     }
 
-    fn ips_for_resource<'a>(
+    fn ips_for_resource(
         &self,
-        ips: &'a ProxyIps,
+        ips: &ProxyIps,
         pattern: &Pattern,
         rid: &ResourceId,
-    ) -> Option<ProxyIpIter<'a>> {
+    ) -> Option<smallvec::IntoIter<[IpAddr; 8]>> {
         let resource = self
             .dns_resources
             .iter()
@@ -270,13 +271,13 @@ impl ResourceStubResolver {
             (ProxyIps::new(ips), BTreeSet::default())
         });
         for ip in ips.for_stack(IpStack::Dual) {
-            self.ips_to_fqdn.insert(*ip, fqdn.clone());
+            self.ips_to_fqdn.insert(ip, fqdn.clone());
         }
         for resource in resources {
             records_changed |= assigned_resources.insert((resource.pattern, resource.id));
         }
 
-        let ips = ips.for_stack(IpStack::Dual).copied().collect();
+        let ips = ips.for_stack(IpStack::Dual).collect();
 
         if records_changed {
             self.events.push_back(Event::RecordsChanged(self.records()));
@@ -402,7 +403,7 @@ impl ResourceStubResolver {
             .map(|(name, (ips, resources))| DnsResourceRecord {
                 domain: name.clone(),
                 resources: resources.clone(),
-                ips: ips.for_stack(IpStack::Dual).copied().collect(),
+                ips: ips.for_stack(IpStack::Dual).collect(),
             })
             .collect()
     }
