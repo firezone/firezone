@@ -795,6 +795,22 @@ impl TunnelTest {
                     })
                     .unwrap();
             }
+            Transition::ReconnectGatewayPortal {
+                gateway_id,
+                omitted_client_id,
+            } => {
+                let authorizations = ref_state.gateway_authorizations(gateway_id);
+                debug_assert!(!authorizations.contains_key(&omitted_client_id));
+
+                let gateway = state.gateways.get_mut(&gateway_id).unwrap();
+                gateway.exec_mut(|gateway| {
+                    let interface = gateway.sut.tunnel_ip_config().unwrap();
+
+                    gateway.update_relays(iter::empty(), state.relays.iter(), now);
+                    gateway.sut.update_tun_device(interface);
+                    gateway.sut.retain_authorizations(authorizations);
+                });
+            }
             Transition::RestartClient { client_id, key } => {
                 // Cleanly shut down the client.
                 let client = state.clients.get_mut(&client_id).unwrap();

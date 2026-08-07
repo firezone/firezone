@@ -50,6 +50,7 @@ enum TransitionKind {
     SetInternetResourceState,
     DeauthorizeWhileGatewayIsPartitioned,
     ExpireGatewayAuthorization,
+    ReconnectGatewayPortal,
     UpdateDnsRecords,
     SendPacket,
     SendPacketWithGatewayDnsResolutionFailure,
@@ -68,6 +69,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     let removable_resources = state.removable_resource_ids();
     let deauthorizable_resources = state.deauthorizable_resource_ids();
     let expirable_gateway_authorizations = state.expirable_gateway_authorizations();
+    let gateway_portal_reconnect_targets = state.gateway_portal_reconnect_targets();
     let client_ids = state.all_client_ids();
     let dns_record_domains = state.dns_resource_domains();
     let packet_targets = packets::targets(state);
@@ -104,6 +106,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
             .then_some((K::DeauthorizeWhileGatewayIsPartitioned, 1)),
         (!expirable_gateway_authorizations.is_empty())
             .then_some((K::ExpireGatewayAuthorization, 1)),
+        (!gateway_portal_reconnect_targets.is_empty()).then_some((K::ReconnectGatewayPortal, 1)),
         (!client_ids.is_empty()).then_some((K::ReconnectPortal, 1)),
         (!client_ids.is_empty()).then_some((K::RestartClient, 1)),
         (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
@@ -123,7 +126,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 29]>>();
+    .collect::<SmallVec<[_; 30]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -235,6 +238,15 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
             Transition::ExpireGatewayAuthorization {
                 client_id,
                 resource_id,
+            }
+        }
+        K::ReconnectGatewayPortal => {
+            let (gateway_id, omitted_client_id) = gateway_portal_reconnect_targets
+                [g.choose_index(gateway_portal_reconnect_targets.len())];
+
+            Transition::ReconnectGatewayPortal {
+                gateway_id,
+                omitted_client_id,
             }
         }
         K::ReconnectPortal => {

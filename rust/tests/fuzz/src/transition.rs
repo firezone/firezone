@@ -131,6 +131,10 @@ pub enum Transition {
         client_id: ClientId,
         resource_id: ResourceId,
     },
+    ReconnectGatewayPortal {
+        gateway_id: GatewayId,
+        omitted_client_id: ClientId,
+    },
     UpdateDnsRecords {
         domain: DomainName,
         records: BTreeSet<OwnedRecordData>,
@@ -173,6 +177,7 @@ impl Transition {
             Transition::RebootRelaysWhilePartitioned(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
             Transition::ExpireGatewayAuthorization { .. } => true,
+            Transition::ReconnectGatewayPortal { .. } => true,
             Transition::UpdateDnsRecords { .. } => false,
         }
     }

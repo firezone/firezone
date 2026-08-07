@@ -419,21 +419,12 @@ impl ReferenceState {
                     .portal
                     .gateway_for_resource(*resource_id)
                     .expect("an expirable resource must have a gateway");
-                let gateways = BTreeSet::from([gateway]);
-                let portal = &state.portal;
-
-                state
-                    .clients
-                    .get_mut(client_id)
-                    .unwrap()
-                    .exec_mut(|client| {
-                        client.reset_connections_to_gateways(
-                            &gateways,
-                            |resource| portal.gateway_for_resource(resource).copied(),
-                            now,
-                        )
-                    });
+                state.reset_client_connection_to_gateway(*client_id, gateway, now);
             }
+            Transition::ReconnectGatewayPortal {
+                gateway_id,
+                omitted_client_id,
+            } => state.reset_client_connection_to_gateway(*omitted_client_id, *gateway_id, now),
             Transition::RestartClient { client_id, key } => {
                 state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                     c.restart(*key, now);
@@ -447,6 +438,27 @@ impl ReferenceState {
         };
 
         state
+    }
+
+    fn reset_client_connection_to_gateway(
+        &mut self,
+        client_id: ClientId,
+        gateway_id: GatewayId,
+        now: Instant,
+    ) {
+        let gateways = BTreeSet::from([gateway_id]);
+        let portal = &self.portal;
+
+        self.clients
+            .get_mut(&client_id)
+            .expect("a gateway authorization must belong to a known client")
+            .exec_mut(|client| {
+                client.reset_connections_to_gateways(
+                    &gateways,
+                    |resource| portal.gateway_for_resource(resource).copied(),
+                    now,
+                )
+            });
     }
 
     fn apply_resource_edit(&mut self, edit: &client::ResourceEdit) {
@@ -1008,6 +1020,40 @@ impl ReferenceState {
                         .is_none()
                         .then_some((*client_id, *resource_id))
                 })
+            })
+            .collect()
+    }
+
+    pub(crate) fn gateway_portal_reconnect_targets(&self) -> Vec<(GatewayId, ClientId)> {
+        self.expirable_gateway_authorizations()
+            .into_iter()
+            .map(|(client, resource)| {
+                let gateway = *self
+                    .portal
+                    .gateway_for_resource(resource)
+                    .expect("a gateway authorization must have a gateway");
+
+                (gateway, client)
+            })
+            .collect()
+    }
+
+    pub(crate) fn gateway_authorizations(
+        &self,
+        gateway_id: GatewayId,
+    ) -> BTreeMap<ClientId, BTreeSet<ResourceId>> {
+        self.clients
+            .iter()
+            .filter_map(|(client_id, client)| {
+                let resources = client
+                    .inner()
+                    .connected_resources()
+                    .filter(|resource| {
+                        self.portal.gateway_for_resource(*resource) == Some(&gateway_id)
+                    })
+                    .collect::<BTreeSet<_>>();
+
+                (!resources.is_empty()).then_some((*client_id, resources))
             })
             .collect()
     }
