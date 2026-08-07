@@ -689,7 +689,6 @@ impl TunnelTest {
             &all_ref_clients,
             &all_sim_clients,
             &sim_gateways,
-            &ref_state.global_dns_records,
             &ref_state.icmp_error_hosts,
         );
 
@@ -828,8 +827,7 @@ impl TunnelTest {
                     .then_some(query_message.clone().with_id(0))
                     .unwrap_or(query_message.clone());
 
-                let response =
-                    self.on_recursive_dns_query(&message, &ref_state.global_dns_records, now);
+                let response = self.on_recursive_dns_query(&message, &ref_state.global_dns_records);
                 let client = self.clients.get_mut(&client_id).unwrap();
                 client.exec_mut(|c| {
                     c.sut.handle_dns_response(
@@ -1442,7 +1440,6 @@ impl TunnelTest {
         &self,
         query: &dns_types::Query,
         global_dns_records: &DnsRecords,
-        now: Instant,
     ) -> dns_types::Response {
         // Long enough that a query repeated within one `advance` window is served
         // from connlib's DNS cache, short enough that an `Idle` (minutes) expires
@@ -1458,7 +1455,7 @@ impl TunnelTest {
         let response = dns_types::ResponseBuilder::for_query(query, ResponseCode::NOERROR)
             .with_records(
                 global_dns_records
-                    .domain_records_iter(&domain, now)
+                    .domain_records_iter(&domain)
                     .filter(|record| qtype == record.rtype())
                     .map(|rdata| (domain.clone(), TTL, rdata)),
             )
@@ -1644,15 +1641,15 @@ fn on_gateway_event(
             })
         }
         GatewayEvent::ResolveDns(r) => {
+            let client = r.client();
+            let domain = r.domain().clone();
             let resolved_ips = global_dns_records
-                .domain_ips_iter(r.domain(), now)
-                .collect();
+                .domain_ips_iter(&domain)
+                .collect::<Vec<_>>();
 
             gateway.exec_mut(|g| {
-                g.dns_query_timestamps
-                    .entry(r.domain().clone())
-                    .or_default()
-                    .push(now);
+                g.dns_resolutions
+                    .insert((client, domain), resolved_ips.clone());
                 g.sut
                     .handle_domain_resolved(r, Ok(resolved_ips), now)
                     .unwrap()

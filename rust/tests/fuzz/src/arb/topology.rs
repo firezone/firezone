@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use connlib_model::{ClientId, GatewayId, RelayId, Site, SiteId};
@@ -30,23 +30,17 @@ use crate::resource::{
 use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
 use crate::stub_portal::StubPortal;
 
-pub(super) fn generate(g: &mut Generator, start: Instant) -> ReferenceState {
+pub(super) fn generate(g: &mut Generator) -> ReferenceState {
     let portal = arb_stub_portal(g);
     let clients = arb_clients(g, &portal);
-    let gateways = arb_gateways(g, &portal, start);
+    let gateways = arb_gateways(g, &portal);
     let relays = arb_relays(g);
-    let dns_resource_records = arb_dns_resource_records(g, &portal, start);
-    let icmp_error_hosts = arb_icmp_error_hosts(
-        g,
-        &clients,
-        &dns_resource_records,
-        portal.upstream_do53(),
-        start,
-    );
-    let tcp_resources = arb_tcp_resources(g, &dns_resource_records, &icmp_error_hosts, start);
+    let dns_resource_records = arb_dns_resource_records(g, &portal);
+    let icmp_error_hosts =
+        arb_icmp_error_hosts(g, &clients, &dns_resource_records, portal.upstream_do53());
+    let tcp_resources = arb_tcp_resources(g, &dns_resource_records, &icmp_error_hosts);
 
-    let global_dns_records =
-        merge_dns_records(arb_global_dns_records(g, start), dns_resource_records);
+    let global_dns_records = merge_dns_records(arb_global_dns_records(g), dns_resource_records);
 
     let network = clients
         .iter()
@@ -426,15 +420,11 @@ fn arb_client_host(
     with_interface(Host::new(inner, latency, port, edge, g.nat_ip4()), ip4, ip6)
 }
 
-fn arb_gateways(
-    g: &mut Generator,
-    portal: &StubPortal,
-    start: Instant,
-) -> BTreeMap<GatewayId, Host<RefGateway>> {
+fn arb_gateways(g: &mut Generator, portal: &StubPortal) -> BTreeMap<GatewayId, Host<RefGateway>> {
     portal
         .gateway_tunnel_ips()
         .map(|(id, tun4, tun6, site_id)| {
-            let site_specific = arb_site_specific_dns_records(g, portal, site_id, start);
+            let site_specific = arb_site_specific_dns_records(g, portal, site_id);
             let inner = RefGateway::from_parts(g.fresh_private_key(), tun4, tun6, site_specific);
             let latency = g.latency(200);
             let edge = arb_edge_config(g);
@@ -505,10 +495,10 @@ fn arb_listening_port(g: &mut Generator) -> u16 {
     }
 }
 
-fn arb_dns_resource_records(g: &mut Generator, portal: &StubPortal, at: Instant) -> DnsRecords {
+fn arb_dns_resource_records(g: &mut Generator, portal: &StubPortal) -> DnsRecords {
     portal
         .dns_resources()
-        .map(|resource| arb_records_for_dns_resource(g, &resource.address, at))
+        .map(|resource| arb_records_for_dns_resource(g, &resource.address))
         .fold(DnsRecords::default(), merge_dns_records)
 }
 
@@ -516,23 +506,19 @@ fn arb_site_specific_dns_records(
     g: &mut Generator,
     portal: &StubPortal,
     site: SiteId,
-    at: Instant,
 ) -> DnsRecords {
     portal
         .dns_resources()
         .filter(|resource| resource.sites.iter().any(|candidate| candidate.id == site))
-        .map(|resource| arb_records_for_dns_resource(g, &resource.address, at))
+        .map(|resource| arb_records_for_dns_resource(g, &resource.address))
         .fold(DnsRecords::default(), merge_dns_records)
 }
 
-fn arb_records_for_dns_resource(g: &mut Generator, address: &str, at: Instant) -> DnsRecords {
+fn arb_records_for_dns_resource(g: &mut Generator, address: &str) -> DnsRecords {
     match address.split_once('.') {
-        Some(("*", base)) => arb_subdomain_records(g, base.to_owned(), at),
-        Some(("**", base)) => arb_subdomain_records(g, base.to_owned(), at),
-        _ => DnsRecords::from([(
-            address.parse::<DomainName>().unwrap(),
-            BTreeMap::from([(at, arb_resolved_ips(g))]),
-        )]),
+        Some(("*", base)) => arb_subdomain_records(g, base.to_owned()),
+        Some(("**", base)) => arb_subdomain_records(g, base.to_owned()),
+        _ => DnsRecords::from([(address.parse::<DomainName>().unwrap(), arb_resolved_ips(g))]),
     }
 }
 
@@ -541,13 +527,13 @@ fn merge_dns_records(mut records: DnsRecords, next: DnsRecords) -> DnsRecords {
     records
 }
 
-fn arb_subdomain_records(g: &mut Generator, base: String, at: Instant) -> DnsRecords {
+fn arb_subdomain_records(g: &mut Generator, base: String) -> DnsRecords {
     let n = g.count(1, 3);
     (0..n)
         .map(|_| {
             let label = g.lower_ascii(3, 6);
             let domain = format!("{label}.{base}").parse::<DomainName>().unwrap();
-            (domain, BTreeMap::from([(at, arb_resolved_ips(g))]))
+            (domain, arb_resolved_ips(g))
         })
         .collect::<DnsRecords>()
 }
@@ -571,14 +557,14 @@ fn arb_dns_resource_ip(g: &mut Generator) -> IpAddr {
         IpAddr::V6(Ipv6Addr::new(0x2001, 0xDB80, 0x2020, 0x2020, 0, 0, 0, n))
     }
 }
-fn arb_global_dns_records(g: &mut Generator, at: Instant) -> DnsRecords {
+fn arb_global_dns_records(g: &mut Generator) -> DnsRecords {
     let n = g.count(0, 4);
     (0..n)
         .map(|_| {
             let domain = arb_domain_name_string(g, 2, 3)
                 .parse::<DomainName>()
                 .unwrap();
-            (domain, BTreeMap::from([(at, arb_dns_record_set(g))]))
+            (domain, arb_dns_record_set(g))
         })
         .collect::<DnsRecords>()
 }
@@ -588,10 +574,9 @@ fn arb_icmp_error_hosts(
     clients: &BTreeMap<ClientId, Host<RefClient>>,
     records: &DnsRecords,
     upstream_do53: &[UpstreamDo53],
-    now: Instant,
 ) -> IcmpErrorHosts {
     let mut ips = records
-        .ips_iter(now)
+        .ips_iter()
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
@@ -654,7 +639,6 @@ fn arb_tcp_resources(
     g: &mut Generator,
     records: &DnsRecords,
     icmp_error_hosts: &IcmpErrorHosts,
-    at: Instant,
 ) -> BTreeMap<DomainName, BTreeSet<SocketAddr>> {
     let mut all_domains = records.domains_iter().collect::<Vec<_>>();
     if all_domains.is_empty() {
@@ -670,14 +654,14 @@ fn arb_tcp_resources(
             let port = g.u16_in(1..=u16::MAX);
 
             let has_icmp_error = records
-                .domain_ips_iter(&domain, at)
+                .domain_ips_iter(&domain)
                 .any(|ip| icmp_error_hosts.icmp_error_for_ip(ip).is_some());
             if has_icmp_error {
                 return None;
             }
 
             let addresses = records
-                .domain_ips_iter(&domain, at)
+                .domain_ips_iter(&domain)
                 .map(|ip| SocketAddr::new(ip, port))
                 .collect::<BTreeSet<_>>();
             (!addresses.is_empty()).then_some((domain, addresses))
