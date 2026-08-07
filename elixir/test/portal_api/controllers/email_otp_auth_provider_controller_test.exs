@@ -86,6 +86,57 @@ defmodule PortalAPI.EmailOTPAuthProviderControllerTest do
       assert %{"type" => "about:blank", "status" => 400, "detail" => "Invalid page cursor"} =
                json_response(conn, 400)
     end
+
+    # This provider type is limited to one per account by a unique index
+    # on account_id, so the filter can only be exercised against a single
+    # local provider. The empty-result test below covers exclusion.
+    test "filters by name", %{conn: conn, account: account, actor: actor} do
+      match = email_otp_provider_fixture(account: account, name: "Corp SSO")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/email_otp_auth_providers", name: "Corp SSO")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == match.id
+      assert data["name"] == "Corp SSO"
+    end
+
+    test "returns an empty list when the name matches nothing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _provider = email_otp_provider_fixture(account: account, name: "Corp SSO")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/email_otp_auth_providers", name: "Nonexistent")
+
+      assert %{"data" => []} = json_response(conn, 200)
+    end
+
+    test "does not match a provider in another account by name", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _local = email_otp_provider_fixture(account: account, name: "Shared Name")
+      other = email_otp_provider_fixture(name: "Shared Name")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/email_otp_auth_providers", name: "Shared Name")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      refute data["id"] == other.id
+    end
   end
 
   describe "show/2" do
