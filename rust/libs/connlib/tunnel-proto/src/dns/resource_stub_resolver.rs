@@ -212,9 +212,11 @@ impl ResourceStubResolver {
 
         let mut records_changed = false;
         for (_, resources) in self.fqdn_to_ips.values_mut() {
-            let previous_len = resources.len();
-            resources.retain(|(pattern, rid)| *rid != id || pattern == &resource.pattern);
-            records_changed |= resources.len() != previous_len;
+            for _ in resources.extract_if(.., |(pattern, rid)| {
+                *rid == id && pattern != &resource.pattern
+            }) {
+                records_changed = true;
+            }
         }
 
         let assignment = (resource.pattern.clone(), resource.id);
