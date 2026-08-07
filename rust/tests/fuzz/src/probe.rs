@@ -39,6 +39,14 @@ pub(crate) struct UdpFlow {
     pub(crate) dport: DPort,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct TcpFlow {
+    pub(crate) client_id: ClientId,
+    pub(crate) src: IpAddr,
+    pub(crate) sport: SPort,
+    pub(crate) dport: DPort,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum ProbeRequest {
     Icmp {

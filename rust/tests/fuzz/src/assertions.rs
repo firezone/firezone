@@ -566,6 +566,25 @@ pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimCli
             tracing::error!(target: "assertions", %local, %remote, "TCP socket should have been reset from ICMP error");
         }
     }
+
+    match (
+        ref_client.expected_tcp_data.as_slice(),
+        sim_client.tcp_client.received_data(),
+    ) {
+        ([], []) => {}
+        ([], actual) => {
+            tracing::error!(target: "assertions", ?actual, "Received unexpected TCP data");
+        }
+        (expected, []) => {
+            tracing::error!(target: "assertions", ?expected, "Missing TCP echo");
+        }
+        (expected, actual) if expected == actual => {
+            tracing::info!(target: "assertions", ?expected, "TCP data was echoed exactly");
+        }
+        (expected, actual) => {
+            tracing::error!(target: "assertions", ?expected, ?actual, "TCP echo does not match sent data");
+        }
+    }
 }
 
 pub(crate) fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClient) {

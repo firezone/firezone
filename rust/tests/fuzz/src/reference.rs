@@ -3,7 +3,7 @@ use super::icmp_error_hosts::IcmpErrorHosts;
 use super::packet_input::PacketInputObservation;
 use super::probe::{
     ExpectedOutcome, ExpectedProbe, KnownLoss, PacketRoute, ProbeId, ProbeRequest, RejectionRemote,
-    Remote, TraceRequirement, UdpFlow,
+    Remote, TcpFlow, TraceRequirement, UdpFlow,
 };
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, StaticSecret};
@@ -266,6 +266,13 @@ impl ReferenceState {
                     .exec_mut(|client| {
                         client.on_connect_tcp(*src, dst.clone(), route, *sport, *dport);
                     });
+            }
+            Transition::SendTcpDataOnFlow { flow, probe_id } => {
+                state
+                    .clients
+                    .get_mut(&flow.client_id)
+                    .unwrap()
+                    .exec_mut(|client| client.on_send_tcp_data(flow, *probe_id));
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in state.clients.values_mut() {
@@ -553,6 +560,10 @@ impl ReferenceState {
     pub fn clear_observations(state: &mut ReferenceState) {
         state.expected_probes.clear();
         state.expected_packet_input_observations.clear();
+
+        for client in state.clients.values_mut() {
+            client.exec_mut(RefClient::clear_observations);
+        }
     }
 
     fn record_udp_probe(
@@ -782,6 +793,24 @@ impl ReferenceState {
 impl ReferenceState {
     pub(crate) fn udp_flows(&self) -> Vec<UdpFlow> {
         self.udp_flows.iter().cloned().collect()
+    }
+
+    pub(crate) fn tcp_flows(&self) -> Vec<TcpFlow> {
+        self.clients
+            .iter()
+            .flat_map(|(client_id, client)| {
+                client
+                    .inner()
+                    .expected_tcp_connections
+                    .keys()
+                    .map(|(src, _, sport, dport)| TcpFlow {
+                        client_id: *client_id,
+                        src: *src,
+                        sport: *sport,
+                        dport: *dport,
+                    })
+            })
+            .collect()
     }
 
     pub(crate) fn can_fail_client_dns_resolution(

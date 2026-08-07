@@ -53,6 +53,7 @@ enum TransitionKind {
     SendPacket,
     SendPacketWithGatewayDnsResolutionFailure,
     SendUdpPacketOnFlow,
+    SendTcpDataOnFlow,
     SendUnroutablePacket,
     SendDnsQuery,
     SendTruncatedUdpDnsQuery,
@@ -68,6 +69,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     let packet_targets = packets::targets(state);
     let gateway_dns_resolution_failure_targets = state.gateway_dns_resolution_failure_targets();
     let udp_flows = state.udp_flows();
+    let tcp_flows = state.tcp_flows();
     let rebindable_clients = state.connected_nat_clients();
     let dns_query_targets = dns_queries::targets(state);
     let truncated_dns_query_targets = state.reachable_dns_servers();
@@ -102,6 +104,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         (!gateway_dns_resolution_failure_targets.is_empty())
             .then_some((K::SendPacketWithGatewayDnsResolutionFailure, 5)),
         (!udp_flows.is_empty()).then_some((K::SendUdpPacketOnFlow, 25)),
+        (!tcp_flows.is_empty()).then_some((K::SendTcpDataOnFlow, 25)),
         (!state.clients.is_empty() && !state.gateways.is_empty())
             .then_some((K::SendUnroutablePacket, 5)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQuery, 10)),
@@ -109,7 +112,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 25]>>();
+    .collect::<SmallVec<[_; 26]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -261,6 +264,12 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
             let probe_id = g.fresh_probe_id();
 
             Transition::SendUdpPacketOnFlow { flow, probe_id }
+        }
+        K::SendTcpDataOnFlow => {
+            let flow = tcp_flows[g.choose_index(tcp_flows.len())].clone();
+            let probe_id = g.fresh_probe_id();
+
+            Transition::SendTcpDataOnFlow { flow, probe_id }
         }
         K::SendUnroutablePacket => super::packet_inputs::generate(g, state),
         K::SendDnsQuery => {
