@@ -657,6 +657,12 @@ impl ReferenceState {
             return PacketRoute::Drop;
         };
         let clients_by_ip = self.client_ip_to_id();
+        let connected_gateways = client
+            .inner()
+            .connected_resources()
+            .filter_map(|resource| self.portal.gateway_for_resource(resource).copied())
+            .filter(|gateway| self.gateways.contains_key(gateway))
+            .collect::<BTreeSet<_>>();
 
         client.inner().route_for_packet(
             src,
@@ -671,7 +677,7 @@ impl ReferenceState {
             |ip| {
                 self.portal
                     .gateway_by_ip(ip)
-                    .filter(|gateway| self.gateways.contains_key(gateway))
+                    .filter(|gateway| connected_gateways.contains(gateway))
             },
             |ip| clients_by_ip.get(&ip).copied(),
         )
