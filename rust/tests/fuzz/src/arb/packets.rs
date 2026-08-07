@@ -163,21 +163,25 @@ pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<PacketTarget>
                     network: network.into(),
                 }),
         )
-        .chain(state.pool_routed_other_client_tun_ips().into_iter().map(
-            |(client_id, dst, filters)| {
-                let client = state.clients[&client_id].inner();
-                let src = match dst {
-                    IpAddr::V4(_) => IpAddr::V4(client.tunnel_ip4),
-                    IpAddr::V6(_) => IpAddr::V6(client.tunnel_ip6),
-                };
-                PacketTarget::Peer {
-                    client_id,
-                    src,
-                    dst,
-                    filters,
-                }
-            },
-        ))
+        .chain(
+            state
+                .pool_routed_other_client_tun_ips()
+                .into_iter()
+                .filter(|(client_id, dst, _)| !state.has_probe_to_ip(*client_id, *dst))
+                .map(|(client_id, dst, filters)| {
+                    let client = state.clients[&client_id].inner();
+                    let src = match dst {
+                        IpAddr::V4(_) => IpAddr::V4(client.tunnel_ip4),
+                        IpAddr::V6(_) => IpAddr::V6(client.tunnel_ip6),
+                    };
+                    PacketTarget::Peer {
+                        client_id,
+                        src,
+                        dst,
+                        filters,
+                    }
+                }),
+        )
         .collect::<Vec<_>>()
 }
 

@@ -889,6 +889,12 @@ impl ReferenceState {
             })
     }
 
+    pub(crate) fn has_probe_to_ip(&self, origin: ClientId, destination: IpAddr) -> bool {
+        self.expected_probes.values().any(|probe| {
+            probe.origin == origin && probe.request.destination().ip_addr() == Some(destination)
+        })
+    }
+
     pub(crate) fn editable_resources_on_any_client(&self) -> Vec<client::Resource> {
         self.portal
             .all_resources()
