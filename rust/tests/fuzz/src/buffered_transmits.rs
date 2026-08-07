@@ -30,42 +30,30 @@ impl BufferedTransmits {
         sending_host: &mut Host<T>,
         now: Instant,
     ) {
-        let Some(transmit) = transmit.into() else {
+        let Some(transmit) = wire_transmit(transmit, sending_host) else {
             return;
-        };
-
-        // The `src` of a [`Transmit`] is empty if we want to send if via the default interface.
-        // In production, the kernel does this for us.
-        // In this test, we need to always set a `src` so that the remote peer knows where the packet is coming from.
-        let src = match transmit.src {
-            Some(src) => src,
-            None => match sending_host.sending_socket_for(transmit.dst.ip()) {
-                Some(src) => src,
-                None => {
-                    tracing::debug!(dst = %transmit.dst, "No socket");
-
-                    return;
-                }
-            },
-        };
-
-        let src = match sending_host.egress(src, transmit.dst) {
-            Ok(src) => src,
-            Err(e) => {
-                tracing::debug!(%src, dst = %transmit.dst, "Edge dropped outbound packet: {e:#}");
-
-                return;
-            }
-        };
-
-        let transmit = Transmit {
-            src: Some(src),
-            ..transmit
         };
 
         tracing::trace!(?transmit, "Scheduling transmit");
 
         self.push(transmit, sending_host.latency(), now);
+    }
+
+    /// Drops a [`Transmit`] after it crosses the sending [`Host`]'s network edge.
+    ///
+    /// Returns whether a wire datagram was available to drop.
+    pub(crate) fn drop_from<T>(
+        &mut self,
+        transmit: impl Into<Option<Transmit>>,
+        sending_host: &mut Host<T>,
+    ) -> bool {
+        let Some(transmit) = wire_transmit(transmit, sending_host) else {
+            return false;
+        };
+
+        tracing::trace!(?transmit, "Fabric dropped transmit");
+
+        true
     }
 
     pub(crate) fn push(
@@ -111,6 +99,42 @@ impl BufferedTransmits {
     pub(crate) fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
+}
+
+fn wire_transmit<T>(
+    transmit: impl Into<Option<Transmit>>,
+    sending_host: &mut Host<T>,
+) -> Option<Transmit> {
+    let transmit = transmit.into()?;
+
+    // The `src` of a [`Transmit`] is empty if we want to send if via the default interface.
+    // In production, the kernel does this for us.
+    // In this test, we need to always set a `src` so that the remote peer knows where the packet is coming from.
+    let src = match transmit.src {
+        Some(src) => src,
+        None => match sending_host.sending_socket_for(transmit.dst.ip()) {
+            Some(src) => src,
+            None => {
+                tracing::debug!(dst = %transmit.dst, "No socket");
+
+                return None;
+            }
+        },
+    };
+
+    let src = match sending_host.egress(src, transmit.dst) {
+        Ok(src) => src,
+        Err(e) => {
+            tracing::debug!(%src, dst = %transmit.dst, "Edge dropped outbound packet: {e:#}");
+
+            return None;
+        }
+    };
+
+    Some(Transmit {
+        src: Some(src),
+        ..transmit
+    })
 }
 
 #[cfg(test)]

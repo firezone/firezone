@@ -35,7 +35,7 @@ fuzz_target!(|data: &[u8]| {
             break;
         };
 
-        tracing::debug!("Applying transition {applied}: {transition:?}");
+        tracing::debug!(remaining = generator.remaining_len(), "Applying transition {applied}: {transition:?}");
 
         if transition.should_clear_packets() {
             ReferenceState::clear_packets(&mut reference);

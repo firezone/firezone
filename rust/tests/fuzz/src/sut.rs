@@ -6,19 +6,19 @@ use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
-use super::transition::{ClientDnsResolution, Destination, DnsQuery};
+use super::transition::{ClientDnsResolution, Destination, DnsQuery, TcpDataFault};
 use crate::assertions::*;
 use crate::flux_capacitor::FluxCapacitor;
 use crate::network_input::{NetworkInputObservation, NetworkInputTarget};
 use crate::packet_input::{PacketInputObservation, PacketInputTarget};
-use crate::probe::{ProbeId, UdpFlow};
+use crate::probe::{ProbeId, TcpFlow, UdpFlow};
 use crate::resource as client;
 use crate::transition::Transition;
 use bufferpool::BufferPool;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::prelude::*;
 use dns_types::{DomainName, RecordType, ResponseCode};
-use ip_packet::Ecn;
+use ip_packet::{Ecn, IpPacket};
 use rand::SeedableRng;
 use rand::distr::SampleString;
 use sha2::Digest;
@@ -55,6 +55,7 @@ pub struct TunnelTest {
     /// the portal after a roam.
     client_portal_offline_until: Option<(ClientId, Instant)>,
     dns_resolution_failure: Option<DnsResolutionFailure>,
+    tcp_data_packet_loss: Option<TcpDataPacketLoss>,
     drop_next_wire_packet: bool,
     network: RoutingTable,
     packet_input_observations: Vec<PacketInputObservation>,
@@ -73,6 +74,26 @@ enum DnsResolutionFailure {
         client: ClientId,
         domain: DomainName,
     },
+}
+
+#[derive(Debug)]
+struct TcpDataPacketLoss {
+    flow: TcpFlow,
+    probe_id: ProbeId,
+}
+
+impl TcpDataPacketLoss {
+    fn matches(&self, client_id: ClientId, packet: &IpPacket) -> bool {
+        let Some(tcp) = packet.as_tcp() else {
+            return false;
+        };
+
+        self.flow.client_id == client_id
+            && packet.source() == self.flow.src
+            && tcp.source_port() == self.flow.sport.0
+            && tcp.destination_port() == self.flow.dport.0
+            && tcp.payload() == self.probe_id.to_be_bytes()
+    }
 }
 
 impl DnsResolutionFailure {
@@ -190,6 +211,7 @@ impl TunnelTest {
             network: ref_state.network.clone(),
             client_portal_offline_until: None,
             dns_resolution_failure: None,
+            tcp_data_packet_loss: None,
             drop_next_wire_packet: false,
             clients,
             gateways,
@@ -486,7 +508,21 @@ impl TunnelTest {
                     .unwrap()
                     .exec_mut(|sim| sim.connect_tcp(src, dst, sport, dport));
             }
-            Transition::SendTcpDataOnFlow { flow, probe_id } => {
+            Transition::SendTcpDataOnFlow {
+                flow,
+                probe_id,
+                fault,
+            } => {
+                match fault {
+                    TcpDataFault::None => {}
+                    TcpDataFault::DropFirstWireDatagram => {
+                        state.tcp_data_packet_loss = Some(TcpDataPacketLoss {
+                            flow: flow.clone(),
+                            probe_id,
+                        });
+                    }
+                }
+
                 state
                     .clients
                     .get_mut(&flow.client_id)
@@ -836,6 +872,10 @@ impl TunnelTest {
 
         if let Some(failure) = state.dns_resolution_failure.take() {
             tracing::error!(?failure, "DNS resolution failure was not consumed");
+        }
+
+        if let Some(packet_loss) = state.tcp_data_packet_loss.take() {
+            tracing::error!(?packet_loss, "TCP data packet loss was not consumed");
         }
 
         state.drop_next_wire_packet = false;
@@ -1266,11 +1306,26 @@ impl TunnelTest {
                 }
             });
         }
-        for client in self.clients.values_mut() {
-            while let Some(transmit) = client.exec_mut(|c| {
+        let tcp_data_packet_loss = &mut self.tcp_data_packet_loss;
+
+        for (client_id, client) in self.clients.iter_mut() {
+            while let Some((transmit, should_drop)) = client.exec_mut(|c| {
                 let packet = c.poll_outbound()?;
-                c.encapsulate(packet, now)
+                let should_drop = tcp_data_packet_loss
+                    .as_ref()
+                    .is_some_and(|fault| fault.matches(*client_id, &packet));
+                let transmit = c.encapsulate(packet, now)?;
+
+                Some((transmit, should_drop))
             }) {
+                if should_drop {
+                    if buffered_transmits.drop_from(transmit, client) {
+                        tcp_data_packet_loss.take();
+                    }
+
+                    continue;
+                }
+
                 buffered_transmits.push_from(transmit, client, now)
             }
 

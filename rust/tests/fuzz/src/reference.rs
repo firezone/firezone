@@ -287,12 +287,16 @@ impl ReferenceState {
                         client.on_connect_tcp(*src, dst.clone(), route, *sport, *dport);
                     });
             }
-            Transition::SendTcpDataOnFlow { flow, probe_id } => {
+            Transition::SendTcpDataOnFlow {
+                flow,
+                probe_id,
+                fault,
+            } => {
                 state
                     .clients
                     .get_mut(&flow.client_id)
                     .unwrap()
-                    .exec_mut(|client| client.on_send_tcp_data(flow, *probe_id));
+                    .exec_mut(|client| client.on_send_tcp_data(flow, *probe_id, *fault));
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in state.clients.values_mut() {

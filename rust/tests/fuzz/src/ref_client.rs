@@ -13,7 +13,8 @@ use super::{
     sim_client::SimClient,
     sim_net::ExecMutScope,
     transition::{
-        ClientDnsResolution, DPort, Destination, DnsQuery, DnsTransport, SPort, TruncatedDnsQuery,
+        ClientDnsResolution, DPort, Destination, DnsQuery, DnsTransport, SPort, TcpDataFault,
+        TruncatedDnsQuery,
     },
 };
 use tunnel_proto::{
@@ -708,7 +709,12 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn on_send_tcp_data(&mut self, flow: &TcpFlow, probe_id: ProbeId) {
+    pub(crate) fn on_send_tcp_data(
+        &mut self,
+        flow: &TcpFlow,
+        probe_id: ProbeId,
+        fault: TcpDataFault,
+    ) {
         let connection_exists =
             self.expected_tcp_connections
                 .keys()
@@ -717,7 +723,11 @@ impl RefClient {
                 });
         assert!(connection_exists, "TCP data requires an established flow");
 
-        self.expected_tcp_data.extend(probe_id.to_be_bytes());
+        match fault {
+            TcpDataFault::None | TcpDataFault::DropFirstWireDatagram => {
+                self.expected_tcp_data.extend(probe_id.to_be_bytes());
+            }
+        }
     }
 
     pub(crate) fn route_for_packet(

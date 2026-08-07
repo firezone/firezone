@@ -75,6 +75,7 @@ pub enum Transition {
     SendTcpDataOnFlow {
         flow: TcpFlow,
         probe_id: ProbeId,
+        fault: TcpDataFault,
     },
     SendDnsQuery {
         client_id: ClientId,
@@ -176,6 +177,12 @@ impl Transition {
             Transition::UpdateDnsRecords { .. } => false,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum TcpDataFault {
+    None,
+    DropFirstWireDatagram,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

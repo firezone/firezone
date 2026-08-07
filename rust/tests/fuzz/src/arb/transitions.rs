@@ -25,7 +25,9 @@ use crate::resource::{
     StaticDevicePoolResource, StaticDevicePoolResourceEdit, StaticDevicePoolResourceValue,
 };
 use crate::sim_net::{EdgeConfig, Host};
-use crate::transition::{ClientDnsResolution, Destination, DnsQuery, DnsTransport, Transition};
+use crate::transition::{
+    ClientDnsResolution, Destination, DnsQuery, DnsTransport, TcpDataFault, Transition,
+};
 
 #[derive(Clone, Copy, Debug)]
 enum TransitionKind {
@@ -309,8 +311,16 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         K::SendTcpDataOnFlow => {
             let flow = tcp_flows[g.choose_index(tcp_flows.len())].clone();
             let probe_id = g.fresh_probe_id();
+            let fault = match g.bool() {
+                false => TcpDataFault::None,
+                true => TcpDataFault::DropFirstWireDatagram,
+            };
 
-            Transition::SendTcpDataOnFlow { flow, probe_id }
+            Transition::SendTcpDataOnFlow {
+                flow,
+                probe_id,
+                fault,
+            }
         }
         K::ReceiveMalformedNetworkDatagram => super::network_inputs::generate(g, state),
         K::SendUnroutablePacket => super::packet_inputs::generate(g, state),
@@ -641,6 +651,8 @@ fn weighted_choose(g: &mut Generator, opts: &[(TransitionKind, u32)]) -> Option<
     }
     let total = opts.iter().map(|(_, weight)| *weight).sum::<u32>();
     let pick = g.u32_in(0..=total - 1);
+
+    tracing::debug!(?opts, total, pick, "Weighted transition choice");
 
     opts.iter()
         .scan(0, |end, (kind, weight)| {

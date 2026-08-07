@@ -115,6 +115,10 @@ impl<'a> Generator<'a> {
         self.input.is_empty()
     }
 
+    pub fn remaining_len(&self) -> usize {
+        self.input.len()
+    }
+
     pub(super) fn count(&mut self, lo: usize, hi: usize) -> usize {
         self.input.int_in_range(lo..=hi).unwrap_or(lo)
     }
