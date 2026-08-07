@@ -10,13 +10,19 @@ use tunnel_proto::dns;
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
 use crate::reference::ReferenceState;
-use crate::transition::{DnsQuery, DnsQueryName, DnsTransport, Transition};
+use crate::transition::{DnsQuery, DnsTransport, IpFamily, Transition};
 
 #[derive(Clone)]
 pub(super) struct DnsQueryTarget {
     client_id: ClientId,
     dns_server: dns::Upstream,
     name: DnsNameSpec,
+}
+
+struct KnownPtrTarget {
+    record_domain: DomainName,
+    family: IpFamily,
+    address_index: u32,
 }
 
 #[derive(Clone)]
@@ -132,16 +138,38 @@ pub(super) fn generate(
     };
 
     let r_type = arb_maybe_available_response_rtype(g, &rtypes);
-    let name = if r_type == RecordType::PTR {
-        arb_ptr_query_name(g, state, target.client_id)
+    let known_ptr_target = (r_type == RecordType::PTR)
+        .then(|| arb_known_ptr_target(g, state, target.client_id))
+        .flatten();
+
+    if let Some(KnownPtrTarget {
+        record_domain,
+        family,
+        address_index,
+    }) = known_ptr_target
+    {
+        return Transition::SendDnsResourcePtrQuery {
+            client_id: target.client_id,
+            record_domain,
+            family,
+            address_index,
+            query_id: arb_dns_query_id(g),
+            dns_server: target.dns_server,
+            transport: arb_dns_transport(g),
+        };
+    }
+
+    let domain = if r_type == RecordType::PTR {
+        DomainName::reverse_from_addr(arb_unassigned_ptr_query_ip(g))
+            .expect("reverse DNS names always fit")
     } else {
-        DnsQueryName::Name(domain)
+        domain
     };
 
     Transition::SendDnsQuery {
         client_id: target.client_id,
         query: DnsQuery {
-            name,
+            domain,
             r_type,
             query_id: arb_dns_query_id(g),
             dns_server: target.dns_server,
@@ -150,11 +178,11 @@ pub(super) fn generate(
     }
 }
 
-fn arb_ptr_query_name(
+fn arb_known_ptr_target(
     g: &mut Generator,
     state: &ReferenceState,
     client_id: ClientId,
-) -> DnsQueryName {
+) -> Option<KnownPtrTarget> {
     let client = state.clients[&client_id].inner();
     let resolved_v4_domains = client
         .resolved_v4_domains()
@@ -168,28 +196,24 @@ fn arb_ptr_query_name(
         .collect::<Vec<_>>();
 
     if (resolved_v4_domains.is_empty() && resolved_v6_domains.is_empty()) || g.bool() {
-        let ip = arb_unassigned_ptr_query_ip(g);
-
-        return DnsQueryName::Name(
-            DomainName::reverse_from_addr(ip).expect("reverse DNS names always fit"),
-        );
+        return None;
     }
 
     let select_ipv4 = g.bool();
-    let (domains, record_type) =
+    let (domains, family) =
         if (select_ipv4 && !resolved_v4_domains.is_empty()) || resolved_v6_domains.is_empty() {
-            (resolved_v4_domains, RecordType::A)
+            (resolved_v4_domains, IpFamily::Ipv4)
         } else {
-            (resolved_v6_domains, RecordType::AAAA)
+            (resolved_v6_domains, IpFamily::Ipv6)
         };
     let address_index = g.u32();
-    let domain = domains[address_index as usize % domains.len()].clone();
+    let record_domain = domains[address_index as usize % domains.len()].clone();
 
-    DnsQueryName::ReverseDns {
-        domain,
-        record_type,
+    Some(KnownPtrTarget {
+        record_domain,
+        family,
         address_index,
-    }
+    })
 }
 
 fn arb_dns_transport(g: &mut Generator) -> DnsTransport {

@@ -10,7 +10,7 @@ use super::{
     },
     sim_client::SimClient,
     sim_net::ExecMutScope,
-    transition::{DPort, Destination, DnsQuery, DnsQueryName, DnsTransport, SPort},
+    transition::{DPort, Destination, DnsQuery, DnsTransport, SPort},
 };
 use tunnel_proto::{
     ClientState, MaliciousBehaviour, dns,
@@ -767,16 +767,6 @@ impl RefClient {
         icmp_error_hosts: &IcmpErrorHosts,
         now: Instant,
     ) {
-        let domain = match &query.name {
-            DnsQueryName::ReverseDns { .. } => {
-                debug_assert_eq!(query.r_type, RecordType::PTR);
-
-                self.expect_dns_response(query);
-                return;
-            }
-            DnsQueryName::Name(domain) => domain,
-        };
-
         if self.is_dynamic_device_pool_dns_query(query) {
             self.expect_dns_response(query);
             return;
@@ -794,7 +784,7 @@ impl RefClient {
         if self.is_local_dns_resource_query(query)
             && !self.local_dns_resource_query_has_records(query)
         {
-            self.expect_dns_handshake(query);
+            self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
             return;
         }
 
@@ -805,7 +795,7 @@ impl RefClient {
                 && matches!(query.r_type, RecordType::A | RecordType::AAAA)
             {
                 self.dns_resource_resolutions
-                    .insert((resource, domain.clone()), now);
+                    .insert((resource, query.domain.clone()), now);
             }
 
             return;
@@ -826,7 +816,7 @@ impl RefClient {
             if self.resolver_is_unreachable(query, icmp_error_hosts) {
                 // The resolver answers with an ICMP error; connlib fails the query
                 // and responds with SERVFAIL, so no records are learned.
-                self.expect_dns_handshake(query);
+                self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
             } else {
                 self.expect_dns_response(query);
             }
@@ -840,6 +830,15 @@ impl RefClient {
         self.expect_dns_response(query);
     }
 
+    pub(crate) fn on_dns_resource_ptr_query(
+        &mut self,
+        dns_server: &dns::Upstream,
+        query_id: u16,
+        transport: DnsTransport,
+    ) {
+        self.expect_dns_handshake(dns_server, query_id, transport);
+    }
+
     /// Returns whether the query's resolver answers tunnelled traffic with ICMP errors.
     fn resolver_is_unreachable(&self, query: &DnsQuery, icmp_error_hosts: &IcmpErrorHosts) -> bool {
         match &query.dns_server {
@@ -851,37 +850,38 @@ impl RefClient {
     }
 
     fn expect_dns_response(&mut self, query: &DnsQuery) {
-        if let DnsQueryName::Name(domain) = &query.name {
-            self.dns_records
-                .entry(domain.clone())
-                .or_default()
-                .insert(query.r_type);
-        }
+        self.dns_records
+            .entry(query.domain.clone())
+            .or_default()
+            .insert(query.r_type);
 
-        self.expect_dns_handshake(query);
+        self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
     }
 
     /// Expects a response for the query without learning any records from it, e.g. a SERVFAIL.
-    fn expect_dns_handshake(&mut self, query: &DnsQuery) {
-        match query.transport {
+    fn expect_dns_handshake(
+        &mut self,
+        dns_server: &dns::Upstream,
+        query_id: u16,
+        transport: DnsTransport,
+    ) {
+        match transport {
             DnsTransport::Udp { local_port } => {
                 self.expected_udp_dns_handshakes.push_back((
-                    query.dns_server.clone(),
-                    query.query_id,
+                    dns_server.clone(),
+                    query_id,
                     local_port,
                 ));
             }
             DnsTransport::Tcp => {
                 self.expected_tcp_dns_handshakes
-                    .push_back((query.dns_server.clone(), query.query_id));
+                    .push_back((dns_server.clone(), query_id));
             }
         }
     }
 
     fn is_dynamic_device_pool_dns_query(&self, query: &DnsQuery) -> bool {
-        query
-            .domain()
-            .is_some_and(|domain| self.is_device_pool_domain(domain))
+        self.is_device_pool_domain(&query.domain)
     }
 
     /// Returns whether a dynamic device pool claims the domain.
@@ -1269,14 +1269,12 @@ impl RefClient {
             || query.r_type == RecordType::PTR;
 
         is_local_record
-            && query.domain().is_some_and(|domain| {
-                self.dns_resource_by_domain(domain, |_| true, |_| true)
-                    .is_some()
-            })
+            && self
+                .dns_resource_by_domain(&query.domain, |_| true, |_| true)
+                .is_some()
     }
 
     fn local_dns_resource(&self, query: &DnsQuery) -> Option<ResourceId> {
-        let domain = query.domain()?;
         let is_local_record = query.r_type == RecordType::A
             || query.r_type == RecordType::AAAA
             || query.r_type == RecordType::PTR;
@@ -1284,7 +1282,7 @@ impl RefClient {
         is_local_record
             .then(|| {
                 self.dns_resource_by_domain_for_records(
-                    domain,
+                    &query.domain,
                     query.r_type != RecordType::AAAA,
                     query.r_type != RecordType::A,
                 )
@@ -1327,10 +1325,6 @@ impl RefClient {
     }
 
     fn local_dns_resource_query_has_records(&self, query: &DnsQuery) -> bool {
-        let Some(domain) = query.domain() else {
-            return false;
-        };
-
         self.resources
             .iter()
             .filter_map(|resource| {
@@ -1338,7 +1332,7 @@ impl RefClient {
                     return None;
                 };
 
-                dns::is_subdomain(domain, &resource.address).then_some(resource)
+                dns::is_subdomain(&query.domain, &resource.address).then_some(resource)
             })
             .any(|resource| {
                 (query.r_type != RecordType::A || resource.ip_stack.supports_ipv4())
@@ -1374,7 +1368,7 @@ impl RefClient {
         }
 
         Some(
-            self.dns_resource_by_domain(query.domain()?, |_| true, |_| true)?
+            self.dns_resource_by_domain(&query.domain, |_| true, |_| true)?
                 .id,
         )
     }

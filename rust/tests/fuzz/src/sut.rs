@@ -379,7 +379,7 @@ impl TunnelTest {
                 client_id,
                 query:
                     DnsQuery {
-                        name,
+                        domain,
                         r_type,
                         dns_server,
                         query_id,
@@ -388,7 +388,31 @@ impl TunnelTest {
             } => {
                 let client = state.clients.get_mut(&client_id).unwrap();
                 let transmit = client.exec_mut(|sim| {
-                    sim.send_dns_query_for(name, r_type, query_id, dns_server, transport, now)
+                    sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
+                });
+
+                buffered_transmits.push_from(transmit, client, now);
+            }
+            Transition::SendDnsResourcePtrQuery {
+                client_id,
+                record_domain,
+                family,
+                address_index,
+                query_id,
+                dns_server,
+                transport,
+            } => {
+                let client = state.clients.get_mut(&client_id).unwrap();
+                let transmit = client.exec_mut(|sim| {
+                    sim.send_dns_resource_ptr_query_for(
+                        record_domain,
+                        family,
+                        address_index,
+                        query_id,
+                        dns_server,
+                        transport,
+                        now,
+                    )
                 });
 
                 buffered_transmits.push_from(transmit, client, now);

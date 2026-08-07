@@ -9,7 +9,7 @@ use super::{
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
-    transition::{DPort, DnsQueryName, DnsTransport, Identifier, SPort, Seq},
+    transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceId, ResourceStatus};
@@ -154,16 +154,50 @@ impl SimClient {
         &self.dns_by_sentinel
     }
 
+    pub(crate) fn send_dns_resource_ptr_query_for(
+        &mut self,
+        record_domain: DomainName,
+        family: IpFamily,
+        address_index: u32,
+        query_id: u16,
+        upstream: dns::Upstream,
+        dns_transport: DnsTransport,
+        now: Instant,
+    ) -> Option<Transmit> {
+        let ips = self
+            .dns_records
+            .get(&record_domain)
+            .expect("resolved domain should have DNS records")
+            .iter()
+            .filter(|ip| match family {
+                IpFamily::Ipv4 => ip.is_ipv4(),
+                IpFamily::Ipv6 => ip.is_ipv6(),
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        let ip = ips[address_index as usize % ips.len()];
+        let reverse_domain =
+            DomainName::reverse_from_addr(ip).expect("reverse DNS names always fit");
+
+        self.send_dns_query_for(
+            reverse_domain,
+            RecordType::PTR,
+            query_id,
+            upstream,
+            dns_transport,
+            now,
+        )
+    }
+
     pub(crate) fn send_dns_query_for(
         &mut self,
-        name: DnsQueryName,
+        domain: DomainName,
         r_type: RecordType,
         query_id: u16,
         upstream: dns::Upstream,
         dns_transport: DnsTransport,
         now: Instant,
     ) -> Option<Transmit> {
-        let domain = self.materialize_dns_query_name(name);
         let Some(sentinel) = self.dns_by_sentinel.sentinel_by_upstream(&upstream) else {
             tracing::error!(%upstream, "Unknown DNS server");
             return None;
@@ -198,34 +232,6 @@ impl SimClient {
                 None
             }
         }
-    }
-
-    fn materialize_dns_query_name(&self, name: DnsQueryName) -> DomainName {
-        let ip = match name {
-            DnsQueryName::Name(domain) => return domain,
-            DnsQueryName::ReverseDns {
-                domain,
-                record_type,
-                address_index,
-            } => {
-                let ips = self
-                    .dns_records
-                    .get(&domain)
-                    .expect("resolved domain should have DNS records")
-                    .iter()
-                    .filter(|ip| match record_type {
-                        RecordType::A => ip.is_ipv4(),
-                        RecordType::AAAA => ip.is_ipv6(),
-                        _ => unreachable!("only A and AAAA records contain IP addresses"),
-                    })
-                    .copied()
-                    .collect::<Vec<_>>();
-
-                ips[address_index as usize % ips.len()]
-            }
-        };
-
-        DomainName::reverse_from_addr(ip).expect("reverse DNS names always fit")
     }
 
     pub fn connect_tcp(&mut self, src: IpAddr, dst: IpAddr, sport: SPort, dport: DPort) {
