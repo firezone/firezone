@@ -210,6 +210,13 @@ impl ResourceStubResolver {
         self.dns_resources.retain(|resource| resource.id != id);
         self.dns_resources.insert(resource.clone());
 
+        let mut records_changed = false;
+        for (_, resources) in self.fqdn_to_ips.values_mut() {
+            let previous_len = resources.len();
+            resources.retain(|(pattern, rid)| *rid != id || pattern == &resource.pattern);
+            records_changed |= resources.len() != previous_len;
+        }
+
         let assignment = (resource.pattern.clone(), resource.id);
         let routes = if is_new {
             self.fqdn_to_ips
@@ -225,6 +232,10 @@ impl ResourceStubResolver {
         } else {
             Vec::new()
         };
+
+        if records_changed {
+            self.events.push_back(Event::RecordsChanged(self.records()));
+        }
 
         AddResourceResult { is_new, routes }
     }
@@ -762,6 +773,33 @@ mod tests {
 
         assert_eq!(response.response_code(), ResponseCode::NOERROR);
         assert_eq!(response.records().count(), 0);
+    }
+
+    #[test]
+    fn reconciles_stale_cached_assignment_with_current_resource_address() {
+        let domain = "db.example.com".parse::<DomainName>().unwrap();
+        let resource_id = ResourceId::from_u128(1);
+        let proxy_ip = IpAddr::from(Ipv4Addr::new(100, 96, 0, 1));
+        let mut resolver = ResourceStubResolver::new(BTreeSet::from([DnsResourceRecord {
+            domain: domain.clone(),
+            resources: BTreeSet::from([(Pattern::new("db.example.com").unwrap(), resource_id)]),
+            ips: vec![proxy_ip],
+        }]));
+
+        resolver.add_resource(resource_id, "other.example.com".to_owned(), IpStack::Dual);
+
+        assert_eq!(resolver.resolved_resources().count(), 0);
+        let Some(Event::RecordsChanged(records)) = resolver.poll_event() else {
+            panic!("Expected updated DNS resource records")
+        };
+        assert_eq!(
+            records,
+            BTreeSet::from([DnsResourceRecord {
+                domain,
+                resources: BTreeSet::new(),
+                ips: vec![proxy_ip],
+            }])
+        );
     }
 
     #[test]
