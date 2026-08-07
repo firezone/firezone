@@ -1,4 +1,4 @@
-use connlib_model::{ClientId, RelayId, ResourceId};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use tunnel_proto::{
     dns,
@@ -29,6 +29,15 @@ pub enum Transition {
     },
     SendIcmpPacket {
         client_id: ClientId,
+        src: IpAddr,
+        dst: Destination,
+        seq: Seq,
+        identifier: Identifier,
+        probe_id: ProbeId,
+    },
+    SendIcmpPacketWithGatewayDnsResolutionFailure {
+        client_id: ClientId,
+        gateway_id: GatewayId,
         src: IpAddr,
         dst: Destination,
         seq: Seq,
@@ -120,6 +129,7 @@ impl Transition {
             Transition::EditResource(_) => true,
             Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacket { .. } => false,
+            Transition::SendIcmpPacketWithGatewayDnsResolutionFailure { .. } => false,
             Transition::SendUdpPacket { .. } => false,
             Transition::SendUdpPacketOnFlow { .. } => false,
             Transition::ConnectTcp { .. } => false,

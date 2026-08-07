@@ -24,6 +24,7 @@ use snownet::{NoTurnServers, Transmit};
 use std::collections::BTreeSet;
 use std::iter;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::{
     collections::BTreeMap,
     net::IpAddr,
@@ -57,10 +58,43 @@ pub struct TunnelTest {
 }
 
 #[derive(Debug)]
-struct DnsResolutionFailure {
-    client: ClientId,
-    domain: DomainName,
-    r_type: RecordType,
+enum DnsResolutionFailure {
+    Client {
+        client: ClientId,
+        domain: DomainName,
+        r_type: RecordType,
+    },
+    Gateway {
+        gateway: GatewayId,
+        client: ClientId,
+        domain: DomainName,
+    },
+}
+
+impl DnsResolutionFailure {
+    fn matches_client(&self, client: ClientId, domain: &DomainName, r_type: RecordType) -> bool {
+        match self {
+            DnsResolutionFailure::Client {
+                client: failure_client,
+                domain: failure_domain,
+                r_type: failure_r_type,
+            } => *failure_client == client && failure_domain == domain && *failure_r_type == r_type,
+            DnsResolutionFailure::Gateway { .. } => false,
+        }
+    }
+
+    fn matches_gateway(&self, gateway: GatewayId, client: ClientId, domain: &DomainName) -> bool {
+        match self {
+            DnsResolutionFailure::Client { .. } => false,
+            DnsResolutionFailure::Gateway {
+                gateway: failure_gateway,
+                client: failure_client,
+                domain: failure_domain,
+            } => {
+                *failure_gateway == gateway && *failure_client == client && failure_domain == domain
+            }
+        }
+    }
 }
 
 impl TunnelTest {
@@ -324,21 +358,44 @@ impl TunnelTest {
                 identifier,
                 probe_id,
             } => {
-                let dst = address_from_destination(&dst, &state, &src, client_id);
-
-                let packet = ip_packet::make::icmp_request_packet(
+                state.send_icmp_probe(
+                    client_id,
                     src,
                     dst,
-                    seq.0,
-                    identifier.0,
-                    &probe_id.to_be_bytes(),
-                )
-                .unwrap();
-
-                let client = state.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
-
-                buffered_transmits.push_from(transmit, client, now);
+                    seq,
+                    identifier,
+                    probe_id,
+                    now,
+                    &mut buffered_transmits,
+                );
+            }
+            Transition::SendIcmpPacketWithGatewayDnsResolutionFailure {
+                client_id,
+                gateway_id,
+                src,
+                dst,
+                seq,
+                identifier,
+                probe_id,
+            } => {
+                let Destination::DomainName { name, .. } = &dst else {
+                    unreachable!("gateway DNS resolution failures require a DNS resource")
+                };
+                state.dns_resolution_failure = Some(DnsResolutionFailure::Gateway {
+                    gateway: gateway_id,
+                    client: client_id,
+                    domain: name.clone(),
+                });
+                state.send_icmp_probe(
+                    client_id,
+                    src,
+                    dst,
+                    seq,
+                    identifier,
+                    probe_id,
+                    now,
+                    &mut buffered_transmits,
+                );
             }
             Transition::SendUdpPacket {
                 client_id,
@@ -391,7 +448,7 @@ impl TunnelTest {
                 match client_resolution {
                     ClientDnsResolution::Succeeded => {}
                     ClientDnsResolution::Failed => {
-                        state.dns_resolution_failure = Some(DnsResolutionFailure {
+                        state.dns_resolution_failure = Some(DnsResolutionFailure::Client {
                             client: client_id,
                             domain: domain.clone(),
                             r_type,
@@ -703,7 +760,7 @@ impl TunnelTest {
         };
         state.advance(ref_state, &mut buffered_transmits);
 
-        if let Some(failure) = &state.dns_resolution_failure {
+        if let Some(failure) = state.dns_resolution_failure.take() {
             tracing::error!(?failure, "DNS resolution failure was not consumed");
         }
 
@@ -794,6 +851,33 @@ impl TunnelTest {
 
         buffered_transmits.push_from(transmit, client, now);
     }
+
+    fn send_icmp_probe(
+        &mut self,
+        client_id: ClientId,
+        src: IpAddr,
+        dst: Destination,
+        seq: crate::transition::Seq,
+        identifier: crate::transition::Identifier,
+        probe_id: ProbeId,
+        now: Instant,
+        buffered_transmits: &mut BufferedTransmits,
+    ) {
+        let dst = address_from_destination(&dst, self, &src, client_id);
+        let packet = ip_packet::make::icmp_request_packet(
+            src,
+            dst,
+            seq.0,
+            identifier.0,
+            &probe_id.to_be_bytes(),
+        )
+        .unwrap();
+
+        let client = self.clients.get_mut(&client_id).unwrap();
+        let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
+
+        buffered_transmits.push_from(transmit, client, now);
+    }
 }
 
 impl TunnelTest {
@@ -844,6 +928,7 @@ impl TunnelTest {
                     gateway,
                     &self.relays,
                     &ref_state.global_dns_records,
+                    &mut self.dns_resolution_failure,
                     now,
                 );
                 continue 'outer;
@@ -897,24 +982,19 @@ impl TunnelTest {
                     .then_some(query_message.clone().with_id(0))
                     .unwrap_or(query_message.clone());
 
-                let response = self.on_recursive_dns_query(&message, &ref_state.global_dns_records);
                 let should_fail = self.dns_resolution_failure.as_ref().is_some_and(|failure| {
-                    let DnsResolutionFailure {
-                        client,
-                        domain,
-                        r_type,
-                    } = failure;
-
-                    *client == client_id
-                        && domain == &query_message.domain()
-                        && *r_type == query_message.qtype()
+                    failure.matches_client(
+                        client_id,
+                        &query_message.domain(),
+                        query_message.qtype(),
+                    )
                 });
                 let message = if should_fail {
                     self.dns_resolution_failure = None;
 
                     Err(anyhow::anyhow!("simulated client DNS resolution failure"))
                 } else {
-                    Ok(response)
+                    Ok(self.on_recursive_dns_query(&message, &ref_state.global_dns_records))
                 };
                 let client = self.clients.get_mut(&client_id).unwrap();
                 client.exec_mut(|c| {
@@ -1698,6 +1778,7 @@ fn on_gateway_event(
     gateway: &mut Host<SimGateway>,
     relays: &BTreeMap<RelayId, Host<SimRelay>>,
     global_dns_records: &DnsRecords,
+    dns_resolution_failure: &mut Option<DnsResolutionFailure>,
     now: Instant,
 ) {
     match event {
@@ -1726,16 +1807,30 @@ fn on_gateway_event(
         GatewayEvent::ResolveDns(r) => {
             let client = r.client();
             let domain = r.domain().clone();
-            let resolved_ips = global_dns_records
-                .domain_ips_iter(&domain)
-                .collect::<Vec<_>>();
+            let should_fail = dns_resolution_failure
+                .as_ref()
+                .is_some_and(|failure| failure.matches_gateway(src, client, &domain));
+            let resolve_result = if should_fail {
+                *dns_resolution_failure = None;
 
-            gateway.exec_mut(|g| {
-                g.dns_resolutions
-                    .insert((client, domain), resolved_ips.clone());
-                g.sut
-                    .handle_domain_resolved(r, Ok(resolved_ips), now)
-                    .unwrap()
+                Err(Arc::new(anyhow::anyhow!(
+                    "simulated gateway DNS resolution failure"
+                )))
+            } else {
+                Ok(global_dns_records
+                    .domain_ips_iter(&domain)
+                    .collect::<Vec<_>>())
+            };
+
+            gateway.exec_mut(|g| match resolve_result {
+                Ok(resolved_ips) => {
+                    g.dns_resolutions
+                        .insert((client, domain), resolved_ips.clone());
+                    g.sut
+                        .handle_domain_resolved(r, Ok(resolved_ips), now)
+                        .unwrap()
+                }
+                Err(error) => g.sut.handle_domain_resolved(r, Err(error), now).unwrap(),
             })
         }
         GatewayEvent::NoRelays => {

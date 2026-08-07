@@ -25,7 +25,7 @@ use crate::resource::{
     StaticDevicePoolResource, StaticDevicePoolResourceEdit, StaticDevicePoolResourceValue,
 };
 use crate::sim_net::{EdgeConfig, Host};
-use crate::transition::Transition;
+use crate::transition::{Destination, Transition};
 
 #[derive(Clone, Copy, Debug)]
 enum TransitionKind {
@@ -51,6 +51,7 @@ enum TransitionKind {
     DeauthorizeWhileGatewayIsPartitioned,
     UpdateDnsRecords,
     SendPacket,
+    SendPacketWithGatewayDnsResolutionFailure,
     SendUdpPacketOnFlow,
     SendDnsQuery,
     SendTruncatedUdpDnsQuery,
@@ -64,6 +65,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     let client_ids = state.all_client_ids();
     let dns_record_domains = state.dns_resource_domains();
     let packet_targets = packets::targets(state);
+    let gateway_dns_resolution_failure_targets = state.gateway_dns_resolution_failure_targets();
     let udp_flows = state.udp_flows();
     let rebindable_clients = state.connected_nat_clients();
     let dns_query_targets = dns_queries::targets(state);
@@ -96,13 +98,15 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
         (!dns_record_domains.is_empty()).then_some((K::UpdateDnsRecords, 5)),
         (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
+        (!gateway_dns_resolution_failure_targets.is_empty())
+            .then_some((K::SendPacketWithGatewayDnsResolutionFailure, 5)),
         (!udp_flows.is_empty()).then_some((K::SendUdpPacketOnFlow, 25)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQuery, 10)),
         (!truncated_dns_query_targets.is_empty()).then_some((K::SendTruncatedUdpDnsQuery, 2)),
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 23]>>();
+    .collect::<SmallVec<[_; 24]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -229,6 +233,25 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         K::SendPacket => {
             let target = packet_targets[g.choose_index(packet_targets.len())].clone();
             packets::generate(g, target)
+        }
+        K::SendPacketWithGatewayDnsResolutionFailure => {
+            let (client_id, gateway_id, src, name) = gateway_dns_resolution_failure_targets
+                [g.choose_index(gateway_dns_resolution_failure_targets.len())]
+            .clone();
+            let (seq, identifier) = g.fresh_icmp_flow();
+
+            Transition::SendIcmpPacketWithGatewayDnsResolutionFailure {
+                client_id,
+                gateway_id,
+                src,
+                dst: Destination::DomainName {
+                    resolved_ip: g.u32(),
+                    name,
+                },
+                seq,
+                identifier,
+                probe_id: g.fresh_probe_id(),
+            }
         }
         K::SendUdpPacketOnFlow => {
             let flow = udp_flows[g.choose_index(udp_flows.len())].clone();
