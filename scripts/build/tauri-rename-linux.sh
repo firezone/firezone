@@ -12,6 +12,24 @@ ls "$TARGET_DIR/release" "$TARGET_DIR/release/bundle/deb" "$TARGET_DIR/release/b
 cp $TARGET_DIR/release/bundle/deb/firezone-client-gui*.deb "$BINARY_DEST_PATH.deb"
 cp $TARGET_DIR/release/bundle/rpm/firezone-client-gui*.rpm "$BINARY_DEST_PATH.rpm"
 
+# Tauri has no counterpart to the RPM release tag for `.deb`s: both bundlers
+# read the same package version. Stamp the revision into the control file
+# afterwards so that, like the `.rpm`, every build gets a version of its own and
+# stops overwriting its predecessor in the preview pool.
+#
+# Only `control` changes; `data.tar` is rebuilt from what `dpkg-deb -R` unpacked.
+# Tauri writes that tree with uid/gid 0, which `--root-owner-group` reproduces
+# without needing `fakeroot`.
+if [[ -n "${DEB_REVISION:-}" ]]; then
+    UNPACKED="$(mktemp -d)"
+
+    dpkg-deb -R "$BINARY_DEST_PATH.deb" "$UNPACKED"
+    sed -i "s/^Version: .*/&-${DEB_REVISION}/" "$UNPACKED/DEBIAN/control"
+    dpkg-deb --build --root-owner-group "$UNPACKED" "$BINARY_DEST_PATH.deb"
+
+    rm -rf "$UNPACKED"
+fi
+
 function make_hash() {
     sha256sum "$1" >"$1.sha256sum.txt"
 }

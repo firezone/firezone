@@ -6,6 +6,9 @@
 # It expects the `.deb` files for these channels to be in the `pool-stable` and `pool-preview` directories.
 # To add new packages to the repository, upload them to the `import-stable` and `import-preview` directories NOT to the `pool-` directories.
 # The `pool-` directories are referenced by the live repository metadata and the files in there need to atomically change with the metadata.
+#
+# Preview publishes every build, each under its own Debian revision so that a build never overwrites its predecessor at the same pool path.
+# Superseded preview builds are pruned once no client is likely to still hold a `Packages` index describing them; see `prune_preview` below.
 
 set -euo pipefail
 shopt -s globstar
@@ -13,6 +16,12 @@ shopt -s globstar
 COMPONENT="main"
 WORK_DIR="$(mktemp -d)"
 DISTS_DIR="${WORK_DIR}/dists"
+
+# How many superseded builds of a package stay in the preview pool. A `.deb`
+# carries no build timestamp, so unlike the RPM channel this is a count rather
+# than an age; it exists so a client that fetched its `Packages` index a while
+# ago can still download what that index describes.
+PREVIEW_KEEP_BUILDS=5
 
 if [ -z "${AZURE_STORAGE_ACCOUNT:-}" ]; then
     echo "Error: AZURE_STORAGE_ACCOUNT not set"
@@ -29,6 +38,51 @@ cleanup() {
 }
 
 trap cleanup EXIT
+
+# Drop preview builds that no client can still be asking for, so the pool does
+# not grow by one package per build and architecture forever.
+#
+# The newest build of every version is always kept: it is the one a release is
+# promoted to `stable` from, which can happen long after the build itself.
+prune_preview() {
+    local pool_dir="$1"
+    local index="${WORK_DIR}/preview-index"
+    local keep key version
+
+    # `<package>_<arch> <upstream version> <full version> <file>`, so the two
+    # rules below can group by package and by version.
+    for deb in "${pool_dir}"/*.deb; do
+        key="$(dpkg-deb -f "$deb" Package)_$(dpkg-deb -f "$deb" Architecture)"
+        version="$(dpkg-deb -f "$deb" Version)"
+
+        printf '%s %s %s %s\n' "$key" "${version%-*}" "$version" "$deb"
+    done >"${index}"
+
+    keep=$(
+        {
+            sort -k1,1 -k2,2 -k3,3V "${index}" | awk '{ newest[$1 " " $2] = $4 } END { for (pkg in newest) print newest[pkg] }'
+            sort -k1,1 -k3,3Vr "${index}" | awk -v keep="${PREVIEW_KEEP_BUILDS}" '++seen[$1] <= keep { print $4 }'
+        } | sort --unique
+    )
+
+    while read -r _ _ _ deb; do
+        if grep --quiet --line-regexp --fixed-strings "$deb" <<<"$keep"; then
+            continue
+        fi
+
+        echo "Pruning $(basename "$deb")"
+        rm --force "$deb"
+
+        az storage blob delete \
+            --container-name apt \
+            --name "pool-preview/$(basename "$deb")" \
+            --auth-mode login \
+            --account-name "${AZURE_STORAGE_ACCOUNT}" \
+            --output none
+    done <"${index}"
+
+    rm --force "${index}"
+}
 
 for DISTRIBUTION in "stable" "preview"; do
     POOL_DIR="${WORK_DIR}/pool-${DISTRIBUTION}"
@@ -90,6 +144,12 @@ for DISTRIBUTION in "stable" "preview"; do
         echo "No packages for distribution ${DISTRIBUTION}"
 
         continue
+    fi
+
+    if [ "${DISTRIBUTION}" = "preview" ]; then
+        echo "Pruning superseded preview builds..."
+
+        prune_preview "${POOL_DIR}"
     fi
 
     echo "Detecting architectures..."

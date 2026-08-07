@@ -170,6 +170,10 @@ jobs:
         run: git diff --exit-code
       - name: Rename artifacts and compute SHA256
         shell: bash
+        env:
+          # Same role as `RPM_RELEASE` above, applied to the `.deb` after
+          # bundling because Tauri cannot set it during the build.
+          DEB_REVISION: ${{ github.run_number }}
         run: ${{ env.RENAME_SCRIPT }}
       - name: Upload deb / msi package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -347,14 +347,43 @@ jobs:
           version=${{ inputs.release_name || github.event.release.name }}
           version=${version#${{ matrix.tag_prefix }}-}
 
-          # Copy `.deb`s to `import-stable`
-          az storage blob copy start-batch \
-            --destination-container apt \
-            --source-container apt \
-            --pattern "pool-preview/${{ matrix.deb_name }}_$version*" \
-            --destination-path import-stable \
+          # Every build of a version lands in `pool-preview` under its own
+          # revision, so promote the newest one per architecture rather than the
+          # whole set. Requiring the revision to be `-<digits>` keeps the match
+          # anchored to this version: a bare `$version` prefix would also match
+          # `1.5.16` when promoting `1.5.1`. The revision is optional so that a
+          # version built before revisions existed can still be promoted.
+          prefix="pool-preview/${{ matrix.deb_name }}_$version"
+
+          az storage blob list \
+            --container-name apt \
+            --prefix "$prefix" \
             --auth-mode login \
-            --account-name firezoneartifacts
+            --account-name firezoneartifacts \
+            --query "[].name" \
+            --output tsv \
+            | sed --quiet "s|^$prefix\(-[0-9]\{1,\}\)\{0,1\}_\(.*\)\.deb\$|\2 \1|p" \
+            | sort -k1,1 -k2,2Vr \
+            | awk '!seen[$1]++' \
+            >newest
+
+          if [ ! -s newest ]; then
+            echo "No preview build of $version for ${{ matrix.deb_name }}"
+            exit 1
+          fi
+
+          # Copy `.deb`s to `import-stable`
+          while read -r arch revision; do
+            echo "Promoting $version$revision for $arch"
+
+            az storage blob copy start \
+              --destination-container apt \
+              --destination-blob "import-stable/${{ matrix.deb_name }}_$version$revision""_$arch.deb" \
+              --source-container apt \
+              --source-blob "$prefix$revision""_$arch.deb" \
+              --auth-mode login \
+              --account-name firezoneartifacts
+          done <newest
 
   regenerate-apt-index:
     needs: promote-deb-packages

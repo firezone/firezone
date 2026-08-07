@@ -368,7 +368,9 @@ jobs:
       - name: Create Firezone Gateway .deb package
         if: ${{ env.BUILDS_DEB == 'true' }}
         run: |
-          cargo deb --package firezone-gateway --target ${{ matrix.arch.target }} --no-build --no-strip
+          # `--deb-revision` keeps every build at its own version, so a preview
+          # build never overwrites its predecessor in the pool.
+          cargo deb --package firezone-gateway --target ${{ matrix.arch.target }} --no-build --no-strip --deb-revision "${{ github.run_number }}"
           cp target/debian/*.deb "$BINARY_DEST_PATH".deb
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
