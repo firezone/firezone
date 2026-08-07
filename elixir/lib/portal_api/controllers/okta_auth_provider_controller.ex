@@ -2,6 +2,7 @@ defmodule PortalAPI.OktaAuthProviderController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Error
+  alias PortalAPI.Filters
   alias PortalAPI.Pagination
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
@@ -18,7 +19,12 @@ defmodule PortalAPI.OktaAuthProviderController do
         type: :integer,
         example: 10
       ],
-      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
+      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
+      name: [
+        in: :query,
+        description: "Filter to Okta Auth Providers with this exact name",
+        type: :string
+      ]
     ],
     responses:
       [
@@ -33,11 +39,16 @@ defmodule PortalAPI.OktaAuthProviderController do
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, providers, metadata} <- Database.list_providers(conn.assigns.subject, list_opts) do
       render(conn, :index, providers: providers, metadata: metadata)
     else
       error -> Error.handle(conn, error)
     end
+  end
+
+  defp coerce_filters(params) do
+    Filters.maybe_append([], :name, params["name"])
   end
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
@@ -83,6 +94,22 @@ defmodule PortalAPI.OktaAuthProviderController do
       from(p in Okta.AuthProvider, as: :providers)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
+    end
+
+    def filters do
+      [
+        %Portal.Repo.Filter{
+          name: :name,
+          title: "Name",
+          type: :string,
+          fun: &filter_by_name/2
+        }
+      ]
+    end
+
+    defp filter_by_name(queryable, name) do
+      dynamic = dynamic([providers: p], p.name == ^name)
+      {queryable, dynamic}
     end
 
     def cursor_fields do
