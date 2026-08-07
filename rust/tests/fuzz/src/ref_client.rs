@@ -1482,15 +1482,7 @@ impl RefClient {
     ) -> Vec<(ResourceId, DomainName, RecordType)> {
         self.dns_resource_resolutions
             .iter()
-            .filter(|((resource, domain), _)| {
-                self.connected_dns_resources.contains(resource)
-                    && self
-                        .dns_resource_resolutions
-                        .keys()
-                        .filter(|(_, candidate)| candidate == domain)
-                        .count()
-                        == 1
-            })
+            .filter(|((resource, _), _)| self.connected_dns_resources.contains(resource))
             .filter_map(|((resource, domain), records)| {
                 let record_type = [RecordType::A, RecordType::AAAA]
                     .into_iter()
