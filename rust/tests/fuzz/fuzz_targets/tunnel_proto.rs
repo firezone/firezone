@@ -19,7 +19,7 @@ fuzz_target!(|data: &[u8]| {
     let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
     let flux_capacitor = FluxCapacitor::new(now, utc_start);
     let mut generator = Generator::new(data);
-    let mut reference = generator.initial_state(now);
+    let mut reference = generator.initial_state();
 
     let mut tunnel = TunnelTest::init_test(&reference, flux_capacitor.clone());
     TunnelTest::check_invariants(&tunnel, &reference);
@@ -31,7 +31,7 @@ fuzz_target!(|data: &[u8]| {
             break;
         }
 
-        let Some(transition) = generator.transition(&reference, now) else {
+        let Some(transition) = generator.transition(&reference) else {
             break;
         };
 

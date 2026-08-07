@@ -1,8 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    iter,
-    time::{Duration, Instant},
-};
+use std::{collections::BTreeMap, iter, time::Duration};
 
 use connlib_model::Site;
 use dns_types::DomainName;
@@ -53,11 +49,7 @@ enum TransitionKind {
     UpdateStaticDevicePool,
 }
 
-pub(super) fn generate(
-    g: &mut Generator,
-    state: &ReferenceState,
-    now: Instant,
-) -> Option<Transition> {
+pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Transition> {
     let addable_resources = state.resources_unknown_to_all_clients();
     let cidr_resources = state.cidr_resources_on_any_client();
     let move_resources = move_resource_candidates(state);
@@ -67,8 +59,8 @@ pub(super) fn generate(
     let deauthorizable_resources = state.deauthorizable_resource_ids();
     let client_ids = state.all_client_ids();
     let dns_record_domains = state.dns_resource_domains();
-    let packet_targets = packets::targets(state, now);
-    let dns_query_targets = dns_queries::targets(state, now);
+    let packet_targets = packets::targets(state);
+    let dns_query_targets = dns_queries::targets(state);
     let static_device_pools = state.static_device_pools_on_any_client();
 
     // Build the legal action list. Data-plane actions stay more frequent because
