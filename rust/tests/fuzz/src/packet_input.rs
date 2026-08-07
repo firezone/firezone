@@ -27,6 +27,10 @@ pub(crate) enum UnroutablePacketInput {
         gateway_id: GatewayId,
         packet: UdpPacketInput,
     },
+    GatewayPeerSource {
+        gateway_id: GatewayId,
+        packet: UdpPacketInput,
+    },
 }
 
 impl UnroutablePacketInput {
@@ -39,6 +43,7 @@ impl UnroutablePacketInput {
                 PacketInputTarget::Gateway(*gateway_id)
             }
             Self::GatewayUnknownPeer { gateway_id, .. } => PacketInputTarget::Gateway(*gateway_id),
+            Self::GatewayPeerSource { gateway_id, .. } => PacketInputTarget::Gateway(*gateway_id),
         }
     }
 
@@ -49,6 +54,7 @@ impl UnroutablePacketInput {
             Self::ClientUnknownResource { packet, .. } => packet.to_ip_packet(),
             Self::GatewayNonPeerDestination { packet, .. } => packet.to_ip_packet(),
             Self::GatewayUnknownPeer { packet, .. } => packet.to_ip_packet(),
+            Self::GatewayPeerSource { packet, .. } => packet.to_ip_packet(),
         }
     }
 
@@ -68,6 +74,9 @@ impl UnroutablePacketInput {
             }
             Self::GatewayUnknownPeer { .. } => {
                 PacketInputOutcome::Rejected(RoutingError::NoPeerState)
+            }
+            Self::GatewayPeerSource { .. } => {
+                PacketInputOutcome::Rejected(RoutingError::NotAllowed)
             }
         };
 
