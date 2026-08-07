@@ -6,6 +6,7 @@ use tunnel_proto::{
 };
 
 use super::{
+    network_input::MalformedNetworkDatagramInput,
     packet_input::UnroutablePacketInput,
     probe::{ProbeId, TcpFlow, UdpFlow},
     reference::PrivateKey,
@@ -62,6 +63,7 @@ pub enum Transition {
         flow: UdpFlow,
         probe_id: ProbeId,
     },
+    ReceiveMalformedNetworkDatagram(MalformedNetworkDatagramInput),
     SendUnroutablePacket(UnroutablePacketInput),
     ConnectTcp {
         client_id: ClientId,
@@ -148,6 +150,7 @@ impl Transition {
             Transition::RefreshGatewayDnsResolutionWithFailure { .. } => false,
             Transition::SendUdpPacket { .. } => false,
             Transition::SendUdpPacketOnFlow { .. } => false,
+            Transition::ReceiveMalformedNetworkDatagram(_) => false,
             Transition::SendUnroutablePacket(_) => false,
             Transition::ConnectTcp { .. } => false,
             Transition::SendTcpDataOnFlow { .. } => false,

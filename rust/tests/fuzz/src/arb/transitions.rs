@@ -56,6 +56,7 @@ enum TransitionKind {
     RefreshGatewayDnsResolutionWithFailure,
     SendUdpPacketOnFlow,
     SendTcpDataOnFlow,
+    ReceiveMalformedNetworkDatagram,
     SendUnroutablePacket,
     SendDnsQuery,
     SendTruncatedUdpDnsQuery,
@@ -114,6 +115,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
             .then_some((K::RefreshGatewayDnsResolutionWithFailure, 3)),
         (!udp_flows.is_empty()).then_some((K::SendUdpPacketOnFlow, 25)),
         (!tcp_flows.is_empty()).then_some((K::SendTcpDataOnFlow, 25)),
+        Some((K::ReceiveMalformedNetworkDatagram, 2)),
         (!state.clients.is_empty() && !state.gateways.is_empty())
             .then_some((K::SendUnroutablePacket, 5)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQuery, 10)),
@@ -310,6 +312,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
 
             Transition::SendTcpDataOnFlow { flow, probe_id }
         }
+        K::ReceiveMalformedNetworkDatagram => super::network_inputs::generate(g, state),
         K::SendUnroutablePacket => super::packet_inputs::generate(g, state),
         K::SendDnsQuery => {
             let target = dns_query_targets[g.choose_index(dns_query_targets.len())].clone();

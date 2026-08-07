@@ -1,5 +1,6 @@
 use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
+use super::network_input::NetworkInputObservation;
 use super::packet_input::PacketInputObservation;
 use super::probe::{
     ExpectedOutcome, ExpectedProbe, KnownLoss, PacketRoute, ProbeId, ProbeRequest, RejectionRemote,
@@ -54,6 +55,8 @@ pub struct ReferenceState {
 
     pub(crate) expected_packet_input_observations: Vec<PacketInputObservation>,
 
+    pub(crate) expected_network_input_observations: Vec<NetworkInputObservation>,
+
     udp_flows: BTreeSet<UdpFlow>,
 }
 
@@ -87,6 +90,7 @@ impl ReferenceState {
             network,
             expected_probes: Default::default(),
             expected_packet_input_observations: Default::default(),
+            expected_network_input_observations: Default::default(),
             udp_flows: Default::default(),
         }
     }
@@ -250,6 +254,11 @@ impl ReferenceState {
             }
             Transition::SendUdpPacketOnFlow { flow, probe_id } => {
                 state.record_udp_probe(*probe_id, flow, now);
+            }
+            Transition::ReceiveMalformedNetworkDatagram(input) => {
+                state
+                    .expected_network_input_observations
+                    .push(input.expected_observation());
             }
             Transition::SendUnroutablePacket(input) => {
                 state
@@ -594,6 +603,7 @@ impl ReferenceState {
     pub fn clear_observations(state: &mut ReferenceState) {
         state.expected_probes.clear();
         state.expected_packet_input_observations.clear();
+        state.expected_network_input_observations.clear();
 
         for client in state.clients.values_mut() {
             client.exec_mut(RefClient::clear_observations);
