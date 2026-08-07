@@ -123,7 +123,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 28]>>();
+    .collect::<SmallVec<[_; 29]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
