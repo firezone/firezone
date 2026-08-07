@@ -79,10 +79,12 @@ pub(crate) struct SimClient {
 impl SimClient {
     pub(crate) fn new(
         id: ClientId,
-        sut: ClientState,
+        mut sut: ClientState,
         malicious_behaviour: MaliciousBehaviour,
         now: Instant,
     ) -> Self {
+        sut.set_flow_logs_enabled(true);
+
         Self {
             id,
             sut,
@@ -130,6 +132,7 @@ impl SimClient {
                 .to_std()
                 .unwrap(),
         );
+        self.sut.set_flow_logs_enabled(true);
 
         self.search_domain = None;
         self.dns_by_sentinel = DnsMapping::default();
