@@ -7,7 +7,9 @@ use tunnel_proto::dns;
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
 use crate::reference::ReferenceState;
-use crate::transition::{DnsQuery, DnsTransport, IpFamily, Transition, TruncatedDnsQuery};
+use crate::transition::{
+    ClientDnsResolution, DnsQuery, DnsTransport, IpFamily, Transition, TruncatedDnsQuery,
+};
 
 #[derive(Clone)]
 pub(super) struct DnsQueryTarget {
@@ -163,14 +165,26 @@ pub(super) fn generate(
         domain
     };
 
+    let query = DnsQuery {
+        domain,
+        r_type,
+        query_id: arb_dns_query_id(g),
+        dns_server: target.dns_server,
+        transport: arb_dns_transport(g),
+        client_resolution: ClientDnsResolution::Succeeded,
+    };
+    let client_resolution =
+        if state.can_fail_client_dns_resolution(target.client_id, &query) && g.flip(20) {
+            ClientDnsResolution::Failed
+        } else {
+            ClientDnsResolution::Succeeded
+        };
+
     Transition::SendDnsQuery {
         client_id: target.client_id,
         query: DnsQuery {
-            domain,
-            r_type,
-            query_id: arb_dns_query_id(g),
-            dns_server: target.dns_server,
-            transport: arb_dns_transport(g),
+            client_resolution,
+            ..query
         },
     }
 }

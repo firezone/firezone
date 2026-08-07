@@ -10,7 +10,9 @@ use super::{
     },
     sim_client::SimClient,
     sim_net::ExecMutScope,
-    transition::{DPort, Destination, DnsQuery, DnsTransport, SPort, TruncatedDnsQuery},
+    transition::{
+        ClientDnsResolution, DPort, Destination, DnsQuery, DnsTransport, SPort, TruncatedDnsQuery,
+    },
 };
 use tunnel_proto::{
     ClientState, MaliciousBehaviour, dns,
@@ -867,7 +869,40 @@ impl RefClient {
             return;
         }
 
-        self.expect_dns_response(query);
+        match query.client_resolution {
+            ClientDnsResolution::Succeeded => self.expect_dns_response(query),
+            ClientDnsResolution::Failed => {
+                self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport)
+            }
+        }
+    }
+
+    pub(crate) fn can_fail_dns_resolution(
+        &self,
+        query: &DnsQuery,
+        upstream_do53: &[UpstreamDo53],
+    ) -> bool {
+        if self
+            .dns_records
+            .get(&query.domain)
+            .is_some_and(|records| records.contains(&query.r_type))
+        {
+            return false;
+        }
+
+        if self.is_dynamic_device_pool_dns_query(query) {
+            return false;
+        }
+
+        if self.is_site_specific_dns_query(query).is_some() {
+            return false;
+        }
+
+        if self.is_local_dns_resource_query(query) {
+            return false;
+        }
+
+        self.dns_query_via_resource(query, upstream_do53).is_none()
     }
 
     pub(crate) fn on_dns_resource_ptr_query(
