@@ -132,12 +132,15 @@ impl ClientOnGateway {
             .filter_map(|(proxy_ip, resolved_ip)| {
                 self.permanent_translations
                     .get(proxy_ip)
-                    .is_some_and(|state| state.resolved_ip.is_some() && resolved_ip.is_none())
+                    .is_some_and(|state| {
+                        state.resolved_ip(resource_id).is_some() && resolved_ip.is_none()
+                    })
                     .then_some(*proxy_ip)
             })
             .collect();
 
-        self.nat_table.expire_inside_ips(&unresolved_proxy_ips);
+        self.nat_table
+            .expire_resource_inside_ips(resource_id, &unresolved_proxy_ips);
 
         for (proxy_ip, resolved_ip) in translations {
             tracing::debug!(%name, %proxy_ip, real_ip = ?resolved_ip);
@@ -147,8 +150,7 @@ impl ClientOnGateway {
                 .entry(proxy_ip)
                 .or_insert_with(|| TranslationState::new(name.clone()));
 
-            state.resources.insert(resource_id);
-            state.resolved_ip = resolved_ip;
+            state.resolved_ips.insert(resource_id, resolved_ip);
         }
 
         domains.insert(name, resolved_ips);
@@ -308,8 +310,8 @@ impl ClientOnGateway {
     }
 
     fn recalculate_dns_filters(&mut self) {
-        for (addr, TranslationState { resources, .. }) in &self.permanent_translations {
-            for resource_id in resources {
+        for (addr, TranslationState { resolved_ips, .. }) in &self.permanent_translations {
+            for resource_id in resolved_ips.keys() {
                 let Some(entry) = self.resources.get(resource_id) else {
                     continue;
                 };
@@ -338,20 +340,23 @@ impl ClientOnGateway {
             bail!(UnroutablePacket::outbound_icmp_error(&packet))
         }
 
-        if let Err(error) = self.ensure_allowed_outbound(&packet) {
-            tracing::debug!(filtered_packet = ?packet, "{error:#}");
+        let resource_id = match self.ensure_allowed_outbound(&packet) {
+            Ok(resource_id) => resource_id,
+            Err(error) => {
+                tracing::debug!(filtered_packet = ?packet, "{error:#}");
 
-            let reply = match error.any_downcast_ref::<InternetResourceRejectedAddress>() {
-                Some(InternetResourceRejectedAddress(_)) => {
-                    ip_packet::make::icmp_dest_unreachable_network(&packet)?
-                }
-                None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
-            };
+                let reply = match error.any_downcast_ref::<InternetResourceRejectedAddress>() {
+                    Some(InternetResourceRejectedAddress(_)) => {
+                        ip_packet::make::icmp_dest_unreachable_network(&packet)?
+                    }
+                    None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
+                };
 
-            return Ok(TranslateOutboundResult::IcmpError(reply));
-        }
+                return Ok(TranslateOutboundResult::IcmpError(reply));
+            }
+        };
 
-        let result = self.transform_network_to_tun(packet, now)?;
+        let result = self.transform_network_to_tun(packet, resource_id, now)?;
 
         Ok(result)
     }
@@ -391,6 +396,7 @@ impl ClientOnGateway {
     fn transform_network_to_tun(
         &mut self,
         mut packet: IpPacket,
+        resource_id: Option<ResourceId>,
         now: Instant,
     ) -> anyhow::Result<TranslateOutboundResult> {
         let dst = packet.destination();
@@ -413,7 +419,10 @@ impl ClientOnGateway {
             ));
         };
 
-        let Some(resolved_ip) = state.resolved_ip else {
+        let Some(resource_id) = resource_id else {
+            unreachable!("DNS proxy IPs are not Gateway TUN IPs")
+        };
+        let Some(resolved_ip) = state.resolved_ip(resource_id) else {
             return Ok(TranslateOutboundResult::IcmpError(
                 ip_packet::make::icmp_dest_unreachable_network(&packet)?,
             ));
@@ -435,7 +444,7 @@ impl ClientOnGateway {
 
         let (source_protocol, real_ip) =
             self.nat_table
-                .translate_outgoing(&packet, resolved_ip, now)?;
+                .translate_outgoing(&packet, resolved_ip, resource_id, now)?;
 
         packet
             .translate_destination(source_protocol, real_ip)
@@ -481,12 +490,12 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
-    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
+    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> anyhow::Result<Option<ResourceId>> {
         self.ensure_client_ip(packet.source())?;
 
         // Traffic to our own IP is allowed.
         if self.gateway_tun.is_ip(packet.destination()) {
-            return Ok(());
+            return Ok(None);
         }
 
         ensure_not_peer_ip(packet.destination())?;
@@ -495,12 +504,12 @@ impl ClientOnGateway {
 
         if !self.resources.contains_key(&rid) {
             tracing::warn!(%rid, "Internal state mismatch: No resource for ID");
-            return Ok(());
+            return Ok(Some(rid));
         }
         flow_tracker::record_resource(rid);
         flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid).cloned());
 
-        Ok(())
+        Ok(Some(rid))
     }
 
     fn ensure_client_ip(&self, ip: IpAddr) -> anyhow::Result<()> {
@@ -669,10 +678,8 @@ impl routing_table::RouteEntry for RouteEntry {
 // Current state of a translation for a given proxy ip
 #[derive(Debug)]
 struct TranslationState {
-    /// Which (DNS) resources we belong to.
-    resources: BTreeSet<ResourceId>,
-    /// The IP we have resolved for the domain.
-    resolved_ip: Option<IpAddr>,
+    /// The IP each DNS resource resolved for the domain.
+    resolved_ips: BTreeMap<ResourceId, Option<IpAddr>>,
     /// The domain we have resolved.
     domain: DomainName,
 }
@@ -680,10 +687,13 @@ struct TranslationState {
 impl TranslationState {
     fn new(domain: DomainName) -> Self {
         Self {
-            resources: BTreeSet::default(),
-            resolved_ip: None,
+            resolved_ips: BTreeMap::default(),
             domain,
         }
+    }
+
+    fn resolved_ip(&self, resource: ResourceId) -> Option<IpAddr> {
+        self.resolved_ips.get(&resource).copied().flatten()
     }
 }
 
@@ -1372,6 +1382,96 @@ mod tests {
             "TCP/{} packet to shared proxy IP should be forwarded",
             foo_allowed_port2(),
         );
+    }
+
+    #[test]
+    fn dns_resolution_failure_only_expires_its_resource_nat_sessions() {
+        let now = Instant::now();
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+
+        peer.add_resource(foo_dns_resource(), None, now);
+        peer.add_resource(foo_dns_resource2(), None, now);
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            foo_resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            BTreeSet::from([proxy_ip4_1()]),
+        )
+        .unwrap();
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            foo_resource2_id(),
+            BTreeSet::from([foo_real_ip2().into()]),
+            BTreeSet::from([proxy_ip4_1()]),
+        )
+        .unwrap();
+
+        let udp_request = ip_packet::make::udp_packet(
+            client_tun_ipv4(),
+            proxy_ip4_1(),
+            1,
+            foo_allowed_port(),
+            &[0u8; 8],
+        )
+        .unwrap();
+        let IpAddr::V4(proxy_ip) = proxy_ip4_1() else {
+            unreachable!("proxy_ip4_1 is always IPv4")
+        };
+        let tcp_request = ip_packet::make::tcp_packet(
+            client_tun_ipv4(),
+            proxy_ip,
+            2,
+            foo_allowed_port2(),
+            TcpFlags::default(),
+            &[0u8; 8],
+        )
+        .unwrap();
+
+        assert!(matches!(
+            peer.translate_outbound(udp_request.clone(), now).unwrap(),
+            TranslateOutboundResult::Send(_)
+        ));
+        assert!(matches!(
+            peer.translate_outbound(tcp_request.clone(), now).unwrap(),
+            TranslateOutboundResult::Send(_)
+        ));
+
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            foo_resource2_id(),
+            BTreeSet::new(),
+            BTreeSet::from([proxy_ip4_1()]),
+        )
+        .unwrap();
+
+        let TranslateOutboundResult::Send(packet) =
+            peer.translate_outbound(udp_request, now).unwrap()
+        else {
+            panic!("UDP resource was disabled by another resource's resolution failure")
+        };
+        assert_eq!(packet.destination(), foo_real_ip1());
+        assert!(matches!(
+            peer.translate_outbound(tcp_request, now).unwrap(),
+            TranslateOutboundResult::IcmpError(_)
+        ));
+
+        let tcp_response = ip_packet::make::tcp_packet(
+            foo_real_ip2(),
+            client_tun_ipv4(),
+            foo_allowed_port2(),
+            2,
+            TcpFlags::default(),
+            &[0u8; 8],
+        )
+        .unwrap();
+        #[expect(clippy::disallowed_methods, reason = "This is a test.")]
+        let error = peer
+            .translate_inbound(tcp_response, now)
+            .unwrap_err()
+            .downcast::<UnroutablePacket>()
+            .unwrap();
+
+        assert_eq!(error.reason(), RoutingError::ExpiredNatSession);
     }
 
     #[test]

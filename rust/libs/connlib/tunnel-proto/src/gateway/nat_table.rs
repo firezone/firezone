@@ -1,6 +1,7 @@
 //! A stateful symmetric NAT table that performs conversion between a client's picked proxy ip and the actual resource's IP.
 use anyhow::{Context, Result};
 use bimap::BiMap;
+use connlib_model::ResourceId;
 use ip_packet::{FailedPacket, IcmpError, IpPacket, Protocol};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -82,10 +83,14 @@ impl NatTable {
         }
     }
 
-    pub(crate) fn expire_inside_ips(&mut self, ips: &BTreeSet<IpAddr>) {
-        let expired = self
-            .state_by_inside
-            .extract_if(.., |inside, _| ips.contains(&inside.1));
+    pub(crate) fn expire_resource_inside_ips(
+        &mut self,
+        resource: ResourceId,
+        ips: &BTreeSet<IpAddr>,
+    ) {
+        let expired = self.state_by_inside.extract_if(.., |inside, state| {
+            state.resource == resource && ips.contains(&inside.1)
+        });
 
         for (inside, _) in expired {
             let Some((_, outside)) = self.table.remove_by_left(&inside) else {
@@ -100,6 +105,7 @@ impl NatTable {
         &mut self,
         packet: &IpPacket,
         outside_dst: IpAddr,
+        resource: ResourceId,
         now: Instant,
     ) -> Result<(Protocol, IpAddr)> {
         let src = packet.source_protocol()?;
@@ -134,7 +140,8 @@ impl NatTable {
             .context("Exhausted NAT")?;
 
         self.table.insert(inside, outside);
-        self.state_by_inside.insert(inside, EntryState::new(now));
+        self.state_by_inside
+            .insert(inside, EntryState::new(resource, now));
         self.expired.remove(&outside);
 
         tracing::debug!(?inside, ?outside, "New NAT session");
@@ -210,6 +217,7 @@ impl NatTable {
 
 #[derive(Debug)]
 struct EntryState {
+    resource: ResourceId,
     last_outgoing: Instant,
     last_incoming: Option<Instant>,
 
@@ -220,8 +228,9 @@ struct EntryState {
 }
 
 impl EntryState {
-    fn new(last_outgoing: Instant) -> Self {
+    fn new(resource: ResourceId, last_outgoing: Instant) -> Self {
         Self {
+            resource,
             last_outgoing,
             last_incoming: None,
             outgoing_rst: false,
@@ -355,6 +364,8 @@ mod tests {
     use ip_packet::{IpPacket, make::TcpFlags, proptest::*};
     use proptest::prelude::*;
 
+    const RESOURCE: ResourceId = ResourceId::from_u128(1);
+
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
     fn translates_back_and_forth_packet(
         #[strategy(udp_or_tcp_or_icmp_packet())] packet: IpPacket,
@@ -372,8 +383,9 @@ mod tests {
         let dst = packet.destination();
 
         // Translate out
-        let (new_source_protocol, new_dst_ip) =
-            table.translate_outgoing(&packet, outside_dst, now).unwrap();
+        let (new_source_protocol, new_dst_ip) = table
+            .translate_outgoing(&packet, outside_dst, RESOURCE, now)
+            .unwrap();
 
         // Pretend we are getting a response.
         let mut response = packet.clone();
@@ -438,9 +450,11 @@ mod tests {
             .map(|(p, _)| (p.source_protocol().unwrap(), p.destination()));
 
         // Translate out
-        let new_src_p_and_dst = packets
-            .clone()
-            .map(|(p, d)| table.translate_outgoing(&p, d, Instant::now()).unwrap());
+        let new_src_p_and_dst = packets.clone().map(|(p, d)| {
+            table
+                .translate_outgoing(&p, d, RESOURCE, Instant::now())
+                .unwrap()
+        });
 
         // Pretend we are getting a response.
         for ((p, _), (new_src_p, new_d)) in packets.iter_mut().zip(new_src_p_and_dst) {
@@ -481,7 +495,9 @@ mod tests {
         let mut table = NatTable::default();
         let mut now = Instant::now();
 
-        let outside = table.translate_outgoing(&req, outside_dst, now).unwrap();
+        let outside = table
+            .translate_outgoing(&req, outside_dst, RESOURCE, now)
+            .unwrap();
 
         let mut response = req.clone();
         response.set_destination_protocol(outside.0.value());
@@ -498,7 +514,9 @@ mod tests {
 
         now += Duration::from_secs(1);
 
-        table.translate_outgoing(&rst, outside_dst, now).unwrap();
+        table
+            .translate_outgoing(&rst, outside_dst, RESOURCE, now)
+            .unwrap();
 
         now += Duration::from_secs(1);
         table.handle_timeout(now);
@@ -522,11 +540,11 @@ mod tests {
         let mut table = NatTable::default();
 
         let (_, destination) = table
-            .translate_outgoing(&packet, old_destination.into(), now)
+            .translate_outgoing(&packet, old_destination.into(), RESOURCE, now)
             .unwrap();
-        table.expire_inside_ips(&BTreeSet::from([proxy.into()]));
+        table.expire_resource_inside_ips(RESOURCE, &BTreeSet::from([proxy.into()]));
         let (_, refreshed_destination) = table
-            .translate_outgoing(&packet, new_destination.into(), now)
+            .translate_outgoing(&packet, new_destination.into(), RESOURCE, now)
             .unwrap();
 
         assert_eq!(destination, IpAddr::V4(old_destination));
@@ -542,7 +560,7 @@ mod tests {
         let packet = ip_packet::make::udp_packet(client, proxy, 1000, 2000, &[]).unwrap();
         let mut table = NatTable::default();
         let (outside_protocol, outside_destination) = table
-            .translate_outgoing(&packet, destination.into(), now)
+            .translate_outgoing(&packet, destination.into(), RESOURCE, now)
             .unwrap();
         let response = ip_packet::make::udp_packet(
             outside_destination,
@@ -553,7 +571,7 @@ mod tests {
         )
         .unwrap();
 
-        table.expire_inside_ips(&BTreeSet::from([proxy.into()]));
+        table.expire_resource_inside_ips(RESOURCE, &BTreeSet::from([proxy.into()]));
         let result = table.translate_incoming(&response, now).unwrap();
 
         assert_eq!(result, TranslateIncomingResult::ExpiredNatSession);
