@@ -7,7 +7,7 @@ use tunnel_proto::{
 };
 
 use super::{
-    probe::ProbeId,
+    probe::{ProbeId, UdpFlow},
     reference::PrivateKey,
     resource::{CidrResource, Resource},
     sim_net::Host,
@@ -61,6 +61,10 @@ pub enum Transition {
         dst: Destination,
         sport: SPort,
         dport: DPort,
+        probe_id: ProbeId,
+    },
+    SendUdpPacketOnFlow {
+        flow: UdpFlow,
         probe_id: ProbeId,
     },
     ConnectTcp {
@@ -120,6 +124,7 @@ impl Transition {
             Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacket { .. } => false,
             Transition::SendUdpPacket { .. } => false,
+            Transition::SendUdpPacketOnFlow { .. } => false,
             Transition::ConnectTcp { .. } => false,
             Transition::SendDnsQuery { .. } => false,
             Transition::UpdateSystemDnsServers { .. } => false,

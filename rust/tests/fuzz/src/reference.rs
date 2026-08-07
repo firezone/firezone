@@ -2,7 +2,7 @@ use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
 use super::probe::{
     ExpectedOutcome, ExpectedProbe, KnownLoss, PacketRoute, ProbeId, ProbeRequest, RejectionRemote,
-    Remote, TraceRequirement,
+    Remote, TraceRequirement, UdpFlow,
 };
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, StaticSecret};
@@ -50,6 +50,8 @@ pub struct ReferenceState {
     pub(crate) network: RoutingTable,
 
     pub(crate) expected_probes: BTreeMap<ProbeId, ExpectedProbe>,
+
+    udp_flows: BTreeSet<UdpFlow>,
 }
 
 /// Implementation of our reference state machine.
@@ -81,6 +83,7 @@ impl ReferenceState {
             icmp_error_hosts,
             network,
             expected_probes: Default::default(),
+            udp_flows: Default::default(),
         }
     }
 
@@ -254,17 +257,19 @@ impl ReferenceState {
                 seq,
                 identifier,
                 probe_id,
-            } => state.record_probe(
-                *probe_id,
-                *client_id,
-                ProbeRequest::Icmp {
-                    src: *src,
-                    dst: dst.clone(),
-                    seq: *seq,
-                    identifier: *identifier,
-                },
-                now,
-            ),
+            } => {
+                state.record_probe(
+                    *probe_id,
+                    *client_id,
+                    ProbeRequest::Icmp {
+                        src: *src,
+                        dst: dst.clone(),
+                        seq: *seq,
+                        identifier: *identifier,
+                    },
+                    now,
+                );
+            }
             Transition::SendUdpPacket {
                 client_id,
                 src,
@@ -272,17 +277,33 @@ impl ReferenceState {
                 sport,
                 dport,
                 probe_id,
-            } => state.record_probe(
-                *probe_id,
-                *client_id,
-                ProbeRequest::Udp {
+            } => {
+                let flow = UdpFlow {
+                    client_id: *client_id,
                     src: *src,
                     dst: dst.clone(),
                     sport: *sport,
                     dport: *dport,
-                },
-                now,
-            ),
+                };
+                let outcome = state.record_udp_probe(*probe_id, &flow, now);
+
+                match (&flow.dst, outcome) {
+                    (Destination::IpAddr(_), ExpectedOutcome::RoundTripCompleted { .. }) => {
+                        state.udp_flows.insert(flow);
+                    }
+                    (Destination::IpAddr(_), ExpectedOutcome::Dropped) => {}
+                    (Destination::IpAddr(_), ExpectedOutcome::Rejected { .. }) => {}
+                    (Destination::DomainName { .. }, ExpectedOutcome::Dropped) => {}
+                    (
+                        Destination::DomainName { .. },
+                        ExpectedOutcome::RoundTripCompleted { .. },
+                    ) => {}
+                    (Destination::DomainName { .. }, ExpectedOutcome::Rejected { .. }) => {}
+                }
+            }
+            Transition::SendUdpPacketOnFlow { flow, probe_id } => {
+                state.record_udp_probe(*probe_id, flow, now);
+            }
             Transition::ConnectTcp {
                 client_id,
                 src,
@@ -434,13 +455,32 @@ impl ReferenceState {
         state.expected_probes.clear();
     }
 
+    fn record_udp_probe(
+        &mut self,
+        id: ProbeId,
+        flow: &UdpFlow,
+        sent_at: Instant,
+    ) -> ExpectedOutcome {
+        self.record_probe(
+            id,
+            flow.client_id,
+            ProbeRequest::Udp {
+                src: flow.src,
+                dst: flow.dst.clone(),
+                sport: flow.sport,
+                dport: flow.dport,
+            },
+            sent_at,
+        )
+    }
+
     fn record_probe(
         &mut self,
         id: ProbeId,
         origin: ClientId,
         request: ProbeRequest,
         sent_at: Instant,
-    ) {
+    ) -> ExpectedOutcome {
         let route = self.route_for_application_packet(
             origin,
             request.source(),
@@ -466,6 +506,8 @@ impl ReferenceState {
         );
 
         assert!(previous.is_none(), "probe IDs must be unique");
+
+        outcome
     }
 
     fn route_for_application_packet(
@@ -566,6 +608,10 @@ impl ReferenceState {
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
+    pub(crate) fn udp_flows(&self) -> Vec<UdpFlow> {
+        self.udp_flows.iter().cloned().collect()
+    }
+
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
         self.clients
             .values()
