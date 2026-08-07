@@ -214,6 +214,9 @@ if config_env() == :prod do
     # Delete expired policy_authorizations every minute
     {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations},
 
+    # Refresh cached certificate revocation lists hourly
+    {"15 * * * *", Portal.Crl.Scheduler},
+
     # Schedule Entra directory sync every 2 hours
     {"0 */2 * * *", Portal.Entra.Scheduler},
 
@@ -306,6 +309,8 @@ if config_env() == :prod do
     ],
     queues: [
       default: 10,
+      crl_scheduler: 1,
+      crl_sync: 5,
       entra_scheduler: 1,
       entra_sync: 5,
       google_scheduler: 1,

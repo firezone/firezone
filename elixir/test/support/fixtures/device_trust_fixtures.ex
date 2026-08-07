@@ -88,6 +88,27 @@ defmodule Portal.DeviceTrustFixtures do
     )
   end
 
+  # Carries CRL distribution point and OCSP endpoints, which real MDM CAs stamp
+  # into what they issue and the anchor learns from the first connect.
+  def leaf(pki, :with_crl) do
+    issue_leaf(pki.ca,
+      sans: @typed_sans,
+      extensions: [
+        {:Extension, {2, 5, 29, 31}, false,
+         :public_key.der_encode(:CRLDistributionPoints, [
+           {:DistributionPoint,
+            {:fullName, [{:uniformResourceIdentifier, ~c"http://crl.example.test/ca.crl"}]},
+            :asn1_NOVALUE, :asn1_NOVALUE}
+         ])},
+        {:Extension, {1, 3, 6, 1, 5, 5, 7, 1, 1}, false,
+         [
+           {:AccessDescription, {1, 3, 6, 1, 5, 5, 7, 48, 1},
+            {:uniformResourceIdentifier, ~c"http://ocsp.example.test"}}
+         ]}
+      ]
+    )
+  end
+
   def leaf(pki, :no_eku), do: issue_leaf(pki.ca, eku: [@server_auth_oid], sans: @typed_sans)
 
   def leaf(pki, :untrusted), do: issue_leaf(pki.untrusted_ca, sans: @typed_sans)
@@ -154,7 +175,7 @@ defmodule Portal.DeviceTrustFixtures do
         case Keyword.get(opts, :key_usage) do
           nil -> []
           usages -> [{:Extension, @key_usage_oid, true, usages}]
-        end
+        end ++ Keyword.get(opts, :extensions, [])
 
     sign_cert(
       issuer.subject,

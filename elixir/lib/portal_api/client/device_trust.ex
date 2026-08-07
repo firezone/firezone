@@ -122,10 +122,15 @@ defmodule PortalAPI.Client.DeviceTrust do
           optional(:last_attested_device_uuid) => String.t()
         }
 
+  @type anchor :: %{id: Ecto.UUID.t(), der: binary(), crl_url: String.t() | nil}
+
   @type verified :: %{
           identifiers: identifiers(),
           last_attested_cert_serial: String.t(),
-          last_attested_cert_fingerprint: String.t()
+          last_attested_cert_fingerprint: String.t(),
+          anchor: anchor(),
+          crl_urls: [String.t()],
+          ocsp_urls: [String.t()]
         }
 
   @type reason ::
@@ -139,6 +144,7 @@ defmodule PortalAPI.Client.DeviceTrust do
           | :untrusted_chain
           | :malformed_cert_serial
           | :no_device_identifiers
+          | :certificate_revoked
 
   @doc """
   Attests the connecting device from the certificate the load balancer passed
@@ -156,14 +162,20 @@ defmodule PortalAPI.Client.DeviceTrust do
          {:ok, der} <- presented_certificate(connect_info),
          {:ok, anchors} <- fetch_anchors(subject),
          {:ok, leaf} <- decode_leaf(der),
-         :ok <- validate_leaf(leaf, der, anchors),
+         {:ok, anchor} <- validate_leaf(leaf, der, anchors),
          {:ok, serial} <- cert_serial(leaf),
+         :ok <- ensure_not_revoked(anchor, serial, subject),
          {:ok, identifiers} <- device_identifiers(leaf) do
+      learn_revocation_urls(anchor, leaf, subject)
+
       {:ok,
        %{
          identifiers: identifiers,
          last_attested_cert_serial: serial,
-         last_attested_cert_fingerprint: sha256_hex(der)
+         last_attested_cert_fingerprint: sha256_hex(der),
+         anchor: anchor,
+         crl_urls: X509.crl_distribution_points(leaf),
+         ocsp_urls: X509.authority_info_access(leaf).ocsp
        }}
     end
   end
@@ -249,12 +261,20 @@ defmodule PortalAPI.Client.DeviceTrust do
       not within_validity_window?(leaf) ->
         {:error, :outside_validity_window}
 
-      not chain_valid?(der, anchors) ->
-        {:error, :untrusted_chain}
-
       true ->
-        :ok
+        validating_anchor(der, anchors)
     end
+  end
+
+  # Returns the anchor the leaf chains to rather than a boolean: revocation
+  # checking needs to know which CA issued this certificate, since both CRL
+  # entries and OCSP responses are serial numbers scoped to their issuer.
+  defp validating_anchor(leaf_der, anchors) do
+    anchor_ders = Enum.map(anchors, & &1.der)
+
+    Enum.find_value(anchors, {:error, :untrusted_chain}, fn anchor ->
+      if chains_to?(leaf_der, anchor.der, anchor_ders), do: {:ok, anchor}
+    end)
   end
 
   # The MDM device id anchors the certificate to the MDM's record of the device
@@ -268,6 +288,37 @@ defmodule PortalAPI.Client.DeviceTrust do
       identifiers -> {:ok, identifiers}
     end
   end
+
+  # Checked against the cached CRL rather than fetched live: the CRL fetch job
+  # owns the network call, so this stays a single indexed lookup. An anchor
+  # whose CA publishes no CRL simply has no rows, and nothing is revoked.
+  defp ensure_not_revoked(anchor, serial, subject) do
+    if Database.revoked?(anchor.id, serial, subject) do
+      Logger.warning("Refusing device certificate: revoked by its CA",
+        trust_anchor_certificate_id: anchor.id,
+        cert_serial: serial
+      )
+
+      {:error, :certificate_revoked}
+    else
+      :ok
+    end
+  end
+
+  # A CA advertises where its revocation lists live in the certificates it
+  # issues, not in its own certificate, so the anchor learns them from the
+  # first leaf that chains to it. Written once per anchor rather than per
+  # connect, since the steady state has them already.
+  defp learn_revocation_urls(%{crl_url: nil} = anchor, leaf, subject) do
+    crl_url = leaf |> X509.crl_distribution_points() |> List.first()
+    ocsp_url = leaf |> X509.authority_info_access() |> Map.fetch!(:ocsp) |> List.first()
+
+    if crl_url || ocsp_url do
+      Database.put_revocation_urls(anchor.id, crl_url, ocsp_url, subject)
+    end
+  end
+
+  defp learn_revocation_urls(_anchor, _leaf, _subject), do: :ok
 
   # A conforming serial is at most 20 octets (RFC 5280), so 255 hex characters
   # is already six times the largest legitimate value. A certificate past that
@@ -313,18 +364,16 @@ defmodule PortalAPI.Client.DeviceTrust do
   # Only the leaf is presented, so every certificate between it and the anchor
   # has to come from the account's uploaded anchors: admins may upload issuing
   # intermediates alongside (or instead of) roots.
-  defp chain_valid?(leaf_der, anchor_ders) do
-    Enum.any?(anchor_ders, fn anchor_der ->
-      leaf_der
-      |> candidate_chains(
-        anchor_der,
-        List.delete(anchor_ders, anchor_der),
-        [leaf_der],
-        @max_chain_depth
-      )
-      |> Enum.any?(fn chain ->
-        match?({:ok, _result}, :public_key.pkix_path_validation(anchor_der, chain, []))
-      end)
+  defp chains_to?(leaf_der, anchor_der, anchor_ders) do
+    leaf_der
+    |> candidate_chains(
+      anchor_der,
+      List.delete(anchor_ders, anchor_der),
+      [leaf_der],
+      @max_chain_depth
+    )
+    |> Enum.any?(fn chain ->
+      match?({:ok, _result}, :public_key.pkix_path_validation(anchor_der, chain, []))
     end)
   rescue
     _error -> false
@@ -555,26 +604,60 @@ defmodule PortalAPI.Client.DeviceTrust do
     # One round trip: the join on the global feature-flag row makes the query
     # return no anchors at all when the flag is off, so the caller's gate
     # check and verification material come from the same query.
+    # Compared against true rather than taken as truthy: a scoped `exists?`
+    # returns the permission error itself when a read is refused, and an error
+    # tuple reading as "revoked" would lock out every device over something
+    # that is not a revocation at all.
+    def revoked?(anchor_certificate_id, serial, subject) do
+      from(r in Portal.CrlRevocation,
+        where: r.trust_anchor_certificate_id == ^anchor_certificate_id,
+        where: r.serial == ^serial
+      )
+      |> Safe.scoped(subject)
+      |> Safe.exists?()
+      |> Kernel.===(true)
+    end
+
+    # Unscoped with the account pinned explicitly rather than scoped to the
+    # subject: this is bookkeeping the connect happens to discover, and a
+    # client has no business holding update rights on its account's trust
+    # anchors just to record it.
+    def put_revocation_urls(anchor_certificate_id, crl_url, ocsp_url, subject) do
+      from(c in Portal.TrustAnchorCertificate,
+        where: c.account_id == ^subject.account.id,
+        where: c.id == ^anchor_certificate_id,
+        where: is_nil(c.crl_url) and is_nil(c.ocsp_url),
+        update: [set: [crl_url: ^crl_url, ocsp_url: ^ocsp_url]]
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all([])
+    end
+
     def fetch_enabled_anchors(subject) do
       from(c in Portal.TrustAnchorCertificate,
         # The features table is global per-deployment state with no account_id.
         # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
         join: f in Portal.Features,
         on: f.feature == :trust_anchors and f.enabled == true,
-        select: c.pem
+        select: %{id: c.id, pem: c.pem, crl_url: c.crl_url}
       )
       |> Safe.scoped(subject)
       |> Safe.all()
       |> Enum.flat_map(&decode_anchor_pem/1)
-      |> Enum.uniq()
+      |> Enum.uniq_by(& &1.der)
     end
 
-    defp decode_anchor_pem(pem) do
+    # One uploaded anchor may hold several certificates, so each DER carries the
+    # row it came from: the validating certificate is what the revocation
+    # lookup and the CRL fetch job are keyed on.
+    defp decode_anchor_pem(%{id: id, pem: pem, crl_url: crl_url}) do
       case X509.pem_decode(pem) do
         {:ok, entries} ->
           entries
           |> Enum.filter(&X509.certificate_entry?/1)
-          |> Enum.map(fn {_type, der, _info} -> der end)
+          |> Enum.map(fn {_type, der, _info} ->
+            %{id: id, der: der, crl_url: crl_url}
+          end)
 
         {:error, _reason} ->
           []

@@ -17,6 +17,9 @@ defmodule Portal.Crypto.X509 do
   # Common Name, used to read a human-readable subject/issuer off a name.
   @common_name_oid {2, 5, 4, 3}
 
+  # Why a certificate appears on a CRL.
+  @crl_reason_oid {2, 5, 29, 21}
+
   # Other extensions surfaced for certificate debugging.
   @extended_key_usage_oid {2, 5, 29, 37}
   @subject_key_identifier_oid {2, 5, 29, 14}
@@ -739,6 +742,30 @@ defmodule Portal.Crypto.X509 do
   defp decode_directory_string({:bmpString, value}), do: List.to_string(value)
   defp decode_directory_string(_other), do: nil
 
+  defp crl_reason(:asn1_NOVALUE), do: nil
+
+  defp crl_reason(extensions) do
+    case find_extension(extensions, @crl_reason_oid) do
+      {:Extension, @crl_reason_oid, _critical, value} -> decode_crl_reason(value)
+      _other -> nil
+    end
+  end
+
+  # Extension values survive `der_decode/2` undecoded, so the enumeration is
+  # decoded here. The atoms come from the ASN.1 schema, not from the input.
+  defp decode_crl_reason(value) when is_atom(value), do: Atom.to_string(value)
+
+  defp decode_crl_reason(value) when is_binary(value) do
+    case :public_key.der_decode(:CRLReason, value) do
+      reason when is_atom(reason) -> Atom.to_string(reason)
+      _other -> nil
+    end
+  rescue
+    _error -> nil
+  end
+
+  defp decode_crl_reason(_value), do: nil
+
   defp decode_time({:utcTime, value}), do: parse_asn1_time(List.to_string(value), 2)
   defp decode_time({:generalTime, value}), do: parse_asn1_time(List.to_string(value), 4)
   defp decode_time(_other), do: nil
@@ -765,4 +792,65 @@ defmodule Portal.Crypto.X509 do
   defp normalize_year(year, 2) when year < 50, do: 2000 + year
   defp normalize_year(year, 2), do: 1900 + year
   defp normalize_year(year, 4), do: year
+
+  @doc """
+  Decodes a DER-encoded certificate revocation list.
+
+  Serials are returned as uppercase hex so they compare directly against the
+  serial recorded when a device attests.
+  """
+  @spec decode_crl(binary()) ::
+          {:ok, %{this_update: DateTime.t() | nil, next_update: DateTime.t() | nil, revocations: [map()]}}
+          | {:error, :invalid}
+  def decode_crl(der) when is_binary(der) do
+    case :public_key.der_decode(:CertificateList, der) do
+      {:CertificateList, tbs_cert_list, _signature_algorithm, _signature} ->
+        {:ok, crl_fields(tbs_cert_list)}
+
+      _other ->
+        {:error, :invalid}
+    end
+  rescue
+    _error -> {:error, :invalid}
+  end
+
+  @doc """
+  Whether the CRL was signed by the given issuer certificate.
+  """
+  @spec crl_signed_by?(binary(), binary()) :: boolean()
+  def crl_signed_by?(crl_der, issuer_der) when is_binary(crl_der) and is_binary(issuer_der) do
+    crl = :public_key.der_decode(:CertificateList, crl_der)
+    issuer = :public_key.pkix_decode_cert(issuer_der, :otp)
+
+    :public_key.pkix_crl_verify(crl, issuer)
+  rescue
+    _error -> false
+  end
+
+  defp crl_fields(
+         {:TBSCertList, _version, _signature, _issuer, this_update, next_update, revoked,
+          _extensions}
+       ) do
+    %{
+      this_update: decode_time(this_update),
+      next_update: decode_time(next_update),
+      revocations: crl_revocations(revoked)
+    }
+  end
+
+  defp crl_revocations(:asn1_NOVALUE), do: []
+
+  defp crl_revocations(entries) when is_list(entries) do
+    for {:TBSCertList_revokedCertificates_SEQOF, serial, revoked_at, extensions} <- entries,
+        revoked_at = decode_time(revoked_at),
+        not is_nil(revoked_at) do
+      %{
+        serial: Integer.to_string(serial, 16),
+        revoked_at: revoked_at,
+        reason: crl_reason(extensions)
+      }
+    end
+  end
+
+  defp crl_revocations(_other), do: []
 end

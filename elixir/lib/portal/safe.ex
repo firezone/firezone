@@ -915,6 +915,10 @@ defmodule Portal.Safe do
   def permit(:read, Portal.TrustAnchor, :api_client), do: :ok
   def permit(:read, Portal.TrustAnchorCertificate, _), do: :ok
 
+  # Every attested connect checks the cached CRL for the anchor that issued its
+  # certificate, so any actor type that can attest must be able to read it.
+  def permit(:read, Portal.CrlRevocation, _), do: :ok
+
   # SessionLog permissions
   def permit(:read, Portal.SessionLog, :account_admin_user), do: :ok
   def permit(:read, Portal.SessionLog, :api_client), do: :ok

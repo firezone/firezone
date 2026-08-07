@@ -183,6 +183,64 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert verified.identifiers == %{last_attested_device_serial: "C02XK1ZGJGH5"}
     end
 
+    test "refuses a leaf whose serial appears on the anchor's cached CRL", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :rsa)
+      serial = leaf |> cert_serial_hex()
+
+      certificate = Repo.one!(Portal.TrustAnchorCertificate)
+
+      Repo.insert!(%Portal.CrlRevocation{
+        account_id: account.id,
+        trust_anchor_certificate_id: certificate.id,
+        serial: serial,
+        revoked_at: DateTime.utc_now(),
+        inserted_at: DateTime.utc_now()
+      })
+
+      assert ExUnit.CaptureLog.capture_log(fn ->
+               assert DeviceTrust.attest(connect_info(leaf), subject) ==
+                        {:error, :certificate_revoked}
+             end) =~ "revoked by its CA"
+    end
+
+    test "a revoked serial under another anchor does not refuse the connect", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :rsa)
+
+      other = trust_anchor_fixture(account: account, certs: [pki.untrusted_ca_der])
+      [other_certificate] = Repo.preload(other, :certificates).certificates
+
+      Repo.insert!(%Portal.CrlRevocation{
+        account_id: account.id,
+        trust_anchor_certificate_id: other_certificate.id,
+        serial: cert_serial_hex(leaf),
+        revoked_at: DateTime.utc_now(),
+        inserted_at: DateTime.utc_now()
+      })
+
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+    end
+
+    test "the anchor learns its revocation endpoints from the first leaf", %{
+      pki: pki,
+      subject: subject
+    } do
+      assert %{crl_url: nil, ocsp_url: nil} = Repo.one!(Portal.TrustAnchorCertificate)
+
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf(pki, :with_crl)), subject)
+
+      certificate = Repo.one!(Portal.TrustAnchorCertificate)
+      assert certificate.crl_url == "http://crl.example.test/ca.crl"
+      assert certificate.ocsp_url == "http://ocsp.example.test"
+    end
+
     test "rejects a leaf whose serial number cannot be recorded", %{pki: pki, subject: subject} do
       serial = String.to_integer(String.duplicate("f", 300), 16)
       sans = [{:uniformResourceIdentifier, ~c"firezone://serial/C02XK1ZGJGH5"}]
@@ -405,5 +463,10 @@ defmodule PortalAPI.Client.DeviceTrustTest do
   defp otp(profile) do
     {:ok, otp} = pki() |> leaf(profile) |> X509.decode_der_certificate(:otp)
     otp
+  end
+
+  defp cert_serial_hex(der) do
+    {:ok, leaf} = Portal.Crypto.X509.decode_der_certificate(der, :otp)
+    leaf |> Portal.Crypto.X509.serial_number() |> Integer.to_string(16)
   end
 end
