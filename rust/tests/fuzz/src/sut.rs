@@ -15,7 +15,7 @@ use crate::probe::{ProbeId, UdpFlow};
 use crate::resource as client;
 use crate::transition::Transition;
 use bufferpool::BufferPool;
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
+use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId, ResourceId};
 use dns_types::prelude::*;
 use dns_types::{DomainName, RecordType, ResponseCode};
 use ip_packet::Ecn;
@@ -34,8 +34,7 @@ use std::{
 };
 use tracing::debug_span;
 use tunnel_proto::dns::is_subdomain;
-use tunnel_proto::messages::gateway::Client;
-use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
+use tunnel_proto::messages::{IceCredentials, Key, SecretKey, gateway::Client};
 use tunnel_proto::{ClientEvent, GatewayEvent, dns, messages::Interface};
 
 /// The actual system-under-test.
@@ -54,11 +53,18 @@ pub struct TunnelTest {
     /// portal are dropped, simulating a client that has not yet reconnected to
     /// the portal after a roam.
     client_portal_offline_until: Option<(ClientId, Instant)>,
+    authorization_failure: Option<AuthorizationFailure>,
     dns_resolution_failure: Option<DnsResolutionFailure>,
     drop_next_wire_packet: bool,
     network: RoutingTable,
     packet_input_observations: Vec<PacketInputObservation>,
     network_input_observations: Vec<NetworkInputObservation>,
+}
+
+#[derive(Debug)]
+struct AuthorizationFailure {
+    client: ClientId,
+    resource: ResourceId,
 }
 
 #[derive(Debug)]
@@ -189,6 +195,7 @@ impl TunnelTest {
             flux_capacitor,
             network: ref_state.network.clone(),
             client_portal_offline_until: None,
+            authorization_failure: None,
             dns_resolution_failure: None,
             drop_next_wire_packet: false,
             clients,
@@ -391,6 +398,30 @@ impl TunnelTest {
                     gateway: gateway_id,
                     client: client_id,
                     domain: name.clone(),
+                });
+                state.send_icmp_probe(
+                    client_id,
+                    src,
+                    dst,
+                    seq,
+                    identifier,
+                    probe_id,
+                    now,
+                    &mut buffered_transmits,
+                );
+            }
+            Transition::SendIcmpPacketWithOfflineAuthorizationFailure {
+                client_id,
+                resource_id,
+                src,
+                dst,
+                seq,
+                identifier,
+                probe_id,
+            } => {
+                state.authorization_failure = Some(AuthorizationFailure {
+                    client: client_id,
+                    resource: resource_id,
                 });
                 state.send_icmp_probe(
                     client_id,
@@ -834,6 +865,10 @@ impl TunnelTest {
         };
         state.advance(ref_state, &mut buffered_transmits);
 
+        if let Some(failure) = state.authorization_failure.take() {
+            tracing::error!(?failure, "Authorization failure was not consumed");
+        }
+
         if let Some(failure) = state.dns_resolution_failure.take() {
             tracing::error!(?failure, "DNS resolution failure was not consumed");
         }
@@ -891,6 +926,10 @@ impl TunnelTest {
             assert_routes_are_valid(ref_client, sut_client);
             assert_resource_list(ref_client, sut_client);
         }
+    }
+
+    pub fn now(&self) -> Instant {
+        self.flux_capacitor.now()
     }
 
     pub fn clear_packets(state: &mut TunnelTest) {
@@ -1408,6 +1447,22 @@ impl TunnelTest {
         }
     }
 
+    fn take_matching_authorization_failure(
+        &mut self,
+        client: ClientId,
+        resource: ResourceId,
+    ) -> bool {
+        match self.authorization_failure.take() {
+            Some(failure) if failure.client == client && failure.resource == resource => true,
+            Some(failure) => {
+                self.authorization_failure = Some(failure);
+
+                false
+            }
+            None => false,
+        }
+    }
+
     fn on_client_event(
         &mut self,
         src: ClientId,
@@ -1493,6 +1548,13 @@ impl TunnelTest {
                 preferred_gateways,
                 ip: None,
             } => {
+                if self.take_matching_authorization_failure(src, resource_id) {
+                    let client = self.clients.get_mut(&src).unwrap();
+                    client.exec_mut(|client| client.sut.set_resource_offline(resource_id, now));
+
+                    return Ok(());
+                }
+
                 let (gateway_id, site_id) =
                     portal.handle_connection_intent(resource_id, preferred_gateways);
                 let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");

@@ -35,6 +35,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+const OFFLINE_SITE_STATUS_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+
 /// Reference state for a particular client.
 ///
 /// The reference state machine is designed to be as abstract as possible over connlib's functionality.
@@ -90,6 +92,9 @@ pub struct RefClient {
     /// The [`ResourceStatus`] of each site.
     #[debug(skip)]
     site_status: BTreeMap<SiteId, ResourceStatus>,
+
+    #[debug(skip)]
+    offline_site_status_since: BTreeMap<SiteId, Instant>,
 
     /// The expected TCP connections.
     #[debug(skip)]
@@ -163,6 +168,7 @@ impl RefClient {
             resources: Default::default(),
             routes: Default::default(),
             site_status: Default::default(),
+            offline_site_status_since: Default::default(),
             connection_resets: Default::default(),
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
@@ -206,13 +212,16 @@ impl RefClient {
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
         for _ in self.routes.extract_if(.., |(r, _)| r == resource) {}
 
-        self.connected_cidr_resources.remove(resource);
-        self.connected_dns_resources.remove(resource);
+        let disconnected_cidr = self.connected_cidr_resources.remove(resource);
+        let disconnected_dns = self.connected_dns_resources.remove(resource);
+        let disconnected_internet = self.internet_resource().is_some_and(|r| r == *resource)
+            && mem::take(&mut self.connected_internet_resource);
+        let was_connected = disconnected_cidr || disconnected_dns || disconnected_internet;
         self.dns_resource_resolutions
             .retain(|(candidate, _), _| candidate != resource);
 
-        if self.internet_resource().is_some_and(|r| r == *resource) {
-            self.connected_internet_resource = false;
+        if !was_connected {
+            return;
         }
 
         let site = match self.site_for_resource(*resource) {
@@ -237,6 +246,7 @@ impl RefClient {
             );
 
             self.site_status.remove(&site.id);
+            self.offline_site_status_since.remove(&site.id);
         }
     }
 
@@ -299,6 +309,10 @@ impl RefClient {
         self.key = key;
 
         self.reset_connections(now);
+        for status in self.site_status.values_mut() {
+            *status = ResourceStatus::Unknown;
+        }
+        self.offline_site_status_since.clear();
         self.readd_all_resources();
     }
 
@@ -353,6 +367,7 @@ impl RefClient {
                 && let Some(status) = self.site_status.get_mut(&site.id)
             {
                 *status = ResourceStatus::Unknown;
+                self.offline_site_status_since.remove(&site.id);
             }
         }
     }
@@ -372,7 +387,10 @@ impl RefClient {
         self.connected_internet_resource = false;
 
         for status in self.site_status.values_mut() {
-            *status = ResourceStatus::Unknown;
+            match status {
+                ResourceStatus::Online => *status = ResourceStatus::Unknown,
+                ResourceStatus::Unknown | ResourceStatus::Offline => {}
+            }
         }
     }
 
@@ -508,6 +526,54 @@ impl RefClient {
         }
 
         ResourceStatus::Unknown
+    }
+
+    pub(crate) fn can_fail_first_authorization(&self, resource: ResourceId) -> bool {
+        let Some(resource) = self
+            .resources
+            .iter()
+            .find(|candidate| candidate.id() == resource)
+        else {
+            return false;
+        };
+
+        !resource.sites().is_empty()
+            && self.expected_resource_status(resource) == ResourceStatus::Unknown
+            && !self
+                .connected_resources()
+                .any(|candidate| candidate == resource.id())
+    }
+
+    pub(crate) fn fail_first_authorization(&mut self, resource: ResourceId, now: Instant) {
+        assert!(self.can_fail_first_authorization(resource));
+
+        let resource = self
+            .resources
+            .iter()
+            .find(|candidate| candidate.id() == resource)
+            .cloned()
+            .unwrap();
+
+        for site in resource.sites() {
+            self.site_status.insert(site.id, ResourceStatus::Offline);
+            self.offline_site_status_since.insert(site.id, now);
+        }
+    }
+
+    pub(crate) fn expire_offline_site_statuses(&mut self, now: Instant) {
+        let expired = self
+            .offline_site_status_since
+            .extract_if(.., |_, offline_since| {
+                now.duration_since(*offline_since) >= OFFLINE_SITE_STATUS_TIMEOUT
+            })
+            .map(|(site, _)| site)
+            .collect::<Vec<_>>();
+
+        for site in expired {
+            let previous = self.site_status.insert(site, ResourceStatus::Unknown);
+
+            assert_eq!(previous, Some(ResourceStatus::Offline));
+        }
     }
 
     /// Returns the list of resources where we are not "sure" whether they are online or unknown.
@@ -838,6 +904,7 @@ impl RefClient {
         };
 
         let previous = self.site_status.insert(site.id, ResourceStatus::Online);
+        self.offline_site_status_since.remove(&site.id);
 
         if previous.is_none_or(|s| s != ResourceStatus::Online) {
             tracing::debug!(%rid, sid = %site.id, "Resource is now online");

@@ -46,6 +46,15 @@ pub enum Transition {
         identifier: Identifier,
         probe_id: ProbeId,
     },
+    SendIcmpPacketWithOfflineAuthorizationFailure {
+        client_id: ClientId,
+        resource_id: ResourceId,
+        src: IpAddr,
+        dst: Destination,
+        seq: Seq,
+        identifier: Identifier,
+        probe_id: ProbeId,
+    },
     RefreshGatewayDnsResolutionWithFailure {
         client_id: ClientId,
         gateway_id: GatewayId,
@@ -147,6 +156,7 @@ impl Transition {
             Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacket { .. } => false,
             Transition::SendIcmpPacketWithGatewayDnsResolutionFailure { .. } => false,
+            Transition::SendIcmpPacketWithOfflineAuthorizationFailure { .. } => false,
             Transition::RefreshGatewayDnsResolutionWithFailure { .. } => false,
             Transition::SendUdpPacket { .. } => false,
             Transition::SendUdpPacketOnFlow { .. } => false,

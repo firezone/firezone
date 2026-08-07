@@ -52,6 +52,7 @@ enum TransitionKind {
     ExpireGatewayAuthorization,
     UpdateDnsRecords,
     SendPacket,
+    SendPacketWithOfflineAuthorizationFailure,
     SendPacketWithGatewayDnsResolutionFailure,
     RefreshGatewayDnsResolutionWithFailure,
     SendUdpPacketOnFlow,
@@ -71,6 +72,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     let client_ids = state.all_client_ids();
     let dns_record_domains = state.dns_resource_domains();
     let packet_targets = packets::targets(state);
+    let offline_authorization_targets = state.offline_authorization_failure_targets();
     let gateway_dns_resolution_failure_targets = state.gateway_dns_resolution_failure_targets();
     let gateway_dns_resolution_refresh_failure_targets =
         state.gateway_dns_resolution_refresh_failure_targets();
@@ -108,7 +110,16 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         (!client_ids.is_empty()).then_some((K::RestartClient, 1)),
         (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
         (!dns_record_domains.is_empty()).then_some((K::UpdateDnsRecords, 5)),
-        (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
+        (!packet_targets.is_empty()).then_some((
+            K::SendPacket,
+            if offline_authorization_targets.is_empty() {
+                50
+            } else {
+                45
+            },
+        )),
+        (!offline_authorization_targets.is_empty())
+            .then_some((K::SendPacketWithOfflineAuthorizationFailure, 5)),
         (!gateway_dns_resolution_failure_targets.is_empty())
             .then_some((K::SendPacketWithGatewayDnsResolutionFailure, 5)),
         (!gateway_dns_resolution_refresh_failure_targets.is_empty())
@@ -123,7 +134,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 29]>>();
+    .collect::<SmallVec<[_; 30]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -259,6 +270,22 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         K::SendPacket => {
             let target = packet_targets[g.choose_index(packet_targets.len())].clone();
             packets::generate(g, target)
+        }
+        K::SendPacketWithOfflineAuthorizationFailure => {
+            let (client_id, resource_id, src, dst) = offline_authorization_targets
+                [g.choose_index(offline_authorization_targets.len())]
+            .clone();
+            let (seq, identifier) = g.fresh_icmp_flow();
+
+            Transition::SendIcmpPacketWithOfflineAuthorizationFailure {
+                client_id,
+                resource_id,
+                src,
+                dst,
+                seq,
+                identifier,
+                probe_id: g.fresh_probe_id(),
+            }
         }
         K::SendPacketWithGatewayDnsResolutionFailure => {
             let (client_id, gateway_id, src, name) = gateway_dns_resolution_failure_targets

@@ -204,6 +204,28 @@ impl ReferenceState {
                     now,
                 );
             }
+            Transition::SendIcmpPacketWithOfflineAuthorizationFailure {
+                client_id,
+                resource_id,
+                src,
+                dst,
+                seq,
+                identifier,
+                probe_id,
+            } => {
+                state.record_probe_with_offline_authorization_failure(
+                    *probe_id,
+                    *client_id,
+                    *resource_id,
+                    ProbeRequest::Icmp {
+                        src: *src,
+                        dst: dst.clone(),
+                        seq: *seq,
+                        identifier: *identifier,
+                    },
+                    now,
+                );
+            }
             Transition::RefreshGatewayDnsResolutionWithFailure {
                 client_id,
                 gateway_id,
@@ -709,6 +731,40 @@ impl ReferenceState {
         );
     }
 
+    fn record_probe_with_offline_authorization_failure(
+        &mut self,
+        id: ProbeId,
+        origin: ClientId,
+        expected_resource: ResourceId,
+        request: ProbeRequest,
+        sent_at: Instant,
+    ) {
+        let route = self.route_for_application_packet(
+            origin,
+            request.source(),
+            request.destination(),
+            request.protocol(),
+        );
+        let PacketRoute::Resource { resource, .. } = route else {
+            unreachable!("offline authorization failures require an allowed resource")
+        };
+        assert_eq!(resource, expected_resource);
+
+        self.clients
+            .get_mut(&origin)
+            .unwrap()
+            .exec_mut(|client| client.fail_first_authorization(resource, sent_at));
+
+        self.insert_expected_probe(
+            id,
+            origin,
+            request,
+            ExpectedOutcome::Dropped,
+            TraceRequirement::Exact,
+            sent_at,
+        );
+    }
+
     fn insert_expected_probe(
         &mut self,
         id: ProbeId,
@@ -871,6 +927,51 @@ impl ReferenceState {
         self.clients[&client_id]
             .inner()
             .can_fail_dns_resolution(query, self.portal.upstream_do53())
+    }
+
+    pub fn expire_offline_site_statuses(state: &mut Self, now: Instant) {
+        for client in state.clients.values_mut() {
+            client.exec_mut(|client| client.expire_offline_site_statuses(now));
+        }
+    }
+
+    pub(crate) fn offline_authorization_failure_targets(
+        &self,
+    ) -> Vec<(ClientId, ResourceId, IpAddr, Destination)> {
+        iter::empty()
+            .chain(
+                self.ipv4_cidr_resource_dsts()
+                    .into_iter()
+                    .map(|(client_id, network, _)| {
+                        let src = IpAddr::V4(self.clients[&client_id].inner().tunnel_ip4);
+                        let dst = Destination::IpAddr(IpAddr::V4(network.network_address()));
+
+                        (client_id, src, dst)
+                    }),
+            )
+            .chain(
+                self.ipv6_cidr_resource_dsts()
+                    .into_iter()
+                    .map(|(client_id, network, _)| {
+                        let src = IpAddr::V6(self.clients[&client_id].inner().tunnel_ip6);
+                        let dst = Destination::IpAddr(IpAddr::V6(network.network_address()));
+
+                        (client_id, src, dst)
+                    }),
+            )
+            .filter_map(|(client_id, src, dst)| {
+                let PacketRoute::Resource { resource, .. } =
+                    self.route_for_packet(client_id, src, &dst, Protocol::IcmpEcho(0))
+                else {
+                    return None;
+                };
+
+                self.clients[&client_id]
+                    .inner()
+                    .can_fail_first_authorization(resource)
+                    .then_some((client_id, resource, src, dst))
+            })
+            .collect()
     }
 
     pub(crate) fn gateway_dns_resolution_failure_targets(

@@ -44,6 +44,7 @@ fuzz_target!(|data: &[u8]| {
 
         reference = ReferenceState::apply(reference, &transition, flux_capacitor.now_instant());
         tunnel = TunnelTest::apply(tunnel, &reference, transition);
+        ReferenceState::expire_offline_site_statuses(&mut reference, tunnel.now());
         TunnelTest::check_invariants(&tunnel, &reference);
         ReferenceState::clear_observations(&mut reference);
         TunnelTest::clear_observations(&mut tunnel);
