@@ -1657,6 +1657,16 @@ impl ClientState {
                     .min()
                     .map(|instant| (instant, "Client peer authorization expiry")),
             )
+            .chain(
+                self.sites_status
+                    .values()
+                    .filter_map(|(status, set_at)| match status {
+                        ResourceStatus::Offline => Some(*set_at + OFFLINE_SITE_STATUS_TIMEOUT),
+                        ResourceStatus::Unknown | ResourceStatus::Online => None,
+                    })
+                    .min()
+                    .map(|instant| (instant, "Offline site status expiry")),
+            )
             .chain(self.node.poll_timeout())
             .min_by_key(|(instant, _)| *instant)
     }
