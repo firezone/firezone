@@ -462,35 +462,26 @@ impl TunnelTest {
                         sim.send_tcp_data(flow.src, flow.sport, flow.dport, &probe_id.to_be_bytes())
                     });
             }
-            Transition::SendDnsQuery {
+            Transition::SendDnsQuery { client_id, query } => {
+                state.send_dns_query(client_id, query, now, &mut buffered_transmits);
+            }
+            Transition::RefreshGatewayDnsResolutionWithFailure {
                 client_id,
-                query:
-                    DnsQuery {
-                        domain,
-                        r_type,
-                        dns_server,
-                        query_id,
-                        transport,
-                        client_resolution,
-                    },
+                gateway_id,
+                query,
             } => {
-                match client_resolution {
+                match query.client_resolution {
                     ClientDnsResolution::Succeeded => {}
                     ClientDnsResolution::Failed => {
-                        state.dns_resolution_failure = Some(DnsResolutionFailure::Client {
-                            client: client_id,
-                            domain: domain.clone(),
-                            r_type,
-                        });
+                        unreachable!("gateway DNS refreshes require client resolution to succeed")
                     }
                 }
-
-                let client = state.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| {
-                    sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
+                state.dns_resolution_failure = Some(DnsResolutionFailure::Gateway {
+                    gateway: gateway_id,
+                    client: client_id,
+                    domain: query.domain.clone(),
                 });
-
-                buffered_transmits.push_from(transmit, client, now);
+                state.send_dns_query(client_id, query, now, &mut buffered_transmits);
             }
             Transition::SendDnsResourcePtrQuery {
                 client_id,
@@ -862,6 +853,41 @@ impl TunnelTest {
         }
 
         state.packet_input_observations.clear();
+    }
+
+    fn send_dns_query(
+        &mut self,
+        client_id: ClientId,
+        query: DnsQuery,
+        now: Instant,
+        buffered_transmits: &mut BufferedTransmits,
+    ) {
+        let DnsQuery {
+            domain,
+            r_type,
+            dns_server,
+            query_id,
+            transport,
+            client_resolution,
+        } = query;
+
+        match client_resolution {
+            ClientDnsResolution::Succeeded => {}
+            ClientDnsResolution::Failed => {
+                self.dns_resolution_failure = Some(DnsResolutionFailure::Client {
+                    client: client_id,
+                    domain: domain.clone(),
+                    r_type,
+                });
+            }
+        }
+
+        let client = self.clients.get_mut(&client_id).unwrap();
+        let transmit = client.exec_mut(|sim| {
+            sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
+        });
+
+        buffered_transmits.push_from(transmit, client, now);
     }
 
     fn send_udp_probe(
