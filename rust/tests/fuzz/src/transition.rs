@@ -93,6 +93,10 @@ pub enum Transition {
         key: PrivateKey,
     },
     DeployNewRelays(BTreeMap<RelayId, Host<u64>>),
+    UpdateRelayPresence {
+        disconnected: BTreeSet<RelayId>,
+        connected: BTreeMap<RelayId, Host<u64>>,
+    },
     PartitionRelaysFromPortal,
     DropNextWirePacket,
     Idle,
@@ -127,6 +131,7 @@ impl Transition {
             Transition::ReconnectPortal { .. } => false,
             Transition::RestartClient { .. } => false,
             Transition::DeployNewRelays(_) => false,
+            Transition::UpdateRelayPresence { .. } => false,
             Transition::PartitionRelaysFromPortal => false,
             Transition::DropNextWirePacket => false,
             Transition::Idle => false,
