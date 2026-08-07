@@ -633,12 +633,21 @@ impl ReferenceState {
         let upstream_do53 = self.portal.upstream_do53();
         let global_dns_records = &self.global_dns_records;
         let icmp_error_hosts = &self.icmp_error_hosts;
+        let resolved_device = self
+            .portal
+            .resolve_device_pool_domain(&query.domain.to_string());
 
         self.clients
             .get_mut(&client_id)
             .unwrap()
             .exec_mut(|client| {
-                client.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
+                client.on_dns_query(
+                    query,
+                    upstream_do53,
+                    global_dns_records,
+                    icmp_error_hosts,
+                    resolved_device,
+                );
             });
     }
 
@@ -1361,9 +1370,8 @@ impl ReferenceState {
             .collect()
     }
 
-    /// Generates `(src_client_id, dst_ip)` tuples for both tunnel IP families of every online
-    /// client reachable from `src_client_id` via a static device pool, paired with the pool
-    /// filters that authorize the route.
+    /// Generates `(src_client_id, dst_ip)` tuples for device-pool routes paired with the filters
+    /// that authorize the route.
     pub(crate) fn pool_routed_other_client_tun_ips(&self) -> Vec<(ClientId, IpAddr, Vec<Filter>)> {
         let online_ips_by_id = self
             .clients
@@ -1377,9 +1385,8 @@ impl ReferenceState {
             })
             .collect::<BTreeMap<_, _>>();
 
-        self.clients
-            .iter()
-            .flat_map(|(src_id, src_client)| {
+        iter::empty()
+            .chain(self.clients.iter().flat_map(|(src_id, src_client)| {
                 let online_ips_by_id = online_ips_by_id.clone();
                 let src_id = *src_id;
 
@@ -1408,7 +1415,17 @@ impl ReferenceState {
                             [(src_id, v4, filters.clone()), (src_id, v6, filters.clone())]
                         })
                     })
-            })
+            }))
+            .chain(self.clients.iter().flat_map(|(src_id, src_client)| {
+                let src_id = *src_id;
+
+                src_client
+                    .inner()
+                    .dynamic_device_pool_targets()
+                    .into_iter()
+                    .filter(move |(dst_id, _, _)| *dst_id != src_id)
+                    .map(move |(_, ip, filters)| (src_id, ip, filters))
+            }))
             .collect()
     }
 

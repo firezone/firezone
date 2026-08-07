@@ -87,6 +87,11 @@ pub struct RefClient {
     #[debug(skip)]
     dns_resource_resolutions: BTreeMap<(ResourceId, DomainName), BTreeSet<RecordType>>,
 
+    /// Successful device-pool DNS answers, including the resource, domain, target client and
+    /// address family that the application learned.
+    #[debug(skip)]
+    dynamic_device_pool_resolutions: BTreeMap<(ResourceId, DomainName, IpAddr), ClientId>,
+
     /// The [`ResourceStatus`] of each site.
     #[debug(skip)]
     site_status: BTreeMap<SiteId, ResourceStatus>,
@@ -153,6 +158,7 @@ impl RefClient {
             connected_cidr_resources: Default::default(),
             connected_dns_resources: Default::default(),
             dns_resource_resolutions: Default::default(),
+            dynamic_device_pool_resolutions: Default::default(),
             connected_internet_resource: Default::default(),
             expected_tcp_connections: Default::default(),
             expected_tcp_data: Default::default(),
@@ -210,6 +216,10 @@ impl RefClient {
         self.connected_dns_resources.remove(resource);
         self.dns_resource_resolutions
             .retain(|(candidate, _), _| candidate != resource);
+        for _ in self
+            .dynamic_device_pool_resolutions
+            .extract_if(.., |(candidate, _, _), _| candidate == resource)
+        {}
 
         if self.internet_resource().is_some_and(|r| r == *resource) {
             self.connected_internet_resource = false;
@@ -295,6 +305,7 @@ impl RefClient {
 
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
         self.routes.clear();
+        self.dynamic_device_pool_resolutions.clear();
 
         self.key = key;
 
@@ -736,27 +747,38 @@ impl RefClient {
         // Peer tunnel IPs first mean client-to-client device-pool routing. A
         // tunnel IP without a matching pool may still belong to a gateway.
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
-            let pools = self.static_device_pool_by_tun_ip(ip);
+            let static_pools = self.static_device_pool_by_tun_ip(ip);
+            let (peer, allowed) = match static_pools.as_slice() {
+                [] => {
+                    let dynamic_pools = self.dynamic_device_pool_by_tun_ip(ip);
+                    let [first, ..] = dynamic_pools.as_slice() else {
+                        return gateway_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Gateway);
+                    };
+                    let peer = first.1;
+                    let allowed = dynamic_pools
+                        .iter()
+                        .any(|(_, _, filters)| protocol_filter_allows(filters, protocol));
 
-            if !pools.is_empty() {
-                let allowed = pools
-                    .iter()
-                    .any(|(_, filters)| protocol_filter_allows(filters, protocol));
-
-                if allowed {
-                    return client_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Peer);
+                    (Some(peer), allowed)
                 }
+                [_, ..] => {
+                    let allowed = static_pools
+                        .iter()
+                        .any(|(_, filters)| protocol_filter_allows(filters, protocol));
 
-                if !self.malicious_behaviour.ignore_resource_filters {
-                    return PacketRoute::RejectedByClient;
+                    (client_by_ip(ip), allowed)
                 }
+            };
 
-                return client_by_ip(ip)
-                    .map(PacketRoute::PeerRejectedByPeer)
-                    .unwrap_or(PacketRoute::Drop);
+            if allowed {
+                return peer.map_or(PacketRoute::Drop, PacketRoute::Peer);
             }
 
-            return gateway_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Gateway);
+            if !self.malicious_behaviour.ignore_resource_filters {
+                return PacketRoute::RejectedByClient;
+            }
+
+            return peer.map_or(PacketRoute::Drop, PacketRoute::PeerRejectedByPeer);
         }
 
         // Resource selection is the one deliberate classifier in the oracle.
@@ -868,9 +890,23 @@ impl RefClient {
         upstream_do53: &[UpstreamDo53],
         global_dns_records: &DnsRecords,
         icmp_error_hosts: &IcmpErrorHosts,
+        resolved_device: Option<(ClientId, Ipv4Addr, Ipv6Addr)>,
     ) {
-        if self.is_dynamic_device_pool_dns_query(query) {
+        if let Some(resource) = self.dynamic_device_pool_by_domain(&query.domain) {
+            let resource_id = resource.id;
             self.expect_dns_response(query);
+
+            let Some((client_id, ipv4, ipv6)) = resolved_device else {
+                return;
+            };
+            let ip = match query.r_type {
+                RecordType::A => IpAddr::V4(ipv4),
+                RecordType::AAAA => IpAddr::V6(ipv6),
+                _ => return,
+            };
+
+            self.dynamic_device_pool_resolutions
+                .insert((resource_id, query.domain.clone(), ip), client_id);
             return;
         }
 
@@ -1022,21 +1058,30 @@ impl RefClient {
     }
 
     fn is_dynamic_device_pool_dns_query(&self, query: &DnsQuery) -> bool {
-        self.is_device_pool_domain(&query.domain)
+        self.dynamic_device_pool_by_domain(&query.domain).is_some()
     }
 
     /// Returns whether a dynamic device pool claims the domain.
     ///
     /// Device pools resolve ahead of DNS resources, so a domain matching both is
     /// answered from the pool and never resolves to a resource's proxy IPs.
-    fn is_device_pool_domain(&self, domain: &DomainName) -> bool {
-        self.resources.iter().any(|resource| match resource {
-            Resource::DynamicDevicePool(pool) => dns::is_subdomain(domain, &pool.address),
-            Resource::Dns(_) => false,
-            Resource::Cidr(_) => false,
-            Resource::Internet(_) => false,
-            Resource::StaticDevicePool(_) => false,
-        })
+    fn dynamic_device_pool_by_domain(
+        &self,
+        domain: &DomainName,
+    ) -> Option<&DynamicDevicePoolResource> {
+        self.resources
+            .iter()
+            .filter_map(|resource| match resource {
+                Resource::DynamicDevicePool(pool) if dns::is_subdomain(domain, &pool.address) => {
+                    Some(pool)
+                }
+                Resource::Dns(_)
+                | Resource::Cidr(_)
+                | Resource::Internet(_)
+                | Resource::StaticDevicePool(_)
+                | Resource::DynamicDevicePool(_) => None,
+            })
+            .min_by_key(|pool| pool.id)
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(Ipv4Network, Vec<Filter>)> {
@@ -1161,6 +1206,46 @@ impl RefClient {
             .collect()
     }
 
+    fn dynamic_device_pool_by_tun_ip(
+        &self,
+        ip: IpAddr,
+    ) -> Vec<(ResourceId, ClientId, Vec<tunnel_proto::messages::Filter>)> {
+        self.dynamic_device_pool_resolutions
+            .iter()
+            .filter(|((_, _, candidate), _)| *candidate == ip)
+            .filter_map(|((resource_id, _, _), client_id)| {
+                let resource = self
+                    .resources
+                    .iter()
+                    .find(|resource| resource.id() == *resource_id)?;
+                let Resource::DynamicDevicePool(pool) = resource else {
+                    return None;
+                };
+
+                Some((*resource_id, *client_id, pool.filters.clone()))
+            })
+            .collect()
+    }
+
+    pub(crate) fn dynamic_device_pool_targets(
+        &self,
+    ) -> Vec<(ClientId, IpAddr, Vec<tunnel_proto::messages::Filter>)> {
+        self.dynamic_device_pool_resolutions
+            .iter()
+            .filter_map(|((resource_id, _, ip), client_id)| {
+                let resource = self
+                    .resources
+                    .iter()
+                    .find(|resource| resource.id() == *resource_id)?;
+                let Resource::DynamicDevicePool(pool) = resource else {
+                    return None;
+                };
+
+                Some((*client_id, *ip, pool.filters.clone()))
+            })
+            .collect()
+    }
+
     pub(crate) fn dns_resource_by_domain_and_proto(
         &self,
         domain: &DomainName,
@@ -1227,7 +1312,7 @@ impl RefClient {
                 self.dns_resource_by_domain(domain, |_| true, |_| true)
                     .is_some()
             })
-            .filter(|(domain, _)| !self.is_device_pool_domain(domain))
+            .filter(|(domain, _)| self.dynamic_device_pool_by_domain(domain).is_none())
             .map(|(domain, ips)| (domain.clone(), ips.clone()))
     }
 

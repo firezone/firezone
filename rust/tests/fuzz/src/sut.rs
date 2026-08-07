@@ -1586,9 +1586,8 @@ impl TunnelTest {
                             make_preshared_key_and_ice(src_key, remote_key);
                         let use_iceless = portal.iceless();
 
-                        let pool_filters = portal
-                            .static_device_pool_filters(resource_id)
-                            .unwrap_or_default();
+                        let pool_filters =
+                            portal.device_pool_filters(resource_id).unwrap_or_default();
 
                         let remote_authorization =
                             tunnel_proto::messages::client::ResourceAuthorization {
@@ -1703,6 +1702,7 @@ impl TunnelTest {
 
                 let result = portal
                     .resolve_device_pool_domain(&domain.to_string())
+                    .map(|(_, ipv4, ipv6)| (ipv4, ipv6))
                     .ok_or(tunnel_proto::messages::client::FailReason::NotFound);
                 client.exec_mut(|c| {
                     c.sut
