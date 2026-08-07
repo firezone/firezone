@@ -12,10 +12,11 @@ defmodule PortalWeb.Plugs.EnsureAdmin do
   @impl true
   def call(
         %Plug.Conn{
-          assigns: %{subject: %Subject{actor: %Actor{type: :account_admin_user}}}
+          assigns: %{subject: %Subject{actor: %Actor{type: type}}}
         } = conn,
         _opts
-      ) do
+      )
+      when type in [:account_admin_user, :firezone_support] do
     conn
   end
 

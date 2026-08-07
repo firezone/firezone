@@ -268,4 +268,105 @@ defmodule Portal.ActorTest do
       assert Actor.email_meaningfully_changed?(changeset)
     end
   end
+
+  describe "support email helpers" do
+    test "support_email/1 tags the local part" do
+      assert Actor.support_email("thomas@firezone.dev") ==
+               "thomas+firezone-support@firezone.dev"
+    end
+
+    test "support_email/1 handles emails that already carry a plus tag" do
+      assert Actor.support_email("thomas+x@firezone.dev") ==
+               "thomas+x+firezone-support@firezone.dev"
+    end
+
+    test "support?/1 matches actors by type and emails by suffix" do
+      assert Actor.support?(%Actor{type: :firezone_support})
+      refute Actor.support?(%Actor{type: :account_admin_user})
+      assert Actor.support?("thomas+firezone-support@firezone.dev")
+      assert Actor.support?("Thomas+Firezone-Support@Firezone.DEV")
+      refute Actor.support?("thomas@firezone.dev")
+      refute Actor.support?(nil)
+    end
+  end
+
+  describe "changeset/1 firezone_support type protection" do
+    test "rejects creating an actor with the firezone_support type" do
+      changeset =
+        build_changeset(%{
+          name: "Sneaky",
+          type: :firezone_support,
+          email: "someone@example.com"
+        })
+
+      assert "is reserved" in errors_on(changeset).type
+    end
+
+    test "rejects transitioning an actor to firezone_support" do
+      changeset =
+        %Actor{type: :account_admin_user, name: "Alice"}
+        |> cast(%{type: :firezone_support}, [:type])
+        |> Actor.changeset()
+
+      assert "is reserved" in errors_on(changeset).type
+    end
+
+    test "rejects any modification of a firezone_support actor" do
+      changeset =
+        %Actor{type: :firezone_support, name: "Firezone Support"}
+        |> cast(%{name: "Renamed"}, [:name])
+        |> Actor.changeset()
+
+      assert "Firezone Support actors cannot be modified" in errors_on(changeset).type
+    end
+
+    test "database rejects firezone_support actors without the reserved email" do
+      account = account_fixture()
+
+      assert_raise Ecto.ConstraintError, ~r/type_is_valid/, fn ->
+        %Actor{
+          account_id: account.id,
+          type: :firezone_support,
+          name: "Firezone Support",
+          email: "untagged@firezone.dev"
+        }
+        |> Portal.Repo.insert!()
+      end
+    end
+  end
+
+  describe "changeset/1 reserved support suffix" do
+    test "rejects creating an actor with the reserved suffix" do
+      changeset =
+        build_changeset(%{
+          name: "Sneaky",
+          type: :account_user,
+          email: "someone+firezone-support@firezone.dev"
+        })
+
+      assert "is reserved" in errors_on(changeset).email
+    end
+
+    test "rejects updating an actor email into the reserved suffix" do
+      actor = actor_fixture(type: :account_user)
+
+      changeset =
+        actor
+        |> cast(%{email: "someone+firezone-support@firezone.dev"}, [:email])
+        |> Actor.changeset()
+
+      assert "is reserved" in errors_on(changeset).email
+    end
+
+    test "allows regular firezone.dev emails" do
+      changeset =
+        build_changeset(%{
+          name: "Staff",
+          type: :account_user,
+          email: "someone@firezone.dev"
+        })
+
+      refute errors_on(changeset)[:email]
+    end
+  end
 end

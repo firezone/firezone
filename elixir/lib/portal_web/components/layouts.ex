@@ -10,6 +10,15 @@ defmodule PortalWeb.Layouts do
       |> Safe.unscoped()
       |> Safe.one()
     end
+
+    def fetch_support_provider(account_id) do
+      from(p in Portal.FirezoneSupport.AuthProvider,
+        where: p.account_id == ^account_id,
+        where: p.expires_at > ^DateTime.utc_now()
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
   end
 
   embed_templates "layouts/*"

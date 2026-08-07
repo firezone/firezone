@@ -1,0 +1,10 @@
+Support request from <%= @account.name %>
+
+Account ID:     <%= @account.id %>
+Account slug:   <%= @account.slug %>
+Requested by:   <%= @actor.name %> (<%= @actor.email %>)
+Access granted: <%= if @access_granted?, do: "YES - support access is active for 24 hours", else: "no" %>
+
+Problem description:
+--------------------
+<%= @problem %>

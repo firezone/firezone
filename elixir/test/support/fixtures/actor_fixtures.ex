@@ -117,4 +117,28 @@ defmodule Portal.ActorFixtures do
     |> Ecto.Changeset.change(is_disabled: true)
     |> Portal.Repo.update!()
   end
+
+  @doc """
+  Generate a Firezone Support actor (reserved plus-address email, inserted as a
+  bare struct since the base changeset rejects the reserved suffix).
+  """
+  def support_actor_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+    account = Map.get(attrs, :account) || account_fixture()
+    unique_num = System.unique_integer([:positive, :monotonic])
+
+    email =
+      Map.get_lazy(attrs, :email, fn ->
+        Portal.Actor.support_email("support.actor.#{unique_num}@firezone.dev")
+      end)
+
+    %Portal.Actor{
+      account_id: account.id,
+      type: :firezone_support,
+      name: "Firezone Support",
+      email: email,
+      allow_email_otp_sign_in: false
+    }
+    |> Portal.Repo.insert!()
+  end
 end

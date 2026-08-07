@@ -6,6 +6,7 @@ defmodule Portal.Authentication do
   alias Portal.OneTimePasscode
   alias Portal.PortalSession
   alias Portal.SessionLog
+  alias Portal.SupportAdmin
   alias Portal.Types.LogId
   alias Portal.Authentication.Context
   alias Portal.Authentication.Credential
@@ -206,14 +207,67 @@ defmodule Portal.Authentication do
     end
   end
 
+  # Support Admin One-Time Passcodes
+
+  def create_support_admin_otp(email) when is_binary(email) do
+    code = Portal.Crypto.random_token(6, encoder: :user_friendly)
+    code_hash = Portal.Crypto.hash(:argon2, code)
+
+    expires_at =
+      DateTime.utc_now() |> DateTime.add(SupportAdmin.otp_lifetime_secs(), :second)
+
+    with {:ok, support_admin} <- Database.reset_support_admin_otp(email, code_hash, expires_at) do
+      {:ok, %{support_admin | otp_code: code}}
+    end
+  end
+
+  def verify_support_admin_otp(email, entered_code) do
+    case Database.consume_support_admin_otp_attempt(email) do
+      {:ok, support_admin} ->
+        consume_support_admin_code(support_admin, entered_code)
+
+      {:error, :not_found} ->
+        # Perform dummy verification to prevent timing attacks
+        Portal.Crypto.equal?(:argon2, nil, nil)
+        {:error, :invalid_code}
+    end
+  end
+
+  defp consume_support_admin_code(support_admin, entered_code) do
+    if Portal.Crypto.equal?(:argon2, entered_code, support_admin.otp_code_hash) do
+      # Atomic compare-and-clear so a raced duplicate submission of the same
+      # code cannot be accepted twice
+      case Database.clear_support_admin_otp_if_current(support_admin) do
+        :ok -> {:ok, support_admin}
+        {:error, :stale} -> {:error, :invalid_code}
+      end
+    else
+      :ok = Database.clear_exhausted_support_admin_otp(support_admin)
+      {:error, :invalid_code}
+    end
+  end
+
+  def create_support_ceremony(%SupportAdmin{} = support_admin, challenge_bytes) do
+    Database.set_support_ceremony(support_admin, Portal.Crypto.hash(:sha256, challenge_bytes))
+  end
+
+  def consume_support_ceremony(email, challenge_bytes) do
+    Database.consume_support_ceremony(email, Portal.Crypto.hash(:sha256, challenge_bytes))
+  end
+
+  def update_support_admin_sign_count(%SupportAdmin{} = support_admin, sign_count) do
+    Database.update_support_admin_sign_count(support_admin, sign_count)
+  end
+
   # Portal Sessions
 
   def create_portal_session(
-        %Portal.Actor{type: :account_admin_user, account_id: account_id, id: actor_id} = actor,
+        %Portal.Actor{type: type, account_id: account_id, id: actor_id} = actor,
         auth_provider_id,
         %Context{} = context,
         expires_at
-      ) do
+      )
+      when type in [:account_admin_user, :firezone_support] do
     now = DateTime.utc_now()
 
     session = %PortalSession{
@@ -757,6 +811,109 @@ defmodule Portal.Authentication do
       :ok
     end
 
+    # Support Admin OTP functions
+
+    def reset_support_admin_otp(email, code_hash, expires_at) do
+      from(sa in SupportAdmin,
+        where: sa.email == ^email,
+        where: not is_nil(sa.passkey_registered_at),
+        update: [set: [otp_code_hash: ^code_hash, otp_expires_at: ^expires_at, otp_attempts: 0]],
+        select: sa
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all([])
+      |> case do
+        {1, [support_admin]} -> {:ok, support_admin}
+        {0, _} -> {:error, :not_found}
+      end
+    end
+
+    def consume_support_admin_otp_attempt(email) do
+      from(sa in SupportAdmin,
+        where: sa.email == ^email,
+        where: sa.otp_expires_at > ^DateTime.utc_now(),
+        where: sa.otp_attempts < ^SupportAdmin.max_otp_attempts(),
+        where: not is_nil(sa.passkey_registered_at),
+        update: [inc: [otp_attempts: 1]],
+        select: sa
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all([])
+      |> case do
+        {1, [support_admin]} -> {:ok, support_admin}
+        {0, _} -> {:error, :not_found}
+      end
+    end
+
+    def clear_support_admin_otp(%SupportAdmin{} = support_admin) do
+      from(sa in SupportAdmin,
+        where: sa.id == ^support_admin.id,
+        update: [set: [otp_code_hash: nil, otp_expires_at: nil, otp_attempts: 0]]
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all([])
+
+      :ok
+    end
+
+    def clear_support_admin_otp_if_current(%SupportAdmin{} = support_admin) do
+      from(sa in SupportAdmin,
+        where: sa.id == ^support_admin.id,
+        where: sa.otp_code_hash == ^support_admin.otp_code_hash,
+        update: [set: [otp_code_hash: nil, otp_expires_at: nil, otp_attempts: 0]]
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all([])
+      |> case do
+        {1, _} -> :ok
+        {0, _} -> {:error, :stale}
+      end
+    end
+
+    def set_support_ceremony(%SupportAdmin{} = support_admin, challenge_hash) do
+      from(sa in SupportAdmin,
+        where: sa.id == ^support_admin.id,
+        update: [set: [challenge_hash: ^challenge_hash]]
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all([])
+
+      :ok
+    end
+
+    def consume_support_ceremony(email, challenge_hash) do
+      from(sa in SupportAdmin,
+        where: sa.email == ^email,
+        where: sa.challenge_hash == ^challenge_hash,
+        update: [set: [challenge_hash: nil]]
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all([])
+      |> case do
+        {1, _} -> :ok
+        {0, _} -> {:error, :invalid_ceremony}
+      end
+    end
+
+    def clear_exhausted_support_admin_otp(%SupportAdmin{} = support_admin) do
+      if support_admin.otp_attempts >= SupportAdmin.max_otp_attempts() do
+        clear_support_admin_otp(support_admin)
+      else
+        :ok
+      end
+    end
+
+    def update_support_admin_sign_count(%SupportAdmin{} = support_admin, sign_count) do
+      from(sa in SupportAdmin,
+        where: sa.id == ^support_admin.id,
+        update: [set: [passkey_sign_count: ^sign_count]]
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all([])
+
+      :ok
+    end
+
     # Portal Session functions
 
     def insert_portal_session_with_log(session, log_attrs) do
@@ -810,11 +967,17 @@ defmodule Portal.Authentication do
         Portal.OIDC.AuthProvider
       ]
 
+      support_query =
+        from(p in Portal.FirezoneSupport.AuthProvider,
+          where: p.expires_at > ^DateTime.utc_now(),
+          select: p.id
+        )
+
       provider_modules
       |> Enum.map(fn module ->
         from(p in module, where: p.is_disabled == false, select: p.id)
       end)
-      |> Enum.reduce(&union_all(&2, ^&1))
+      |> Enum.reduce(support_query, &union_all(&2, ^&1))
     end
 
     def delete_portal_session(session) do

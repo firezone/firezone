@@ -1,6 +1,11 @@
 defmodule Portal.Ops do
+  use Phoenix.VerifiedRoutes,
+    endpoint: PortalWeb.Endpoint,
+    router: PortalWeb.Router,
+    statics: PortalWeb.static_paths()
+
   alias __MODULE__.Database
-  alias Portal.{Banner, Billing, EmailSuppression, Mailer}
+  alias Portal.{Banner, Billing, EmailSuppression, Mailer, SupportAdmin}
   alias Portal.Workers.DeleteAccount
 
   @max_bcc_per_message 50
@@ -192,6 +197,37 @@ defmodule Portal.Ops do
     Database.delete_all(Banner)
   end
 
+  @doc """
+  Provisions a Firezone Support admin by email and sends them a secure passkey
+  registration link.
+
+  Can be called repeatedly to re-send the link; each call rotates the token and
+  invalidates the previous link. Completing a new registration replaces any
+  previously registered passkey.
+  """
+  def provision_support_admin(email) when is_binary(email) do
+    email = SupportAdmin.normalize_email(email)
+    token = Portal.Crypto.random_token(32)
+    token_hash = Portal.Crypto.hash(:sha256, token)
+
+    expires_at =
+      DateTime.utc_now()
+      |> DateTime.add(SupportAdmin.registration_token_lifetime_secs(), :second)
+
+    with {:ok, support_admin} <- Database.upsert_support_admin(email, token_hash, expires_at),
+         {:ok, _metadata} <- deliver_registration_email(support_admin, token) do
+      {:ok, support_admin}
+    end
+  end
+
+  @doc """
+  Immediately revokes Firezone Support access for an account, deleting the
+  support auth provider and all support actors along with their sessions.
+  """
+  def revoke_support_access(account_id) when is_binary(account_id) do
+    Database.revoke_support_access(account_id)
+  end
+
   def queue_admin_email(subject, html_body, plaintext_body) do
     queue_admin_email(:all, subject, html_body, plaintext_body)
   end
@@ -343,6 +379,17 @@ defmodule Portal.Ops do
     [scheduled_at: scheduled_at]
   end
 
+  defp deliver_registration_email(%SupportAdmin{} = support_admin, token) do
+    registration_url = url(~p"/support_admin/register/#{token}")
+
+    Mailer.SupportEmail.registration_link_email(support_admin.email, registration_url)
+    |> Mailer.deliver_with_rate_limit(
+      rate_limit_key: {:support_admin_registration, support_admin.email},
+      rate_limit: 3,
+      rate_limit_interval: :timer.minutes(30)
+    )
+  end
+
   defmodule Database do
     import Ecto.Query
     alias Portal.{Account, Actor, Safe}
@@ -410,6 +457,50 @@ defmodule Portal.Ops do
       |> select([accounts: a], a.id)
       |> Safe.unscoped()
       |> Safe.all()
+    end
+
+    def upsert_support_admin(email, token_hash, expires_at) do
+      attrs = %{
+        email: email,
+        registration_token_hash: token_hash,
+        registration_token_expires_at: expires_at
+      }
+
+      %Portal.SupportAdmin{}
+      |> Ecto.Changeset.cast(
+        attrs,
+        ~w[email registration_token_hash registration_token_expires_at]a
+      )
+      |> then(
+        &Safe.insert(Portal.Repo, &1,
+          on_conflict:
+            {:replace, ~w[registration_token_hash registration_token_expires_at updated_at]a},
+          conflict_target: :email,
+          returning: true
+        )
+      )
+    end
+
+    def revoke_support_access(account_id) do
+      Safe.transact(fn ->
+        {providers, _} =
+          from(ap in Portal.AuthProvider,
+            where: ap.account_id == ^account_id,
+            where: ap.type == :firezone_support
+          )
+          |> Safe.unscoped()
+          |> Safe.delete_all()
+
+        {actors, _} =
+          from(a in Actor,
+            where: a.account_id == ^account_id,
+            where: a.type == :firezone_support
+          )
+          |> Safe.unscoped()
+          |> Safe.delete_all()
+
+        {:ok, %{providers: providers, actors: actors}}
+      end)
     end
 
     def accounts_missing_deletion_jobs do

@@ -505,6 +505,73 @@ defmodule Portal.OpsTest do
     end
   end
 
+  describe "provision_support_admin/1" do
+    setup do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      :ok
+    end
+
+    test "creates a support admin with a tagged email and emails a registration link" do
+      assert {:ok, support_admin} = provision_support_admin("thomas@firezone.dev")
+      assert support_admin.email == "thomas+firezone-support@firezone.dev"
+      assert support_admin.registration_token_hash
+
+      assert DateTime.after?(
+               support_admin.registration_token_expires_at,
+               DateTime.utc_now()
+             )
+
+      assert_received {:email, email}
+      assert email.subject == "Register your Firezone Support passkey"
+      assert "thomas+firezone-support@firezone.dev" in Enum.map(email.to, &elem(&1, 1))
+      assert email.text_body =~ "/support_admin/register/"
+    end
+
+    test "rotates the registration token on repeated provisioning" do
+      assert {:ok, first} = provision_support_admin("repeat@firezone.dev")
+      assert {:ok, second} = provision_support_admin("repeat@firezone.dev")
+
+      assert first.id == second.id
+      refute first.registration_token_hash == second.registration_token_hash
+    end
+
+    test "rejects non-firezone.dev emails" do
+      assert {:error, changeset} = provision_support_admin("outsider@gmail.com")
+      assert "must end with +firezone-support@firezone.dev" in errors_on(changeset).email
+      refute_received {:email, _email}
+    end
+  end
+
+  describe "revoke_support_access/1" do
+    test "deletes the support provider and support actors" do
+      account = account_fixture()
+      provider = Portal.AuthProviderFixtures.firezone_support_provider_fixture(account: account)
+      support_actor = support_actor_fixture(account: account)
+      regular_actor = actor_fixture(account: account, type: :account_admin_user)
+
+      assert {:ok, %{providers: 1, actors: 1}} = revoke_support_access(account.id)
+
+      refute Portal.Repo.get_by(Portal.AuthProvider, id: provider.id)
+      refute Portal.Repo.get_by(Portal.Actor, account_id: account.id, id: support_actor.id)
+      assert Portal.Repo.get_by(Portal.Actor, account_id: account.id, id: regular_actor.id)
+    end
+
+    test "does not touch other accounts" do
+      account = account_fixture()
+      other_account = account_fixture()
+
+      Portal.AuthProviderFixtures.firezone_support_provider_fixture(account: other_account)
+      other_actor = support_actor_fixture(account: other_account)
+
+      assert {:ok, %{providers: 0, actors: 0}} = revoke_support_access(account.id)
+
+      assert Portal.Repo.get_by(Portal.Actor,
+               account_id: other_account.id,
+               id: other_actor.id
+             )
+    end
+  end
+
   defp active_account_fixture(attrs \\ %{}) do
     account = account_fixture(attrs)
     session_log_fixture(account: account)
