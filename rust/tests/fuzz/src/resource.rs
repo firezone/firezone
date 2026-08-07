@@ -4,7 +4,10 @@
 //! model. The SUT only receives portal-facing [`ResourceDescription`] values,
 //! matching the production event loop and keeping the internal model private.
 
-use connlib_model::{IpStack, ResourceId, Site};
+use connlib_model::{
+    CidrResourceView, DnsResourceView, InternetResourceView, IpStack, ResourceId, ResourceStatus,
+    ResourceView, Site,
+};
 use ip_network::IpNetwork;
 use itertools::Itertools as _;
 use serde_json::{Value, json};
@@ -236,6 +239,35 @@ impl Resource {
                 "name": r.name,
                 "address": r.address,
             })),
+        }
+    }
+
+    pub(crate) fn into_view(self, status: ResourceStatus) -> Option<ResourceView> {
+        match self {
+            Resource::Dns(r) => Some(ResourceView::Dns(DnsResourceView {
+                id: r.id,
+                address: r.address,
+                name: r.name,
+                address_description: r.address_description,
+                sites: r.sites,
+                status,
+            })),
+            Resource::Cidr(r) => Some(ResourceView::Cidr(CidrResourceView {
+                id: r.id,
+                address: r.address,
+                name: r.name,
+                address_description: r.address_description,
+                sites: r.sites,
+                status,
+            })),
+            Resource::Internet(r) => Some(ResourceView::Internet(InternetResourceView {
+                name: r.name,
+                id: r.id,
+                sites: r.sites,
+                status,
+            })),
+            Resource::StaticDevicePool(_) => None,
+            Resource::DynamicDevicePool(_) => None,
         }
     }
 }
