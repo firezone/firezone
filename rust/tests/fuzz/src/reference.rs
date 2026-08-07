@@ -1,5 +1,6 @@
 use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
+use super::packet_input::PacketInputObservation;
 use super::probe::{
     ExpectedOutcome, ExpectedProbe, KnownLoss, PacketRoute, ProbeId, ProbeRequest, RejectionRemote,
     Remote, TraceRequirement, UdpFlow,
@@ -51,6 +52,8 @@ pub struct ReferenceState {
 
     pub(crate) expected_probes: BTreeMap<ProbeId, ExpectedProbe>,
 
+    pub(crate) expected_packet_input_observations: Vec<PacketInputObservation>,
+
     udp_flows: BTreeSet<UdpFlow>,
 }
 
@@ -83,6 +86,7 @@ impl ReferenceState {
             icmp_error_hosts,
             network,
             expected_probes: Default::default(),
+            expected_packet_input_observations: Default::default(),
             udp_flows: Default::default(),
         }
     }
@@ -213,6 +217,11 @@ impl ReferenceState {
             }
             Transition::SendUdpPacketOnFlow { flow, probe_id } => {
                 state.record_udp_probe(*probe_id, flow, now);
+            }
+            Transition::SendUnroutablePacket(input) => {
+                state
+                    .expected_packet_input_observations
+                    .push(input.expected_observation());
             }
             Transition::ConnectTcp {
                 client_id,
@@ -511,8 +520,9 @@ impl ReferenceState {
         }
     }
 
-    pub fn clear_expected_probes(state: &mut ReferenceState) {
+    pub fn clear_observations(state: &mut ReferenceState) {
         state.expected_probes.clear();
+        state.expected_packet_input_observations.clear();
     }
 
     fn record_udp_probe(

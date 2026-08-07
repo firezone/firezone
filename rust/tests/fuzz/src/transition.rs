@@ -6,6 +6,7 @@ use tunnel_proto::{
 };
 
 use super::{
+    packet_input::UnroutablePacketInput,
     probe::{ProbeId, UdpFlow},
     reference::PrivateKey,
     resource::{Resource, ResourceEdit},
@@ -47,6 +48,7 @@ pub enum Transition {
         flow: UdpFlow,
         probe_id: ProbeId,
     },
+    SendUnroutablePacket(UnroutablePacketInput),
     ConnectTcp {
         client_id: ClientId,
         src: IpAddr,
@@ -119,6 +121,7 @@ impl Transition {
             Transition::SendIcmpPacket { .. } => false,
             Transition::SendUdpPacket { .. } => false,
             Transition::SendUdpPacketOnFlow { .. } => false,
+            Transition::SendUnroutablePacket(_) => false,
             Transition::ConnectTcp { .. } => false,
             Transition::SendDnsQuery { .. } => false,
             Transition::SendDnsResourcePtrQuery { .. } => false,
