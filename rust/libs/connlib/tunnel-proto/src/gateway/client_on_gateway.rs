@@ -1278,6 +1278,38 @@ mod tests {
         assert!(peer.permanent_translations.contains_key(&proxy_ip6_2()));
     }
 
+    #[test]
+    fn empty_dns_resolution_is_unreachable() {
+        let now = Instant::now();
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        peer.add_resource(foo_dns_resource(), None, now);
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            foo_resource_id(),
+            BTreeSet::new(),
+            BTreeSet::from([proxy_ip6_1()]),
+        )
+        .unwrap();
+
+        let request = ip_packet::make::udp_packet(
+            client_tun_ipv6(),
+            proxy_ip6_1(),
+            1,
+            foo_allowed_port(),
+            &[0; 8],
+        )
+        .unwrap();
+
+        let TranslateOutboundResult::IcmpError(response) =
+            peer.translate_outbound(request, now).unwrap()
+        else {
+            panic!("empty DNS resolutions must be unreachable")
+        };
+        let (_, error) = response.icmp_error().unwrap().unwrap();
+
+        assert!(error.is_unreachable_network());
+    }
+
     // Two distinct DNS resources both using "foo.com" as their address:
     //   - foo_dns_resource:  allows UDP/80
     //   - foo_dns_resource2: allows TCP/443
