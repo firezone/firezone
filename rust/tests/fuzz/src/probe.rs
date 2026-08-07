@@ -155,7 +155,6 @@ pub(crate) struct ExpectedProbe {
     pub(crate) origin: ClientId,
     pub(crate) sent_at: Instant,
     pub(crate) request: ProbeRequest,
-    pub(crate) dns_resource_resolution: Option<Instant>,
     pub(crate) outcome: ExpectedOutcome,
     pub(crate) trace_requirement: TraceRequirement,
 }
