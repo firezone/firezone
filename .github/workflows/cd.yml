@@ -16,6 +16,7 @@ jobs:
     uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: write # create/update GitHub releases
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
@@ -30,6 +31,7 @@ jobs:
     uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: write # create/update GitHub releases
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
@@ -44,6 +46,7 @@ jobs:
     uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: write # create/update GitHub releases
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
@@ -57,6 +60,7 @@ jobs:
     uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: write # create/update GitHub releases
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
@@ -71,6 +75,7 @@ jobs:
     uses: ./.github/workflows/_control-plane.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
@@ -80,6 +85,7 @@ jobs:
     uses: ./.github/workflows/_loadtest.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: read
       id-token: write # OIDC auth for Azure Storage uploads
 
@@ -89,6 +95,7 @@ jobs:
     uses: ./.github/workflows/_nix.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: read
       id-token: write # OIDC auth for the Azure binary cache upload
     with:
@@ -115,6 +122,7 @@ jobs:
     uses: ./.github/workflows/_perf_tests.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: read
       id-token: write # OIDC auth
       pull-requests: write # post perf result comments
@@ -142,6 +150,7 @@ jobs:
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise

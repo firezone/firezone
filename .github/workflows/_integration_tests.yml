@@ -60,6 +60,7 @@ jobs:
   collect-images:
     uses: ./.github/workflows/_collect_images.yml
     permissions:
+      actions: write # gh run cancel
       contents: read
     with:
       id: ${{ inputs.id }}

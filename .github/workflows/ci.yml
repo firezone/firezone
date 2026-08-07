@@ -20,6 +20,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 permissions:
+  actions: write # gh run cancel
   contents: read
 
 env:
@@ -160,6 +161,8 @@ jobs:
           fi
 
           echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
 
   required-check:
     name: required-check
@@ -203,6 +206,8 @@ jobs:
       - run: bats scripts/tests/bats
         env:
           BATS_LIB_PATH: ${{ steps.setup-bats.outputs.lib-path }}
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
 
   kotlin:
     needs: planner
@@ -210,6 +215,7 @@ jobs:
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
@@ -220,6 +226,7 @@ jobs:
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
@@ -250,6 +257,7 @@ jobs:
     uses: ./.github/workflows/_tauri.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
 
@@ -259,6 +267,7 @@ jobs:
     uses: ./.github/workflows/_nix.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: read
       id-token: write # OIDC auth for the Azure binary cache upload
     with:
@@ -281,6 +290,7 @@ jobs:
     uses: ./.github/workflows/_control-plane.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
@@ -291,6 +301,7 @@ jobs:
     uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: write # create/update GitHub releases
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
@@ -307,6 +318,7 @@ jobs:
     uses: ./.github/workflows/_loadtest.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: read
       id-token: write # OIDC auth for Azure Storage uploads
 
