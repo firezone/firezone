@@ -1,7 +1,6 @@
 use std::{
     collections::BTreeSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::Instant,
 };
 
 use connlib_model::ClientId;
@@ -58,7 +57,7 @@ enum DstSpec {
     Ip(IpAddr),
 }
 
-pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<PacketTarget> {
+pub(super) fn targets(state: &ReferenceState) -> Vec<PacketTarget> {
     state
         .ipv4_cidr_resource_dsts()
         .into_iter()
@@ -105,7 +104,7 @@ pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<PacketTarget>
         )
         .chain(
             state
-                .resolved_ip4_for_non_resources(&state.global_dns_records, now)
+                .resolved_ip4_for_non_resources(&state.global_dns_records)
                 .into_iter()
                 .map(|(client_id, dst)| PacketTarget::NonResource {
                     client_id,
@@ -115,7 +114,7 @@ pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<PacketTarget>
         )
         .chain(
             state
-                .resolved_ip6_for_non_resources(&state.global_dns_records, now)
+                .resolved_ip6_for_non_resources(&state.global_dns_records)
                 .into_iter()
                 .map(|(client_id, dst)| PacketTarget::NonResource {
                     client_id,
@@ -488,7 +487,7 @@ fn arb_icmp_packet(
     src: IpAddr,
     dst: DstSpec,
 ) -> Transition {
-    let (seq, identifier) = g.fresh_icmp_packet();
+    let (seq, identifier) = g.fresh_icmp_flow();
     let resolved_ip = g.u32();
     let probe_id = g.fresh_probe_id();
     let dst = into_destination(dst, resolved_ip);
@@ -509,7 +508,7 @@ fn arb_udp_packet(
     dst: DstSpec,
     dport: u16,
 ) -> Transition {
-    let (sport, dport) = g.fresh_udp_packet(dport);
+    let (sport, dport) = g.fresh_udp_flow(dport);
     let resolved_ip = g.u32();
     let probe_id = g.fresh_probe_id();
     let dst = into_destination(dst, resolved_ip);
