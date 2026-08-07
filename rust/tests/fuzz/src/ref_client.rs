@@ -580,12 +580,7 @@ impl RefClient {
             PacketRoute::Resource { resource, gateway } => {
                 tracing::Span::current().record("resource", tracing::field::display(resource));
                 tracing::Span::current().record("gateway", tracing::field::display(gateway));
-                self.connect_to_resource(resource, dst);
-                self.set_resource_online(resource);
-                self.gateway_send_times
-                    .entry(gateway)
-                    .or_default()
-                    .insert(now);
+                self.record_resource_packet(resource, gateway, dst, now);
 
                 ExpectedOutcome::RoundTripCompleted {
                     remote: Remote::Gateway(gateway),
@@ -595,12 +590,7 @@ impl RefClient {
             PacketRoute::ResourceRejectedByGateway { resource, gateway } => {
                 tracing::Span::current().record("resource", tracing::field::display(resource));
                 tracing::Span::current().record("gateway", tracing::field::display(gateway));
-                self.connect_to_resource(resource, dst);
-                self.set_resource_online(resource);
-                self.gateway_send_times
-                    .entry(gateway)
-                    .or_default()
-                    .insert(now);
+                self.record_resource_packet(resource, gateway, dst, now);
 
                 ExpectedOutcome::Rejected {
                     by: RejectionRemote::Gateway(gateway),
@@ -610,12 +600,7 @@ impl RefClient {
             PacketRoute::ResourceUnreachableByGateway { resource, gateway } => {
                 tracing::Span::current().record("resource", tracing::field::display(resource));
                 tracing::Span::current().record("gateway", tracing::field::display(gateway));
-                self.connect_to_resource(resource, dst);
-                self.set_resource_online(resource);
-                self.gateway_send_times
-                    .entry(gateway)
-                    .or_default()
-                    .insert(now);
+                self.record_resource_packet(resource, gateway, dst, now);
 
                 ExpectedOutcome::Rejected {
                     by: RejectionRemote::Gateway(gateway),
@@ -623,6 +608,21 @@ impl RefClient {
                 }
             }
         }
+    }
+
+    pub(crate) fn on_gateway_dns_resolution_failed(
+        &mut self,
+        resource: ResourceId,
+        gateway: GatewayId,
+        destination: Destination,
+        domain: &DomainName,
+        global_dns_records: &DnsRecords,
+        now: Instant,
+    ) {
+        self.prepare_dns_resource_connection(resource, global_dns_records);
+        self.dns_resource_resolutions
+            .remove(&(resource, domain.clone()));
+        self.record_resource_packet(resource, gateway, destination, now);
     }
 
     pub(crate) fn on_connect_tcp(
@@ -757,6 +757,21 @@ impl RefClient {
             }
             Destination::IpAddr(_) => self.connect_to_internet_or_cidr_resource(resource),
         }
+    }
+
+    fn record_resource_packet(
+        &mut self,
+        resource: ResourceId,
+        gateway: GatewayId,
+        destination: Destination,
+        now: Instant,
+    ) {
+        self.connect_to_resource(resource, destination);
+        self.set_resource_online(resource);
+        self.gateway_send_times
+            .entry(gateway)
+            .or_default()
+            .insert(now);
     }
 
     fn set_resource_online(&mut self, rid: ResourceId) {
@@ -1392,6 +1407,17 @@ impl RefClient {
     ) -> Option<&BTreeSet<RecordType>> {
         self.dns_resource_resolutions
             .get(&(resource, domain.clone()))
+    }
+
+    pub(crate) fn can_fail_gateway_dns_resolution(
+        &self,
+        resource: ResourceId,
+        domain: &DomainName,
+    ) -> bool {
+        !self.connected_dns_resources.contains(&resource)
+            && !self
+                .dns_resource_resolutions
+                .contains_key(&(resource, domain.clone()))
     }
 
     fn local_dns_resource_query_has_records(&self, query: &DnsQuery) -> bool {

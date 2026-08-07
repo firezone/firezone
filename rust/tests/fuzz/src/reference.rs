@@ -173,6 +173,28 @@ impl ReferenceState {
                     now,
                 );
             }
+            Transition::SendIcmpPacketWithGatewayDnsResolutionFailure {
+                client_id,
+                gateway_id,
+                src,
+                dst,
+                seq,
+                identifier,
+                probe_id,
+            } => {
+                state.record_probe_with_gateway_dns_resolution_failure(
+                    *probe_id,
+                    *client_id,
+                    *gateway_id,
+                    ProbeRequest::Icmp {
+                        src: *src,
+                        dst: dst.clone(),
+                        seq: *seq,
+                        identifier: *identifier,
+                    },
+                    now,
+                );
+            }
             Transition::SendUdpPacket {
                 client_id,
                 src,
@@ -542,6 +564,63 @@ impl ReferenceState {
             .unwrap()
             .exec_mut(|client| client.on_packet(request.destination().clone(), route, sent_at));
         let trace_requirement = self.trace_requirement(origin, outcome, sent_at);
+        self.insert_expected_probe(id, origin, request, outcome, trace_requirement, sent_at);
+
+        outcome
+    }
+
+    fn record_probe_with_gateway_dns_resolution_failure(
+        &mut self,
+        id: ProbeId,
+        origin: ClientId,
+        failed_gateway: GatewayId,
+        request: ProbeRequest,
+        sent_at: Instant,
+    ) {
+        let Destination::DomainName { name, .. } = request.destination() else {
+            unreachable!("gateway DNS resolution failures require a DNS resource")
+        };
+        let route = self.route_for_packet(
+            origin,
+            request.source(),
+            request.destination(),
+            request.protocol(),
+        );
+        let PacketRoute::Resource { resource, gateway } = route else {
+            unreachable!("gateway DNS resolution failures require an allowed DNS resource")
+        };
+        assert_eq!(gateway, failed_gateway);
+
+        self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
+            client.on_gateway_dns_resolution_failed(
+                resource,
+                gateway,
+                request.destination().clone(),
+                name,
+                &self.global_dns_records,
+                sent_at,
+            );
+        });
+
+        self.insert_expected_probe(
+            id,
+            origin,
+            request,
+            ExpectedOutcome::Dropped,
+            TraceRequirement::Exact,
+            sent_at,
+        );
+    }
+
+    fn insert_expected_probe(
+        &mut self,
+        id: ProbeId,
+        origin: ClientId,
+        request: ProbeRequest,
+        outcome: ExpectedOutcome,
+        trace_requirement: TraceRequirement,
+        sent_at: Instant,
+    ) {
         let previous = self.expected_probes.insert(
             id,
             ExpectedProbe {
@@ -555,8 +634,6 @@ impl ReferenceState {
         );
 
         assert!(previous.is_none(), "probe IDs must be unique");
-
-        outcome
     }
 
     fn route_for_application_packet(
@@ -679,6 +756,49 @@ impl ReferenceState {
         self.clients[&client_id]
             .inner()
             .can_fail_dns_resolution(query, self.portal.upstream_do53())
+    }
+
+    pub(crate) fn gateway_dns_resolution_failure_targets(
+        &self,
+    ) -> Vec<(ClientId, GatewayId, IpAddr, DomainName)> {
+        self.clients
+            .iter()
+            .flat_map(|(client_id, client)| {
+                let client = client.inner();
+
+                iter::empty()
+                    .chain(
+                        client
+                            .resolved_v4_domains()
+                            .into_iter()
+                            .map(|(domain, _)| (IpAddr::V4(client.tunnel_ip4), domain)),
+                    )
+                    .chain(
+                        client
+                            .resolved_v6_domains()
+                            .into_iter()
+                            .map(|(domain, _)| (IpAddr::V6(client.tunnel_ip6), domain)),
+                    )
+                    .filter_map(move |(src, domain)| {
+                        let destination = Destination::DomainName {
+                            resolved_ip: 0,
+                            name: domain.clone(),
+                        };
+                        let PacketRoute::Resource { resource, gateway } = self.route_for_packet(
+                            *client_id,
+                            src,
+                            &destination,
+                            Protocol::IcmpEcho(0),
+                        ) else {
+                            return None;
+                        };
+
+                        client
+                            .can_fail_gateway_dns_resolution(resource, &domain)
+                            .then_some((*client_id, gateway, src, domain))
+                    })
+            })
+            .collect()
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
