@@ -1,10 +1,14 @@
-use std::net::IpAddr;
+use std::{iter, net::IpAddr};
+
+use connlib_model::ClientId;
+use ip_packet::Protocol;
 
 use super::context::Generator;
 use crate::{
     packet_input::{UdpPacketInput, UnroutablePacketInput},
+    probe::PacketRoute,
     reference::ReferenceState,
-    transition::{IpFamily, Transition},
+    transition::{Destination, IpFamily, Transition},
 };
 
 pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition {
@@ -25,8 +29,10 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
         .expect("unroutable packet transitions require a gateway");
     let source_port = g.u16();
     let destination_port = g.u16();
+    let unknown_resource_targets = unknown_resource_targets(state);
+    let input_count = 4 + usize::from(!unknown_resource_targets.is_empty());
 
-    let input = match g.choose_index(4) {
+    let input = match g.choose_index(input_count) {
         0 => UnroutablePacketInput::ClientNonTunnelSource {
             client_id,
             packet: UdpPacketInput::new(
@@ -66,10 +72,64 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
                 destination_port,
             ),
         },
-        _ => unreachable!("the input kind is chosen from four cases"),
+        4 => {
+            let target = &unknown_resource_targets[g.choose_index(unknown_resource_targets.len())];
+
+            UnroutablePacketInput::ClientUnknownResource {
+                client_id: target.client_id,
+                packet: UdpPacketInput::new(target.source, target.destination, source_port, 1),
+            }
+        }
+        _ => unreachable!("the input kind is chosen from at most five cases"),
     };
 
     Transition::SendUnroutablePacket(input)
+}
+
+struct UnknownResourceTarget {
+    client_id: ClientId,
+    source: IpAddr,
+    destination: IpAddr,
+}
+
+fn unknown_resource_targets(state: &ReferenceState) -> Vec<UnknownResourceTarget> {
+    iter::empty()
+        .chain(
+            state
+                .resolved_ip4_for_non_resources(&state.global_dns_records)
+                .into_iter()
+                .map(|(client_id, destination)| (client_id, IpAddr::V4(destination))),
+        )
+        .chain(
+            state
+                .resolved_ip6_for_non_resources(&state.global_dns_records)
+                .into_iter()
+                .map(|(client_id, destination)| (client_id, IpAddr::V6(destination))),
+        )
+        .filter_map(|(client_id, destination)| {
+            if destination.is_multicast() {
+                return None;
+            }
+
+            let client = state.clients[&client_id].inner();
+            let source = client.tunnel_ip_for(destination);
+            let semantic_destination = Destination::IpAddr(destination);
+            let protocol = Protocol::Udp(1);
+
+            if client.has_resource_for_packet(source, &semantic_destination, protocol)
+                || state.route_for_packet(client_id, source, &semantic_destination, protocol)
+                    != PacketRoute::Drop
+            {
+                return None;
+            }
+
+            Some(UnknownResourceTarget {
+                client_id,
+                source,
+                destination,
+            })
+        })
+        .collect()
 }
 
 fn external_ip(g: &mut Generator, family: IpFamily) -> IpAddr {
