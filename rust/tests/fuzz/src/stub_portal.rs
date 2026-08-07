@@ -361,6 +361,15 @@ impl StubPortal {
         tracing::error!(%rid, "Unknown resource");
     }
 
+    pub(crate) fn change_address_of_dns_resource(&mut self, rid: ResourceId, new_address: String) {
+        if let Some(resource) = self.dns_resources.get_mut(&rid) {
+            resource.address = new_address;
+            return;
+        }
+
+        tracing::error!(%rid, "Unknown resource");
+    }
+
     pub(crate) fn change_filters_of_resource(
         &mut self,
         rid: ResourceId,

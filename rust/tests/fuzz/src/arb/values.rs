@@ -154,6 +154,21 @@ pub(super) fn arb_different_cidr_resource_address(
     }
 }
 
+pub(super) fn arb_different_dns_resource_address(g: &mut Generator, current: &str) -> String {
+    let base = arb_domain_name_string(g, 2, 3);
+    let address = match g.choose_index(3) {
+        0 => base,
+        1 => format!("*.{base}"),
+        _ => format!("**.{base}"),
+    };
+
+    if address != current {
+        return address;
+    }
+
+    "changed.invalid".to_owned()
+}
+
 pub(super) fn arb_more_specific_subnet(
     g: &mut Generator,
     address: IpNetwork,

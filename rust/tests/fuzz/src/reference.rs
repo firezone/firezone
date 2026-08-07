@@ -140,6 +140,23 @@ impl ReferenceState {
                     client.exec_mut(|c| c.add_cidr_resource(new_resource.clone()));
                 }
             }
+            Transition::ChangeDnsResourceAddress {
+                resource,
+                new_address,
+            } => {
+                state
+                    .portal
+                    .change_address_of_dns_resource(resource.id, new_address.clone());
+
+                let new_resource = client::DnsResource {
+                    address: new_address.clone(),
+                    ..resource.clone()
+                };
+
+                for client in state.clients.values_mut() {
+                    client.exec_mut(|c| c.add_dns_resource(new_resource.clone()));
+                }
+            }
             Transition::MoveResourceToNewSite { resource, new_site } => {
                 state
                     .portal
@@ -872,6 +889,25 @@ impl ReferenceState {
             .filter_map(|r| match r {
                 client::Resource::Cidr(r) => Some(r),
                 client::Resource::Dns(_) => None,
+                client::Resource::Internet(_) => None,
+                client::Resource::StaticDevicePool(_) => None,
+                client::Resource::DynamicDevicePool(_) => None,
+            })
+            .filter(|resource| {
+                self.clients
+                    .values()
+                    .any(|client| client.inner().has_resource(resource.id))
+            })
+            .collect()
+    }
+
+    pub(crate) fn dns_resources_on_any_client(&self) -> Vec<client::DnsResource> {
+        self.portal
+            .all_resources()
+            .into_iter()
+            .filter_map(|r| match r {
+                client::Resource::Dns(r) => Some(r),
+                client::Resource::Cidr(_) => None,
                 client::Resource::Internet(_) => None,
                 client::Resource::StaticDevicePool(_) => None,
                 client::Resource::DynamicDevicePool(_) => None,

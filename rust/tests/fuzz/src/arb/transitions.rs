@@ -13,8 +13,8 @@ use super::topology::{
 };
 use super::values::{
     arb_address_description, arb_cidr_resource_address, arb_compatible_upstream_do53_servers,
-    arb_different_cidr_resource_address, arb_different_filters, arb_domain_name_string,
-    arb_ip_stack_kind, arb_system_dns_servers, arb_upstream_doh_servers,
+    arb_different_cidr_resource_address, arb_different_dns_resource_address, arb_different_filters,
+    arb_domain_name_string, arb_ip_stack_kind, arb_system_dns_servers, arb_upstream_doh_servers,
 };
 use super::{dns_queries, packets};
 use crate::reference::ReferenceState;
@@ -37,6 +37,7 @@ enum TransitionKind {
     // State-gated.
     AddResource,
     ChangeCidrResourceAddress,
+    ChangeDnsResourceAddress,
     MoveResourceToNewSite,
     ChangeFiltersOfResource,
     ChangeResourceType,
@@ -59,6 +60,7 @@ pub(super) fn generate(
 ) -> Option<Transition> {
     let addable_resources = state.resources_unknown_to_all_clients();
     let cidr_resources = state.cidr_resources_on_any_client();
+    let dns_resources = state.dns_resources_on_any_client();
     let move_resources = move_resource_candidates(state);
     let filter_resources = state.resources_with_filters_on_any_client();
     let replaceable_resources = state.replaceable_resources_on_any_client();
@@ -87,6 +89,7 @@ pub(super) fn generate(
         Some((K::Idle, 1)),
         (!addable_resources.is_empty()).then_some((K::AddResource, 5)),
         (!cidr_resources.is_empty()).then_some((K::ChangeCidrResourceAddress, 1)),
+        (!dns_resources.is_empty()).then_some((K::ChangeDnsResourceAddress, 1)),
         (!move_resources.is_empty()).then_some((K::MoveResourceToNewSite, 1)),
         (!filter_resources.is_empty()).then_some((K::ChangeFiltersOfResource, 1)),
         (!replaceable_resources.is_empty()).then_some((K::ChangeResourceType, 2)),
@@ -103,7 +106,7 @@ pub(super) fn generate(
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 23]>>();
+    .collect::<SmallVec<[_; 24]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -177,6 +180,14 @@ pub(super) fn generate(
             let resource = cidr_resources[g.choose_index(cidr_resources.len())].clone();
             let new_address = arb_different_cidr_resource_address(g, resource.address);
             Transition::ChangeCidrResourceAddress {
+                resource,
+                new_address,
+            }
+        }
+        K::ChangeDnsResourceAddress => {
+            let resource = dns_resources[g.choose_index(dns_resources.len())].clone();
+            let new_address = arb_different_dns_resource_address(g, &resource.address);
+            Transition::ChangeDnsResourceAddress {
                 resource,
                 new_address,
             }

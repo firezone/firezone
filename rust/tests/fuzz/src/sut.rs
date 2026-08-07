@@ -209,6 +209,30 @@ impl TunnelTest {
                     });
                 }
             }
+            Transition::ChangeDnsResourceAddress {
+                resource,
+                new_address,
+            } => {
+                let new_resource = client::Resource::Dns(client::DnsResource {
+                    address: new_address,
+                    ..resource
+                });
+
+                for (client_id, client) in &mut state.clients {
+                    if let Some(gateway) = ref_state
+                        .portal
+                        .gateway_for_resource(new_resource.id())
+                        .and_then(|gid| state.gateways.get_mut(gid))
+                    {
+                        gateway
+                            .exec_mut(|g| g.sut.remove_access(client_id, &new_resource.id(), now))
+                    }
+                    client.exec_mut(|c| {
+                        c.sut
+                            .add_resource(new_resource.clone().into_description(), now)
+                    });
+                }
+            }
             Transition::MoveResourceToNewSite { resource, new_site } => {
                 let new_resource = resource.with_new_site(new_site);
 
