@@ -25,11 +25,11 @@ pub(crate) struct NatTable {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
-struct Inside(Protocol, IpAddr);
+struct Inside(ResourceId, Protocol, IpAddr);
 
 impl Inside {
     fn into_inner(self) -> (Protocol, IpAddr) {
-        (self.0, self.1)
+        (self.1, self.2)
     }
 }
 
@@ -55,7 +55,7 @@ impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         let expired = self.state_by_inside.extract_if(.., |inside, state| {
             state
-                .remove_at(inside.0)
+                .remove_at(inside.1)
                 .is_some_and(|remove_at| now >= remove_at)
         });
 
@@ -88,8 +88,8 @@ impl NatTable {
         resource: ResourceId,
         ips: &BTreeSet<IpAddr>,
     ) {
-        let expired = self.state_by_inside.extract_if(.., |inside, state| {
-            state.resource == resource && ips.contains(&inside.1)
+        let expired = self.state_by_inside.extract_if(.., |inside, _| {
+            inside.0 == resource && ips.contains(&inside.2)
         });
 
         for (inside, _) in expired {
@@ -111,7 +111,7 @@ impl NatTable {
         let src = packet.source_protocol()?;
         let dst = packet.destination();
 
-        let inside = Inside(src, dst);
+        let inside = Inside(resource, src, dst);
 
         if let Some(outside) = self.table.get_by_left(&inside).copied()
             && let Some(state) = self.state_by_inside.get_mut(&inside)
@@ -140,8 +140,7 @@ impl NatTable {
             .context("Exhausted NAT")?;
 
         self.table.insert(inside, outside);
-        self.state_by_inside
-            .insert(inside, EntryState::new(resource, now));
+        self.state_by_inside.insert(inside, EntryState::new(now));
         self.expired.remove(&outside);
 
         tracing::debug!(?inside, ?outside, "New NAT session");
@@ -157,7 +156,7 @@ impl NatTable {
         if let Some((failed_packet, icmp_error)) = packet.icmp_error()? {
             let outside = Outside(failed_packet.src_proto(), failed_packet.dst());
 
-            if let Some(Inside(inside_proto, inside_dst)) =
+            if let Some(Inside(_, inside_proto, inside_dst)) =
                 self.translate_incoming_inner(&outside, now)
             {
                 return Ok(TranslateIncomingResult::IcmpError(IcmpErrorPrototype {
@@ -217,7 +216,6 @@ impl NatTable {
 
 #[derive(Debug)]
 struct EntryState {
-    resource: ResourceId,
     last_outgoing: Instant,
     last_incoming: Option<Instant>,
 
@@ -228,9 +226,8 @@ struct EntryState {
 }
 
 impl EntryState {
-    fn new(resource: ResourceId, last_outgoing: Instant) -> Self {
+    fn new(last_outgoing: Instant) -> Self {
         Self {
-            resource,
             last_outgoing,
             last_incoming: None,
             outgoing_rst: false,
@@ -365,6 +362,7 @@ mod tests {
     use proptest::prelude::*;
 
     const RESOURCE: ResourceId = ResourceId::from_u128(1);
+    const OTHER_RESOURCE: ResourceId = ResourceId::from_u128(2);
 
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
     fn translates_back_and_forth_packet(
@@ -575,5 +573,43 @@ mod tests {
         let result = table.translate_incoming(&response, now).unwrap();
 
         assert_eq!(result, TranslateIncomingResult::ExpiredNatSession);
+    }
+
+    #[test]
+    fn resources_have_distinct_sessions_for_same_inside_tuple() {
+        let now = Instant::now();
+        let client = Ipv4Addr::new(100, 64, 0, 1);
+        let proxy = Ipv4Addr::new(100, 96, 0, 1);
+        let first_destination = Ipv4Addr::new(192, 0, 2, 1);
+        let second_destination = Ipv4Addr::new(192, 0, 2, 2);
+        let refreshed_destination = Ipv4Addr::new(192, 0, 2, 3);
+        let packet = ip_packet::make::udp_packet(client, proxy, 1000, 2000, &[]).unwrap();
+        let mut table = NatTable::default();
+
+        let (_, first) = table
+            .translate_outgoing(&packet, first_destination.into(), RESOURCE, now)
+            .unwrap();
+        let (_, second) = table
+            .translate_outgoing(&packet, second_destination.into(), OTHER_RESOURCE, now)
+            .unwrap();
+        let (_, first_after_refresh) = table
+            .translate_outgoing(&packet, refreshed_destination.into(), RESOURCE, now)
+            .unwrap();
+
+        assert_eq!(first, IpAddr::V4(first_destination));
+        assert_eq!(second, IpAddr::V4(second_destination));
+        assert_eq!(first_after_refresh, IpAddr::V4(first_destination));
+
+        table.expire_resource_inside_ips(RESOURCE, &BTreeSet::from([proxy.into()]));
+
+        let (_, first_after_expiry) = table
+            .translate_outgoing(&packet, refreshed_destination.into(), RESOURCE, now)
+            .unwrap();
+        let (_, second_after_expiry) = table
+            .translate_outgoing(&packet, refreshed_destination.into(), OTHER_RESOURCE, now)
+            .unwrap();
+
+        assert_eq!(first_after_expiry, IpAddr::V4(refreshed_destination));
+        assert_eq!(second_after_expiry, IpAddr::V4(second_destination));
     }
 }
