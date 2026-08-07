@@ -108,7 +108,7 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: "line-tables-only"
           CARGO_PROFILE_TEST_DEBUG: "line-tables-only"
 
-      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+      - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         env:
           # The macOS runner installs the reporter from the coverallsapp/coveralls
           # Homebrew tap, which Homebrew 6.0.0 refuses to load unless trusted.
@@ -156,7 +156,7 @@ jobs:
         run: mise run -q //rust/tests/fuzz:coverage-check ${{ matrix.fuzz-target }}
       - name: Export lcov for Coveralls
         run: mise run -q //rust/tests/fuzz:lcov ${{ matrix.fuzz-target }} > lcov-${{ matrix.fuzz-target }}.info
-      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+      - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           file: rust/lcov-${{ matrix.fuzz-target }}.info
