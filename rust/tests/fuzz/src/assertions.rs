@@ -535,18 +535,15 @@ pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimCli
 
             (l3_tcp::IpEndpoint::from(src) == endpoint).then_some((s, endpoint))
         }) else {
-            if let Some(icmp_error) = received_icmp_error_for_tuple
-                && icmp_error.is_unreachable_prohibited()
-            {
-                tracing::error!(target: "assertions", %src, port = %dport.0, "Received ICMP prohibited error for a TCP connection expected to reach the resource");
-                continue;
+            match received_icmp_error_for_tuple {
+                Some(error) => {
+                    tracing::error!(target: "assertions", %src, port = %dport.0, %error, "Expected TCP connection failed with an ICMP error");
+                }
+                None => {
+                    tracing::error!(target: "assertions", %src, port = %dport.0, "Missing TCP connection");
+                }
             }
 
-            if received_icmp_error_for_tuple.is_some() {
-                continue;
-            }
-
-            tracing::error!(target: "assertions", %src, "Missing TCP connection");
             continue;
         };
 
