@@ -46,6 +46,7 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 smallvec = { workspace = true }
 snownet = { workspace = true }
+struct-to-enum-macros = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tunnel-proto = { workspace = true, features = ["malicious-behaviour"] }

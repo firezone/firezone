@@ -2,7 +2,9 @@ use std::{collections::BTreeMap, time::Duration};
 
 use connlib_model::Site;
 use dns_types::DomainName;
+use ip_network::{Ipv4Network, Ipv6Network};
 use smallvec::SmallVec;
+use tunnel_proto::messages::client::DevicePoolMember;
 
 use super::context::Generator;
 use super::topology::{
@@ -10,12 +12,18 @@ use super::topology::{
 };
 use super::values::{
     arb_address_description, arb_cidr_resource_address, arb_compatible_upstream_do53_servers,
-    arb_different_cidr_resource_address, arb_different_filters, arb_domain_name_string,
-    arb_ip_stack_kind, arb_system_dns_servers, arb_upstream_doh_servers,
+    arb_different_address_description, arb_different_cidr_resource_address,
+    arb_different_dns_resource_address, arb_different_filters, arb_different_ip_stack_kind,
+    arb_domain_name_string, arb_ip_stack_kind, arb_system_dns_servers, arb_upstream_doh_servers,
 };
 use super::{dns_queries, packets};
 use crate::reference::ReferenceState;
-use crate::resource::{CidrResource, DnsResource, Resource, StaticDevicePoolResource};
+use crate::resource::{
+    CidrResource, CidrResourceEdit, CidrResourceValue, DnsResource, DnsResourceEdit,
+    DnsResourceValue, DynamicDevicePoolResource, DynamicDevicePoolResourceEdit,
+    DynamicDevicePoolResourceValue, Resource, ResourceEdit, ResourceTypeEdit,
+    StaticDevicePoolResource, StaticDevicePoolResourceEdit, StaticDevicePoolResourceValue,
+};
 use crate::sim_net::{EdgeConfig, Host};
 use crate::transition::Transition;
 
@@ -33,10 +41,7 @@ enum TransitionKind {
     Idle,
     // State-gated.
     AddResource,
-    ChangeCidrResourceAddress,
-    MoveResourceToNewSite,
-    ChangeFiltersOfResource,
-    ChangeResourceType,
+    EditResource,
     RemoveResource,
     ReconnectPortal,
     RestartClient,
@@ -45,16 +50,11 @@ enum TransitionKind {
     UpdateDnsRecords,
     SendPacket,
     SendDnsQuery,
-    // Static device pool membership update.
-    UpdateStaticDevicePool,
 }
 
 pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Transition> {
     let addable_resources = state.resources_unknown_to_all_clients();
-    let cidr_resources = state.cidr_resources_on_any_client();
-    let move_resources = move_resource_candidates(state);
-    let filter_resources = state.resources_with_filters_on_any_client();
-    let replaceable_resources = state.replaceable_resources_on_any_client();
+    let editable_resources = state.editable_resources_on_any_client();
     let removable_resources = state.removable_resource_ids();
     let deauthorizable_resources = state.deauthorizable_resource_ids();
     let client_ids = state.all_client_ids();
@@ -79,10 +79,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         Some((K::RebootRelaysWhilePartitioned, 1)),
         Some((K::Idle, 1)),
         (!addable_resources.is_empty()).then_some((K::AddResource, 5)),
-        (!cidr_resources.is_empty()).then_some((K::ChangeCidrResourceAddress, 1)),
-        (!move_resources.is_empty()).then_some((K::MoveResourceToNewSite, 1)),
-        (!filter_resources.is_empty()).then_some((K::ChangeFiltersOfResource, 1)),
-        (!replaceable_resources.is_empty()).then_some((K::ChangeResourceType, 2)),
+        (!editable_resources.is_empty()).then_some((K::EditResource, 7)),
         (!removable_resources.is_empty()).then_some((K::RemoveResource, 1)),
         (!deauthorizable_resources.is_empty())
             .then_some((K::DeauthorizeWhileGatewayIsPartitioned, 1)),
@@ -92,11 +89,10 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         (!dns_record_domains.is_empty()).then_some((K::UpdateDnsRecords, 5)),
         (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQuery, 10)),
-        (!static_device_pools.is_empty()).then_some((K::UpdateStaticDevicePool, 2)),
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 23]>>();
+    .collect::<SmallVec<[_; 19]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -166,34 +162,9 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
             let resource = addable_resources[g.choose_index(addable_resources.len())].clone();
             Transition::AddResource(resource)
         }
-        K::ChangeCidrResourceAddress => {
-            let resource = cidr_resources[g.choose_index(cidr_resources.len())].clone();
-            let new_address = arb_different_cidr_resource_address(g, resource.address);
-            Transition::ChangeCidrResourceAddress {
-                resource,
-                new_address,
-            }
-        }
-        K::MoveResourceToNewSite => {
-            let (resource, new_site) = move_resources[g.choose_index(move_resources.len())].clone();
-            Transition::MoveResourceToNewSite { resource, new_site }
-        }
-        K::ChangeFiltersOfResource => {
-            let resource = filter_resources[g.choose_index(filter_resources.len())].clone();
-            let new_filters = arb_different_filters(g, resource.filters());
-            Transition::ChangeFiltersOfResource {
-                resource,
-                new_filters,
-            }
-        }
-        K::ChangeResourceType => {
-            let old_resource =
-                replaceable_resources[g.choose_index(replaceable_resources.len())].clone();
-            let new_resource = arb_resource_with_different_type(g, state, &old_resource);
-            Transition::ChangeResourceType {
-                old_resource,
-                new_resource,
-            }
+        K::EditResource => {
+            let resource = editable_resources[g.choose_index(editable_resources.len())].clone();
+            Transition::EditResource(arb_resource_edit(g, state, resource))
         }
         K::RemoveResource => {
             let id = removable_resources[g.choose_index(removable_resources.len())];
@@ -230,32 +201,219 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
             let target = dns_query_targets[g.choose_index(dns_query_targets.len())].clone();
             dns_queries::generate(g, target, state)
         }
-        K::UpdateStaticDevicePool => {
-            let pool = static_device_pools[g.choose_index(static_device_pools.len())].clone();
-            Transition::UpdateStaticDevicePool {
-                pool_id: pool.id,
-                new_devices: packets::arb_static_pool_members(g, state, &pool),
-            }
-        }
     };
 
     Some(transition)
 }
 
-fn move_resource_candidates(state: &ReferenceState) -> Vec<(Resource, Site)> {
-    let sites = state.regular_sites();
+fn arb_resource_edit(
+    g: &mut Generator,
+    state: &ReferenceState,
+    resource: Resource,
+) -> ResourceEdit {
+    if g.flip(25) {
+        let new_resource = arb_resource_with_different_type(g, state, &resource);
 
+        return ResourceEdit::Type(ResourceTypeEdit {
+            old_resource: resource,
+            new_resource,
+        });
+    }
+
+    match resource {
+        Resource::Dns(resource) => {
+            let fields = resource
+                .values()
+                .into_iter()
+                .filter(|field| match field {
+                    DnsResourceValue::Id(_) => {
+                        unreachable!("resource identity is not editable")
+                    }
+                    DnsResourceValue::Address(_) => true,
+                    DnsResourceValue::Name(_) => true,
+                    DnsResourceValue::AddressDescription(_) => true,
+                    DnsResourceValue::Sites(_) => has_alternative_site(&resource.sites, state),
+                    DnsResourceValue::IpStack(_) => true,
+                    DnsResourceValue::Filters(_) => true,
+                })
+                .collect::<SmallVec<[_; 6]>>();
+            let index = g.choose_index(fields.len());
+            let field = fields.into_iter().nth(index).expect("a valid field index");
+            let value = match field {
+                DnsResourceValue::Id(_) => unreachable!("resource identity is not editable"),
+                DnsResourceValue::Address(_) => DnsResourceValue::Address(
+                    arb_different_dns_resource_address(g, &resource.address),
+                ),
+                DnsResourceValue::Name(_) => {
+                    DnsResourceValue::Name(arb_different_name(g, &resource.name))
+                }
+                DnsResourceValue::AddressDescription(_) => DnsResourceValue::AddressDescription(
+                    arb_different_address_description(g, &resource.address_description),
+                ),
+                DnsResourceValue::Sites(_) => {
+                    DnsResourceValue::Sites(arb_different_site(g, &resource.sites, state))
+                }
+                DnsResourceValue::IpStack(_) => {
+                    DnsResourceValue::IpStack(arb_different_ip_stack_kind(g, resource.ip_stack))
+                }
+                DnsResourceValue::Filters(_) => {
+                    DnsResourceValue::Filters(arb_different_filters(g, &resource.filters))
+                }
+            };
+
+            ResourceEdit::Dns(DnsResourceEdit { resource, value })
+        }
+        Resource::Cidr(resource) => {
+            let fields = resource
+                .values()
+                .into_iter()
+                .filter(|field| match field {
+                    CidrResourceValue::Id(_) => {
+                        unreachable!("resource identity is not editable")
+                    }
+                    CidrResourceValue::Address(_) => true,
+                    CidrResourceValue::Name(_) => true,
+                    CidrResourceValue::AddressDescription(_) => true,
+                    CidrResourceValue::Sites(_) => has_alternative_site(&resource.sites, state),
+                    CidrResourceValue::Filters(_) => true,
+                })
+                .collect::<SmallVec<[_; 5]>>();
+            let index = g.choose_index(fields.len());
+            let field = fields.into_iter().nth(index).expect("a valid field index");
+            let value = match field {
+                CidrResourceValue::Id(_) => unreachable!("resource identity is not editable"),
+                CidrResourceValue::Address(_) => CidrResourceValue::Address(
+                    arb_different_cidr_resource_address(g, resource.address),
+                ),
+                CidrResourceValue::Name(_) => {
+                    CidrResourceValue::Name(arb_different_name(g, &resource.name))
+                }
+                CidrResourceValue::AddressDescription(_) => CidrResourceValue::AddressDescription(
+                    arb_different_address_description(g, &resource.address_description),
+                ),
+                CidrResourceValue::Sites(_) => {
+                    CidrResourceValue::Sites(arb_different_site(g, &resource.sites, state))
+                }
+                CidrResourceValue::Filters(_) => {
+                    CidrResourceValue::Filters(arb_different_filters(g, &resource.filters))
+                }
+            };
+
+            ResourceEdit::Cidr(CidrResourceEdit { resource, value })
+        }
+        Resource::StaticDevicePool(resource) => {
+            let fields = resource.values();
+            let index = g.choose_index(fields.len());
+            let field = fields.into_iter().nth(index).expect("a valid field index");
+            let value = match field {
+                StaticDevicePoolResourceValue::Id(_) => {
+                    unreachable!("resource identity is not editable")
+                }
+                StaticDevicePoolResourceValue::Name(_) => {
+                    StaticDevicePoolResourceValue::Name(arb_different_name(g, &resource.name))
+                }
+                StaticDevicePoolResourceValue::Devices(_) => {
+                    StaticDevicePoolResourceValue::Devices(arb_different_static_pool_members(
+                        g, state, &resource,
+                    ))
+                }
+                StaticDevicePoolResourceValue::Filters(_) => {
+                    StaticDevicePoolResourceValue::Filters(arb_different_filters(
+                        g,
+                        &resource.filters,
+                    ))
+                }
+            };
+
+            ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit { resource, value })
+        }
+        Resource::DynamicDevicePool(resource) => {
+            let fields = resource.values();
+            let index = g.choose_index(fields.len());
+            let field = fields.into_iter().nth(index).expect("a valid field index");
+            let value = match field {
+                DynamicDevicePoolResourceValue::Id(_) => {
+                    unreachable!("resource identity is not editable")
+                }
+                DynamicDevicePoolResourceValue::Name(_) => {
+                    DynamicDevicePoolResourceValue::Name(arb_different_name(g, &resource.name))
+                }
+                DynamicDevicePoolResourceValue::Address(_) => {
+                    DynamicDevicePoolResourceValue::Address(arb_different_dns_resource_address(
+                        g,
+                        &resource.address,
+                    ))
+                }
+                DynamicDevicePoolResourceValue::Filters(_) => {
+                    DynamicDevicePoolResourceValue::Filters(arb_different_filters(
+                        g,
+                        &resource.filters,
+                    ))
+                }
+            };
+
+            ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit { resource, value })
+        }
+        Resource::Internet(_) => {
+            unreachable!("the Portal API does not allow editing the Internet Resource")
+        }
+    }
+}
+
+fn has_alternative_site(current: &[Site], state: &ReferenceState) -> bool {
     state
-        .cidr_and_dns_resources_on_any_client()
-        .into_iter()
-        .flat_map(|resource| {
-            let candidate = resource.clone();
-            sites
-                .iter()
-                .filter(move |site| !candidate.is_exclusively_at(site))
-                .map(move |site| (resource.clone(), site.clone()))
-        })
-        .collect::<Vec<_>>()
+        .regular_sites()
+        .iter()
+        .any(|site| current.len() != 1 || current.first() != Some(site))
+}
+
+fn arb_different_site(g: &mut Generator, current: &[Site], state: &ReferenceState) -> Vec<Site> {
+    let sites = state
+        .regular_sites()
+        .iter()
+        .filter(|site| current.len() != 1 || current.first() != Some(*site))
+        .collect::<SmallVec<[_; 3]>>();
+    let site = sites[g.choose_index(sites.len())];
+
+    vec![site.clone()]
+}
+
+fn arb_different_name(g: &mut Generator, current: &str) -> String {
+    let name = g.lower_ascii(4, 10);
+
+    if name != current {
+        return name;
+    }
+
+    "changed".to_owned()
+}
+
+fn arb_different_static_pool_members(
+    g: &mut Generator,
+    state: &ReferenceState,
+    resource: &StaticDevicePoolResource,
+) -> Vec<DevicePoolMember> {
+    let devices = packets::arb_static_pool_members(g, state, resource);
+
+    if devices != resource.devices {
+        return devices;
+    }
+
+    if !resource.devices.is_empty() {
+        return Vec::new();
+    }
+
+    let (id, client) = state
+        .clients
+        .first_key_value()
+        .expect("at least one client");
+    let client = client.inner();
+
+    vec![DevicePoolMember {
+        id: *id,
+        ipv4: Ipv4Network::new(client.tunnel_ip4, 32).unwrap(),
+        ipv6: Ipv6Network::new(client.tunnel_ip6, 128).unwrap(),
+    }]
 }
 
 fn arb_resource_with_different_type(
@@ -268,17 +426,32 @@ fn arb_resource_with_different_type(
         Cidr,
         Dns,
         StaticDevicePool,
+        DynamicDevicePool,
     }
 
     let resource_type = match resource {
-        Resource::Cidr(_) => [ResourceType::Dns, ResourceType::StaticDevicePool][g.choose_index(2)],
-        Resource::Dns(_) => [ResourceType::Cidr, ResourceType::StaticDevicePool][g.choose_index(2)],
-        Resource::StaticDevicePool(_) => [ResourceType::Cidr, ResourceType::Dns][g.choose_index(2)],
+        Resource::Cidr(_) => [
+            ResourceType::Dns,
+            ResourceType::StaticDevicePool,
+            ResourceType::DynamicDevicePool,
+        ][g.choose_index(3)],
+        Resource::Dns(_) => [
+            ResourceType::Cidr,
+            ResourceType::StaticDevicePool,
+            ResourceType::DynamicDevicePool,
+        ][g.choose_index(3)],
+        Resource::StaticDevicePool(_) => [
+            ResourceType::Cidr,
+            ResourceType::Dns,
+            ResourceType::DynamicDevicePool,
+        ][g.choose_index(3)],
+        Resource::DynamicDevicePool(_) => [
+            ResourceType::Cidr,
+            ResourceType::Dns,
+            ResourceType::StaticDevicePool,
+        ][g.choose_index(3)],
         Resource::Internet(_) => {
-            unreachable!("only user-editable resource types can replace one another")
-        }
-        Resource::DynamicDevicePool(_) => {
-            unreachable!("only user-editable resource types can replace one another")
+            unreachable!("the Portal API does not allow editing the Internet Resource")
         }
     };
 
@@ -324,6 +497,16 @@ fn arb_resource_with_different_type(
             devices: packets::arb_online_static_pool_members(g, state),
             filters,
         }),
+        ResourceType::DynamicDevicePool => {
+            let base = arb_domain_name_string(g, 2, 3);
+
+            Resource::DynamicDevicePool(DynamicDevicePoolResource {
+                id,
+                name,
+                address: format!("*.{base}"),
+                filters,
+            })
+        }
     }
 }
 

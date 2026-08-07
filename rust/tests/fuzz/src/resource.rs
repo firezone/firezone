@@ -11,9 +11,13 @@ use connlib_model::{
 use ip_network::IpNetwork;
 use itertools::Itertools as _;
 use serde_json::{Value, json};
+use struct_to_enum_macros::FieldType;
 use tunnel_proto::messages::{
     Filter,
-    client::{DevicePoolMember, ResourceDescription},
+    client::{
+        DevicePoolMember, ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
+        ResourceDescriptionDynamicDevicePool, ResourceDescriptionStaticDevicePool,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -25,7 +29,8 @@ pub(crate) enum Resource {
     DynamicDevicePool(DynamicDevicePoolResource),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, FieldType)]
+#[stem_type_derive(Debug, Clone)]
 pub(crate) struct DnsResource {
     pub(crate) id: ResourceId,
     pub(crate) address: String,
@@ -36,7 +41,8 @@ pub(crate) struct DnsResource {
     pub(crate) filters: Vec<Filter>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, FieldType)]
+#[stem_type_derive(Debug, Clone)]
 pub(crate) struct CidrResource {
     pub(crate) id: ResourceId,
     pub(crate) address: IpNetwork,
@@ -53,7 +59,8 @@ pub(crate) struct InternetResource {
     pub(crate) sites: Vec<Site>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, FieldType)]
+#[stem_type_derive(Debug, Clone)]
 pub(crate) struct StaticDevicePoolResource {
     pub(crate) id: ResourceId,
     pub(crate) name: String,
@@ -61,11 +68,301 @@ pub(crate) struct StaticDevicePoolResource {
     pub(crate) filters: Vec<Filter>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, FieldType)]
+#[stem_type_derive(Debug, Clone)]
 pub(crate) struct DynamicDevicePoolResource {
     pub(crate) id: ResourceId,
     pub(crate) name: String,
     pub(crate) address: String,
+    pub(crate) filters: Vec<Filter>,
+}
+
+// These conversions are only type-checked. Exhaustive destructuring keeps the
+// reference resource fields aligned with the production portal messages.
+const _: fn(ResourceDescriptionDns) -> DnsResource = |description| {
+    let ResourceDescriptionDns {
+        id,
+        address,
+        name,
+        address_description,
+        sites,
+        ip_stack,
+        filters,
+    } = description;
+
+    DnsResource {
+        id,
+        address,
+        name,
+        address_description,
+        sites,
+        ip_stack: ip_stack.unwrap_or(IpStack::Dual),
+        filters,
+    }
+};
+
+const _: fn(ResourceDescriptionCidr) -> CidrResource = |description| {
+    let ResourceDescriptionCidr {
+        id,
+        address,
+        name,
+        address_description,
+        sites,
+        filters,
+    } = description;
+
+    CidrResource {
+        id,
+        address,
+        name,
+        address_description,
+        sites,
+        filters,
+    }
+};
+
+const _: fn(ResourceDescriptionStaticDevicePool) -> StaticDevicePoolResource = |description| {
+    let ResourceDescriptionStaticDevicePool {
+        id,
+        name,
+        devices,
+        filters,
+    } = description;
+
+    StaticDevicePoolResource {
+        id,
+        name,
+        devices,
+        filters,
+    }
+};
+
+const _: fn(ResourceDescriptionDynamicDevicePool) -> DynamicDevicePoolResource = |description| {
+    let ResourceDescriptionDynamicDevicePool {
+        id,
+        name,
+        address,
+        filters,
+    } = description;
+
+    DynamicDevicePoolResource {
+        id,
+        name,
+        address,
+        filters,
+    }
+};
+
+const _: fn(ResourceDescription) -> bool = |description| match description {
+    ResourceDescription::Dns(_)
+    | ResourceDescription::Cidr(_)
+    | ResourceDescription::StaticDevicePool(_)
+    | ResourceDescription::DynamicDevicePool(_) => true,
+    ResourceDescription::Internet(_) | ResourceDescription::Unknown => false,
+};
+
+pub(crate) type DnsResourceValue = DnsResourceFieldType;
+pub(crate) type CidrResourceValue = CidrResourceFieldType;
+pub(crate) type StaticDevicePoolResourceValue = StaticDevicePoolResourceFieldType;
+pub(crate) type DynamicDevicePoolResourceValue = DynamicDevicePoolResourceFieldType;
+
+impl DnsResource {
+    pub(crate) fn values(&self) -> [DnsResourceValue; 6] {
+        let [
+            DnsResourceValue::Id(_),
+            address @ DnsResourceValue::Address(_),
+            name @ DnsResourceValue::Name(_),
+            address_description @ DnsResourceValue::AddressDescription(_),
+            sites @ DnsResourceValue::Sites(_),
+            ip_stack @ DnsResourceValue::IpStack(_),
+            filters @ DnsResourceValue::Filters(_),
+        ] = <[DnsResourceValue; 7]>::from(self.clone())
+        else {
+            unreachable!("resource fields are generated in declaration order")
+        };
+
+        [address, name, address_description, sites, ip_stack, filters]
+    }
+
+    fn update(&mut self, value: DnsResourceValue) {
+        match value {
+            DnsResourceValue::Id(_) => unreachable!("resource identity is not editable"),
+            DnsResourceValue::Address(value) => self.address = value,
+            DnsResourceValue::Name(value) => self.name = value,
+            DnsResourceValue::AddressDescription(value) => self.address_description = value,
+            DnsResourceValue::Sites(value) => self.sites = value,
+            DnsResourceValue::IpStack(value) => self.ip_stack = value,
+            DnsResourceValue::Filters(value) => self.filters = value,
+        }
+    }
+}
+
+impl CidrResource {
+    pub(crate) fn values(&self) -> [CidrResourceValue; 5] {
+        let [
+            CidrResourceValue::Id(_),
+            address @ CidrResourceValue::Address(_),
+            name @ CidrResourceValue::Name(_),
+            address_description @ CidrResourceValue::AddressDescription(_),
+            sites @ CidrResourceValue::Sites(_),
+            filters @ CidrResourceValue::Filters(_),
+        ] = <[CidrResourceValue; 6]>::from(self.clone())
+        else {
+            unreachable!("resource fields are generated in declaration order")
+        };
+
+        [address, name, address_description, sites, filters]
+    }
+
+    fn update(&mut self, value: CidrResourceValue) {
+        match value {
+            CidrResourceValue::Id(_) => unreachable!("resource identity is not editable"),
+            CidrResourceValue::Address(value) => self.address = value,
+            CidrResourceValue::Name(value) => self.name = value,
+            CidrResourceValue::AddressDescription(value) => self.address_description = value,
+            CidrResourceValue::Sites(value) => self.sites = value,
+            CidrResourceValue::Filters(value) => self.filters = value,
+        }
+    }
+}
+
+impl StaticDevicePoolResource {
+    pub(crate) fn values(&self) -> [StaticDevicePoolResourceValue; 3] {
+        let [
+            StaticDevicePoolResourceValue::Id(_),
+            name @ StaticDevicePoolResourceValue::Name(_),
+            devices @ StaticDevicePoolResourceValue::Devices(_),
+            filters @ StaticDevicePoolResourceValue::Filters(_),
+        ] = <[StaticDevicePoolResourceValue; 4]>::from(self.clone())
+        else {
+            unreachable!("resource fields are generated in declaration order")
+        };
+
+        [name, devices, filters]
+    }
+
+    fn update(&mut self, value: StaticDevicePoolResourceValue) {
+        match value {
+            StaticDevicePoolResourceValue::Id(_) => {
+                unreachable!("resource identity is not editable")
+            }
+            StaticDevicePoolResourceValue::Name(value) => self.name = value,
+            StaticDevicePoolResourceValue::Devices(value) => self.devices = value,
+            StaticDevicePoolResourceValue::Filters(value) => self.filters = value,
+        }
+    }
+}
+
+impl DynamicDevicePoolResource {
+    pub(crate) fn values(&self) -> [DynamicDevicePoolResourceValue; 3] {
+        let [
+            DynamicDevicePoolResourceValue::Id(_),
+            name @ DynamicDevicePoolResourceValue::Name(_),
+            address @ DynamicDevicePoolResourceValue::Address(_),
+            filters @ DynamicDevicePoolResourceValue::Filters(_),
+        ] = <[DynamicDevicePoolResourceValue; 4]>::from(self.clone())
+        else {
+            unreachable!("resource fields are generated in declaration order")
+        };
+
+        [name, address, filters]
+    }
+
+    fn update(&mut self, value: DynamicDevicePoolResourceValue) {
+        match value {
+            DynamicDevicePoolResourceValue::Id(_) => {
+                unreachable!("resource identity is not editable")
+            }
+            DynamicDevicePoolResourceValue::Name(value) => self.name = value,
+            DynamicDevicePoolResourceValue::Address(value) => self.address = value,
+            DynamicDevicePoolResourceValue::Filters(value) => self.filters = value,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum ResourceEdit {
+    Dns(DnsResourceEdit),
+    Cidr(CidrResourceEdit),
+    StaticDevicePool(StaticDevicePoolResourceEdit),
+    DynamicDevicePool(DynamicDevicePoolResourceEdit),
+    Type(ResourceTypeEdit),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DnsResourceEdit {
+    pub(crate) resource: DnsResource,
+    pub(crate) value: DnsResourceValue,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CidrResourceEdit {
+    pub(crate) resource: CidrResource,
+    pub(crate) value: CidrResourceValue,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct StaticDevicePoolResourceEdit {
+    pub(crate) resource: StaticDevicePoolResource,
+    pub(crate) value: StaticDevicePoolResourceValue,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DynamicDevicePoolResourceEdit {
+    pub(crate) resource: DynamicDevicePoolResource,
+    pub(crate) value: DynamicDevicePoolResourceValue,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ResourceTypeEdit {
+    pub(crate) old_resource: Resource,
+    pub(crate) new_resource: Resource,
+}
+
+impl ResourceEdit {
+    pub(crate) fn id(&self) -> ResourceId {
+        match self {
+            ResourceEdit::Dns(edit) => edit.resource.id,
+            ResourceEdit::Cidr(edit) => edit.resource.id,
+            ResourceEdit::StaticDevicePool(edit) => edit.resource.id,
+            ResourceEdit::DynamicDevicePool(edit) => edit.resource.id,
+            ResourceEdit::Type(edit) => edit.old_resource.id(),
+        }
+    }
+
+    pub(crate) fn updated_resource(&self) -> Resource {
+        match self {
+            ResourceEdit::Dns(edit) => {
+                let mut resource = edit.resource.clone();
+                resource.update(edit.value.clone());
+
+                Resource::Dns(resource)
+            }
+            ResourceEdit::Cidr(edit) => {
+                let mut resource = edit.resource.clone();
+                resource.update(edit.value.clone());
+
+                Resource::Cidr(resource)
+            }
+            ResourceEdit::StaticDevicePool(edit) => {
+                let mut resource = edit.resource.clone();
+                resource.update(edit.value.clone());
+
+                Resource::StaticDevicePool(resource)
+            }
+            ResourceEdit::DynamicDevicePool(edit) => {
+                let mut resource = edit.resource.clone();
+                resource.update(edit.value.clone());
+
+                Resource::DynamicDevicePool(resource)
+            }
+            ResourceEdit::Type(edit) => {
+                debug_assert_eq!(edit.old_resource.id(), edit.new_resource.id());
+
+                edit.new_resource.clone()
+            }
+        }
+    }
 }
 
 impl Resource {
@@ -119,17 +416,13 @@ impl Resource {
         }
     }
 
-    pub(crate) fn is_exclusively_at(&self, site: &Site) -> bool {
-        self.sites().len() == 1 && self.sites().first() == Some(site)
-    }
-
     pub(crate) fn filters(&self) -> &[Filter] {
         match self {
             Resource::Dns(r) => &r.filters,
             Resource::Cidr(r) => &r.filters,
             Resource::StaticDevicePool(r) => &r.filters,
             Resource::Internet(_) => &[],
-            Resource::DynamicDevicePool(_) => &[],
+            Resource::DynamicDevicePool(r) => &r.filters,
         }
     }
 
@@ -172,37 +465,6 @@ impl Resource {
         self.filters() != other.filters()
     }
 
-    pub(crate) fn with_new_site(self, site: Site) -> Self {
-        match self {
-            Resource::Dns(r) => Self::Dns(DnsResource {
-                sites: vec![site],
-                ..r
-            }),
-            Resource::Cidr(r) => Self::Cidr(CidrResource {
-                sites: vec![site],
-                ..r
-            }),
-            Resource::Internet(r) => Self::Internet(InternetResource {
-                sites: vec![site],
-                ..r
-            }),
-            Resource::StaticDevicePool(r) => Self::StaticDevicePool(r),
-            Resource::DynamicDevicePool(r) => Self::DynamicDevicePool(r),
-        }
-    }
-
-    pub(crate) fn with_new_filters(self, filters: Vec<Filter>) -> Self {
-        match self {
-            Resource::Dns(r) => Self::Dns(DnsResource { filters, ..r }),
-            Resource::Cidr(r) => Self::Cidr(CidrResource { filters, ..r }),
-            Resource::StaticDevicePool(r) => {
-                Self::StaticDevicePool(StaticDevicePoolResource { filters, ..r })
-            }
-            Resource::Internet(_) => self,
-            Resource::DynamicDevicePool(_) => self,
-        }
-    }
-
     /// Converts the reference resource into the portal message consumed by the SUT.
     pub(crate) fn into_description(self) -> ResourceDescription {
         match self {
@@ -238,6 +500,7 @@ impl Resource {
                 "id": r.id,
                 "name": r.name,
                 "address": r.address,
+                "filters": filters_json(r.filters),
             })),
         }
     }

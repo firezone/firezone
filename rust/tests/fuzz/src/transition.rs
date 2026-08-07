@@ -1,15 +1,14 @@
-use connlib_model::{ClientId, RelayId, ResourceId, Site};
+use connlib_model::{ClientId, RelayId, ResourceId};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
-use ip_network::IpNetwork;
 use tunnel_proto::{
     dns,
-    messages::{Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember},
+    messages::{UpstreamDo53, UpstreamDoH},
 };
 
 use super::{
     probe::ProbeId,
     reference::PrivateKey,
-    resource::{CidrResource, Resource},
+    resource::{Resource, ResourceEdit},
     sim_net::Host,
 };
 use std::{
@@ -23,26 +22,7 @@ use std::{
 pub enum Transition {
     AddResource(Resource),
     RemoveResource(ResourceId),
-    ChangeCidrResourceAddress {
-        resource: CidrResource,
-        new_address: IpNetwork,
-    },
-    MoveResourceToNewSite {
-        resource: Resource,
-        new_site: Site,
-    },
-    ChangeFiltersOfResource {
-        resource: Resource,
-        new_filters: Vec<Filter>,
-    },
-    ChangeResourceType {
-        old_resource: Resource,
-        new_resource: Resource,
-    },
-    UpdateStaticDevicePool {
-        pool_id: ResourceId,
-        new_devices: Vec<DevicePoolMember>,
-    },
+    EditResource(ResourceEdit),
     SetInternetResourceState {
         client_id: ClientId,
         active: bool,
@@ -121,11 +101,7 @@ impl Transition {
         match self {
             Transition::AddResource(_) => true,
             Transition::RemoveResource(_) => true,
-            Transition::ChangeCidrResourceAddress { .. } => true,
-            Transition::MoveResourceToNewSite { .. } => true,
-            Transition::ChangeFiltersOfResource { .. } => true,
-            Transition::ChangeResourceType { .. } => true,
-            Transition::UpdateStaticDevicePool { .. } => true,
+            Transition::EditResource(_) => true,
             Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacket { .. } => false,
             Transition::SendUdpPacket { .. } => false,
