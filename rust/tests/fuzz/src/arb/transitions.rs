@@ -82,6 +82,11 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     let dns_query_targets = dns_queries::targets(state);
     let truncated_dns_query_targets = state.reachable_dns_servers();
 
+    debug_assert!(gateway_portal_reconnect_targets.is_empty() || !packet_targets.is_empty());
+    // Gateway reconnects share the data-plane action budget so their legality
+    // does not renumber unrelated transition choices.
+    let send_packet_weight = 50 - u32::from(!gateway_portal_reconnect_targets.is_empty());
+
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; libFuzzer chooses the concrete
     // destination, protocol and fields from subsequent bytes.
@@ -106,12 +111,12 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
             .then_some((K::DeauthorizeWhileGatewayIsPartitioned, 1)),
         (!expirable_gateway_authorizations.is_empty())
             .then_some((K::ExpireGatewayAuthorization, 1)),
-        (!gateway_portal_reconnect_targets.is_empty()).then_some((K::ReconnectGatewayPortal, 1)),
         (!client_ids.is_empty()).then_some((K::ReconnectPortal, 1)),
         (!client_ids.is_empty()).then_some((K::RestartClient, 1)),
         (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
         (!dns_record_domains.is_empty()).then_some((K::UpdateDnsRecords, 5)),
-        (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
+        (!gateway_portal_reconnect_targets.is_empty()).then_some((K::ReconnectGatewayPortal, 1)),
+        (!packet_targets.is_empty()).then_some((K::SendPacket, send_packet_weight)),
         (!gateway_dns_resolution_failure_targets.is_empty())
             .then_some((K::SendPacketWithGatewayDnsResolutionFailure, 5)),
         (!gateway_dns_resolution_refresh_failure_targets.is_empty())
