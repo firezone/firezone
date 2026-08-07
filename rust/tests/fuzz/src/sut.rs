@@ -538,6 +538,10 @@ impl TunnelTest {
 
                 state.deploy_new_relays(new_relays, now, to_remove);
             }
+            Transition::UpdateRelayPresence {
+                disconnected,
+                connected,
+            } => state.update_relay_presence(disconnected, connected, now),
             Transition::Idle => {
                 const IDLE_DURATION: Duration = Duration::from_secs(6 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
                 let cut_off = state.flux_capacitor.now::<Instant>() + IDLE_DURATION;
@@ -1458,6 +1462,49 @@ impl TunnelTest {
             gateway.exec_mut(|g| g.update_relays(to_remove.iter().copied(), online.iter(), now));
         }
         self.relays = online; // Override all relays.
+    }
+
+    fn update_relay_presence(
+        &mut self,
+        disconnected: BTreeSet<RelayId>,
+        connected: BTreeMap<RelayId, Host<u64>>,
+        now: Instant,
+    ) {
+        for relay_id in &disconnected {
+            let Some(relay) = self.relays.remove(relay_id) else {
+                continue;
+            };
+
+            self.network.remove_host(&relay);
+        }
+
+        let connected = connected
+            .into_iter()
+            .map(|(relay_id, relay)| {
+                (
+                    relay_id,
+                    relay.map(SimRelay::new, debug_span!("relay", %relay_id)),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        for (relay_id, relay) in &connected {
+            let added = self.network.add_host(*relay_id, relay);
+            debug_assert!(added);
+        }
+
+        for client in self.clients.values_mut() {
+            client.exec_mut(|client| {
+                client.update_relays(disconnected.iter().copied(), connected.iter(), now)
+            });
+        }
+        for gateway in self.gateways.values_mut() {
+            gateway.exec_mut(|gateway| {
+                gateway.update_relays(disconnected.iter().copied(), connected.iter(), now)
+            });
+        }
+
+        self.relays.extend(connected);
     }
 }
 

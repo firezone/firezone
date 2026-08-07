@@ -358,6 +358,10 @@ impl ReferenceState {
                     .exec_mut(|c| c.readd_all_resources());
             }
             Transition::DeployNewRelays(new_relays) => state.deploy_new_relays(new_relays),
+            Transition::UpdateRelayPresence {
+                disconnected,
+                connected,
+            } => state.update_relay_presence(disconnected, connected),
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 state.deploy_new_relays(new_relays)
             }
@@ -1109,6 +1113,27 @@ impl ReferenceState {
             let added = self.network.add_host(*rid, new_relay);
             debug_assert!(added);
         }
+    }
+
+    fn update_relay_presence(
+        &mut self,
+        disconnected: &BTreeSet<RelayId>,
+        connected: &BTreeMap<RelayId, Host<u64>>,
+    ) {
+        for relay_id in disconnected {
+            let Some(relay) = self.relays.remove(relay_id) else {
+                continue;
+            };
+
+            self.network.remove_host(&relay);
+        }
+
+        for (relay_id, relay) in connected {
+            let added = self.network.add_host(*relay_id, relay);
+            debug_assert!(added);
+        }
+
+        self.relays.extend(connected.clone());
     }
 }
 

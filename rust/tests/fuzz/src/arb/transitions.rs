@@ -9,7 +9,7 @@ use smallvec::SmallVec;
 
 use super::context::Generator;
 use super::topology::{
-    arb_dns_record_set, arb_relays, arb_socket_ip_stack, pick_site, with_interface,
+    arb_dns_record_set, arb_relays, arb_socket_ip_stack, arb_two_relays, pick_site, with_interface,
 };
 use super::values::{
     arb_address_description, arb_cidr_resource_address, arb_compatible_upstream_do53_servers,
@@ -150,7 +150,22 @@ pub(super) fn generate(
                 portal_window,
             }
         }
-        K::DeployNewRelays => Transition::DeployNewRelays(arb_relays(g)),
+        K::DeployNewRelays => {
+            if state.relays.len() >= 2 && g.bool() {
+                let relay_id = state
+                    .relays
+                    .keys()
+                    .nth(g.choose_index(state.relays.len()))
+                    .unwrap();
+
+                Transition::UpdateRelayPresence {
+                    disconnected: [*relay_id].into_iter().collect(),
+                    connected: arb_two_relays(g),
+                }
+            } else {
+                Transition::DeployNewRelays(arb_relays(g))
+            }
+        }
         K::PartitionRelaysFromPortal => Transition::PartitionRelaysFromPortal,
         K::RebootRelaysWhilePartitioned => {
             // Reboot the *existing* relays with fresh credentials (same ids).
