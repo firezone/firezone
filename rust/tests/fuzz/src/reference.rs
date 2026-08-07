@@ -682,20 +682,27 @@ impl ReferenceState {
         } else {
             RecordType::AAAA
         };
-        let has_compatible_record = self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
+        let resolution = self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
             client.prepare_dns_resource_connection(resource, &self.global_dns_records);
-            client
-                .dns_resource_resolution(resource, name)
-                .is_some_and(|records| records.contains(&required_record))
+            client.dns_resource_resolution(resource, name).cloned()
         });
         let Some(gateway) = gateway else {
             return route;
         };
-        if has_compatible_record {
-            return route;
-        }
 
-        PacketRoute::ResourceUnreachableByGateway { resource, gateway }
+        match resolution {
+            Some(DnsResourceResolution::Resolved(records))
+                if records.contains(&required_record) =>
+            {
+                route
+            }
+            Some(DnsResourceResolution::Resolved(_)) | None => {
+                PacketRoute::ResourceUnreachableByGateway { resource, gateway }
+            }
+            Some(DnsResourceResolution::Failed) => {
+                PacketRoute::ResourceRejectedByGateway { resource, gateway }
+            }
+        }
     }
 
     fn trace_requirement(

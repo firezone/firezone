@@ -33,6 +33,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Clone, Debug)]
+pub(crate) enum DnsResourceResolution {
+    Resolved(BTreeSet<RecordType>),
+    Failed,
+}
+
 /// Reference state for a particular client.
 ///
 /// The reference state machine is designed to be as abstract as possible over connlib's functionality.
@@ -81,9 +87,9 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) connected_dns_resources: BTreeSet<ResourceId>,
 
-    /// The current record kinds resolved by a connected gateway for each DNS resource domain.
+    /// The outcome of the gateway's DNS resolution for each DNS resource domain.
     #[debug(skip)]
-    dns_resource_resolutions: BTreeMap<(ResourceId, DomainName), BTreeSet<RecordType>>,
+    dns_resource_resolutions: BTreeMap<(ResourceId, DomainName), DnsResourceResolution>,
 
     /// The [`ResourceStatus`] of each site.
     #[debug(skip)]
@@ -627,7 +633,7 @@ impl RefClient {
     ) {
         self.prepare_dns_resource_connection(resource, global_dns_records);
         self.dns_resource_resolutions
-            .remove(&(resource, domain.clone()));
+            .insert((resource, domain.clone()), DnsResourceResolution::Failed);
         self.record_resource_packet(resource, gateway, destination, now);
     }
 
@@ -851,7 +857,9 @@ impl RefClient {
             {
                 self.dns_resource_resolutions.insert(
                     (resource, query.domain.clone()),
-                    global_dns_records.domain_rtypes(&query.domain),
+                    DnsResourceResolution::Resolved(
+                        global_dns_records.domain_rtypes(&query.domain),
+                    ),
                 );
             }
 
@@ -1405,8 +1413,10 @@ impl RefClient {
 
         for domain in domains {
             let record_types = global_dns_records.domain_rtypes(&domain);
-            self.dns_resource_resolutions
-                .insert((resource, domain), record_types);
+            self.dns_resource_resolutions.insert(
+                (resource, domain),
+                DnsResourceResolution::Resolved(record_types),
+            );
         }
     }
 
@@ -1414,7 +1424,7 @@ impl RefClient {
         &self,
         resource: ResourceId,
         domain: &DomainName,
-    ) -> Option<&BTreeSet<RecordType>> {
+    ) -> Option<&DnsResourceResolution> {
         self.dns_resource_resolutions
             .get(&(resource, domain.clone()))
     }
