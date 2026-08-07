@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use connlib_model::Site;
+use connlib_model::{ResourceId, Site};
 use dns_types::DomainName;
 use ip_network::{Ipv4Network, Ipv6Network};
 use smallvec::SmallVec;
@@ -244,7 +244,7 @@ fn arb_resource_edit(
             let field = fields.into_iter().nth(index).expect("a valid field index");
             let value = match field {
                 DnsResourceValue::Address(_) => DnsResourceValue::Address(
-                    arb_different_dns_resource_address(g, &resource.address),
+                    arb_available_dns_resource_address(g, state, resource.id, &resource.address),
                 ),
                 DnsResourceValue::Name(_) => {
                     DnsResourceValue::Name(arb_different_name(g, &resource.name))
@@ -351,6 +351,18 @@ fn has_alternative_site(current: &[Site], state: &ReferenceState) -> bool {
         .regular_sites()
         .iter()
         .any(|site| current.len() != 1 || current.first() != Some(site))
+}
+
+fn arb_available_dns_resource_address(
+    g: &mut Generator,
+    state: &ReferenceState,
+    id: ResourceId,
+    current: &str,
+) -> String {
+    (0..16)
+        .map(|_| arb_different_dns_resource_address(g, current))
+        .find(|address| state.dns_resource_address_is_available(id, address))
+        .unwrap_or_else(|| format!("{id}.invalid"))
 }
 
 fn arb_different_site(g: &mut Generator, current: &[Site], state: &ReferenceState) -> Vec<Site> {
@@ -460,12 +472,7 @@ fn arb_resource_with_different_type(
             filters,
         }),
         ResourceType::Dns => {
-            let base = arb_domain_name_string(g, 2, 3);
-            let address = match g.choose_index(3) {
-                0 => base,
-                1 => format!("*.{base}"),
-                _ => format!("**.{base}"),
-            };
+            let address = arb_available_dns_resource_address(g, state, id, "");
 
             Resource::Dns(DnsResource {
                 id,

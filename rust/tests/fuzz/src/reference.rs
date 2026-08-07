@@ -14,7 +14,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fmt,
+    fmt, iter,
     net::{IpAddr, SocketAddr},
 };
 use tunnel_proto::dns;
@@ -24,6 +24,25 @@ use tunnel_proto::messages::Filter;
 use crate::resource as client;
 
 const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
+
+fn dns_resource_patterns_overlap(first: &str, second: &str) -> bool {
+    iter::empty()
+        .chain(dns_pattern_examples(first))
+        .chain(dns_pattern_examples(second))
+        .any(|candidate| is_subdomain(&candidate, first) && is_subdomain(&candidate, second))
+}
+
+fn dns_pattern_examples(pattern: &str) -> impl Iterator<Item = DomainName> {
+    let base = pattern
+        .strip_prefix("**.")
+        .or_else(|| pattern.strip_prefix("*."))
+        .unwrap_or(pattern);
+
+    iter::empty()
+        .chain(pattern.parse().ok())
+        .chain(format!("x.{base}").parse().ok())
+        .chain(format!("x.x.{base}").parse().ok())
+}
 
 /// The reference state machine of the tunnel.
 ///
@@ -825,34 +844,13 @@ impl ReferenceState {
     }
 
     pub(crate) fn resources_unknown_to_all_clients(&self) -> Vec<client::Resource> {
-        let active_dns_addresses = self
-            .portal
-            .all_resources()
-            .into_iter()
-            .filter_map(|resource| match resource {
-                client::Resource::Dns(resource)
-                    if self
-                        .clients
-                        .values()
-                        .any(|client| client.inner().has_resource(resource.id)) =>
-                {
-                    Some(resource.address)
-                }
-                client::Resource::Dns(_) => None,
-                client::Resource::Cidr(_) => None,
-                client::Resource::Internet(_) => None,
-                client::Resource::StaticDevicePool(_) => None,
-                client::Resource::DynamicDevicePool(_) => None,
-            })
-            .collect::<BTreeSet<_>>();
-
         self.portal
             .all_resources()
             .into_iter()
             .filter(|resource| {
-                let has_unique_address = match resource {
+                let has_non_overlapping_address = match resource {
                     client::Resource::Dns(resource) => {
-                        !active_dns_addresses.contains(&resource.address)
+                        self.dns_resource_address_is_available(resource.id, &resource.address)
                     }
                     client::Resource::Cidr(_) => true,
                     client::Resource::Internet(_) => true,
@@ -860,13 +858,35 @@ impl ReferenceState {
                     client::Resource::DynamicDevicePool(_) => true,
                 };
 
-                has_unique_address
+                has_non_overlapping_address
                     && self
                         .clients
                         .values()
                         .all(|client| !client.inner().has_resource(resource.id()))
             })
             .collect()
+    }
+
+    pub(crate) fn dns_resource_address_is_available(&self, id: ResourceId, address: &str) -> bool {
+        self.portal
+            .all_resources()
+            .into_iter()
+            .all(|resource| match resource {
+                client::Resource::Dns(resource)
+                    if resource.id != id
+                        && self
+                            .clients
+                            .values()
+                            .any(|client| client.inner().has_resource(resource.id)) =>
+                {
+                    !dns_resource_patterns_overlap(address, &resource.address)
+                }
+                client::Resource::Dns(_) => true,
+                client::Resource::Cidr(_) => true,
+                client::Resource::Internet(_) => true,
+                client::Resource::StaticDevicePool(_) => true,
+                client::Resource::DynamicDevicePool(_) => true,
+            })
     }
 
     pub(crate) fn editable_resources_on_any_client(&self) -> Vec<client::Resource> {
