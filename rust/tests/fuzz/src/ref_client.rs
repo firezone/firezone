@@ -631,6 +631,25 @@ impl RefClient {
         self.record_resource_packet(resource, gateway, destination, now);
     }
 
+    pub(crate) fn on_gateway_dns_resolution_refresh_failed(
+        &mut self,
+        query: &DnsQuery,
+    ) -> ResourceId {
+        let resource = self
+            .local_dns_resource(query)
+            .expect("a DNS refresh requires a matching resource");
+        let removed = self
+            .dns_resource_resolutions
+            .remove(&(resource, query.domain.clone()));
+
+        assert!(
+            removed.is_some(),
+            "a DNS refresh requires an active resolution"
+        );
+
+        resource
+    }
+
     pub(crate) fn on_connect_tcp(
         &mut self,
         src: IpAddr,
@@ -1437,6 +1456,37 @@ impl RefClient {
             && !self
                 .dns_resource_resolutions
                 .contains_key(&(resource, domain.clone()))
+    }
+
+    pub(crate) fn gateway_dns_resolution_refresh_targets(
+        &self,
+    ) -> Vec<(ResourceId, DomainName, RecordType)> {
+        self.dns_resource_resolutions
+            .iter()
+            .filter(|((resource, domain), _)| {
+                self.connected_dns_resources.contains(resource)
+                    && self
+                        .dns_resource_resolutions
+                        .keys()
+                        .filter(|(_, candidate)| candidate == domain)
+                        .count()
+                        == 1
+            })
+            .filter_map(|((resource, domain), records)| {
+                let record_type = [RecordType::A, RecordType::AAAA]
+                    .into_iter()
+                    .filter(|record_type| records.contains(record_type))
+                    .find(|record_type| {
+                        self.dns_resource_by_domain_for_records(
+                            domain,
+                            *record_type != RecordType::AAAA,
+                            *record_type != RecordType::A,
+                        ) == Some(*resource)
+                    })?;
+
+                Some((*resource, domain.clone(), record_type))
+            })
+            .collect()
     }
 
     fn local_dns_resource_query_has_records(&self, query: &DnsQuery) -> bool {

@@ -45,6 +45,11 @@ pub enum Transition {
         identifier: Identifier,
         probe_id: ProbeId,
     },
+    RefreshGatewayDnsResolutionWithFailure {
+        client_id: ClientId,
+        gateway_id: GatewayId,
+        query: DnsQuery,
+    },
     SendUdpPacket {
         client_id: ClientId,
         src: IpAddr,
@@ -132,6 +137,7 @@ impl Transition {
             Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacket { .. } => false,
             Transition::SendIcmpPacketWithGatewayDnsResolutionFailure { .. } => false,
+            Transition::RefreshGatewayDnsResolutionWithFailure { .. } => false,
             Transition::SendUdpPacket { .. } => false,
             Transition::SendUdpPacketOnFlow { .. } => false,
             Transition::SendUnroutablePacket(_) => false,

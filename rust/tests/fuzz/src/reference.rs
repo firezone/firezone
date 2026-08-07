@@ -138,13 +138,7 @@ impl ReferenceState {
                 client.set_internet_resource_state(*active);
             }),
             Transition::SendDnsQuery { client_id, query } => {
-                let upstream_do53 = state.portal.upstream_do53();
-                let global_dns_records = &state.global_dns_records;
-                let icmp_error_hosts = &state.icmp_error_hosts;
-
-                state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                    c.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
-                });
+                state.record_dns_query(*client_id, query);
             }
             Transition::SendDnsResourcePtrQuery {
                 client_id,
@@ -204,6 +198,23 @@ impl ReferenceState {
                         identifier: *identifier,
                     },
                     now,
+                );
+            }
+            Transition::RefreshGatewayDnsResolutionWithFailure {
+                client_id,
+                gateway_id,
+                query,
+            } => {
+                state.record_dns_query(*client_id, query);
+                let resource = state
+                    .clients
+                    .get_mut(client_id)
+                    .unwrap()
+                    .exec_mut(|client| client.on_gateway_dns_resolution_refresh_failed(query));
+
+                assert_eq!(
+                    state.portal.gateway_for_resource(resource),
+                    Some(gateway_id)
                 );
             }
             Transition::SendUdpPacket {
@@ -574,6 +585,19 @@ impl ReferenceState {
         )
     }
 
+    fn record_dns_query(&mut self, client_id: ClientId, query: &DnsQuery) {
+        let upstream_do53 = self.portal.upstream_do53();
+        let global_dns_records = &self.global_dns_records;
+        let icmp_error_hosts = &self.icmp_error_hosts;
+
+        self.clients
+            .get_mut(&client_id)
+            .unwrap()
+            .exec_mut(|client| {
+                client.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
+            });
+    }
+
     fn record_probe(
         &mut self,
         id: ProbeId,
@@ -825,6 +849,42 @@ impl ReferenceState {
                         client
                             .can_fail_gateway_dns_resolution(resource, &domain)
                             .then_some((*client_id, gateway, src, domain))
+                    })
+            })
+            .collect()
+    }
+
+    pub(crate) fn gateway_dns_resolution_refresh_failure_targets(
+        &self,
+    ) -> Vec<(ClientId, GatewayId, DomainName, RecordType, dns::Upstream)> {
+        let dns_servers_by_client = self.reachable_dns_servers().into_iter().into_group_map();
+
+        self.clients
+            .iter()
+            .flat_map(|(client_id, client)| {
+                let client_id = *client_id;
+                let dns_servers = dns_servers_by_client
+                    .get(&client_id)
+                    .cloned()
+                    .unwrap_or_default();
+
+                client
+                    .inner()
+                    .gateway_dns_resolution_refresh_targets()
+                    .into_iter()
+                    .filter_map(|(resource, domain, record_type)| {
+                        let gateway = self.portal.gateway_for_resource(resource).copied()?;
+
+                        self.gateways.contains_key(&gateway).then_some((
+                            gateway,
+                            domain,
+                            record_type,
+                        ))
+                    })
+                    .flat_map(move |(gateway, domain, record_type)| {
+                        dns_servers.clone().into_iter().map(move |dns_server| {
+                            (client_id, gateway, domain.clone(), record_type, dns_server)
+                        })
                     })
             })
             .collect()

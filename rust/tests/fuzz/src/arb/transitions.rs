@@ -25,7 +25,7 @@ use crate::resource::{
     StaticDevicePoolResource, StaticDevicePoolResourceEdit, StaticDevicePoolResourceValue,
 };
 use crate::sim_net::{EdgeConfig, Host};
-use crate::transition::{Destination, Transition};
+use crate::transition::{ClientDnsResolution, Destination, DnsQuery, DnsTransport, Transition};
 
 #[derive(Clone, Copy, Debug)]
 enum TransitionKind {
@@ -52,6 +52,7 @@ enum TransitionKind {
     UpdateDnsRecords,
     SendPacket,
     SendPacketWithGatewayDnsResolutionFailure,
+    RefreshGatewayDnsResolutionWithFailure,
     SendUdpPacketOnFlow,
     SendUnroutablePacket,
     SendDnsQuery,
@@ -67,6 +68,8 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     let dns_record_domains = state.dns_resource_domains();
     let packet_targets = packets::targets(state);
     let gateway_dns_resolution_failure_targets = state.gateway_dns_resolution_failure_targets();
+    let gateway_dns_resolution_refresh_failure_targets =
+        state.gateway_dns_resolution_refresh_failure_targets();
     let udp_flows = state.udp_flows();
     let rebindable_clients = state.connected_nat_clients();
     let dns_query_targets = dns_queries::targets(state);
@@ -101,6 +104,8 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
         (!gateway_dns_resolution_failure_targets.is_empty())
             .then_some((K::SendPacketWithGatewayDnsResolutionFailure, 5)),
+        (!gateway_dns_resolution_refresh_failure_targets.is_empty())
+            .then_some((K::RefreshGatewayDnsResolutionWithFailure, 3)),
         (!udp_flows.is_empty()).then_some((K::SendUdpPacketOnFlow, 25)),
         (!state.clients.is_empty() && !state.gateways.is_empty())
             .then_some((K::SendUnroutablePacket, 5)),
@@ -109,7 +114,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 25]>>();
+    .collect::<SmallVec<[_; 26]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -254,6 +259,27 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
                 seq,
                 identifier,
                 probe_id: g.fresh_probe_id(),
+            }
+        }
+        K::RefreshGatewayDnsResolutionWithFailure => {
+            let (client_id, gateway_id, domain, r_type, dns_server) =
+                gateway_dns_resolution_refresh_failure_targets
+                    [g.choose_index(gateway_dns_resolution_refresh_failure_targets.len())]
+                .clone();
+
+            Transition::RefreshGatewayDnsResolutionWithFailure {
+                client_id,
+                gateway_id,
+                query: DnsQuery {
+                    domain,
+                    r_type,
+                    query_id: g.u16(),
+                    dns_server,
+                    transport: DnsTransport::Udp {
+                        local_port: g.fresh_udp_flow(53).0.0,
+                    },
+                    client_resolution: ClientDnsResolution::Succeeded,
+                },
             }
         }
         K::SendUdpPacketOnFlow => {
