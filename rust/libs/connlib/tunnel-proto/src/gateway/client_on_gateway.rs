@@ -116,13 +116,31 @@ impl ClientOnGateway {
 
         tracing::debug!(domain = %name, ?resolved_ips, ?proxy_ips, "Setting up DNS resource NAT");
 
-        for proxy_ip in proxy_ips {
-            let maybe_real_ip = match proxy_ip {
-                IpAddr::V4(_) => resolved_ipv4.next(),
-                IpAddr::V6(_) => resolved_ipv6.next(),
-            };
+        let translations = proxy_ips
+            .into_iter()
+            .map(|proxy_ip| {
+                let resolved_ip = match proxy_ip {
+                    IpAddr::V4(_) => resolved_ipv4.next(),
+                    IpAddr::V6(_) => resolved_ipv6.next(),
+                };
 
-            tracing::debug!(%name, %proxy_ip, real_ip = ?maybe_real_ip);
+                (proxy_ip, resolved_ip.copied())
+            })
+            .collect::<Vec<_>>();
+        let unresolved_proxy_ips = translations
+            .iter()
+            .filter_map(|(proxy_ip, resolved_ip)| {
+                self.permanent_translations
+                    .get(proxy_ip)
+                    .is_some_and(|state| state.resolved_ip.is_some() && resolved_ip.is_none())
+                    .then_some(*proxy_ip)
+            })
+            .collect();
+
+        self.nat_table.expire_inside_ips(&unresolved_proxy_ips);
+
+        for (proxy_ip, resolved_ip) in translations {
+            tracing::debug!(%name, %proxy_ip, real_ip = ?resolved_ip);
 
             let state = self
                 .permanent_translations
@@ -130,7 +148,7 @@ impl ClientOnGateway {
                 .or_insert_with(|| TranslationState::new(name.clone()));
 
             state.resources.insert(resource_id);
-            state.resolved_ip = maybe_real_ip.copied();
+            state.resolved_ip = resolved_ip;
         }
 
         domains.insert(name, resolved_ips);

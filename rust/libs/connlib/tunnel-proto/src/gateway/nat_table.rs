@@ -2,7 +2,7 @@
 use anyhow::{Context, Result};
 use bimap::BiMap;
 use ip_packet::{FailedPacket, IcmpError, IpPacket, Protocol};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
@@ -79,6 +79,20 @@ impl NatTable {
                 rst_rx = %state.incoming_rst,
                 "NAT entry removed"
             );
+        }
+    }
+
+    pub(crate) fn expire_inside_ips(&mut self, ips: &BTreeSet<IpAddr>) {
+        let expired = self
+            .state_by_inside
+            .extract_if(.., |inside, _| ips.contains(&inside.1));
+
+        for (inside, _) in expired {
+            let Some((_, outside)) = self.table.remove_by_left(&inside) else {
+                continue;
+            };
+
+            self.expired.insert(outside);
         }
     }
 
@@ -495,5 +509,53 @@ mod tests {
             | TranslateIncomingResult::Ok { .. }
             | TranslateIncomingResult::IcmpError(_)) => panic!("Wrong result: {result:?}"),
         };
+    }
+
+    #[test]
+    fn expired_inside_ip_uses_new_outside_destination() {
+        let now = Instant::now();
+        let client = Ipv4Addr::new(100, 64, 0, 1);
+        let proxy = Ipv4Addr::new(100, 96, 0, 1);
+        let old_destination = Ipv4Addr::new(192, 0, 2, 1);
+        let new_destination = Ipv4Addr::new(192, 0, 2, 2);
+        let packet = ip_packet::make::udp_packet(client, proxy, 1000, 2000, &[]).unwrap();
+        let mut table = NatTable::default();
+
+        let (_, destination) = table
+            .translate_outgoing(&packet, old_destination.into(), now)
+            .unwrap();
+        table.expire_inside_ips(&BTreeSet::from([proxy.into()]));
+        let (_, refreshed_destination) = table
+            .translate_outgoing(&packet, new_destination.into(), now)
+            .unwrap();
+
+        assert_eq!(destination, IpAddr::V4(old_destination));
+        assert_eq!(refreshed_destination, IpAddr::V4(new_destination));
+    }
+
+    #[test]
+    fn packet_for_expired_inside_ip_is_expired() {
+        let now = Instant::now();
+        let client = Ipv4Addr::new(100, 64, 0, 1);
+        let proxy = Ipv4Addr::new(100, 96, 0, 1);
+        let destination = Ipv4Addr::new(192, 0, 2, 1);
+        let packet = ip_packet::make::udp_packet(client, proxy, 1000, 2000, &[]).unwrap();
+        let mut table = NatTable::default();
+        let (outside_protocol, outside_destination) = table
+            .translate_outgoing(&packet, destination.into(), now)
+            .unwrap();
+        let response = ip_packet::make::udp_packet(
+            outside_destination,
+            client,
+            2000,
+            outside_protocol.value(),
+            &[],
+        )
+        .unwrap();
+
+        table.expire_inside_ips(&BTreeSet::from([proxy.into()]));
+        let result = table.translate_incoming(&response, now).unwrap();
+
+        assert_eq!(result, TranslateIncomingResult::ExpiredNatSession);
     }
 }
