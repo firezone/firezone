@@ -132,7 +132,6 @@ pub(crate) fn assert_probes(
                     submitted_request,
                     received_request,
                     ref_clients,
-                    sim_gateways,
                     global_dns_records,
                     &mut mappings,
                 );
@@ -220,7 +219,6 @@ fn assert_received_request(
     submitted_request: &SubmittedRequest,
     received_request: &ReceivedRequest,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
-    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &DnsRecords,
     mappings: &mut BTreeMap<(ClientId, DomainName, Instant), HashMap<IpAddr, IpAddr>>,
 ) {
@@ -241,27 +239,12 @@ fn assert_received_request(
             assert_destination_is_ip(&received_request.packet, destination);
         }
         Destination::DomainName { name, .. } => {
-            let gateway = match received_request.remote {
-                Remote::Gateway(gateway) => gateway,
-                Remote::Client(_) => {
-                    tracing::error!(target: "assertions", id = ?expected.id, "DNS probe request was not received through a gateway");
-                    return;
-                }
-            };
-            let Some(query_timestamps) = sim_gateways
-                .get(&gateway)
-                .and_then(|gateway| gateway.dns_query_timestamps.get(name))
-            else {
-                tracing::error!(target: "assertions", id = ?expected.id, "DNS probe has no resolution timestamp");
+            if !matches!(received_request.remote, Remote::Gateway(_)) {
+                tracing::error!(target: "assertions", id = ?expected.id, "DNS probe request was not received through a gateway");
                 return;
-            };
-            let Some(snapshot) = query_timestamps
-                .iter()
-                .copied()
-                .filter(|timestamp| *timestamp <= received_request.at)
-                .max()
-            else {
-                tracing::error!(target: "assertions", id = ?expected.id, "DNS probe has no applicable resolution");
+            }
+            let Some(snapshot) = expected.dns_resource_resolution else {
+                tracing::error!(target: "assertions", id = ?expected.id, "DNS probe has no resolution timestamp");
                 return;
             };
 

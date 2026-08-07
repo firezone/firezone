@@ -456,6 +456,15 @@ impl ReferenceState {
             request.protocol(),
             sent_at,
         );
+        let dns_resource_resolution = match (route, request.destination()) {
+            (PacketRoute::Resource { resource, .. }, Destination::DomainName { name, .. }) => self
+                .clients
+                .get(&origin)
+                .unwrap()
+                .inner()
+                .dns_resource_resolution(resource, name),
+            _ => None,
+        };
         let outcome = self
             .clients
             .get_mut(&origin)
@@ -469,6 +478,7 @@ impl ReferenceState {
                 origin,
                 sent_at,
                 request,
+                dns_resource_resolution,
                 outcome,
                 trace_requirement,
             },
