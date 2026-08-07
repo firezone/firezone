@@ -9,6 +9,7 @@ use super::sim_relay::SimRelay;
 use super::transition::{Destination, DnsQuery};
 use crate::assertions::*;
 use crate::flux_capacitor::FluxCapacitor;
+use crate::probe::{ProbeId, UdpFlow};
 use crate::resource as client;
 use crate::transition::Transition;
 use bufferpool::BufferPool;
@@ -338,21 +339,18 @@ impl TunnelTest {
                 dport,
                 probe_id,
             } => {
-                let dst = address_from_destination(&dst, &state, &src, client_id);
-
-                let packet = ip_packet::make::udp_packet(
+                let flow = UdpFlow {
+                    client_id,
                     src,
                     dst,
-                    sport.0,
-                    dport.0,
-                    &probe_id.to_be_bytes(),
-                )
-                .unwrap();
+                    sport,
+                    dport,
+                };
 
-                let client = state.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
-
-                buffered_transmits.push_from(transmit, client, now);
+                state.send_udp_probe(flow, probe_id, now, &mut buffered_transmits);
+            }
+            Transition::SendUdpPacketOnFlow { flow, probe_id } => {
+                state.send_udp_probe(flow, probe_id, now, &mut buffered_transmits);
             }
             Transition::ConnectTcp {
                 client_id,
@@ -729,6 +727,29 @@ impl TunnelTest {
         for gateway in state.gateways.values_mut() {
             gateway.exec_mut(|g| g.clear_probe_observations());
         }
+    }
+
+    fn send_udp_probe(
+        &mut self,
+        flow: UdpFlow,
+        probe_id: ProbeId,
+        now: Instant,
+        buffered_transmits: &mut BufferedTransmits,
+    ) {
+        let dst = address_from_destination(&flow.dst, self, &flow.src, flow.client_id);
+        let packet = ip_packet::make::udp_packet(
+            flow.src,
+            dst,
+            flow.sport.0,
+            flow.dport.0,
+            &probe_id.to_be_bytes(),
+        )
+        .unwrap();
+
+        let client = self.clients.get_mut(&flow.client_id).unwrap();
+        let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
+
+        buffered_transmits.push_from(transmit, client, now);
     }
 }
 

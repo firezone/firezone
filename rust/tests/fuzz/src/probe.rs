@@ -30,6 +30,15 @@ pub(crate) enum ProbeProtocol {
     Udp { sport: SPort, dport: DPort },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct UdpFlow {
+    pub(crate) client_id: ClientId,
+    pub(crate) src: IpAddr,
+    pub(crate) dst: Destination,
+    pub(crate) sport: SPort,
+    pub(crate) dport: DPort,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum ProbeRequest {
     Icmp {

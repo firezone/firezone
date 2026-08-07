@@ -49,6 +49,7 @@ enum TransitionKind {
     DeauthorizeWhileGatewayIsPartitioned,
     UpdateDnsRecords,
     SendPacket,
+    SendUdpPacketOnFlow,
     SendDnsQuery,
 }
 
@@ -60,6 +61,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     let client_ids = state.all_client_ids();
     let dns_record_domains = state.dns_resource_domains();
     let packet_targets = packets::targets(state);
+    let udp_flows = state.udp_flows();
     let dns_query_targets = dns_queries::targets(state);
 
     // Build the legal action list. Data-plane actions stay more frequent because
@@ -87,11 +89,12 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
         (!dns_record_domains.is_empty()).then_some((K::UpdateDnsRecords, 5)),
         (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
+        (!udp_flows.is_empty()).then_some((K::SendUdpPacketOnFlow, 25)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQuery, 10)),
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 19]>>();
+    .collect::<SmallVec<[_; 20]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -201,6 +204,12 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         K::SendPacket => {
             let target = packet_targets[g.choose_index(packet_targets.len())].clone();
             packets::generate(g, target)
+        }
+        K::SendUdpPacketOnFlow => {
+            let flow = udp_flows[g.choose_index(udp_flows.len())].clone();
+            let probe_id = g.fresh_probe_id();
+
+            Transition::SendUdpPacketOnFlow { flow, probe_id }
         }
         K::SendDnsQuery => {
             let target = dns_query_targets[g.choose_index(dns_query_targets.len())].clone();
