@@ -123,115 +123,7 @@ impl ReferenceState {
                     });
                 }
             }
-            Transition::ChangeCidrResourceAddress {
-                resource,
-                new_address,
-            } => {
-                state
-                    .portal
-                    .change_address_of_cidr_resource(resource.id, *new_address);
-
-                let new_resource = client::CidrResource {
-                    address: *new_address,
-                    ..resource.clone()
-                };
-
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.add_cidr_resource(new_resource.clone()));
-                }
-            }
-            Transition::MoveResourceToNewSite { resource, new_site } => {
-                state
-                    .portal
-                    .move_resource_to_new_site(resource.id(), new_site.clone());
-
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| match resource.clone().with_new_site(new_site.clone()) {
-                        client::Resource::Dns(r) => c.add_dns_resource(r),
-                        client::Resource::Cidr(r) => c.add_cidr_resource(r),
-                        client::Resource::Internet(_) => {
-                            tracing::error!("Internet Resource cannot move site");
-                        }
-                        client::Resource::StaticDevicePool(_)
-                        | client::Resource::DynamicDevicePool(_) => {}
-                    })
-                }
-            }
-            Transition::ChangeFiltersOfResource {
-                resource,
-                new_filters,
-            } => {
-                state
-                    .portal
-                    .change_filters_of_resource(resource.id(), new_filters.clone());
-
-                let new_resource = resource.clone().with_new_filters(new_filters.clone());
-
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| match &new_resource {
-                        client::Resource::Dns(r) => c.add_dns_resource(r.clone()),
-                        client::Resource::Cidr(r) => c.add_cidr_resource(r.clone()),
-                        client::Resource::StaticDevicePool(r) => {
-                            c.add_static_device_pool_resource(r.clone());
-                        }
-                        client::Resource::Internet(_) => unreachable!(),
-                        client::Resource::DynamicDevicePool(_) => unreachable!(),
-                    })
-                }
-            }
-            Transition::ChangeResourceType {
-                old_resource: _,
-                new_resource,
-            } => {
-                state.portal.replace_resource(new_resource.clone());
-
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|client| {
-                        client.remove_resource(&new_resource.id());
-
-                        match new_resource {
-                            client::Resource::Dns(resource) => {
-                                client
-                                    .dns_records
-                                    .retain(|domain, _| !is_subdomain(domain, &resource.address));
-                                client.add_dns_resource(resource.clone());
-                            }
-                            client::Resource::Cidr(resource) => {
-                                client.add_cidr_resource(resource.clone())
-                            }
-                            client::Resource::StaticDevicePool(resource) => {
-                                client.add_static_device_pool_resource(resource.clone())
-                            }
-                            client::Resource::Internet(_) => {
-                                unreachable!(
-                                    "only user-editable resource types can replace one another"
-                                )
-                            }
-                            client::Resource::DynamicDevicePool(_) => {
-                                unreachable!(
-                                    "only user-editable resource types can replace one another"
-                                )
-                            }
-                        }
-                    });
-                }
-            }
-            Transition::UpdateStaticDevicePool {
-                pool_id,
-                new_devices,
-            } => {
-                let Some(new_pool) = state
-                    .portal
-                    .update_static_device_pool_members(*pool_id, new_devices.clone())
-                else {
-                    tracing::error!(%pool_id, "Unknown static device pool");
-                    return state;
-                };
-
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.add_static_device_pool_resource(new_pool.clone()));
-                }
-            }
+            Transition::EditResource(edit) => state.apply_resource_edit(edit),
             Transition::SetInternetResourceState {
                 client_id: client,
                 active,
@@ -423,6 +315,136 @@ impl ReferenceState {
         };
 
         state
+    }
+
+    fn apply_resource_edit(&mut self, edit: &client::ResourceEdit) {
+        let updated = edit.updated_resource();
+        self.portal.replace_resource(updated.clone());
+
+        match edit {
+            client::ResourceEdit::Dns(edit) => {
+                let client::Resource::Dns(updated) = &updated else {
+                    unreachable!("a DNS edit must produce a DNS resource")
+                };
+
+                for client in self.clients.values_mut() {
+                    client.exec_mut(|client| match &edit.value {
+                        client::DnsResourceValue::Address(_) => {
+                            client.add_dns_resource(updated.clone())
+                        }
+                        client::DnsResourceValue::Name(_) => {
+                            client.update_resource_metadata(client::Resource::Dns(updated.clone()))
+                        }
+                        client::DnsResourceValue::AddressDescription(_) => {
+                            client.update_resource_metadata(client::Resource::Dns(updated.clone()))
+                        }
+                        client::DnsResourceValue::Sites(_) => {
+                            client.add_dns_resource(updated.clone())
+                        }
+                        client::DnsResourceValue::IpStack(_) => {
+                            client.add_dns_resource(updated.clone())
+                        }
+                        client::DnsResourceValue::Filters(_) => {
+                            client.add_dns_resource(updated.clone())
+                        }
+                    });
+                }
+            }
+            client::ResourceEdit::Cidr(edit) => {
+                let client::Resource::Cidr(updated) = &updated else {
+                    unreachable!("a CIDR edit must produce a CIDR resource")
+                };
+
+                for client in self.clients.values_mut() {
+                    client.exec_mut(|client| match &edit.value {
+                        client::CidrResourceValue::Address(_) => {
+                            client.add_cidr_resource(updated.clone())
+                        }
+                        client::CidrResourceValue::Name(_) => {
+                            client.update_resource_metadata(client::Resource::Cidr(updated.clone()))
+                        }
+                        client::CidrResourceValue::AddressDescription(_) => {
+                            client.update_resource_metadata(client::Resource::Cidr(updated.clone()))
+                        }
+                        client::CidrResourceValue::Sites(_) => {
+                            client.add_cidr_resource(updated.clone())
+                        }
+                        client::CidrResourceValue::Filters(_) => {
+                            client.add_cidr_resource(updated.clone())
+                        }
+                    });
+                }
+            }
+            client::ResourceEdit::StaticDevicePool(edit) => {
+                let client::Resource::StaticDevicePool(updated) = &updated else {
+                    unreachable!("a static device-pool edit must produce a static device pool")
+                };
+
+                for client in self.clients.values_mut() {
+                    client.exec_mut(|client| match &edit.value {
+                        client::StaticDevicePoolResourceValue::Name(_) => client
+                            .update_resource_metadata(client::Resource::StaticDevicePool(
+                                updated.clone(),
+                            )),
+                        client::StaticDevicePoolResourceValue::Devices(_) => {
+                            client.add_static_device_pool_resource(updated.clone())
+                        }
+                        client::StaticDevicePoolResourceValue::Filters(_) => {
+                            client.add_static_device_pool_resource(updated.clone())
+                        }
+                    });
+                }
+            }
+            client::ResourceEdit::DynamicDevicePool(edit) => {
+                let client::Resource::DynamicDevicePool(updated) = &updated else {
+                    unreachable!("a dynamic device-pool edit must produce a dynamic device pool")
+                };
+
+                for client in self.clients.values_mut() {
+                    client.exec_mut(|client| match &edit.value {
+                        client::DynamicDevicePoolResourceValue::Name(_) => client
+                            .update_resource_metadata(client::Resource::DynamicDevicePool(
+                                updated.clone(),
+                            )),
+                        client::DynamicDevicePoolResourceValue::Address(_) => {
+                            client.add_dynamic_device_pool_resource(updated.clone())
+                        }
+                    });
+                }
+            }
+            client::ResourceEdit::Type(edit) => {
+                debug_assert_eq!(edit.old_resource.id(), updated.id());
+
+                for client in self.clients.values_mut() {
+                    client.exec_mut(|client| {
+                        client.remove_resource(&updated.id());
+
+                        match &updated {
+                            client::Resource::Dns(resource) => {
+                                client
+                                    .dns_records
+                                    .retain(|domain, _| !is_subdomain(domain, &resource.address));
+                                client.add_dns_resource(resource.clone());
+                            }
+                            client::Resource::Cidr(resource) => {
+                                client.add_cidr_resource(resource.clone())
+                            }
+                            client::Resource::StaticDevicePool(resource) => {
+                                client.add_static_device_pool_resource(resource.clone())
+                            }
+                            client::Resource::DynamicDevicePool(resource) => {
+                                client.add_dynamic_device_pool_resource(resource.clone())
+                            }
+                            client::Resource::Internet(_) => {
+                                unreachable!(
+                                    "the Portal API does not allow editing the Internet Resource"
+                                )
+                            }
+                        }
+                    });
+                }
+            }
+        }
     }
 
     pub fn clear_packets(state: &mut ReferenceState) {
@@ -814,72 +836,24 @@ impl ReferenceState {
             .collect()
     }
 
-    /// Resources that have configurable traffic filters and exist on at least one client.
-    ///
-    /// Used by `Transition::ChangeFiltersOfResource`.
-    pub(crate) fn resources_with_filters_on_any_client(&self) -> Vec<client::Resource> {
+    pub(crate) fn editable_resources_on_any_client(&self) -> Vec<client::Resource> {
         self.portal
             .all_resources()
             .into_iter()
             .filter(|resource| {
-                let has_filters = match resource {
+                let is_editable = match resource {
                     client::Resource::Cidr(_) => true,
                     client::Resource::Dns(_) => true,
                     client::Resource::StaticDevicePool(_) => true,
+                    client::Resource::DynamicDevicePool(_) => true,
                     client::Resource::Internet(_) => false,
-                    client::Resource::DynamicDevicePool(_) => false,
                 };
 
-                has_filters
+                is_editable
                     && self
                         .clients
                         .values()
                         .any(|client| client.inner().has_resource(resource.id()))
-            })
-            .collect()
-    }
-
-    pub(crate) fn replaceable_resources_on_any_client(&self) -> Vec<client::Resource> {
-        self.resources_with_filters_on_any_client()
-    }
-
-    pub(crate) fn cidr_and_dns_resources_on_any_client(&self) -> Vec<client::Resource> {
-        self.portal
-            .all_resources()
-            .into_iter()
-            .filter(|resource| {
-                let is_cidr_or_dns = match resource {
-                    client::Resource::Cidr(_) => true,
-                    client::Resource::Dns(_) => true,
-                    client::Resource::Internet(_) => false,
-                    client::Resource::StaticDevicePool(_) => false,
-                    client::Resource::DynamicDevicePool(_) => false,
-                };
-
-                is_cidr_or_dns
-                    && self
-                        .clients
-                        .values()
-                        .any(|client| client.inner().has_resource(resource.id()))
-            })
-            .collect()
-    }
-
-    pub(crate) fn cidr_resources_on_any_client(&self) -> Vec<client::CidrResource> {
-        self.portal
-            .all_resources()
-            .into_iter()
-            .filter_map(|r| match r {
-                client::Resource::Cidr(r) => Some(r),
-                client::Resource::Dns(_) => None,
-                client::Resource::Internet(_) => None,
-                client::Resource::StaticDevicePool(_) => None,
-                client::Resource::DynamicDevicePool(_) => None,
-            })
-            .filter(|resource| {
-                self.clients
-                    .values()
-                    .any(|client| client.inner().has_resource(resource.id))
             })
             .collect()
     }
@@ -952,26 +926,6 @@ impl ReferenceState {
 
     pub(crate) fn all_client_ids(&self) -> Vec<ClientId> {
         self.clients.keys().copied().collect()
-    }
-
-    pub(crate) fn static_device_pools_on_any_client(
-        &self,
-    ) -> Vec<client::StaticDevicePoolResource> {
-        let pools = self
-            .portal
-            .all_resources()
-            .into_iter()
-            .filter_map(|r| match r {
-                client::Resource::StaticDevicePool(p) => Some(p),
-                client::Resource::Dns(_) => None,
-                client::Resource::Cidr(_) => None,
-                client::Resource::Internet(_) => None,
-                client::Resource::DynamicDevicePool(_) => None,
-            });
-
-        pools
-            .filter(|p| self.clients.values().any(|c| c.inner().has_resource(p.id)))
-            .collect()
     }
 
     /// Eligible `(client, device-pool resource, reachable DNS server)` triples

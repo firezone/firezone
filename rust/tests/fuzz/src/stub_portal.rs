@@ -1,6 +1,5 @@
 use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
-use ip_network::IpNetwork;
 use itertools::Itertools;
 use smallvec::SmallVec;
 use std::{
@@ -8,7 +7,7 @@ use std::{
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
-use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway};
+use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
 
 use crate::resource::{self as client, DynamicDevicePoolResource, StaticDevicePoolResource};
 
@@ -348,47 +347,12 @@ impl StubPortal {
             .map(|(gid, _, _)| *gid)
     }
 
-    pub(crate) fn change_address_of_cidr_resource(
-        &mut self,
-        rid: ResourceId,
-        new_address: IpNetwork,
-    ) {
-        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
-            resource.address = new_address;
-            return;
-        }
-
-        tracing::error!(%rid, "Unknown resource");
-    }
-
-    pub(crate) fn change_filters_of_resource(
-        &mut self,
-        rid: ResourceId,
-        new_filters: Vec<tunnel_proto::messages::Filter>,
-    ) {
-        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
-            resource.filters = new_filters;
-            return;
-        }
-
-        if let Some(resource) = self.dns_resources.get_mut(&rid) {
-            resource.filters = new_filters;
-            return;
-        }
-
-        if let Some(resource) = self.static_device_pool_resources.get_mut(&rid) {
-            resource.filters = new_filters;
-            return;
-        }
-
-        tracing::error!(%rid, "Unknown resource");
-    }
-
     pub(crate) fn replace_resource(&mut self, new_resource: client::Resource) {
         let id = new_resource.id();
 
         self.cidr_resources.remove(&id);
         self.dns_resources.remove(&id);
+        self.device_pool_resources.remove(&id);
         self.static_device_pool_resources.remove(&id);
         self.sites_by_resource.remove(&id);
 
@@ -414,26 +378,13 @@ impl StubPortal {
             client::Resource::StaticDevicePool(resource) => {
                 self.static_device_pool_resources.insert(id, resource);
             }
-            client::Resource::Internet(_) => {
-                unreachable!("only user-editable resource types can replace one another")
+            client::Resource::DynamicDevicePool(resource) => {
+                self.device_pool_resources.insert(id, resource);
             }
-            client::Resource::DynamicDevicePool(_) => {
-                unreachable!("only user-editable resource types can replace one another")
+            client::Resource::Internet(_) => {
+                unreachable!("the Portal API does not allow editing the Internet Resource")
             }
         }
-    }
-
-    /// Replaces the member list of an existing static device pool.
-    ///
-    /// Returns the updated pool, or `None` if no pool with `pool_id` exists.
-    pub(crate) fn update_static_device_pool_members(
-        &mut self,
-        pool_id: ResourceId,
-        new_devices: Vec<DevicePoolMember>,
-    ) -> Option<StaticDevicePoolResource> {
-        let pool = self.static_device_pool_resources.get_mut(&pool_id)?;
-        pool.devices = new_devices;
-        Some(pool.clone())
     }
 
     pub(crate) fn static_device_pool_filters(
@@ -446,24 +397,6 @@ impl StubPortal {
                 .filters
                 .clone(),
         )
-    }
-
-    pub(crate) fn move_resource_to_new_site(&mut self, rid: ResourceId, site: Site) {
-        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
-            self.sites_by_resource.insert(rid, site.id);
-            resource.sites = vec![site];
-            return;
-        }
-
-        if let Some(resource) = self.dns_resources.get_mut(&rid) {
-            self.sites_by_resource.insert(rid, site.id);
-            resource.sites = vec![site];
-            return;
-        }
-
-        if self.internet_resource.id == rid {
-            tracing::error!("Internet Resource cannot change site");
-        }
     }
 }
 

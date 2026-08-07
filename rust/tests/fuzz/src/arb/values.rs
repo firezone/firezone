@@ -79,11 +79,53 @@ pub(super) fn arb_address_description(g: &mut Generator) -> Option<String> {
     }
 }
 
+pub(super) fn arb_different_address_description(
+    g: &mut Generator,
+    current: &Option<String>,
+) -> Option<String> {
+    let description = arb_address_description(g);
+
+    if &description != current {
+        return description;
+    }
+
+    match current {
+        Some(_) => None,
+        None => Some("changed".to_owned()),
+    }
+}
+
 pub(super) fn arb_ip_stack_kind(g: &mut Generator) -> IpStack {
     match g.choose_index(3) {
         0 => IpStack::Dual,
         1 => IpStack::Ipv4Only,
         _ => IpStack::Ipv6Only,
+    }
+}
+
+pub(super) fn arb_different_ip_stack_kind(g: &mut Generator, current: IpStack) -> IpStack {
+    match current {
+        IpStack::Dual => {
+            if g.bool() {
+                IpStack::Ipv4Only
+            } else {
+                IpStack::Ipv6Only
+            }
+        }
+        IpStack::Ipv4Only => {
+            if g.bool() {
+                IpStack::Dual
+            } else {
+                IpStack::Ipv6Only
+            }
+        }
+        IpStack::Ipv6Only => {
+            if g.bool() {
+                IpStack::Dual
+            } else {
+                IpStack::Ipv4Only
+            }
+        }
     }
 }
 
@@ -152,6 +194,21 @@ pub(super) fn arb_different_cidr_resource_address(
             IpNetwork::V4(Ipv4Network::new(Ipv4Addr::new(192, 0, 3, 1), 32).unwrap())
         }
     }
+}
+
+pub(super) fn arb_different_dns_resource_address(g: &mut Generator, current: &str) -> String {
+    let base = arb_domain_name_string(g, 2, 3);
+    let address = match g.choose_index(3) {
+        0 => base,
+        1 => format!("*.{base}"),
+        _ => format!("**.{base}"),
+    };
+
+    if address != current {
+        return address;
+    }
+
+    "changed.invalid".to_owned()
 }
 
 pub(super) fn arb_more_specific_subnet(

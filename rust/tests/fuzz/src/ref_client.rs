@@ -259,6 +259,16 @@ impl RefClient {
         self.resources.retain(|r| r.id() != *resource);
     }
 
+    pub(crate) fn update_resource_metadata(&mut self, resource: Resource) {
+        let existing = self
+            .resources
+            .iter_mut()
+            .find(|existing| existing.id() == resource.id())
+            .expect("an edited resource must exist on the client");
+
+        *existing = resource;
+    }
+
     pub(crate) fn connected_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
         iter::empty()
             .chain(self.connected_cidr_resources.clone())
