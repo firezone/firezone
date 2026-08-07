@@ -11,9 +11,11 @@ import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import java.security.MessageDigest
@@ -118,6 +120,20 @@ class Repository
         fun getConfig(): Flow<Config> =
             flow {
                 emit(getConfigSync())
+            }.flowOn(coroutineDispatcher)
+
+        // Emits the effective log filter whenever it changes in storage, whether the user edited it
+        // or an MDM pushed a new managed value, so a running session can re-apply it live.
+        fun observeLogFilter(): Flow<String> =
+            callbackFlow {
+                val listener =
+                    SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                        if (key == LOG_FILTER_KEY || key == MANAGED_LOG_FILTER_KEY) {
+                            trySend(getConfigSync().logFilter)
+                        }
+                    }
+                sharedPreferences.registerOnSharedPreferenceChangeListener(listener)
+                awaitClose { sharedPreferences.unregisterOnSharedPreferenceChangeListener(listener) }
             }.flowOn(coroutineDispatcher)
 
         fun getDefaultConfigSync(): Config =
