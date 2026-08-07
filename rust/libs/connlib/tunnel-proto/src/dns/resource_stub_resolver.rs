@@ -791,11 +791,8 @@ mod tests {
         resolver.add_resource(resource_id, "other.example.com".to_owned(), IpStack::Dual);
 
         assert_eq!(resolver.resolved_resources().count(), 0);
-        let Some(Event::RecordsChanged(records)) = resolver.poll_event() else {
-            panic!("Expected updated DNS resource records")
-        };
         assert_eq!(
-            records,
+            resolver.records(),
             BTreeSet::from([DnsResourceRecord {
                 domain,
                 resources: BTreeSet::new(),
