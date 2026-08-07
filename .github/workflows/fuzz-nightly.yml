@@ -59,18 +59,26 @@ jobs:
       - uses: ./.github/actions/free-disk-space
       - name: Grow, minimize and re-baseline the corpus
         run: mise run //rust/tests/fuzz:grow ${{ matrix.fuzz-target }}
-      - name: Save corpus and coverage baseline
+      # A crash fails the step above, but what it produced is exactly what the
+      # run is for: the grown corpus and the input that provoked the crash both
+      # still need to reach the branch.
+      - name: Save corpus, coverage baseline and failing inputs
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: fuzz-${{ matrix.fuzz-target }}
           path: |
             rust/tests/fuzz/corpora/${{ matrix.fuzz-target }}.tar.gz
             rust/tests/fuzz/expected-coverage/${{ matrix.fuzz-target }}.json
+            rust/tests/fuzz/crashes/${{ matrix.fuzz-target }}
           if-no-files-found: error
 
   propose:
     name: propose-corpus-update
     needs: [discover]
+    # A crashed target leaves `discover` red, and its findings are the ones
+    # most worth pushing.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -93,17 +101,44 @@ jobs:
         run: |
           set -euo pipefail
 
+          branch="chore/fuzz-corpora"
+
           git config --local user.email "github-bot@firezone.dev"
           git config --local user.name "Firezone Bot"
           git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
           git config --local commit.gpgsign true
 
-          git add -A tests/fuzz/corpora tests/fuzz/expected-coverage
+          # `download-artifact` only recreates this directory when a target
+          # crashed, and `git add` rejects a pathspec that matches nothing.
+          mkdir -p tests/fuzz/crashes
+
+          # The corpus branch is rebuilt from the default branch every night and
+          # a crash is not necessarily rediscovered, so carry over the inputs its
+          # open pull request already holds rather than force-pushing them away.
+          # A branch dispatch commits onto the branch itself and keeps them.
+          if [ "$REF" = "$DEFAULT_BRANCH" ] && [ -n "$(git ls-remote origin "refs/heads/$branch")" ]; then
+            git fetch origin "$branch"
+
+            if [ -n "$(git ls-tree -d --name-only FETCH_HEAD tests/fuzz/crashes)" ]; then
+              git checkout FETCH_HEAD -- tests/fuzz/crashes
+            fi
+          fi
+
+          git add -A tests/fuzz/corpora tests/fuzz/expected-coverage tests/fuzz/crashes
           if git diff --cached --quiet; then
             echo "Corpora unchanged; nothing to push."
             exit 0
           fi
-          git commit -m "chore(fuzz): grow committed corpora"
+
+          if git diff --cached --name-only | grep -q '^rust/tests/fuzz/crashes/'; then
+            title="chore(fuzz): commit crashing inputs"
+            body="A nightly fuzz job crashed. Replay its input with \`mise run //rust/tests/fuzz:replay-crashes <target>\`."
+          else
+            title="chore(fuzz): grow committed corpora"
+            body="The nightly fuzz jobs discovered new coverage and refreshed each target's uncovered-region ceiling."
+          fi
+
+          git commit -m "$title"
 
           # Do not use checkout's GITHUB_TOKEN for the push: pushes made with
           # it do not trigger the pull request's workflows.
@@ -119,13 +154,15 @@ jobs:
             exit 0
           fi
 
-          branch="chore/fuzz-corpora"
           git checkout -B "$branch"
           git push -u origin HEAD --force
 
-          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
-            gh pr create \
-              --title "chore(fuzz): grow committed corpora" \
-              --body "The nightly fuzz jobs discovered new coverage and refreshed each target's uncovered-region ceiling." \
-              --reviewer firezone/engineering
+          number="$(gh pr list --head "$branch" --state open --json number --jq '.[].number')"
+
+          if [ -z "$number" ]; then
+            gh pr create --title "$title" --body "$body" --reviewer firezone/engineering
+          else
+            # The open PR describes last night's push, which tonight's force
+            # push has just replaced.
+            gh pr edit "$number" --title "$title" --body "$body"
           fi

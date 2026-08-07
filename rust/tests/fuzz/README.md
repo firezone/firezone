@@ -16,6 +16,7 @@ Pull-request CI only replays these inputs, making fuzz regression and coverage c
 It never performs random coverage discovery.
 
 The nightly `fuzz-nightly.yml` workflow runs every target from `targets.json` on `main`, minimizes and repacks the grown corpora, refreshes their coverage baselines, and opens one bot PR with the results.
+A crash does not cost the run its findings: the workflow pushes the grown corpus either way and commits the input that provoked the crash alongside it.
 
 Tunnel inputs are decoded positionally with `arbitrary::Unstructured`.
 Changing the generator in `src/arb/` can therefore reinterpret existing inputs; after a substantial generator change, re-minimize and grow the corpus before updating the archive.
@@ -39,13 +40,20 @@ mise run //rust/tests/fuzz:fuzz tunnel-proto -fork=4
 
 ## Reproducing a crash
 
+A local run leaves its failing inputs in the ignored `artifacts/<target>` directory.
+Inputs under `crashes/<target>` are committed instead: they are what a fuzz job found and had no chance to fix.
+`replay-crashes` replays both, building the target first if nothing has yet.
+
 ```console
 mise run //rust/tests/fuzz:replay-crashes tunnel-proto
-mise run //rust/tests/fuzz:tmin tunnel-proto artifacts/tunnel-proto/crash-<hash>
+mise run //rust/tests/fuzz:tmin tunnel-proto crashes/tunnel-proto/crash-<hash>
 mise run //rust/tests/fuzz:repro tunnel-proto <reduced-input> 2> repro.log
 ```
 
 Set `RUST_LOG=trace` for detailed scenario and connlib traces.
+
+Delete a committed input in the change that fixes it.
+Nothing else prunes them, and only the corpus guards against the bug coming back, so add the input there in the same change if it reaches code the corpus does not.
 
 ## Coverage
 
@@ -75,6 +83,9 @@ Expect it to take a while: it fuzzes for 30 minutes before the remaining steps e
 It spreads that across three quarters of the cores, leaving you some to work with, and across all of them when `CI` is set.
 Pass libFuzzer arguments to override both the parallelism and the duration, e.g. `-fork=8 -max_total_time=300`.
 Be wary of shortening it much for `tunnel-proto`: `-fork` re-merges the whole seed corpus before it discovers anything, `-max_total_time` does not bound that startup, and a short budget is spent entirely inside it.
+
+A failing step does not stop the ones behind it; `grow` runs them all and reports the failure at the end.
+A crash therefore still leaves a grown corpus behind, and moves the input that provoked it to `crashes/<target>` to be committed.
 
 The measurement is taken on the machine that runs it.
 A local run that gets luckier than CI writes a ceiling CI cannot meet, so re-run `coverage-check` before pushing.

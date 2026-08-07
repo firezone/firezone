@@ -82,7 +82,7 @@ set -euo pipefail
 '''
 
 [tasks.grow]
-description = "Fuzz a target, then minimize, repack and re-baseline its corpus"
+description = "Fuzz a target, then preserve its crashes, minimize, repack and re-baseline its corpus"
 shell = "bash -c"
 usage = '''
 arg "<target>"
@@ -117,11 +117,61 @@ fi
 
 # Each step consumes what the previous one wrote, so they are invoked in order
 # rather than declared as `depends`, which mise runs in parallel.
-mise run //rust/tests/fuzz:fuzz "$target" "$@"
-mise run //rust/tests/fuzz:cmin "$target"
-mise run //rust/tests/fuzz:pack-corpus "$target"
-mise run //rust/tests/fuzz:coverage "$target"
-mise run //rust/tests/fuzz:update-baseline "$target"
+#
+# A crash is the fuzzer doing its job, so a failing step does not abandon the
+# ones behind it: the half hour of growth that preceded it and the input that
+# provoked it are both worth keeping. Every step that can still run does, and
+# the failure is re-raised once they have. The steps write through temporaries,
+# so one that fails leaves the committed file it owns untouched.
+failed=()
+
+step() {
+  if ! mise run "//rust/tests/fuzz:$1" "${@:2}"; then
+    failed+=("$1")
+  fi
+}
+
+step fuzz "$target" "$@"
+step save-crashes "$target"
+step cmin "$target"
+step pack-corpus "$target"
+step coverage "$target"
+step update-baseline "$target"
+
+if [ "${#failed[@]}" -gt 0 ]; then
+  echo "error: ${#failed[@]} step(s) failed: ${failed[*]}" >&2
+  exit 1
+fi
+'''
+
+[tasks.save-crashes]
+description = "Move a fuzz target's failing inputs into the committed crashes directory"
+shell = "bash -c"
+usage = 'arg "<target>"'
+raw = true
+run = '''
+set -euo pipefail
+
+target="$usage_target"
+crashes="crashes/$target"
+
+# `slow-unit-*` is deliberately absent: libFuzzer writes those while carrying
+# on, so committing them would accumulate inputs that nothing is wrong with.
+for artifact in \
+  "artifacts/$target"/crash-* \
+  "artifacts/$target"/timeout-* \
+  "artifacts/$target"/oom-* \
+  "artifacts/$target"/leak-*
+do
+  [ -e "$artifact" ] || continue
+
+  name="${artifact##*/}"
+
+  mkdir -p "$crashes"
+  mv -f "$artifact" "$crashes/$name"
+  chmod 0644 "$crashes/$name"
+  echo "Preserved $name in $crashes"
+done
 '''
 
 [tasks.update-baseline]
@@ -228,8 +278,9 @@ raw = true
 run = 'RUST_LOG="${RUST_LOG:-debug}" cargo fuzz run --sanitizer none --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target" "$usage_testcase"'
 
 [tasks.replay-crashes]
-description = "Replay all crash artifacts for a fuzz target with tracing"
+description = "Replay a fuzz target's committed and locally produced crash artifacts with tracing"
 shell = "bash -c"
+depends = ["install-toolchain"]
 usage = 'arg "<target>"'
 raw = true
 run = '''
@@ -239,7 +290,13 @@ target="$usage_target"
 bin="../../target/x86_64-unknown-linux-gnu/release/$target"
 found=false
 
+# `save-crashes` moves what it preserves, so the two directories never hold the
+# same input and nothing is replayed twice.
 for artifact in \
+  "crashes/$target"/crash-* \
+  "crashes/$target"/timeout-* \
+  "crashes/$target"/oom-* \
+  "crashes/$target"/leak-* \
   "artifacts/$target"/crash-* \
   "artifacts/$target"/timeout-* \
   "artifacts/$target"/oom-* \
@@ -250,8 +307,9 @@ do
 
   if [ "$found" = false ]; then
     if [ ! -x "$bin" ]; then
-      echo "Fuzz target binary does not exist or is not executable: $bin" >&2
-      exit 1
+      # A committed input is replayed from a checkout where nothing has built
+      # the target yet.
+      cargo fuzz build --sanitizer none --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$target"
     fi
     found=true
   fi
