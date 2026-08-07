@@ -922,22 +922,22 @@ defmodule PortalAPI.Client.SocketTest do
       assert log =~ "contradicts the device row"
     end
 
-    test "refuses the connect when the certificate drops a proven hardware id", %{
+    test "a certificate that drops a hardware id clears it rather than refusing", %{
       account: account,
       actor: actor,
       subject: subject
     } do
-      # A certificate for the same MDM device id that stops asserting hardware
-      # the row already proved is the same contradiction as asserting different
-      # hardware: one MDM record covering two physical machines.
-      client_fixture(
-        account: account,
-        actor: actor,
-        last_attested_device_serial: "SN-2",
-        last_attested_device_uuid: "uuid-gone",
-        last_attested_mdm_device_id: "mdm-2",
-        firezone_id: nil
-      )
+      # Which identifiers an MDM emits is a profile setting, so a certificate
+      # that stops asserting one must not strand the device.
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SN-2",
+          last_attested_device_uuid: "uuid-gone",
+          last_attested_mdm_device_id: "mdm-2",
+          firezone_id: nil
+        )
 
       changeset =
         device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
@@ -951,13 +951,10 @@ defmodule PortalAPI.Client.SocketTest do
         last_attested_cert_fingerprint: "bb"
       }
 
-      log =
-        ExUnit.CaptureLog.capture_log(fn ->
-          assert Socket.Database.resolve_client(changeset, proof, subject) ==
-                   {:error, :device_identity_conflict}
-        end)
-
-      assert log =~ "contradicts the device row"
+      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      assert client.id == existing.id
+      assert is_nil(client.last_attested_device_uuid)
+      assert client.last_attested_device_serial == "SN-2"
     end
   end
 

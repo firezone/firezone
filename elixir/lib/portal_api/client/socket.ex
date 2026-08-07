@@ -398,10 +398,12 @@ defmodule PortalAPI.Client.Socket do
     end
 
     # The MDM device id is the device's identity, so the row it resolves to is
-    # this device by definition. The hardware identifiers are attributes rather
-    # than identity, but they are still a check: a value the row already proved
-    # that this certificate does not repeat means one MDM device id is being
-    # used by two physical machines, and there is no safe way to guess which
+    # this device by definition. The hardware identifiers are attributes that
+    # follow the certificate: it may start asserting one the row lacks, or stop
+    # asserting one the row has, since which identifiers an MDM emits is a
+    # profile setting an admin can change at any time. Only a value present on
+    # both sides and disagreeing is a contradiction, and it means one MDM
+    # device id covers two physical machines, with no safe way to tell which
     # one is connecting.
     defp adopt_attested(client, changeset, proof) do
       case contradicted_hardware_ids(client, proof.identifiers) do
@@ -430,8 +432,9 @@ defmodule PortalAPI.Client.Socket do
     defp contradicted_hardware_ids(client, cert_identifiers) do
       Enum.filter(@attested_hardware_fields, fn field ->
         row_value = Map.get(client, field)
+        cert_value = Map.get(cert_identifiers, field)
 
-        not is_nil(row_value) and row_value != Map.get(cert_identifiers, field)
+        not is_nil(row_value) and not is_nil(cert_value) and row_value != cert_value
       end)
     end
 
