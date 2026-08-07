@@ -35,6 +35,7 @@ enum TransitionKind {
     UpdateUpstreamDoHServers,
     UpdateUpstreamSearchDomain,
     RoamClient,
+    RebindClientNat,
     DeployNewRelays,
     PartitionRelaysFromPortal,
     RebootRelaysWhilePartitioned,
@@ -63,6 +64,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     let dns_record_domains = state.dns_resource_domains();
     let packet_targets = packets::targets(state);
     let udp_flows = state.udp_flows();
+    let rebindable_clients = state.connected_nat_clients();
     let dns_query_targets = dns_queries::targets(state);
     let truncated_dns_query_targets = state.reachable_dns_servers();
 
@@ -77,6 +79,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         Some((K::UpdateUpstreamDoHServers, 1)),
         Some((K::UpdateUpstreamSearchDomain, 1)),
         Some((K::RoamClient, 1)),
+        (!rebindable_clients.is_empty()).then_some((K::RebindClientNat, 1)),
         Some((K::DeployNewRelays, 1)),
         Some((K::PartitionRelaysFromPortal, 1)),
         Some((K::RebootRelaysWhilePartitioned, 1)),
@@ -97,7 +100,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 21]>>();
+    .collect::<SmallVec<[_; 22]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -143,6 +146,11 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
                 dead_window,
                 portal_window,
             }
+        }
+        K::RebindClientNat => {
+            let client_id = rebindable_clients[g.choose_index(rebindable_clients.len())];
+
+            Transition::RebindClientNat { client_id }
         }
         K::DeployNewRelays => Transition::DeployNewRelays(arb_relays(g)),
         K::PartitionRelaysFromPortal => Transition::PartitionRelaysFromPortal,

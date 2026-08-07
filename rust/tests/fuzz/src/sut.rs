@@ -533,6 +533,12 @@ impl TunnelTest {
                 });
             }
 
+            Transition::RebindClientNat { client_id } => {
+                let client = state.clients.get_mut(&client_id).unwrap();
+                client.rebind_nat();
+                client.exec_mut(|client| client.sut.reset(now, "NAT rebinding"));
+            }
+
             Transition::ReconnectPortal { client_id } => {
                 let client = state.clients.get_mut(&client_id).unwrap();
                 let ref_client = ref_state.clients.get(&client_id).unwrap();
