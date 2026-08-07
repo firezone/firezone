@@ -8,6 +8,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   @max_upload_size 1_000_000
   @max_upload_entries 10
+  @max_probed_urls 5
+  @probe_timeout :timer.seconds(5)
 
   defmodule Database do
     import Ecto.Query
@@ -324,7 +326,11 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   defp trust_anchor_show_panel(assigns) do
     certificate_details = Enum.map(assigns.trust_anchor.certificates, &describe_certificate/1)
-    assigns = assign(assigns, :certificate_details, certificate_details)
+
+    assigns =
+      assigns
+      |> assign(:certificate_details, certificate_details)
+      |> assign(:revocation_warnings, revocation_warnings(certificate_details))
 
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
@@ -362,6 +368,20 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         </section>
 
         <div class="border-t border-border"></div>
+
+        <section :if={@revocation_warnings != []} class="mb-4">
+          <div class="flex gap-2 px-3 py-2 rounded border border-warning bg-warning-light">
+            <.icon name="ri-error-warning-line" class="w-4 h-4 shrink-0 text-warning mt-0.5" />
+            <div class="min-w-0">
+              <p class="text-xs font-medium text-warning">Revocation may not be enforced</p>
+              <ul class="mt-1 space-y-0.5">
+                <li :for={warning <- @revocation_warnings} class="text-xs text-body">
+                  {warning}
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
 
         <section>
           <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
@@ -621,11 +641,12 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     changeset = build_creation_changeset(attrs)
 
     case Safe.scoped(changeset, socket.assigns.subject) |> Safe.insert() do
-      {:ok, _trust_anchor} ->
+      {:ok, trust_anchor} ->
         socket =
           socket
           |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
           |> put_flash(:success, "Trust anchor created successfully")
+          |> warn_unreachable_revocation_urls(trust_anchor)
           |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
 
         {:noreply, socket}
@@ -655,11 +676,12 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     changeset = build_edit_changeset(socket.assigns.selected_trust_anchor, attrs)
 
     case Safe.scoped(changeset, socket.assigns.subject) |> Safe.update() do
-      {:ok, _trust_anchor} ->
+      {:ok, trust_anchor} ->
         socket =
           socket
           |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
           |> put_flash(:success, "Trust anchor updated successfully")
+          |> warn_unreachable_revocation_urls(trust_anchor)
           |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
 
         {:noreply, socket}
@@ -817,6 +839,70 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   # Ordered label/value pairs for display; fields with nothing to show
   # (nil, empty string, or empty list) are dropped rather than shown blank.
+  # Probed on save rather than on render: an admin uploading a CA wants to know
+  # straight away that Firezone cannot reach its revocation endpoints, which is
+  # common when a customer runs their own PKI inside their network, but paying
+  # for it every time a panel opens would not be.
+  defp warn_unreachable_revocation_urls(socket, trust_anchor) do
+    case unreachable_revocation_urls(trust_anchor) do
+      [] ->
+        socket
+
+      urls ->
+        put_flash(
+          socket,
+          :warning,
+          "Firezone could not reach #{Enum.join(urls, ", ")}. Certificates issued by this " <>
+            "authority will still be accepted, but revocation cannot be checked."
+        )
+    end
+  end
+
+  defp unreachable_revocation_urls(trust_anchor) do
+    trust_anchor
+    |> Safe.preload(:certificates)
+    |> Map.fetch!(:certificates)
+    |> Enum.map(&describe_certificate/1)
+    |> Enum.flat_map(&(&1.crl_distribution_points ++ &1.ocsp_urls))
+    |> Enum.uniq()
+    |> Enum.take(@max_probed_urls)
+    |> Enum.reject(&reachable?/1)
+  end
+
+  # Any answer at all counts, including a 405 from an endpoint that serves a
+  # CRL but refuses HEAD: this asks whether the host is reachable from here,
+  # not whether the response is well formed.
+  defp reachable?(url) do
+    case Req.head(url, receive_timeout: @probe_timeout, retry: false, max_redirects: 3) do
+      {:ok, %{status: status}} when status < 500 -> true
+      _other -> false
+    end
+  rescue
+    _error -> false
+  end
+
+  # A CA advertises where its revocation data lives in the certificates it
+  # issues rather than in its own, so this can only speak for the anchor
+  # itself: an intermediate with neither endpoint cannot be revoked by its
+  # parent. A self-signed root never carries them and is not worth warning
+  # about, since nothing can revoke a root but removing it here.
+  defp revocation_warnings(certificate_details) do
+    for detail <- certificate_details,
+        not self_signed?(detail),
+        detail.crl_distribution_points == [],
+        detail.ocsp_urls == [] do
+      "#{describe_subject(detail)} publishes no CRL distribution point and no OCSP responder, " <>
+        "so Firezone cannot tell whether it has been revoked by its issuer."
+    end
+  end
+
+  defp self_signed?(%{subject_name: name, issuer_name: name}) when is_binary(name), do: true
+  defp self_signed?(_detail), do: false
+
+  defp describe_subject(%{common_name: common_name}) when is_binary(common_name), do: common_name
+  defp describe_subject(%{subject_name: subject_name}) when is_binary(subject_name), do: subject_name
+  defp describe_subject(_detail), do: "This certificate"
+
   defp certificate_detail_rows(detail) do
     [
       {"Subject", Map.get(detail, :subject_name)},
