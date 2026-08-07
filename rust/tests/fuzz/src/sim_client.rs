@@ -9,7 +9,7 @@ use super::{
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
-    transition::{DPort, DnsQueryName, DnsTransport, Identifier, IpFamily, SPort, Seq},
+    transition::{DPort, DnsQueryName, DnsTransport, Identifier, SPort, Seq},
 };
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceId, ResourceStatus};
@@ -19,7 +19,7 @@ use ip_packet::{IcmpEchoHeader, IcmpError, Icmpv4Type, Icmpv6Type, IpPacket, Lay
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
 use tunnel_proto::{
@@ -163,7 +163,7 @@ impl SimClient {
         dns_transport: DnsTransport,
         now: Instant,
     ) -> Option<Transmit> {
-        let domain = self.materialize_dns_query_name(name)?;
+        let domain = self.materialize_dns_query_name(name);
         let Some(sentinel) = self.dns_by_sentinel.sentinel_by_upstream(&upstream) else {
             tracing::error!(%upstream, "Unknown DNS server");
             return None;
@@ -200,44 +200,32 @@ impl SimClient {
         }
     }
 
-    fn materialize_dns_query_name(&self, name: DnsQueryName) -> Option<DomainName> {
+    fn materialize_dns_query_name(&self, name: DnsQueryName) -> DomainName {
         let ip = match name {
-            DnsQueryName::Name(domain) => return Some(domain),
-            DnsQueryName::AssignedProxy { family, index } => {
+            DnsQueryName::Name(domain) => return domain,
+            DnsQueryName::ReverseDns {
+                domain,
+                record_type,
+                address_index,
+            } => {
                 let ips = self
-                    .dns_resource_record_cache
+                    .dns_records
+                    .get(&domain)
+                    .expect("resolved domain should have DNS records")
                     .iter()
-                    .flat_map(|record| record.ips.iter().copied())
-                    .filter(|ip| match family {
-                        IpFamily::Ipv4 => ip.is_ipv4(),
-                        IpFamily::Ipv6 => ip.is_ipv6(),
+                    .filter(|ip| match record_type {
+                        RecordType::A => ip.is_ipv4(),
+                        RecordType::AAAA => ip.is_ipv6(),
+                        _ => unreachable!("only A and AAAA records contain IP addresses"),
                     })
-                    .collect::<BTreeSet<_>>();
+                    .copied()
+                    .collect::<Vec<_>>();
 
-                if ips.is_empty() {
-                    tracing::error!(?family, "No assigned DNS resource proxy IP");
-                    return None;
-                }
-
-                ips.iter().nth(index as usize % ips.len()).copied().unwrap()
-            }
-            DnsQueryName::UnassignedIpAfter(ip) => {
-                let assigned_ips = self
-                    .dns_resource_record_cache
-                    .iter()
-                    .flat_map(|record| record.ips.iter().copied())
-                    .collect::<BTreeSet<_>>();
-                let mut ip = next_ip(ip);
-
-                while assigned_ips.contains(&ip) {
-                    ip = next_ip(ip);
-                }
-
-                ip
+                ips[address_index as usize % ips.len()]
             }
         };
 
-        Some(DomainName::reverse_from_addr(ip).expect("reverse DNS names always fit"))
+        DomainName::reverse_from_addr(ip).expect("reverse DNS names always fit")
     }
 
     pub fn connect_tcp(&mut self, src: IpAddr, dst: IpAddr, sport: SPort, dport: DPort) {
@@ -651,13 +639,6 @@ fn probe_protocol_from_request(packet: &IpPacket) -> Option<ProbeProtocol> {
         sport: SPort(udp.source_port()),
         dport: DPort(udp.destination_port()),
     })
-}
-
-fn next_ip(ip: IpAddr) -> IpAddr {
-    match ip {
-        IpAddr::V4(ip) => Ipv4Addr::from(u32::from(ip).wrapping_add(1)).into(),
-        IpAddr::V6(ip) => Ipv6Addr::from(u128::from(ip).wrapping_add(1)).into(),
-    }
 }
 
 impl ExecMutScope for SimClient {

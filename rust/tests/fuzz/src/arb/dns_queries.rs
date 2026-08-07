@@ -10,7 +10,7 @@ use tunnel_proto::dns;
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
 use crate::reference::ReferenceState;
-use crate::transition::{DnsQuery, DnsQueryName, DnsTransport, IpFamily, Transition};
+use crate::transition::{DnsQuery, DnsQueryName, DnsTransport, Transition};
 
 #[derive(Clone)]
 pub(super) struct DnsQueryTarget {
@@ -133,12 +133,7 @@ pub(super) fn generate(
 
     let r_type = arb_maybe_available_response_rtype(g, &rtypes);
     let name = if r_type == RecordType::PTR {
-        arb_ptr_query_name(
-            g,
-            state.clients[&target.client_id]
-                .inner()
-                .has_dns_resource_proxy_ips(),
-        )
+        arb_ptr_query_name(g, state, target.client_id)
     } else {
         DnsQueryName::Name(domain)
     };
@@ -155,18 +150,45 @@ pub(super) fn generate(
     }
 }
 
-fn arb_ptr_query_name(g: &mut Generator, has_assigned_proxies: bool) -> DnsQueryName {
-    if !has_assigned_proxies || g.bool() {
-        return DnsQueryName::UnassignedIpAfter(arb_ptr_query_ip(g));
+fn arb_ptr_query_name(
+    g: &mut Generator,
+    state: &ReferenceState,
+    client_id: ClientId,
+) -> DnsQueryName {
+    let client = state.clients[&client_id].inner();
+    let resolved_v4_domains = client
+        .resolved_v4_domains()
+        .into_iter()
+        .map(|(domain, _)| domain)
+        .collect::<Vec<_>>();
+    let resolved_v6_domains = client
+        .resolved_v6_domains()
+        .into_iter()
+        .map(|(domain, _)| domain)
+        .collect::<Vec<_>>();
+
+    if (resolved_v4_domains.is_empty() && resolved_v6_domains.is_empty()) || g.bool() {
+        let ip = arb_unassigned_ptr_query_ip(g);
+
+        return DnsQueryName::Name(
+            DomainName::reverse_from_addr(ip).expect("reverse DNS names always fit"),
+        );
     }
 
-    DnsQueryName::AssignedProxy {
-        family: if g.bool() {
-            IpFamily::Ipv4
+    let select_ipv4 = g.bool();
+    let (domains, record_type) =
+        if (select_ipv4 && !resolved_v4_domains.is_empty()) || resolved_v6_domains.is_empty() {
+            (resolved_v4_domains, RecordType::A)
         } else {
-            IpFamily::Ipv6
-        },
-        index: g.u32(),
+            (resolved_v6_domains, RecordType::AAAA)
+        };
+    let address_index = g.u32();
+    let domain = domains[address_index as usize % domains.len()].clone();
+
+    DnsQueryName::ReverseDns {
+        domain,
+        record_type,
+        address_index,
     }
 }
 
@@ -209,7 +231,20 @@ fn arb_maybe_available_response_rtype(g: &mut Generator, available: &[RecordType
     }
 }
 
-/// Generate a PTR target inside a resource range or anywhere in the IP space.
+fn arb_unassigned_ptr_query_ip(g: &mut Generator) -> IpAddr {
+    use tunnel_proto::{IPV4_RESOURCES, IPV6_RESOURCES};
+
+    match arb_ptr_query_ip(g) {
+        IpAddr::V4(ip) if IPV4_RESOURCES.contains(ip) => {
+            IpAddr::V4(Ipv4Addr::from(u32::from(ip) ^ (1u32 << 31)))
+        }
+        IpAddr::V6(ip) if IPV6_RESOURCES.contains(ip) => {
+            IpAddr::V6(Ipv6Addr::from(u128::from(ip) ^ (1u128 << 127)))
+        }
+        ip => ip,
+    }
+}
+
 fn arb_ptr_query_ip(g: &mut Generator) -> IpAddr {
     use tunnel_proto::{IPV4_RESOURCES, IPV6_RESOURCES};
     match g.choose_index(3) {

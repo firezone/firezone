@@ -152,8 +152,7 @@ impl DnsQuery {
     pub(crate) fn domain(&self) -> Option<&DomainName> {
         match &self.name {
             DnsQueryName::Name(domain) => Some(domain),
-            DnsQueryName::AssignedProxy { .. } => None,
-            DnsQueryName::UnassignedIpAfter(_) => None,
+            DnsQueryName::ReverseDns { .. } => None,
         }
     }
 }
@@ -161,14 +160,11 @@ impl DnsQuery {
 #[derive(Debug, Clone)]
 pub(crate) enum DnsQueryName {
     Name(DomainName),
-    AssignedProxy { family: IpFamily, index: u32 },
-    UnassignedIpAfter(IpAddr),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum IpFamily {
-    Ipv4,
-    Ipv6,
+    ReverseDns {
+        domain: DomainName,
+        record_type: RecordType,
+        address_index: u32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
