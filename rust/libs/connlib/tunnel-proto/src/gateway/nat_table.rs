@@ -7,14 +7,12 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
-/// This stateful NAT table converts a client's proxy OP for a domain name into a real IP for the domain.
+/// This stateful NAT table converts a client's proxy IP for a domain name into a real IP for the domain.
 ///
-/// The NAT operates on tuples of "source protocol" and IP.
-/// "source protocol" here is a component from OSI-4, i.e. UDP, TCP or ICMP.
-/// NATing packets with a different protocol is not supported.
-///
-/// We need to include the L4 component because multiple DNS resources could resolve to the same IP on the Internet.
-/// Thus, purely an L3 NAT would not be sufficient as it would be impossible to map back to the proxy IP.
+/// Outbound sessions are keyed by the resource, the source Layer-4 protocol and the proxy IP.
+/// The Layer-4 value includes a UDP or TCP source port, or an ICMP echo identifier.
+/// Resource identity prevents DNS resources that share the same proxy IP and Layer-4 value from
+/// aliasing one another's NAT sessions.
 #[derive(Default, Debug)]
 pub(crate) struct NatTable {
     table: BiMap<Inside, Outside>,
