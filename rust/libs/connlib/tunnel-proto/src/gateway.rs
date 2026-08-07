@@ -607,12 +607,10 @@ impl GatewayState {
 
     pub fn retain_authorizations(
         &mut self,
-        authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+        mut authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
     ) {
-        for (client, resources) in authorizations {
-            let Some(client) = self.peers.peer_by_id_mut(&client) else {
-                continue;
-            };
+        for client in self.peers.iter_mut() {
+            let resources = authorizations.remove(&client.id()).unwrap_or_default();
 
             client.retain_authorizations(resources);
         }
