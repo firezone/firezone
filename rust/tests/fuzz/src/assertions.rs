@@ -17,7 +17,7 @@ use dns_types::DomainName;
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools;
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque, hash_map::Entry},
+    collections::{BTreeMap, HashMap, hash_map::Entry},
     iter,
     marker::PhantomData,
     net::{IpAddr, SocketAddr},
@@ -655,11 +655,11 @@ pub(crate) fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimCl
 }
 
 pub(crate) fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_client: &SimClient) {
-    let unexpected_dns_replies = find_unexpected_entries(
-        &ref_client.expected_udp_dns_handshakes,
-        &sim_client.received_udp_dns_responses,
-        |(_, id_a, _), (_, id_b, _)| id_a == id_b,
-    );
+    let unexpected_dns_replies = sim_client
+        .received_udp_dns_responses
+        .keys()
+        .filter(|response| !ref_client.expected_udp_dns_handshakes.contains(response))
+        .collect_vec();
 
     if !unexpected_dns_replies.is_empty() {
         tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Unexpected UDP DNS replies on client");
@@ -673,21 +673,36 @@ pub(crate) fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_clie
         let queries = &sim_client.sent_udp_dns_queries;
         let responses = &sim_client.received_udp_dns_responses;
 
-        let Some(client_sent_query) = queries.get(key) else {
-            tracing::error!(target: "assertions", ?queries, "❌ Missing UDP DNS query on client");
-            continue;
-        };
-        let Some(client_received_response) = responses.get(key) else {
-            tracing::error!(target: "assertions", ?responses, "❌ Missing UDP DNS response on client");
-            continue;
-        };
-
-        assert_correct_src_and_dst_ips(client_sent_query, client_received_response);
-        assert_correct_src_and_dst_udp_ports(client_sent_query, client_received_response);
+        match (queries.get(key), responses.get(key)) {
+            (Some(client_sent_query), Some(client_received_response)) => {
+                assert_correct_src_and_dst_ips(client_sent_query, client_received_response);
+                assert_correct_src_and_dst_udp_ports(client_sent_query, client_received_response);
+            }
+            (Some(_), None) => {
+                tracing::error!(target: "assertions", ?responses, "❌ Missing UDP DNS response on client");
+            }
+            (None, Some(_)) => {
+                tracing::error!(target: "assertions", ?queries, "❌ Missing UDP DNS query on client");
+            }
+            (None, None) => {
+                tracing::error!(target: "assertions", ?queries, "❌ Missing UDP DNS query on client");
+                tracing::error!(target: "assertions", ?responses, "❌ Missing UDP DNS response on client");
+            }
+        }
     }
 }
 
 pub(crate) fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
+    let unexpected_dns_responses = sim_client
+        .received_tcp_dns_responses
+        .iter()
+        .filter(|response| !ref_client.expected_tcp_dns_handshakes.contains(response))
+        .collect_vec();
+
+    if !unexpected_dns_responses.is_empty() {
+        tracing::error!(target: "assertions", ?unexpected_dns_responses, "❌ Unexpected TCP DNS responses on client");
+    }
+
     for (dns_server, query_id) in ref_client.expected_tcp_dns_handshakes.iter() {
         let _guard =
             tracing::info_span!(target: "assertions", "tcp_dns", %query_id, %dns_server).entered();
@@ -696,14 +711,19 @@ pub(crate) fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
         let queries = &sim_client.sent_tcp_dns_queries;
         let responses = &sim_client.received_tcp_dns_responses;
 
-        if queries.get(key).is_none() {
-            tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
-            continue;
-        };
-        if responses.get(key).is_none() {
-            tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
-            continue;
-        };
+        match (queries.contains(key), responses.contains(key)) {
+            (true, true) => {}
+            (true, false) => {
+                tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
+            }
+            (false, true) => {
+                tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
+            }
+            (false, false) => {
+                tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
+                tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
+            }
+        }
     }
 }
 
@@ -814,18 +834,6 @@ fn assert_proxy_ip_mapping_is_stable(
             }
         }
     }
-}
-
-fn find_unexpected_entries<'a, E, K, V>(
-    expected: &VecDeque<E>,
-    actual: &'a BTreeMap<K, V>,
-    is_expected: impl Fn(&E, &K) -> bool,
-) -> Vec<&'a V> {
-    actual
-        .iter()
-        .filter(|(k, _)| !expected.iter().any(|e| is_expected(e, k)))
-        .map(|(_, v)| v)
-        .collect()
 }
 
 /// Tracks whether any [`Level::ERROR`] events are emitted and panics on `Drop` in case.
