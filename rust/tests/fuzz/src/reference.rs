@@ -671,6 +671,16 @@ impl ReferenceState {
         self.udp_flows.iter().cloned().collect()
     }
 
+    pub(crate) fn can_fail_client_dns_resolution(
+        &self,
+        client_id: ClientId,
+        query: &DnsQuery,
+    ) -> bool {
+        self.clients[&client_id]
+            .inner()
+            .can_fail_dns_resolution(query, self.portal.upstream_do53())
+    }
+
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
         self.clients
             .values()

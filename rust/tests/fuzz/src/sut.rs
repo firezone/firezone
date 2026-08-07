@@ -6,7 +6,7 @@ use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
-use super::transition::{Destination, DnsQuery};
+use super::transition::{ClientDnsResolution, Destination, DnsQuery};
 use crate::assertions::*;
 use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{ProbeId, UdpFlow};
@@ -14,8 +14,8 @@ use crate::resource as client;
 use crate::transition::Transition;
 use bufferpool::BufferPool;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
-use dns_types::ResponseCode;
 use dns_types::prelude::*;
+use dns_types::{DomainName, RecordType, ResponseCode};
 use ip_packet::Ecn;
 use rand::SeedableRng;
 use rand::distr::SampleString;
@@ -51,8 +51,16 @@ pub struct TunnelTest {
     /// portal are dropped, simulating a client that has not yet reconnected to
     /// the portal after a roam.
     client_portal_offline_until: Option<(ClientId, Instant)>,
+    dns_resolution_failure: Option<DnsResolutionFailure>,
     drop_next_wire_packet: bool,
     network: RoutingTable,
+}
+
+#[derive(Debug)]
+struct DnsResolutionFailure {
+    client: ClientId,
+    domain: DomainName,
+    r_type: RecordType,
 }
 
 impl TunnelTest {
@@ -143,6 +151,7 @@ impl TunnelTest {
             flux_capacitor,
             network: ref_state.network.clone(),
             client_portal_offline_until: None,
+            dns_resolution_failure: None,
             drop_next_wire_packet: false,
             clients,
             gateways,
@@ -376,8 +385,20 @@ impl TunnelTest {
                         dns_server,
                         query_id,
                         transport,
+                        client_resolution,
                     },
             } => {
+                match client_resolution {
+                    ClientDnsResolution::Succeeded => {}
+                    ClientDnsResolution::Failed => {
+                        state.dns_resolution_failure = Some(DnsResolutionFailure {
+                            client: client_id,
+                            domain: domain.clone(),
+                            r_type,
+                        });
+                    }
+                }
+
                 let client = state.clients.get_mut(&client_id).unwrap();
                 let transmit = client.exec_mut(|sim| {
                     sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
@@ -665,6 +686,11 @@ impl TunnelTest {
             Transition::UpdateDnsRecords { .. } => {}
         };
         state.advance(ref_state, &mut buffered_transmits);
+
+        if let Some(failure) = &state.dns_resolution_failure {
+            tracing::error!(?failure, "DNS resolution failure was not consumed");
+        }
+
         state.drop_next_wire_packet = false;
 
         state
@@ -855,13 +881,31 @@ impl TunnelTest {
                     .unwrap_or(query_message.clone());
 
                 let response = self.on_recursive_dns_query(&message, &ref_state.global_dns_records);
+                let should_fail = self.dns_resolution_failure.as_ref().is_some_and(|failure| {
+                    let DnsResolutionFailure {
+                        client,
+                        domain,
+                        r_type,
+                    } = failure;
+
+                    *client == client_id
+                        && domain == &query_message.domain()
+                        && *r_type == query_message.qtype()
+                });
+                let message = if should_fail {
+                    self.dns_resolution_failure = None;
+
+                    Err(anyhow::anyhow!("simulated client DNS resolution failure"))
+                } else {
+                    Ok(response)
+                };
                 let client = self.clients.get_mut(&client_id).unwrap();
                 client.exec_mut(|c| {
                     c.sut.handle_dns_response(
                         dns::RecursiveResponse {
                             server,
                             query: query_message,
-                            message: Ok(response), // TODO: Vary this?
+                            message,
                             transport,
                             local,
                             remote,
