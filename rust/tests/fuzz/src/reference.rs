@@ -476,11 +476,18 @@ impl ReferenceState {
         protocol: Protocol,
     ) -> PacketRoute {
         let route = self.route_for_packet(origin, source, destination, protocol);
-        let PacketRoute::Resource { resource, gateway } = route else {
-            return route;
-        };
         let Destination::DomainName { name, .. } = destination else {
             return route;
+        };
+        let (resource, gateway) = match route {
+            PacketRoute::Resource { resource, gateway } => (resource, Some(gateway)),
+            PacketRoute::ResourceRejectedByGateway { resource, .. } => (resource, None),
+            PacketRoute::Drop => return route,
+            PacketRoute::RejectedByClient => return route,
+            PacketRoute::ResourceUnreachableByGateway { .. } => return route,
+            PacketRoute::Gateway(_) => return route,
+            PacketRoute::Peer(_) => return route,
+            PacketRoute::PeerRejectedByPeer(_) => return route,
         };
 
         let required_record = if source.is_ipv4() {
@@ -494,6 +501,9 @@ impl ReferenceState {
                 .dns_resource_resolution(resource, name)
                 .is_some_and(|records| records.contains(&required_record))
         });
+        let Some(gateway) = gateway else {
+            return route;
+        };
         if has_compatible_record {
             return route;
         }
