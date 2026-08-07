@@ -235,6 +235,7 @@ fn arb_dynamic_device_pool_resource(g: &mut Generator) -> DynamicDevicePoolResou
         id: g.fresh_resource_id(),
         name: g.lower_ascii(4, 10),
         address: format!("*.{base}"),
+        filters: arb_filters(g),
     }
 }
 

@@ -185,111 +185,103 @@ impl TunnelTest {
                     });
                 }
             }
-            Transition::ChangeCidrResourceAddress {
-                resource,
-                new_address,
-            } => {
-                let new_resource = client::Resource::Cidr(client::CidrResource {
-                    address: new_address,
-                    ..resource
-                });
-
-                for (client_id, client) in &mut state.clients {
-                    if let Some(gateway) = ref_state
-                        .portal
-                        .gateway_for_resource(new_resource.id())
-                        .and_then(|gid| state.gateways.get_mut(gid))
-                    {
-                        gateway
-                            .exec_mut(|g| g.sut.remove_access(client_id, &new_resource.id(), now))
-                    }
-                    client.exec_mut(|c| {
-                        c.sut
-                            .add_resource(new_resource.clone().into_description(), now)
-                    });
+            Transition::EditResource(edit) => {
+                enum GatewayAction {
+                    None,
+                    Update,
+                    Revoke,
                 }
-            }
-            Transition::MoveResourceToNewSite { resource, new_site } => {
-                let new_resource = resource.with_new_site(new_site);
 
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| {
-                        c.sut
-                            .add_resource(new_resource.clone().into_description(), now)
-                    });
-                }
-            }
-            Transition::ChangeFiltersOfResource {
-                resource,
-                new_filters,
-            } => {
-                let new_resource = resource.with_new_filters(new_filters);
+                let gateway_action = match &edit {
+                    client::ResourceEdit::Dns(edit) => match &edit.value {
+                        client::DnsResourceValue::Id(_) => {
+                            unreachable!("resource identity is not editable")
+                        }
+                        client::DnsResourceValue::Address(_) => GatewayAction::Revoke,
+                        client::DnsResourceValue::Name(_) => GatewayAction::None,
+                        client::DnsResourceValue::AddressDescription(_) => GatewayAction::None,
+                        client::DnsResourceValue::Sites(_) => GatewayAction::Revoke,
+                        client::DnsResourceValue::IpStack(_) => GatewayAction::Revoke,
+                        client::DnsResourceValue::Filters(_) => GatewayAction::Update,
+                    },
+                    client::ResourceEdit::Cidr(edit) => match &edit.value {
+                        client::CidrResourceValue::Id(_) => {
+                            unreachable!("resource identity is not editable")
+                        }
+                        client::CidrResourceValue::Address(_) => GatewayAction::Revoke,
+                        client::CidrResourceValue::Name(_) => GatewayAction::None,
+                        client::CidrResourceValue::AddressDescription(_) => GatewayAction::None,
+                        client::CidrResourceValue::Sites(_) => GatewayAction::Revoke,
+                        client::CidrResourceValue::Filters(_) => GatewayAction::Update,
+                    },
+                    client::ResourceEdit::StaticDevicePool(edit) => match &edit.value {
+                        client::StaticDevicePoolResourceValue::Id(_) => {
+                            unreachable!("resource identity is not editable")
+                        }
+                        client::StaticDevicePoolResourceValue::Name(_) => GatewayAction::None,
+                        client::StaticDevicePoolResourceValue::Devices(_) => GatewayAction::None,
+                        client::StaticDevicePoolResourceValue::Filters(_) => GatewayAction::None,
+                    },
+                    client::ResourceEdit::DynamicDevicePool(edit) => match &edit.value {
+                        client::DynamicDevicePoolResourceValue::Id(_) => {
+                            unreachable!("resource identity is not editable")
+                        }
+                        client::DynamicDevicePoolResourceValue::Name(_) => GatewayAction::None,
+                        client::DynamicDevicePoolResourceValue::Address(_) => GatewayAction::None,
+                        client::DynamicDevicePoolResourceValue::Filters(_) => GatewayAction::None,
+                    },
+                    client::ResourceEdit::Type(_) => GatewayAction::Revoke,
+                };
+                let resource_id = edit.id();
+                let updated = edit.updated_resource();
 
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| {
-                        c.sut
-                            .add_resource(new_resource.clone().into_description(), now)
-                    });
-                }
-            }
-            Transition::ChangeResourceType {
-                old_resource,
-                new_resource,
-            } => {
-                debug_assert_eq!(old_resource.id(), new_resource.id());
+                match gateway_action {
+                    GatewayAction::None => {}
+                    GatewayAction::Update => {
+                        let resource = ref_state
+                            .portal
+                            .map_client_resource_to_gateway_resource(resource_id);
 
-                for (client_id, client) in &mut state.clients {
-                    for gateway in state.gateways.values_mut() {
-                        gateway.exec_mut(|gateway| {
+                        for gateway in state.gateways.values_mut() {
                             gateway
-                                .sut
-                                .remove_access(client_id, &old_resource.id(), now)
-                        });
+                                .exec_mut(|gateway| gateway.sut.update_resource(resource.clone()));
+                        }
                     }
+                    GatewayAction::Revoke => {
+                        for client_id in state.clients.keys() {
+                            for gateway in state.gateways.values_mut() {
+                                gateway.exec_mut(|gateway| {
+                                    gateway.sut.remove_access(client_id, &resource_id, now)
+                                });
+                            }
+                        }
+                    }
+                }
 
+                for client in state.clients.values_mut() {
                     client.exec_mut(|client| {
-                        if let client::Resource::Dns(resource) = &new_resource {
-                            client
-                                .dns_records
-                                .retain(|domain, _| !is_subdomain(domain, &resource.address));
+                        match &edit {
+                            client::ResourceEdit::Dns(_) => {}
+                            client::ResourceEdit::Cidr(_) => {}
+                            client::ResourceEdit::StaticDevicePool(_) => {}
+                            client::ResourceEdit::DynamicDevicePool(_) => {}
+                            client::ResourceEdit::Type(_) => match &updated {
+                                client::Resource::Dns(resource) => client
+                                    .dns_records
+                                    .retain(|domain, _| !is_subdomain(domain, &resource.address)),
+                                client::Resource::Cidr(_) => {}
+                                client::Resource::Internet(_) => unreachable!(
+                                    "the Portal API does not allow editing the Internet Resource"
+                                ),
+                                client::Resource::StaticDevicePool(_) => {}
+                                client::Resource::DynamicDevicePool(_) => {}
+                            },
                         }
 
                         client
                             .sut
-                            .add_resource(new_resource.clone().into_description(), now);
+                            .add_resource(updated.clone().into_description(), now);
                     });
-                }
-            }
-            Transition::UpdateStaticDevicePool {
-                pool_id,
-                new_devices,
-            } => {
-                let Some(existing) =
-                    ref_state
-                        .portal
-                        .all_resources()
-                        .into_iter()
-                        .find_map(|r| match r {
-                            client::Resource::StaticDevicePool(p) if p.id == pool_id => Some(p),
-                            client::Resource::Dns(_) => None,
-                            client::Resource::Cidr(_) => None,
-                            client::Resource::Internet(_) => None,
-                            client::Resource::DynamicDevicePool(_) => None,
-                            client::Resource::StaticDevicePool(_) => None,
-                        })
-                else {
-                    panic!("UpdateStaticDevicePool for unknown pool {pool_id}");
-                };
-
-                let resource =
-                    client::Resource::StaticDevicePool(client::StaticDevicePoolResource {
-                        devices: new_devices,
-                        ..existing
-                    });
-
-                for client in state.clients.values_mut() {
-                    client
-                        .exec_mut(|c| c.sut.add_resource(resource.clone().into_description(), now));
                 }
             }
             Transition::RemoveResource(rid) => {
