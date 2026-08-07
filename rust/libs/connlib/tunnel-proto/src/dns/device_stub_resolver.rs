@@ -43,6 +43,12 @@ pub(crate) enum ResolveStrategy {
     Pending,
 }
 
+pub(crate) enum ResolutionOutcome {
+    Ignored,
+    Failed,
+    Resolved { ipv4: Ipv4Addr, ipv6: Ipv6Addr },
+}
+
 #[derive(Debug)]
 pub(crate) enum Event {
     QueryDomain {
@@ -194,7 +200,7 @@ impl DeviceStubResolver {
         resource_id: ResourceId,
         domain: DomainName,
         result: Result<(Ipv4Addr, Ipv6Addr), FailReason>,
-    ) {
+    ) -> ResolutionOutcome {
         let pending = self
             .pending
             .extract_if(|(rid, dom, _), _| *rid == resource_id && *dom == domain)
@@ -203,26 +209,26 @@ impl DeviceStubResolver {
 
         if pending.is_empty() {
             tracing::debug!(%resource_id, %domain, "Received device pool resolution for unknown query");
-            return;
+            return ResolutionOutcome::Ignored;
         }
 
         tracing::debug!(%resource_id, %domain, ?result, "Device FQDN resolved");
 
-        if let Ok((ipv4, ipv6)) = result {
+        if let Ok((ipv4, ipv6)) = &result {
             self.resolved.insert(
-                domain,
+                domain.clone(),
                 CachedResolution {
                     resource_id,
-                    ipv4,
-                    ipv6,
+                    ipv4: *ipv4,
+                    ipv6: *ipv6,
                 },
             );
         }
 
         for pending in pending {
-            let response = match result {
+            let response = match &result {
                 Ok((ipv4, ipv6)) => {
-                    build_response(&pending.query, pending.query.domain(), ipv4, ipv6)
+                    build_response(&pending.query, pending.query.domain(), *ipv4, *ipv6)
                 }
                 Err(FailReason::NotFound) => dns_types::Response::nxdomain(&pending.query),
                 Err(
@@ -243,6 +249,21 @@ impl DeviceStubResolver {
                 transport: pending.transport,
                 response,
             });
+        }
+
+        match result {
+            Ok((ipv4, ipv6)) => ResolutionOutcome::Resolved { ipv4, ipv6 },
+            Err(
+                FailReason::NotFound
+                | FailReason::Offline
+                | FailReason::VersionMismatch
+                | FailReason::Forbidden
+                | FailReason::Disabled
+                | FailReason::AmbiguousAddress
+                | FailReason::MissingAddress
+                | FailReason::InvalidAddress
+                | FailReason::Unknown,
+            ) => ResolutionOutcome::Failed,
         }
     }
 

@@ -17,7 +17,7 @@ use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
 use crate::client::dns_config::DnsConfig;
 use crate::client::pending_authorizations::{DnsQueryForSite, PendingAuthorizations};
-use crate::client::routing::{Route, RoutingTables};
+use crate::client::routing::{ClientTarget, Route, RoutingTables};
 use crate::client::tracked_state::TrackedState;
 use crate::conn_track::Originator;
 use crate::dns::{
@@ -425,8 +425,44 @@ impl ClientState {
         domain: DomainName,
         result: Result<(Ipv4Addr, Ipv6Addr), FailReason>,
     ) {
-        self.device_stub_resolver
-            .handle_device_domain_resolved(resource_id, domain, result);
+        let outcome =
+            self.device_stub_resolver
+                .handle_device_domain_resolved(resource_id, domain, result);
+
+        match (outcome, self.resources_by_id.get(&resource_id)) {
+            (
+                device_stub_resolver::ResolutionOutcome::Resolved { ipv4, ipv6 },
+                Some(Resource::DynamicDevicePool(pool)),
+            ) => {
+                let filter = FilterEngine::new(&pool.filters);
+
+                self.routing_tables.upsert_resolved_device(
+                    ipv4.into(),
+                    resource_id,
+                    filter.clone(),
+                );
+                self.routing_tables
+                    .upsert_resolved_device(ipv6.into(), resource_id, filter);
+            }
+            (
+                device_stub_resolver::ResolutionOutcome::Resolved { .. },
+                Some(
+                    Resource::Dns(_)
+                    | Resource::Cidr(_)
+                    | Resource::Internet(_)
+                    | Resource::StaticDevicePool(_),
+                )
+                | None,
+            ) => {
+                tracing::warn!(%resource_id, "Resolved device pool domain for unknown resource");
+            }
+            (
+                device_stub_resolver::ResolutionOutcome::Ignored
+                | device_stub_resolver::ResolutionOutcome::Failed,
+                _,
+            ) => {}
+        }
+
         self.drain_device_stub_resolver_events();
     }
 
@@ -654,7 +690,7 @@ impl ClientState {
                 Some(Route::Client {
                     filter,
                     resource_id: rid,
-                    client_id: cid,
+                    target,
                 }),
             ) => {
                 // A new direct-client flow must be permitted and authorized before it is sent.
@@ -662,6 +698,19 @@ impl ClientState {
                     reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
                     return Ok(());
                 }
+
+                let cid = match target {
+                    ClientTarget::Known(cid) => cid,
+                    ClientTarget::Resolved => {
+                        let Some((cid, _)) = self.clients.peer_by_ip(dst) else {
+                            pending_authorizations
+                                .on_not_authorized_device(rid, dst, packet, resources, now);
+                            return Ok(());
+                        };
+
+                        cid
+                    }
+                };
 
                 let already_authorised = self
                     .authorized_resources
