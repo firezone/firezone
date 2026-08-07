@@ -756,6 +756,15 @@ impl RefClient {
         PacketRoute::ResourceRejectedByGateway { resource, gateway }
     }
 
+    pub(crate) fn has_resource_for_packet(
+        &self,
+        src: IpAddr,
+        dst: &Destination,
+        protocol: Protocol,
+    ) -> bool {
+        self.resource_by_dst(src, dst, protocol).is_some()
+    }
+
     fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
         match destination {
             Destination::DomainName { .. } => {

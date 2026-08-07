@@ -15,6 +15,10 @@ pub(crate) enum UnroutablePacketInput {
         client_id: ClientId,
         packet: UdpPacketInput,
     },
+    ClientUnknownResource {
+        client_id: ClientId,
+        packet: UdpPacketInput,
+    },
     GatewayNonPeerDestination {
         gateway_id: GatewayId,
         packet: UdpPacketInput,
@@ -30,6 +34,7 @@ impl UnroutablePacketInput {
         match self {
             Self::ClientNonTunnelSource { client_id, .. } => PacketInputTarget::Client(*client_id),
             Self::ClientSelfDestination { client_id, .. } => PacketInputTarget::Client(*client_id),
+            Self::ClientUnknownResource { client_id, .. } => PacketInputTarget::Client(*client_id),
             Self::GatewayNonPeerDestination { gateway_id, .. } => {
                 PacketInputTarget::Gateway(*gateway_id)
             }
@@ -41,6 +46,7 @@ impl UnroutablePacketInput {
         match self {
             Self::ClientNonTunnelSource { packet, .. } => packet.to_ip_packet(),
             Self::ClientSelfDestination { packet, .. } => packet.to_ip_packet(),
+            Self::ClientUnknownResource { packet, .. } => packet.to_ip_packet(),
             Self::GatewayNonPeerDestination { packet, .. } => packet.to_ip_packet(),
             Self::GatewayUnknownPeer { packet, .. } => packet.to_ip_packet(),
         }
@@ -53,6 +59,9 @@ impl UnroutablePacketInput {
             }
             Self::ClientSelfDestination { .. } => {
                 PacketInputOutcome::Rejected(RoutingError::PacketToSelf)
+            }
+            Self::ClientUnknownResource { .. } => {
+                PacketInputOutcome::Rejected(RoutingError::UnknownResource)
             }
             Self::GatewayNonPeerDestination { .. } => {
                 PacketInputOutcome::Rejected(RoutingError::NotAPeer)
