@@ -3,5 +3,4 @@ corpus
 artifacts
 coverage
 crash-*
-!crashes/**
 *.profraw

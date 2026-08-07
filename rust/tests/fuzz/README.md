@@ -16,7 +16,7 @@ Pull-request CI only replays these inputs, making fuzz regression and coverage c
 It never performs random coverage discovery.
 
 The nightly `fuzz-nightly.yml` workflow runs every target from `targets.json` on `main`, minimizes and repacks the grown corpora, refreshes their coverage baselines, and opens one bot PR with the results.
-A crash does not cost the run its findings: the workflow pushes the grown corpus either way and commits the input that provoked the crash alongside it.
+An input that made the target fail is packed into the corpus with the rest, so the commit the workflow pushes is what reports the bug: the run itself stays green, and replaying that corpus turns CI red until the bug is fixed.
 
 Tunnel inputs are decoded positionally with `arbitrary::Unstructured`.
 Changing the generator in `src/arb/` can therefore reinterpret existing inputs; after a substantial generator change, re-minimize and grow the corpus before updating the archive.
@@ -41,19 +41,19 @@ mise run //rust/tests/fuzz:fuzz tunnel-proto -fork=4
 ## Reproducing a crash
 
 A local run leaves its failing inputs in the ignored `artifacts/<target>` directory.
-Inputs under `crashes/<target>` are committed instead: they are what a fuzz job found and had no chance to fix.
-`replay-crashes` replays both, building the target first if nothing has yet.
 
 ```console
 mise run //rust/tests/fuzz:replay-crashes tunnel-proto
-mise run //rust/tests/fuzz:tmin tunnel-proto crashes/tunnel-proto/crash-<hash>
+mise run //rust/tests/fuzz:tmin tunnel-proto artifacts/tunnel-proto/crash-<hash>
 mise run //rust/tests/fuzz:repro tunnel-proto <reduced-input> 2> repro.log
 ```
 
 Set `RUST_LOG=trace` for detailed scenario and connlib traces.
 
-Delete a committed input in the change that fixes it.
-Nothing else prunes them, and only the corpus guards against the bug coming back, so add the input there in the same change if it reaches code the corpus does not.
+A fuzz job's findings arrive in the corpus instead, keeping the `crash-` name libFuzzer gave them.
+`coverage` names the one it died on, and `repro` and `tmin` take that path like any other input.
+Nothing needs pruning once the bug is fixed: the input stops failing and the next `cmin` re-emits it under its content hash, where it goes on covering the code that used to crash.
+Until then the corpus cannot be minimized at all, since minimizing means running every input; `cargo-fuzz` reports the failed merge and leaves the corpus as it was.
 
 ## Coverage
 
@@ -71,7 +71,7 @@ The ceiling spans every workspace crate the target links, not just the one shari
 A fuzz build instruments the dependencies too, so a target that drives `tunnel-proto` reports what it reached in `snownet`, `dns-types` and the rest as one number.
 Which lines a crate contributes is visible in the HTML coverage report.
 
-When the ceiling is genuinely exceeded, `grow` runs the whole recovery locally: it fuzzes for new coverage, minimizes and repacks the corpus, then refreshes the baseline from what the grown corpus actually reaches.
+When the ceiling is genuinely exceeded, `grow` runs the whole recovery locally: it fuzzes for new coverage, minimizes the corpus, refreshes the baseline from what the grown corpus actually reaches, then repacks it.
 
 ```console
 mise run //rust/tests/fuzz:grow tunnel-proto
@@ -84,8 +84,13 @@ It spreads that across three quarters of the cores, leaving you some to work wit
 Pass libFuzzer arguments to override both the parallelism and the duration, e.g. `-fork=8 -max_total_time=300`.
 Be wary of shortening it much for `tunnel-proto`: `-fork` re-merges the whole seed corpus before it discovers anything, `-max_total_time` does not bound that startup, and a short budget is spent entirely inside it.
 
-A failing step does not stop the ones behind it; `grow` runs them all and reports the failure at the end.
-A crash therefore still leaves a grown corpus behind, and moves the input that provoked it to `crashes/<target>` to be committed.
+`grow` passes `-ignore_crashes=1`, so a crash no longer ends the run: it grinds for the whole budget and collects every input that fails, not just the first.
+libFuzzer honours that in fork mode only, where it already ignores timeouts and OOMs.
+Those inputs join the corpus once the coverage measurement is done, which is late enough that a crash cannot cost the run its refreshed ceiling.
+A run adds at most ten of them: a bug the fuzzer reaches easily yields a distinct input on every hit, and one backtrace does not need hundreds of variations committed.
+
+A failing step does not stop the ones behind it either; `grow` runs them all and reports the failure at the end.
+Whichever step broke, the run still ends with a repacked corpus carrying what it found.
 
 The measurement is taken on the machine that runs it.
 A local run that gets luckier than CI writes a ceiling CI cannot meet, so re-run `coverage-check` before pushing.
@@ -93,9 +98,10 @@ A local run that gets luckier than CI writes a ceiling CI cannot meet, so re-run
 After growing and minimizing a corpus yourself, the remaining steps run individually; `update-baseline` records the measurement without the risk of truncating the committed file on a failed one:
 
 ```console
-mise run //rust/tests/fuzz:pack-corpus tunnel-proto
 mise run //rust/tests/fuzz:coverage tunnel-proto
 mise run //rust/tests/fuzz:update-baseline tunnel-proto
+mise run //rust/tests/fuzz:save-crashes tunnel-proto
+mise run //rust/tests/fuzz:pack-corpus tunnel-proto
 ```
 
 For a local browsable report:

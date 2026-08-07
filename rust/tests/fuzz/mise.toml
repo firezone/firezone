@@ -82,7 +82,7 @@ set -euo pipefail
 '''
 
 [tasks.grow]
-description = "Fuzz a target, then preserve its crashes, minimize, repack and re-baseline its corpus"
+description = "Fuzz a target, then minimize, re-baseline and repack its corpus, crashes included"
 shell = "bash -c"
 usage = '''
 arg "<target>"
@@ -115,14 +115,25 @@ else
   set -- "-fork=$fork" -max_total_time=1800
 fi
 
+# In fork mode a crash ends the run, so the first bug would keep the budget from
+# reaching any other one. libFuzzer already ignores timeouts and OOMs there;
+# this treats crashes the same, so the run grinds for its whole budget and
+# collects every input that fails rather than just the first. Prepended rather
+# than appended because libFuzzer takes a flag's last occurrence, so an explicit
+# override still wins.
+set -- -ignore_crashes=1 "$@"
+
 # Each step consumes what the previous one wrote, so they are invoked in order
 # rather than declared as `depends`, which mise runs in parallel.
 #
-# A crash is the fuzzer doing its job, so a failing step does not abandon the
-# ones behind it: the half hour of growth that preceded it and the input that
-# provoked it are both worth keeping. Every step that can still run does, and
-# the failure is re-raised once they have. The steps write through temporaries,
-# so one that fails leaves the committed file it owns untouched.
+# `save-crashes` comes after the corpus has been measured: the inputs it adds
+# crash the target by definition, so a `coverage` run that included them could
+# not produce a profile, and the ceiling would go unrefreshed for the night.
+#
+# A failing step does not abandon the ones behind it either. The findings are
+# worth committing whichever step broke, so every one that can still run does
+# and the failure is re-raised at the end. They write through temporaries, so a
+# failed step leaves the committed file it owns untouched.
 failed=()
 
 step() {
@@ -132,11 +143,11 @@ step() {
 }
 
 step fuzz "$target" "$@"
-step save-crashes "$target"
 step cmin "$target"
-step pack-corpus "$target"
 step coverage "$target"
 step update-baseline "$target"
+step save-crashes "$target"
+step pack-corpus "$target"
 
 if [ "${#failed[@]}" -gt 0 ]; then
   echo "error: ${#failed[@]} step(s) failed: ${failed[*]}" >&2
@@ -145,7 +156,7 @@ fi
 '''
 
 [tasks.save-crashes]
-description = "Move a fuzz target's failing inputs into the committed crashes directory"
+description = "Move a fuzz target's failing inputs into its corpus so they get committed"
 shell = "bash -c"
 usage = 'arg "<target>"'
 raw = true
@@ -153,10 +164,23 @@ run = '''
 set -euo pipefail
 
 target="$usage_target"
-crashes="crashes/$target"
+corpus="corpus/$target"
+
+# The corpus is the only thing this directory commits, and pull-request CI
+# replays all of it, so an input parked here reproduces the crash on every run
+# until the bug behind it is fixed. It keeps its `crash-` name to say why it is
+# there; the next `cmin` after the fix re-emits it under its content hash like
+# any other input.
+#
+# One easily reached bug yields a distinct input on every hit and the run no
+# longer stops at the first, so cap what a run adds rather than committing
+# hundreds of variations on the same backtrace.
+limit=10
+kept=0
+dropped=0
 
 # `slow-unit-*` is deliberately absent: libFuzzer writes those while carrying
-# on, so committing them would accumulate inputs that nothing is wrong with.
+# on, so adding them would accumulate inputs that nothing is wrong with.
 for artifact in \
   "artifacts/$target"/crash-* \
   "artifacts/$target"/timeout-* \
@@ -165,13 +189,31 @@ for artifact in \
 do
   [ -e "$artifact" ] || continue
 
+  if [ "$kept" -ge "$limit" ]; then
+    dropped=$((dropped + 1))
+    continue
+  fi
+
   name="${artifact##*/}"
 
-  mkdir -p "$crashes"
-  mv -f "$artifact" "$crashes/$name"
-  chmod 0644 "$crashes/$name"
-  echo "Preserved $name in $crashes"
+  mkdir -p "$corpus"
+  mv -f "$artifact" "$corpus/$name"
+  chmod 0644 "$corpus/$name"
+  kept=$((kept + 1))
+
+  echo "Added $name to $corpus"
 done
+
+if [ "$kept" -eq 0 ]; then
+  echo "No failing input to add."
+  exit 0
+fi
+
+echo "Added $kept failing input(s) to $corpus."
+
+if [ "$dropped" -gt 0 ]; then
+  echo "Dropped $dropped more: a run adds at most $limit."
+fi
 '''
 
 [tasks.update-baseline]
@@ -278,9 +320,8 @@ raw = true
 run = 'RUST_LOG="${RUST_LOG:-debug}" cargo fuzz run --sanitizer none --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target" "$usage_testcase"'
 
 [tasks.replay-crashes]
-description = "Replay a fuzz target's committed and locally produced crash artifacts with tracing"
+description = "Replay all crash artifacts for a fuzz target with tracing"
 shell = "bash -c"
-depends = ["install-toolchain"]
 usage = 'arg "<target>"'
 raw = true
 run = '''
@@ -290,13 +331,7 @@ target="$usage_target"
 bin="../../target/x86_64-unknown-linux-gnu/release/$target"
 found=false
 
-# `save-crashes` moves what it preserves, so the two directories never hold the
-# same input and nothing is replayed twice.
 for artifact in \
-  "crashes/$target"/crash-* \
-  "crashes/$target"/timeout-* \
-  "crashes/$target"/oom-* \
-  "crashes/$target"/leak-* \
   "artifacts/$target"/crash-* \
   "artifacts/$target"/timeout-* \
   "artifacts/$target"/oom-* \
@@ -307,9 +342,8 @@ do
 
   if [ "$found" = false ]; then
     if [ ! -x "$bin" ]; then
-      # A committed input is replayed from a checkout where nothing has built
-      # the target yet.
-      cargo fuzz build --sanitizer none --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$target"
+      echo "Fuzz target binary does not exist or is not executable: $bin" >&2
+      exit 1
     fi
     found=true
   fi
