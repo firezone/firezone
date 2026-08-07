@@ -247,6 +247,17 @@ impl ReferenceState {
                     c.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
                 });
             }
+            Transition::SendDnsResourcePtrQuery {
+                client_id,
+                query_id,
+                dns_server,
+                transport,
+                ..
+            } => {
+                state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
+                    c.on_dns_resource_ptr_query(dns_server, *query_id, *transport);
+                });
+            }
             Transition::SendIcmpPacket {
                 client_id,
                 src,

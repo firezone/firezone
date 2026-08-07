@@ -228,7 +228,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         }
         K::SendDnsQuery => {
             let target = dns_query_targets[g.choose_index(dns_query_targets.len())].clone();
-            dns_queries::generate(g, target)
+            dns_queries::generate(g, target, state)
         }
         K::UpdateStaticDevicePool => {
             let pool = static_device_pools[g.choose_index(static_device_pools.len())].clone();

@@ -393,6 +393,30 @@ impl TunnelTest {
 
                 buffered_transmits.push_from(transmit, client, now);
             }
+            Transition::SendDnsResourcePtrQuery {
+                client_id,
+                record_domain,
+                family,
+                address_index,
+                query_id,
+                dns_server,
+                transport,
+            } => {
+                let client = state.clients.get_mut(&client_id).unwrap();
+                let transmit = client.exec_mut(|sim| {
+                    sim.send_dns_resource_ptr_query_for(
+                        record_domain,
+                        family,
+                        address_index,
+                        query_id,
+                        dns_server,
+                        transport,
+                        now,
+                    )
+                });
+
+                buffered_transmits.push_from(transmit, client, now);
+            }
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in state.clients.values_mut() {
                     client.exec_mut(|c| c.sut.update_system_resolvers(servers.clone()));
