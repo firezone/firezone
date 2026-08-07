@@ -2,7 +2,9 @@ use super::{
     QueryId,
     dns_records::DnsRecords,
     icmp_error_hosts::IcmpErrorHosts,
-    probe::{ExpectedOutcome, PacketRoute, RejectionRemote, RejectionResponse, Remote},
+    probe::{
+        ExpectedOutcome, PacketRoute, ProbeId, RejectionRemote, RejectionResponse, Remote, TcpFlow,
+    },
     reference::PrivateKey,
     resource::{
         CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
@@ -93,6 +95,10 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) expected_tcp_connections: BTreeMap<(IpAddr, Destination, SPort, DPort), ResourceId>,
 
+    /// The bytes expected back from TCP resource echo servers during this transition.
+    #[debug(skip)]
+    pub(crate) expected_tcp_data: Vec<u8>,
+
     /// Tracks TCP connections expected to receive an ICMP error response.
     #[debug(skip)]
     pub(crate) expected_tcp_rejections: BTreeMap<(SPort, DPort), RejectionResponse>,
@@ -149,6 +155,7 @@ impl RefClient {
             dns_resource_resolutions: Default::default(),
             connected_internet_resource: Default::default(),
             expected_tcp_connections: Default::default(),
+            expected_tcp_data: Default::default(),
             expected_tcp_rejections: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
             expected_tcp_dns_handshakes: Default::default(),
@@ -680,6 +687,18 @@ impl RefClient {
                     .insert((sport, dport), RejectionResponse::Unreachable);
             }
         }
+    }
+
+    pub(crate) fn on_send_tcp_data(&mut self, flow: &TcpFlow, probe_id: ProbeId) {
+        let connection_exists =
+            self.expected_tcp_connections
+                .keys()
+                .any(|(src, _, sport, dport)| {
+                    (*src, *sport, *dport) == (flow.src, flow.sport, flow.dport)
+                });
+        assert!(connection_exists, "TCP data requires an established flow");
+
+        self.expected_tcp_data.extend(probe_id.to_be_bytes());
     }
 
     pub(crate) fn route_for_packet(
@@ -1577,6 +1596,10 @@ impl RefClient {
         self.expected_truncated_dns_queries.clear();
         self.expected_tcp_connections.clear();
         self.expected_tcp_rejections.clear();
+    }
+
+    pub(crate) fn clear_observations(&mut self) {
+        self.expected_tcp_data.clear();
     }
 }
 

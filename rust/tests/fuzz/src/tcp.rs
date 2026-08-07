@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, net::SocketAddr, time::Instant};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use ip_packet::{IpPacket, Layer4Protocol};
 use l3_tcp::Socket;
 
@@ -12,6 +12,8 @@ pub struct Client {
     sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), Option<l3_tcp::SocketHandle>>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
+
+    received_data: Vec<u8>,
 
     created_at: Instant,
     last_now: Instant,
@@ -37,6 +39,7 @@ impl Client {
             sockets_by_conn: Default::default(),
             device,
             interface,
+            received_data: Default::default(),
             created_at: now,
             last_now: now,
         }
@@ -79,6 +82,29 @@ impl Client {
         self.sockets_by_conn.contains_key(&(local, remote))
     }
 
+    pub fn send(&mut self, local: SocketAddr, remote_port: u16, data: &[u8]) -> Result<()> {
+        let Some(handle) = self.sockets_by_conn.iter().find_map(
+            |((candidate_local, candidate_remote), handle)| {
+                (*candidate_local == local && candidate_remote.port() == remote_port)
+                    .then_some(*handle)
+                    .flatten()
+            },
+        ) else {
+            bail!("no TCP connection for {local} to port {remote_port}");
+        };
+
+        let socket = self.sockets.get_mut::<l3_tcp::Socket>(handle);
+        let sent = socket
+            .send_slice(data)
+            .map_err(|error| anyhow!("failed to send TCP data: {error}"))?;
+
+        if sent != data.len() {
+            bail!("TCP send buffer accepted {sent} of {} bytes", data.len());
+        }
+
+        Ok(())
+    }
+
     pub fn handle_inbound(&mut self, packet: IpPacket) {
         // TODO: Upstream ICMP error handling to `smoltcp`.
         if let Ok(Some((failed_packet, _))) = packet.icmp_error()
@@ -115,6 +141,17 @@ impl Client {
             &mut self.device,
             &mut self.sockets,
         );
+
+        for (_, socket) in self.sockets.iter_mut() {
+            let l3_tcp::AnySocket::Tcp(socket) = socket;
+
+            while socket.can_recv() {
+                let data = socket
+                    .recv(|data| (data.len(), data.to_vec()))
+                    .expect("can_recv guarantees that data can be received");
+                self.received_data.extend(data);
+            }
+        }
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
@@ -127,6 +164,14 @@ impl Client {
         })
     }
 
+    pub fn received_data(&self) -> &[u8] {
+        &self.received_data
+    }
+
+    pub fn clear_received_data(&mut self) {
+        self.received_data.clear();
+    }
+
     pub fn reset(&mut self) {
         self.sockets = l3_tcp::SocketSet::new(Vec::default());
         self.device.clear();
@@ -134,6 +179,8 @@ impl Client {
         for maybe_socket in self.sockets_by_conn.values_mut() {
             *maybe_socket = None;
         }
+
+        self.received_data.clear();
     }
 }
 
@@ -176,6 +223,27 @@ impl Server {
             &mut self.device,
             &mut self.sockets,
         );
+
+        for (_, socket) in self.sockets.iter_mut() {
+            let l3_tcp::AnySocket::Tcp(socket) = socket;
+
+            while socket.can_recv() {
+                let data = socket
+                    .recv(|data| (data.len(), data.to_vec()))
+                    .expect("can_recv guarantees that data can be received");
+                let sent = socket
+                    .send_slice(&data)
+                    .expect("an established TCP server can echo received data");
+
+                if sent != data.len() {
+                    tracing::error!(
+                        expected = data.len(),
+                        actual = sent,
+                        "TCP echo was truncated"
+                    );
+                }
+            }
+        }
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {

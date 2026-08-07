@@ -453,6 +453,15 @@ impl TunnelTest {
                     .unwrap()
                     .exec_mut(|sim| sim.connect_tcp(src, dst, sport, dport));
             }
+            Transition::SendTcpDataOnFlow { flow, probe_id } => {
+                state
+                    .clients
+                    .get_mut(&flow.client_id)
+                    .unwrap()
+                    .exec_mut(|sim| {
+                        sim.send_tcp_data(flow.src, flow.sport, flow.dport, &probe_id.to_be_bytes())
+                    });
+            }
             Transition::SendDnsQuery {
                 client_id,
                 query:

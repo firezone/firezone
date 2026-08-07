@@ -7,7 +7,7 @@ use tunnel_proto::{
 
 use super::{
     packet_input::UnroutablePacketInput,
-    probe::{ProbeId, UdpFlow},
+    probe::{ProbeId, TcpFlow, UdpFlow},
     reference::PrivateKey,
     resource::{Resource, ResourceEdit},
     sim_net::Host,
@@ -64,6 +64,10 @@ pub enum Transition {
         dst: Destination,
         sport: SPort,
         dport: DPort,
+    },
+    SendTcpDataOnFlow {
+        flow: TcpFlow,
+        probe_id: ProbeId,
     },
     SendDnsQuery {
         client_id: ClientId,
@@ -136,6 +140,7 @@ impl Transition {
             Transition::SendUdpPacketOnFlow { .. } => false,
             Transition::SendUnroutablePacket(_) => false,
             Transition::ConnectTcp { .. } => false,
+            Transition::SendTcpDataOnFlow { .. } => false,
             Transition::SendDnsQuery { .. } => false,
             Transition::SendDnsResourcePtrQuery { .. } => false,
             Transition::SendTruncatedUdpDnsQuery { .. } => false,
