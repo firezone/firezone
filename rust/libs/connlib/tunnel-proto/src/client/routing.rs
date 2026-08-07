@@ -16,13 +16,18 @@ pub(super) enum Route {
     Client {
         filter: FilterEngine,
         resource_id: ResourceId,
-        client_id: ClientId,
+        target: ClientTarget,
     },
     Gateway {
         filter: FilterEngine,
         resource_id: ResourceId,
         domain: Option<DomainName>,
     },
+}
+
+pub(super) enum ClientTarget {
+    Known(ClientId),
+    Resolved,
 }
 
 impl Route {
@@ -40,6 +45,7 @@ pub(super) struct RoutingTables {
     cidr: RoutingTable<CidrEntry>,
     dns: RoutingTable<DnsEntry>,
     client: RoutingTable<ClientEntry>,
+    resolved_device: RoutingTable<ResolvedDeviceEntry>,
 }
 
 impl RoutingTables {
@@ -54,7 +60,19 @@ impl RoutingTables {
             return Some(Route::Client {
                 filter: entry.filter,
                 resource_id: entry.resource_id,
-                client_id: entry.client_id,
+                target: ClientTarget::Known(entry.client_id),
+            });
+        }
+
+        if let Some(entry) = self
+            .resolved_device
+            .matches(destination, Ok(protocol))
+            .cloned()
+        {
+            return Some(Route::Client {
+                filter: entry.filter,
+                resource_id: entry.resource_id,
+                target: ClientTarget::Resolved,
             });
         }
 
@@ -180,10 +198,26 @@ impl RoutingTables {
         )
     }
 
+    pub(super) fn upsert_resolved_device(
+        &mut self,
+        network: IpNetwork,
+        resource_id: ResourceId,
+        filter: FilterEngine,
+    ) -> bool {
+        self.resolved_device.upsert(
+            network,
+            ResolvedDeviceEntry {
+                filter,
+                resource_id,
+            },
+        )
+    }
+
     pub(super) fn remove_by_id(&mut self, resource_id: ResourceId) {
         self.cidr.remove_by_id(resource_id);
         self.dns.remove_by_id(resource_id);
         self.client.remove_by_id(resource_id);
+        self.resolved_device.remove_by_id(resource_id);
     }
 
     pub(super) fn remove_client(
@@ -219,6 +253,22 @@ struct ClientEntry {
     filter: FilterEngine,
     resource_id: ResourceId,
     client_id: ClientId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct ResolvedDeviceEntry {
+    filter: FilterEngine,
+    resource_id: ResourceId,
+}
+
+impl RouteEntry for ResolvedDeviceEntry {
+    fn filter(&self) -> &FilterEngine {
+        &self.filter
+    }
+
+    fn resource_id(&self) -> ResourceId {
+        self.resource_id
+    }
 }
 
 impl RouteEntry for ClientEntry {
@@ -289,7 +339,39 @@ mod tests {
             Some(internet_resource_id()),
         );
 
-        assert!(matches!(route, Some(Route::Client { client_id: c, .. }) if c == client_id));
+        assert!(matches!(
+            route,
+            Some(Route::Client {
+                target: ClientTarget::Known(c),
+                ..
+            }) if c == client_id
+        ));
+    }
+
+    #[test]
+    fn resolved_device_routes_to_an_unknown_client() {
+        let mut tables = RoutingTables::default();
+        let resource_id = ResourceId::from_u128(2);
+        tables.upsert_resolved_device(
+            IpNetwork::from(other_client_tun_ip()),
+            resource_id,
+            FilterEngine::PermitAll,
+        );
+
+        let route = tables.resolve(
+            other_client_tun_ip(),
+            Protocol::Tcp(80),
+            Some(internet_resource_id()),
+        );
+
+        assert!(matches!(
+            route,
+            Some(Route::Client {
+                target: ClientTarget::Resolved,
+                resource_id: rid,
+                ..
+            }) if rid == resource_id
+        ));
     }
 
     fn other_client_tun_ip() -> IpAddr {
