@@ -137,7 +137,6 @@ jobs:
     permissions:
       actions: write # gh run cancel
       checks: write # dorny/test-reporter
-      contents: read
 
   swift:
     uses: ./.github/workflows/_swift.yml
