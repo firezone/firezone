@@ -9,7 +9,7 @@ use super::{
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
-    transition::{DPort, DnsTransport, Identifier, SPort, Seq},
+    transition::{DPort, DnsTransport, Identifier, SPort, Seq, TruncatedDnsQuery},
 };
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceId, ResourceStatus};
@@ -63,6 +63,8 @@ pub(crate) struct SimClient {
     pub(crate) sent_tcp_dns_queries: HashSet<(dns::Upstream, QueryId)>,
     pub(crate) received_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
 
+    pub(crate) truncated_dns_queries: BTreeMap<TruncatedDnsQuery, TruncatedDnsQueryObservation>,
+
     pub(crate) probe_observations: Vec<ProbeObservation>,
     sent_probes: BTreeMap<ProbeProtocol, ProbeId>,
 
@@ -93,6 +95,7 @@ impl SimClient {
             received_udp_dns_responses: Default::default(),
             sent_tcp_dns_queries: Default::default(),
             received_tcp_dns_responses: Default::default(),
+            truncated_dns_queries: Default::default(),
             probe_observations: Default::default(),
             sent_probes: Default::default(),
             routes: Default::default(),
@@ -194,6 +197,54 @@ impl SimClient {
                     .unwrap();
                 self.sent_tcp_dns_queries.insert((upstream, query_id));
 
+                None
+            }
+        }
+    }
+
+    pub(crate) fn send_truncated_dns_query(
+        &mut self,
+        query: TruncatedDnsQuery,
+        now: Instant,
+    ) -> Option<Transmit> {
+        let Some(sentinel) = self.dns_by_sentinel.sentinel_by_upstream(&query.dns_server) else {
+            tracing::warn!(dns_server = %query.dns_server, "Unknown DNS server");
+            self.truncated_dns_queries.insert(
+                query,
+                TruncatedDnsQueryObservation::new(TruncatedDnsQueryHandling::Failed),
+            );
+            return None;
+        };
+        let src = self
+            .sut
+            .tunnel_ip_for(sentinel)
+            .expect("tunnel should be initialised");
+        let packet =
+            ip_packet::make::udp_packet(src, sentinel, query.local_port, 53, query.payload())
+                .expect("truncated DNS payload to fit into a UDP packet");
+
+        match self.handle_tun_input(packet, now) {
+            Ok(Some(transmit)) => {
+                self.truncated_dns_queries.insert(
+                    query,
+                    TruncatedDnsQueryObservation::new(TruncatedDnsQueryHandling::Forwarded),
+                );
+                Some(transmit)
+            }
+            Ok(None) => {
+                self.sut.handle_timeout(now);
+                self.truncated_dns_queries.insert(
+                    query,
+                    TruncatedDnsQueryObservation::new(TruncatedDnsQueryHandling::Consumed),
+                );
+                None
+            }
+            Err(error) => {
+                tracing::warn!("Failed to handle truncated DNS query: {error:#}");
+                self.truncated_dns_queries.insert(
+                    query,
+                    TruncatedDnsQueryObservation::new(TruncatedDnsQueryHandling::Failed),
+                );
                 None
             }
         }
@@ -369,6 +420,21 @@ impl SimClient {
             if udp.source_port() == 53
                 && let Some(upstream) = self.dns_by_sentinel.upstream_by_sentinel(packet.source())
             {
+                if let Some(query) = self
+                    .truncated_dns_queries
+                    .keys()
+                    .find(|query| {
+                        query.dns_server == upstream && query.local_port == udp.destination_port()
+                    })
+                    .cloned()
+                {
+                    self.truncated_dns_queries
+                        .get_mut(&query)
+                        .expect("query was selected from this map")
+                        .response = Some(packet);
+                    return None;
+                }
+
                 let response = dns_types::Response::parse(udp.payload())
                     .expect("packets from DNS sentinels on port 53 to be DNS packets");
 
@@ -580,9 +646,31 @@ impl SimClient {
         self.received_udp_dns_responses.clear();
         self.sent_tcp_dns_queries.clear();
         self.received_tcp_dns_responses.clear();
+        self.truncated_dns_queries.clear();
         self.tcp_client.reset();
         self.failed_tcp_packets.clear();
     }
+}
+
+pub(crate) struct TruncatedDnsQueryObservation {
+    pub(crate) handling: TruncatedDnsQueryHandling,
+    pub(crate) response: Option<IpPacket>,
+}
+
+impl TruncatedDnsQueryObservation {
+    fn new(handling: TruncatedDnsQueryHandling) -> Self {
+        Self {
+            handling,
+            response: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum TruncatedDnsQueryHandling {
+    Consumed,
+    Forwarded,
+    Failed,
 }
 
 fn probe_protocol_from_request(packet: &IpPacket) -> Option<ProbeProtocol> {

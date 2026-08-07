@@ -393,6 +393,12 @@ impl TunnelTest {
 
                 buffered_transmits.push_from(transmit, client, now);
             }
+            Transition::SendTruncatedUdpDnsQuery { client_id, query } => {
+                let client = state.clients.get_mut(&client_id).unwrap();
+                let transmit = client.exec_mut(|sim| sim.send_truncated_dns_query(query, now));
+
+                buffered_transmits.push_from(transmit, client, now);
+            }
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in state.clients.values_mut() {
                     client.exec_mut(|c| c.sut.update_system_resolvers(servers.clone()));
@@ -685,6 +691,7 @@ impl TunnelTest {
             assert_tcp_connections(ref_client, sut_client);
             assert_udp_dns_packets_properties(ref_client, sut_client);
             assert_tcp_dns(ref_client, sut_client);
+            assert_truncated_dns_queries(ref_client, sut_client);
             assert_dns_servers_are_valid(ref_client, sut_client, &ref_state.portal);
             assert_search_domain_is_valid(&ref_state.portal, sut_client);
             assert_routes_are_valid(ref_client, sut_client);

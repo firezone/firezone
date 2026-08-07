@@ -246,6 +246,13 @@ impl ReferenceState {
                     c.on_dns_query(query, upstream_do53, icmp_error_hosts, now);
                 });
             }
+            Transition::SendTruncatedUdpDnsQuery { client_id, query } => {
+                state
+                    .clients
+                    .get_mut(client_id)
+                    .unwrap()
+                    .exec_mut(|client| client.on_truncated_dns_query(query.clone()));
+            }
             Transition::SendIcmpPacket {
                 client_id,
                 src,

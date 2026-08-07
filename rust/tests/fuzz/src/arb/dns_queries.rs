@@ -10,7 +10,7 @@ use tunnel_proto::dns;
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
 use crate::reference::ReferenceState;
-use crate::transition::{DnsQuery, DnsTransport, Transition};
+use crate::transition::{DnsQuery, DnsTransport, Transition, TruncatedDnsQuery};
 
 #[derive(Clone)]
 pub(super) struct DnsQueryTarget {
@@ -144,10 +144,25 @@ pub(super) fn generate(g: &mut Generator, target: DnsQueryTarget) -> Transition 
     }
 }
 
+pub(super) fn generate_truncated(
+    g: &mut Generator,
+    (client_id, dns_server): (ClientId, dns::Upstream),
+) -> Transition {
+    let local_port = g.fresh_udp_packet(53).0.0;
+    let payload = (0..g.count(0, TruncatedDnsQuery::DNS_HEADER_LEN - 1))
+        .map(|_| g.u8())
+        .collect();
+
+    Transition::SendTruncatedUdpDnsQuery {
+        client_id,
+        query: TruncatedDnsQuery::new(dns_server, local_port, payload),
+    }
+}
+
 fn arb_dns_transport(g: &mut Generator) -> DnsTransport {
     if g.bool() {
         DnsTransport::Udp {
-            local_port: g.u16(),
+            local_port: g.fresh_udp_packet(53).0.0,
         }
     } else {
         DnsTransport::Tcp

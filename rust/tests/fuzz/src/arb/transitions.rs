@@ -48,6 +48,7 @@ enum TransitionKind {
     UpdateDnsRecords,
     SendPacket,
     SendDnsQuery,
+    SendTruncatedUdpDnsQuery,
     // Static device pool membership update.
     UpdateStaticDevicePool,
 }
@@ -68,6 +69,7 @@ pub(super) fn generate(
     let dns_record_domains = state.dns_resource_domains();
     let packet_targets = packets::targets(state, now);
     let dns_query_targets = dns_queries::targets(state, now);
+    let truncated_dns_query_targets = state.reachable_dns_servers();
     let static_device_pools = state.static_device_pools_on_any_client();
 
     // Build the legal action list. Data-plane actions stay more frequent because
@@ -99,6 +101,7 @@ pub(super) fn generate(
         (!dns_record_domains.is_empty()).then_some((K::UpdateDnsRecords, 5)),
         (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQuery, 10)),
+        (!truncated_dns_query_targets.is_empty()).then_some((K::SendTruncatedUdpDnsQuery, 2)),
         (!static_device_pools.is_empty()).then_some((K::UpdateStaticDevicePool, 2)),
     ]
     .into_iter()
@@ -236,6 +239,12 @@ pub(super) fn generate(
         K::SendDnsQuery => {
             let target = dns_query_targets[g.choose_index(dns_query_targets.len())].clone();
             dns_queries::generate(g, target)
+        }
+        K::SendTruncatedUdpDnsQuery => {
+            let target = truncated_dns_query_targets
+                [g.choose_index(truncated_dns_query_targets.len())]
+            .clone();
+            dns_queries::generate_truncated(g, target)
         }
         K::UpdateStaticDevicePool => {
             let pool = static_device_pools[g.choose_index(static_device_pools.len())].clone();
