@@ -1,0 +1,22 @@
+name: Cancel merge group
+"on":
+  workflow_call:
+
+# `required-check` only reports once every job has finished, by which point a
+# doomed merge group has already dispatched the integration / compatibility
+# fan-out. Cancelling from here stops that.
+
+permissions:
+  actions: write # gh run cancel
+
+jobs:
+  cancel:
+    # Callers gate on `failure()`; the merge-group check lives here so that they
+    # do not have to repeat it.
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - run: gh run cancel "$GITHUB_RUN_ID"

@@ -2,6 +2,9 @@ name: Elixir
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   unit-test:
     runs-on: ubuntu-24.04
@@ -9,7 +12,6 @@ jobs:
       run:
         working-directory: ./elixir
     permissions:
-      actions: write # gh run cancel
       checks: write # dorny/test-reporter
     env:
       MIX_ENV: test
@@ -56,8 +58,12 @@ jobs:
           parallel: true
           fail-on-error: false
 
-      - uses: ./.github/actions/cancel-merge-group
-        if: failure()
+  cancel-unit-test:
+    needs: [unit-test]
+    if: failure()
+    uses: ./.github/workflows/_cancel_merge_group.yml
+    permissions:
+      actions: write # gh run cancel
 
   type-check:
     runs-on: ubuntu-24.04
@@ -86,9 +92,6 @@ jobs:
 
       - name: Run Dialyzer
         run: mix dialyzer --format dialyxir
-
-      - uses: ./.github/actions/cancel-merge-group
-        if: failure()
 
   static-analysis:
     runs-on: ubuntu-24.04
@@ -151,5 +154,9 @@ jobs:
           echo "$result"
           echo "$result" | jq -e '.schemaValidationMessages | length == 0'
 
-      - uses: ./.github/actions/cancel-merge-group
-        if: failure()
+  cancel-static-analysis:
+    needs: [static-analysis]
+    if: failure()
+    uses: ./.github/workflows/_cancel_merge_group.yml
+    permissions:
+      actions: write # gh run cancel

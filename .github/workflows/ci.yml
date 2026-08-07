@@ -232,6 +232,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
       checks: write # dorny/test-reporter
+      contents: read
 
   rust:
     needs: planner
