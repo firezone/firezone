@@ -1354,7 +1354,11 @@ impl ClientState {
         }
 
         let Some(upstream) = self.dns_config.mapping().upstream_by_sentinel(dst) else {
-            return ControlFlow::Continue(packet); // Not for our DNS resolver.
+            if is_dns_sentinel(dst) {
+                return ControlFlow::Break(());
+            }
+
+            return ControlFlow::Continue(packet);
         };
 
         if self.tcp_dns_server.accepts(&packet) {
@@ -2717,6 +2721,13 @@ fn is_llmnr(dst: IpAddr) -> bool {
     match dst {
         IpAddr::V4(ip) => ip == LLMNR_IPV4,
         IpAddr::V6(ip) => ip == LLMNR_IPV6,
+    }
+}
+
+fn is_dns_sentinel(dst: IpAddr) -> bool {
+    match dst {
+        IpAddr::V4(ip) => DNS_SENTINELS_V4.contains(ip),
+        IpAddr::V6(ip) => DNS_SENTINELS_V6.contains(ip),
     }
 }
 
