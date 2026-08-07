@@ -93,7 +93,11 @@ jobs:
       - uses: ./.github/actions/free-disk-space
       - name: "cargo test"
         shell: bash
-        run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture
+        # `--target` is deliberately set to the host triple: without it, cargo
+        # treats the build as native and applies the coverage `RUSTFLAGS` to
+        # build scripts and proc-macros too. Each of those then emits its own
+        # `.profraw`, which `llvm-profdata merge` has to read for nothing.
+        run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --target ${{ steps.setup-rust.outputs.host-target }} --lcov --output-path lcov.info -- --include-ignored --nocapture
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests

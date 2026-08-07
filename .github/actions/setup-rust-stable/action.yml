@@ -26,6 +26,12 @@ outputs:
       (runner.os == 'Linux' && '--workspace') ||
       (runner.os == 'macOS' && '--workspace --exclude bin-shared --exclude firezone-gui-client') ||
       (runner.os == 'Windows' && '--workspace') }}
+  host-target:
+    description: Host target triple for the current OS
+    value: ${{
+      (runner.os == 'Linux' && 'x86_64-unknown-linux-gnu') ||
+      (runner.os == 'macOS' && 'aarch64-apple-darwin') ||
+      (runner.os == 'Windows' && 'x86_64-pc-windows-msvc') }}
 
 runs:
   using: "composite"
