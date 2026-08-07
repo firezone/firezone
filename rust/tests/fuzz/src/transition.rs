@@ -125,6 +125,10 @@ pub enum Transition {
     Idle,
     RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
     DeauthorizeWhileGatewayIsPartitioned(ResourceId),
+    ExpireGatewayAuthorization {
+        client_id: ClientId,
+        resource_id: ResourceId,
+    },
     UpdateDnsRecords {
         domain: DomainName,
         records: BTreeSet<OwnedRecordData>,
@@ -165,6 +169,7 @@ impl Transition {
             Transition::Idle => false,
             Transition::RebootRelaysWhilePartitioned(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
+            Transition::ExpireGatewayAuthorization { .. } => true,
             Transition::UpdateDnsRecords { .. } => false,
         }
     }

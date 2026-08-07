@@ -402,6 +402,29 @@ impl ReferenceState {
                     client.exec_mut(|client| client.remove_resource(resource))
                 }
             }
+            Transition::ExpireGatewayAuthorization {
+                client_id,
+                resource_id,
+            } => {
+                let gateway = *state
+                    .portal
+                    .gateway_for_resource(*resource_id)
+                    .expect("an expirable resource must have a gateway");
+                let gateways = BTreeSet::from([gateway]);
+                let portal = &state.portal;
+
+                state
+                    .clients
+                    .get_mut(client_id)
+                    .unwrap()
+                    .exec_mut(|client| {
+                        client.reset_connections_to_gateways(
+                            &gateways,
+                            |resource| portal.gateway_for_resource(resource).copied(),
+                            now,
+                        )
+                    });
+            }
             Transition::RestartClient { client_id, key } => {
                 state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                     c.restart(*key, now);
@@ -949,6 +972,32 @@ impl ReferenceState {
                 self.portal
                     .gateway_for_resource(*resource)
                     .is_some_and(|gateway| self.gateways.contains_key(gateway))
+            })
+            .collect()
+    }
+
+    pub(crate) fn expirable_gateway_authorizations(&self) -> Vec<(ClientId, ResourceId)> {
+        self.clients
+            .iter()
+            .flat_map(|(client_id, client)| {
+                self.gateways.keys().filter_map(move |gateway_id| {
+                    let resources = client
+                        .inner()
+                        .connected_resources()
+                        .filter(|resource| {
+                            self.portal.gateway_for_resource(*resource) == Some(gateway_id)
+                        })
+                        .collect::<Vec<_>>();
+                    let [resource_id] = resources.as_slice() else {
+                        return None;
+                    };
+
+                    client
+                        .inner()
+                        .tcp_connection_tuple_to_resource(*resource_id)
+                        .is_none()
+                        .then_some((*client_id, *resource_id))
+                })
             })
             .collect()
     }
