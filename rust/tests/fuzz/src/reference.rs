@@ -279,6 +279,14 @@ impl ReferenceState {
                     client.readd_all_resources();
                 });
             }
+            Transition::RebindClientNat { client_id } => {
+                let all_iceless = state.portal.iceless();
+                let client = state.clients.get_mut(client_id).unwrap();
+
+                if !all_iceless {
+                    client.exec_mut(|client| client.reset_connections(now));
+                }
+            }
             Transition::ReconnectPortal { client_id } => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
                 // We do re-add all resources though so depending on the order they are added in, overlapping CIDR resources may change.
@@ -1028,6 +1036,18 @@ impl ReferenceState {
 
     pub(crate) fn all_client_ids(&self) -> Vec<ClientId> {
         self.clients.keys().copied().collect()
+    }
+
+    pub(crate) fn connected_nat_clients(&self) -> Vec<ClientId> {
+        self.clients
+            .iter()
+            .filter(|(_, client)| client.ip4.is_some())
+            .filter(|(_, client)| client.inner().connected_resources().next().is_some())
+            .filter_map(|(id, client)| match client.edge_config() {
+                EdgeConfig::Open => None,
+                EdgeConfig::Nat(_, _) => Some(*id),
+            })
+            .collect()
     }
 
     /// Eligible `(client, device-pool resource, reachable DNS server)` triples

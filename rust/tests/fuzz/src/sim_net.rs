@@ -225,6 +225,11 @@ impl Nat {
         self.clear();
     }
 
+    fn rebind(&mut self) {
+        self.by_internal.clear();
+        self.by_public.clear();
+    }
+
     fn clear(&mut self) {
         self.by_internal.clear();
         self.by_public.clear();
@@ -326,6 +331,14 @@ impl<T> Host<T> {
         match &mut self.edge {
             Edge::Open => {}
             Edge::Nat(nat) => nat.migrate(ip4),
+        }
+    }
+
+    /// Expires this host's NAT mappings while retaining its network attachment.
+    pub(crate) fn rebind_nat(&mut self) {
+        match &mut self.edge {
+            Edge::Open => unreachable!("only hosts behind NAT can rebind"),
+            Edge::Nat(nat) => nat.rebind(),
         }
     }
 

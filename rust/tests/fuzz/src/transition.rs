@@ -85,6 +85,9 @@ pub enum Transition {
         dead_window: Duration,
         portal_window: Duration,
     },
+    RebindClientNat {
+        client_id: ClientId,
+    },
     ReconnectPortal {
         client_id: ClientId,
     },
@@ -128,6 +131,7 @@ impl Transition {
             Transition::UpdateUpstreamDoHServers(_) => false,
             Transition::UpdateUpstreamSearchDomain(_) => false,
             Transition::RoamClient { .. } => false,
+            Transition::RebindClientNat { .. } => false,
             Transition::ReconnectPortal { .. } => false,
             Transition::RestartClient { .. } => false,
             Transition::DeployNewRelays(_) => false,
