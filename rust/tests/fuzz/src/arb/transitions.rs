@@ -8,7 +8,7 @@ use tunnel_proto::messages::client::DevicePoolMember;
 
 use super::context::Generator;
 use super::topology::{
-    arb_dns_record_set, arb_relays, arb_socket_ip_stack, pick_site, with_interface,
+    arb_dns_record_set, arb_relays, arb_socket_ip_stack, arb_two_relays, pick_site, with_interface,
 };
 use super::values::{
     arb_address_description, arb_cidr_resource_address, arb_compatible_upstream_do53_servers,
@@ -36,6 +36,7 @@ enum TransitionKind {
     UpdateUpstreamSearchDomain,
     RoamClient,
     DeployNewRelays,
+    UpdateRelayPresence,
     PartitionRelaysFromPortal,
     RebootRelaysWhilePartitioned,
     Idle,
@@ -74,6 +75,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         Some((K::UpdateUpstreamSearchDomain, 1)),
         Some((K::RoamClient, 1)),
         Some((K::DeployNewRelays, 1)),
+        (state.relays.len() >= 2).then_some((K::UpdateRelayPresence, 1)),
         Some((K::PartitionRelaysFromPortal, 1)),
         Some((K::RebootRelaysWhilePartitioned, 1)),
         Some((K::Idle, 1)),
@@ -91,7 +93,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 19]>>();
+    .collect::<SmallVec<[_; 20]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -139,6 +141,18 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
             }
         }
         K::DeployNewRelays => Transition::DeployNewRelays(arb_relays(g)),
+        K::UpdateRelayPresence => {
+            let relay_id = state
+                .relays
+                .keys()
+                .nth(g.choose_index(state.relays.len()))
+                .unwrap();
+
+            Transition::UpdateRelayPresence {
+                disconnected: [*relay_id].into_iter().collect(),
+                connected: arb_two_relays(g),
+            }
+        }
         K::PartitionRelaysFromPortal => Transition::PartitionRelaysFromPortal,
         K::RebootRelaysWhilePartitioned => {
             // Reboot the *existing* relays with fresh credentials (same ids).
