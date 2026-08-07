@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ (matrix.language == 'swift' && 'macos-26') || 'ubuntu-24.04' }}
     timeout-minutes: ${{ (matrix.language == 'swift' && 120) || 360 }}
     permissions:
-      actions: read
+      actions: write # gh run cancel
       contents: read
       security-events: write # upload CodeQL results
     strategy:
@@ -40,3 +40,6 @@ jobs:
         uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
         with:
           category: "/language:${{matrix.language}}"
+
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()

@@ -1,0 +1,15 @@
+name: Cancel merge group
+description: Cancel the current run so that a failing merge group stops occupying runners.
+
+runs:
+  using: composite
+  steps:
+    # `required-check` only reports once every job has finished, so without this
+    # a merge group that is already doomed keeps dispatching work. Cancelling
+    # here stops the integration / compatibility fan-out from ever starting.
+    - if: github.event_name == 'merge_group'
+      shell: bash
+      run: gh run cancel "$GITHUB_RUN_ID"
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}

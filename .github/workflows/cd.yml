@@ -126,6 +126,7 @@ jobs:
     uses: ./.github/workflows/_rust.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: read
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
@@ -134,6 +135,7 @@ jobs:
     uses: ./.github/workflows/_elixir.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       checks: write # dorny/test-reporter
 
   swift:

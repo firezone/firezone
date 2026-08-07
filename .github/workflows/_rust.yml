@@ -8,6 +8,7 @@ defaults:
     working-directory: ./rust
 
 permissions:
+  actions: "write" # gh run cancel
   contents: "read"
   id-token: "write" # OIDC auth
   security-events: "write" # trivy SARIF upload from setup-mise
@@ -57,14 +58,8 @@ jobs:
         name: cargo shear
         shell: bash
 
-  monitor-static-analysis:
-    needs: [static-analysis]
-    if: "!cancelled() && needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    steps:
-      - run: gh run cancel ${{ github.run_id }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
 
   test:
     name: test-${{ matrix.runs-on }}
@@ -121,6 +116,9 @@ jobs:
           parallel: true
           fail-on-error: false
 
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
+
   fuzz-targets:
     name: fuzz-targets
     runs-on: ubuntu-24.04
@@ -130,6 +128,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: targets
         run: echo "targets=$(jq -c . tests/fuzz/targets.json)" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
 
   fuzz:
     name: fuzz-${{ matrix.fuzz-target }}
@@ -165,6 +166,9 @@ jobs:
           parallel: true
           fail-on-error: false
 
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
+
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}
     strategy:
@@ -193,3 +197,6 @@ jobs:
       - run: scripts/tests/${{ matrix.test }}
         name: "test script"
         working-directory: ./
+
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
