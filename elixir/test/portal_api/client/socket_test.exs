@@ -677,6 +677,7 @@ defmodule PortalAPI.Client.SocketTest do
         client_fixture(
           account: account,
           actor: actor,
+          last_attested_cert_serial: "CERTSN-3",
           firezone_id: nil,
           last_attested_mdm_device_id: "mdm-1",
           last_attested_at: DateTime.utc_now()
@@ -715,14 +716,16 @@ defmodule PortalAPI.Client.SocketTest do
         actor: actor,
         last_attested_device_serial: "SN-SHARED",
         last_attested_mdm_device_id: "mdm-first",
-        firezone_id: nil
+        last_attested_cert_serial: "CERTSN-5",
+          firezone_id: nil
       )
 
       assert {:ok, _client} =
                device_trust_changeset(account, actor, %{
                  "name" => "Re-enrolled",
                  "last_attested_device_serial" => "SN-SHARED",
-                 "last_attested_mdm_device_id" => "mdm-second"
+                 "last_attested_mdm_device_id" => "mdm-second",
+                 "last_attested_cert_serial" => "CERTSN-SECOND"
                })
                |> Portal.Safe.unscoped()
                |> Portal.Safe.insert()
@@ -774,6 +777,7 @@ defmodule PortalAPI.Client.SocketTest do
           actor: actor,
           last_attested_device_serial: "SN-REENROLL",
           last_attested_mdm_device_id: "mdm-old",
+          last_attested_cert_serial: "CERTSN-6",
           firezone_id: nil
         )
 
@@ -827,6 +831,99 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.id == existing.id
       assert client.last_attested_device_uuid == "uuid-learned"
       assert is_nil(client.firezone_id)
+    end
+
+    test "a certificate with no MDM device id resolves by its pinned certificate", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      # Mosyle exposes only a serial number variable, so its certificates carry
+      # no MDM device id and the pinned certificate is the only identity left.
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SN-MOSYLE",
+          last_attested_cert_serial: "4A2F008C",
+          firezone_id: nil
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
+
+      proof = %{
+        identifiers: %{last_attested_device_serial: "SN-MOSYLE"},
+        last_attested_cert_serial: "4A2F008C",
+        last_attested_cert_fingerprint: "bb"
+      }
+
+      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      assert client.id == existing.id
+      assert is_nil(client.last_attested_mdm_device_id)
+    end
+
+    test "a renewed certificate with no MDM device id enrolls as a new row", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SN-RENEW",
+          last_attested_cert_serial: "OLDSERIAL",
+          firezone_id: nil
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
+
+      proof = %{
+        identifiers: %{last_attested_device_serial: "SN-RENEW"},
+        last_attested_cert_serial: "NEWSERIAL",
+        last_attested_cert_fingerprint: "bb"
+      }
+
+      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      refute client.id == existing.id
+    end
+
+    test "the MDM device id wins over the pinned certificate", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      by_mdm =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_mdm_device_id: "mdm-wins",
+          last_attested_cert_serial: "CERTSN-8",
+          firezone_id: nil
+        )
+
+      by_cert =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_cert_serial: "SHAREDSERIAL",
+          firezone_id: nil
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
+
+      proof = %{
+        identifiers: %{last_attested_mdm_device_id: "mdm-wins"},
+        last_attested_cert_serial: "SHAREDSERIAL",
+        last_attested_cert_fingerprint: "bb"
+      }
+
+      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      assert client.id == by_mdm.id
+      refute client.id == by_cert.id
     end
 
     test "a device with only an MDM id enrolls as a new row on re-enrollment", %{
@@ -897,7 +994,8 @@ defmodule PortalAPI.Client.SocketTest do
         last_attested_device_serial: "SN-1",
         last_attested_device_uuid: "uuid-1",
         last_attested_mdm_device_id: "mdm-1",
-        firezone_id: nil
+        last_attested_cert_serial: "CERTSN-11",
+          firezone_id: nil
       )
 
       changeset =
@@ -936,6 +1034,7 @@ defmodule PortalAPI.Client.SocketTest do
           last_attested_device_serial: "SN-2",
           last_attested_device_uuid: "uuid-gone",
           last_attested_mdm_device_id: "mdm-2",
+          last_attested_cert_serial: "CERTSN-12",
           firezone_id: nil
         )
 
@@ -965,7 +1064,8 @@ defmodule PortalAPI.Client.SocketTest do
       :firezone_id,
       :last_attested_device_serial,
       :last_attested_device_uuid,
-      :last_attested_mdm_device_id
+      :last_attested_mdm_device_id,
+      :last_attested_cert_serial
     ])
     |> Ecto.Changeset.put_change(:type, :client)
     |> Ecto.Changeset.put_change(:account_id, account.id)

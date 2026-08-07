@@ -206,6 +206,9 @@ defmodule Portal.Device do
         |> unique_constraint(:last_attested_mdm_device_id,
           name: :devices_account_id_actor_id_last_attested_mdm_device_id_index
         )
+        |> unique_constraint(:last_attested_cert_serial,
+          name: :devices_account_id_actor_id_last_attested_cert_serial_index
+        )
 
       :gateway ->
         changeset
@@ -217,12 +220,14 @@ defmodule Portal.Device do
     end
   end
 
-  # An attested client is identified by the identifiers proven in its
-  # certificate, so it carries no firezone_id at all: the column stays NULL
-  # and can never resolve the row back to a client-supplied value. Clients
-  # that have not proved an MDM device id still require one.
+  # An attested client is identified by what its certificate proved, so it
+  # carries no firezone_id at all: the column stays NULL and can never resolve
+  # the row back to a client-supplied value. Every attested row pins a
+  # certificate serial, whether or not its certificate also carried an MDM
+  # device id, so that is what marks the row as certificate-identified.
+  # Unattested clients still require a firezone_id.
   defp validate_client_firezone_id(changeset) do
-    if is_nil(get_field(changeset, :last_attested_mdm_device_id)) do
+    if is_nil(get_field(changeset, :last_attested_cert_serial)) do
       validate_required(changeset, [:firezone_id])
     else
       changeset

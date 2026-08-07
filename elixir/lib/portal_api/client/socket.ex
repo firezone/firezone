@@ -385,26 +385,60 @@ defmodule PortalAPI.Client.Socket do
       end
     end
 
+    # Identity is looked up strongest-first. The MDM device id is assigned by
+    # the MDM service rather than reported by the device, so it is the only
+    # identifier a device cannot choose for itself. When a certificate carries
+    # none, the pinned certificate stands in: it identifies this exact
+    # certificate, so the row survives for as long as the certificate does and
+    # a renewal enrolls a new row.
     defp resolve_attested(changeset, actor_id, proof, subject) do
-      mdm_device_id = Map.fetch!(proof.identifiers, :last_attested_mdm_device_id)
-
-      case find_by_mdm_device_id(actor_id, mdm_device_id, subject) do
-        nil ->
-          insert_attested(changeset, subject)
-
-        client ->
-          adopt_attested(client, changeset, proof)
+      case find_attested_row(actor_id, proof, subject) do
+        nil -> insert_attested(changeset, subject)
+        client -> adopt_attested(client, changeset, proof)
       end
     end
 
-    # The MDM device id is the device's identity, so the row it resolves to is
-    # this device by definition. The hardware identifiers are attributes that
-    # follow the certificate: it may start asserting one the row lacks, or stop
-    # asserting one the row has, since which identifiers an MDM emits is a
-    # profile setting an admin can change at any time. Only a value present on
-    # both sides and disagreeing is a contradiction, and it means one MDM
-    # device id covers two physical machines, with no safe way to tell which
-    # one is connecting.
+    defp find_attested_row(actor_id, proof, subject) do
+      mdm_device_id = Map.get(proof.identifiers, :last_attested_mdm_device_id)
+
+      find_by_mdm_device_id(actor_id, mdm_device_id, subject) ||
+        find_by_cert_serial(actor_id, proof.last_attested_cert_serial, subject)
+    end
+
+    # The MDM device id is unique per actor, so this is a direct read. A
+    # device that re-enrolls arrives with a new id and gets a new row: the
+    # hardware identifiers it might otherwise be relocated by are self-reported
+    # at enrollment, and Microsoft documents them as spoofable by anyone with
+    # access to the device.
+    defp find_by_mdm_device_id(_actor_id, nil, _subject), do: nil
+
+    defp find_by_mdm_device_id(actor_id, mdm_device_id, subject) do
+      from(d in Device,
+        where: d.actor_id == ^actor_id,
+        where: d.type == :client,
+        where: d.last_attested_mdm_device_id == ^mdm_device_id
+      )
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    defp find_by_cert_serial(actor_id, cert_serial, subject) do
+      from(d in Device,
+        where: d.actor_id == ^actor_id,
+        where: d.type == :client,
+        where: d.last_attested_cert_serial == ^cert_serial
+      )
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    # The row this resolves to is this device by definition. The hardware
+    # identifiers are attributes that follow the certificate: it may start
+    # asserting one the row lacks, or stop asserting one the row has, since
+    # which identifiers an MDM emits is a profile setting an admin can change
+    # at any time. Only a value present on both sides and disagreeing is a
+    # contradiction, and it means one identity covers two physical machines,
+    # with no safe way to tell which one is connecting.
     defp adopt_attested(client, changeset, proof) do
       case contradicted_hardware_ids(client, proof.identifiers) do
         [] ->
@@ -458,22 +492,6 @@ defmodule PortalAPI.Client.Socket do
       with {:ok, client} <- result do
         {:ok, client, true}
       end
-    end
-
-    # The MDM device id is the only attested identifier with a unique index, so
-    # this is a direct lookup rather than a search: one row per MDM device id
-    # per actor. A device whose MDM record changed arrives with a new id and
-    # gets a new row, since the hardware identifiers it might have been
-    # relocated by are self-reported at enrollment and Microsoft documents them
-    # as spoofable by anyone with access to the device.
-    defp find_by_mdm_device_id(actor_id, mdm_device_id, subject) do
-      from(d in Device,
-        where: d.actor_id == ^actor_id,
-        where: d.type == :client,
-        where: d.last_attested_mdm_device_id == ^mdm_device_id
-      )
-      |> Safe.scoped(subject)
-      |> Safe.one()
     end
 
     defp put_proof_changes(changeset, proof) do

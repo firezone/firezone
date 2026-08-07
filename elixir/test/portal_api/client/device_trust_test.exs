@@ -173,13 +173,14 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert DeviceTrust.attest(connect_info, subject) == {:error, :untrusted_chain}
     end
 
-    test "rejects a leaf that asserts no MDM device id", %{pki: pki, subject: subject} do
+    test "accepts a leaf that asserts only a hardware serial", %{pki: pki, subject: subject} do
       connect_info =
         connect_info(
           leaf(pki, sans: [{:uniformResourceIdentifier, ~c"firezone://serial/C02XK1ZGJGH5"}])
         )
 
-      assert DeviceTrust.attest(connect_info, subject) == {:error, :no_mdm_device_id}
+      assert {:ok, verified} = DeviceTrust.attest(connect_info, subject)
+      assert verified.identifiers == %{last_attested_device_serial: "C02XK1ZGJGH5"}
     end
 
     test "rejects a leaf whose serial number cannot be recorded", %{pki: pki, subject: subject} do
