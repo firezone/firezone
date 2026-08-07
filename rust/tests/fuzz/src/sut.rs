@@ -9,6 +9,7 @@ use super::sim_relay::SimRelay;
 use super::transition::{ClientDnsResolution, Destination, DnsQuery};
 use crate::assertions::*;
 use crate::flux_capacitor::FluxCapacitor;
+use crate::network_input::{NetworkInputObservation, NetworkInputTarget};
 use crate::packet_input::{PacketInputObservation, PacketInputTarget};
 use crate::probe::{ProbeId, UdpFlow};
 use crate::resource as client;
@@ -57,6 +58,7 @@ pub struct TunnelTest {
     drop_next_wire_packet: bool,
     network: RoutingTable,
     packet_input_observations: Vec<PacketInputObservation>,
+    network_input_observations: Vec<NetworkInputObservation>,
 }
 
 #[derive(Debug)]
@@ -194,6 +196,7 @@ impl TunnelTest {
             relays,
             buffer_pool: BufferPool::new(1024, "test"),
             packet_input_observations: Default::default(),
+            network_input_observations: Default::default(),
         };
 
         let mut buffered_transmits = BufferedTransmits::default();
@@ -420,6 +423,36 @@ impl TunnelTest {
             }
             Transition::SendUdpPacketOnFlow { flow, probe_id } => {
                 state.send_udp_probe(flow, probe_id, now, &mut buffered_transmits);
+            }
+            Transition::ReceiveMalformedNetworkDatagram(input) => {
+                let result = match input.target() {
+                    NetworkInputTarget::Client(client_id) => state
+                        .clients
+                        .get_mut(&client_id)
+                        .unwrap()
+                        .exec_mut(|client| {
+                            client.sut.handle_network_input(
+                                input.local(),
+                                input.from(),
+                                input.payload(),
+                                now,
+                            )
+                        }),
+                    NetworkInputTarget::Gateway(gateway_id) => state
+                        .gateways
+                        .get_mut(&gateway_id)
+                        .unwrap()
+                        .exec_mut(|gateway| {
+                            gateway.sut.handle_network_input(
+                                input.local(),
+                                input.from(),
+                                input.payload(),
+                                now,
+                            )
+                        }),
+                };
+
+                state.network_input_observations.push(input.observe(result));
             }
             Transition::SendUnroutablePacket(input) => {
                 let packet = input.packet();
@@ -818,6 +851,10 @@ impl TunnelTest {
             &ref_state.expected_packet_input_observations,
             &state.packet_input_observations,
         );
+        assert_network_inputs(
+            &ref_state.expected_network_input_observations,
+            &state.network_input_observations,
+        );
 
         // Per-client assertions for client-specific state
         for (client_id, ref_client_host) in &ref_state.clients {
@@ -853,6 +890,7 @@ impl TunnelTest {
         }
 
         state.packet_input_observations.clear();
+        state.network_input_observations.clear();
     }
 
     fn send_dns_query(

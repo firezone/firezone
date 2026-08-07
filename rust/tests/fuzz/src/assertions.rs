@@ -1,5 +1,6 @@
 use super::{
     icmp_error_hosts::IcmpErrorHosts,
+    network_input::NetworkInputObservation,
     packet_input::PacketInputObservation,
     probe::{
         ExpectedOutcome, ExpectedProbe, ProbeId, ProbeObservation, ProbeProtocol, ProbeRequest,
@@ -167,6 +168,15 @@ pub(crate) fn assert_packet_inputs(
 ) {
     if actual != expected {
         tracing::error!(target: "assertions", ?expected, ?actual, "Unroutable packet observations don't match");
+    }
+}
+
+pub(crate) fn assert_network_inputs(
+    expected: &[NetworkInputObservation],
+    actual: &[NetworkInputObservation],
+) {
+    if actual != expected {
+        tracing::error!(target: "assertions", ?expected, ?actual, "Malformed network datagram observations don't match");
     }
 }
 
