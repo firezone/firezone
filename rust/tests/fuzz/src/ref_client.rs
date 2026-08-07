@@ -90,7 +90,8 @@ pub struct RefClient {
     /// Successful device-pool DNS answers, including the resource, domain, target client and
     /// address family that the application learned.
     #[debug(skip)]
-    dynamic_device_pool_resolutions: BTreeMap<(ResourceId, DomainName, IpAddr), ClientId>,
+    dynamic_device_pool_resolutions:
+        BTreeMap<(ResourceId, DomainName, IpAddr), DynamicDevicePoolResolution>,
 
     /// The [`ResourceStatus`] of each site.
     #[debug(skip)]
@@ -130,6 +131,12 @@ pub struct RefClient {
     /// connection.
     #[debug(skip)]
     client_send_times: BTreeMap<ClientId, BTreeSet<Instant>>,
+}
+
+#[derive(Clone)]
+struct DynamicDevicePoolResolution {
+    client_id: ClientId,
+    filters: Vec<Filter>,
 }
 
 impl RefClient {
@@ -892,8 +899,10 @@ impl RefClient {
         icmp_error_hosts: &IcmpErrorHosts,
         resolved_device: Option<(ClientId, Ipv4Addr, Ipv6Addr)>,
     ) {
-        if let Some(resource) = self.dynamic_device_pool_by_domain(&query.domain) {
-            let resource_id = resource.id;
+        if let Some((resource_id, filters)) = self
+            .dynamic_device_pool_by_domain(&query.domain)
+            .map(|resource| (resource.id, resource.filters.clone()))
+        {
             self.expect_dns_response(query);
 
             let Some((client_id, ipv4, ipv6)) = resolved_device else {
@@ -905,8 +914,10 @@ impl RefClient {
                 _ => return,
             };
 
-            self.dynamic_device_pool_resolutions
-                .insert((resource_id, query.domain.clone(), ip), client_id);
+            self.dynamic_device_pool_resolutions.insert(
+                (resource_id, query.domain.clone(), ip),
+                DynamicDevicePoolResolution { client_id, filters },
+            );
             return;
         }
 
@@ -1213,16 +1224,12 @@ impl RefClient {
         self.dynamic_device_pool_resolutions
             .iter()
             .filter(|((_, _, candidate), _)| *candidate == ip)
-            .filter_map(|((resource_id, _, _), client_id)| {
-                let resource = self
-                    .resources
-                    .iter()
-                    .find(|resource| resource.id() == *resource_id)?;
-                let Resource::DynamicDevicePool(pool) = resource else {
-                    return None;
-                };
-
-                Some((*resource_id, *client_id, pool.filters.clone()))
+            .map(|((resource_id, _, _), resolution)| {
+                (
+                    *resource_id,
+                    resolution.client_id,
+                    resolution.filters.clone(),
+                )
             })
             .collect()
     }
@@ -1232,17 +1239,7 @@ impl RefClient {
     ) -> Vec<(ClientId, IpAddr, Vec<tunnel_proto::messages::Filter>)> {
         self.dynamic_device_pool_resolutions
             .iter()
-            .filter_map(|((resource_id, _, ip), client_id)| {
-                let resource = self
-                    .resources
-                    .iter()
-                    .find(|resource| resource.id() == *resource_id)?;
-                let Resource::DynamicDevicePool(pool) = resource else {
-                    return None;
-                };
-
-                Some((*client_id, *ip, pool.filters.clone()))
-            })
+            .map(|((_, _, ip), resolution)| (resolution.client_id, *ip, resolution.filters.clone()))
             .collect()
     }
 
