@@ -444,6 +444,10 @@ impl ReferenceState {
         }
     }
 
+    pub fn clear_expected_probes(state: &mut ReferenceState) {
+        state.expected_probes.clear();
+    }
+
     fn record_probe(
         &mut self,
         id: ProbeId,

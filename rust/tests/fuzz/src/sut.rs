@@ -716,6 +716,15 @@ impl TunnelTest {
             gateway.exec_mut(|g| g.clear_packets());
         }
     }
+
+    pub fn clear_probe_observations(state: &mut TunnelTest) {
+        for client in state.clients.values_mut() {
+            client.exec_mut(|c| c.clear_probe_observations());
+        }
+        for gateway in state.gateways.values_mut() {
+            gateway.exec_mut(|g| g.clear_probe_observations());
+        }
+    }
 }
 
 impl TunnelTest {

@@ -315,6 +315,10 @@ impl SimGateway {
         self.tcp_resources.clear();
     }
 
+    pub(crate) fn clear_probe_observations(&mut self) {
+        self.probe_observations.clear();
+    }
+
     fn record_received_request(&mut self, payload: &[u8], packet: IpPacket, at: Instant) {
         let Some(id) = ProbeId::from_payload(payload) else {
             tracing::error!("Probe payload does not contain a probe ID");
