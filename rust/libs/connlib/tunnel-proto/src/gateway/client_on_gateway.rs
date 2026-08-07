@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::iter;
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::Instant;
 
@@ -45,6 +46,11 @@ pub struct ClientOnGateway {
 pub enum TranslateOutboundResult {
     Send(IpPacket),
     IcmpError(IpPacket),
+}
+
+enum AllowedOutbound {
+    GatewayTun,
+    Resource(ResourceId),
 }
 
 impl ClientOnGateway {
@@ -171,13 +177,17 @@ impl ClientOnGateway {
         self.nat_table.handle_timeout(now);
         self.resources.handle_timeout(now);
 
+        let expired_resources = iter::from_fn(|| self.resources.poll_event())
+            .map(|event| match event {
+                expiring_map::Event::EntryExpired { key, value } => (key, value),
+            })
+            .collect::<Vec<_>>();
+        let any_expired = !expired_resources.is_empty();
         let cid = self.id;
-        let mut any_expired = false;
-        while let Some(expiring_map::Event::EntryExpired { key, .. }) = self.resources.poll_event()
-        {
+
+        for (key, resource) in expired_resources {
             tracing::info!(%cid, rid = %key, "Access to resource expired");
-            self.ingest_tokens.remove(&key);
-            any_expired = true;
+            self.cleanup_removed_authorization(key, resource);
         }
 
         if any_expired {
@@ -186,8 +196,10 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
-        self.resources.remove(resource);
-        self.ingest_tokens.remove(resource);
+        if let Some(entry) = self.resources.remove(resource) {
+            self.cleanup_removed_authorization(*resource, entry.value);
+        }
+
         self.recalculate_filters();
     }
 
@@ -245,15 +257,39 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn retain_authorizations(&mut self, authorization: BTreeSet<ResourceId>) {
-        for (rid, _) in self
+        let revoked = self
             .resources
             .extract_if(|rid, _| !authorization.contains(rid))
-        {
+            .collect::<Vec<_>>();
+
+        for (rid, resource) in revoked {
             tracing::info!(%rid, "Revoking resource authorization");
-            self.ingest_tokens.remove(&rid);
+            self.cleanup_removed_authorization(rid, resource);
         }
 
         self.recalculate_filters();
+    }
+
+    fn cleanup_removed_authorization(
+        &mut self,
+        resource_id: ResourceId,
+        resource: ResourceOnGateway,
+    ) {
+        match resource {
+            ResourceOnGateway::Dns { .. } => {
+                self.permanent_translations
+                    .extract_if(.., |_, state| {
+                        state.resolved_ips.remove(&resource_id);
+                        state.resolved_ips.is_empty()
+                    })
+                    .for_each(drop);
+                self.nat_table.expire_resource(resource_id);
+            }
+            ResourceOnGateway::Cidr { .. } => {}
+            ResourceOnGateway::Internet => {}
+        }
+
+        self.ingest_tokens.remove(&resource_id);
     }
 
     /// Checks if the given proxy IPs assigned for a domain are consistent with what we have stored.
@@ -340,8 +376,8 @@ impl ClientOnGateway {
             bail!(UnroutablePacket::outbound_icmp_error(&packet))
         }
 
-        let resource_id = match self.ensure_allowed_outbound(&packet) {
-            Ok(resource_id) => resource_id,
+        let allowed_outbound = match self.ensure_allowed_outbound(&packet) {
+            Ok(allowed_outbound) => allowed_outbound,
             Err(error) => {
                 tracing::debug!(filtered_packet = ?packet, "{error:#}");
 
@@ -356,7 +392,7 @@ impl ClientOnGateway {
             }
         };
 
-        let result = self.transform_network_to_tun(packet, resource_id, now)?;
+        let result = self.transform_network_to_tun(packet, allowed_outbound, now)?;
 
         Ok(result)
     }
@@ -396,15 +432,14 @@ impl ClientOnGateway {
     fn transform_network_to_tun(
         &mut self,
         mut packet: IpPacket,
-        resource_id: Option<ResourceId>,
+        allowed_outbound: AllowedOutbound,
         now: Instant,
     ) -> anyhow::Result<TranslateOutboundResult> {
+        let resource_id = match allowed_outbound {
+            AllowedOutbound::GatewayTun => return Ok(TranslateOutboundResult::Send(packet)),
+            AllowedOutbound::Resource(resource_id) => resource_id,
+        };
         let dst = packet.destination();
-
-        // Packets to the TUN interface don't get transformed.
-        if self.gateway_tun.is_ip(dst) {
-            return Ok(TranslateOutboundResult::Send(packet));
-        }
 
         // Packets for CIDR resources / Internet resource are forwarded as is.
         if !is_dns_addr(dst) {
@@ -419,9 +454,6 @@ impl ClientOnGateway {
             ));
         };
 
-        let Some(resource_id) = resource_id else {
-            unreachable!("DNS proxy IPs are not Gateway TUN IPs")
-        };
         let Some(resolved_ip) = state.resolved_ip(resource_id) else {
             return Ok(TranslateOutboundResult::IcmpError(
                 ip_packet::make::icmp_dest_unreachable_network(&packet)?,
@@ -490,12 +522,12 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
-    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> anyhow::Result<Option<ResourceId>> {
+    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> anyhow::Result<AllowedOutbound> {
         self.ensure_client_ip(packet.source())?;
 
         // Traffic to our own IP is allowed.
         if self.gateway_tun.is_ip(packet.destination()) {
-            return Ok(None);
+            return Ok(AllowedOutbound::GatewayTun);
         }
 
         ensure_not_peer_ip(packet.destination())?;
@@ -504,12 +536,12 @@ impl ClientOnGateway {
 
         if !self.resources.contains_key(&rid) {
             tracing::warn!(%rid, "Internal state mismatch: No resource for ID");
-            return Ok(Some(rid));
+            return Ok(AllowedOutbound::Resource(rid));
         }
         flow_tracker::record_resource(rid);
         flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid).cloned());
 
-        Ok(Some(rid))
+        Ok(AllowedOutbound::Resource(rid))
     }
 
     fn ensure_client_ip(&self, ip: IpAddr) -> anyhow::Result<()> {

@@ -88,11 +88,21 @@ impl NatTable {
         resource: ResourceId,
         ips: &BTreeSet<IpAddr>,
     ) {
-        let expired = self.state_by_inside.extract_if(.., |inside, _| {
-            inside.0 == resource && ips.contains(&inside.2)
-        });
+        self.expire_inside(|inside| inside.0 == resource && ips.contains(&inside.2));
+    }
 
-        for (inside, _) in expired {
+    pub(crate) fn expire_resource(&mut self, resource: ResourceId) {
+        self.expire_inside(|inside| inside.0 == resource);
+    }
+
+    fn expire_inside(&mut self, predicate: impl Fn(&Inside) -> bool) {
+        let expired = self
+            .state_by_inside
+            .extract_if(.., |inside, _| predicate(inside))
+            .map(|(inside, _)| inside)
+            .collect::<Vec<_>>();
+
+        for inside in expired {
             let Some((_, outside)) = self.table.remove_by_left(&inside) else {
                 continue;
             };
@@ -569,7 +579,7 @@ mod tests {
         )
         .unwrap();
 
-        table.expire_resource_inside_ips(RESOURCE, &BTreeSet::from([proxy.into()]));
+        table.expire_resource(RESOURCE);
         let result = table.translate_incoming(&response, now).unwrap();
 
         assert_eq!(result, TranslateIncomingResult::ExpiredNatSession);
@@ -600,7 +610,7 @@ mod tests {
         assert_eq!(second, IpAddr::V4(second_destination));
         assert_eq!(first_after_refresh, IpAddr::V4(first_destination));
 
-        table.expire_resource_inside_ips(RESOURCE, &BTreeSet::from([proxy.into()]));
+        table.expire_resource(RESOURCE);
 
         let (_, first_after_expiry) = table
             .translate_outgoing(&packet, refreshed_destination.into(), RESOURCE, now)
