@@ -9,7 +9,7 @@ use tunnel_proto::{
 use super::{
     probe::ProbeId,
     reference::PrivateKey,
-    resource::{CidrResource, DnsResource, Resource},
+    resource::{CidrResource, Resource},
     sim_net::Host,
 };
 use std::{
@@ -26,10 +26,6 @@ pub enum Transition {
     ChangeCidrResourceAddress {
         resource: CidrResource,
         new_address: IpNetwork,
-    },
-    ChangeDnsResourceAddress {
-        resource: DnsResource,
-        new_address: String,
     },
     MoveResourceToNewSite {
         resource: Resource,
@@ -117,7 +113,6 @@ impl Transition {
             Transition::AddResource(_) => true,
             Transition::RemoveResource(_) => true,
             Transition::ChangeCidrResourceAddress { .. } => true,
-            Transition::ChangeDnsResourceAddress { .. } => true,
             Transition::MoveResourceToNewSite { .. } => true,
             Transition::ChangeFiltersOfResource { .. } => true,
             Transition::ChangeResourceType { .. } => true,
