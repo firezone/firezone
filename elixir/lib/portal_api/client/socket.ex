@@ -354,11 +354,8 @@ defmodule PortalAPI.Client.Socket do
     require Logger
 
     @hardware_id_fields ~w[device_serial device_uuid identifier_for_vendor firebase_installation_id]a
-    @attested_id_fields ~w[
-      last_attested_device_serial
-      last_attested_device_uuid
-      last_attested_mdm_device_id
-    ]a
+    @attested_hardware_fields ~w[last_attested_device_serial last_attested_device_uuid]a
+    @attested_id_fields @attested_hardware_fields ++ [:last_attested_mdm_device_id]
 
     @dialyzer {:no_opaque, [resolve_client: 3, find_by_attested_ids: 3]}
 
@@ -480,10 +477,31 @@ defmodule PortalAPI.Client.Socket do
     # the only identity it has, so a new row is the only option.
     defp classify_attested_rows([], _cert_identifiers), do: nil
 
-    # Exactly one candidate is this device. The certificate then speaks for the
-    # whole row, including identifiers it does not assert, so a device whose
-    # MDM record changed keeps its row and takes the new MDM device id.
-    defp classify_attested_rows([client], _cert_identifiers), do: {:ok, client}
+    # Exactly one candidate is this device, unless the certificate contradicts a
+    # hardware identifier the row already proved. Absence is not contradiction:
+    # a certificate that omits the UUID clears it, because the certificate
+    # describes the device as it is now. A certificate asserting a DIFFERENT
+    # serial or UUID is a different machine wearing one matching identifier,
+    # and nothing here can say which is real. The MDM device id is exempt
+    # because it is a record id that changes on re-enrollment, which is the
+    # case relocating by serial or UUID exists to serve.
+    defp classify_attested_rows([client], cert_identifiers) do
+      case contradicted_hardware_ids(client, cert_identifiers) do
+        [] ->
+          {:ok, client}
+
+        contradicted ->
+          Logger.warning(
+            "Attested hardware identifier contradicts the device row: refusing the connect",
+            client_id: client.id,
+            contradicted: inspect(contradicted),
+            cert_identifiers: inspect(cert_identifiers),
+            row_identifiers: inspect(Map.take(client, @attested_id_fields))
+          )
+
+          :identity_conflict
+      end
+    end
 
     # More than one distinct row means the identifiers split across devices;
     # adopting any of them would merge the connection onto an arbitrary device.
@@ -496,6 +514,15 @@ defmodule PortalAPI.Client.Socket do
       )
 
       :identity_conflict
+    end
+
+    defp contradicted_hardware_ids(client, cert_identifiers) do
+      Enum.filter(@attested_hardware_fields, fn field ->
+        row_value = Map.get(client, field)
+        cert_value = Map.get(cert_identifiers, field)
+
+        not is_nil(row_value) and not is_nil(cert_value) and row_value != cert_value
+      end)
     end
 
     defp put_proof_changes(changeset, proof) do

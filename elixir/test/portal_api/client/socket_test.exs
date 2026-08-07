@@ -910,6 +910,74 @@ defmodule PortalAPI.Client.SocketTest do
       assert is_nil(client.firezone_id)
     end
 
+    test "refuses the connect when the certificate contradicts a hardware id", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      client_fixture(
+        account: account,
+        actor: actor,
+        last_attested_device_serial: "SN-1",
+        last_attested_device_uuid: "uuid-1",
+        last_attested_mdm_device_id: "mdm-1",
+        firezone_id: nil
+      )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
+
+      proof = %{
+        identifiers: %{
+          last_attested_device_serial: "SN-1",
+          last_attested_device_uuid: "uuid-2",
+          last_attested_mdm_device_id: "mdm-1"
+        },
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "bb"
+      }
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert Socket.Database.resolve_client(changeset, proof, subject) ==
+                   {:error, :device_untrusted}
+        end)
+
+      assert log =~ "contradicts the device row"
+    end
+
+    test "a certificate that omits a hardware id clears it rather than refusing", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SN-2",
+          last_attested_device_uuid: "uuid-keep",
+          last_attested_mdm_device_id: "mdm-2",
+          firezone_id: nil
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
+
+      proof = %{
+        identifiers: %{
+          last_attested_device_serial: "SN-2",
+          last_attested_mdm_device_id: "mdm-2"
+        },
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "bb"
+      }
+
+      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      assert client.id == existing.id
+      assert is_nil(client.last_attested_device_uuid)
+    end
+
     test "relocates a device by its serial when the MDM device id changes", %{
       account: account,
       actor: actor,
