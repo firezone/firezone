@@ -161,8 +161,9 @@ jobs:
           CARGO_PROFILE_RELEASE_LTO: thin # Fat LTO is getting too slow / RAM-hungry on Tauri builds
           # Distinct per run and shared by every architecture in the matrix, so
           # each published `.rpm` lands at its own URL instead of overwriting
-          # the previous build of the same version.
-          RPM_RELEASE: ${{ github.run_number }}
+          # the previous build of the same version. `run_attempt` is part of it
+          # because re-running a run keeps its `run_number`.
+          RPM_RELEASE: ${{ github.run_number }}.${{ github.run_attempt }}
         # `tauri build` signs Firezone.exe (after Tauri patches it) and the
         # MSI via `bundle.windows.signCommand`.
         run: pnpm build
