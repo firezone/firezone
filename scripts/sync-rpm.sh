@@ -8,6 +8,9 @@
 # A DNF repository keeps the packages and the generated `repodata/` together in the directory pointed at by `baseurl`.
 # Each channel is therefore published under `<distribution>/` (holding the `.rpm` files and their `repodata/`) and the packages in there need to atomically change with the metadata.
 #
+# Preview publishes every build, each under its own release tag so that a build never overwrites its predecessor at the same URL.
+# Superseded preview builds are pruned once no client can still hold repodata describing them; see `prune_preview` below.
+#
 # Every imported package is signed with the Firezone package-signing key so that clients work with DNF's default `gpgcheck=1`.
 # The armoured public key is published at the repository root (`firezone.gpg`) for use as the `gpgkey` in the client `.repo` file.
 # Ready-made `.repo` files (`firezone.repo`, `firezone-preview.repo`) are published at the repository root too, so a channel can be added by downloading a single file.
@@ -17,6 +20,11 @@ shopt -s globstar
 
 WORK_DIR="$(mktemp -d)"
 PUBLIC_URL="https://artifacts.firezone.dev/rpm"
+
+# How long a superseded preview build stays in the channel. It has to outlive
+# DNF's `metadata_expire` (48h by default) so that a client which cached the
+# repodata describing that build can still download it.
+PREVIEW_RETENTION_DAYS=14
 
 if [ -z "${AZURE_STORAGE_ACCOUNT:-}" ]; then
     echo "Error: AZURE_STORAGE_ACCOUNT not set"
@@ -33,6 +41,43 @@ cleanup() {
 }
 
 trap cleanup EXIT
+
+# Drop preview builds that no client can still be asking for, so the channel
+# does not grow by one package per build and architecture forever.
+#
+# The newest build of every version is always kept: it is the one a release is
+# promoted to `stable` from, which can happen long after the build itself.
+prune_preview() {
+    local repo_dir="$1"
+    local index="${WORK_DIR}/preview-index"
+    local cutoff=$(($(date +%s) - PREVIEW_RETENTION_DAYS * 86400))
+    local keep
+
+    for pkg in "${repo_dir}"/*.rpm; do
+        rpm --query --package --queryformat '%{NAME}.%{ARCH}-%{VERSION} %{BUILDTIME} ' "$pkg"
+        printf '%s\n' "$pkg"
+    done >"${index}"
+
+    keep=$(sort -k1,1 -k2,2nr "${index}" | awk '!seen[$1]++ { print $3 }')
+
+    while read -r _ buildtime pkg; do
+        if [ "$buildtime" -ge "$cutoff" ] || grep --quiet --line-regexp --fixed-strings "$pkg" <<<"$keep"; then
+            continue
+        fi
+
+        echo "Pruning $(basename "$pkg")"
+        rm --force "$pkg"
+
+        az storage blob delete \
+            --container-name rpm \
+            --name "preview/$(basename "$pkg")" \
+            --auth-mode login \
+            --account-name "${AZURE_STORAGE_ACCOUNT}" \
+            --output none
+    done <"${index}"
+
+    rm --force "${index}"
+}
 
 # Configure `rpm --addsign` to sign non-interactively with our GnuPG key. The
 # loopback pinentry mirrors the GnuPG config set up by the `setup-gpg` action.
@@ -103,6 +148,12 @@ for DISTRIBUTION in "stable" "preview"; do
         echo "No packages for distribution ${DISTRIBUTION}"
 
         continue
+    fi
+
+    if [ "${DISTRIBUTION}" = "preview" ]; then
+        echo "Pruning superseded preview builds..."
+
+        prune_preview "${REPO_DIR}"
     fi
 
     echo "Generating metadata..."

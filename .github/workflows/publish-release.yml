@@ -396,14 +396,39 @@ jobs:
           version=${{ inputs.release_name || github.event.release.name }}
           version=${version#gui-client-}
 
-          # Copy `.rpm`s to `import-stable`
-          az storage blob copy start-batch \
-            --destination-container rpm \
-            --source-container rpm \
-            --pattern "preview/firezone-client-gui-$version-*" \
-            --destination-path import-stable \
-            --auth-mode login \
-            --account-name firezoneartifacts
+          # Every build of a version lands in `preview` under its own release
+          # tag, so promote the newest one per architecture rather than the
+          # whole set.
+          for arch in x86_64 aarch64; do
+            prefix="preview/firezone-client-gui-$version-"
+            suffix=".$arch.rpm"
+
+            release=$(az storage blob list \
+              --container-name rpm \
+              --prefix "$prefix" \
+              --auth-mode login \
+              --account-name firezoneartifacts \
+              --query "[].name" \
+              --output tsv \
+              | sed --quiet "s|^$prefix\(.*\)$suffix\$|\1|p" \
+              | sort --version-sort \
+              | tail -1)
+
+            if [ -z "$release" ]; then
+              echo "No preview build of $version for $arch"
+              exit 1
+            fi
+
+            echo "Promoting $version-$release for $arch"
+
+            az storage blob copy start \
+              --destination-container rpm \
+              --destination-blob "import-stable/firezone-client-gui-$version-$release$suffix" \
+              --source-container rpm \
+              --source-blob "$prefix$release$suffix" \
+              --auth-mode login \
+              --account-name firezoneartifacts
+          done
 
   regenerate-rpm-index:
     needs: promote-rpm-packages
