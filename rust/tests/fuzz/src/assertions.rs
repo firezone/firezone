@@ -1,5 +1,6 @@
 use super::{
     icmp_error_hosts::IcmpErrorHosts,
+    packet_input::PacketInputObservation,
     probe::{
         ExpectedOutcome, ExpectedProbe, ProbeId, ProbeObservation, ProbeProtocol, ProbeRequest,
         ReceivedRequest, ReceivedResponse, RejectionResponse, Remote, SubmittedRequest,
@@ -157,6 +158,15 @@ pub(crate) fn assert_probes(
                 );
             }
         }
+    }
+}
+
+pub(crate) fn assert_packet_inputs(
+    expected: &[PacketInputObservation],
+    actual: &[PacketInputObservation],
+) {
+    if actual != expected {
+        tracing::error!(target: "assertions", ?expected, ?actual, "Unroutable packet observations don't match");
     }
 }
 

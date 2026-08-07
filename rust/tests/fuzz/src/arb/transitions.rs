@@ -53,6 +53,7 @@ enum TransitionKind {
     SendPacket,
     SendPacketWithGatewayDnsResolutionFailure,
     SendUdpPacketOnFlow,
+    SendUnroutablePacket,
     SendDnsQuery,
     SendTruncatedUdpDnsQuery,
 }
@@ -101,12 +102,14 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         (!gateway_dns_resolution_failure_targets.is_empty())
             .then_some((K::SendPacketWithGatewayDnsResolutionFailure, 5)),
         (!udp_flows.is_empty()).then_some((K::SendUdpPacketOnFlow, 25)),
+        (!state.clients.is_empty() && !state.gateways.is_empty())
+            .then_some((K::SendUnroutablePacket, 5)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQuery, 10)),
         (!truncated_dns_query_targets.is_empty()).then_some((K::SendTruncatedUdpDnsQuery, 2)),
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 24]>>();
+    .collect::<SmallVec<[_; 25]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -259,6 +262,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
 
             Transition::SendUdpPacketOnFlow { flow, probe_id }
         }
+        K::SendUnroutablePacket => super::packet_inputs::generate(g, state),
         K::SendDnsQuery => {
             let target = dns_query_targets[g.choose_index(dns_query_targets.len())].clone();
             dns_queries::generate(g, target, state)

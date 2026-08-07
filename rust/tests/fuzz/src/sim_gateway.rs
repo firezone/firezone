@@ -155,7 +155,7 @@ impl SimGateway {
     ///
     /// Routes encapsulation through the [`snownet::TransmitBuffer`] field so the rest of the
     /// simulation can keep working with a single [`snownet::Transmit`] per packet.
-    fn handle_tun_input(
+    pub(crate) fn handle_tun_input(
         &mut self,
         packet: IpPacket,
         now: Instant,

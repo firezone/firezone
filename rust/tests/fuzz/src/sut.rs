@@ -9,6 +9,7 @@ use super::sim_relay::SimRelay;
 use super::transition::{ClientDnsResolution, Destination, DnsQuery};
 use crate::assertions::*;
 use crate::flux_capacitor::FluxCapacitor;
+use crate::packet_input::{PacketInputObservation, PacketInputTarget};
 use crate::probe::{ProbeId, UdpFlow};
 use crate::resource as client;
 use crate::transition::Transition;
@@ -55,6 +56,7 @@ pub struct TunnelTest {
     dns_resolution_failure: Option<DnsResolutionFailure>,
     drop_next_wire_packet: bool,
     network: RoutingTable,
+    packet_input_observations: Vec<PacketInputObservation>,
 }
 
 #[derive(Debug)]
@@ -191,6 +193,7 @@ impl TunnelTest {
             gateways,
             relays,
             buffer_pool: BufferPool::new(1024, "test"),
+            packet_input_observations: Default::default(),
         };
 
         let mut buffered_transmits = BufferedTransmits::default();
@@ -417,6 +420,23 @@ impl TunnelTest {
             }
             Transition::SendUdpPacketOnFlow { flow, probe_id } => {
                 state.send_udp_probe(flow, probe_id, now, &mut buffered_transmits);
+            }
+            Transition::SendUnroutablePacket(input) => {
+                let packet = input.packet();
+                let result = match input.target() {
+                    PacketInputTarget::Client(client_id) => state
+                        .clients
+                        .get_mut(&client_id)
+                        .unwrap()
+                        .exec_mut(|client| client.handle_tun_input(packet, now)),
+                    PacketInputTarget::Gateway(gateway_id) => state
+                        .gateways
+                        .get_mut(&gateway_id)
+                        .unwrap()
+                        .exec_mut(|gateway| gateway.handle_tun_input(packet, now)),
+                };
+
+                state.packet_input_observations.push(input.observe(result));
             }
             Transition::ConnectTcp {
                 client_id,
@@ -794,6 +814,10 @@ impl TunnelTest {
             &sim_gateways,
             &ref_state.icmp_error_hosts,
         );
+        assert_packet_inputs(
+            &ref_state.expected_packet_input_observations,
+            &state.packet_input_observations,
+        );
 
         // Per-client assertions for client-specific state
         for (client_id, ref_client_host) in &ref_state.clients {
@@ -820,13 +844,15 @@ impl TunnelTest {
         }
     }
 
-    pub fn clear_probe_observations(state: &mut TunnelTest) {
+    pub fn clear_observations(state: &mut TunnelTest) {
         for client in state.clients.values_mut() {
             client.exec_mut(|c| c.clear_probe_observations());
         }
         for gateway in state.gateways.values_mut() {
             gateway.exec_mut(|g| g.clear_probe_observations());
         }
+
+        state.packet_input_observations.clear();
     }
 
     fn send_udp_probe(
