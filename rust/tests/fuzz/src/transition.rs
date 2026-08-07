@@ -210,13 +210,14 @@ pub(crate) struct DnsQuery {
     pub(crate) query_id: u16,
     pub(crate) dns_server: dns::Upstream,
     pub(crate) transport: DnsTransport,
-    pub(crate) client_resolution: ClientDnsResolution,
+    pub(crate) recursive_outcome: RecursiveDnsOutcome,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum ClientDnsResolution {
-    Succeeded,
-    Failed,
+pub(crate) enum RecursiveDnsOutcome {
+    Response,
+    Servfail,
+    UdpTimeout,
 }
 
 #[derive(Debug, Clone, Copy)]

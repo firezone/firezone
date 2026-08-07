@@ -25,7 +25,7 @@ use crate::resource::{
     StaticDevicePoolResource, StaticDevicePoolResourceEdit, StaticDevicePoolResourceValue,
 };
 use crate::sim_net::{EdgeConfig, Host};
-use crate::transition::{ClientDnsResolution, Destination, DnsQuery, DnsTransport, Transition};
+use crate::transition::{Destination, DnsQuery, DnsTransport, RecursiveDnsOutcome, Transition};
 
 #[derive(Clone, Copy, Debug)]
 enum TransitionKind {
@@ -296,7 +296,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
                     transport: DnsTransport::Udp {
                         local_port: g.fresh_udp_flow(53).0.0,
                     },
-                    client_resolution: ClientDnsResolution::Succeeded,
+                    recursive_outcome: RecursiveDnsOutcome::Response,
                 },
             }
         }

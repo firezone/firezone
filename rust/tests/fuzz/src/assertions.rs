@@ -770,74 +770,68 @@ pub(crate) fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimCl
     }
 }
 
-pub(crate) fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_client: &SimClient) {
-    let unexpected_dns_replies = sim_client
-        .received_udp_dns_responses
-        .keys()
-        .filter(|response| !ref_client.expected_udp_dns_handshakes.contains(response))
-        .collect_vec();
+pub(crate) fn assert_udp_dns(ref_client: &RefClient, sim_client: &SimClient) {
+    let queries = &sim_client.sent_udp_dns_queries;
+    let responses = &sim_client.received_udp_dns_responses;
 
-    if !unexpected_dns_replies.is_empty() {
-        tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Unexpected UDP DNS replies on client");
+    if !queries
+        .keys()
+        .eq(ref_client.expected_udp_dns_queries.iter())
+    {
+        let observed_queries = queries.keys().collect_vec();
+        tracing::error!(target: "assertions", expected = ?ref_client.expected_udp_dns_queries, actual = ?observed_queries, "UDP DNS queries don't match");
     }
 
-    for (dns_server, query_id, local_port) in ref_client.expected_udp_dns_handshakes.iter() {
-        let _guard =
-            tracing::info_span!(target: "assertions", "udp_dns", %query_id, %dns_server).entered();
-        let key = &(dns_server.clone(), *query_id, *local_port);
+    if !responses
+        .keys()
+        .eq(ref_client.expected_udp_dns_responses.iter())
+    {
+        let observed_responses = responses.keys().collect_vec();
+        tracing::error!(target: "assertions", expected = ?ref_client.expected_udp_dns_responses, actual = ?observed_responses, "UDP DNS responses don't match");
+    }
 
-        let queries = &sim_client.sent_udp_dns_queries;
-        let responses = &sim_client.received_udp_dns_responses;
+    for key in &ref_client.expected_udp_dns_servfails {
+        match responses.get(key) {
+            Some(response) if response.response_code == dns_types::ResponseCode::SERVFAIL => {}
+            Some(response) => {
+                tracing::error!(target: "assertions", ?key, actual = ?response.response_code, "UDP DNS response is not SERVFAIL");
+            }
+            None => {
+                tracing::error!(target: "assertions", ?key, "Missing UDP DNS SERVFAIL response");
+            }
+        }
+    }
 
-        match (queries.get(key), responses.get(key)) {
-            (Some(client_sent_query), Some(client_received_response)) => {
-                assert_correct_src_and_dst_ips(client_sent_query, client_received_response);
-                assert_correct_src_and_dst_udp_ports(client_sent_query, client_received_response);
-            }
-            (Some(_), None) => {
-                tracing::error!(target: "assertions", ?responses, "❌ Missing UDP DNS response on client");
-            }
-            (None, Some(_)) => {
-                tracing::error!(target: "assertions", ?queries, "❌ Missing UDP DNS query on client");
-            }
-            (None, None) => {
-                tracing::error!(target: "assertions", ?queries, "❌ Missing UDP DNS query on client");
-                tracing::error!(target: "assertions", ?responses, "❌ Missing UDP DNS response on client");
-            }
+    for (key, client_sent_query) in queries {
+        if let Some(response) = responses.get(key) {
+            assert_correct_src_and_dst_ips(client_sent_query, &response.packet);
+            assert_correct_src_and_dst_udp_ports(client_sent_query, &response.packet);
         }
     }
 }
 
 pub(crate) fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
-    let unexpected_dns_responses = sim_client
-        .received_tcp_dns_responses
-        .iter()
-        .filter(|response| !ref_client.expected_tcp_dns_handshakes.contains(response))
-        .collect_vec();
-
-    if !unexpected_dns_responses.is_empty() {
-        tracing::error!(target: "assertions", ?unexpected_dns_responses, "❌ Unexpected TCP DNS responses on client");
+    if sim_client.sent_tcp_dns_queries != ref_client.expected_tcp_dns_queries {
+        tracing::error!(target: "assertions", expected = ?ref_client.expected_tcp_dns_queries, actual = ?sim_client.sent_tcp_dns_queries, "TCP DNS queries don't match");
     }
 
-    for (dns_server, query_id) in ref_client.expected_tcp_dns_handshakes.iter() {
-        let _guard =
-            tracing::info_span!(target: "assertions", "tcp_dns", %query_id, %dns_server).entered();
-        let key = &(dns_server.clone(), *query_id);
+    if !sim_client
+        .received_tcp_dns_responses
+        .keys()
+        .eq(ref_client.expected_tcp_dns_responses.iter())
+    {
+        let observed_responses = sim_client.received_tcp_dns_responses.keys().collect_vec();
+        tracing::error!(target: "assertions", expected = ?ref_client.expected_tcp_dns_responses, actual = ?observed_responses, "TCP DNS responses don't match");
+    }
 
-        let queries = &sim_client.sent_tcp_dns_queries;
-        let responses = &sim_client.received_tcp_dns_responses;
-
-        match (queries.contains(key), responses.contains(key)) {
-            (true, true) => {}
-            (true, false) => {
-                tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
+    for key in &ref_client.expected_tcp_dns_servfails {
+        match sim_client.received_tcp_dns_responses.get(key) {
+            Some(response_code) if *response_code == dns_types::ResponseCode::SERVFAIL => {}
+            Some(response_code) => {
+                tracing::error!(target: "assertions", ?key, actual = ?response_code, "TCP DNS response is not SERVFAIL");
             }
-            (false, true) => {
-                tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
-            }
-            (false, false) => {
-                tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
-                tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
+            None => {
+                tracing::error!(target: "assertions", ?key, "Missing TCP DNS SERVFAIL response");
             }
         }
     }

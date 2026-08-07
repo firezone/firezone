@@ -8,7 +8,7 @@ use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
 use crate::reference::ReferenceState;
 use crate::transition::{
-    ClientDnsResolution, DnsQuery, DnsTransport, IpFamily, Transition, TruncatedDnsQuery,
+    DnsQuery, DnsTransport, IpFamily, RecursiveDnsOutcome, Transition, TruncatedDnsQuery,
 };
 
 #[derive(Clone)]
@@ -171,19 +171,23 @@ pub(super) fn generate(
         query_id: arb_dns_query_id(g),
         dns_server: target.dns_server,
         transport: arb_dns_transport(g),
-        client_resolution: ClientDnsResolution::Succeeded,
+        recursive_outcome: RecursiveDnsOutcome::Response,
     };
-    let client_resolution =
+    let recursive_outcome =
         if state.can_fail_client_dns_resolution(target.client_id, &query) && g.flip(20) {
-            ClientDnsResolution::Failed
+            match query.transport {
+                DnsTransport::Udp { .. } if g.bool() => RecursiveDnsOutcome::Servfail,
+                DnsTransport::Udp { .. } => RecursiveDnsOutcome::UdpTimeout,
+                DnsTransport::Tcp => RecursiveDnsOutcome::Servfail,
+            }
         } else {
-            ClientDnsResolution::Succeeded
+            RecursiveDnsOutcome::Response
         };
 
     Transition::SendDnsQuery {
         client_id: target.client_id,
         query: DnsQuery {
-            client_resolution,
+            recursive_outcome,
             ..query
         },
     }

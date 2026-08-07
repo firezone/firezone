@@ -13,7 +13,7 @@ use super::{
     sim_client::SimClient,
     sim_net::ExecMutScope,
     transition::{
-        ClientDnsResolution, DPort, Destination, DnsQuery, DnsTransport, SPort, TruncatedDnsQuery,
+        DPort, Destination, DnsQuery, DnsTransport, RecursiveDnsOutcome, SPort, TruncatedDnsQuery,
     },
 };
 use tunnel_proto::{
@@ -29,7 +29,7 @@ use ip_packet::Protocol;
 use itertools::Itertools as _;
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet},
     iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
@@ -103,12 +103,24 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) expected_tcp_rejections: BTreeMap<(SPort, DPort), RejectionResponse>,
 
-    /// The expected UDP DNS handshakes.
+    /// The expected UDP DNS queries.
     #[debug(skip)]
-    pub(crate) expected_udp_dns_handshakes: VecDeque<(dns::Upstream, QueryId, u16)>,
-    /// The expected TCP DNS handshakes.
+    pub(crate) expected_udp_dns_queries: BTreeSet<(dns::Upstream, QueryId, u16)>,
+    /// The expected UDP DNS responses.
     #[debug(skip)]
-    pub(crate) expected_tcp_dns_handshakes: VecDeque<(dns::Upstream, QueryId)>,
+    pub(crate) expected_udp_dns_responses: BTreeSet<(dns::Upstream, QueryId, u16)>,
+    /// The UDP DNS responses expected to be SERVFAIL.
+    #[debug(skip)]
+    pub(crate) expected_udp_dns_servfails: BTreeSet<(dns::Upstream, QueryId, u16)>,
+    /// The expected TCP DNS queries.
+    #[debug(skip)]
+    pub(crate) expected_tcp_dns_queries: BTreeSet<(dns::Upstream, QueryId)>,
+    /// The expected TCP DNS responses.
+    #[debug(skip)]
+    pub(crate) expected_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
+    /// The TCP DNS responses expected to be SERVFAIL.
+    #[debug(skip)]
+    pub(crate) expected_tcp_dns_servfails: BTreeSet<(dns::Upstream, QueryId)>,
     /// The truncated DNS queries expected to be consumed by the client's stub resolver.
     #[debug(skip)]
     pub(crate) expected_truncated_dns_queries: BTreeSet<TruncatedDnsQuery>,
@@ -157,8 +169,12 @@ impl RefClient {
             expected_tcp_connections: Default::default(),
             expected_tcp_data: Default::default(),
             expected_tcp_rejections: Default::default(),
-            expected_udp_dns_handshakes: Default::default(),
-            expected_tcp_dns_handshakes: Default::default(),
+            expected_udp_dns_queries: Default::default(),
+            expected_udp_dns_responses: Default::default(),
+            expected_udp_dns_servfails: Default::default(),
+            expected_tcp_dns_queries: Default::default(),
+            expected_tcp_dns_responses: Default::default(),
+            expected_tcp_dns_servfails: Default::default(),
             expected_truncated_dns_queries: Default::default(),
             resources: Default::default(),
             routes: Default::default(),
@@ -886,7 +902,7 @@ impl RefClient {
         if self.is_local_dns_resource_query(query)
             && !self.local_dns_resource_query_has_records(query)
         {
-            self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
+            self.expect_dns_exchange(&query.dns_server, query.query_id, query.transport);
             return;
         }
 
@@ -920,7 +936,7 @@ impl RefClient {
             if self.resolver_is_unreachable(query, icmp_error_hosts) {
                 // The resolver answers with an ICMP error; connlib fails the query
                 // and responds with SERVFAIL, so no records are learned.
-                self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
+                self.expect_dns_exchange(&query.dns_server, query.query_id, query.transport);
             } else {
                 self.expect_dns_response(query);
             }
@@ -931,11 +947,19 @@ impl RefClient {
             return;
         }
 
-        match query.client_resolution {
-            ClientDnsResolution::Succeeded => self.expect_dns_response(query),
-            ClientDnsResolution::Failed => {
-                self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport)
+        match query.recursive_outcome {
+            RecursiveDnsOutcome::Response => self.expect_dns_response(query),
+            RecursiveDnsOutcome::Servfail => {
+                self.expect_dns_servfail(&query.dns_server, query.query_id, query.transport)
             }
+            RecursiveDnsOutcome::UdpTimeout => match query.transport {
+                DnsTransport::Udp { .. } => {
+                    self.expect_dns_query(&query.dns_server, query.query_id, query.transport)
+                }
+                DnsTransport::Tcp => {
+                    unreachable!("a recursive TCP DNS query cannot have a UDP timeout")
+                }
+            },
         }
     }
 
@@ -973,7 +997,7 @@ impl RefClient {
         query_id: u16,
         transport: DnsTransport,
     ) {
-        self.expect_dns_handshake(dns_server, query_id, transport);
+        self.expect_dns_exchange(dns_server, query_id, transport);
     }
 
     pub(crate) fn on_truncated_dns_query(&mut self, query: TruncatedDnsQuery) {
@@ -996,11 +1020,50 @@ impl RefClient {
             .or_default()
             .insert(query.r_type);
 
-        self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
+        self.expect_dns_exchange(&query.dns_server, query.query_id, query.transport);
     }
 
-    /// Expects a response for the query without learning any records from it, e.g. a SERVFAIL.
-    fn expect_dns_handshake(
+    fn expect_dns_exchange(
+        &mut self,
+        dns_server: &dns::Upstream,
+        query_id: u16,
+        transport: DnsTransport,
+    ) {
+        self.expect_dns_query(dns_server, query_id, transport);
+
+        match transport {
+            DnsTransport::Udp { local_port } => {
+                self.expected_udp_dns_responses
+                    .insert((dns_server.clone(), query_id, local_port));
+            }
+            DnsTransport::Tcp => {
+                self.expected_tcp_dns_responses
+                    .insert((dns_server.clone(), query_id));
+            }
+        }
+    }
+
+    fn expect_dns_servfail(
+        &mut self,
+        dns_server: &dns::Upstream,
+        query_id: u16,
+        transport: DnsTransport,
+    ) {
+        self.expect_dns_exchange(dns_server, query_id, transport);
+
+        match transport {
+            DnsTransport::Udp { local_port } => {
+                self.expected_udp_dns_servfails
+                    .insert((dns_server.clone(), query_id, local_port));
+            }
+            DnsTransport::Tcp => {
+                self.expected_tcp_dns_servfails
+                    .insert((dns_server.clone(), query_id));
+            }
+        }
+    }
+
+    fn expect_dns_query(
         &mut self,
         dns_server: &dns::Upstream,
         query_id: u16,
@@ -1008,15 +1071,12 @@ impl RefClient {
     ) {
         match transport {
             DnsTransport::Udp { local_port } => {
-                self.expected_udp_dns_handshakes.push_back((
-                    dns_server.clone(),
-                    query_id,
-                    local_port,
-                ));
+                self.expected_udp_dns_queries
+                    .insert((dns_server.clone(), query_id, local_port));
             }
             DnsTransport::Tcp => {
-                self.expected_tcp_dns_handshakes
-                    .push_back((dns_server.clone(), query_id));
+                self.expected_tcp_dns_queries
+                    .insert((dns_server.clone(), query_id));
             }
         }
     }
@@ -1633,14 +1693,18 @@ impl RefClient {
     }
 
     pub(crate) fn clear_packets(&mut self) {
-        self.expected_udp_dns_handshakes.clear();
-        self.expected_tcp_dns_handshakes.clear();
-        self.expected_truncated_dns_queries.clear();
         self.expected_tcp_connections.clear();
         self.expected_tcp_rejections.clear();
     }
 
     pub(crate) fn clear_observations(&mut self) {
+        self.expected_udp_dns_queries.clear();
+        self.expected_udp_dns_responses.clear();
+        self.expected_udp_dns_servfails.clear();
+        self.expected_tcp_dns_queries.clear();
+        self.expected_tcp_dns_responses.clear();
+        self.expected_tcp_dns_servfails.clear();
+        self.expected_truncated_dns_queries.clear();
         self.expected_tcp_data.clear();
     }
 }

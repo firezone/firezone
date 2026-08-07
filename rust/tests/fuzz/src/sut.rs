@@ -6,7 +6,7 @@ use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
-use super::transition::{ClientDnsResolution, Destination, DnsQuery};
+use super::transition::{Destination, DnsQuery, DnsTransport, RecursiveDnsOutcome};
 use crate::assertions::*;
 use crate::flux_capacitor::FluxCapacitor;
 use crate::network_input::{NetworkInputObservation, NetworkInputTarget};
@@ -29,6 +29,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::{
     collections::BTreeMap,
+    io,
     net::IpAddr,
     time::{Duration, Instant},
 };
@@ -67,6 +68,7 @@ enum DnsResolutionFailure {
         client: ClientId,
         domain: DomainName,
         r_type: RecordType,
+        outcome: RecursiveDnsOutcome,
     },
     Gateway {
         gateway: GatewayId,
@@ -76,14 +78,23 @@ enum DnsResolutionFailure {
 }
 
 impl DnsResolutionFailure {
-    fn matches_client(&self, client: ClientId, domain: &DomainName, r_type: RecordType) -> bool {
+    fn client_outcome(
+        &self,
+        client: ClientId,
+        domain: &DomainName,
+        r_type: RecordType,
+    ) -> Option<RecursiveDnsOutcome> {
         match self {
             DnsResolutionFailure::Client {
                 client: failure_client,
                 domain: failure_domain,
                 r_type: failure_r_type,
-            } => *failure_client == client && failure_domain == domain && *failure_r_type == r_type,
-            DnsResolutionFailure::Gateway { .. } => false,
+                outcome,
+            } => {
+                (*failure_client == client && failure_domain == domain && *failure_r_type == r_type)
+                    .then_some(*outcome)
+            }
+            DnsResolutionFailure::Gateway { .. } => None,
         }
     }
 
@@ -503,10 +514,13 @@ impl TunnelTest {
                 gateway_id,
                 query,
             } => {
-                match query.client_resolution {
-                    ClientDnsResolution::Succeeded => {}
-                    ClientDnsResolution::Failed => {
-                        unreachable!("gateway DNS refreshes require client resolution to succeed")
+                match query.recursive_outcome {
+                    RecursiveDnsOutcome::Response => {}
+                    RecursiveDnsOutcome::Servfail => {
+                        unreachable!("gateway DNS refreshes require a recursive DNS response")
+                    }
+                    RecursiveDnsOutcome::UdpTimeout => {
+                        unreachable!("gateway DNS refreshes require a recursive DNS response")
                     }
                 }
                 state.dns_resolution_failure = Some(DnsResolutionFailure::Gateway {
@@ -883,7 +897,7 @@ impl TunnelTest {
             let sut_client = state.clients.get(client_id).unwrap().inner();
 
             assert_tcp_connections(ref_client, sut_client);
-            assert_udp_dns_packets_properties(ref_client, sut_client);
+            assert_udp_dns(ref_client, sut_client);
             assert_tcp_dns(ref_client, sut_client);
             assert_truncated_dns_queries(ref_client, sut_client);
             assert_dns_servers_are_valid(ref_client, sut_client, &ref_state.portal);
@@ -904,7 +918,7 @@ impl TunnelTest {
 
     pub fn clear_observations(state: &mut TunnelTest) {
         for client in state.clients.values_mut() {
-            client.exec_mut(|c| c.clear_probe_observations());
+            client.exec_mut(|c| c.clear_observations());
         }
         for gateway in state.gateways.values_mut() {
             gateway.exec_mut(|g| g.clear_probe_observations());
@@ -927,18 +941,32 @@ impl TunnelTest {
             dns_server,
             query_id,
             transport,
-            client_resolution,
+            recursive_outcome,
         } = query;
 
-        match client_resolution {
-            ClientDnsResolution::Succeeded => {}
-            ClientDnsResolution::Failed => {
+        match recursive_outcome {
+            RecursiveDnsOutcome::Response => {}
+            RecursiveDnsOutcome::Servfail => {
                 self.dns_resolution_failure = Some(DnsResolutionFailure::Client {
                     client: client_id,
                     domain: domain.clone(),
                     r_type,
+                    outcome: recursive_outcome,
                 });
             }
+            RecursiveDnsOutcome::UdpTimeout => match transport {
+                DnsTransport::Udp { .. } => {
+                    self.dns_resolution_failure = Some(DnsResolutionFailure::Client {
+                        client: client_id,
+                        domain: domain.clone(),
+                        r_type,
+                        outcome: recursive_outcome,
+                    });
+                }
+                DnsTransport::Tcp => {
+                    unreachable!("a recursive TCP DNS query cannot have a UDP timeout")
+                }
+            },
         }
 
         let client = self.clients.get_mut(&client_id).unwrap();
@@ -1102,19 +1130,39 @@ impl TunnelTest {
                     .then_some(query_message.clone().with_id(0))
                     .unwrap_or(query_message.clone());
 
-                let should_fail = self.dns_resolution_failure.as_ref().is_some_and(|failure| {
-                    failure.matches_client(
+                let recursive_outcome = self.dns_resolution_failure.as_ref().and_then(|failure| {
+                    failure.client_outcome(
                         client_id,
                         &query_message.domain(),
                         query_message.qtype(),
                     )
                 });
-                let message = if should_fail {
-                    self.dns_resolution_failure = None;
+                let message = match recursive_outcome {
+                    None => {
+                        Ok(self.on_recursive_dns_query(&message, &ref_state.global_dns_records))
+                    }
+                    Some(RecursiveDnsOutcome::Response) => {
+                        unreachable!("successful recursive DNS responses are not injected")
+                    }
+                    Some(RecursiveDnsOutcome::Servfail) => {
+                        self.dns_resolution_failure = None;
 
-                    Err(anyhow::anyhow!("simulated client DNS resolution failure"))
-                } else {
-                    Ok(self.on_recursive_dns_query(&message, &ref_state.global_dns_records))
+                        Err(anyhow::anyhow!("simulated client DNS resolution failure"))
+                    }
+                    Some(RecursiveDnsOutcome::UdpTimeout) => {
+                        match transport {
+                            dns::Transport::Udp => {}
+                            dns::Transport::Tcp => {
+                                unreachable!("a recursive TCP DNS query cannot have a UDP timeout")
+                            }
+                        }
+                        self.dns_resolution_failure = None;
+
+                        Err(anyhow::Error::new(io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            "simulated recursive UDP DNS timeout",
+                        )))
+                    }
                 };
                 let client = self.clients.get_mut(&client_id).unwrap();
                 client.exec_mut(|c| {
@@ -1256,7 +1304,7 @@ impl TunnelTest {
                                 .unwrap();
 
                             c.received_tcp_dns_responses
-                                .insert((upstream, result.query.id()));
+                                .insert((upstream, result.query.id()), message.response_code());
                             c.handle_dns_response(&message)
                         }
                         Err(e) => {

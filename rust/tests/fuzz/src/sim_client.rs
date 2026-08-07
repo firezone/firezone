@@ -13,12 +13,12 @@ use super::{
 };
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceList};
-use dns_types::{DomainName, Query, RecordData, RecordType};
+use dns_types::{DomainName, Query, RecordData, RecordType, ResponseCode};
 use ip_network::IpNetwork;
 use ip_packet::{IcmpEchoHeader, IcmpError, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use snownet::Transmit;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -58,11 +58,12 @@ pub(crate) struct SimClient {
     /// The latest resource list emitted by connlib.
     pub(crate) observed_resource_list: ResourceList,
 
-    pub(crate) sent_udp_dns_queries: HashMap<(dns::Upstream, QueryId, u16), IpPacket>,
-    pub(crate) received_udp_dns_responses: BTreeMap<(dns::Upstream, QueryId, u16), IpPacket>,
+    pub(crate) sent_udp_dns_queries: BTreeMap<(dns::Upstream, QueryId, u16), IpPacket>,
+    pub(crate) received_udp_dns_responses:
+        BTreeMap<(dns::Upstream, QueryId, u16), UdpDnsResponseObservation>,
 
-    pub(crate) sent_tcp_dns_queries: HashSet<(dns::Upstream, QueryId)>,
-    pub(crate) received_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
+    pub(crate) sent_tcp_dns_queries: BTreeSet<(dns::Upstream, QueryId)>,
+    pub(crate) received_tcp_dns_responses: BTreeMap<(dns::Upstream, QueryId), ResponseCode>,
 
     pub(crate) truncated_dns_queries: BTreeMap<TruncatedDnsQuery, TruncatedDnsQueryObservation>,
 
@@ -489,7 +490,10 @@ impl SimClient {
 
                 self.received_udp_dns_responses.insert(
                     (upstream, response.id(), udp.destination_port()),
-                    packet.clone(),
+                    UdpDnsResponseObservation {
+                        packet: packet.clone(),
+                        response_code: response.response_code(),
+                    },
                 );
 
                 if !response.truncated() {
@@ -691,16 +695,16 @@ impl SimClient {
     }
 
     pub(crate) fn clear_packets(&mut self) {
+        self.tcp_client.reset();
+        self.failed_tcp_packets.clear();
+    }
+
+    pub(crate) fn clear_observations(&mut self) {
         self.sent_udp_dns_queries.clear();
         self.received_udp_dns_responses.clear();
         self.sent_tcp_dns_queries.clear();
         self.received_tcp_dns_responses.clear();
         self.truncated_dns_queries.clear();
-        self.tcp_client.reset();
-        self.failed_tcp_packets.clear();
-    }
-
-    pub(crate) fn clear_probe_observations(&mut self) {
         self.probe_observations.clear();
         self.tcp_client.clear_received_data();
     }
@@ -716,6 +720,11 @@ impl SimClient {
 pub(crate) struct TruncatedDnsQueryObservation {
     pub(crate) handling: TruncatedDnsQueryHandling,
     pub(crate) response: Option<IpPacket>,
+}
+
+pub(crate) struct UdpDnsResponseObservation {
+    pub(crate) packet: IpPacket,
+    pub(crate) response_code: ResponseCode,
 }
 
 impl TruncatedDnsQueryObservation {
