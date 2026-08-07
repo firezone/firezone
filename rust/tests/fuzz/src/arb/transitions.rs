@@ -51,6 +51,7 @@ enum TransitionKind {
     SendPacket,
     SendUdpPacketOnFlow,
     SendDnsQuery,
+    SendTruncatedUdpDnsQuery,
 }
 
 pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Transition> {
@@ -63,6 +64,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     let packet_targets = packets::targets(state);
     let udp_flows = state.udp_flows();
     let dns_query_targets = dns_queries::targets(state);
+    let truncated_dns_query_targets = state.reachable_dns_servers();
 
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; libFuzzer chooses the concrete
@@ -91,10 +93,11 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
         (!udp_flows.is_empty()).then_some((K::SendUdpPacketOnFlow, 25)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQuery, 10)),
+        (!truncated_dns_query_targets.is_empty()).then_some((K::SendTruncatedUdpDnsQuery, 2)),
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 20]>>();
+    .collect::<SmallVec<[_; 21]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -214,6 +217,12 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         K::SendDnsQuery => {
             let target = dns_query_targets[g.choose_index(dns_query_targets.len())].clone();
             dns_queries::generate(g, target, state)
+        }
+        K::SendTruncatedUdpDnsQuery => {
+            let target = truncated_dns_query_targets
+                [g.choose_index(truncated_dns_query_targets.len())]
+            .clone();
+            dns_queries::generate_truncated(g, target)
         }
     };
 

@@ -10,7 +10,7 @@ use super::{
     },
     sim_client::SimClient,
     sim_net::ExecMutScope,
-    transition::{DPort, Destination, DnsQuery, DnsTransport, SPort},
+    transition::{DPort, Destination, DnsQuery, DnsTransport, SPort, TruncatedDnsQuery},
 };
 use tunnel_proto::{
     ClientState, MaliciousBehaviour, dns,
@@ -101,6 +101,9 @@ pub struct RefClient {
     /// The expected TCP DNS handshakes.
     #[debug(skip)]
     pub(crate) expected_tcp_dns_handshakes: VecDeque<(dns::Upstream, QueryId)>,
+    /// The truncated DNS queries expected to be consumed by the client's stub resolver.
+    #[debug(skip)]
+    pub(crate) expected_truncated_dns_queries: BTreeSet<TruncatedDnsQuery>,
 
     #[debug(skip)]
     connection_resets: Vec<Instant>,
@@ -147,6 +150,7 @@ impl RefClient {
             expected_tcp_rejections: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
             expected_tcp_dns_handshakes: Default::default(),
+            expected_truncated_dns_queries: Default::default(),
             resources: Default::default(),
             routes: Default::default(),
             site_status: Default::default(),
@@ -875,6 +879,10 @@ impl RefClient {
         self.expect_dns_handshake(dns_server, query_id, transport);
     }
 
+    pub(crate) fn on_truncated_dns_query(&mut self, query: TruncatedDnsQuery) {
+        self.expected_truncated_dns_queries.insert(query);
+    }
+
     /// Returns whether the query's resolver answers tunnelled traffic with ICMP errors.
     fn resolver_is_unreachable(&self, query: &DnsQuery, icmp_error_hosts: &IcmpErrorHosts) -> bool {
         match &query.dns_server {
@@ -1496,6 +1504,7 @@ impl RefClient {
     pub(crate) fn clear_packets(&mut self) {
         self.expected_udp_dns_handshakes.clear();
         self.expected_tcp_dns_handshakes.clear();
+        self.expected_truncated_dns_queries.clear();
         self.expected_tcp_connections.clear();
         self.expected_tcp_rejections.clear();
     }

@@ -67,6 +67,10 @@ pub enum Transition {
         dns_server: dns::Upstream,
         transport: DnsTransport,
     },
+    SendTruncatedUdpDnsQuery {
+        client_id: ClientId,
+        query: TruncatedDnsQuery,
+    },
     UpdateSystemDnsServers {
         servers: Vec<IpAddr>,
     },
@@ -114,6 +118,7 @@ impl Transition {
             Transition::ConnectTcp { .. } => false,
             Transition::SendDnsQuery { .. } => false,
             Transition::SendDnsResourcePtrQuery { .. } => false,
+            Transition::SendTruncatedUdpDnsQuery { .. } => false,
             Transition::UpdateSystemDnsServers { .. } => false,
             Transition::UpdateUpstreamDo53Servers(_) => false,
             Transition::UpdateUpstreamDoHServers(_) => false,
@@ -129,6 +134,31 @@ impl Transition {
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
             Transition::UpdateDnsRecords { .. } => false,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct TruncatedDnsQuery {
+    pub(crate) dns_server: dns::Upstream,
+    pub(crate) local_port: u16,
+    payload: Vec<u8>,
+}
+
+impl TruncatedDnsQuery {
+    pub(crate) const DNS_HEADER_LEN: usize = 12;
+
+    pub(crate) fn new(dns_server: dns::Upstream, local_port: u16, payload: Vec<u8>) -> Self {
+        assert!(payload.len() < Self::DNS_HEADER_LEN);
+
+        Self {
+            dns_server,
+            local_port,
+            payload,
+        }
+    }
+
+    pub(crate) fn payload(&self) -> &[u8] {
+        &self.payload
     }
 }
 

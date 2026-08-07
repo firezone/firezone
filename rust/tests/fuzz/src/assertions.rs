@@ -6,7 +6,7 @@ use super::{
         TraceRequirement,
     },
     ref_client::RefClient,
-    sim_client::SimClient,
+    sim_client::{SimClient, TruncatedDnsQueryHandling},
     sim_gateway::SimGateway,
     stub_portal::StubPortal,
     transition::Destination,
@@ -15,7 +15,7 @@ use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceVie
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     iter,
     marker::PhantomData,
     net::{IpAddr, SocketAddr},
@@ -800,6 +800,35 @@ pub(crate) fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
                 tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
                 tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
             }
+        }
+    }
+}
+
+pub(crate) fn assert_truncated_dns_queries(ref_client: &RefClient, sim_client: &SimClient) {
+    let expected = &ref_client.expected_truncated_dns_queries;
+    let submitted = sim_client
+        .truncated_dns_queries
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+
+    if &submitted != expected {
+        tracing::error!(target: "assertions", ?submitted, ?expected, "❌ Truncated DNS queries were not submitted as expected");
+    }
+
+    for (query, observation) in &sim_client.truncated_dns_queries {
+        match observation.handling {
+            TruncatedDnsQueryHandling::Consumed => {}
+            TruncatedDnsQueryHandling::Forwarded => {
+                tracing::error!(target: "assertions", ?query, "❌ Truncated DNS query escaped the stub resolver");
+            }
+            TruncatedDnsQueryHandling::Failed => {
+                tracing::error!(target: "assertions", ?query, "❌ Truncated DNS query failed outside the DNS parser");
+            }
+        }
+
+        if let Some(response) = &observation.response {
+            tracing::error!(target: "assertions", ?query, ?response, "❌ Truncated DNS query received a response");
         }
     }
 }

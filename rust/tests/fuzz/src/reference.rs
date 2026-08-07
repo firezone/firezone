@@ -153,6 +153,13 @@ impl ReferenceState {
                     c.on_dns_resource_ptr_query(dns_server, *query_id, *transport);
                 });
             }
+            Transition::SendTruncatedUdpDnsQuery { client_id, query } => {
+                state
+                    .clients
+                    .get_mut(client_id)
+                    .unwrap()
+                    .exec_mut(|client| client.on_truncated_dns_query(query.clone()));
+            }
             Transition::SendIcmpPacket {
                 client_id,
                 src,
