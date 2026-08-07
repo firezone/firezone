@@ -3,5 +3,6 @@ allowBuilds:
   esbuild: true
 overrides:
   "brace-expansion@<=5.0.7": 5.0.9
+  js-yaml@>=4.0.0 <4.3.1: 4.3.1
 patchedDependencies:
   minimatch@3.1.5: patches/minimatch@3.1.5.patch
