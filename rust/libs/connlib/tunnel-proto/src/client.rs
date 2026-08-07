@@ -1354,6 +1354,16 @@ impl ClientState {
         }
 
         let Some(upstream) = self.dns_config.mapping().upstream_by_sentinel(dst) else {
+            // We route the entire sentinel range, so traffic to an address in it is
+            // ours even once the mapping no longer contains that address, e.g. after
+            // the resolvers changed. Nothing else can serve it and routing it to a
+            // Resource would leak an internal address to the Gateway.
+            if is_dns_sentinel(dst) {
+                tracing::debug!(%dst, "Dropping packet for unmapped DNS sentinel");
+
+                return ControlFlow::Break(());
+            }
+
             return ControlFlow::Continue(packet); // Not for our DNS resolver.
         };
 
@@ -2717,6 +2727,13 @@ fn is_llmnr(dst: IpAddr) -> bool {
     match dst {
         IpAddr::V4(ip) => ip == LLMNR_IPV4,
         IpAddr::V6(ip) => ip == LLMNR_IPV6,
+    }
+}
+
+fn is_dns_sentinel(dst: IpAddr) -> bool {
+    match dst {
+        IpAddr::V4(ip) => DNS_SENTINELS_V4.contains(ip),
+        IpAddr::V6(ip) => DNS_SENTINELS_V6.contains(ip),
     }
 }
 
