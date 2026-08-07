@@ -50,6 +50,7 @@ pub struct TunnelTest {
     /// portal are dropped, simulating a client that has not yet reconnected to
     /// the portal after a roam.
     client_portal_offline_until: Option<(ClientId, Instant)>,
+    drop_next_wire_packet: bool,
     network: RoutingTable,
 }
 
@@ -141,6 +142,7 @@ impl TunnelTest {
             flux_capacitor,
             network: ref_state.network.clone(),
             client_portal_offline_until: None,
+            drop_next_wire_packet: false,
             clients,
             gateways,
             relays,
@@ -589,6 +591,9 @@ impl TunnelTest {
                     gateway.exec_mut(|g| g.update_relays(iter::empty(), state.relays.iter(), now));
                 }
             }
+            Transition::DropNextWirePacket => {
+                state.drop_next_wire_packet = true;
+            }
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 // If we are partitioned from the portal, we will only learn which relays to use, potentially replacing existing ones.
                 let to_remove = Vec::default();
@@ -662,6 +667,7 @@ impl TunnelTest {
             Transition::UpdateDnsRecords { .. } => {}
         };
         state.advance(ref_state, &mut buffered_transmits);
+        state.drop_next_wire_packet = false;
 
         state
     }
@@ -1064,6 +1070,11 @@ impl TunnelTest {
             .src
             .expect("`src` should always be set in these tests");
         let dst = transmit.dst;
+
+        if std::mem::take(&mut self.drop_next_wire_packet) {
+            tracing::trace!(%src, %dst, "Fabric dropped packet");
+            return;
+        }
 
         let Some(host) = self.network.host_by_ip(dst.ip()) else {
             tracing::error!("Unhandled packet: {src} -> {dst}");
