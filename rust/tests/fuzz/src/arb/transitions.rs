@@ -61,7 +61,6 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     let dns_record_domains = state.dns_resource_domains();
     let packet_targets = packets::targets(state);
     let dns_query_targets = dns_queries::targets(state);
-    let static_device_pools = state.static_device_pools_on_any_client();
 
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; libFuzzer chooses the concrete
