@@ -168,11 +168,12 @@ defmodule PortalAPI.Sockets.LatestSession do
 
     @attested_identifier_fields ~w[last_attested_device_serial last_attested_device_uuid last_attested_mdm_device_id]a
 
-    # The MDM device id and the pinned certificate serial are the identifiers a
-    # flush can collide on, since they are the ones carrying unique indexes. A
-    # hardware serial or UUID shared across rows is normal: a device whose MDM
-    # record changed enrolls as a new row and keeps the hardware it reports.
-    @attested_unique_fields ~w[last_attested_mdm_device_id last_attested_cert_serial]a
+    # The MDM device id and the pinned certificate fingerprint are the
+    # identifiers a flush can collide on, since they are the ones carrying
+    # unique indexes. A hardware serial or UUID shared across rows is normal: a
+    # device whose MDM record changed enrolls as a new row and keeps the
+    # hardware it reports.
+    @attested_unique_fields ~w[last_attested_mdm_device_id last_attested_cert_fingerprint]a
     @attested_fields @attested_identifier_fields ++
                        ~w[last_attested_cert_serial last_attested_cert_fingerprint last_attested_at]a
     @attested_probe_types %{
@@ -180,7 +181,7 @@ defmodule PortalAPI.Sockets.LatestSession do
       actor_id: Ecto.UUID,
       device_id: Ecto.UUID,
       last_attested_mdm_device_id: :string,
-      last_attested_cert_serial: :string
+      last_attested_cert_fingerprint: :string
     }
 
     @token_schemas %{
@@ -496,7 +497,7 @@ defmodule PortalAPI.Sockets.LatestSession do
             where:
               d.type == :client and
                 (d.last_attested_mdm_device_id == v.last_attested_mdm_device_id or
-                   d.last_attested_cert_serial == v.last_attested_cert_serial),
+                   d.last_attested_cert_fingerprint == v.last_attested_cert_fingerprint),
             select: %{device_id: v.device_id, conflicting_id: d.id}
           )
           |> probe()

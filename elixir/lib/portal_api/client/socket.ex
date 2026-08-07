@@ -388,9 +388,8 @@ defmodule PortalAPI.Client.Socket do
     # Identity is looked up strongest-first. The MDM device id is assigned by
     # the MDM service rather than reported by the device, so it is the only
     # identifier a device cannot choose for itself. When a certificate carries
-    # none, the pinned certificate stands in: it identifies this exact
-    # certificate, so the row survives for as long as the certificate does and
-    # a renewal enrolls a new row.
+    # none, the pinned certificate stands in: the row survives for as long as
+    # that certificate does and a renewal enrolls a new one.
     defp resolve_attested(changeset, actor_id, proof, subject) do
       case find_attested_row(actor_id, proof, subject) do
         nil -> insert_attested(changeset, subject)
@@ -402,7 +401,7 @@ defmodule PortalAPI.Client.Socket do
       mdm_device_id = Map.get(proof.identifiers, :last_attested_mdm_device_id)
 
       find_by_mdm_device_id(actor_id, mdm_device_id, subject) ||
-        find_by_cert_serial(actor_id, proof.last_attested_cert_serial, subject)
+        find_by_cert_fingerprint(actor_id, proof.last_attested_cert_fingerprint, subject)
     end
 
     # The MDM device id is unique per actor, so this is a direct read. A
@@ -422,11 +421,15 @@ defmodule PortalAPI.Client.Socket do
       |> Safe.one()
     end
 
-    defp find_by_cert_serial(actor_id, cert_serial, subject) do
+    # The fingerprint rather than the certificate serial: a serial is unique
+    # only per issuing CA (RFC 5280 4.1.2.2), and an account may trust several
+    # anchors, so matching on it would let a certificate from one CA resolve to
+    # a device enrolled under another. A SHA-256 of the DER cannot collide.
+    defp find_by_cert_fingerprint(actor_id, fingerprint, subject) do
       from(d in Device,
         where: d.actor_id == ^actor_id,
         where: d.type == :client,
-        where: d.last_attested_cert_serial == ^cert_serial
+        where: d.last_attested_cert_fingerprint == ^fingerprint
       )
       |> Safe.scoped(subject)
       |> Safe.one()

@@ -677,7 +677,7 @@ defmodule PortalAPI.Client.SocketTest do
         client_fixture(
           account: account,
           actor: actor,
-          last_attested_cert_serial: "CERTSN-3",
+          last_attested_cert_fingerprint: "fp-3",
           firezone_id: nil,
           last_attested_mdm_device_id: "mdm-1",
           last_attested_at: DateTime.utc_now()
@@ -716,7 +716,7 @@ defmodule PortalAPI.Client.SocketTest do
         actor: actor,
         last_attested_device_serial: "SN-SHARED",
         last_attested_mdm_device_id: "mdm-first",
-        last_attested_cert_serial: "CERTSN-5",
+        last_attested_cert_fingerprint: "fp-5",
           firezone_id: nil
       )
 
@@ -725,7 +725,7 @@ defmodule PortalAPI.Client.SocketTest do
                  "name" => "Re-enrolled",
                  "last_attested_device_serial" => "SN-SHARED",
                  "last_attested_mdm_device_id" => "mdm-second",
-                 "last_attested_cert_serial" => "CERTSN-SECOND"
+                 "last_attested_cert_fingerprint" => "fp-second"
                })
                |> Portal.Safe.unscoped()
                |> Portal.Safe.insert()
@@ -777,7 +777,7 @@ defmodule PortalAPI.Client.SocketTest do
           actor: actor,
           last_attested_device_serial: "SN-REENROLL",
           last_attested_mdm_device_id: "mdm-old",
-          last_attested_cert_serial: "CERTSN-6",
+          last_attested_cert_fingerprint: "fp-6",
           firezone_id: nil
         )
 
@@ -845,7 +845,7 @@ defmodule PortalAPI.Client.SocketTest do
           account: account,
           actor: actor,
           last_attested_device_serial: "SN-MOSYLE",
-          last_attested_cert_serial: "4A2F008C",
+          last_attested_cert_fingerprint: "fp-mosyle",
           firezone_id: nil
         )
 
@@ -855,7 +855,7 @@ defmodule PortalAPI.Client.SocketTest do
       proof = %{
         identifiers: %{last_attested_device_serial: "SN-MOSYLE"},
         last_attested_cert_serial: "4A2F008C",
-        last_attested_cert_fingerprint: "bb"
+        last_attested_cert_fingerprint: "fp-mosyle"
       }
 
       assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
@@ -873,7 +873,7 @@ defmodule PortalAPI.Client.SocketTest do
           account: account,
           actor: actor,
           last_attested_device_serial: "SN-RENEW",
-          last_attested_cert_serial: "OLDSERIAL",
+          last_attested_cert_fingerprint: "fp-old",
           firezone_id: nil
         )
 
@@ -883,7 +883,7 @@ defmodule PortalAPI.Client.SocketTest do
       proof = %{
         identifiers: %{last_attested_device_serial: "SN-RENEW"},
         last_attested_cert_serial: "NEWSERIAL",
-        last_attested_cert_fingerprint: "bb"
+        last_attested_cert_fingerprint: "fp-new"
       }
 
       assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
@@ -900,7 +900,7 @@ defmodule PortalAPI.Client.SocketTest do
           account: account,
           actor: actor,
           last_attested_mdm_device_id: "mdm-wins",
-          last_attested_cert_serial: "CERTSN-8",
+          last_attested_cert_fingerprint: "fp-8",
           firezone_id: nil
         )
 
@@ -908,7 +908,7 @@ defmodule PortalAPI.Client.SocketTest do
         client_fixture(
           account: account,
           actor: actor,
-          last_attested_cert_serial: "SHAREDSERIAL",
+          last_attested_cert_fingerprint: "fp-shared",
           firezone_id: nil
         )
 
@@ -917,8 +917,8 @@ defmodule PortalAPI.Client.SocketTest do
 
       proof = %{
         identifiers: %{last_attested_mdm_device_id: "mdm-wins"},
-        last_attested_cert_serial: "SHAREDSERIAL",
-        last_attested_cert_fingerprint: "bb"
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "fp-shared"
       }
 
       assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
@@ -994,7 +994,7 @@ defmodule PortalAPI.Client.SocketTest do
         last_attested_device_serial: "SN-1",
         last_attested_device_uuid: "uuid-1",
         last_attested_mdm_device_id: "mdm-1",
-        last_attested_cert_serial: "CERTSN-11",
+        last_attested_cert_fingerprint: "fp-11",
           firezone_id: nil
       )
 
@@ -1034,7 +1034,7 @@ defmodule PortalAPI.Client.SocketTest do
           last_attested_device_serial: "SN-2",
           last_attested_device_uuid: "uuid-gone",
           last_attested_mdm_device_id: "mdm-2",
-          last_attested_cert_serial: "CERTSN-12",
+          last_attested_cert_fingerprint: "fp-12",
           firezone_id: nil
         )
 
@@ -1065,7 +1065,7 @@ defmodule PortalAPI.Client.SocketTest do
       :last_attested_device_serial,
       :last_attested_device_uuid,
       :last_attested_mdm_device_id,
-      :last_attested_cert_serial
+      :last_attested_cert_fingerprint
     ])
     |> Ecto.Changeset.put_change(:type, :client)
     |> Ecto.Changeset.put_change(:account_id, account.id)
