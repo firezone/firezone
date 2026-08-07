@@ -419,6 +419,11 @@ impl PollTimeout for SimClient {
                     .poll_timeout()
                     .map(|instant| (instant, "Application TCP DNS client")),
             )
+            .chain(
+                self.tcp_client
+                    .poll_timeout()
+                    .map(|instant| (instant, "Application TCP client")),
+            )
             .min_by_key(|(instant, _)| *instant)
     }
 }
