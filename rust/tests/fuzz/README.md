@@ -16,7 +16,6 @@ Pull-request CI only replays these inputs, making fuzz regression and coverage c
 It never performs random coverage discovery.
 
 The nightly `fuzz-nightly.yml` workflow runs every target from `targets.json` on `main`, minimizes and repacks the grown corpora, refreshes their coverage baselines, and opens one bot PR with the results.
-An input that made the target fail is packed into the corpus with the rest, so the commit the workflow pushes is what reports the bug: the run itself stays green, and replaying that corpus turns CI red until the bug is fixed.
 
 Tunnel inputs are decoded positionally with `arbitrary::Unstructured`.
 Changing the generator in `src/arb/` can therefore reinterpret existing inputs; after a substantial generator change, re-minimize and grow the corpus before updating the archive.
@@ -40,8 +39,6 @@ mise run //rust/tests/fuzz:fuzz tunnel-proto -fork=4
 
 ## Reproducing a crash
 
-A local run leaves its failing inputs in the ignored `artifacts/<target>` directory.
-
 ```console
 mise run //rust/tests/fuzz:replay-crashes tunnel-proto
 mise run //rust/tests/fuzz:tmin tunnel-proto artifacts/tunnel-proto/crash-<hash>
@@ -50,10 +47,8 @@ mise run //rust/tests/fuzz:repro tunnel-proto <reduced-input> 2> repro.log
 
 Set `RUST_LOG=trace` for detailed scenario and connlib traces.
 
-A fuzz job's findings arrive in the corpus instead, keeping the `crash-` name libFuzzer gave them.
-`coverage` names the one it died on, and `repro` and `tmin` take that path like any other input.
-Nothing needs pruning once the bug is fixed: the input stops failing and the next `cmin` re-emits it under its content hash, where it goes on covering the code that used to crash.
-Until then the corpus cannot be minimized at all, since minimizing means running every input; `cargo-fuzz` reports the failed merge and leaves the corpus as it was.
+A fuzz job's findings arrive in the corpus instead, under the `crash-` name libFuzzer gave them, so they keep CI red until the bug is fixed.
+`coverage` names the one it died on and nothing needs pruning afterwards.
 
 ## Coverage
 
@@ -72,6 +67,7 @@ A fuzz build instruments the dependencies too, so a target that drives `tunnel-p
 Which lines a crate contributes is visible in the HTML coverage report.
 
 When the ceiling is genuinely exceeded, `grow` runs the whole recovery locally: it fuzzes for new coverage, minimizes the corpus, refreshes the baseline from what the grown corpus actually reaches, then repacks it.
+It fuzzes past a crash rather than stopping at the first, and runs its remaining steps even when one of them fails, so a run ends with a repacked corpus carrying what it found either way.
 
 ```console
 mise run //rust/tests/fuzz:grow tunnel-proto
@@ -83,14 +79,6 @@ Expect it to take a while: it fuzzes for 30 minutes before the remaining steps e
 It spreads that across three quarters of the cores, leaving you some to work with, and across all of them when `CI` is set.
 Pass libFuzzer arguments to override both the parallelism and the duration, e.g. `-fork=8 -max_total_time=300`.
 Be wary of shortening it much for `tunnel-proto`: `-fork` re-merges the whole seed corpus before it discovers anything, `-max_total_time` does not bound that startup, and a short budget is spent entirely inside it.
-
-`grow` passes `-ignore_crashes=1`, so a crash no longer ends the run: it grinds for the whole budget and collects every input that fails, not just the first.
-libFuzzer honours that in fork mode only, where it already ignores timeouts and OOMs.
-Those inputs join the corpus once the coverage measurement is done, which is late enough that a crash cannot cost the run its refreshed ceiling.
-A run adds at most ten of them: a bug the fuzzer reaches easily yields a distinct input on every hit, and one backtrace does not need hundreds of variations committed.
-
-A failing step does not stop the ones behind it either; `grow` runs them all and reports the failure at the end.
-Whichever step broke, the run still ends with a repacked corpus carrying what it found.
 
 The measurement is taken on the machine that runs it.
 A local run that gets luckier than CI writes a ceiling CI cannot meet, so re-run `coverage-check` before pushing.
