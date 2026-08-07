@@ -117,9 +117,9 @@ defmodule PortalAPI.Client.DeviceTrust do
   @apple_serial_regex ~r/^[A-Z0-9]{8,14}$/i
 
   @type identifiers :: %{
+          required(:last_attested_mdm_device_id) => String.t(),
           optional(:last_attested_device_serial) => String.t(),
-          optional(:last_attested_device_uuid) => String.t(),
-          optional(:last_attested_mdm_device_id) => String.t()
+          optional(:last_attested_device_uuid) => String.t()
         }
 
   @type verified :: %{
@@ -139,6 +139,7 @@ defmodule PortalAPI.Client.DeviceTrust do
           | :untrusted_chain
           | :malformed_cert_serial
           | :no_device_identifiers
+          | :no_mdm_device_id
 
   @doc """
   Attests the connecting device from the certificate the load balancer passed
@@ -257,10 +258,20 @@ defmodule PortalAPI.Client.DeviceTrust do
     end
   end
 
+  # The MDM device id anchors the certificate to the MDM's record of the device
+  # and is the one identifier every platform can assert, so it is mandatory.
+  # The hardware serial and UUID are optional: they exist to relocate a device
+  # whose MDM record changed, not to identify it on their own.
   defp device_identifiers(leaf) do
     case extract_identifiers(leaf) do
-      empty when map_size(empty) == 0 -> {:error, :no_device_identifiers}
-      identifiers -> {:ok, identifiers}
+      empty when map_size(empty) == 0 ->
+        {:error, :no_device_identifiers}
+
+      %{last_attested_mdm_device_id: _mdm_device_id} = identifiers ->
+        {:ok, identifiers}
+
+      _no_mdm_device_id ->
+        {:error, :no_mdm_device_id}
     end
   end
 

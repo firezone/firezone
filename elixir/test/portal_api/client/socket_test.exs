@@ -637,55 +637,7 @@ defmodule PortalAPI.Client.SocketTest do
       %{account: account, actor: actor, subject: subject}
     end
 
-    test "attested identifier match wins over firezone_id and merges it in memory", %{
-      account: account,
-      actor: actor,
-      subject: subject
-    } do
-      existing =
-        client_fixture(
-          account: account,
-          actor: actor,
-          last_attested_device_serial: "SN-ATT-1",
-          firezone_id: "fz-old"
-        )
-
-      changeset =
-        device_trust_changeset(account, actor, %{
-          "name" => "Reinstalled Client",
-          "firezone_id" => "fz-new",
-          "last_attested_device_serial" => "SN-ATT-1"
-        })
-
-      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
-      assert client.id == existing.id
-      assert client.firezone_id == "fz-new"
-      assert [_only_one] = Portal.Repo.all(actor_devices_query(account, actor))
-
-      # The connect path is write-free: the merged firezone_id is persisted by
-      # the batched client session flush, not here.
-      db_row = Portal.Repo.get_by!(Portal.Device, id: existing.id, account_id: account.id)
-      assert db_row.firezone_id == "fz-old"
-    end
-
-    test "attested identifiers with no match insert a new device", %{
-      account: account,
-      actor: actor,
-      subject: subject
-    } do
-      changeset =
-        device_trust_changeset(account, actor, %{
-          "name" => "New Client",
-          "firezone_id" => "fz-1",
-          "last_attested_device_serial" => "SN-NEW-1"
-        })
-
-      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
-      assert client.last_attested_device_serial == "SN-NEW-1"
-      assert client.firezone_id == "fz-1"
-    end
-
-    test "without attested identifiers the firezone_id lookup is unchanged", %{
+    test "an unattested connect resolves by firezone_id", %{
       account: account,
       actor: actor,
       subject: subject
@@ -700,6 +652,40 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
       assert client.id == existing.id
+    end
+
+    test "an unattested connect with no match inserts a new device", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-1"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.firezone_id == "fz-1"
+      assert is_nil(client.last_attested_at)
+    end
+
+    test "an unattested connect never reaches an attested row", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      attested =
+        client_fixture(
+          account: account,
+          actor: actor,
+          firezone_id: nil,
+          last_attested_mdm_device_id: "mdm-1",
+          last_attested_at: DateTime.utc_now()
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "Impostor", "firezone_id" => "fz-x"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      refute client.id == attested.id
     end
 
     test "attested identifiers are unique per actor", %{account: account, actor: actor} do
@@ -720,54 +706,6 @@ defmodule PortalAPI.Client.SocketTest do
                |> Portal.Safe.insert()
 
       assert {"has already been taken", _} = changeset.errors[:last_attested_device_serial]
-    end
-
-    test "identifiers split across devices refuse adoption and fall back", %{
-      account: account,
-      actor: actor,
-      subject: subject
-    } do
-      # Serial matches device A, UUID matches device B: nothing can prove
-      # which physical device is connecting, so neither row is adopted.
-      device_a =
-        client_fixture(
-          account: account,
-          actor: actor,
-          last_attested_device_serial: "SN-SPLIT",
-          firezone_id: "fz-a"
-        )
-
-      device_b =
-        client_fixture(
-          account: account,
-          actor: actor,
-          last_attested_device_uuid: "uuid-split",
-          firezone_id: "fz-b"
-        )
-
-      changeset =
-        device_trust_changeset(account, actor, %{
-          "name" => "Ambiguous Client",
-          "firezone_id" => "fz-new",
-          "last_attested_device_serial" => "SN-SPLIT",
-          "last_attested_device_uuid" => "uuid-split"
-        })
-
-      log =
-        ExUnit.CaptureLog.capture_log(fn ->
-          assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
-
-          # Falls back to the firezone_id path: a fresh row, with the attested
-          # fields stripped so the insert cannot collide with A's or B's
-          # unique indexes.
-          assert client.id != device_a.id
-          assert client.id != device_b.id
-          assert client.firezone_id == "fz-new"
-          assert is_nil(client.last_attested_device_serial)
-          assert is_nil(client.last_attested_device_uuid)
-        end)
-
-      assert log =~ "split across multiple devices"
     end
   end
 
@@ -837,12 +775,8 @@ defmodule PortalAPI.Client.SocketTest do
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
-          assert {:ok, client, false} = Socket.Database.resolve_client(changeset, proof, subject)
-          assert client.id != device_a.id
-          assert client.id != device_b.id
-          assert is_nil(client.last_attested_device_serial)
-          assert is_nil(client.last_attested_device_uuid)
-          assert is_nil(client.last_attested_at)
+          assert Socket.Database.resolve_client(changeset, proof, subject) ==
+                   {:error, :device_untrusted}
         end)
 
       assert log =~ "split across multiple devices"
@@ -976,41 +910,39 @@ defmodule PortalAPI.Client.SocketTest do
       assert is_nil(client.firezone_id)
     end
 
-    test "refuses to adopt identity when a hardware identifier disagrees", %{
+    test "relocates a device by its serial when the MDM device id changes", %{
       account: account,
       actor: actor,
       subject: subject
     } do
-      # Existing row proved serial SN-1 and uuid UUID-1 previously.
       existing =
         client_fixture(
           account: account,
           actor: actor,
           last_attested_device_serial: "SN-1",
           last_attested_device_uuid: "uuid-1",
+          last_attested_mdm_device_id: "mdm-old",
           firezone_id: "fz-old"
         )
 
-      # New cert matches on serial but carries a conflicting uuid.
       changeset =
         device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
 
       proof = %{
-        identifiers: %{last_attested_device_serial: "SN-1", last_attested_device_uuid: "uuid-2"},
+        identifiers: %{
+          last_attested_device_serial: "SN-1",
+          last_attested_mdm_device_id: "mdm-new"
+        },
         last_attested_cert_serial: "AA",
         last_attested_cert_fingerprint: "bb"
       }
 
-      log =
-        ExUnit.CaptureLog.capture_log(fn ->
-          assert {:ok, client, false} = Socket.Database.resolve_client(changeset, proof, subject)
-          # Adoption refused: a brand new row is inserted rather than merging
-          # onto the mismatched existing one.
-          assert client.id != existing.id
-          refute client.last_attested_device_uuid == "uuid-2"
-        end)
-
-      assert log =~ "Attested identifier mismatch"
+      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      assert client.id == existing.id
+      assert client.last_attested_mdm_device_id == "mdm-new"
+      assert client.last_attested_device_serial == "SN-1"
+      assert is_nil(client.last_attested_device_uuid)
+      assert is_nil(client.firezone_id)
     end
   end
 
