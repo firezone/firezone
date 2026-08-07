@@ -101,6 +101,8 @@ pub struct ResourceDescriptionDynamicDevicePool {
     pub name: String,
     /// DNS pattern for the pool (e.g. `*.devices.example.com`).
     pub address: String,
+    #[serde(default)]
+    pub filters: Vec<Filter>,
 }
 
 /// Description of an internet resource.
@@ -1013,7 +1015,14 @@ mod tests {
                 "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
                 "type": "dynamic_device_pool",
                 "name": "Employee Laptops",
-                "address": "*.laptops.example.com"
+                "address": "*.laptops.example.com",
+                "filters": [
+                    {
+                        "protocol": "tcp",
+                        "port_range_start": 22,
+                        "port_range_end": 22
+                    }
+                ]
             }
         ]"#;
 
@@ -1030,6 +1039,13 @@ mod tests {
         let desc = ResourceDescriptionDynamicDevicePool::deserialize(json).unwrap();
         assert_eq!(desc.name, "Employee Laptops");
         assert_eq!(desc.address, "*.laptops.example.com");
+        assert_eq!(
+            desc.filters,
+            vec![Filter::Tcp(crate::messages::PortRange {
+                port_range_start: 22,
+                port_range_end: 22,
+            })]
+        );
     }
 
     #[test]
