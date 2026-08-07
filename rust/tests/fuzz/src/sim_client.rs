@@ -618,6 +618,11 @@ impl SimClient {
         self.tcp_client.reset();
         self.failed_tcp_packets.clear();
     }
+
+    pub(crate) fn clear_probe_state(&mut self) {
+        self.probe_observations.clear();
+        self.sent_probes.clear();
+    }
 }
 
 fn probe_protocol_from_request(packet: &IpPacket) -> Option<ProbeProtocol> {

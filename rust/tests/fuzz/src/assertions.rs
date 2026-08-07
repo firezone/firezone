@@ -1,5 +1,4 @@
 use super::{
-    dns_records::DnsRecords,
     icmp_error_hosts::IcmpErrorHosts,
     probe::{
         ExpectedOutcome, ExpectedProbe, ProbeId, ProbeObservation, ProbeProtocol, ProbeRequest,
@@ -22,7 +21,6 @@ use std::{
     marker::PhantomData,
     net::{IpAddr, SocketAddr},
     sync::atomic::{AtomicBool, Ordering},
-    time::Instant,
 };
 use tracing::{Level, Subscriber};
 use tracing_subscriber::Layer;
@@ -33,7 +31,7 @@ pub(crate) fn assert_probes(
     ref_clients: &BTreeMap<ClientId, &RefClient>,
     sim_clients: &BTreeMap<ClientId, &SimClient>,
     sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
-    global_dns_records: &DnsRecords,
+    mappings: &mut BTreeMap<(ClientId, DomainName), HashMap<IpAddr, IpAddr>>,
     icmp_error_hosts: &IcmpErrorHosts,
 ) {
     let observations = iter::empty()
@@ -57,8 +55,6 @@ pub(crate) fn assert_probes(
     {
         tracing::error!(target: "assertions", ?id, "Unexpected probe observations");
     }
-
-    let mut mappings = BTreeMap::new();
 
     for expected in expected_probes.values() {
         let probe_observations = observations
@@ -132,8 +128,8 @@ pub(crate) fn assert_probes(
                     submitted_request,
                     received_request,
                     ref_clients,
-                    global_dns_records,
-                    &mut mappings,
+                    sim_gateways,
+                    mappings,
                 );
                 assert_received_response(
                     expected,
@@ -219,8 +215,8 @@ fn assert_received_request(
     submitted_request: &SubmittedRequest,
     received_request: &ReceivedRequest,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
-    global_dns_records: &DnsRecords,
-    mappings: &mut BTreeMap<(ClientId, DomainName, Instant), HashMap<IpAddr, IpAddr>>,
+    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
+    mappings: &mut BTreeMap<(ClientId, DomainName), HashMap<IpAddr, IpAddr>>,
 ) {
     assert_probe_payload(expected.id, &received_request.packet);
 
@@ -239,25 +235,29 @@ fn assert_received_request(
             assert_destination_is_ip(&received_request.packet, destination);
         }
         Destination::DomainName { name, .. } => {
-            if !matches!(received_request.remote, Remote::Gateway(_)) {
-                tracing::error!(target: "assertions", id = ?expected.id, "DNS probe request was not received through a gateway");
-                return;
-            }
-            let Some(snapshot) = expected.dns_resource_resolution else {
-                tracing::error!(target: "assertions", id = ?expected.id, "DNS probe has no resolution timestamp");
+            let gateway = match received_request.remote {
+                Remote::Gateway(gateway) => gateway,
+                Remote::Client(_) => {
+                    tracing::error!(target: "assertions", id = ?expected.id, "DNS probe request was not received through a gateway");
+                    return;
+                }
+            };
+            let Some(possible_resource_ips) = sim_gateways.get(&gateway).and_then(|gateway| {
+                gateway
+                    .dns_resolutions
+                    .get(&(expected.origin, name.clone()))
+            }) else {
+                tracing::error!(target: "assertions", id = ?expected.id, "DNS probe has no gateway resolution");
                 return;
             };
 
             assert_destination_is_dns_resource(
                 &received_request.packet,
-                global_dns_records,
                 name,
-                snapshot,
+                possible_resource_ips,
             );
 
-            let mapping = mappings
-                .entry((expected.origin, name.clone(), snapshot))
-                .or_default();
+            let mapping = mappings.entry((expected.origin, name.clone())).or_default();
             assert_proxy_ip_mapping_is_stable(
                 &submitted_request.packet,
                 &received_request.packet,
@@ -751,14 +751,10 @@ fn assert_destination_is_ip(gateway_received_request: &IpPacket, expected: &IpAd
 
 fn assert_destination_is_dns_resource(
     gateway_received_request: &IpPacket,
-    global_dns_records: &DnsRecords,
     domain: &dns_types::DomainName,
-    at: Instant,
+    possible_resource_ips: &[IpAddr],
 ) {
     let actual = gateway_received_request.destination();
-    let possible_resource_ips = global_dns_records
-        .domain_ips_iter(domain, at)
-        .collect::<Vec<_>>();
 
     if !possible_resource_ips.contains(&actual) {
         tracing::error!(target: "assertions", %domain, %actual, ?possible_resource_ips, "❌ Unknown resource IP");
@@ -771,7 +767,7 @@ fn assert_destination_is_dns_resource(
 ///
 /// How connlib assigns proxy IPs for domains is an implementation detail.
 /// Yet, we care that it remains stable to ensure that any form of sticky sessions don't get broken (i.e. packets to one IP are always routed to the same IP on the gateway).
-/// To assert this, we build up a map as we iterate through all packets that have been sent.
+/// The harness retains this compact mapping after discarding the packets themselves and resets it when the gateway resolves the domain again.
 fn assert_proxy_ip_mapping_is_stable(
     client_sent_request: &IpPacket,
     gateway_received_request: &IpPacket,

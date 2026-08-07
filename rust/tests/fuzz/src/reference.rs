@@ -240,10 +240,11 @@ impl ReferenceState {
             }),
             Transition::SendDnsQuery { client_id, query } => {
                 let upstream_do53 = state.portal.upstream_do53();
+                let global_dns_records = &state.global_dns_records;
                 let icmp_error_hosts = &state.icmp_error_hosts;
 
                 state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                    c.on_dns_query(query, upstream_do53, icmp_error_hosts, now);
+                    c.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
                 });
             }
             Transition::SendDnsResourcePtrQuery {
@@ -305,7 +306,6 @@ impl ReferenceState {
                     *src,
                     dst,
                     Protocol::Tcp(dport.0),
-                    now,
                 );
 
                 state
@@ -426,10 +426,9 @@ impl ReferenceState {
                 })
             }
             Transition::UpdateDnsRecords { domain, records } => {
-                state.global_dns_records.merge(DnsRecords::from([(
-                    domain.clone(),
-                    BTreeMap::from([(now, records.clone())]),
-                )]));
+                state
+                    .global_dns_records
+                    .insert(domain.clone(), records.clone());
             }
         };
 
@@ -440,6 +439,10 @@ impl ReferenceState {
         for client in state.clients.values_mut() {
             client.exec_mut(|c| c.clear_packets())
         }
+    }
+
+    pub fn clear_probe_state(state: &mut ReferenceState) {
+        state.expected_probes.clear();
     }
 
     fn record_probe(
@@ -454,17 +457,7 @@ impl ReferenceState {
             request.source(),
             request.destination(),
             request.protocol(),
-            sent_at,
         );
-        let dns_resource_resolution = match (route, request.destination()) {
-            (PacketRoute::Resource { resource, .. }, Destination::DomainName { name, .. }) => self
-                .clients
-                .get(&origin)
-                .unwrap()
-                .inner()
-                .dns_resource_resolution(resource, name),
-            _ => None,
-        };
         let outcome = self
             .clients
             .get_mut(&origin)
@@ -478,7 +471,6 @@ impl ReferenceState {
                 origin,
                 sent_at,
                 request,
-                dns_resource_resolution,
                 outcome,
                 trace_requirement,
             },
@@ -493,7 +485,6 @@ impl ReferenceState {
         source: IpAddr,
         destination: &Destination,
         protocol: Protocol,
-        sent_at: Instant,
     ) -> PacketRoute {
         let route = self.route_for_packet(origin, source, destination, protocol);
         let Destination::DomainName { name, .. } = destination else {
@@ -510,18 +501,20 @@ impl ReferenceState {
             PacketRoute::PeerRejectedByPeer(_) => return route,
         };
 
-        let resolved_at = self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
-            client.prepare_dns_resource_connection(resource, sent_at);
-            client.dns_resource_resolution(resource, name)
+        let required_record = if source.is_ipv4() {
+            RecordType::A
+        } else {
+            RecordType::AAAA
+        };
+        let has_compatible_record = self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
+            client.prepare_dns_resource_connection(resource, &self.global_dns_records);
+            client
+                .dns_resource_resolution(resource, name)
+                .is_some_and(|records| records.contains(&required_record))
         });
         let PacketRoute::Resource { gateway, .. } = route else {
             return route;
         };
-        let has_compatible_record = resolved_at.is_some_and(|resolved_at| {
-            self.global_dns_records
-                .domain_ips_iter(name, resolved_at)
-                .any(|ip| ip.is_ipv4() == source.is_ipv4())
-        });
         if has_compatible_record {
             return route;
         }
@@ -686,13 +679,12 @@ impl ReferenceState {
     pub(crate) fn resolved_ip4_for_non_resources(
         &self,
         global_dns_records: &DnsRecords,
-        at: Instant,
     ) -> Vec<(ClientId, Ipv4Addr)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
                 c.inner()
-                    .resolved_ip4_for_non_resources(global_dns_records, at)
+                    .resolved_ip4_for_non_resources(global_dns_records)
                     .into_iter()
                     .map(|ip| (*id, ip))
             })
@@ -726,13 +718,12 @@ impl ReferenceState {
     pub(crate) fn resolved_ip6_for_non_resources(
         &self,
         global_dns_records: &DnsRecords,
-        at: Instant,
     ) -> Vec<(ClientId, Ipv6Addr)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
                 c.inner()
-                    .resolved_ip6_for_non_resources(global_dns_records, at)
+                    .resolved_ip6_for_non_resources(global_dns_records)
                     .into_iter()
                     .map(|ip| (*id, ip))
             })
@@ -796,14 +787,13 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn all_domains(&self, now: Instant) -> Vec<(ClientId, DomainName, Vec<RecordType>)> {
+    pub(crate) fn all_domains(&self) -> Vec<(ClientId, DomainName, Vec<RecordType>)> {
         fn domains_and_rtypes(
             records: &DnsRecords,
-            at: Instant,
         ) -> impl Iterator<Item = (DomainName, Vec<RecordType>)> {
             records
                 .domains_iter()
-                .map(move |d| (d.clone(), records.domain_rtypes(&d, at)))
+                .map(move |d| (d.clone(), records.domain_rtypes(&d).into_iter().collect()))
         }
 
         self.clients
@@ -813,8 +803,8 @@ impl ReferenceState {
                 let mut unique_domains = self
                     .gateways
                     .values()
-                    .flat_map(|g| domains_and_rtypes(g.inner().dns_records(), now))
-                    .chain(domains_and_rtypes(&self.global_dns_records, now))
+                    .flat_map(|g| domains_and_rtypes(g.inner().dns_records()))
+                    .chain(domains_and_rtypes(&self.global_dns_records))
                     .collect::<BTreeMap<_, _>>();
 
                 // Add domains from client's own dns_records
