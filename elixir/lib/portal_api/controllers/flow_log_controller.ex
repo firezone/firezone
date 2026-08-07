@@ -1,11 +1,4 @@
 defmodule PortalAPI.FlowLogController do
-  # This endpoint is intentionally omitted from the OpenAPI spec. It is not part
-  # of the public REST API: it exists solely for Clients and Gateways to batch-post
-  # their flow logs, and is not meant to be called by API consumers. That is why
-  # this controller deliberately does not `use OpenApiSpex.ControllerSpecs` and
-  # declares no `operation`/`request_body` specs (which is what would otherwise
-  # cause `Paths.from_router/1` to document it).
-  #
   # The request carries a single per-authorization ingest token (see
   # `Portal.FlowLogToken`) in the `Authorization: Bearer` header. It both
   # authenticates the request and supplies the authoritative attribution fields
@@ -17,12 +10,48 @@ defmodule PortalAPI.FlowLogController do
   # body supplies the network fields: the inner tunnel tuple, the ordered outer
   # (WireGuard) paths, the flow window, and the byte/packet counters.
   use PortalAPI, :controller
+  use OpenApiSpex.ControllerSpecs
   import Ecto.Changeset
+  alias OpenApiSpex.Schema
   alias Portal.FlowLog
   alias Portal.FlowLogToken
   alias Portal.Types.LogId
   alias PortalAPI.ProblemDetails
+  alias PortalAPI.Schemas.ProblemDetails, as: ProblemDetailsSchema
   alias __MODULE__.Database
+
+  # ApiSpec resolves this operation to retain its request schemas as a versioned
+  # contract, then removes the private ingestion path from the published API.
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
+  operation :create,
+    summary: "Ingest Flow Logs",
+    request_body:
+      {"Flow Log batch", "application/json", PortalAPI.Schemas.FlowLogIngest.Request,
+       required: true},
+    responses:
+      [
+        ok:
+          {"Flow Logs accepted", "application/json",
+           %Schema{
+             type: :object,
+             required: [:data],
+             properties: %{
+               data: %Schema{
+                 type: :object,
+                 required: [:status],
+                 properties: %{status: %Schema{type: :string, enum: ["ok"]}}
+               }
+             }
+           }}
+      ] ++
+        ProblemDetailsSchema.responses([
+          :bad_request,
+          :unauthorized,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   # Schema fields we cast/persist. `log_id` is server-assigned per record (a
   # fresh flow_log log_id is minted here, not trusted from the body); on a

@@ -3,6 +3,15 @@ defmodule PortalAPI.ApiSpecTest do
 
   @content_type "application/problem+json"
 
+  test "includes the private flow-log schemas without publishing the ingestion path" do
+    spec = PortalAPI.ApiSpec.spec() |> OpenApiSpex.OpenApi.to_map()
+
+    assert get_in(spec, ["servers", Access.at(0), "url"]) == "/"
+    refute Map.has_key?(spec["paths"], "/ingestion/flow_logs")
+    assert get_in(spec, ["components", "schemas", "FlowLogIngestRecord"])
+    assert get_in(spec, ["components", "schemas", "FlowLogIngestRequest"])
+  end
+
   test "problem response examples match their HTTP status" do
     spec = PortalAPI.ApiSpec.spec() |> OpenApiSpex.OpenApi.to_map()
 

@@ -82,6 +82,81 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
     assert_eq!(payload["tx_bytes"], close.tx_bytes);
 }
 
+/// Guards the field contract between the spooled reports and the portal's
+/// ingest endpoint: every report shape the tracker can produce must conform
+/// to the Portal-generated OpenAPI schema committed at the workspace root.
+#[test]
+fn spooled_reports_conform_to_the_committed_ingest_contract() {
+    let openapi = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../../elixir/priv/static/openapi.json"),
+    )
+    .unwrap();
+    let openapi = serde_json::from_slice::<serde_json::Value>(&openapi).unwrap();
+    let schema = openapi
+        .pointer("/components/schemas/FlowLogIngestRecord")
+        .expect("Portal OpenAPI spec contains the flow-log ingest contract");
+    let validator = jsonschema::options()
+        .should_validate_formats(true)
+        .build(schema)
+        .unwrap();
+
+    let authz_id = "aaaaaaaa-1111-2222-3333-444444444444";
+    let spool = SpoolObserver::new(authz_id);
+    let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
+
+    spool.observe(|| {
+        // A completed flow to a DNS resource over a relay: exercises `domain`
+        // and an outer path without a source.
+        flow_tracker::emit(&Record {
+            ingest_token: test_token(authz_id, "responder"),
+            protocol: FlowProtocol::Udp,
+            inner_src_ip: "100.64.0.1".parse().unwrap(),
+            inner_src_port: 40_000,
+            inner_dst_ip: "10.0.0.5".parse().unwrap(),
+            inner_dst_port: 443,
+            domain: Some("download.httpbin".parse().unwrap()),
+            outers: vec![FlowContext::new(
+                None,
+                "203.0.113.7:51820".parse().unwrap(),
+                chrono::Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
+            )],
+            flow_start: chrono::Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
+            close: Some(FlowClose {
+                flow_end: chrono::Utc.timestamp_opt(1_700_000_060, 0).unwrap(),
+                last_packet: chrono::Utc.timestamp_opt(1_700_000_059, 500).unwrap(),
+                rx_packets: 10,
+                tx_packets: 12,
+                rx_bytes: 1024,
+                tx_bytes: 2048,
+            }),
+        });
+
+        // A tracked flow that roams: an open and a close report, two outer paths.
+        drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
+        drive_tx_from(
+            &mut tracker,
+            "203.0.113.7:52000",
+            &tcp_packet(ack(), &[0; 10]),
+            authz_id,
+            t0 + Duration::from_secs(3),
+        );
+        tracker.close_all(t0 + Duration::from_secs(5));
+    });
+
+    // The manual close plus the driven flow's open and close reports; a
+    // fourth report for the same input should fail loudly.
+    let reports = spool.reports();
+    assert_eq!(reports.len(), 3);
+
+    for (path, payload) in reports {
+        if let Err(error) = validator.validate(&payload) {
+            panic!("{} violates the contract: {error}", path.display());
+        }
+    }
+}
+
 /// Drives the tracker as a Gateway would and asserts that both halves of the
 /// flow's report end up in the spool.
 #[test]
@@ -468,6 +543,22 @@ impl SpoolObserver {
             .map(|entry| entry.unwrap().path())
             .filter(|path| path.to_string_lossy().ends_with(".end.json"))
             .map(|path| flow_log_spool::deserialize(&std::fs::read(path).unwrap()).unwrap())
+            .collect()
+    }
+
+    /// Reads every report spooled for the authorization, paired with its path.
+    fn reports(&self) -> Vec<(std::path::PathBuf, serde_json::Value)> {
+        let authz_dir = self.dir.path().join("responder").join(&self.authz_id);
+
+        std::fs::read_dir(&authz_dir)
+            .expect("spooled report dir exists")
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.to_string_lossy().ends_with(".json"))
+            .map(|path| {
+                let payload = flow_log_spool::deserialize(&std::fs::read(&path).unwrap()).unwrap();
+
+                (path, payload)
+            })
             .collect()
     }
 
