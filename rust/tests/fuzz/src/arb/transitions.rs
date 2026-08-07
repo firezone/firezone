@@ -161,7 +161,13 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
                 .collect::<BTreeMap<_, _>>();
             Transition::RebootRelaysWhilePartitioned(relays)
         }
-        K::Idle => Transition::Idle,
+        K::Idle => {
+            if g.bool() {
+                Transition::DropNextWirePacket
+            } else {
+                Transition::Idle
+            }
+        }
         K::AddResource => {
             let resource = addable_resources[g.choose_index(addable_resources.len())].clone();
             Transition::AddResource(resource)

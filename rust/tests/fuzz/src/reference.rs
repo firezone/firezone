@@ -404,6 +404,7 @@ impl ReferenceState {
                     }
                 }
             }
+            Transition::DropNextWirePacket => {}
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
                 for client in state.clients.values_mut() {
                     client.exec_mut(|client| client.remove_resource(resource))
