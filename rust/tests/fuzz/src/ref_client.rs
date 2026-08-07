@@ -808,7 +808,7 @@ impl RefClient {
         if self.is_local_dns_resource_query(query)
             && !self.local_dns_resource_query_has_records(query)
         {
-            self.expect_dns_handshake(query);
+            self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
             return;
         }
 
@@ -840,7 +840,7 @@ impl RefClient {
             if self.resolver_is_unreachable(query, icmp_error_hosts) {
                 // The resolver answers with an ICMP error; connlib fails the query
                 // and responds with SERVFAIL, so no records are learned.
-                self.expect_dns_handshake(query);
+                self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
             } else {
                 self.expect_dns_response(query);
             }
@@ -852,6 +852,15 @@ impl RefClient {
         }
 
         self.expect_dns_response(query);
+    }
+
+    pub(crate) fn on_dns_resource_ptr_query(
+        &mut self,
+        dns_server: &dns::Upstream,
+        query_id: u16,
+        transport: DnsTransport,
+    ) {
+        self.expect_dns_handshake(dns_server, query_id, transport);
     }
 
     /// Returns whether the query's resolver answers tunnelled traffic with ICMP errors.
@@ -870,22 +879,27 @@ impl RefClient {
             .or_default()
             .insert(query.r_type);
 
-        self.expect_dns_handshake(query);
+        self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
     }
 
     /// Expects a response for the query without learning any records from it, e.g. a SERVFAIL.
-    fn expect_dns_handshake(&mut self, query: &DnsQuery) {
-        match query.transport {
+    fn expect_dns_handshake(
+        &mut self,
+        dns_server: &dns::Upstream,
+        query_id: u16,
+        transport: DnsTransport,
+    ) {
+        match transport {
             DnsTransport::Udp { local_port } => {
                 self.expected_udp_dns_handshakes.push_back((
-                    query.dns_server.clone(),
-                    query.query_id,
+                    dns_server.clone(),
+                    query_id,
                     local_port,
                 ));
             }
             DnsTransport::Tcp => {
                 self.expected_tcp_dns_handshakes
-                    .push_back((query.dns_server.clone(), query.query_id));
+                    .push_back((dns_server.clone(), query_id));
             }
         }
     }
