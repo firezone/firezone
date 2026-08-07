@@ -750,6 +750,27 @@ impl TunnelTest {
                     }
                 }
             }
+            Transition::ExpireGatewayAuthorization {
+                client_id,
+                resource_id,
+            } => {
+                let gateway_id = ref_state
+                    .portal
+                    .gateway_for_resource(resource_id)
+                    .expect("an expirable resource must have a gateway");
+                let gateway = state.gateways.get_mut(gateway_id).unwrap();
+
+                gateway
+                    .exec_mut(|gateway| {
+                        gateway.sut.update_access_authorization_expiry(
+                            client_id,
+                            resource_id,
+                            Duration::ZERO,
+                            now,
+                        )
+                    })
+                    .unwrap();
+            }
             Transition::RestartClient { client_id, key } => {
                 // Cleanly shut down the client.
                 let client = state.clients.get_mut(&client_id).unwrap();

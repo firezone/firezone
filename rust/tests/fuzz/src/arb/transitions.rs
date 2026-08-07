@@ -49,6 +49,7 @@ enum TransitionKind {
     RestartClient,
     SetInternetResourceState,
     DeauthorizeWhileGatewayIsPartitioned,
+    ExpireGatewayAuthorization,
     UpdateDnsRecords,
     SendPacket,
     SendPacketWithGatewayDnsResolutionFailure,
@@ -64,6 +65,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     let editable_resources = state.editable_resources_on_any_client();
     let removable_resources = state.removable_resource_ids();
     let deauthorizable_resources = state.deauthorizable_resource_ids();
+    let expirable_gateway_authorizations = state.expirable_gateway_authorizations();
     let client_ids = state.all_client_ids();
     let dns_record_domains = state.dns_resource_domains();
     let packet_targets = packets::targets(state);
@@ -96,6 +98,8 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         (!removable_resources.is_empty()).then_some((K::RemoveResource, 1)),
         (!deauthorizable_resources.is_empty())
             .then_some((K::DeauthorizeWhileGatewayIsPartitioned, 1)),
+        (!expirable_gateway_authorizations.is_empty())
+            .then_some((K::ExpireGatewayAuthorization, 1)),
         (!client_ids.is_empty()).then_some((K::ReconnectPortal, 1)),
         (!client_ids.is_empty()).then_some((K::RestartClient, 1)),
         (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
@@ -112,7 +116,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 26]>>();
+    .collect::<SmallVec<[_; 27]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -216,6 +220,15 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         K::DeauthorizeWhileGatewayIsPartitioned => {
             let id = deauthorizable_resources[g.choose_index(deauthorizable_resources.len())];
             Transition::DeauthorizeWhileGatewayIsPartitioned(id)
+        }
+        K::ExpireGatewayAuthorization => {
+            let (client_id, resource_id) = expirable_gateway_authorizations
+                [g.choose_index(expirable_gateway_authorizations.len())];
+
+            Transition::ExpireGatewayAuthorization {
+                client_id,
+                resource_id,
+            }
         }
         K::ReconnectPortal => {
             let client_id = client_ids[g.choose_index(client_ids.len())];
