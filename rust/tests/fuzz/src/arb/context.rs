@@ -288,7 +288,11 @@ impl<'a> Generator<'a> {
                 let sport = ((u32::from(candidate) - 1 + offset) % u32::from(u16::MAX) + 1) as u16;
                 (SPort(sport), DPort(dport))
             })
-            .find(|connection| !self.tcp_connections.contains(connection))
+            .find(|(sport, _)| {
+                self.tcp_connections
+                    .iter()
+                    .all(|(existing_sport, _)| existing_sport != sport)
+            })
             .expect("a scenario cannot exhaust all TCP connection identifiers");
         self.tcp_connections.push(connection);
 

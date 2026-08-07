@@ -825,13 +825,46 @@ impl ReferenceState {
     }
 
     pub(crate) fn resources_unknown_to_all_clients(&self) -> Vec<client::Resource> {
+        let active_dns_addresses = self
+            .portal
+            .all_resources()
+            .into_iter()
+            .filter_map(|resource| match resource {
+                client::Resource::Dns(resource)
+                    if self
+                        .clients
+                        .values()
+                        .any(|client| client.inner().has_resource(resource.id)) =>
+                {
+                    Some(resource.address)
+                }
+                client::Resource::Dns(_) => None,
+                client::Resource::Cidr(_) => None,
+                client::Resource::Internet(_) => None,
+                client::Resource::StaticDevicePool(_) => None,
+                client::Resource::DynamicDevicePool(_) => None,
+            })
+            .collect::<BTreeSet<_>>();
+
         self.portal
             .all_resources()
             .into_iter()
             .filter(|resource| {
-                self.clients
-                    .values()
-                    .all(|client| !client.inner().has_resource(resource.id()))
+                let has_unique_address = match resource {
+                    client::Resource::Dns(resource) => {
+                        !active_dns_addresses.contains(&resource.address)
+                    }
+                    client::Resource::Cidr(_) => true,
+                    client::Resource::Internet(_) => true,
+                    client::Resource::StaticDevicePool(_) => true,
+                    client::Resource::DynamicDevicePool(_) => true,
+                };
+
+                has_unique_address
+                    && self
+                        .clients
+                        .values()
+                        .all(|client| !client.inner().has_resource(resource.id()))
             })
             .collect()
     }
