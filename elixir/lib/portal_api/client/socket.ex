@@ -357,7 +357,7 @@ defmodule PortalAPI.Client.Socket do
     @attested_hardware_fields ~w[last_attested_device_serial last_attested_device_uuid]a
     @attested_id_fields @attested_hardware_fields ++ [:last_attested_mdm_device_id]
 
-    @dialyzer {:no_opaque, [resolve_client: 3, find_by_attested_ids: 3]}
+    @dialyzer {:no_opaque, [resolve_client: 3]}
 
     # Resolves the connecting device. `proof` carries the attested identifiers
     # and pinned certificate from `PortalAPI.Client.DeviceTrust`, or nil for
@@ -386,8 +386,26 @@ defmodule PortalAPI.Client.Socket do
     end
 
     defp resolve_attested(changeset, actor_id, proof, subject) do
-      case find_by_attested_ids(changeset, actor_id, subject) do
-        {:ok, client} ->
+      mdm_device_id = Map.fetch!(proof.identifiers, :last_attested_mdm_device_id)
+
+      case find_by_mdm_device_id(actor_id, mdm_device_id, subject) do
+        nil ->
+          insert_attested(changeset, subject)
+
+        client ->
+          adopt_attested(client, changeset, proof)
+      end
+    end
+
+    # The MDM device id is the device's identity, so the row it resolves to is
+    # this device by definition. The hardware identifiers are attributes rather
+    # than identity, but they are still a check: a value the row already proved
+    # that this certificate does not repeat means one MDM device id is being
+    # used by two physical machines, and there is no safe way to guess which
+    # one is connecting.
+    defp adopt_attested(client, changeset, proof) do
+      case contradicted_hardware_ids(client, proof.identifiers) do
+        [] ->
           client =
             client
             |> merge_hardware_ids(changeset)
@@ -396,17 +414,25 @@ defmodule PortalAPI.Client.Socket do
 
           {:ok, client, true}
 
-        :identity_conflict ->
-          # The certificate's identifiers point at more than one device, so
-          # which row this is cannot be determined. Guessing from the
-          # client-supplied firezone_id is exactly what the certificate exists
-          # to avoid, so the connect is refused; the warning logged by the
-          # lookup names the rows an admin has to reconcile.
-          {:error, :device_untrusted}
+        contradicted ->
+          Logger.error(
+            "Attested hardware identifier contradicts the device row: refusing the connect",
+            client_id: client.id,
+            contradicted: inspect(contradicted),
+            cert_identifiers: inspect(proof.identifiers),
+            row_identifiers: inspect(Map.take(client, @attested_id_fields))
+          )
 
-        nil ->
-          insert_attested(changeset, subject)
+          {:error, :device_identity_conflict}
       end
+    end
+
+    defp contradicted_hardware_ids(client, cert_identifiers) do
+      Enum.filter(@attested_hardware_fields, fn field ->
+        row_value = Map.get(client, field)
+
+        not is_nil(row_value) and row_value != Map.get(cert_identifiers, field)
+      end)
     end
 
     defp resolve_unattested(changeset, actor_id, firezone_id, subject) do
@@ -431,98 +457,20 @@ defmodule PortalAPI.Client.Socket do
       end
     end
 
-    # Finds the device this certificate belongs to, if it already has a row.
-    #
-    # This is a candidate search, not the identity rule: a row is a candidate
-    # when it shares ANY attested identifier with the certificate, and
-    # `classify_attested_rows/2` then decides. Matching on all identifiers at
-    # once would be wrong twice over. It would strand a device whose MDM record
-    # changed, since the new certificate carries a new MDM device id against a
-    # row still holding the old one, and the serial or UUID is exactly what
-    # relocates it. Worse, it would hide a split: if one row holds the serial
-    # and another holds the MDM device id, matching on all of them finds
-    # neither and inserts a third row, making the split worse instead of
-    # surfacing it.
-    #
-    # The per-column unique indexes bound the result to one row per identifier
-    # per actor, so this returns at most three rows.
-    defp find_by_attested_ids(changeset, actor_id, subject) do
-      filters =
-        for field <- @attested_id_fields,
-            value = Ecto.Changeset.get_field(changeset, field),
-            not is_nil(value),
-            do: {field, value}
-
-      if filters == [] do
-        nil
-      else
-        shares_any_identifier =
-          Enum.reduce(filters, dynamic(false), fn {field, value}, dyn ->
-            dynamic([d], ^dyn or field(d, ^field) == ^value)
-          end)
-
-        from(d in Device,
-          where: d.actor_id == ^actor_id,
-          where: d.type == :client,
-          where: ^shares_any_identifier,
-          order_by: [asc: d.inserted_at]
-        )
-        |> Safe.scoped(subject)
-        |> Safe.all()
-        |> classify_attested_rows(Map.new(filters))
-      end
-    end
-
-    # No candidate means a device this account has not seen: the certificate is
-    # the only identity it has, so a new row is the only option.
-    defp classify_attested_rows([], _cert_identifiers), do: nil
-
-    # Exactly one candidate is this device, unless the certificate contradicts a
-    # hardware identifier the row already proved. Absence is not contradiction:
-    # a certificate that omits the UUID clears it, because the certificate
-    # describes the device as it is now. A certificate asserting a DIFFERENT
-    # serial or UUID is a different machine wearing one matching identifier,
-    # and nothing here can say which is real. The MDM device id is exempt
-    # because it is a record id that changes on re-enrollment, which is the
-    # case relocating by serial or UUID exists to serve.
-    defp classify_attested_rows([client], cert_identifiers) do
-      case contradicted_hardware_ids(client, cert_identifiers) do
-        [] ->
-          {:ok, client}
-
-        contradicted ->
-          Logger.warning(
-            "Attested hardware identifier contradicts the device row: refusing the connect",
-            client_id: client.id,
-            contradicted: inspect(contradicted),
-            cert_identifiers: inspect(cert_identifiers),
-            row_identifiers: inspect(Map.take(client, @attested_id_fields))
-          )
-
-          :identity_conflict
-      end
-    end
-
-    # More than one distinct row means the identifiers split across devices;
-    # adopting any of them would merge the connection onto an arbitrary device.
-    defp classify_attested_rows(clients, cert_identifiers) do
-      Logger.warning(
-        "Attested identifiers split across multiple devices: refusing to adopt device identity",
-        client_ids: Enum.map(clients, & &1.id),
-        cert_identifiers: inspect(cert_identifiers),
-        row_identifiers: inspect(Enum.map(clients, &Map.take(&1, @attested_id_fields)))
+    # The MDM device id is the only attested identifier with a unique index, so
+    # this is a direct lookup rather than a search: one row per MDM device id
+    # per actor. A device whose MDM record changed arrives with a new id and
+    # gets a new row, since the hardware identifiers it might have been
+    # relocated by are self-reported at enrollment and Microsoft documents them
+    # as spoofable by anyone with access to the device.
+    defp find_by_mdm_device_id(actor_id, mdm_device_id, subject) do
+      from(d in Device,
+        where: d.actor_id == ^actor_id,
+        where: d.type == :client,
+        where: d.last_attested_mdm_device_id == ^mdm_device_id
       )
-
-      :identity_conflict
-    end
-
-    defp contradicted_hardware_ids(client, cert_identifiers) do
-      Enum.filter(@attested_hardware_fields, fn field ->
-        row_value = Map.get(client, field)
-        cert_value = Map.get(cert_identifiers, field)
-
-        not is_nil(row_value) and not is_nil(cert_value) and row_value != cert_value
-      end)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     defp put_proof_changes(changeset, proof) do

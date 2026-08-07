@@ -51,6 +51,15 @@ defmodule PortalAPI.Sockets do
           "your organization trusts. Please contact your administrator."
       )
 
+  def handle_error(conn, :device_identity_conflict),
+    do:
+      ProblemDetails.send(
+        conn,
+        409,
+        "This device's certificate reports different hardware than the device already " <>
+          "registered under the same MDM device ID. Please contact your administrator."
+      )
+
   def handle_error(conn, :conflict),
     do: ProblemDetails.send(conn, 409, "A gateway with this ID is already connected")
 

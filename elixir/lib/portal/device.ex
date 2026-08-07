@@ -203,12 +203,6 @@ defmodule Portal.Device do
         |> validate_length(:last_attested_mdm_device_id, max: 255)
         |> validate_length(:last_attested_cert_serial, max: 255)
         |> validate_length(:last_attested_cert_fingerprint, max: 255)
-        |> unique_constraint(:last_attested_device_serial,
-          name: :devices_account_id_actor_id_last_attested_device_serial_index
-        )
-        |> unique_constraint(:last_attested_device_uuid,
-          name: :devices_account_id_actor_id_last_attested_device_uuid_index
-        )
         |> unique_constraint(:last_attested_mdm_device_id,
           name: :devices_account_id_actor_id_last_attested_mdm_device_id_index
         )

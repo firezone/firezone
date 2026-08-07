@@ -167,14 +167,18 @@ defmodule PortalAPI.Sockets.LatestSession do
     }
 
     @attested_identifier_fields ~w[last_attested_device_serial last_attested_device_uuid last_attested_mdm_device_id]a
+
+    # Only the MDM device id has a unique index, so it is the only identifier a
+    # flush can collide on. A serial or UUID shared across rows is now normal:
+    # a device whose MDM record changed enrolls as a new row and keeps the
+    # hardware it reports.
+    @attested_unique_fields ~w[last_attested_mdm_device_id]a
     @attested_fields @attested_identifier_fields ++
                        ~w[last_attested_cert_serial last_attested_cert_fingerprint last_attested_at]a
     @attested_probe_types %{
       account_id: Ecto.UUID,
       actor_id: Ecto.UUID,
       device_id: Ecto.UUID,
-      last_attested_device_serial: :string,
-      last_attested_device_uuid: :string,
       last_attested_mdm_device_id: :string
     }
 
@@ -433,7 +437,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     # attested update entirely, since the snapshot is all-or-nothing.
     defp dedupe_proposed_attested_identities(rows) do
       losers =
-        for field <- @attested_identifier_fields,
+        for field <- @attested_unique_fields,
             {_key, contenders} <-
               rows
               |> Enum.filter(&(not is_nil(Map.fetch!(&1, field)) and not is_nil(&1.actor_id)))
@@ -477,8 +481,8 @@ defmodule PortalAPI.Sockets.LatestSession do
       probe_rows =
         for row <- rows,
             not is_nil(row.actor_id),
-            Enum.any?(@attested_identifier_fields, &(not is_nil(Map.fetch!(row, &1)))) do
-          Map.take(row, [:account_id, :actor_id, :device_id | @attested_identifier_fields])
+            Enum.any?(@attested_unique_fields, &(not is_nil(Map.fetch!(row, &1)))) do
+          Map.take(row, [:account_id, :actor_id, :device_id | @attested_unique_fields])
         end
 
       conflicts =
@@ -490,9 +494,7 @@ defmodule PortalAPI.Sockets.LatestSession do
             on: d.account_id == v.account_id and d.actor_id == v.actor_id and d.id != v.device_id,
             where:
               d.type == :client and
-                (d.last_attested_device_serial == v.last_attested_device_serial or
-                   d.last_attested_device_uuid == v.last_attested_device_uuid or
-                   d.last_attested_mdm_device_id == v.last_attested_mdm_device_id),
+                d.last_attested_mdm_device_id == v.last_attested_mdm_device_id,
             select: %{device_id: v.device_id, conflicting_id: d.id}
           )
           |> probe()

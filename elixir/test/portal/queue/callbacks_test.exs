@@ -325,8 +325,8 @@ defmodule Portal.Queue.CallbacksTest do
       base = %{
         account_id: account.id,
         actor_id: actor.id,
-        # A cloned certificate: both entries prove the same serial.
-        last_attested_device_serial: "SN-CLONED",
+        # A reused MDM record: both entries prove the same MDM device id.
+        last_attested_mdm_device_id: "mdm-cloned",
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",
         remote_ip: {100, 64, 0, 1},
@@ -365,8 +365,8 @@ defmodule Portal.Queue.CallbacksTest do
 
       # The freshest proof wins the identifier; the loser keeps its session
       # but skips the attested update.
-      assert device_b.last_attested_device_serial == "SN-CLONED"
-      assert is_nil(device_a.last_attested_device_serial)
+      assert device_b.last_attested_mdm_device_id == "mdm-cloned"
+      assert is_nil(device_a.last_attested_mdm_device_id)
       assert is_nil(device_a.last_attested_at)
       assert device_a.client_token_id == token_a.id
       assert_receive {:confirm_session_durability, ^ref_a}
@@ -380,7 +380,7 @@ defmodule Portal.Queue.CallbacksTest do
 
       _other =
         client_fixture(account: account, actor: actor)
-        |> Ecto.Changeset.change(last_attested_device_serial: "SN-TAKEN")
+        |> Ecto.Changeset.change(last_attested_mdm_device_id: "mdm-taken")
         |> Repo.update!()
 
       token = client_token_fixture(account: account, actor: actor)
@@ -393,7 +393,7 @@ defmodule Portal.Queue.CallbacksTest do
         account_id: account.id,
         device_id: client.id,
         actor_id: actor.id,
-        last_attested_device_serial: "SN-TAKEN",
+        last_attested_mdm_device_id: "mdm-taken",
         last_attested_at: DateTime.utc_now(),
         client_token_id: token.id,
         public_key: generate_public_key(),
@@ -414,7 +414,7 @@ defmodule Portal.Queue.CallbacksTest do
       assert log =~ "another device row already holds this identifier"
 
       device = Repo.get_by!(Device, id: client.id, account_id: account.id)
-      assert is_nil(device.last_attested_device_serial)
+      assert is_nil(device.last_attested_mdm_device_id)
       assert is_nil(device.last_attested_at)
       assert device.client_token_id == token.id
       assert_receive {:confirm_session_durability, ^session_ref}
