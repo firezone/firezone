@@ -475,17 +475,27 @@ impl ReferenceState {
         sent_at: Instant,
     ) -> PacketRoute {
         let route = self.route_for_packet(origin, source, destination, protocol);
-        let PacketRoute::Resource { resource, gateway } = route else {
-            return route;
-        };
         let Destination::DomainName { name, .. } = destination else {
             return route;
+        };
+        let resource = match route {
+            PacketRoute::Resource { resource, .. } => resource,
+            PacketRoute::ResourceRejectedByGateway { resource, .. } => resource,
+            PacketRoute::Drop => return route,
+            PacketRoute::RejectedByClient => return route,
+            PacketRoute::ResourceUnreachableByGateway { .. } => return route,
+            PacketRoute::Gateway(_) => return route,
+            PacketRoute::Peer(_) => return route,
+            PacketRoute::PeerRejectedByPeer(_) => return route,
         };
 
         let resolved_at = self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
             client.prepare_dns_resource_connection(resource, sent_at);
             client.dns_resource_resolution(resource, name)
         });
+        let PacketRoute::Resource { gateway, .. } = route else {
+            return route;
+        };
         let has_compatible_record = resolved_at.is_some_and(|resolved_at| {
             self.global_dns_records
                 .domain_ips_iter(name, resolved_at)
