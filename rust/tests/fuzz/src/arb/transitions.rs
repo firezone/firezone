@@ -37,9 +37,8 @@ enum TransitionKind {
     // State-gated.
     AddResource,
     ChangeCidrResourceAddress,
-    ChangeDnsResourceAddress,
     MoveResourceToNewSite,
-    ChangeFiltersOfResource,
+    ChangeDnsResourceAddressOrFilters,
     ChangeResourceType,
     RemoveResource,
     ReconnectPortal,
@@ -60,7 +59,6 @@ pub(super) fn generate(
 ) -> Option<Transition> {
     let addable_resources = state.resources_unknown_to_all_clients();
     let cidr_resources = state.cidr_resources_on_any_client();
-    let dns_resources = state.dns_resources_on_any_client();
     let move_resources = move_resource_candidates(state);
     let filter_resources = state.resources_with_filters_on_any_client();
     let replaceable_resources = state.replaceable_resources_on_any_client();
@@ -89,9 +87,8 @@ pub(super) fn generate(
         Some((K::Idle, 1)),
         (!addable_resources.is_empty()).then_some((K::AddResource, 5)),
         (!cidr_resources.is_empty()).then_some((K::ChangeCidrResourceAddress, 1)),
-        (!dns_resources.is_empty()).then_some((K::ChangeDnsResourceAddress, 1)),
         (!move_resources.is_empty()).then_some((K::MoveResourceToNewSite, 1)),
-        (!filter_resources.is_empty()).then_some((K::ChangeFiltersOfResource, 1)),
+        (!filter_resources.is_empty()).then_some((K::ChangeDnsResourceAddressOrFilters, 1)),
         (!replaceable_resources.is_empty()).then_some((K::ChangeResourceType, 2)),
         (!removable_resources.is_empty()).then_some((K::RemoveResource, 1)),
         (!deauthorizable_resources.is_empty())
@@ -184,24 +181,30 @@ pub(super) fn generate(
                 new_address,
             }
         }
-        K::ChangeDnsResourceAddress => {
-            let resource = dns_resources[g.choose_index(dns_resources.len())].clone();
-            let new_address = arb_different_dns_resource_address(g, &resource.address);
-            Transition::ChangeDnsResourceAddress {
-                resource,
-                new_address,
-            }
-        }
         K::MoveResourceToNewSite => {
             let (resource, new_site) = move_resources[g.choose_index(move_resources.len())].clone();
             Transition::MoveResourceToNewSite { resource, new_site }
         }
-        K::ChangeFiltersOfResource => {
+        K::ChangeDnsResourceAddressOrFilters => {
             let resource = filter_resources[g.choose_index(filter_resources.len())].clone();
-            let new_filters = arb_different_filters(g, resource.filters());
-            Transition::ChangeFiltersOfResource {
-                resource,
-                new_filters,
+
+            // Share the existing resource-update slot so adding DNS address changes does not
+            // perturb the outer weighted choice for every committed corpus input.
+            if let Resource::Dns(resource) = &resource
+                && g.bool()
+            {
+                let new_address = arb_different_dns_resource_address(g, &resource.address);
+
+                Transition::ChangeDnsResourceAddress {
+                    resource: resource.clone(),
+                    new_address,
+                }
+            } else {
+                let new_filters = arb_different_filters(g, resource.filters());
+                Transition::ChangeFiltersOfResource {
+                    resource,
+                    new_filters,
+                }
             }
         }
         K::ChangeResourceType => {
