@@ -191,14 +191,11 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       leaf = leaf(pki, :rsa)
       serial = leaf |> cert_serial_hex()
 
-      certificate = Repo.one!(Portal.TrustAnchorCertificate)
-
       Repo.insert!(%Portal.CrlRevocation{
         account_id: account.id,
-        issuer_hash: Portal.Crypto.X509.issuer_hash(leaf),
-        trust_anchor_certificate_id: certificate.id,
+        issuer: Portal.Crypto.X509.issuer(leaf),
         serial: serial,
-        revoked_at: DateTime.utc_now(),
+        revoked_at: DateTime.utc_now() |> DateTime.truncate(:second),
         inserted_at: DateTime.utc_now()
       })
 
@@ -215,40 +212,52 @@ defmodule PortalAPI.Client.DeviceTrustTest do
     } do
       leaf = leaf(pki, :rsa)
 
-      other = trust_anchor_fixture(account: account, certs: [pki.untrusted_ca_der])
-      [other_certificate] = Repo.preload(other, :certificates).certificates
-
       Repo.insert!(%Portal.CrlRevocation{
         account_id: account.id,
-        issuer_hash: Portal.Crypto.X509.issuer_hash(pki.untrusted_ca_der),
-        trust_anchor_certificate_id: other_certificate.id,
+        issuer: Portal.Crypto.X509.subject(pki.untrusted_ca_der),
         serial: cert_serial_hex(leaf),
-        revoked_at: DateTime.utc_now(),
+        revoked_at: DateTime.utc_now() |> DateTime.truncate(:second),
         inserted_at: DateTime.utc_now()
       })
 
       assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
     end
 
-    test "a leaf's issuer hash matches the CRL its CA would sign", %{pki: pki} do
+    test "a leaf's issuer matches the name its CA signs a CRL under", %{pki: pki} do
       leaf = leaf(pki, :rsa)
 
-      # Self-signed root, so its own issuer name is the name it signs under.
-      assert Portal.Crypto.X509.issuer_hash(leaf) ==
-               Portal.Crypto.X509.issuer_hash(pki.ca_der)
+      # Self-signed root, so its own subject is the name it signs under.
+      assert Portal.Crypto.X509.issuer(leaf) == Portal.Crypto.X509.subject(pki.ca_der)
     end
 
-    test "the anchor learns its revocation endpoints from the first leaf", %{
+    test "the issuer learns its revocation endpoints from the first leaf", %{
       pki: pki,
       subject: subject
     } do
-      assert %{crl_url: nil, ocsp_url: nil} = Repo.one!(Portal.TrustAnchorCertificate)
+      assert Repo.all(Portal.RevocationEndpoint) == []
 
-      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf(pki, :with_crl)), subject)
+      leaf = leaf(pki, :with_crl)
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
 
-      certificate = Repo.one!(Portal.TrustAnchorCertificate)
-      assert certificate.crl_url == "http://crl.example.test/ca.crl"
-      assert certificate.ocsp_url == "http://ocsp.example.test"
+      endpoint = Repo.one!(Portal.RevocationEndpoint)
+      assert endpoint.issuer == Portal.Crypto.X509.issuer(leaf)
+      assert endpoint.crl_url == "http://crl.example.test/ca.crl"
+      assert endpoint.ocsp_url == "http://ocsp.example.test"
+      assert endpoint.issuer_dn =~ "CN="
+    end
+
+    test "the endpoint is learned once and not rewritten by later connects", %{
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :with_crl)
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+
+      Repo.update_all(Portal.RevocationEndpoint, set: [crl_url: "http://mirror.example.test/a.crl"])
+
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+
+      assert Repo.one!(Portal.RevocationEndpoint).crl_url == "http://mirror.example.test/a.crl"
     end
 
     test "rejects a leaf whose serial number cannot be recorded", %{pki: pki, subject: subject} do

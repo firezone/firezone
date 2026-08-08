@@ -1,0 +1,74 @@
+defmodule Portal.RevocationEndpoint do
+  @moduledoc """
+  Where an issuing CA publishes revocation information, and how the last fetch
+  went.
+
+  One row per issuer per account. A certificate advertises the endpoint that
+  covers itself, not the ones covering the certificates it goes on to issue, so
+  a CA certificate names the list that would revoke the CA. The list covering
+  devices is named only by the leaves, which is why a row appears when the
+  first device attests rather than when the anchor is uploaded.
+
+  The issuer is the DER encoding of the name exactly as the certificate carries
+  it. RFC 5280 4.1.2.4 lets a CA encode its name as either a PrintableString or
+  a UTF8String and both are still in wide use, so there is no single spelling to
+  fold to. Normalizing would also sort the relative names, which would key two
+  issuers whose names are permutations of each other to the same row. A CA emits
+  the same bytes in the certificates it issues and in the CRL it publishes for
+  them, which 5.1.2.3 requires, so the raw encoding is what joins them.
+
+  `issuer_dn` is the readable rendering of those bytes, kept because Postgres
+  cannot decode a name. It is for operators only and is never matched on.
+  """
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key false
+  @foreign_key_type :binary_id
+  @timestamps_opts [type: :utc_datetime_usec]
+
+  @type t :: %__MODULE__{
+          account_id: Ecto.UUID.t(),
+          issuer: binary(),
+          issuer_dn: String.t() | nil,
+          crl_url: String.t() | nil,
+          ocsp_url: String.t() | nil,
+          crl_number: integer() | nil,
+          crl_this_update: DateTime.t() | nil,
+          crl_next_update: DateTime.t() | nil,
+          crl_fetched_at: DateTime.t() | nil,
+          crl_error: String.t() | nil,
+          inserted_at: DateTime.t(),
+          updated_at: DateTime.t()
+        }
+
+  schema "revocation_endpoints" do
+    belongs_to :account, Portal.Account, primary_key: true
+
+    field :issuer, :binary, primary_key: true
+    field :issuer_dn, :string
+
+    field :crl_url, :string
+    field :ocsp_url, :string
+
+    field :crl_number, :integer
+    # Taken from the list itself, which RFC 5280 records to the second.
+    field :crl_this_update, :utc_datetime
+    field :crl_next_update, :utc_datetime
+    field :crl_fetched_at, :utc_datetime_usec
+    field :crl_error, :string
+
+    timestamps()
+  end
+
+  def changeset(%Ecto.Changeset{} = changeset) do
+    changeset
+    |> validate_required([:issuer])
+    |> validate_length(:issuer, max: 1024, count: :bytes)
+    |> validate_length(:issuer_dn, max: 255)
+    |> validate_length(:crl_url, max: 255)
+    |> validate_length(:ocsp_url, max: 255)
+    |> validate_length(:crl_error, max: 255)
+    |> assoc_constraint(:account)
+  end
+end

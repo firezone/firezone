@@ -1,6 +1,6 @@
 defmodule Portal.Crl.Sync do
   @moduledoc """
-  Fetches and caches one trust anchor's certificate revocation list.
+  Fetches and caches the certificate revocation list published by one issuer.
 
   The connect path checks the cached rows rather than the network, so this
   worker owns every outbound request. A fetch that fails leaves the previous
@@ -19,35 +19,35 @@ defmodule Portal.Crl.Sync do
   @request_timeout :timer.seconds(30)
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"account_id" => account_id, "certificate_id" => certificate_id}}) do
-    case Database.fetch_certificate(account_id, certificate_id) do
-      nil -> {:ok, :deleted}
-      certificate -> refresh(certificate)
+  def perform(%Oban.Job{args: %{"account_id" => account_id, "issuer" => encoded_issuer}}) do
+    with {:ok, issuer} <- Base.decode64(encoded_issuer),
+         endpoint when not is_nil(endpoint) <- Database.fetch_endpoint(account_id, issuer) do
+      refresh(endpoint)
+    else
+      _other -> {:ok, :deleted}
     end
   end
 
-  defp refresh(certificate) do
-    with {:ok, der} <- fetch(certificate.crl_url),
-         :ok <- verify(der, certificate),
-         {:ok, crl} <- decode(der),
-         {:ok, issuer_hash} <- issuer_hash(der) do
-      {:ok, count} = Database.replace_revocations(certificate, issuer_hash, crl)
+  defp refresh(endpoint) do
+    case fetch_and_verify(endpoint) do
+      {:ok, crl} ->
+        {:ok, count} = Database.replace_revocations(endpoint, crl)
 
-      Logger.info("Refreshed certificate revocation list",
-        account_id: certificate.account_id,
-        trust_anchor_certificate_id: certificate.id,
-        revoked_count: count
-      )
+        Logger.info("Refreshed certificate revocation list",
+          account_id: endpoint.account_id,
+          issuer: endpoint.issuer_dn,
+          revoked_count: count
+        )
 
-      {:ok, :refreshed}
-    else
+        {:ok, :refreshed}
+
       {:error, reason} ->
-        Database.record_error(certificate, reason)
+        Database.record_error(endpoint, reason)
 
         Logger.warning("Failed to refresh certificate revocation list",
-          account_id: certificate.account_id,
-          trust_anchor_certificate_id: certificate.id,
-          crl_url: certificate.crl_url,
+          account_id: endpoint.account_id,
+          issuer: endpoint.issuer_dn,
+          crl_url: endpoint.crl_url,
           reason: inspect(reason)
         )
 
@@ -55,8 +55,33 @@ defmodule Portal.Crl.Sync do
     end
   end
 
+  defp fetch_and_verify(endpoint) do
+    with :ok <- supported_scheme(endpoint.crl_url),
+         {:ok, der} <- fetch(endpoint.crl_url),
+         :ok <- issued_by_expected_ca(der, endpoint),
+         :ok <- verify_signature(der, endpoint),
+         {:ok, crl} <- decode(der),
+         :ok <- ensure_covers_whole_issuer(crl) do
+      {:ok, crl}
+    end
+  end
+
+  # Named rather than reported as a transport failure: `ldap://` is what AD CS
+  # publishes by default inside a domain, and an administrator who sees the
+  # scheme can point us at an HTTP mirror instead of chasing a network fault.
+  defp supported_scheme(url) do
+    if String.starts_with?(url, ["http://", "https://"]) do
+      :ok
+    else
+      {:error, :unsupported_url_scheme}
+    end
+  end
+
   defp fetch(url) do
-    case Req.get(url, receive_timeout: @request_timeout, max_redirects: 3, decode_body: false) do
+    options =
+      [receive_timeout: @request_timeout, max_redirects: 3, decode_body: false] ++ request_opts()
+
+    case Req.get(url, options) do
       {:ok, %{status: 200, body: body}} when byte_size(body) <= @max_crl_bytes ->
         {:ok, body}
 
@@ -73,25 +98,32 @@ defmodule Portal.Crl.Sync do
     error -> {:error, Exception.message(error)}
   end
 
-  # A CRL is only worth as much as its signature: an unsigned or wrongly signed
-  # list would let anyone who can answer the URL revoke a fleet, or hide a
-  # revocation by serving an empty one.
-  defp verify(der, certificate) do
-    with {:ok, issuer_der} <- Database.issuer_der(certificate) do
-      if X509.crl_signed_by?(der, issuer_der) do
-        :ok
-      else
-        {:error, :crl_signature_invalid}
-      end
+  # The address was learned from a certificate, so whatever answers it must
+  # still be the list belonging to that certificate's issuer. Without this a
+  # wrong or hostile URL would have its serials cached under an issuer they
+  # were never published for, revoking certificates that were never revoked.
+  defp issued_by_expected_ca(der, endpoint) do
+    if X509.crl_issuer(der) == endpoint.issuer do
+      :ok
+    else
+      {:error, :crl_issuer_mismatch}
     end
   end
 
-  # Taken from the CRL itself rather than from the anchor: the list says who
-  # signed it, and that is who its serials belong to.
-  defp issuer_hash(der) do
-    case X509.crl_issuer_hash(der) do
-      nil -> {:error, :crl_issuer_unreadable}
-      hash -> {:ok, hash}
+  # A CRL is only worth as much as its signature: an unsigned or wrongly signed
+  # list would let anyone who can answer the URL revoke a fleet, or hide a
+  # revocation by serving an empty one. Verified against whichever anchor bears
+  # the issuer's name rather than against the one a device happened to chain
+  # through, which for an account holding both a root and its intermediate is
+  # not reliably the CA that signed the list.
+  defp verify_signature(der, endpoint) do
+    endpoint.account_id
+    |> Database.anchor_ders()
+    |> Enum.filter(&(X509.subject(&1) == endpoint.issuer))
+    |> Enum.any?(&X509.crl_signed_by?(der, &1))
+    |> case do
+      true -> :ok
+      false -> {:error, :crl_signature_invalid}
     end
   end
 
@@ -102,39 +134,54 @@ defmodule Portal.Crl.Sync do
     end
   end
 
+  # Each refresh replaces the whole set for an issuer, which is only correct for
+  # a list covering everything that issuer published. A partition or a delta
+  # would wipe the serials it was never meant to describe.
+  defp ensure_covers_whole_issuer(crl) do
+    if crl.partial?, do: {:error, :crl_not_complete}, else: :ok
+  end
+
+  defp request_opts, do: Portal.Config.fetch_env!(:portal, __MODULE__)[:req_opts] || []
+
   defmodule Database do
     import Ecto.Query
     alias Portal.Crypto.X509
     alias Portal.Safe
 
-    def fetch_certificate(account_id, certificate_id) do
-      from(c in Portal.TrustAnchorCertificate,
-        where: c.account_id == ^account_id,
-        where: c.id == ^certificate_id
+    def fetch_endpoint(account_id, issuer) do
+      from(e in Portal.RevocationEndpoint,
+        where: e.account_id == ^account_id,
+        where: e.issuer == ^issuer
       )
       |> Safe.unscoped()
       |> Safe.one()
     end
 
-    def issuer_der(certificate) do
-      case X509.pem_decode(certificate.pem) do
-        {:ok, [{_type, der, _info} | _rest]} -> {:ok, der}
-        _other -> {:error, :anchor_unreadable}
-      end
+    def anchor_ders(account_id) do
+      from(c in Portal.TrustAnchorCertificate,
+        # The features table is global per-deployment state with no account_id.
+        # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
+        join: f in Portal.Features,
+        on: f.feature == :trust_anchors and f.enabled == true,
+        where: c.account_id == ^account_id,
+        select: c.pem
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+      |> Enum.flat_map(&decode_pem/1)
     end
 
     # The published list is the whole truth for its issuer, so the previous set
     # is replaced rather than merged: a serial the CA drops stops being
     # revoked, and one it adds starts.
-    def replace_revocations(certificate, issuer_hash, crl) do
+    def replace_revocations(endpoint, crl) do
       now = DateTime.utc_now()
 
       rows =
         Enum.map(crl.revocations, fn revocation ->
           %{
-            account_id: certificate.account_id,
-            issuer_hash: issuer_hash,
-            trust_anchor_certificate_id: certificate.id,
+            account_id: endpoint.account_id,
+            issuer: endpoint.issuer,
             serial: revocation.serial,
             revoked_at: revocation.revoked_at,
             reason: revocation.reason,
@@ -144,24 +191,24 @@ defmodule Portal.Crl.Sync do
 
       Safe.transact(fn ->
         from(r in Portal.CrlRevocation,
-          where: r.account_id == ^certificate.account_id,
-          where: r.issuer_hash == ^issuer_hash
+          where: r.account_id == ^endpoint.account_id,
+          where: r.issuer == ^endpoint.issuer
         )
         |> Safe.unscoped()
         |> Safe.delete_all()
 
         Safe.unscoped() |> Safe.insert_all(Portal.CrlRevocation, rows)
 
-        from(c in Portal.TrustAnchorCertificate,
-          where: c.account_id == ^certificate.account_id,
-          where: c.id == ^certificate.id,
-          update: [
-            set: [
-              crl_this_update: ^crl.this_update,
-              crl_next_update: ^crl.next_update,
-              crl_fetched_at: ^now,
-              crl_error: nil
-            ]
+        endpoint
+        |> endpoint_query()
+        |> update(
+          set: [
+            crl_number: ^crl.number,
+            crl_this_update: ^crl.this_update,
+            crl_next_update: ^crl.next_update,
+            crl_fetched_at: ^now,
+            crl_error: nil,
+            updated_at: ^now
           ]
         )
         |> Safe.unscoped()
@@ -171,14 +218,35 @@ defmodule Portal.Crl.Sync do
       end)
     end
 
-    def record_error(certificate, reason) do
-      from(c in Portal.TrustAnchorCertificate,
-        where: c.account_id == ^certificate.account_id,
-        where: c.id == ^certificate.id,
-        update: [set: [crl_fetched_at: ^DateTime.utc_now(), crl_error: ^to_message(reason)]]
+    def record_error(endpoint, reason) do
+      now = DateTime.utc_now()
+
+      endpoint
+      |> endpoint_query()
+      |> update(
+        set: [crl_fetched_at: ^now, crl_error: ^to_message(reason), updated_at: ^now]
       )
       |> Safe.unscoped()
       |> Safe.update_all([])
+    end
+
+    defp endpoint_query(endpoint) do
+      from(e in Portal.RevocationEndpoint,
+        where: e.account_id == ^endpoint.account_id,
+        where: e.issuer == ^endpoint.issuer
+      )
+    end
+
+    defp decode_pem(pem) do
+      case X509.pem_decode(pem) do
+        {:ok, entries} ->
+          entries
+          |> Enum.filter(&X509.certificate_entry?/1)
+          |> Enum.map(fn {_type, der, _info} -> der end)
+
+        {:error, _reason} ->
+          []
+      end
     end
 
     defp to_message(reason) when is_binary(reason), do: String.slice(reason, 0, 255)

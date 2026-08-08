@@ -12,12 +12,6 @@ defmodule Portal.TrustAnchorCertificate do
           trust_anchor_id: Ecto.UUID.t(),
           pem: String.t(),
           fingerprint: String.t(),
-          crl_url: String.t() | nil,
-          ocsp_url: String.t() | nil,
-          crl_this_update: DateTime.t() | nil,
-          crl_next_update: DateTime.t() | nil,
-          crl_fetched_at: DateTime.t() | nil,
-          crl_error: String.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -31,21 +25,6 @@ defmodule Portal.TrustAnchorCertificate do
     field :pem, :string
     # Hex-encoded SHA-256 over the certificate's DER bytes.
     field :fingerprint, :string
-
-    # Learned from the first leaf that chains to this certificate: a CA
-    # advertises revocation endpoints in what it issues, not in itself, so
-    # these are unknown until a device connects.
-    field :crl_url, :string
-    field :ocsp_url, :string
-
-    field :crl_this_update, :utc_datetime_usec
-    field :crl_next_update, :utc_datetime_usec
-    field :crl_fetched_at, :utc_datetime_usec
-    field :crl_error, :string
-
-    has_many :revocations, Portal.CrlRevocation,
-      foreign_key: :trust_anchor_certificate_id,
-      references: :id
 
     timestamps()
   end

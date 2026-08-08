@@ -144,6 +144,75 @@ defmodule Portal.DeviceTrustFixtures do
   """
   def ca_der(common_name), do: new_ca(common_name).cert_der
 
+  @doc """
+  Mints a CRL signed by the given issuer handle (`pki.ca`, `pki.intermediate`,
+  or `pki.untrusted_ca`).
+
+  Options: `:revoked` (list of certificate DERs whose serials go on the list),
+  `:number`, `:validity` in days as `{from, to}`, `:partial` to stamp an
+  Issuing Distribution Point, and `:delta` to stamp a Delta CRL Indicator.
+  """
+  def crl(issuer, opts \\ []) do
+    {from_days, to_days} = Keyword.get(opts, :validity, {-1, 7})
+    now = DateTime.utc_now()
+
+    revoked =
+      case Keyword.get(opts, :revoked, []) do
+        [] -> :asn1_NOVALUE
+        certs -> Enum.map(certs, &revoked_entry(&1, now))
+      end
+
+    extensions =
+      [
+        {:Extension, {2, 5, 29, 20}, false,
+         :public_key.der_encode(:CRLNumber, Keyword.get(opts, :number, 1))}
+      ] ++
+        if Keyword.get(opts, :partial, false) do
+          [
+            {:Extension, {2, 5, 29, 28}, true,
+             :public_key.der_encode(:IssuingDistributionPoint, {
+               :IssuingDistributionPoint,
+               :asn1_NOVALUE,
+               false,
+               false,
+               :asn1_NOVALUE,
+               false,
+               false
+             })}
+          ]
+        else
+          []
+        end ++
+        if Keyword.get(opts, :delta, false) do
+          [{:Extension, {2, 5, 29, 27}, true, :public_key.der_encode(:BaseCRLNumber, 1)}]
+        else
+          []
+        end
+
+    algorithm = {:AlgorithmIdentifier, @ecdsa_sha256_oid, :asn1_NOVALUE}
+
+    tbs =
+      {:TBSCertList, :v2, algorithm, issuer_name(issuer),
+       utc_time(DateTime.add(now, from_days, :day)),
+       utc_time(DateTime.add(now, to_days, :day)), revoked, extensions}
+
+    signature = :public_key.sign(:public_key.der_encode(:TBSCertList, tbs), :sha256, issuer.key)
+
+    :public_key.der_encode(:CertificateList, {:CertificateList, tbs, algorithm, signature})
+  end
+
+  # Taken from the issued certificate rather than rebuilt, so the CRL carries
+  # the same issuer bytes the certificates do, which is what joins the two.
+  defp issuer_name(issuer) do
+    issuer.cert_der |> Portal.Crypto.X509.subject() |> then(&:public_key.der_decode(:Name, &1))
+  end
+
+  defp revoked_entry(cert_der, now) do
+    {:Certificate, tbs, _algorithm, _signature} = :public_key.der_decode(:Certificate, cert_der)
+
+    {:TBSCertList_revokedCertificates_SEQOF, elem(tbs, 2), utc_time(now), :asn1_NOVALUE}
+  end
+
   defp new_ca(common_name) do
     key = gen_ec_key()
     subject = rdn(common_name)
