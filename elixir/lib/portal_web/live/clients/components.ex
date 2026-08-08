@@ -89,10 +89,10 @@ defmodule PortalWeb.Clients.Components do
         <div>
           {@client.name}
           <.icon
-            :if={not is_nil(@client.verified_at)}
-            name="ri-shield-check-line"
+            :if={trust_state(@client)}
+            name={trust_state(@client).icon}
             class="h-2.5 w-2.5 text-neutral-500"
-            title="Device attributes of this client are manually verified"
+            title={trust_state(@client).title}
           />
         </div>
         <div>
@@ -713,6 +713,27 @@ defmodule PortalWeb.Clients.Components do
             {@client.firezone_id}
           </span>
         </.client_detail_row>
+        <.client_detail_row :if={@client.last_attested_mdm_device_id} label="MDM Device ID">
+          <span class="font-mono text-[11px] text-body break-all">
+            {@client.last_attested_mdm_device_id}
+          </span>
+        </.client_detail_row>
+        <.client_detail_row :if={@client.last_attested_device_serial} label="Attested Serial">
+          <span class="font-mono text-[11px] text-body break-all">
+            {@client.last_attested_device_serial}
+          </span>
+        </.client_detail_row>
+        <.client_detail_row :if={@client.last_attested_device_uuid} label="Attested UUID">
+          <span class="font-mono text-[11px] text-body break-all">
+            {@client.last_attested_device_uuid}
+          </span>
+        </.client_detail_row>
+        <.client_detail_row :if={@client.last_attested_at} label="Last Attested">
+          <span class="inline-flex items-center gap-1 text-xs text-body">
+            <.icon name="ri-shield-keyhole-line" class="w-3 h-3 text-success" />
+            <.relative_datetime datetime={@client.last_attested_at} />
+          </span>
+        </.client_detail_row>
         <.client_detail_row label="Verification">
           <.client_verified_status client={@client} />
         </.client_detail_row>
@@ -825,12 +846,18 @@ defmodule PortalWeb.Clients.Components do
   attr :client, :any, required: true
 
   def client_verified_badge(assigns) do
+    assigns = assign(assigns, :trust, trust_state(assigns.client))
+
     ~H"""
     <span
-      :if={not is_nil(@client.verified_at)}
-      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light"
+      :if={@trust}
+      class={[
+        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium",
+        @trust.class
+      ]}
+      title={@trust.title}
     >
-      <.icon name="ri-shield-check-line" class="w-2.5 h-2.5" /> Verified
+      <.icon name={@trust.icon} class="w-2.5 h-2.5" />{@trust.label}
     </span>
     """
   end
@@ -838,15 +865,21 @@ defmodule PortalWeb.Clients.Components do
   attr :client, :any, required: true
 
   def client_verified_status(assigns) do
+    assigns = assign(assigns, :trust, trust_state(assigns.client))
+
     ~H"""
     <span
-      :if={not is_nil(@client.verified_at)}
-      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light"
+      :if={@trust}
+      class={[
+        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium",
+        @trust.class
+      ]}
+      title={@trust.title}
     >
-      <.icon name="ri-shield-check-line" class="w-2.5 h-2.5" /> Verified
+      <.icon name={@trust.icon} class="w-2.5 h-2.5" />{@trust.label}
     </span>
     <span
-      :if={is_nil(@client.verified_at)}
+      :if={is_nil(@trust)}
       class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-raised"
     >
       Unverified
@@ -900,4 +933,27 @@ defmodule PortalWeb.Clients.Components do
       end
     end)
   end
+
+  # Attestation supersedes manual verification: a device that proved possession
+  # of an MDM-issued certificate does not need an admin vouching for the
+  # attributes it self-reports.
+  defp trust_state(%{last_attested_at: attested_at}) when not is_nil(attested_at) do
+    %{
+      label: "Attested",
+      icon: "ri-shield-keyhole-line",
+      class: "text-success bg-success-light",
+      title: "This device proved possession of an MDM-issued client certificate"
+    }
+  end
+
+  defp trust_state(%{verified_at: verified_at}) when not is_nil(verified_at) do
+    %{
+      label: "Verified",
+      icon: "ri-shield-check-line",
+      class: "text-success bg-success-light",
+      title: "Device attributes of this client are manually verified"
+    }
+  end
+
+  defp trust_state(_client), do: nil
 end

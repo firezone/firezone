@@ -2530,8 +2530,8 @@ defmodule PortalAPI.Client.Channel.Shared do
           remote_ip: socket.assigns.client.last_seen_remote_ip,
           version: socket.assigns.client.last_seen_version,
           user_agent: socket.assigns.client.last_seen_user_agent,
-          # Whether THIS session proved possession of an MDM-provisioned
-          # certificate (v3 challenge). v1/v2 sessions never set the assign.
+          # Whether THIS session presented a trusted MDM-provisioned
+          # certificate at connect and the device row adopted its identity.
           attested?: socket.assigns[:attested?] || false
         }
 
@@ -2557,10 +2557,10 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defp session_attrs(%Portal.Device{} = client, session_ref, attested?) do
     # The attested snapshot is carried only when THIS session proved
-    # possession (the v3 challenge sets the assign). Copying it off the row
-    # for every session would re-assert a stale snapshot and race a fresher
-    # proof flushing from another session; the flush's recency guard keeps
-    # the row's values when the entry carries none.
+    # possession. Copying it off the row for every session would re-assert a
+    # stale snapshot and race a fresher proof flushing from another session;
+    # the flush's recency guard keeps the row's values when the entry carries
+    # none.
     attested_attrs =
       if attested? do
         %{
@@ -2584,6 +2584,10 @@ defmodule PortalAPI.Client.Channel.Shared do
       # the flush's coalesce keeps the row's current value on nil, and the
       # conflict probe then runs only for real merges instead of every flush.
       firezone_id: if(client.firezone_id_merged?, do: client.firezone_id),
+      device_serial: client.device_serial,
+      device_uuid: client.device_uuid,
+      identifier_for_vendor: client.identifier_for_vendor,
+      firebase_installation_id: client.firebase_installation_id,
       client_token_id: client.client_token_id,
       public_key: client.public_key,
       user_agent: client.last_seen_user_agent,

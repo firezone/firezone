@@ -30,56 +30,6 @@ defmodule PortalAPI.Client.Socket do
 
   @impl true
   def connect(attrs, socket, connect_info) do
-    handle_connect(attrs, socket, connect_info, :resolve)
-  end
-
-  @doc false
-  # Entry point for /client/v3 sockets: token auth as usual, but on accounts
-  # with the device-trust gate enabled the device resolution is deferred until
-  # after the channel's challenge round trip (see PortalAPI.Client.V3.Channel).
-  def connect_deferring(attrs, socket, connect_info) do
-    handle_connect(attrs, socket, connect_info, :defer_if_enabled)
-  end
-
-  @impl true
-  def id(socket) do
-    Portal.Sockets.socket_id(socket.assigns.subject.credential.id)
-  end
-
-  @doc false
-  # Resolves a deferred device after the challenge round trip (or its
-  # timeout). `proof` is the DeviceTrust possession proof or nil when the
-  # challenge failed, timed out, or produced no usable certificate.
-  # The `:attested?` assign (live connection state, rides presence metadata)
-  # is true only when the resolved row adopted the proven identity: possession
-  # alone does not vouch for a row whose adoption was refused as a conflict.
-  def resolve_deferred_client(socket, proof) do
-    %{
-      changeset: changeset,
-      attrs: attrs,
-      token_id: token_id,
-      public_key: public_key,
-      version: version
-    } = socket.assigns.pending_device
-
-    with {:ok, client} <-
-           Database.resolve_client(changeset, attrs, proof, socket.assigns.subject) do
-      client = apply_session(client, token_id, public_key, socket.assigns.subject, version)
-      set_connect_attributes(token_id, client, socket.assigns.subject, version)
-
-      socket =
-        socket
-        |> assign(:client, client)
-        |> assign(:attested?, identity_adopted?(client, proof))
-        |> assign(:pending_device, nil)
-
-      {:ok, socket}
-    end
-  end
-
-  ## Private functions
-
-  defp handle_connect(attrs, socket, connect_info, mode) do
     unless Application.get_env(:portal, :sql_sandbox) do
       Portal.Repo.put_dynamic_repo(Portal.Repo.Api)
     end
@@ -89,12 +39,19 @@ defmodule PortalAPI.Client.Socket do
     OpenTelemetry.Tracer.with_span "client.connect" do
       with {:ok, token} <- PortalAPI.Sockets.extract_token(attrs, connect_info),
            :ok <- PortalAPI.Sockets.RateLimit.check(connect_info, token: token) do
-        do_connect(token, attrs, socket, connect_info, mode)
+        do_connect(token, attrs, socket, connect_info)
       end
     end
   end
 
-  defp do_connect(token, attrs, socket, connect_info, mode) do
+  @impl true
+  def id(socket) do
+    Portal.Sockets.socket_id(socket.assigns.subject.credential.id)
+  end
+
+  ## Private functions
+
+  defp do_connect(token, attrs, socket, connect_info) do
     context = PortalAPI.Sockets.auth_context(connect_info, :client)
     attrs = normalize_device_attrs(attrs)
 
@@ -104,29 +61,16 @@ defmodule PortalAPI.Client.Socket do
          {:ok, public_key} <- validate_public_key(attrs),
          changeset = insert_changeset(subject.actor, subject, attrs),
          {:ok, _} <- apply_action(changeset, :validate),
-         {:ok, outcome} <- resolve_or_defer(changeset, attrs, subject, mode) do
+         {:ok, proof} <- attest_device(connect_info, subject),
+         {:ok, client, attested?} <- Database.resolve_client(changeset, proof, subject) do
       version = derive_version(subject.context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
       subject = %{subject | context: context}
 
-      case outcome do
-        {:resolved, client} ->
-          client = apply_session(client, token_id, public_key, subject, version)
-          set_connect_attributes(token_id, client, subject, version)
-          {:ok, assign_connect(socket, subject, client, version)}
+      client = apply_session(client, token_id, public_key, subject, version)
+      set_connect_attributes(token_id, client, subject, version)
 
-        {:deferred, anchors} ->
-          pending = %{
-            changeset: changeset,
-            attrs: attrs,
-            token_id: token_id,
-            public_key: public_key,
-            version: version,
-            anchors: anchors
-          }
-
-          {:ok, assign_connect_deferred(socket, subject, pending)}
-      end
+      {:ok, assign_connect(socket, subject, client, version, attested?)}
     else
       {:error, :invalid_token} ->
         OpenTelemetry.Tracer.set_status(:error, "invalid_token")
@@ -136,6 +80,10 @@ defmodule PortalAPI.Client.Socket do
         OpenTelemetry.Tracer.set_status(:error, "limits_exceeded")
         {:error, :limits_exceeded}
 
+      {:error, :device_untrusted} ->
+        OpenTelemetry.Tracer.set_status(:error, "device_untrusted")
+        {:error, :device_untrusted}
+
       {:error, %Ecto.Changeset{} = changeset} ->
         changeset = public_socket_changeset(changeset)
         OpenTelemetry.Tracer.set_status(:error, inspect(changeset))
@@ -144,26 +92,28 @@ defmodule PortalAPI.Client.Socket do
     end
   end
 
-  # One query decides the gate AND fetches the verification material: empty
-  # anchors (feature off or none uploaded) resolve at connect exactly as
-  # before, non-empty anchors ride the pending state so the challenge
-  # response never re-fetches them.
-  defp resolve_or_defer(changeset, attrs, subject, mode) do
-    with :defer_if_enabled <- mode,
-         [_ | _] = anchors <- DeviceTrust.fetch_enabled_anchors(subject) do
-      {:ok, {:deferred, anchors}}
-    else
-      _resolve_now ->
-        with {:ok, client} <- Database.find_or_create_client(changeset, attrs, subject) do
-          {:ok, {:resolved, client}}
-        end
+  # Arriving on the mutual-TLS host is the client claiming it holds a device
+  # certificate, so failing to prove one there refuses the connect instead of
+  # silently downgrading to an unattested session. A connect on any other host
+  # is unattested and carries on; whether that device may reach a given
+  # resource is a policy question, not a socket one.
+  defp attest_device(connect_info, subject) do
+    case DeviceTrust.attest(connect_info, subject) do
+      {:ok, proof} ->
+        {:ok, proof}
+
+      {:error, :not_attestation_host} ->
+        {:ok, nil}
+
+      {:error, reason} ->
+        Logger.warning("Refusing client connect: device certificate is not trusted",
+          account_id: subject.account.id,
+          actor_id: subject.actor.id,
+          reason: reason
+        )
+
+        {:error, :device_untrusted}
     end
-  end
-
-  defp identity_adopted?(_client, nil), do: false
-
-  defp identity_adopted?(client, proof) do
-    client.last_attested_cert_fingerprint == proof.last_attested_cert_fingerprint
   end
 
   # The connection snapshot lives directly on the device struct: these are the
@@ -299,22 +249,13 @@ defmodule PortalAPI.Client.Socket do
     })
   end
 
-  defp assign_connect(socket, subject, client, version) do
+  defp assign_connect(socket, subject, client, version, attested?) do
     socket
     |> assign(:subject, subject)
     |> assign(:client, client)
+    |> assign(:attested?, attested?)
     |> assign(:session_ref, make_ref())
     |> assign(:client_version, version)
-    |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
-    |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
-  end
-
-  defp assign_connect_deferred(socket, subject, pending) do
-    socket
-    |> assign(:subject, subject)
-    |> assign(:pending_device, pending)
-    |> assign(:session_ref, make_ref())
-    |> assign(:client_version, pending.version)
     |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
     |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
   end
@@ -414,20 +355,28 @@ defmodule PortalAPI.Client.Socket do
     require Logger
 
     @hardware_id_fields ~w[device_serial device_uuid identifier_for_vendor firebase_installation_id]a
-    @attested_id_fields ~w[last_attested_device_serial last_attested_device_uuid last_attested_mdm_device_id]a
+    @attested_hardware_fields ~w[last_attested_device_serial last_attested_device_uuid]a
+    @attested_id_fields @attested_hardware_fields ++ [:last_attested_mdm_device_id]
     @proof_fields @attested_id_fields ++ ~w[last_attested_cert_serial last_attested_cert_fingerprint last_attested_at]a
 
-    @dialyzer {:no_opaque,
-               [find_or_create_client: 3, resolve_client: 4, find_by_attested_ids: 3]}
-    def find_or_create_client(changeset, attrs, subject) do
-      resolve_client(changeset, attrs, nil, subject)
-    end
+    @dialyzer {:no_opaque, [resolve_client: 3, find_by_attested_ids: 3]}
 
-    # Resolves the connecting device. `proof` carries the DeviceTrust
-    # possession proof (attested identifiers + pinned cert) or nil for
+    # Resolves the connecting device. `proof` carries the attested identifiers
+    # and pinned certificate from `PortalAPI.Client.DeviceTrust`, or nil for
     # unattested connects, in which case this behaves exactly like the classic
     # firezone_id find-or-create.
-    def resolve_client(changeset, attrs, proof, subject) do
+    #
+    # A proof carrying an MDM device id resolves the row by certificate
+    # identifiers alone: the client-supplied firezone_id neither selects a row
+    # nor is persisted, so an attested device can never be pointed at a row it
+    # did not prove ownership of. Its firezone_id column stays NULL, which the
+    # partial unique index (client rows only, NULLs distinct) allows for any
+    # number of rows.
+    #
+    # The third element says whether this connect's row actually took the
+    # proven identity: a valid certificate does not vouch for a row whose
+    # adoption was refused as a conflict.
+    def resolve_client(changeset, proof, subject) do
       actor_id = Ecto.Changeset.get_field(changeset, :actor_id)
       firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
 
@@ -435,14 +384,16 @@ defmodule PortalAPI.Client.Socket do
 
       case find_by_attested_ids(changeset, actor_id, subject) do
         {:ok, client} ->
-          check_hardware_id_mismatch(client, attrs)
+          client = merge_hardware_ids(client, changeset)
 
           client =
-            client
-            |> merge_firezone_id(firezone_id)
-            |> merge_proof(proof)
+            if attested_identity?(proof) do
+              client |> clear_firezone_id() |> replace_proof(proof)
+            else
+              client |> merge_firezone_id(firezone_id) |> merge_proof(proof)
+            end
 
-          {:ok, client}
+          {:ok, client, not is_nil(proof)}
 
         :identity_conflict ->
           # Identity conflict - the identifiers split across rows, or a
@@ -453,46 +404,69 @@ defmodule PortalAPI.Client.Socket do
           # conflicting rows' unique indexes.
           changeset
           |> strip_proof_changes()
-          |> resolve_by_firezone_id(attrs, actor_id, firezone_id, nil, subject)
+          |> resolve_by_firezone_id(actor_id, firezone_id, nil, subject)
 
         nil ->
-          resolve_by_firezone_id(changeset, attrs, actor_id, firezone_id, proof, subject)
+          if attested_identity?(proof) do
+            insert_attested(changeset, subject)
+          else
+            resolve_by_firezone_id(changeset, actor_id, firezone_id, proof, subject)
+          end
       end
     end
 
-    defp resolve_by_firezone_id(changeset, attrs, actor_id, firezone_id, proof, subject) do
-      if client = find_by_firezone_id(actor_id, firezone_id, subject) do
-        check_hardware_id_mismatch(client, attrs)
+    defp attested_identity?(nil), do: false
+    defp attested_identity?(proof), do: attested_mdm_id?(proof.identifiers)
 
-        client =
+    defp attested_mdm_id?(identifiers),
+      do: not is_nil(Map.get(identifiers, :last_attested_mdm_device_id))
+
+    defp insert_attested(changeset, subject) do
+      result =
+        changeset
+        |> Ecto.Changeset.put_change(:firezone_id, nil)
+        |> Safe.scoped(subject)
+        |> Safe.insert()
+
+      with {:ok, client} <- result do
+        {:ok, client, true}
+      end
+    end
+
+    defp resolve_by_firezone_id(changeset, actor_id, firezone_id, proof, subject) do
+      if client = find_by_firezone_id(actor_id, firezone_id, subject) do
+        client = merge_hardware_ids(client, changeset)
+
+        {client, attested?} =
           cond do
             is_nil(proof) ->
-              client
+              {client, false}
 
             consistent_attested?(client, proof.identifiers) ->
-              merge_proof(client, proof)
+              {merge_proof(client, proof), true}
 
             true ->
               log_attested_mismatch([client], proof.identifiers)
-              client
+              {client, false}
           end
 
-        {:ok, client}
+        {:ok, client, attested?}
       else
-        changeset
-        |> Safe.scoped(subject)
-        |> Safe.insert()
+        with {:ok, client} <- changeset |> Safe.scoped(subject) |> Safe.insert() do
+          {:ok, client, not is_nil(proof)}
+        end
       end
     end
 
     # Attested identifiers anchor a physical device, so they take precedence
     # over the client-reported firezone_id: a reinstalled client (new
     # firezone_id, same attested identity) merges back onto its existing device
-    # row instead of creating a duplicate. Adoption requires the identifiers
-    # to agree: all supplied identifiers must resolve to exactly one row (the
-    # per-column unique indexes guarantee each identifier maps to at most
-    # one), and every identifier that is non-NULL on both the row and the
-    # certificate must match. Anything else is an identity conflict.
+    # row instead of creating a duplicate. All supplied identifiers must
+    # resolve to exactly one row (the per-column unique indexes guarantee each
+    # identifier maps to at most one); identifiers split across rows are an
+    # identity conflict. A certificate carrying the MDM device id then speaks
+    # for the whole row. Without one, every identifier non-NULL on both the row
+    # and the certificate must match.
     defp find_by_attested_ids(changeset, actor_id, subject) do
       filters =
         for field <- @attested_id_fields,
@@ -523,7 +497,7 @@ defmodule PortalAPI.Client.Socket do
     defp classify_attested_rows([], _cert_identifiers), do: nil
 
     defp classify_attested_rows([client], cert_identifiers) do
-      if consistent_attested?(client, cert_identifiers) do
+      if attested_mdm_id?(cert_identifiers) or consistent_attested?(client, cert_identifiers) do
         {:ok, client}
       else
         log_attested_mismatch([client], cert_identifiers)
@@ -544,8 +518,15 @@ defmodule PortalAPI.Client.Socket do
       :identity_conflict
     end
 
+    # Only the hardware identifiers have to agree. The MDM's device id is a
+    # record id, not a property of the machine: it changes whenever the device
+    # is re-enrolled, and the column is fed by whichever of intune-id /
+    # entra-id / jamf-id / ws1-uuid / kandji-id the certificate happens to
+    # list first. Treating either as a mismatch would strand a re-enrolled
+    # device unattested forever, since the refusal also keeps the row from
+    # ever learning the new value.
     defp consistent_attested?(client, cert_identifiers) do
-      Enum.all?(@attested_id_fields, fn field ->
+      Enum.all?(@attested_hardware_fields, fn field ->
         row_value = Map.get(client, field)
         cert_value = Map.get(cert_identifiers, field)
 
@@ -592,11 +573,27 @@ defmodule PortalAPI.Client.Socket do
     # last_attested_at records when the device last proved possession; whether
     # the CURRENT session proved it is live connection state (the `attested?`
     # socket assign / presence attribute), not row state.
+    # A certificate carrying the MDM device id is the authoritative statement of
+    # what the device is, so identifiers it does not assert are cleared instead
+    # of lingering from an older certificate.
+    defp replace_proof(client, proof) do
+      identifiers = Map.new(@attested_id_fields, &{&1, Map.get(proof.identifiers, &1)})
+
+      client
+      |> Map.merge(identifiers)
+      |> put_pinned_cert(proof)
+    end
+
     defp merge_proof(client, nil), do: client
 
     defp merge_proof(client, proof) do
       client
       |> Map.merge(Map.new(proof.identifiers))
+      |> put_pinned_cert(proof)
+    end
+
+    defp put_pinned_cert(client, proof) do
+      client
       |> Map.put(:last_attested_cert_serial, proof.last_attested_cert_serial)
       |> Map.put(:last_attested_cert_fingerprint, proof.last_attested_cert_fingerprint)
       |> Map.put(:last_attested_at, DateTime.utc_now())
@@ -627,29 +624,25 @@ defmodule PortalAPI.Client.Socket do
       end
     end
 
-    defp check_hardware_id_mismatch(existing_client, attrs) do
-      mismatched =
-        Enum.filter(@hardware_id_fields, fn field ->
-          existing_value = Map.get(existing_client, field)
-          new_value = Map.get(attrs, to_string(field))
+    # Rows attested before this became the rule can still carry a firezone_id;
+    # the flush clears the column for any entry with a proven MDM device id, so
+    # they converge on their next connect.
+    defp clear_firezone_id(client) do
+      %{client | firezone_id: nil}
+    end
 
-          not is_nil(existing_value) and not is_nil(new_value) and existing_value != new_value
+    # The self-reported identifiers are whatever the client says it is today,
+    # so every connect carries them and the flush coalesces: a field the client
+    # omits keeps the row's current value rather than clearing it.
+    defp merge_hardware_ids(client, changeset) do
+      reported =
+        Map.new(@hardware_id_fields, fn field ->
+          {field, Ecto.Changeset.get_field(changeset, field)}
         end)
 
-      if mismatched != [] do
-        details =
-          Enum.flat_map(mismatched, fn field ->
-            existing_value = Map.get(existing_client, field)
-            new_value = Map.get(attrs, to_string(field))
-
-            [{field, %{existing: existing_value, new: new_value}}]
-          end)
-
-        Logger.info(
-          "Hardware ID mismatch for client",
-          [client_id: existing_client.id] ++ details
-        )
-      end
+      Map.merge(client, reported, fn _field, current, reported ->
+        reported || current
+      end)
     end
   end
 end
