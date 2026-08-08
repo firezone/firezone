@@ -5,6 +5,7 @@ defmodule Portal.Crl.SyncTest do
   import Portal.TrustAnchorFixtures
   import Portal.FeaturesFixtures
   import Portal.DeviceTrustFixtures
+  import ExUnit.CaptureLog
 
   alias Portal.Crl.Sync
   alias Portal.Crypto.X509
@@ -132,6 +133,70 @@ defmodule Portal.Crl.SyncTest do
       assert failure(endpoint) =~ "crl_issuer_mismatch"
     end
 
+    test "disconnects a device whose certificate has just been revoked", %{
+      account: account,
+      pki: pki
+    } do
+      leaf = leaf(pki, :rsa)
+      device = attested_device(account, pki, leaf)
+      endpoint = endpoint_fixture(account, pki.ca_der)
+
+      Portal.PG.register(device.client_token_id)
+      stub_crl(crl(pki.ca, revoked: [leaf]))
+
+      assert capture_log(fn -> assert perform(endpoint) == {:ok, :refreshed} end) =~
+               "certificate was revoked"
+
+      assert_receive :disconnect
+    end
+
+    test "revokes the device's access alongside its session", %{account: account, pki: pki} do
+      leaf = leaf(pki, :rsa)
+      device = attested_device(account, pki, leaf)
+      endpoint = endpoint_fixture(account, pki.ca_der)
+
+      authorization =
+        Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
+          account: account,
+          client: device
+        )
+
+      stub_crl(crl(pki.ca, revoked: [leaf]))
+      capture_log(fn -> assert perform(endpoint) == {:ok, :refreshed} end)
+
+      refute Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: authorization.id)
+    end
+
+    test "leaves a device holding the same serial from another CA alone", %{
+      account: account,
+      pki: pki
+    } do
+      leaf = leaf(pki, :rsa)
+      device = attested_device(account, pki, leaf, issuer_der: pki.untrusted_ca_der)
+      endpoint = endpoint_fixture(account, pki.ca_der)
+
+      Portal.PG.register(device.client_token_id)
+      stub_crl(crl(pki.ca, revoked: [leaf]))
+
+      assert perform(endpoint) == {:ok, :refreshed}
+      refute_receive :disconnect
+    end
+
+    test "does not disconnect again for a serial already cached", %{account: account, pki: pki} do
+      leaf = leaf(pki, :rsa)
+      device = attested_device(account, pki, leaf)
+      endpoint = endpoint_fixture(account, pki.ca_der)
+
+      stub_crl(crl(pki.ca, revoked: [leaf]))
+      capture_log(fn -> assert perform(endpoint) == {:ok, :refreshed} end)
+
+      Portal.PG.register(device.client_token_id)
+      stub_crl(crl(pki.ca, revoked: [leaf], number: 2))
+
+      assert perform(endpoint) == {:ok, :refreshed}
+      refute_receive :disconnect
+    end
+
     test "does nothing when the endpoint is gone", %{account: account, pki: pki} do
       endpoint = endpoint_fixture(account, pki.ca_der)
       Repo.delete_all(Portal.RevocationEndpoint)
@@ -157,6 +222,19 @@ defmodule Portal.Crl.SyncTest do
 
     assert Repo.one!(Portal.RevocationEndpoint).crl_error
     log
+  end
+
+  defp attested_device(account, pki, leaf, attrs \\ []) do
+    issuer_der = Keyword.get(attrs, :issuer_der, pki.ca_der)
+    token = Portal.TokenFixtures.client_token_fixture(account: account)
+
+    Portal.DeviceFixtures.client_fixture(
+      account: account,
+      last_attested_cert_issuer: X509.subject(issuer_der),
+      last_attested_cert_serial: cert_serial_hex(leaf)
+    )
+    |> Ecto.Changeset.change(client_token_id: token.id)
+    |> Repo.update!()
   end
 
   defp endpoint_fixture(account, issuer_der, attrs \\ []) do
