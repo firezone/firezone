@@ -507,7 +507,6 @@ defmodule PortalAPI.Client.Socket do
       |> Ecto.Changeset.put_change(:last_attested_at, DateTime.utc_now())
     end
 
-
     defp replace_proof(client, proof) do
       identifiers = Map.new(@attested_id_fields, &{&1, Map.get(proof.identifiers, &1)})
 
@@ -534,7 +533,6 @@ defmodule PortalAPI.Client.Socket do
       |> Safe.scoped(subject)
       |> Safe.one()
     end
-
 
     defp clear_firezone_id(client) do
       %{client | firezone_id: nil}
