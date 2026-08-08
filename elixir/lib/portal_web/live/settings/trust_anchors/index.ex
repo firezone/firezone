@@ -49,6 +49,39 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       |> Safe.scoped(subject)
       |> Safe.one!()
     end
+
+    # Keyed on the issuer rather than on the anchor, so an endpoint is shown
+    # against whichever uploaded certificate bears that name.
+    def list_revocation_endpoints(issuers, subject) do
+      from(e in Portal.RevocationEndpoint, where: e.issuer in ^issuers)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    def count_revocations(issuers, subject) do
+      from(r in Portal.CrlRevocation,
+        where: r.issuer in ^issuers,
+        group_by: r.issuer,
+        select: {r.issuer, count(r.serial)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Map.new()
+    end
+
+    def update_crl_url(endpoint, url, subject) do
+      endpoint
+      |> Ecto.Changeset.change(%{crl_url: url, crl_error: nil, crl_next_update: nil})
+      |> Portal.RevocationEndpoint.changeset()
+      |> then(&Safe.scoped(&1, subject))
+      |> Safe.update()
+    end
+
+    def get_revocation_endpoint!(issuer, subject) do
+      from(e in Portal.RevocationEndpoint, where: e.issuer == ^issuer)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
   end
 
   def mount(_params, _session, socket) do
@@ -64,6 +97,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         |> assign(selected_trust_anchor: nil)
         |> assign(form: nil, input_mode: :paste)
         |> assign(confirm_delete?: false)
+        |> assign(revocation: [], editing_endpoint: nil)
         |> assign(trust_anchors_enabled?: trust_anchors_enabled?)
         |> allow_upload(:cert_file,
           accept: ~w(.pem .crt .cer .der .txt),
@@ -105,11 +139,14 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     trust_anchor = Database.get_trust_anchor!(id, socket.assigns.subject)
 
     socket =
-      assign(socket,
+      socket
+      |> assign(
         selected_trust_anchor: trust_anchor,
         form: nil,
-        confirm_delete?: false
+        confirm_delete?: false,
+        editing_endpoint: nil
       )
+      |> assign_revocation(trust_anchor)
 
     {:noreply, socket}
   end
@@ -217,6 +254,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           account={@account}
           trust_anchor={@selected_trust_anchor}
           confirm_delete?={@confirm_delete?}
+          revocation={@revocation}
+          editing_endpoint={@editing_endpoint}
         />
       </div>
 
@@ -345,6 +384,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   attr :account, :any, required: true
   attr :trust_anchor, :any, required: true
   attr :confirm_delete?, :boolean, required: true
+  attr :revocation, :list, required: true
+  attr :editing_endpoint, :any, default: nil
 
   defp trust_anchor_show_panel(assigns) do
     certificate_details = Enum.map(assigns.trust_anchor.certificates, &describe_certificate/1)
@@ -383,6 +424,94 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               </dd>
             </div>
           </dl>
+        </section>
+
+        <div class="border-t border-border"></div>
+
+        <section>
+          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
+            Revocation
+          </h3>
+
+          <p :if={@revocation == []} class="text-xs text-subtle">
+            No revocation endpoint known yet. A CA publishes its address in the certificates it
+            issues, so this fills in the first time a device connects with one.
+          </p>
+
+          <div class="space-y-3">
+            <div
+              :for={entry <- @revocation}
+              class="border border-border rounded p-3 bg-surface space-y-3"
+            >
+              <p class="text-xs font-semibold text-heading truncate">
+                {entry.endpoint.issuer_dn || "(unnamed issuer)"}
+              </p>
+
+              <p
+                :if={entry.endpoint.crl_error}
+                class="text-xs text-danger break-all flex items-start gap-1.5"
+              >
+                <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>Last check failed: {entry.endpoint.crl_error}</span>
+              </p>
+
+              <.form
+                :if={@editing_endpoint == entry.endpoint.issuer}
+                for={%{}}
+                phx-submit="save_crl_url"
+                class="space-y-2"
+              >
+                <input type="hidden" name="issuer" value={Base.encode64(entry.endpoint.issuer)} />
+                <input
+                  type="text"
+                  name="crl_url"
+                  value={entry.endpoint.crl_url}
+                  placeholder="https://example.com/ca.crl"
+                  class="w-full px-2 py-1 rounded text-xs font-mono border border-border-strong bg-elevated text-heading"
+                />
+                <div class="flex items-center gap-1.5">
+                  <button
+                    type="submit"
+                    class="px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading bg-elevated transition-colors"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    phx-click="cancel_crl_url"
+                    class="px-2.5 py-1 rounded text-xs text-subtle hover:text-body transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </.form>
+
+              <div :if={@editing_endpoint != entry.endpoint.issuer}>
+                <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
+                <dd class="text-xs text-heading font-mono break-all flex items-start gap-1.5">
+                  <span class="flex-1">
+                    {entry.endpoint.crl_url || entry.endpoint.ocsp_url || "(none advertised)"}
+                  </span>
+                  <button
+                    type="button"
+                    phx-click="edit_crl_url"
+                    phx-value-issuer={Base.encode64(entry.endpoint.issuer)}
+                    class="shrink-0 text-subtle hover:text-heading transition-colors"
+                    title="Override this address"
+                  >
+                    <.icon name="ri-pencil-line" class="w-3.5 h-3.5" />
+                  </button>
+                </dd>
+              </div>
+
+              <dl class="space-y-2">
+                <div :for={{label, value} <- revocation_rows(entry)}>
+                  <dt class="text-[10px] text-subtle mb-0.5">{label}</dt>
+                  <dd class="text-xs text-heading">{value}</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
         </section>
 
         <div class="border-t border-border"></div>
@@ -602,6 +731,34 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   def handle_event("close_panel", _params, socket) do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors")}
+  end
+
+  def handle_event("edit_crl_url", %{"issuer" => encoded}, socket) do
+    case Base.decode64(encoded) do
+      {:ok, issuer} -> {:noreply, assign(socket, editing_endpoint: issuer)}
+      :error -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("cancel_crl_url", _params, socket) do
+    {:noreply, assign(socket, editing_endpoint: nil)}
+  end
+
+  def handle_event("save_crl_url", %{"issuer" => encoded, "crl_url" => url}, socket) do
+    subject = socket.assigns.subject
+    url = String.trim(url)
+
+    with {:ok, issuer} <- Base.decode64(encoded),
+         endpoint = Database.get_revocation_endpoint!(issuer, subject),
+         {:ok, _endpoint} <- Database.update_crl_url(endpoint, presence(url), subject) do
+      {:noreply,
+       socket
+       |> assign(editing_endpoint: nil)
+       |> assign_revocation(socket.assigns.selected_trust_anchor)}
+    else
+      _other ->
+        {:noreply, put_flash(socket, :error, "That address could not be saved.")}
+    end
   end
 
   def handle_event(
@@ -839,6 +996,53 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   defp cert_count_label(certs) do
     count = length(certs)
     "#{count} certificate#{if count == 1, do: "", else: "s"}"
+  end
+
+  # A CA advertises where it publishes in the certificates it issues, not in its
+  # own, so nothing is known here until a device presents one. Until then the
+  # panel says so rather than implying the CA publishes nothing.
+  defp assign_revocation(socket, trust_anchor) do
+    subject = socket.assigns.subject
+
+    issuers =
+      trust_anchor.certificates
+      |> Enum.flat_map(fn certificate ->
+        case X509.pem_decode(certificate.pem) do
+          {:ok, [{_type, der, _headers} | _rest]} -> [X509.subject(der)]
+          _other -> []
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    endpoints =
+      if issuers == [] do
+        []
+      else
+        counts = Database.count_revocations(issuers, subject)
+
+        issuers
+        |> Database.list_revocation_endpoints(subject)
+        |> Enum.map(&%{endpoint: &1, revoked_count: Map.get(counts, &1.issuer, 0)})
+        |> Enum.sort_by(& &1.endpoint.issuer_dn)
+      end
+
+    assign(socket, revocation: endpoints)
+  end
+
+  defp presence(""), do: nil
+  defp presence(value), do: value
+
+  defp revocation_rows(%{endpoint: endpoint, revoked_count: revoked_count}) do
+    [
+      {"Checked via", if(endpoint.crl_url, do: "CRL", else: "OCSP")},
+      {"Last checked", format_date(endpoint.crl_fetched_at)},
+      {"List published", format_date(endpoint.crl_this_update)},
+      {"Next update", format_date(endpoint.crl_next_update)},
+      {"List number", endpoint.crl_number && to_string(endpoint.crl_number)},
+      {"Revoked certificates", to_string(revoked_count)}
+    ]
+    |> Enum.reject(fn {_label, value} -> value in [nil, ""] end)
   end
 
   defp describe_certificate(certificate) do
