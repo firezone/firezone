@@ -32,7 +32,7 @@ defmodule Portal.Crl.Sync do
     case fetch_and_verify(endpoint) do
       {:ok, crl} ->
         {:ok, {count, newly_revoked}} = Database.replace_revocations(endpoint, crl)
-        cut_off(endpoint, newly_revoked)
+        notify_revoked(endpoint, newly_revoked)
 
         Logger.info("Refreshed certificate revocation list",
           account_id: endpoint.account_id,
@@ -62,31 +62,29 @@ defmodule Portal.Crl.Sync do
   # for a long-lived tunnel can be days, so the sessions are cut here instead.
   #
   # Only serials that were not already cached are acted on: a device revoked in
-  # an earlier run cannot have reconnected, so re-cutting it every hour would
-  # broadcast to nobody.
-  defp cut_off(endpoint, newly_revoked) do
+  # an earlier run cannot have reconnected attested, so re-notifying it every
+  # hour would deliver to nobody.
+  #
+  # The certificate is named in the message rather than acted on here, because
+  # the device columns record the last certificate a device ever presented, not
+  # the one the current session is riding on. Only the channel knows that, so it
+  # is left to decide whether the revocation is about it.
+  defp notify_revoked(endpoint, newly_revoked) do
     if MapSet.size(newly_revoked) > 0 do
       Enum.each(Database.devices_with_serials(endpoint, newly_revoked), fn device ->
-        Database.delete_policy_authorizations(device)
-        disconnect(device)
-
-        Logger.info("Disconnecting device: its certificate was revoked",
-          account_id: device.account_id,
-          device_id: device.id,
-          cert_serial: device.last_attested_cert_serial
-        )
+        notify(device, endpoint.issuer)
       end)
     end
   end
 
-  # Delivered to the channel process rather than broadcast at the socket topic,
-  # so the client is pushed a disconnect and closed gracefully. The token id is
-  # written by the batched session flush, so a device that reconnected in the
-  # last few seconds may still carry the previous one; its next connect is
-  # refused either way.
-  defp disconnect(%{client_token_id: nil}), do: :ok
+  defp notify(%{client_token_id: nil}, _issuer), do: :ok
 
-  defp disconnect(%{client_token_id: token_id}), do: Portal.PG.deliver(token_id, :disconnect)
+  defp notify(device, issuer) do
+    Portal.PG.deliver(
+      device.client_token_id,
+      {:certificate_revoked, issuer, device.last_attested_cert_serial}
+    )
+  end
 
   defp fetch_and_verify(endpoint) do
     with :ok <- supported_scheme(endpoint.crl_url),
@@ -280,15 +278,6 @@ defmodule Portal.Crl.Sync do
       )
       |> Safe.unscoped()
       |> Safe.all()
-    end
-
-    def delete_policy_authorizations(device) do
-      from(a in Portal.PolicyAuthorization,
-        where: a.account_id == ^device.account_id,
-        where: a.initiating_device_id == ^device.id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
     end
 
     def record_error(endpoint, reason) do

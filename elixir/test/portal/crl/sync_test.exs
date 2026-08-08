@@ -133,38 +133,25 @@ defmodule Portal.Crl.SyncTest do
       assert failure(endpoint) =~ "crl_issuer_mismatch"
     end
 
-    test "disconnects a device whose certificate has just been revoked", %{
+    test "notifies the session of a certificate that has just been revoked", %{
       account: account,
       pki: pki
     } do
       leaf = leaf(pki, :rsa)
       device = attested_device(account, pki, leaf)
       endpoint = endpoint_fixture(account, pki.ca_der)
+      issuer = X509.subject(pki.ca_der)
+      serial = cert_serial_hex(leaf)
 
       Portal.PG.register(device.client_token_id)
       stub_crl(crl(pki.ca, revoked: [leaf]))
 
-      assert capture_log(fn -> assert perform(endpoint) == {:ok, :refreshed} end) =~
-               "certificate was revoked"
+      assert perform(endpoint) == {:ok, :refreshed}
 
-      assert_receive :disconnect
-    end
-
-    test "revokes the device's access alongside its session", %{account: account, pki: pki} do
-      leaf = leaf(pki, :rsa)
-      device = attested_device(account, pki, leaf)
-      endpoint = endpoint_fixture(account, pki.ca_der)
-
-      authorization =
-        Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
-          account: account,
-          client: device
-        )
-
-      stub_crl(crl(pki.ca, revoked: [leaf]))
-      capture_log(fn -> assert perform(endpoint) == {:ok, :refreshed} end)
-
-      refute Repo.get_by(Portal.PolicyAuthorization, account_id: account.id, id: authorization.id)
+      # Named rather than acted on: the device columns record the last
+      # certificate a device ever presented, so only the session knows whether
+      # this revocation is about the certificate it is actually using.
+      assert_receive {:certificate_revoked, ^issuer, ^serial}
     end
 
     test "leaves a device holding the same serial from another CA alone", %{
@@ -179,22 +166,22 @@ defmodule Portal.Crl.SyncTest do
       stub_crl(crl(pki.ca, revoked: [leaf]))
 
       assert perform(endpoint) == {:ok, :refreshed}
-      refute_receive :disconnect
+      refute_receive {:certificate_revoked, _issuer, _serial}
     end
 
-    test "does not disconnect again for a serial already cached", %{account: account, pki: pki} do
+    test "does not notify again for a serial already cached", %{account: account, pki: pki} do
       leaf = leaf(pki, :rsa)
       device = attested_device(account, pki, leaf)
       endpoint = endpoint_fixture(account, pki.ca_der)
 
       stub_crl(crl(pki.ca, revoked: [leaf]))
-      capture_log(fn -> assert perform(endpoint) == {:ok, :refreshed} end)
+      assert perform(endpoint) == {:ok, :refreshed}
 
       Portal.PG.register(device.client_token_id)
       stub_crl(crl(pki.ca, revoked: [leaf], number: 2))
 
       assert perform(endpoint) == {:ok, :refreshed}
-      refute_receive :disconnect
+      refute_receive {:certificate_revoked, _issuer, _serial}
     end
 
     test "does nothing when the endpoint is gone", %{account: account, pki: pki} do
