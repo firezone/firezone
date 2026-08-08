@@ -246,6 +246,11 @@ impl ReferenceState {
                     c.on_dns_query(query, upstream_do53, icmp_error_hosts, now);
                 });
             }
+            Transition::SendMalformedDnsQuery { .. } => {
+                // The client must drop structurally invalid queries, so there is
+                // nothing to record: without an expected UDP DNS handshake, any
+                // response is flagged as an unexpected reply.
+            }
             Transition::SendIcmpPacket {
                 client_id,
                 src,

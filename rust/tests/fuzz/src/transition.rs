@@ -74,6 +74,12 @@ pub enum Transition {
         client_id: ClientId,
         query: DnsQuery,
     },
+    SendMalformedDnsQuery {
+        client_id: ClientId,
+        payload: Vec<u8>,
+        dns_server: dns::Upstream,
+        local_port: u16,
+    },
     UpdateSystemDnsServers {
         servers: Vec<IpAddr>,
     },
@@ -122,6 +128,7 @@ impl Transition {
             Transition::SendUdpPacket { .. } => false,
             Transition::ConnectTcp { .. } => false,
             Transition::SendDnsQuery { .. } => false,
+            Transition::SendMalformedDnsQuery { .. } => false,
             Transition::UpdateSystemDnsServers { .. } => false,
             Transition::UpdateUpstreamDo53Servers(_) => false,
             Transition::UpdateUpstreamDoHServers(_) => false,

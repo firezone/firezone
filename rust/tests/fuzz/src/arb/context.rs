@@ -307,6 +307,12 @@ impl<'a> Generator<'a> {
             .collect::<String>()
     }
 
+    pub(super) fn bytes(&mut self, lo: usize, hi: usize) -> Vec<u8> {
+        let n = self.count(lo, hi);
+
+        (0..n).map(|_| self.u8()).collect()
+    }
+
     fn u8_in(&mut self, range: RangeInclusive<u8>) -> u8 {
         let fallback = *range.start();
 

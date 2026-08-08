@@ -70,10 +70,7 @@ impl Query {
         // See: https://stackoverflow.com/a/55093896
         let _ = message.sole_question()?; // Verify that there is exactly one question.
 
-        // Verify that we can parse the answers + all records
-        for record in message.answer()? {
-            record?.into_any_record::<AllRecordData<_, _>>()?;
-        }
+        // Any other sections of a query are irrelevant to us: we never read them.
 
         Ok(Self {
             inner: message.octets_into(),
