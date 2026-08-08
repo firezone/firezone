@@ -142,6 +142,7 @@ defmodule Portal.DeviceFixtures do
         :last_attested_mdm_device_id,
         :last_attested_cert_serial,
         :last_attested_cert_fingerprint,
+        :last_attested_cert_issuer,
         :last_attested_at,
         :verified_at
       ])

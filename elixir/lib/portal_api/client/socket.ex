@@ -70,7 +70,7 @@ defmodule PortalAPI.Client.Socket do
       client = apply_session(client, token_id, public_key, subject, version)
       set_connect_attributes(token_id, client, subject, version)
 
-      {:ok, assign_connect(socket, subject, client, version, attested?)}
+      {:ok, assign_connect(socket, subject, client, version, attested?, proof)}
     else
       {:error, :invalid_token} ->
         OpenTelemetry.Tracer.set_status(:error, "invalid_token")
@@ -249,15 +249,26 @@ defmodule PortalAPI.Client.Socket do
     })
   end
 
-  defp assign_connect(socket, subject, client, version, attested?) do
+  defp assign_connect(socket, subject, client, version, attested?, proof) do
     socket
     |> assign(:subject, subject)
     |> assign(:client, %{client | attested?: attested?})
+    |> assign(:attestation, attestation(attested?, proof))
     |> assign(:session_ref, make_ref())
     |> assign(:client_version, version)
     |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
     |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
   end
+
+  # The certificate this session is riding on, so a revocation learned later can
+  # be matched against the connection rather than against the device's history.
+  # A device that attested last week but connected without a certificate today
+  # holds nothing here, and a revocation of that old certificate leaves it alone.
+  defp attestation(true, %{} = proof) do
+    %{issuer: proof.last_attested_cert_issuer, serial: proof.last_attested_cert_serial}
+  end
+
+  defp attestation(_attested?, _proof), do: nil
 
   defp insert_changeset(actor, subject, attrs) do
     required_fields = ~w[firezone_id name]a

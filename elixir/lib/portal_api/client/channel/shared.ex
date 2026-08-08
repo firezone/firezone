@@ -576,6 +576,27 @@ defmodule PortalAPI.Client.Channel.Shared do
     handle_info(:disconnect, socket)
   end
 
+  # A CA revoked a certificate. The session is only cut if it is the one this
+  # connection actually presented: the device columns the sync job matched on
+  # record the last certificate a device ever showed, so a device that attested
+  # once and has since been connecting without a certificate would otherwise be
+  # dropped over a certificate it is not using. Its access is revoked alongside,
+  # since nothing else clears authorizations when a channel stops.
+  def handle_info({:certificate_revoked, issuer, serial}, socket) do
+    if socket.assigns[:attestation] == %{issuer: issuer, serial: serial} do
+      Logger.info("Disconnecting device: its certificate was revoked",
+        account_id: socket.assigns.client.account_id,
+        device_id: socket.assigns.client.id,
+        cert_serial: serial
+      )
+
+      Database.delete_policy_authorizations(socket.assigns.client)
+      handle_info(:disconnect, socket)
+    else
+      {:noreply, socket}
+    end
+  end
+
   # A monitored process crashed — determine which subsystem it belongs to and recover.
   def handle_info({:DOWN, _ref, :process, pid, _reason}, socket) do
     cond do
@@ -2610,6 +2631,17 @@ defmodule PortalAPI.Client.Channel.Shared do
     import Ecto.Query, only: [from: 2]
 
     alias Portal.Features
+
+    # Nothing else clears these when a channel stops, so a cut session would
+    # otherwise leave its grants behind.
+    def delete_policy_authorizations(client) do
+      from(a in Portal.PolicyAuthorization,
+        where: a.account_id == ^client.account_id,
+        where: a.initiating_device_id == ^client.id
+      )
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.delete_all()
+    end
 
     def flow_logs_feature_enabled? do
       query = from(f in Features, where: f.feature == :flow_logs and f.enabled == true)

@@ -31,12 +31,14 @@ defmodule Portal.Crl.Sync do
   defp refresh(endpoint) do
     case fetch_and_verify(endpoint) do
       {:ok, crl} ->
-        {:ok, count} = Database.replace_revocations(endpoint, crl)
+        {:ok, {count, newly_revoked}} = Database.replace_revocations(endpoint, crl)
+        notify_revoked(endpoint, newly_revoked)
 
         Logger.info("Refreshed certificate revocation list",
           account_id: endpoint.account_id,
           issuer: endpoint.issuer_dn,
-          revoked_count: count
+          revoked_count: count,
+          newly_revoked_count: MapSet.size(newly_revoked)
         )
 
         {:ok, :refreshed}
@@ -53,6 +55,35 @@ defmodule Portal.Crl.Sync do
 
         {:ok, :failed}
     end
+  end
+
+  # The connect path refuses a revoked certificate, but only at the next
+  # connect. A device already holding a session would keep it until then, which
+  # for a long-lived tunnel can be days, so the sessions are cut here instead.
+  #
+  # Only serials that were not already cached are acted on: a device revoked in
+  # an earlier run cannot have reconnected attested, so re-notifying it every
+  # hour would deliver to nobody.
+  #
+  # The certificate is named in the message rather than acted on here, because
+  # the device columns record the last certificate a device ever presented, not
+  # the one the current session is riding on. Only the channel knows that, so it
+  # is left to decide whether the revocation is about it.
+  defp notify_revoked(endpoint, newly_revoked) do
+    if MapSet.size(newly_revoked) > 0 do
+      Enum.each(Database.devices_with_serials(endpoint, newly_revoked), fn device ->
+        notify(device, endpoint.issuer)
+      end)
+    end
+  end
+
+  defp notify(%{client_token_id: nil}, _issuer), do: :ok
+
+  defp notify(device, issuer) do
+    Portal.PG.deliver(
+      device.client_token_id,
+      {:certificate_revoked, issuer, device.last_attested_cert_serial}
+    )
   end
 
   defp fetch_and_verify(endpoint) do
@@ -190,6 +221,24 @@ defmodule Portal.Crl.Sync do
         end)
 
       Safe.transact(fn ->
+        # Read before the replace so the rows this fetch adds can be told from
+        # the ones already cached. Everything is rewritten either way, so the
+        # difference is not recoverable afterwards.
+        already_revoked =
+          from(r in Portal.CrlRevocation,
+            where: r.account_id == ^endpoint.account_id,
+            where: r.issuer == ^endpoint.issuer,
+            select: r.serial
+          )
+          |> Safe.unscoped()
+          |> Safe.all()
+          |> MapSet.new()
+
+        newly_revoked =
+          rows
+          |> MapSet.new(& &1.serial)
+          |> MapSet.difference(already_revoked)
+
         from(r in Portal.CrlRevocation,
           where: r.account_id == ^endpoint.account_id,
           where: r.issuer == ^endpoint.issuer
@@ -214,8 +263,21 @@ defmodule Portal.Crl.Sync do
         |> Safe.unscoped()
         |> Safe.update_all([])
 
-        {:ok, length(rows)}
+        {:ok, {length(rows), newly_revoked}}
       end)
+    end
+
+    # Matched on the issuer as well as the serial: a serial only identifies a
+    # certificate together with whoever issued it, so a device holding the same
+    # serial from a different CA is a different certificate entirely.
+    def devices_with_serials(endpoint, serials) do
+      from(d in Portal.Device,
+        where: d.account_id == ^endpoint.account_id,
+        where: d.last_attested_cert_issuer == ^endpoint.issuer,
+        where: d.last_attested_cert_serial in ^MapSet.to_list(serials)
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
     end
 
     def record_error(endpoint, reason) do
