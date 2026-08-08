@@ -919,6 +919,11 @@ defmodule Portal.Safe do
   # certificate, so any actor type that can attest must be able to read it.
   def permit(:read, Portal.CrlRevocation, _), do: :ok
 
+  # An administrator corrects the address a CA publishes at, which is the only
+  # recourse when the advertised one is internal or on a scheme we cannot fetch.
+  def permit(_action, Portal.RevocationEndpoint, :account_admin_user), do: :ok
+  def permit(:read, Portal.RevocationEndpoint, :api_client), do: :ok
+
   # SessionLog permissions
   def permit(:read, Portal.SessionLog, :account_admin_user), do: :ok
   def permit(:read, Portal.SessionLog, :api_client), do: :ok

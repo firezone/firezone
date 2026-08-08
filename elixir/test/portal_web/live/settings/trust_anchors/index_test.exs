@@ -14,6 +14,29 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
     der
   end
 
+  defp endpoint_fixture(account, issuer, attrs \\ []) do
+    Repo.insert!(%Portal.RevocationEndpoint{
+      account_id: account.id,
+      issuer: issuer,
+      issuer_dn: X509.describe_name(issuer),
+      crl_url: Keyword.get(attrs, :crl_url, "http://crl.test.invalid/ec-ca.crl"),
+      crl_number: Keyword.get(attrs, :crl_number),
+      crl_error: Keyword.get(attrs, :crl_error),
+      inserted_at: DateTime.utc_now(),
+      updated_at: DateTime.utc_now()
+    })
+  end
+
+  defp revocation_fixture(account, issuer, serial) do
+    Repo.insert!(%Portal.CrlRevocation{
+      account_id: account.id,
+      issuer: issuer,
+      serial: serial,
+      revoked_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      inserted_at: DateTime.utc_now()
+    })
+  end
+
   setup do
     account = account_fixture()
     actor = admin_actor_fixture(account: account)
@@ -184,6 +207,119 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
 
       assert_patch(lv, ~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
       assert render(lv) =~ "Edit Trust Anchor"
+    end
+  end
+
+  describe "revocation section" do
+    setup %{account: account} do
+      trust_anchor =
+        trust_anchor_fixture(account: account, name: "EC Anchor", certs: [sample_ec_ca_der()])
+
+      %{trust_anchor: trust_anchor, issuer: X509.subject(sample_ec_ca_der())}
+    end
+
+    test "says nothing is known before a device has connected", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
+
+      assert render(lv) =~ "No revocation endpoint known yet"
+    end
+
+    test "shows the endpoint learned for the issuer", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer, crl_number: 42)
+      revocation_fixture(account, issuer, "AABBCC")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
+
+      html = render(lv)
+      assert html =~ "http://crl.test.invalid/ec-ca.crl"
+      assert html =~ "CN=EC Trust Anchor CA"
+      assert html =~ "Revoked certificates"
+      assert html =~ "42"
+    end
+
+    test "surfaces the last failure", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer, crl_error: "unsupported_url_scheme")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
+
+      assert render(lv) =~ "unsupported_url_scheme"
+    end
+
+    test "an admin can override the address", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer, crl_error: "unsupported_url_scheme")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
+
+      lv
+      |> element("button[phx-click='edit_crl_url']")
+      |> render_click()
+
+      lv
+      |> form("form[phx-submit='save_crl_url']", %{
+        "crl_url" => "http://mirror.test.invalid/ca.crl"
+      })
+      |> render_submit()
+
+      endpoint = Repo.one!(Portal.RevocationEndpoint)
+      assert endpoint.crl_url == "http://mirror.test.invalid/ca.crl"
+      # Cleared so the scheduler picks it up rather than waiting out the window
+      # the address that failed had set.
+      assert is_nil(endpoint.crl_error)
+      assert is_nil(endpoint.crl_next_update)
+
+      assert render(lv) =~ "http://mirror.test.invalid/ca.crl"
+    end
+
+    test "an endpoint from another account is never shown", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account_fixture(), issuer)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
+
+      assert render(lv) =~ "No revocation endpoint known yet"
     end
   end
 
