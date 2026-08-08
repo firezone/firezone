@@ -248,6 +248,35 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       assert html =~ "at most 10 trust anchors"
     end
 
+    test "rejects a bundle that would push the account past the certificate cap", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      # One anchor can hold a whole bundle, so staying under the anchor cap says
+      # nothing about how many certificates an attested connect has to check.
+      # The certificates have to differ: identical ones are deduplicated.
+      bundle =
+        Enum.map_join(1..21, fn index ->
+          "CA #{index}"
+          |> Portal.DeviceTrustFixtures.ca_der()
+          |> then(&:public_key.pem_encode([{:Certificate, &1, :not_encrypted}]))
+        end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/new")
+
+      html =
+        lv
+        |> form("#trust-anchor-new-form", trust_anchor: %{name: "Bundle", certs: [bundle]})
+        |> render_submit()
+
+      assert html =~ "at most 20 CA certificates"
+      assert Portal.Repo.aggregate(Portal.TrustAnchorCertificate, :count) == 0
+    end
+
     test "shows validation error for a non-CA certificate", %{
       conn: conn,
       account: account,

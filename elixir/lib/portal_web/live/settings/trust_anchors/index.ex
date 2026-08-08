@@ -1,7 +1,7 @@
 defmodule PortalWeb.Settings.TrustAnchors.Index do
   use PortalWeb, :live_view
 
-  import Ecto.Changeset, only: [cast: 3, put_change: 3, add_error: 3]
+  import Ecto.Changeset, only: [cast: 3, put_change: 3, add_error: 3, get_field: 3]
 
   alias Portal.{Safe, TrustAnchor}
   alias Portal.Crypto.X509
@@ -9,6 +9,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   @max_upload_size 1_000_000
   @max_upload_entries 10
   @max_trust_anchors 10
+  @max_trust_anchor_certificates 20
 
   defmodule Database do
     import Ecto.Query
@@ -16,6 +17,22 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
     def count_trust_anchors(subject) do
       from(t in TrustAnchor)
+      |> Safe.scoped(subject)
+      |> Safe.aggregate(:count)
+    end
+
+    # Counts certificates rather than anchors, since one anchor may hold a
+    # whole bundle. The anchor being edited is excluded so its own rows are
+    # not counted twice against the certificates replacing them.
+    def count_trust_anchor_certificates(subject, except_trust_anchor_id) do
+      from(c in Portal.TrustAnchorCertificate)
+      |> then(fn queryable ->
+        if except_trust_anchor_id do
+          where(queryable, [c], c.trust_anchor_id != ^except_trust_anchor_id)
+        else
+          queryable
+        end
+      end)
       |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
@@ -74,7 +91,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: :edit}} = socket) do
     trust_anchor = Database.get_trust_anchor!(id, socket.assigns.subject)
-    changeset = build_edit_changeset(trust_anchor, %{})
+    changeset = build_edit_changeset(trust_anchor, %{}, socket.assigns.subject)
 
     socket =
       socket
@@ -646,7 +663,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   def handle_event("validate_edit", %{"trust_anchor" => attrs}, socket) do
     changeset =
       socket.assigns.selected_trust_anchor
-      |> build_edit_changeset(attrs)
+      |> build_edit_changeset(attrs, socket.assigns.subject)
       |> Map.put(:action, :update)
 
     socket =
@@ -659,7 +676,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   def handle_event("update_trust_anchor", %{"trust_anchor" => attrs}, socket) do
     attrs = resolve_certs_attrs(socket, attrs)
-    changeset = build_edit_changeset(socket.assigns.selected_trust_anchor, attrs)
+    changeset =
+      build_edit_changeset(socket.assigns.selected_trust_anchor, attrs, socket.assigns.subject)
 
     case Safe.scoped(changeset, socket.assigns.subject) |> Safe.update() do
       {:ok, _trust_anchor} ->
@@ -723,6 +741,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     |> cast(attrs, [:name, :certs])
     |> TrustAnchor.changeset()
     |> validate_anchor_limit(subject)
+    |> validate_certificate_limit(subject, nil)
   end
 
   # Every attested connect validates the presented certificate against every
@@ -739,11 +758,31 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     end
   end
 
-  defp build_edit_changeset(trust_anchor, attrs) do
+  defp build_edit_changeset(trust_anchor, attrs, subject) do
     trust_anchor
     |> cast(attrs, [:name, :certs])
     |> seed_certs_pem_if_untouched(attrs, trust_anchor)
     |> TrustAnchor.changeset()
+    |> validate_certificate_limit(subject, trust_anchor.id)
+  end
+
+  # The anchor cap alone does not bound the work an attested connect does: one
+  # anchor may carry a bundle of any size, and an edit can grow it without ever
+  # adding an anchor. Every connect validates against every certificate the
+  # account holds, so the certificates are what has to be capped.
+  defp validate_certificate_limit(changeset, subject, trust_anchor_id) do
+    pending = changeset |> get_field(:certs, []) |> length()
+    existing = Database.count_trust_anchor_certificates(subject, trust_anchor_id)
+
+    if existing + pending > @max_trust_anchor_certificates do
+      add_error(
+        changeset,
+        :certs,
+        "an account may have at most #{@max_trust_anchor_certificates} CA certificates"
+      )
+    else
+      changeset
+    end
   end
 
   defp seed_certs_pem_if_untouched(changeset, attrs, trust_anchor) do

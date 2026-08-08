@@ -113,6 +113,12 @@ defmodule Portal.DeviceTrustFixtures do
     pki |> leaf(name) |> Base.encode64()
   end
 
+  @doc """
+  Mints a standalone CA certificate under the given common name, for tests that
+  need several distinct anchors rather than a full PKI.
+  """
+  def ca_der(common_name), do: new_ca(common_name).cert_der
+
   defp new_ca(common_name) do
     key = gen_ec_key()
     subject = rdn(common_name)

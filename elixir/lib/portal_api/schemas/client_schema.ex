@@ -11,7 +11,14 @@ defmodule PortalAPI.Schemas.Client do
       type: :object,
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Client ID"},
-        firezone_id: %Schema{type: :string, description: "Firezone ID"},
+        firezone_id: %Schema{
+          type: :string,
+          nullable: true,
+          description:
+            "Identifier the Client reports for itself. Null for a Client whose identity " <>
+              "comes from an MDM-issued certificate, since a self-reported value could " <>
+              "otherwise be used to claim another Client's record."
+        },
         actor_id: %Schema{type: :string, format: :uuid, description: "Actor ID"},
         name: %Schema{
           type: :string,
