@@ -159,7 +159,7 @@ defmodule PortalAPI.ExternalIdentityController do
       result =
         from(ei in ExternalIdentity,
           as: :external_identities,
-          where: ei.id == ^id and ei.actor_id == ^actor_id
+          where: ei.id == ^id and ei.actor_id == ^actor_id and ei.account_id == ^subject.account.id
         )
         |> join(:left, [external_identities: ei], iss in Portal.ExternalIdentitySyncState,
           on: iss.external_identity_id == ei.id and iss.account_id == ei.account_id,
