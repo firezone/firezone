@@ -17,12 +17,14 @@ import {
   PageSizePreference,
   getPageSizePreference,
 } from "./hooks/page_size_preference";
+import { DeviceTrustConditions } from "./hooks/device_trust_conditions";
 import "./event_listeners";
 
 Hooks.ThemeToggle = ThemeToggle;
 Hooks.SidebarCollapse = SidebarCollapse;
 Hooks.DatetimeRangeFilter = DatetimeRangeFilter;
 Hooks.PageSizePreference = PageSizePreference;
+Hooks.DeviceTrustConditions = DeviceTrustConditions;
 
 // Read CSRF token from the meta tag and use it in the LiveSocket params
 let csrfToken = document

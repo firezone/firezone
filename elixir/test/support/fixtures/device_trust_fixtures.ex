@@ -80,7 +80,11 @@ defmodule Portal.DeviceTrustFixtures do
 
   def leaf(pki, :via_intermediate) do
     issue_leaf(pki.intermediate,
-      sans: [{:uniformResourceIdentifier, ~c"firezone://serial/DMPXK1ZGXYZ9"}]
+      sans: [
+        {:uniformResourceIdentifier, ~c"firezone://serial/DMPXK1ZGXYZ9"},
+        {:uniformResourceIdentifier,
+         ~c"firezone://intune-id/9c1b0f2e-3a44-4d6b-8f21-77c0ab5e14d8"}
+      ]
     )
   end
 

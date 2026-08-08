@@ -117,9 +117,9 @@ defmodule PortalAPI.Client.DeviceTrust do
   @apple_serial_regex ~r/^[A-Z0-9]{8,14}$/i
 
   @type identifiers :: %{
+          optional(:last_attested_mdm_device_id) => String.t(),
           optional(:last_attested_device_serial) => String.t(),
-          optional(:last_attested_device_uuid) => String.t(),
-          optional(:last_attested_mdm_device_id) => String.t()
+          optional(:last_attested_device_uuid) => String.t()
         }
 
   @type verified :: %{
@@ -257,6 +257,11 @@ defmodule PortalAPI.Client.DeviceTrust do
     end
   end
 
+  # The MDM device id anchors the certificate to the MDM's record of the device
+  # and is the strongest identifier a certificate can carry, but not every MDM
+  # can emit one (Mosyle exposes only a serial number variable), so it is not
+  # required. A certificate asserting no identifier at all still fails: it
+  # proves possession without proving what.
   defp device_identifiers(leaf) do
     case extract_identifiers(leaf) do
       empty when map_size(empty) == 0 -> {:error, :no_device_identifiers}

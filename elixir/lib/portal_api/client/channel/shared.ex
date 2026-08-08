@@ -2496,7 +2496,7 @@ defmodule PortalAPI.Client.Channel.Shared do
             session_attrs(
               socket.assigns.client,
               socket.assigns.session_ref,
-              socket.assigns[:attested?] || false
+              socket.assigns.client.attested?
             ),
             metadata: %{
               subject: Authentication.Subject.to_map(socket.assigns.subject),
@@ -2532,7 +2532,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           user_agent: socket.assigns.client.last_seen_user_agent,
           # Whether THIS session presented a trusted MDM-provisioned
           # certificate at connect and the device row adopted its identity.
-          attested?: socket.assigns[:attested?] || false
+          attested?: socket.assigns.client.attested?
         }
 
         :ok =
