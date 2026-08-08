@@ -51,6 +51,15 @@ defmodule PortalAPI.Sockets do
           "your organization trusts. Please contact your administrator."
       )
 
+  def handle_error(conn, :certificate_revoked),
+    do:
+      ProblemDetails.send(
+        conn,
+        403,
+        "This device's certificate has been revoked by your organization's certificate " <>
+          "authority. Please contact your administrator."
+      )
+
   def handle_error(conn, :device_identity_conflict),
     do:
       ProblemDetails.send(

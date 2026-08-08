@@ -754,13 +754,17 @@ defmodule PortalAPI.Client.SocketTest do
           last_attested_mdm_device_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
         },
         last_attested_cert_serial: "4A2F008C",
-        last_attested_cert_fingerprint: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        last_attested_cert_fingerprint: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        last_attested_cert_issuer: <<"issuer-der">>
       }
 
       assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
       assert client.last_attested_device_serial == "C02XK1ZGJGH5"
       assert client.last_attested_mdm_device_id == "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
       assert client.last_attested_cert_fingerprint == proof.last_attested_cert_fingerprint
+      # Recorded so a revocation learned after this connect can still find the
+      # row: a certificate serial only identifies a certificate with its issuer.
+      assert client.last_attested_cert_issuer == proof.last_attested_cert_issuer
     end
 
     test "a new MDM device id enrolls as a new row", %{
@@ -790,7 +794,8 @@ defmodule PortalAPI.Client.SocketTest do
           last_attested_mdm_device_id: "mdm-new"
         },
         last_attested_cert_serial: "AA",
-        last_attested_cert_fingerprint: "bb"
+        last_attested_cert_fingerprint: "bb",
+        last_attested_cert_issuer: <<"issuer-der">>
       }
 
       assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
@@ -824,7 +829,8 @@ defmodule PortalAPI.Client.SocketTest do
           last_attested_mdm_device_id: "mdm-keep"
         },
         last_attested_cert_serial: "AA",
-        last_attested_cert_fingerprint: "bb"
+        last_attested_cert_fingerprint: "bb",
+        last_attested_cert_issuer: <<"issuer-der">>
       }
 
       assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
@@ -855,7 +861,8 @@ defmodule PortalAPI.Client.SocketTest do
       proof = %{
         identifiers: %{last_attested_device_serial: "SN-MOSYLE"},
         last_attested_cert_serial: "4A2F008C",
-        last_attested_cert_fingerprint: "fp-mosyle"
+        last_attested_cert_fingerprint: "fp-mosyle",
+        last_attested_cert_issuer: <<"issuer-der">>
       }
 
       assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
@@ -883,7 +890,8 @@ defmodule PortalAPI.Client.SocketTest do
       proof = %{
         identifiers: %{last_attested_device_serial: "SN-RENEW"},
         last_attested_cert_serial: "NEWSERIAL",
-        last_attested_cert_fingerprint: "fp-new"
+        last_attested_cert_fingerprint: "fp-new",
+        last_attested_cert_issuer: <<"issuer-der">>
       }
 
       assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
@@ -918,7 +926,8 @@ defmodule PortalAPI.Client.SocketTest do
       proof = %{
         identifiers: %{last_attested_mdm_device_id: "mdm-wins"},
         last_attested_cert_serial: "AA",
-        last_attested_cert_fingerprint: "fp-shared"
+        last_attested_cert_fingerprint: "fp-shared",
+        last_attested_cert_issuer: <<"issuer-der">>
       }
 
       assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
@@ -945,7 +954,8 @@ defmodule PortalAPI.Client.SocketTest do
       proof = %{
         identifiers: %{last_attested_mdm_device_id: "mdm-only-new"},
         last_attested_cert_serial: "AA",
-        last_attested_cert_fingerprint: "bb"
+        last_attested_cert_fingerprint: "bb",
+        last_attested_cert_issuer: <<"issuer-der">>
       }
 
       assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
@@ -974,7 +984,8 @@ defmodule PortalAPI.Client.SocketTest do
       proof = %{
         identifiers: %{last_attested_mdm_device_id: "mdm-attacker"},
         last_attested_cert_serial: "AA",
-        last_attested_cert_fingerprint: "bb"
+        last_attested_cert_fingerprint: "bb",
+        last_attested_cert_issuer: <<"issuer-der">>
       }
 
       assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
@@ -1008,7 +1019,8 @@ defmodule PortalAPI.Client.SocketTest do
           last_attested_mdm_device_id: "mdm-1"
         },
         last_attested_cert_serial: "AA",
-        last_attested_cert_fingerprint: "bb"
+        last_attested_cert_fingerprint: "bb",
+        last_attested_cert_issuer: <<"issuer-der">>
       }
 
       log =
@@ -1047,7 +1059,8 @@ defmodule PortalAPI.Client.SocketTest do
           last_attested_mdm_device_id: "mdm-2"
         },
         last_attested_cert_serial: "AA",
-        last_attested_cert_fingerprint: "bb"
+        last_attested_cert_fingerprint: "bb",
+        last_attested_cert_issuer: <<"issuer-der">>
       }
 
       assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)

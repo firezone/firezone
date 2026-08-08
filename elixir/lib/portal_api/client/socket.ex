@@ -503,7 +503,11 @@ defmodule PortalAPI.Client.Socket do
         Ecto.Changeset.put_change(cs, field, value)
       end)
       |> Ecto.Changeset.put_change(:last_attested_cert_serial, proof.last_attested_cert_serial)
-      |> Ecto.Changeset.put_change(:last_attested_cert_fingerprint, proof.last_attested_cert_fingerprint)
+      |> Ecto.Changeset.put_change(
+        :last_attested_cert_fingerprint,
+        proof.last_attested_cert_fingerprint
+      )
+      |> Ecto.Changeset.put_change(:last_attested_cert_issuer, proof.last_attested_cert_issuer)
       |> Ecto.Changeset.put_change(:last_attested_at, DateTime.utc_now())
     end
 
@@ -519,6 +523,7 @@ defmodule PortalAPI.Client.Socket do
       client
       |> Map.put(:last_attested_cert_serial, proof.last_attested_cert_serial)
       |> Map.put(:last_attested_cert_fingerprint, proof.last_attested_cert_fingerprint)
+      |> Map.put(:last_attested_cert_issuer, proof.last_attested_cert_issuer)
       |> Map.put(:last_attested_at, DateTime.utc_now())
     end
 
