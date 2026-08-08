@@ -195,6 +195,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
 
       Repo.insert!(%Portal.CrlRevocation{
         account_id: account.id,
+        issuer_hash: Portal.Crypto.X509.issuer_hash(leaf),
         trust_anchor_certificate_id: certificate.id,
         serial: serial,
         revoked_at: DateTime.utc_now(),
@@ -207,7 +208,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
              end) =~ "revoked by its CA"
     end
 
-    test "a revoked serial under another anchor does not refuse the connect", %{
+    test "the same serial revoked by a different issuer does not refuse", %{
       account: account,
       pki: pki,
       subject: subject
@@ -219,6 +220,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
 
       Repo.insert!(%Portal.CrlRevocation{
         account_id: account.id,
+        issuer_hash: Portal.Crypto.X509.issuer_hash(pki.untrusted_ca_der),
         trust_anchor_certificate_id: other_certificate.id,
         serial: cert_serial_hex(leaf),
         revoked_at: DateTime.utc_now(),
@@ -226,6 +228,14 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       })
 
       assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+    end
+
+    test "a leaf's issuer hash matches the CRL its CA would sign", %{pki: pki} do
+      leaf = leaf(pki, :rsa)
+
+      # Self-signed root, so its own issuer name is the name it signs under.
+      assert Portal.Crypto.X509.issuer_hash(leaf) ==
+               Portal.Crypto.X509.issuer_hash(pki.ca_der)
     end
 
     test "the anchor learns its revocation endpoints from the first leaf", %{

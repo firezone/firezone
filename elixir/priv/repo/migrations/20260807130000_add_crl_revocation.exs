@@ -6,6 +6,13 @@ defmodule Portal.Repo.Migrations.AddCrlRevocation do
   the CA certificate itself, so the URLs are learned from the first leaf that
   chains to an anchor and recorded here rather than being known at upload.
 
+  Revoked serials are keyed on the issuer rather than on the anchor the chain
+  validated against. RFC 5280 4.1.2.2 scopes a serial to its issuer, and the
+  two are not the same thing here: an account that uploads both a root and its
+  intermediate has two anchors that can each validate the same leaf, so keying
+  on the anchor could check a leaf issued by the intermediate against the
+  root's list. The anchor is kept only to record which fetch produced a row.
+
   Revoked serials live in their own table because the connect path checks one
   serial at a time. Holding them as an array on the anchor row would mean
   loading every revoked serial for every anchor on every connect, when all the
@@ -32,6 +39,9 @@ defmodule Portal.Repo.Migrations.AddCrlRevocation do
         primary_key: true
       )
 
+      add(:issuer_hash, :string, null: false, primary_key: true)
+      add(:serial, :string, null: false, primary_key: true)
+
       add(
         :trust_anchor_certificate_id,
         references(:trust_anchor_certificates,
@@ -39,11 +49,9 @@ defmodule Portal.Repo.Migrations.AddCrlRevocation do
           on_delete: :delete_all,
           with: [account_id: :account_id]
         ),
-        null: false,
-        primary_key: true
+        null: false
       )
 
-      add(:serial, :string, null: false, primary_key: true)
       add(:revoked_at, :timestamptz, null: false)
       add(:reason, :string)
 

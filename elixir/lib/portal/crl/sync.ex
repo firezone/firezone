@@ -29,8 +29,9 @@ defmodule Portal.Crl.Sync do
   defp refresh(certificate) do
     with {:ok, der} <- fetch(certificate.crl_url),
          :ok <- verify(der, certificate),
-         {:ok, crl} <- decode(der) do
-      {:ok, count} = Database.replace_revocations(certificate, crl)
+         {:ok, crl} <- decode(der),
+         {:ok, issuer_hash} <- issuer_hash(der) do
+      {:ok, count} = Database.replace_revocations(certificate, issuer_hash, crl)
 
       Logger.info("Refreshed certificate revocation list",
         account_id: certificate.account_id,
@@ -85,6 +86,15 @@ defmodule Portal.Crl.Sync do
     end
   end
 
+  # Taken from the CRL itself rather than from the anchor: the list says who
+  # signed it, and that is who its serials belong to.
+  defp issuer_hash(der) do
+    case X509.crl_issuer_hash(der) do
+      nil -> {:error, :crl_issuer_unreadable}
+      hash -> {:ok, hash}
+    end
+  end
+
   defp decode(der) do
     case X509.decode_crl(der) do
       {:ok, crl} -> {:ok, crl}
@@ -113,16 +123,17 @@ defmodule Portal.Crl.Sync do
       end
     end
 
-    # The published list is the whole truth for this anchor, so the previous
-    # set is replaced rather than merged: a serial the CA drops stops being
+    # The published list is the whole truth for its issuer, so the previous set
+    # is replaced rather than merged: a serial the CA drops stops being
     # revoked, and one it adds starts.
-    def replace_revocations(certificate, crl) do
+    def replace_revocations(certificate, issuer_hash, crl) do
       now = DateTime.utc_now()
 
       rows =
         Enum.map(crl.revocations, fn revocation ->
           %{
             account_id: certificate.account_id,
+            issuer_hash: issuer_hash,
             trust_anchor_certificate_id: certificate.id,
             serial: revocation.serial,
             revoked_at: revocation.revoked_at,
@@ -134,7 +145,7 @@ defmodule Portal.Crl.Sync do
       Safe.transact(fn ->
         from(r in Portal.CrlRevocation,
           where: r.account_id == ^certificate.account_id,
-          where: r.trust_anchor_certificate_id == ^certificate.id
+          where: r.issuer_hash == ^issuer_hash
         )
         |> Safe.unscoped()
         |> Safe.delete_all()

@@ -164,7 +164,7 @@ defmodule PortalAPI.Client.DeviceTrust do
          {:ok, leaf} <- decode_leaf(der),
          {:ok, anchor} <- validate_leaf(leaf, der, anchors),
          {:ok, serial} <- cert_serial(leaf),
-         :ok <- ensure_not_revoked(anchor, serial, subject),
+         :ok <- ensure_not_revoked(der, serial, subject),
          {:ok, identifiers} <- device_identifiers(leaf) do
       learn_revocation_urls(anchor, leaf, subject)
 
@@ -290,12 +290,19 @@ defmodule PortalAPI.Client.DeviceTrust do
   end
 
   # Checked against the cached CRL rather than fetched live: the CRL fetch job
-  # owns the network call, so this stays a single indexed lookup. An anchor
-  # whose CA publishes no CRL simply has no rows, and nothing is revoked.
-  defp ensure_not_revoked(anchor, serial, subject) do
-    if Database.revoked?(anchor.id, serial, subject) do
-      Logger.warning("Refusing device certificate: revoked by its CA",
-        trust_anchor_certificate_id: anchor.id,
+  # owns the network call, so this stays a single indexed lookup. A CA that
+  # publishes no CRL simply has no rows, and nothing is revoked.
+  #
+  # Keyed on the certificate's own issuer rather than on the anchor the chain
+  # validated against. An account holding both a root and its intermediate has
+  # two anchors that can each validate the same leaf, so the anchor does not
+  # reliably say who issued it, and a serial means nothing without that.
+  defp ensure_not_revoked(der, serial, subject) do
+    issuer_hash = X509.issuer_hash(der)
+
+    if not is_nil(issuer_hash) and Database.revoked?(issuer_hash, serial, subject) do
+      Logger.info("Refusing device certificate: revoked by its CA",
+        issuer_hash: issuer_hash,
         cert_serial: serial
       )
 
@@ -608,9 +615,9 @@ defmodule PortalAPI.Client.DeviceTrust do
     # returns the permission error itself when a read is refused, and an error
     # tuple reading as "revoked" would lock out every device over something
     # that is not a revocation at all.
-    def revoked?(anchor_certificate_id, serial, subject) do
+    def revoked?(issuer_hash, serial, subject) do
       from(r in Portal.CrlRevocation,
-        where: r.trust_anchor_certificate_id == ^anchor_certificate_id,
+        where: r.issuer_hash == ^issuer_hash,
         where: r.serial == ^serial
       )
       |> Safe.scoped(subject)

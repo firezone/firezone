@@ -853,4 +853,43 @@ defmodule Portal.Crypto.X509 do
   end
 
   defp crl_revocations(_other), do: []
+
+  @doc """
+  Returns a stable hash of the certificate's issuer distinguished name.
+
+  Revocation is scoped to whoever issued a certificate, not to whoever we
+  happened to validate the chain against, so this is what a cached revocation
+  is keyed on. The name is normalized first, so two spellings of the same
+  distinguished name hash alike.
+  """
+  @spec issuer_hash(binary()) :: String.t() | nil
+  def issuer_hash(cert_der) when is_binary(cert_der) do
+    {:Certificate, tbs_certificate, _signature_algorithm, _signature} =
+      :public_key.der_decode(:Certificate, cert_der)
+
+    tbs_certificate |> elem(4) |> name_hash()
+  rescue
+    _error -> nil
+  end
+
+  @doc """
+  Returns a stable hash of the distinguished name that signed a CRL.
+  """
+  @spec crl_issuer_hash(binary()) :: String.t() | nil
+  def crl_issuer_hash(crl_der) when is_binary(crl_der) do
+    {:CertificateList, tbs_cert_list, _signature_algorithm, _signature} =
+      :public_key.der_decode(:CertificateList, crl_der)
+
+    tbs_cert_list |> elem(3) |> name_hash()
+  rescue
+    _error -> nil
+  end
+
+  defp name_hash(name) do
+    name
+    |> :public_key.pkix_normalize_name()
+    |> then(&:public_key.der_encode(:Name, &1))
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
+  end
 end
