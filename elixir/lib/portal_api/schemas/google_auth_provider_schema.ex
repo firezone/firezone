@@ -70,6 +70,7 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.GoogleAuthProvider
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "GoogleAuthProviderListResponse",
@@ -80,7 +81,8 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
           description: "Google Auth Provider details",
           type: :array,
           items: GoogleAuthProvider.Schema
-        }
+        },
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

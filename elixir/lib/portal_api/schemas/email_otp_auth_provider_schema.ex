@@ -69,6 +69,7 @@ defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.EmailOTPAuthProvider
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "EmailOTPAuthProviderListResponse",
@@ -79,7 +80,8 @@ defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
           description: "Email OTP Auth Provider details",
           type: :array,
           items: EmailOTPAuthProvider.Schema
-        }
+        },
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

@@ -95,6 +95,56 @@ defmodule PortalAPI.PolicyControllerTest do
 
       assert MapSet.subset?(data_ids, policy_ids)
     end
+
+    test "filters by group_id", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      policy = policy_fixture(account: account, group: group)
+      _other = policy_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/policies", group_id: group.id)
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == policy.id
+    end
+
+    test "filters by resource_id", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(account: account, resource: resource)
+      _other = policy_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/policies", resource_id: resource.id)
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == policy.id
+    end
+
+    test "rejects a malformed group_id filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/policies", group_id: "not-a-uuid")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
+
+    test "rejects a malformed resource_id filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/policies", resource_id: "not-a-uuid")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
   end
 
   describe "show/2" do
@@ -121,6 +171,7 @@ defmodule PortalAPI.PolicyControllerTest do
                  "resource_id" => policy.resource_id,
                  "description" => policy.description,
                  "flow_log_uploads_enabled" => true,
+                 "is_disabled" => false,
                  "conditions" => []
                }
              }
@@ -886,11 +937,66 @@ defmodule PortalAPI.PolicyControllerTest do
                  "resource_id" => policy.resource_id,
                  "description" => policy.description,
                  "flow_log_uploads_enabled" => true,
+                 "is_disabled" => false,
                  "conditions" => []
                }
              }
 
       refute Repo.get_by(Policy, id: policy.id, account_id: policy.account_id)
+    end
+  end
+
+  describe "update/2 is_disabled" do
+    test "disables a policy", %{conn: conn, account: account, actor: actor} do
+      policy = policy_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{policy.id}", policy: %{"is_disabled" => true})
+
+      assert %{"data" => %{"id" => id, "is_disabled" => true}} = json_response(conn, 200)
+      assert id == policy.id
+
+      assert %Policy{is_disabled: true} =
+               Repo.get_by(Policy, id: policy.id, account_id: policy.account_id)
+    end
+
+    test "disabling an already-disabled policy is idempotent", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      policy = disabled_policy_fixture(%{account: account})
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{policy.id}", policy: %{"is_disabled" => true})
+
+      assert %{"data" => %{"id" => id, "is_disabled" => true}} = json_response(conn, 200)
+      assert id == policy.id
+
+      assert %Policy{is_disabled: true} =
+               Repo.get_by(Policy, id: policy.id, account_id: policy.account_id)
+    end
+
+    test "enables a disabled policy", %{conn: conn, account: account, actor: actor} do
+      policy = disabled_policy_fixture(%{account: account})
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{policy.id}", policy: %{"is_disabled" => false})
+
+      assert %{"data" => %{"id" => id, "is_disabled" => false}} = json_response(conn, 200)
+      assert id == policy.id
+
+      assert %Policy{is_disabled: false} =
+               Repo.get_by(Policy, id: policy.id, account_id: policy.account_id)
     end
   end
 end

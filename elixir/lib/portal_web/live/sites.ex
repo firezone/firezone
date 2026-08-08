@@ -1429,18 +1429,7 @@ defmodule PortalWeb.Sites do
     @spec deploy_gateway(Site.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Device.t(), GatewayToken.t(), binary()} | {:error, term()}
     def deploy_gateway(site, subject) do
-      gateway = %Device{
-        account_id: site.account_id,
-        site_id: site.id,
-        type: :gateway,
-        name: Portal.Crypto.random_token(5, encoder: :user_friendly)
-      }
-
-      with {:ok, gateway} <- gateway |> Safe.scoped(subject) |> Safe.insert(),
-           {:ok, token} <- Portal.Authentication.create_gateway_token(gateway, subject) do
-        {:ok, gateway, %{token | secret_fragment: nil},
-         Portal.Authentication.encode_fragment!(token)}
-      end
+      Portal.Devices.provision_gateway(site, nil, subject)
     end
 
     @spec rename_gateway(Device.t(), String.t(), Portal.Authentication.Subject.t()) ::

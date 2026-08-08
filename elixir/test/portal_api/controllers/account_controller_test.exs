@@ -3,6 +3,7 @@ defmodule PortalAPI.AccountControllerTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.SubjectFixtures
 
   describe "show/2" do
     test "returns account details with limits", %{conn: conn} do
@@ -65,6 +66,16 @@ defmodule PortalAPI.AccountControllerTest do
     test "returns 401 when not authenticated", %{conn: conn} do
       conn = get(conn, ~p"/account")
       assert json_response(conn, 401)
+    end
+  end
+
+  describe "Database.fetch_account/2" do
+    test "returns not_found when the id doesn't match the subject's own account" do
+      subject = subject_fixture()
+      other_account = account_fixture()
+
+      assert PortalAPI.AccountController.Database.fetch_account(other_account.id, subject) ==
+               {:error, :not_found}
     end
   end
 end

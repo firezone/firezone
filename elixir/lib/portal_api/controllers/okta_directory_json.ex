@@ -1,8 +1,9 @@
 defmodule PortalAPI.OktaDirectoryJSON do
   alias Portal.Okta
+  alias PortalAPI.Pagination
 
-  def index(%{directories: directories}) do
-    %{data: Enum.map(directories, &data/1)}
+  def index(%{directories: directories, metadata: metadata}) do
+    %{data: Enum.map(directories, &data/1), metadata: Pagination.metadata(metadata)}
   end
 
   def show(%{directory: directory}) do
