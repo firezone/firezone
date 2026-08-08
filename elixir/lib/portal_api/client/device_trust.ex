@@ -69,6 +69,11 @@ defmodule PortalAPI.Client.DeviceTrust do
 
   @typed_uri_regex ~r{^firezone://([^/]+)/(.+)$}i
 
+  # Intune emits every SAN row as one comma-joined URI value. Splitting only
+  # where a URI scheme follows keeps the comma inside
+  # @microsoft_sid_uri_prefix intact, since a scheme cannot start with a digit.
+  @joined_uri_regex ~r/,\s*(?=[a-zA-Z][a-zA-Z0-9+.\-]*:)/
+
   # Renewal artifacts that must never be treated as device identity.
   @microsoft_sid_uri_prefix "tag:microsoft.com,2022-09-14:sid:"
 
@@ -361,10 +366,12 @@ defmodule PortalAPI.Client.DeviceTrust do
   Extracts device identifiers from a trusted leaf certificate.
 
   Primary convention: one or more typed URI SANs (`firezone://serial/...`,
-  `firezone://udid/...`, `firezone://intune-id/...`, ...) — a certificate
-  should carry every identifier the MDM can assert. When no typed URI is
-  present, falls back to bare recognized identifiers in URI SANs, then
-  WS1-style `UDID=`/`SERIAL=` DNS SANs. The subject is never consulted:
+  `firezone://udid/...`, `firezone://intune-id/...`, ...), since a certificate
+  should carry every identifier the MDM can assert. Intune emits these joined
+  into a single comma-separated SAN value rather than one entry per row, so
+  joined values are split back apart first. When no typed URI is present,
+  falls back to bare recognized identifiers in URI SANs, then WS1-style
+  `UDID=`/`SERIAL=` DNS SANs. The subject is never consulted:
   CN/OU values are profile-wide labels, not per-device identity. Values are
   normalized and screened per source, so a garbage value in one source never
   shadows a usable identifier in another; user identity fields
@@ -375,6 +382,7 @@ defmodule PortalAPI.Client.DeviceTrust do
     uris =
       leaf
       |> X509.san_uris()
+      |> Enum.flat_map(&split_joined_uris/1)
       |> Enum.reject(&String.starts_with?(&1, @microsoft_sid_uri_prefix))
 
     typed = extract_typed_uris(uris)
@@ -439,10 +447,20 @@ defmodule PortalAPI.Client.DeviceTrust do
   end
 
   defp extract_dns_identifiers(dns_names) do
-    for dns <- dns_names, {column, value} <- classify_dns(dns), reduce: %{} do
+    for dns <- dns_names,
+        name <- split_joined_dns_names(dns),
+        {column, value} <- classify_dns(name),
+        reduce: %{} do
       acc -> put_normalized(acc, column, value)
     end
   end
+
+  defp split_joined_uris(uri), do: uri |> String.split(@joined_uri_regex) |> clean_parts()
+
+  # A comma is never valid in a hostname, so joined DNS SANs split plainly.
+  defp split_joined_dns_names(dns_name), do: dns_name |> String.split(",") |> clean_parts()
+
+  defp clean_parts(parts), do: parts |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
 
   defp put_normalized(acc, column, value) do
     case normalize_identifier(column, value) do

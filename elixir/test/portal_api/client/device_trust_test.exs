@@ -235,6 +235,66 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert identifiers.last_attested_mdm_device_id == "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
     end
 
+    test "splits the comma-joined URI SAN Intune emits for multiple rows" do
+      identifiers =
+        DeviceTrust.extract_identifiers(
+          otp(
+            sans: [
+              {:uniformResourceIdentifier,
+               ~c"firezone://serial/MJLFG7WJ39,firezone://intune-id/fd9c47c1-3a0a-4217-be9b-1a74561844e0"}
+            ]
+          )
+        )
+
+      assert identifiers == %{
+               last_attested_device_serial: "MJLFG7WJ39",
+               last_attested_mdm_device_id: "fd9c47c1-3a0a-4217-be9b-1a74561844e0"
+             }
+    end
+
+    test "tolerates whitespace after a join separator" do
+      identifiers =
+        DeviceTrust.extract_identifiers(
+          otp(
+            sans: [
+              {:uniformResourceIdentifier,
+               ~c"firezone://serial/MJLFG7WJ39, firezone://udid/7a461ff9-0be2-64a9-a418-539d9a21827b"}
+            ]
+          )
+        )
+
+      assert identifiers == %{
+               last_attested_device_serial: "MJLFG7WJ39",
+               last_attested_device_uuid: "7a461ff9-0be2-64a9-a418-539d9a21827b"
+             }
+    end
+
+    test "keeps the comma inside a Microsoft SID URI joined with a device identifier" do
+      identifiers =
+        DeviceTrust.extract_identifiers(
+          otp(
+            sans: [
+              {:uniformResourceIdentifier,
+               ~c"tag:microsoft.com,2022-09-14:sid:S-1-5-21-1234567890-1234567890-1234567890-1234,firezone://intune-id/fd9c47c1-3a0a-4217-be9b-1a74561844e0"}
+            ]
+          )
+        )
+
+      assert identifiers == %{last_attested_mdm_device_id: "fd9c47c1-3a0a-4217-be9b-1a74561844e0"}
+    end
+
+    test "splits comma-joined DNS SANs" do
+      identifiers =
+        DeviceTrust.extract_identifiers(
+          otp(sans: [{:dNSName, ~c"UDID=7a461ff9-0be2-64a9-a418-539d9a21827b,SERIAL=C02TEST12345"}])
+        )
+
+      assert identifiers == %{
+               last_attested_device_uuid: "7a461ff9-0be2-64a9-a418-539d9a21827b",
+               last_attested_device_serial: "C02TEST12345"
+             }
+    end
+
     test "falls back past garbage typed values to usable SAN identifiers" do
       identifiers =
         DeviceTrust.extract_identifiers(
