@@ -18,7 +18,7 @@ defmodule PortalWeb.Policies.Components do
     :remote_ip,
     :auth_provider_id,
     :client_verified,
-    :client_attested,
+    :device_attested,
     :current_utc_datetime
   ]
 
@@ -1347,7 +1347,7 @@ defmodule PortalWeb.Policies.Components do
 
   @spec condition_short_label(atom()) :: String.t()
   def condition_short_label(:client_verified), do: "Verified"
-  def condition_short_label(:client_attested), do: "Attested"
+  def condition_short_label(:device_attested), do: "Attested"
   def condition_short_label(:auth_provider_id), do: "Auth"
   def condition_short_label(:remote_ip_location_region), do: "Location"
   def condition_short_label(:remote_ip), do: "IP Range"
@@ -1376,7 +1376,7 @@ defmodule PortalWeb.Policies.Components do
       "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-raised text-body"
 
   @spec condition_type_badge_class(atom()) :: String.t()
-  defp condition_type_badge_class(property) when property in [:client_verified, :client_attested],
+  defp condition_type_badge_class(property) when property in [:client_verified, :device_attested],
     do:
       "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-success bg-success-light"
 
@@ -1404,7 +1404,7 @@ defmodule PortalWeb.Policies.Components do
   defp condition_values_display(%{property: :client_verified}, _providers, _account),
     do: "Client must be verified"
 
-  defp condition_values_display(%{property: :client_attested}, _providers, _account),
+  defp condition_values_display(%{property: :device_attested}, _providers, _account),
     do: "Client must be attested"
 
   defp condition_values_display(
@@ -1584,7 +1584,7 @@ defmodule PortalWeb.Policies.Components do
     """
   end
 
-  defp condition(%{property: :client_attested} = assigns) do
+  defp condition(%{property: :device_attested} = assigns) do
     ~H"""
     <span :if={@values != []} class="mr-1">
       <span>by clients that are</span>
@@ -1727,7 +1727,7 @@ defmodule PortalWeb.Policies.Components do
             disabled={@policy_conditions_enabled? == false}
           />
           <.device_trust_condition_form
-            :if={:client_attested in @enabled_conditions}
+            :if={:device_attested in @enabled_conditions}
             form={@form}
             disabled={@policy_conditions_enabled? == false}
           />
@@ -2007,21 +2007,21 @@ defmodule PortalWeb.Policies.Components do
   defp device_trust_condition_form(assigns) do
     ~H"""
     <fieldset class="mb-4">
-      <% attested_form = find_condition_form(@form[:conditions], :client_attested) %>
+      <% attested_form = find_condition_form(@form[:conditions], :device_attested) %>
       <% verified_form = find_condition_form(@form[:conditions], :client_verified) %>
 
       <.input
         type="hidden"
         field={attested_form[:property]}
-        name="policy[conditions][client_attested][property]"
-        id="policy_conditions_client_attested_property"
-        value="client_attested"
+        name="policy[conditions][device_attested][property]"
+        id="policy_conditions_device_attested_property"
+        value="device_attested"
       />
 
       <.input
         type="hidden"
-        name="policy[conditions][client_attested][operator]"
-        id="policy_conditions_client_attested_operator"
+        name="policy[conditions][device_attested][operator]"
+        id="policy_conditions_device_attested_operator"
         field={attested_form[:operator]}
         value={:is}
       />
@@ -2088,8 +2088,8 @@ defmodule PortalWeb.Policies.Components do
           <div>
             <.toggle
               label="Require attestation"
-              name="policy[conditions][client_attested][values][]"
-              id="policy_conditions_client_attested_value"
+              name="policy[conditions][device_attested][values][]"
+              id="policy_conditions_device_attested_value"
               value="true"
               disabled={@disabled}
               checked={List.first(List.wrap(attested_form[:values].value)) == "true"}

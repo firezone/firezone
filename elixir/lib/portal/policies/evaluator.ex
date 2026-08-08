@@ -172,7 +172,7 @@ defmodule Portal.Policies.Evaluator do
   # proved anything for this session.
   def fetch_conformation_expiration(
         %{
-          property: :client_attested,
+          property: :device_attested,
           operator: :is,
           values: ["true"]
         },
@@ -188,7 +188,7 @@ defmodule Portal.Policies.Evaluator do
 
   def fetch_conformation_expiration(
         %{
-          property: :client_attested,
+          property: :device_attested,
           operator: :is,
           values: _other
         },

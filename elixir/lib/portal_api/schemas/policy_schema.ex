@@ -29,11 +29,11 @@ defmodule PortalAPI.Schemas.Policy do
       * `client_verified` with `is`: `values` is a single-element list
         containing `"true"` or `"false"`. An administrator marks a Client
         verified by hand.
-      * `client_attested` with `is`: `values` is a single-element list
-        containing `"true"` or `"false"`. A Client is attested when the
+      * `device_attested` with `is`: `values` is a single-element list
+        containing `"true"` or `"false"`. A device is attested when the
         connection itself proved possession of an MDM-issued client
         certificate, so this is evaluated per connection rather than from
-        anything stored on the Client. It supersedes `client_verified`.
+        anything stored on the device. It supersedes `client_verified`.
       """,
       type: :object,
       properties: %{
@@ -46,7 +46,7 @@ defmodule PortalAPI.Schemas.Policy do
             "auth_provider_id",
             "current_utc_datetime",
             "client_verified",
-            "client_attested"
+            "device_attested"
           ]
         },
         operator: %Schema{

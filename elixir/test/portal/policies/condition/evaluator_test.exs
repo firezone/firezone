@@ -324,11 +324,11 @@ defmodule Portal.Policies.EvaluatorTest do
     end
   end
 
-  describe "fetch_conformation_expiration/3 with client_attested" do
+  describe "fetch_conformation_expiration/3 with device_attested" do
     test "is with values [\"true\"] returns ok when the connection is attested" do
       attested_client = %Portal.Device{type: :client, attested?: true}
 
-      condition = %{property: :client_attested, operator: :is, values: ["true"]}
+      condition = %{property: :device_attested, operator: :is, values: ["true"]}
 
       assert fetch_conformation_expiration(condition, attested_client, nil) == {:ok, nil}
     end
@@ -336,7 +336,7 @@ defmodule Portal.Policies.EvaluatorTest do
     test "is with values [\"true\"] returns error when the connection is not attested" do
       unattested_client = %Portal.Device{type: :client, attested?: false}
 
-      condition = %{property: :client_attested, operator: :is, values: ["true"]}
+      condition = %{property: :device_attested, operator: :is, values: ["true"]}
 
       assert fetch_conformation_expiration(condition, unattested_client, nil) == :error
     end
@@ -348,7 +348,7 @@ defmodule Portal.Policies.EvaluatorTest do
         last_attested_at: DateTime.utc_now()
       }
 
-      condition = %{property: :client_attested, operator: :is, values: ["true"]}
+      condition = %{property: :device_attested, operator: :is, values: ["true"]}
 
       assert fetch_conformation_expiration(condition, previously_attested, nil) == :error
     end
@@ -357,7 +357,7 @@ defmodule Portal.Policies.EvaluatorTest do
       attested_client = %Portal.Device{type: :client, attested?: true}
       unattested_client = %Portal.Device{type: :client, attested?: false}
 
-      condition = %{property: :client_attested, operator: :is, values: ["false"]}
+      condition = %{property: :device_attested, operator: :is, values: ["false"]}
 
       assert fetch_conformation_expiration(condition, attested_client, nil) == {:ok, nil}
       assert fetch_conformation_expiration(condition, unattested_client, nil) == {:ok, nil}
