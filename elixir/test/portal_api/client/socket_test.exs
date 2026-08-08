@@ -1073,14 +1073,6 @@ defmodule PortalAPI.Client.SocketTest do
     |> Portal.Device.changeset()
   end
 
-  defp actor_devices_query(account, actor) do
-    import Ecto.Query
-
-    from(d in Portal.Device,
-      where: d.account_id == ^account.id and d.actor_id == ^actor.id and d.type == :client
-    )
-  end
-
   defp connect_attrs(attrs) do
     valid_client_attrs()
     |> then(fn attrs -> %{external_id: attrs.firezone_id} end)
