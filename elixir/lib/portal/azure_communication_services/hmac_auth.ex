@@ -1,6 +1,9 @@
 defmodule Portal.AzureCommunicationServices.HMACAuth do
   @moduledoc false
 
+  @access_key_key :acs_hmac_access_key
+  @original_adapter_key :acs_hmac_original_adapter
+
   @spec attach(Req.Request.t(), String.t()) :: Req.Request.t()
   def attach(%Req.Request{} = req, access_key) when is_binary(access_key) do
     Req.Request.append_request_steps(req,
@@ -8,13 +11,10 @@ defmodule Portal.AzureCommunicationServices.HMACAuth do
     )
   end
 
-  defp wrap_adapter(%Req.Request{adapter: original_adapter} = req, access_key) do
-    req
-    |> Req.Request.put_private(:acs_hmac_original_adapter, original_adapter)
-    |> Map.put(:adapter, &sign_and_run(&1, access_key))
-  end
-
-  defp sign_and_run(%Req.Request{} = req, access_key) do
+  @doc false
+  @spec run(Req.Request.t()) :: {Req.Request.t(), Req.Response.t() | Exception.t()}
+  def run(%Req.Request{} = req) do
+    access_key = Req.Request.get_private(req, @access_key_key)
     timestamp = timestamp()
     content_hash = content_hash(req.body)
     host = host(req.url)
@@ -29,11 +29,19 @@ defmodule Portal.AzureCommunicationServices.HMACAuth do
         authorization(req, access_key, timestamp, content_hash, host)
       )
 
-    original_adapter =
-      Req.Request.get_private(req, :acs_hmac_original_adapter, &Req.Steps.run_finch/1)
-
-    original_adapter.(req)
+    original_adapter = Req.Request.get_private(req, @original_adapter_key, Req.Finch)
+    call_adapter(original_adapter, req)
   end
+
+  defp wrap_adapter(%Req.Request{adapter: original_adapter} = req, access_key) do
+    req
+    |> Req.Request.put_private(@original_adapter_key, original_adapter)
+    |> Req.Request.put_private(@access_key_key, access_key)
+    |> Map.put(:adapter, __MODULE__)
+  end
+
+  defp call_adapter(adapter, req) when is_atom(adapter), do: adapter.run(req)
+  defp call_adapter(adapter, req) when is_function(adapter, 1), do: adapter.(req)
 
   defp authorization(req, access_key, timestamp, content_hash, host) do
     signature =
