@@ -256,9 +256,7 @@ actor Adapter {
     // Create the session
     let session: Session
     do {
-      let x509Identity = try X509Identity.clientTlsIdentity(
-        persistentReference: identityReference
-      )
+      let x509Identity = try readX509Identity()
       Telemetry.setMdmDeviceId(x509Identity?.mdmDeviceId)
       let clientTlsIdentity: ClientTlsIdentity =
         x509Identity.map(AppleClientTlsIdentity.init) ?? NoClientTlsIdentity()
@@ -552,8 +550,20 @@ actor Adapter {
     case .disconnected(let error):
       let errorMessage = error.message()
       let isAuthenticationError = error.isAuthenticationError()
+      let isCertificateRevoked = error.isCertificateRevoked()
       let isDeviceTrustError = error.isDeviceTrustError()
       Log.info("Received Disconnected event: \(errorMessage)")
+
+      if isCertificateRevoked {
+        do {
+          let refreshedIdentity = try readX509Identity()
+          Telemetry.setMdmDeviceId(refreshedIdentity?.mdmDeviceId)
+          Log.info("Re-read X.509 device identity after certificate revocation")
+        } catch {
+          Log.error(
+            "Could not re-read X.509 device identity after certificate revocation: \(error)")
+        }
+      }
 
       // iOS shows the notification from the tunnel process because the UI
       // process isn't guaranteed to be alive; macOS handles it from the UI.
@@ -584,6 +594,10 @@ actor Adapter {
           receivedAt: notificationClock.now
         ))
     }
+  }
+
+  private func readX509Identity() throws -> X509ClientTlsIdentity? {
+    try X509Identity.clientTlsIdentity(persistentReference: identityReference)
   }
 
   private func setSystemDefaultResolvers(_ path: Network.NWPath) async {

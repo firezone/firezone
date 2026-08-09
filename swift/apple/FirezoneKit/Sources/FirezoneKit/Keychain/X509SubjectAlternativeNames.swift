@@ -38,7 +38,9 @@ extension X509Identity {
     let uris = names.compactMap { element -> String? in
       guard element.tag & 0xC0 == 0x80, Int(element.tag & 0x1F) == 6 else { return nil }
       return try? stringValue(element.content, context: "URI")
-    }.filter { !$0.hasPrefix("tag:microsoft.com,2022-09-14:sid:") }
+    }.flatMap(splitCommaJoinedURIs).filter {
+      !$0.lowercased().hasPrefix("tag:microsoft.com,2022-09-14:sid:")
+    }
 
     var sawTypedIdentifier = false
     var typedMdmDeviceId: String?
@@ -94,6 +96,23 @@ extension X509Identity {
     ]
     guard validIdentifier(normalized), !sentinels.contains(normalized) else { return nil }
     return normalized
+  }
+
+  /// Intune encodes all configured SAN URI rows into a single comma-joined
+  /// GeneralName. Only split a comma when the next value begins with a URI
+  /// scheme so commas inside Microsoft's SID URI remain intact.
+  private static func splitCommaJoinedURIs(_ value: String) -> [String] {
+    let boundary = #",\s*(?=[a-zA-Z][a-zA-Z0-9+.\-]*:)"#
+    var remainder = value[...]
+    var values: [String] = []
+
+    while let range = remainder.range(of: boundary, options: .regularExpression) {
+      values.append(String(remainder[..<range.lowerBound]))
+      remainder = remainder[range.upperBound...]
+    }
+    values.append(String(remainder))
+
+    return values
   }
 
   private static let subjectAlternativeNameOID = "2.5.29.17"

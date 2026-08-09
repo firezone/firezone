@@ -124,6 +124,28 @@ struct X509IdentityTests {
     )
   }
 
+  @Test("MDM device identifier is parsed from Intune's comma-joined URI SAN")
+  func commaJoinedMdmDeviceIdIsParsed() {
+    let joinedUris =
+      "tag:microsoft.com,2022-09-14:sid:S-1-12-1-1, "
+      + "firezone://serial/C02XK1ZGJGH5, "
+      + "firezone://intune-id/5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3"
+    let names = der(0x30, der(0x86, Data(joinedUris.utf8)))
+    let sanExtension = der(
+      0x30,
+      der(0x06, Data([0x55, 0x1D, 0x11])) + der(0x04, names)
+    )
+    let certificate = der(
+      0x30,
+      der(0x30, der(0x02, Data([0x01])) + der(0xA3, der(0x30, sanExtension)))
+    )
+
+    #expect(
+      X509Identity.mdmDeviceId(certificateData: certificate)
+        == "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
+    )
+  }
+
   private func der(_ tag: UInt8, _ content: Data) -> Data {
     var encoded = Data([tag])
     if content.count < 0x80 {
