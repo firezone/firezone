@@ -181,20 +181,8 @@ defmodule PortalWeb.Clients do
               latest={ComponentVersions.client_version(client)}
             />
           </:col>
-          <:col :let={client} label="Verified" class="w-28">
-            <span
-              :if={not is_nil(client.verified_at)}
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light"
-              title="Device attributes of this client are manually verified"
-            >
-              <.icon name="ri-shield-check-line" class="w-2.5 h-2.5" /> Verified
-            </span>
-            <span
-              :if={is_nil(client.verified_at)}
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-raised"
-            >
-              Unverified
-            </span>
+          <:col :let={client} label="Trust" class="w-28">
+            <.client_verified_status client={client} />
           </:col>
           <:col :let={client} label="Status" class="w-28">
             <.client_status_badge online?={client.online?} />

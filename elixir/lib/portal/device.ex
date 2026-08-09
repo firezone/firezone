@@ -40,6 +40,7 @@ defmodule Portal.Device do
           ipv4: Postgrex.INET.t(),
           ipv6: Postgrex.INET.t(),
           online?: boolean(),
+          attested?: boolean(),
           firezone_id_merged?: boolean(),
           public_key: String.t() | nil,
           last_seen_user_agent: String.t() | nil,
@@ -131,6 +132,12 @@ defmodule Portal.Device do
     # Virtual fields
     field :online?, :boolean, virtual: true, default: false
 
+    # Whether THIS connection proved possession of an MDM-issued certificate.
+    # Live connection state, unlike last_attested_at, which is the row's
+    # point-in-time history. Policy conditions read this, so it must describe
+    # the session being evaluated and never the device's past.
+    field :attested?, :boolean, virtual: true, default: false
+
     # Set when this connect adopted a new firezone_id (attested-first merge).
     # The session flush persists firezone_id only for merged connects, so the
     # steady state adds no conflict-probe query to the flush.
@@ -143,7 +150,7 @@ defmodule Portal.Device do
     changeset
     |> trim_change(~w[name firezone_id hostname]a)
     |> normalize_hostname()
-    |> validate_required([:type, :name, :firezone_id])
+    |> validate_required([:type, :name])
     |> validate_inclusion(:type, [:client, :gateway])
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:firezone_id, max: 255)
@@ -186,6 +193,7 @@ defmodule Portal.Device do
       :client ->
         changeset
         |> validate_required([:actor_id])
+        |> validate_client_firezone_id()
         |> validate_length(:device_serial, max: 255)
         |> validate_length(:device_uuid, max: 255)
         |> validate_length(:identifier_for_vendor, max: 255)
@@ -195,23 +203,34 @@ defmodule Portal.Device do
         |> validate_length(:last_attested_mdm_device_id, max: 255)
         |> validate_length(:last_attested_cert_serial, max: 255)
         |> validate_length(:last_attested_cert_fingerprint, max: 255)
-        |> unique_constraint(:last_attested_device_serial,
-          name: :devices_account_id_actor_id_last_attested_device_serial_index
-        )
-        |> unique_constraint(:last_attested_device_uuid,
-          name: :devices_account_id_actor_id_last_attested_device_uuid_index
-        )
         |> unique_constraint(:last_attested_mdm_device_id,
           name: :devices_account_id_actor_id_last_attested_mdm_device_id_index
+        )
+        |> unique_constraint(:last_attested_cert_fingerprint,
+          name: :devices_account_id_actor_id_last_attested_cert_fingerprint_index
         )
 
       :gateway ->
         changeset
-        |> validate_required([:site_id])
+        |> validate_required([:site_id, :firezone_id])
         |> validate_gateway_verification()
 
       _ ->
         changeset
+    end
+  end
+
+  # An attested client is identified by what its certificate proved, so it
+  # carries no firezone_id at all: the column stays NULL and can never resolve
+  # the row back to a client-supplied value. Every attested row pins a
+  # certificate fingerprint, whether or not its certificate also carried an MDM
+  # device id, so that is what marks the row as certificate-identified.
+  # Unattested clients still require a firezone_id.
+  defp validate_client_firezone_id(changeset) do
+    if is_nil(get_field(changeset, :last_attested_cert_fingerprint)) do
+      validate_required(changeset, [:firezone_id])
+    else
+      changeset
     end
   end
 
