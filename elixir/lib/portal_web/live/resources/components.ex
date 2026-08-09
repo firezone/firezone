@@ -2147,6 +2147,17 @@ defmodule PortalWeb.Resources.Components do
     import Ecto.Query
     alias Portal.{Device, Resource, Safe, StaticDevicePoolMember}
 
+    @device_identifier_fields ~w[
+      firezone_id
+      device_serial
+      device_uuid
+      identifier_for_vendor
+      firebase_installation_id
+      last_attested_device_serial
+      last_attested_device_uuid
+      last_attested_mdm_device_id
+    ]a
+
     def get_resource!(id, subject) do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.id == ^id)
@@ -2211,14 +2222,16 @@ defmodule PortalWeb.Resources.Components do
           ilike(a.name, ^pattern) or
           ilike(coalesce(a.email, ""), ^pattern) or
           ilike(type(c.id, :string), ^pattern) or
-          ilike(coalesce(c.firezone_id, ""), ^pattern) or
-          ilike(coalesce(c.device_serial, ""), ^pattern) or
-          ilike(coalesce(c.device_uuid, ""), ^pattern) or
-          ilike(coalesce(c.identifier_for_vendor, ""), ^pattern) or
-          ilike(coalesce(c.firebase_installation_id, ""), ^pattern) or
           ilike(type(c.ipv4, :string), ^pattern) or
-          ilike(type(c.ipv6, :string), ^pattern)
+          ilike(type(c.ipv6, :string), ^pattern) or
+          ^device_identifier_filter(pattern)
       )
+    end
+
+    defp device_identifier_filter(pattern) do
+      Enum.reduce(@device_identifier_fields, dynamic(false), fn field, dyn ->
+        dynamic([clients: c], ^dyn or ilike(coalesce(field(c, ^field), ""), ^pattern))
+      end)
     end
 
     def validate_selected_clients([], _subject), do: {:ok, []}

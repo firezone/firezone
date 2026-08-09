@@ -140,6 +140,29 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  The external URL clients use to connect with a device certificate, for
+  example `https://mtls.firezone.dev/`.
+
+  The load balancer terminates mutual TLS on this host and passes the client
+  certificate up as base64-encoded DER in the `x-client-cert` header. It must
+  strip any inbound `x-client-cert` on this host before setting it, so that a
+  client cannot supply its own, and it must not forward a client-supplied
+  `x-forwarded-host`, which is what the request host is derived from.
+
+  When this is not set, certificate-based device trust is disabled and the
+  header is ignored.
+  """
+
+  defconfig(:mtls_external_url, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Portal.Changeset.normalize_url(key)
+    end
+  )
+
+  @doc """
   The API rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
   """
   defconfig(:api_refill_rate, :integer, default: 10)

@@ -42,6 +42,24 @@ defmodule PortalAPI.Sockets do
   def handle_error(conn, :unauthenticated),
     do: ProblemDetails.send(conn, 403, "Forbidden")
 
+  def handle_error(conn, :device_untrusted),
+    do:
+      ProblemDetails.send(
+        conn,
+        403,
+        "This device did not present a valid certificate from a certificate authority " <>
+          "your organization trusts. Please contact your administrator."
+      )
+
+  def handle_error(conn, :device_identity_conflict),
+    do:
+      ProblemDetails.send(
+        conn,
+        409,
+        "This device's certificate reports different hardware than the device already " <>
+          "registered under the same MDM device ID. Please contact your administrator."
+      )
+
   def handle_error(conn, :conflict),
     do: ProblemDetails.send(conn, 409, "A gateway with this ID is already connected")
 

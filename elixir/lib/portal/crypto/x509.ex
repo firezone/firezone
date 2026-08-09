@@ -765,4 +765,28 @@ defmodule Portal.Crypto.X509 do
   defp normalize_year(year, 2) when year < 50, do: 2000 + year
   defp normalize_year(year, 2), do: 1900 + year
   defp normalize_year(year, 4), do: year
+  @doc """
+  Returns the DER encoding of the certificate's issuer distinguished name.
+
+  Revocation is scoped to whoever issued a certificate, not to whoever we
+  happened to validate the chain against, so this is what a cached revocation
+  is keyed on. RFC 5280 4.1.2.4 leaves a CA free to encode its name as either
+  a `PrintableString` or a `UTF8String`, and both are still in wide use, so
+  the name is stored as it was encoded rather than folded into a canonical
+  form: a CA emits the same bytes in the certificates it issues and in the
+  CRL it publishes for them, which 5.1.2.3 requires, and normalizing would
+  sort the relative names and lose the difference between two distinct
+  issuers whose names are permutations of each other.
+  """
+  @spec issuer(binary()) :: binary() | nil
+  def issuer(cert_der) when is_binary(cert_der) do
+    {:Certificate, tbs_certificate, _signature_algorithm, _signature} =
+      :public_key.der_decode(:Certificate, cert_der)
+
+    tbs_certificate |> elem(4) |> encode_name()
+  rescue
+    _error -> nil
+  end
+
+  defp encode_name(name), do: :public_key.der_encode(:Name, name)
 end
