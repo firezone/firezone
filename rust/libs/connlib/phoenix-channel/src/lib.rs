@@ -186,6 +186,8 @@ async fn connect(
 pub enum Error {
     #[error("Authentication token invalid")]
     InvalidToken,
+    #[error("X.509 device identity certificate was revoked")]
+    CertificateRevoked,
     #[error(
         "Got disconnected from portal and hit the max-retry limit. Last connection error: {final_error}"
     )]
@@ -200,10 +202,15 @@ impl Error {
     pub fn is_authentication_error(&self) -> bool {
         match self {
             Error::InvalidToken => true,
+            Error::CertificateRevoked => false,
             Error::MaxRetriesReached { .. } => false,
             Error::LoginFailed(_) => false,
             Error::FatalIo(_) => false,
         }
+    }
+
+    pub fn is_certificate_revoked(&self) -> bool {
+        matches!(self, Error::CertificateRevoked)
     }
 }
 
@@ -860,6 +867,14 @@ where
                         ) => {
                             return Poll::Ready(Err(Error::InvalidToken));
                         }
+                        (
+                            Payload::Disconnect {
+                                reason: DisconnectReason::CertificateRevoked,
+                            },
+                            _,
+                        ) => {
+                            return Poll::Ready(Err(Error::CertificateRevoked));
+                        }
                     }
                 }
                 Poll::Ready(Some(Ok(Message::Binary(_)))) => {
@@ -1032,6 +1047,7 @@ impl fmt::Display for ErrorReply {
 #[serde(rename_all = "snake_case")]
 pub enum DisconnectReason {
     TokenExpired,
+    CertificateRevoked,
 }
 
 impl<T> PhoenixMessage<T> {
@@ -1220,6 +1236,23 @@ mod tests {
         let actual_reply = serde_json::from_str::<Payload<()>>(actual_reply).unwrap();
         let expected_reply = Payload::<()>::Disconnect {
             reason: DisconnectReason::TokenExpired,
+        };
+        assert_eq!(actual_reply, expected_reply);
+    }
+
+    #[test]
+    fn certificate_revoked() {
+        let actual_reply = r#"
+        {
+          "event": "disconnect",
+          "ref": null,
+          "topic": "client",
+          "payload": { "reason": "certificate_revoked" }
+        }
+        "#;
+        let actual_reply = serde_json::from_str::<Payload<()>>(actual_reply).unwrap();
+        let expected_reply = Payload::<()>::Disconnect {
+            reason: DisconnectReason::CertificateRevoked,
         };
         assert_eq!(actual_reply, expected_reply);
     }

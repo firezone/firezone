@@ -218,6 +218,10 @@ impl DisconnectError {
         self.0.is_authentication_error()
     }
 
+    pub fn is_certificate_revoked(&self) -> bool {
+        self.0.is_certificate_revoked()
+    }
+
     pub fn is_device_trust_error(&self) -> bool {
         self.0.is_device_trust_error()
     }
