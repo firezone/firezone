@@ -1,47 +1,28 @@
 defmodule Portal.AzureCommunicationServices.HMACAuth do
   @moduledoc false
 
-  @access_key_key :acs_hmac_access_key
-  @original_adapter_key :acs_hmac_original_adapter
-
   @spec attach(Req.Request.t(), String.t()) :: Req.Request.t()
   def attach(%Req.Request{} = req, access_key) when is_binary(access_key) do
     Req.Request.append_request_steps(req,
-      refresh_acs_hmac_auth: &wrap_adapter(&1, access_key)
+      refresh_acs_hmac_auth: &sign_request(&1, access_key)
     )
   end
 
-  @doc false
-  @spec run(Req.Request.t()) :: {Req.Request.t(), Req.Response.t() | Exception.t()}
-  def run(%Req.Request{} = req) do
-    access_key = Req.Request.get_private(req, @access_key_key)
+  # Req re-runs request steps on each retry, so every attempt gets a fresh signature.
+  defp sign_request(%Req.Request{} = req, access_key) do
     timestamp = timestamp()
     content_hash = content_hash(req.body)
     host = host(req.url)
 
-    req =
-      req
-      |> Req.Request.put_header("x-ms-date", timestamp)
-      |> Req.Request.put_header("x-ms-content-sha256", content_hash)
-      |> Req.Request.put_header("host", host)
-      |> Req.Request.put_header(
-        "authorization",
-        authorization(req, access_key, timestamp, content_hash, host)
-      )
-
-    original_adapter = Req.Request.get_private(req, @original_adapter_key, Req.Finch)
-    call_adapter(original_adapter, req)
-  end
-
-  defp wrap_adapter(%Req.Request{adapter: original_adapter} = req, access_key) do
     req
-    |> Req.Request.put_private(@original_adapter_key, original_adapter)
-    |> Req.Request.put_private(@access_key_key, access_key)
-    |> Map.put(:adapter, __MODULE__)
+    |> Req.Request.put_header("x-ms-date", timestamp)
+    |> Req.Request.put_header("x-ms-content-sha256", content_hash)
+    |> Req.Request.put_header("host", host)
+    |> Req.Request.put_header(
+      "authorization",
+      authorization(req, access_key, timestamp, content_hash, host)
+    )
   end
-
-  defp call_adapter(adapter, req) when is_atom(adapter), do: adapter.run(req)
-  defp call_adapter(adapter, req) when is_function(adapter, 1), do: adapter.(req)
 
   defp authorization(req, access_key, timestamp, content_hash, host) do
     signature =
