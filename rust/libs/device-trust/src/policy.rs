@@ -227,7 +227,11 @@ pub(crate) fn parse_certificate(der: &[u8], now: SystemTime) -> Option<Certifica
 fn extract_mdm_device_id<'a>(uris: impl IntoIterator<Item = &'a str>) -> Option<String> {
     let uris = uris
         .into_iter()
-        .filter(|uri| !uri.starts_with("tag:microsoft.com,2022-09-14:sid:"))
+        .flat_map(split_comma_joined_uris)
+        .filter(|uri| {
+            !uri.to_ascii_lowercase()
+                .starts_with("tag:microsoft.com,2022-09-14:sid:")
+        })
         .collect::<Vec<_>>();
     let mut saw_typed_identifier = false;
     let mut typed_mdm_device_id = None;
@@ -280,6 +284,44 @@ fn extract_mdm_device_id<'a>(uris: impl IntoIterator<Item = &'a str>) -> Option<
             .then(|| normalize_mdm_device_id(value))
             .flatten()
     })
+}
+
+/// Intune encodes all configured SAN URI rows into one comma-joined value.
+/// Only split where the text following a comma begins with another URI scheme,
+/// preserving the comma in Microsoft's SID URI.
+fn split_comma_joined_uris(value: &str) -> Vec<&str> {
+    let mut values = Vec::new();
+    let mut start = 0;
+
+    for (comma, _) in value.match_indices(',') {
+        let remainder = &value[comma + 1..];
+        let next = remainder.trim_start();
+        if !starts_with_uri_scheme(next) {
+            continue;
+        }
+
+        values.push(&value[start..comma]);
+        start = comma + 1 + (remainder.len() - next.len());
+    }
+    values.push(&value[start..]);
+
+    values
+}
+
+fn starts_with_uri_scheme(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphabetic() {
+        return false;
+    }
+
+    bytes
+        .take_while(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'.' | b'-' | b':')
+        })
+        .any(|byte| byte == b':')
 }
 
 fn valid_identifier(value: &str) -> bool {
@@ -419,6 +461,16 @@ mod tests {
             extract_mdm_device_id([
                 "firezone://serial/C02XK1ZGJGH5",
                 "firezone://intune-id/5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3",
+            ]),
+            Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3".to_owned())
+        );
+    }
+
+    #[test]
+    fn extracts_mdm_device_id_from_intune_comma_joined_uri() {
+        assert_eq!(
+            extract_mdm_device_id([
+                "tag:microsoft.com,2022-09-14:sid:S-1-12-1-1, firezone://serial/C02XK1ZGJGH5, firezone://intune-id/5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3",
             ]),
             Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3".to_owned())
         );

@@ -686,15 +686,29 @@ impl<I: GuiIntegration> Controller<I> {
             service::ServerMsg::OnDisconnect {
                 error_msg,
                 is_authentication_error,
+                is_certificate_revoked,
                 is_device_trust_error,
             } => {
-                self.sign_out().await?;
+                if is_certificate_revoked {
+                    self.status = Status::Disconnected;
+                    self.refresh_ui_state();
+                } else {
+                    self.sign_out().await?;
+                }
+
                 if is_authentication_error {
                     tracing::info!(?error_msg, "Auth error");
                     self.integration.show_notification(
                         "Firezone disconnected",
                         "To access resources, sign in again.",
                     )?;
+                } else if is_certificate_revoked {
+                    tracing::error!(?error_msg, "X.509 device identity certificate was revoked");
+                    let _ = self.integration.show_notification(
+                        "Device certificate revoked",
+                        "Contact your administrator for support.",
+                    )?;
+                    dialog::error(&error_msg)?;
                 } else if is_device_trust_error {
                     tracing::error!(?error_msg, "Device attestation error");
                     let _ = self.integration.show_notification(

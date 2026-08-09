@@ -543,7 +543,28 @@ fn try_main() -> Result<()> {
             };
 
             match event {
-                client_shared::Event::Disconnected(error) => break Err(anyhow!(error).context("Firezone disconnected")),
+                client_shared::Event::Disconnected(error) => {
+                    if error.is_certificate_revoked() {
+                        match device_trust::identity(&x509_config) {
+                            Ok(identity) => {
+                                telemetry::set_mdm_device_id(
+                                    identity
+                                        .as_ref()
+                                        .and_then(device_trust::Identity::mdm_device_id)
+                                        .map(str::to_owned),
+                                );
+                                tracing::info!(
+                                    "Re-read X.509 device identity after certificate revocation"
+                                );
+                            }
+                            Err(error) => tracing::warn!(
+                                ?error,
+                                "Could not re-read X.509 device identity after certificate revocation"
+                            ),
+                        }
+                    }
+                    break Err(anyhow!(error).context("Firezone disconnected"));
+                }
                 client_shared::Event::ResourcesUpdated(_) => {
                     // On every Resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     dns_controller.flush()?;

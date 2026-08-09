@@ -94,6 +94,7 @@ pub enum ServerMsg {
     OnDisconnect {
         error_msg: String,
         is_authentication_error: bool,
+        is_certificate_revoked: bool,
         is_device_trust_error: bool,
     },
     AllGatewaysOffline {
@@ -601,9 +602,26 @@ impl<'a> Handler<'a> {
                 self.session = Session::None;
                 self.reset_telemetry_environment();
                 self.dns_controller.deactivate()?;
+                let is_certificate_revoked = error.is_certificate_revoked();
+                if is_certificate_revoked {
+                    self.read_x509_identity()
+                        .inspect(|_| {
+                            tracing::info!(
+                                "Re-read X.509 device identity after certificate revocation"
+                            )
+                        })
+                        .inspect_err(|error| {
+                            tracing::warn!(
+                                ?error,
+                                "Could not re-read X.509 device identity after certificate revocation"
+                            )
+                        })
+                        .ok();
+                }
                 self.send_ipc(ServerMsg::OnDisconnect {
                     error_msg: error.to_string(),
                     is_authentication_error: error.is_authentication_error(),
+                    is_certificate_revoked,
                     is_device_trust_error: error.is_device_trust_error(),
                 })
                 .await?
@@ -781,12 +799,7 @@ impl<'a> Handler<'a> {
             device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
         let api_url = self.api_url().to_string();
-        let identity = device_trust::identity(&device_trust_config())?;
-        self.mdm_device_id = identity
-            .as_ref()
-            .and_then(device_trust::Identity::mdm_device_id)
-            .map(str::to_owned);
-        telemetry::set_mdm_device_id(self.mdm_device_id.clone());
+        let identity = self.read_x509_identity()?;
         let portal_api_url = portal_api_url(
             Url::parse(&api_url).context("Failed to parse URL")?,
             identity.is_some(),
@@ -847,6 +860,17 @@ impl<'a> Handler<'a> {
             connlib,
             started_at,
         })
+    }
+
+    fn read_x509_identity(&mut self) -> Result<Option<device_trust::Identity>> {
+        let identity = device_trust::identity(&device_trust_config())?;
+        self.mdm_device_id = identity
+            .as_ref()
+            .and_then(device_trust::Identity::mdm_device_id)
+            .map(str::to_owned);
+        telemetry::set_mdm_device_id(self.mdm_device_id.clone());
+
+        Ok(identity)
     }
 
     async fn handle_connect_result(&mut self, result: Result<Session>) -> Result<()> {
