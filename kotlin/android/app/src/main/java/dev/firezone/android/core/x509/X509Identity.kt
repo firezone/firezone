@@ -498,7 +498,9 @@ class X509Identity
 
             internal fun mdmDeviceId(uris: List<String>): String? {
                 val filteredUris =
-                    uris.filterNot { it.startsWith(MICROSOFT_SID_URI_PREFIX, ignoreCase = true) }
+                    uris
+                        .flatMap { it.split(COMMA_JOINED_URI_BOUNDARY) }
+                        .filterNot { it.startsWith(MICROSOFT_SID_URI_PREFIX, ignoreCase = true) }
                 var sawTypedIdentifier = false
                 var typedMdmDeviceId: String? = null
 
@@ -561,6 +563,7 @@ class X509Identity
 
             private val RFC2253_COMMON_NAME = Regex("(?:^|,)CN=((?:\\\\.|[^,])*)", RegexOption.IGNORE_CASE)
             private val FIREZONE_URI = Regex("firezone://([^/]+)/(.+)", RegexOption.IGNORE_CASE)
+            private val COMMA_JOINED_URI_BOUNDARY = Regex(",\\s*(?=[a-zA-Z][a-zA-Z0-9+.\\-]*:)")
             private const val MICROSOFT_SID_URI_PREFIX = "tag:microsoft.com,2022-09-14:sid:"
             private val KNOWN_IDENTIFIER_TYPES =
                 setOf(

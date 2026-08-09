@@ -100,6 +100,20 @@ class X509IdentityTest {
     }
 
     @Test
+    fun `extracts MDM device ID from Intune comma-joined URI SAN`() {
+        assertEquals(
+            "4125c235-441b-48b7-b96d-1c17494931a2",
+            X509Identity.mdmDeviceId(
+                listOf(
+                    "tag:microsoft.com,2022-09-14:sid:S-1-12-1-1, " +
+                        "firezone://serial/ABC123, " +
+                        "firezone://intune-id/4125C235-441B-48B7-B96D-1C17494931A2",
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun `uses bare UUID fallback only when typed identifiers are absent`() {
         val bareId = "4125c235-441b-48b7-b96d-1c17494931a2"
 

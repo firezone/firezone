@@ -337,23 +337,7 @@ class TunnelService : VpnService() {
                     Telemetry.setFirezoneId(deviceIdValue)
                     Telemetry.setAccountSlug(config.accountSlug)
 
-                    val x509Alias =
-                        appRestrictions
-                            .getString(X509_CERTIFICATE_ALIAS_RESTRICTION)
-                            ?.takeUnless { it.isBlank() || it == "null" }
-                            ?: if (appRestrictions.containsKey(X509_CERTIFICATE_ALIAS_RESTRICTION)) {
-                                null
-                            } else {
-                                repo.getSelectedX509CertificateAliasSync()
-                            }
-                    val x509ClientIdentity =
-                        if (x509Identity.isSupportedProfile()) {
-                            withContext(Dispatchers.IO) {
-                                x509Identity.clientTlsIdentity(x509Alias)
-                            }
-                        } else {
-                            null
-                        }
+                    val x509ClientIdentity = loadX509ClientIdentity()
                     val mdmDeviceId = x509ClientIdentity?.mdmDeviceId
                     Telemetry.setMdmDeviceId(mdmDeviceId)
 
@@ -616,6 +600,35 @@ class TunnelService : VpnService() {
         TunnelNotification.showErrorNotification(this, title, message)
     }
 
+    private fun configuredX509Alias(): String? =
+        appRestrictions
+            .getString(X509_CERTIFICATE_ALIAS_RESTRICTION)
+            ?.takeUnless { it.isBlank() || it == "null" }
+            ?: if (appRestrictions.containsKey(X509_CERTIFICATE_ALIAS_RESTRICTION)) {
+                null
+            } else {
+                repo.getSelectedX509CertificateAliasSync()
+            }
+
+    private suspend fun loadX509ClientIdentity() =
+        if (x509Identity.isSupportedProfile()) {
+            withContext(Dispatchers.IO) {
+                x509Identity.clientTlsIdentity(configuredX509Alias())
+            }
+        } else {
+            null
+        }
+
+    private suspend fun refreshX509IdentityAfterRevocation() {
+        try {
+            val refreshedIdentity = loadX509ClientIdentity()
+            Telemetry.setMdmDeviceId(refreshedIdentity?.mdmDeviceId)
+            Log.i(TAG, "Re-read X.509 device identity after certificate revocation")
+        } catch (exception: X509IdentityException) {
+            Log.w(TAG, "Could not re-read X.509 device identity after certificate revocation", exception)
+        }
+    }
+
     private suspend fun eventLoop(
         session: SessionInterface,
         commandChannel: Channel<TunnelCommand>,
@@ -700,9 +713,16 @@ class TunnelService : VpnService() {
                                 }
 
                                 is Event.Disconnected -> {
-                                    // Clear any user tokens and actorNames
-                                    repo.clearToken()
-                                    repo.clearActorName()
+                                    when {
+                                        event.error.isCertificateRevoked() -> {
+                                            refreshX509IdentityAfterRevocation()
+                                        }
+
+                                        else -> {
+                                            repo.clearToken()
+                                            repo.clearActorName()
+                                        }
+                                    }
 
                                     stopReason = StopReason.Disconnected
                                 }
