@@ -149,18 +149,21 @@ defmodule Portal.DeviceTrustFixtures do
   or `pki.untrusted_ca`).
 
   Options: `:revoked` (list of certificate DERs whose serials go on the list),
-  `:number`, `:validity` in days as `{from, to}`, `:delta` to stamp a Delta CRL
-  Indicator, and `:idp` (a keyword list of `:distribution_point`,
-  `:only_ca_certs`, `:indirect`) to stamp an Issuing Distribution Point.
+  `:removed` (list of certificate DERs listed with CRLReason `removeFromCRL`),
+  `:number`, `:validity` in days as `{from, to}`, `:delta` (the base CRL number
+  the list applies to, stamped as a Delta CRL Indicator), `:freshest` (one URL
+  or a list of them, stamped as a Freshest CRL extension), and `:idp` (a keyword
+  list of `:distribution_point`, `:only_ca_certs`, `:indirect`) to stamp an
+  Issuing Distribution Point.
   """
   def crl(issuer, opts \\ []) do
     {from_days, to_days} = Keyword.get(opts, :validity, {-1, 7})
     now = DateTime.utc_now()
 
     revoked =
-      case Keyword.get(opts, :revoked, []) do
+      case revoked_entries(opts, now) do
         [] -> :asn1_NOVALUE
-        certs -> Enum.map(certs, &revoked_entry(&1, now))
+        entries -> entries
       end
 
     extensions =
@@ -178,10 +181,19 @@ defmodule Portal.DeviceTrustFixtures do
                :public_key.der_encode(:IssuingDistributionPoint, issuing_distribution_point(idp))}
             ]
         end ++
-        if Keyword.get(opts, :delta, false) do
-          [{:Extension, {2, 5, 29, 27}, true, :public_key.der_encode(:BaseCRLNumber, 1)}]
-        else
-          []
+        case Keyword.get(opts, :delta) do
+          nil ->
+            []
+
+          base_number ->
+            [
+              {:Extension, {2, 5, 29, 27}, true,
+               :public_key.der_encode(:BaseCRLNumber, base_number)}
+            ]
+        end ++
+        case Keyword.get(opts, :freshest) do
+          nil -> []
+          urls -> [{:Extension, {2, 5, 29, 46}, false, freshest_crl(urls)}]
         end
 
     algorithm = {:AlgorithmIdentifier, @ecdsa_sha256_oid, :asn1_NOVALUE}
@@ -194,6 +206,29 @@ defmodule Portal.DeviceTrustFixtures do
     signature = :public_key.sign(:public_key.der_encode(:TBSCertList, tbs), :sha256, issuer.key)
 
     :public_key.der_encode(:CertificateList, {:CertificateList, tbs, algorithm, signature})
+  end
+
+  defp freshest_crl(urls) do
+    urls
+    |> List.wrap()
+    |> Enum.map(
+      &{:DistributionPoint, {:fullName, [{:uniformResourceIdentifier, String.to_charlist(&1)}]},
+       :asn1_NOVALUE, :asn1_NOVALUE}
+    )
+    |> then(&:public_key.der_encode(:FreshestCRL, &1))
+  end
+
+  defp revoked_entries(opts, now) do
+    revoked = Enum.map(Keyword.get(opts, :revoked, []), &revoked_entry(&1, now, :asn1_NOVALUE))
+
+    removed =
+      Enum.map(Keyword.get(opts, :removed, []), &revoked_entry(&1, now, [crl_reason_extension()]))
+
+    revoked ++ removed
+  end
+
+  defp crl_reason_extension do
+    {:Extension, {2, 5, 29, 21}, false, :public_key.der_encode(:CRLReason, :removeFromCRL)}
   end
 
   defp issuing_distribution_point(opts) do
@@ -214,10 +249,10 @@ defmodule Portal.DeviceTrustFixtures do
     issuer.cert_der |> Portal.Crypto.X509.subject() |> then(&:public_key.der_decode(:Name, &1))
   end
 
-  defp revoked_entry(cert_der, now) do
+  defp revoked_entry(cert_der, now, extensions) do
     {:Certificate, tbs, _algorithm, _signature} = :public_key.der_decode(:Certificate, cert_der)
 
-    {:TBSCertList_revokedCertificates_SEQOF, elem(tbs, 2), utc_time(now), :asn1_NOVALUE}
+    {:TBSCertList_revokedCertificates_SEQOF, elem(tbs, 2), utc_time(now), extensions}
   end
 
   defp new_ca(common_name) do

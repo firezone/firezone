@@ -31,6 +31,28 @@ defmodule Portal.Crl.SchedulerTest do
       assert all_sync_jobs() == []
     end
 
+    test "queues an issuer whose delta is due while its list is not", %{
+      account: account,
+      pki: pki
+    } do
+      # A CA that reissues its list weekly while replacing the delta daily would
+      # otherwise have a week of revocations wait on the list's own schedule.
+      endpoint_fixture(account, pki.ca_der,
+        crl_next_update: in_days(7),
+        delta_next_update: in_days(-1)
+      )
+
+      assert Scheduler.perform(%Oban.Job{}) == {:ok, :scheduled}
+      assert [_job] = all_sync_jobs()
+    end
+
+    test "queues an issuer whose last delta check failed", %{account: account, pki: pki} do
+      endpoint_fixture(account, pki.ca_der, crl_next_update: in_days(7), delta_error: "boom")
+
+      assert Scheduler.perform(%Oban.Job{}) == {:ok, :scheduled}
+      assert [_job] = all_sync_jobs()
+    end
+
     test "skips an issuer with no CRL address", %{account: account, pki: pki} do
       endpoint_fixture(account, pki.ca_der, crl_urls: [])
 
@@ -61,8 +83,14 @@ defmodule Portal.Crl.SchedulerTest do
       distribution_point: List.first(crl_urls) || "http://crl.example.test/ca.crl",
       crl_urls: crl_urls,
       crl_next_update: Keyword.get(attrs, :crl_next_update),
+      delta_next_update: Keyword.get(attrs, :delta_next_update),
+      delta_error: Keyword.get(attrs, :delta_error),
       inserted_at: DateTime.utc_now(),
       updated_at: DateTime.utc_now()
     })
+  end
+
+  defp in_days(days) do
+    DateTime.utc_now() |> DateTime.add(days, :day) |> DateTime.truncate(:second)
   end
 end

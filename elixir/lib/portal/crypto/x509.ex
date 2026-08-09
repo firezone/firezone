@@ -26,6 +26,9 @@ defmodule Portal.Crypto.X509 do
   @issuing_distribution_point_oid {2, 5, 29, 28}
   @delta_crl_indicator_oid {2, 5, 29, 27}
 
+  # Where a complete CRL says its delta is published.
+  @freshest_crl_oid {2, 5, 29, 46}
+
   # Other extensions surfaced for certificate debugging.
   @extended_key_usage_oid {2, 5, 29, 37}
   @subject_key_identifier_oid {2, 5, 29, 14}
@@ -818,6 +821,7 @@ defmodule Portal.Crypto.X509 do
              next_update: DateTime.t() | nil,
              number: integer() | nil,
              scope: map(),
+             freshest_urls: [String.t()],
              revocations: [map()]
            }}
           | {:error, :invalid}
@@ -853,25 +857,24 @@ defmodule Portal.Crypto.X509 do
     %{
       this_update: decode_time(this_update),
       next_update: decode_time(next_update),
-      number: crl_number(extensions),
+      number: extension_integer(extensions, @crl_number_oid, :CRLNumber),
       scope: crl_scope(extensions),
+      freshest_urls: freshest_crl_urls(extensions),
       revocations: crl_revocations(revoked)
     }
   end
 
-  defp crl_number(:asn1_NOVALUE), do: nil
-
-  defp crl_number(extensions) do
-    case find_extension(extensions, @crl_number_oid) do
-      {:Extension, @crl_number_oid, _critical, value} -> decode_crl_number(value)
+  defp extension_integer(extensions, oid, type) do
+    case find_extension(extensions, oid) do
+      {:Extension, ^oid, _critical, value} -> decode_integer(type, value)
       _other -> nil
     end
   end
 
-  defp decode_crl_number(value) when is_integer(value), do: value
+  defp decode_integer(_type, value) when is_integer(value), do: value
 
-  defp decode_crl_number(value) when is_binary(value) do
-    case :public_key.der_decode(:CRLNumber, value) do
+  defp decode_integer(type, value) when is_binary(value) do
+    case :public_key.der_decode(type, value) do
       number when is_integer(number) -> number
       _other -> nil
     end
@@ -879,7 +882,26 @@ defmodule Portal.Crypto.X509 do
     _error -> nil
   end
 
-  defp decode_crl_number(_other), do: nil
+  defp decode_integer(_type, _value), do: nil
+
+  # A delta names its own address nowhere; only the complete list it belongs to
+  # says where it is published, in the same shape as CRL Distribution Points.
+  defp freshest_crl_urls(extensions) do
+    case find_extension(extensions, @freshest_crl_oid) do
+      {:Extension, @freshest_crl_oid, _critical, value} -> decode_freshest_crl(value)
+      _other -> []
+    end
+  end
+
+  defp decode_freshest_crl(value) when is_binary(value) do
+    :FreshestCRL
+    |> :public_key.der_decode(value)
+    |> Enum.flat_map(&extract_crl_urls/1)
+  rescue
+    _error -> []
+  end
+
+  defp decode_freshest_crl(_other), do: []
 
   # What a CRL says about its own coverage. An Issuing Distribution Point does
   # not by itself mean the list is incomplete: a CA may stamp one on a complete
@@ -888,17 +910,26 @@ defmodule Portal.Crypto.X509 do
   #
   # `only_user_certs?` is deliberately absent: in X.509 a "user certificate" is
   # any end-entity certificate, which is exactly what devices hold.
-  defp crl_scope(:asn1_NOVALUE), do: %{delta?: false, excludes: [], distribution_points: []}
+  #
+  # `delta?` is the presence of the Delta CRL Indicator while `base_number` is
+  # the number it carries, so a list whose indicator cannot be read is still
+  # known to be a delta rather than being taken for a complete list.
+  defp crl_scope(:asn1_NOVALUE) do
+    %{delta?: false, base_number: nil, excludes: [], distribution_points: []}
+  end
 
   defp crl_scope(extensions) do
-    delta? = not is_nil(find_extension(extensions, @delta_crl_indicator_oid))
+    delta = %{
+      delta?: not is_nil(find_extension(extensions, @delta_crl_indicator_oid)),
+      base_number: extension_integer(extensions, @delta_crl_indicator_oid, :BaseCRLNumber)
+    }
 
     case find_extension(extensions, @issuing_distribution_point_oid) do
       {:Extension, @issuing_distribution_point_oid, _critical, value} ->
-        value |> decode_issuing_distribution_point() |> Map.put(:delta?, delta?)
+        value |> decode_issuing_distribution_point() |> Map.merge(delta)
 
       _other ->
-        %{delta?: delta?, excludes: [], distribution_points: []}
+        Map.merge(delta, %{excludes: [], distribution_points: []})
     end
   end
 

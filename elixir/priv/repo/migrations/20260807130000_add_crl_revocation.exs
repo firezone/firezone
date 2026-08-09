@@ -40,6 +40,12 @@ defmodule Portal.Repo.Migrations.AddCrlRevocation do
 
   Serials are stored uppercase hex, matching `devices.last_attested_cert_serial`,
   so the two compare directly.
+
+  A CA may publish a delta alongside its complete list, naming it from the
+  complete list's Freshest CRL extension, and typically republishes the delta far
+  more often. The delta's own freshness is tracked in its own columns, because a
+  complete list that is still inside its own validity says nothing about whether
+  the delta on top of it has since been replaced.
   """
   use Ecto.Migration
 
@@ -72,6 +78,12 @@ defmodule Portal.Repo.Migrations.AddCrlRevocation do
       add(:crl_next_update, :timestamptz)
       add(:crl_fetched_at, :timestamptz)
       add(:crl_error, :string)
+
+      add(:delta_number, :bigint)
+      add(:delta_this_update, :timestamptz)
+      add(:delta_next_update, :timestamptz)
+      add(:delta_fetched_at, :timestamptz)
+      add(:delta_error, :string)
 
       timestamps()
     end

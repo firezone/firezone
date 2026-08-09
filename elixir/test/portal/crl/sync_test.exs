@@ -12,6 +12,7 @@ defmodule Portal.Crl.SyncTest do
 
   @crl_url "http://crl.example.test/ca.crl"
   @mirror_url "http://mirror.example.test/ca.crl"
+  @delta_url "http://crl.example.test/delta.crl"
 
   setup do
     account = account_fixture()
@@ -268,6 +269,151 @@ defmodule Portal.Crl.SyncTest do
       refute_receive {:certificate_revoked, _issuer, _serial}
     end
 
+    test "applies the delta on top of the complete list", %{account: account, pki: pki} do
+      on_list = leaf(pki, :rsa)
+      on_delta = leaf(pki, :ec)
+      endpoint = endpoint_fixture(account, pki.ca_der)
+
+      stub_paths(%{
+        "/ca.crl" => crl(pki.ca, revoked: [on_list], number: 9, freshest: @delta_url),
+        "/delta.crl" => crl(pki.ca, revoked: [on_delta], number: 10, delta: 9)
+      })
+
+      assert perform(endpoint) == {:ok, :refreshed}
+
+      assert revoked_serials() ==
+               MapSet.new([cert_serial_hex(on_list), cert_serial_hex(on_delta)])
+
+      refreshed = Repo.one!(Portal.RevocationEndpoint)
+      assert refreshed.delta_number == 10
+      assert refreshed.delta_next_update
+      assert is_nil(refreshed.delta_error)
+    end
+
+    test "un-revokes a certificate the delta takes off the list", %{account: account, pki: pki} do
+      released = leaf(pki, :rsa)
+      still_revoked = leaf(pki, :ec)
+      endpoint = endpoint_fixture(account, pki.ca_der)
+
+      stub_paths(%{
+        "/ca.crl" =>
+          crl(pki.ca, revoked: [released, still_revoked], number: 9, freshest: @delta_url),
+        "/delta.crl" => crl(pki.ca, removed: [released], number: 10, delta: 9)
+      })
+
+      assert perform(endpoint) == {:ok, :refreshed}
+
+      # CRLReason removeFromCRL says the certificate is revoked no longer, so
+      # the serial has to leave the cache rather than be listed with a reason.
+      assert revoked_serials() == MapSet.new([cert_serial_hex(still_revoked)])
+    end
+
+    test "accepts a delta scoped to the address of the list it applies to", %{
+      account: account,
+      pki: pki
+    } do
+      on_delta = leaf(pki, :ec)
+      endpoint = endpoint_fixture(account, pki.ca_der)
+
+      stub_paths(%{
+        "/ca.crl" => crl(pki.ca, number: 9, freshest: @delta_url),
+        "/delta.crl" =>
+          crl(pki.ca,
+            revoked: [on_delta],
+            number: 10,
+            delta: 9,
+            idp: [distribution_point: @crl_url]
+          )
+      })
+
+      assert perform(endpoint) == {:ok, :refreshed}
+      assert revoked_serials() == MapSet.new([cert_serial_hex(on_delta)])
+    end
+
+    test "refuses a delta built on a newer list than the one it was served with", %{
+      account: account,
+      pki: pki
+    } do
+      on_list = leaf(pki, :rsa)
+      on_delta = leaf(pki, :ec)
+      endpoint = endpoint_fixture(account, pki.ca_der)
+
+      stub_paths(%{
+        "/ca.crl" => crl(pki.ca, revoked: [on_list], number: 9, freshest: @delta_url),
+        "/delta.crl" => crl(pki.ca, revoked: [on_delta], number: 11, delta: 10)
+      })
+
+      assert perform(endpoint) == {:ok, :refreshed}
+
+      assert revoked_serials() == MapSet.new([cert_serial_hex(on_list)])
+      assert Repo.one!(Portal.RevocationEndpoint).delta_error =~ "delta_base_too_new"
+    end
+
+    test "refuses a complete list served at the delta's address", %{account: account, pki: pki} do
+      on_list = leaf(pki, :rsa)
+      endpoint = endpoint_fixture(account, pki.ca_der)
+
+      stub_paths(%{
+        "/ca.crl" => crl(pki.ca, revoked: [on_list], number: 9, freshest: @delta_url),
+        "/delta.crl" => crl(pki.ca, revoked: [leaf(pki, :ec)], number: 10)
+      })
+
+      assert perform(endpoint) == {:ok, :refreshed}
+
+      assert revoked_serials() == MapSet.new([cert_serial_hex(on_list)])
+      assert Repo.one!(Portal.RevocationEndpoint).delta_error =~ "crl_not_delta"
+    end
+
+    test "refuses a delta served at the complete list's address", %{account: account, pki: pki} do
+      endpoint = endpoint_fixture(account, pki.ca_der)
+      stub_crl(crl(pki.ca, revoked: [leaf(pki, :rsa)], delta: 1))
+
+      # A delta lists only what changed, so caching it as the whole set would
+      # drop every serial the complete list carries.
+      assert failure(endpoint) =~ "crl_is_delta"
+      assert Repo.all(Portal.CrlRevocation) == []
+    end
+
+    test "keeps the complete list when the delta cannot be fetched", %{
+      account: account,
+      pki: pki
+    } do
+      on_list = leaf(pki, :rsa)
+      endpoint = endpoint_fixture(account, pki.ca_der)
+
+      stub_paths(%{"/ca.crl" => crl(pki.ca, revoked: [on_list], number: 9, freshest: @delta_url)})
+
+      assert perform(endpoint) == {:ok, :refreshed}
+
+      assert revoked_serials() == MapSet.new([cert_serial_hex(on_list)])
+
+      refreshed = Repo.one!(Portal.RevocationEndpoint)
+      assert refreshed.delta_error =~ "connection refused"
+      assert is_nil(refreshed.crl_error)
+      assert refreshed.crl_number == 9
+    end
+
+    test "forgets the delta once the list stops naming one", %{account: account, pki: pki} do
+      endpoint = endpoint_fixture(account, pki.ca_der)
+
+      stub_paths(%{
+        "/ca.crl" => crl(pki.ca, number: 9, freshest: @delta_url),
+        "/delta.crl" => crl(pki.ca, revoked: [leaf(pki, :ec)], number: 10, delta: 9)
+      })
+
+      assert perform(endpoint) == {:ok, :refreshed}
+      assert Repo.one!(Portal.RevocationEndpoint).delta_number == 10
+
+      stub_paths(%{"/ca.crl" => crl(pki.ca, number: 11)})
+
+      assert perform(endpoint) == {:ok, :refreshed}
+
+      refreshed = Repo.one!(Portal.RevocationEndpoint)
+      assert is_nil(refreshed.delta_number)
+      assert is_nil(refreshed.delta_next_update)
+      assert is_nil(refreshed.delta_error)
+    end
+
     test "does nothing when the endpoint is gone", %{account: account, pki: pki} do
       endpoint = endpoint_fixture(account, pki.ca_der)
       Repo.delete_all(Portal.RevocationEndpoint)
@@ -325,6 +471,21 @@ defmodule Portal.Crl.SyncTest do
 
   defp stub_crl(body) do
     Req.Test.stub(Sync, fn conn -> Plug.Conn.send_resp(conn, 200, body) end)
+  end
+
+  # A CA serves its complete list and the delta on top of it from the same host,
+  # so the two are told apart by path.
+  defp stub_paths(bodies) do
+    Req.Test.stub(Sync, fn conn ->
+      case Map.fetch(bodies, conn.request_path) do
+        {:ok, body} -> Plug.Conn.send_resp(conn, 200, body)
+        :error -> Req.Test.transport_error(conn, :econnrefused)
+      end
+    end)
+  end
+
+  defp revoked_serials do
+    Portal.CrlRevocation |> Repo.all() |> MapSet.new(& &1.serial)
   end
 
   defp cert_serial_hex(der) do

@@ -40,6 +40,11 @@ defmodule Portal.RevocationEndpoint do
           crl_next_update: DateTime.t() | nil,
           crl_fetched_at: DateTime.t() | nil,
           crl_error: String.t() | nil,
+          delta_number: integer() | nil,
+          delta_this_update: DateTime.t() | nil,
+          delta_next_update: DateTime.t() | nil,
+          delta_fetched_at: DateTime.t() | nil,
+          delta_error: String.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -60,6 +65,15 @@ defmodule Portal.RevocationEndpoint do
     field :crl_fetched_at, :utc_datetime_usec
     field :crl_error, :string
 
+    # The delta published on top of the list above, tracked separately because a
+    # CA commonly leaves the complete list valid for a week while replacing the
+    # delta daily.
+    field :delta_number, :integer
+    field :delta_this_update, :utc_datetime
+    field :delta_next_update, :utc_datetime
+    field :delta_fetched_at, :utc_datetime_usec
+    field :delta_error, :string
+
     timestamps()
   end
 
@@ -71,6 +85,7 @@ defmodule Portal.RevocationEndpoint do
     |> validate_urls(:crl_urls)
     |> validate_urls(:ocsp_urls)
     |> validate_length(:crl_error, max: 255)
+    |> validate_length(:delta_error, max: 255)
     |> assoc_constraint(:account)
   end
 

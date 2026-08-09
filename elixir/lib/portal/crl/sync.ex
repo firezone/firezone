@@ -6,6 +6,11 @@ defmodule Portal.Crl.Sync do
   worker owns every outbound request. A fetch that fails leaves the previous
   list in place: a CA that is briefly unreachable should not silently un-revoke
   the certificates it already published.
+
+  Where the complete list names a delta, that delta is fetched too and applied
+  on top of it. A complete list is only current as of its own publication, and a
+  CA that reissues it weekly while publishing a delta daily would otherwise have
+  its revocations arrive here up to a week late.
   """
   use Oban.Worker, queue: :crl_sync, max_attempts: 3
   alias Portal.Crypto.X509
@@ -36,20 +41,9 @@ defmodule Portal.Crl.Sync do
   end
 
   defp refresh(endpoint) do
-    case fetch_and_verify(endpoint) do
+    case fetch_and_verify(endpoint.crl_urls, endpoint, :base) do
       {:ok, crl} ->
-        {:ok, {count, newly_revoked}} = Database.replace_revocations(endpoint, crl)
-        notify_revoked(endpoint, newly_revoked)
-
-        Logger.info("Refreshed certificate revocation list",
-          account_id: endpoint.account_id,
-          issuer: X509.describe_name(endpoint.issuer),
-          distribution_point: endpoint.distribution_point,
-          revoked_count: count,
-          newly_revoked_count: MapSet.size(newly_revoked)
-        )
-
-        {:ok, :refreshed}
+        apply_crl(endpoint, crl)
 
       {:error, reason} ->
         Database.record_error(endpoint, reason)
@@ -64,6 +58,51 @@ defmodule Portal.Crl.Sync do
         {:ok, :failed}
     end
   end
+
+  defp apply_crl(endpoint, crl) do
+    delta = fetch_delta(endpoint, crl)
+    {:ok, {count, newly_revoked}} = Database.replace_revocations(endpoint, crl, delta)
+    notify_revoked(endpoint, newly_revoked)
+
+    Logger.info(
+      "Refreshed certificate revocation list",
+      [
+        account_id: endpoint.account_id,
+        issuer: X509.describe_name(endpoint.issuer),
+        distribution_point: endpoint.distribution_point,
+        revoked_count: count,
+        newly_revoked_count: MapSet.size(newly_revoked)
+      ] ++ delta_metadata(delta)
+    )
+
+    {:ok, :refreshed}
+  end
+
+  defp fetch_delta(_endpoint, %{freshest_urls: []}), do: :none
+
+  # A delta that cannot be fetched or read is reported back and recorded rather
+  # than failing the refresh: the complete list on its own is a correct answer,
+  # only a staler one.
+  defp fetch_delta(endpoint, crl) do
+    with {:ok, delta} <- fetch_and_verify(crl.freshest_urls, endpoint, :delta),
+         :ok <- applies_to_this_list(delta, crl) do
+      {:ok, delta}
+    end
+  end
+
+  # A delta only says what changed since the list it names, so one built on a
+  # newer list than we hold describes a starting point we do not have.
+  defp applies_to_this_list(delta, crl) do
+    cond do
+      is_nil(crl.number) -> {:error, :crl_number_missing}
+      delta.scope.base_number > crl.number -> {:error, :delta_base_too_new}
+      true -> :ok
+    end
+  end
+
+  defp delta_metadata({:ok, delta}), do: [delta_number: delta.number]
+  defp delta_metadata({:error, reason}), do: [delta_error: inspect(reason)]
+  defp delta_metadata(:none), do: []
 
   # The connect path refuses a revoked certificate, but only at the next
   # connect. A device already holding a session would keep it until then, which
@@ -100,9 +139,9 @@ defmodule Portal.Crl.Sync do
   # on to the next while anything the list itself says about its contents is
   # final. Retrying a rejected list at another address would only fetch the same
   # bytes again.
-  defp fetch_and_verify(endpoint) do
-    Enum.reduce_while(endpoint.crl_urls, {:error, :no_crl_url}, fn url, _last ->
-      url |> fetch_one(endpoint) |> next_or_stop()
+  defp fetch_and_verify(urls, endpoint, kind) do
+    Enum.reduce_while(urls, {:error, :no_crl_url}, fn url, _last ->
+      url |> fetch_one(endpoint, kind) |> next_or_stop()
     end)
   end
 
@@ -125,13 +164,13 @@ defmodule Portal.Crl.Sync do
   defp address_fault?(reason) when is_binary(reason), do: true
   defp address_fault?(_reason), do: false
 
-  defp fetch_one(url, endpoint) do
+  defp fetch_one(url, endpoint, kind) do
     with :ok <- supported_scheme(url),
          {:ok, der} <- fetch(url),
          :ok <- issued_by_expected_ca(der, endpoint),
          :ok <- verify_signature(der, endpoint),
          {:ok, crl} <- decode(der),
-         :ok <- covers_this_partition(crl, url) do
+         :ok <- covers_this_partition(crl, url, endpoint, kind) do
       {:ok, crl}
     end
   end
@@ -209,7 +248,7 @@ defmodule Portal.Crl.Sync do
   # that genuinely exclude our leaves are rejected, and where the extension names
   # a distribution point it has to be the one we followed, or we would cache
   # another partition's serials under this one.
-  defp covers_this_partition(crl, url) do
+  defp covers_this_partition(crl, url, _endpoint, :base) do
     cond do
       crl.scope.delta? ->
         {:error, :crl_is_delta}
@@ -217,12 +256,36 @@ defmodule Portal.Crl.Sync do
       crl.scope.excludes != [] ->
         {:error, {:crl_excludes, crl.scope.excludes}}
 
-      crl.scope.distribution_points != [] and url not in crl.scope.distribution_points ->
+      not names_partition?(crl, [url]) ->
         {:error, :crl_wrong_partition}
 
       true ->
         :ok
     end
+  end
+
+  # RFC 5280 5.2.5 has a delta repeat the Issuing Distribution Point of the list
+  # it applies to, so the address the extension names is that list's rather than
+  # the delta's own, and either is accepted.
+  defp covers_this_partition(crl, url, endpoint, :delta) do
+    cond do
+      is_nil(crl.scope.base_number) ->
+        {:error, :crl_not_delta}
+
+      crl.scope.excludes != [] ->
+        {:error, {:crl_excludes, crl.scope.excludes}}
+
+      not names_partition?(crl, [url, endpoint.distribution_point]) ->
+        {:error, :crl_wrong_partition}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp names_partition?(crl, urls) do
+    crl.scope.distribution_points == [] or
+      Enum.any?(urls, &(&1 in crl.scope.distribution_points))
   end
 
   defp request_opts, do: Portal.Config.fetch_env!(:portal, __MODULE__)[:req_opts] || []
@@ -231,6 +294,8 @@ defmodule Portal.Crl.Sync do
     import Ecto.Query
     alias Portal.Crypto.X509
     alias Portal.Safe
+
+    @remove_from_crl "removeFromCRL"
 
     def fetch_endpoint(account_id, issuer, distribution_point) do
       from(e in Portal.RevocationEndpoint,
@@ -256,14 +321,17 @@ defmodule Portal.Crl.Sync do
       |> Enum.flat_map(&decode_pem/1)
     end
 
-    # The published list is the whole truth for its issuer, so the previous set
-    # is replaced rather than merged: a serial the CA drops stops being
-    # revoked, and one it adds starts.
-    def replace_revocations(endpoint, crl) do
+    # The published list is the whole truth for its issuer as of its own
+    # publication, so the previous set is replaced rather than merged: a serial
+    # the CA drops stops being revoked, and one it adds starts. What the delta
+    # published since then is then applied on top.
+    def replace_revocations(endpoint, crl, delta) do
       now = DateTime.utc_now()
 
       rows =
-        Enum.map(crl.revocations, fn revocation ->
+        crl
+        |> merge_delta(delta)
+        |> Enum.map(fn revocation ->
           %{
             account_id: endpoint.account_id,
             issuer: endpoint.issuer,
@@ -301,18 +369,8 @@ defmodule Portal.Crl.Sync do
 
         endpoint
         |> endpoint_query()
-        |> update(
-          set: [
-            crl_number: ^crl.number,
-            crl_this_update: ^crl.this_update,
-            crl_next_update: ^crl.next_update,
-            crl_fetched_at: ^now,
-            crl_error: nil,
-            updated_at: ^now
-          ]
-        )
         |> Safe.unscoped()
-        |> Safe.update_all([])
+        |> Safe.update_all(set: crl_fields(crl, now) ++ delta_fields(delta, now))
 
         {:ok, {length(rows), newly_revoked}}
       end)
@@ -341,6 +399,70 @@ defmodule Portal.Crl.Sync do
       )
       |> Safe.unscoped()
       |> Safe.update_all([])
+    end
+
+    defp merge_delta(crl, delta) do
+      crl.revocations
+      |> Map.new(&{&1.serial, &1})
+      |> apply_delta(delta)
+      |> Map.values()
+    end
+
+    defp apply_delta(revocations, {:ok, delta}) do
+      Enum.reduce(delta.revocations, revocations, &apply_delta_entry/2)
+    end
+
+    defp apply_delta(revocations, _delta), do: revocations
+
+    # CRLReason 8, removeFromCRL, is a delta saying a certificate is revoked no
+    # longer, and is the one entry that takes a serial out of the set instead of
+    # putting one in.
+    defp apply_delta_entry(%{reason: @remove_from_crl} = revocation, revocations) do
+      Map.delete(revocations, revocation.serial)
+    end
+
+    defp apply_delta_entry(revocation, revocations) do
+      Map.put(revocations, revocation.serial, revocation)
+    end
+
+    defp crl_fields(crl, now) do
+      [
+        crl_number: crl.number,
+        crl_this_update: crl.this_update,
+        crl_next_update: crl.next_update,
+        crl_fetched_at: now,
+        crl_error: nil,
+        updated_at: now
+      ]
+    end
+
+    defp delta_fields({:ok, delta}, now) do
+      [
+        delta_number: delta.number,
+        delta_this_update: delta.this_update,
+        delta_next_update: delta.next_update,
+        delta_fetched_at: now,
+        delta_error: nil
+      ]
+    end
+
+    # Only the attempt is recorded. The freshness columns keep describing the
+    # last delta that was read, and the error is what says the cache is standing
+    # on the complete list alone.
+    defp delta_fields({:error, reason}, now) do
+      [delta_fetched_at: now, delta_error: to_message(reason)]
+    end
+
+    # The list named no delta, so anything recorded for one is about a list this
+    # CA no longer publishes.
+    defp delta_fields(:none, _now) do
+      [
+        delta_number: nil,
+        delta_this_update: nil,
+        delta_next_update: nil,
+        delta_fetched_at: nil,
+        delta_error: nil
+      ]
     end
 
     # Scoped to one partition: replacing every row for the issuer would wipe the
