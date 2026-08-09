@@ -49,6 +49,41 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
       |> Safe.scoped(subject)
       |> Safe.one!()
     end
+
+    # Keyed on the issuer rather than on the anchor, so an endpoint is shown
+    # against whichever uploaded certificate bears that name.
+    def list_revocation_endpoints(issuers, subject) do
+      from(e in Portal.RevocationEndpoint, where: e.issuer in ^issuers)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    # Distinct serials rather than rows: a CA that partitions its list can hold
+    # the same serial in more than one partition, and the connect check reads
+    # their union.
+    def count_revocations(issuers, subject) do
+      from(r in Portal.CrlRevocation,
+        where: r.issuer in ^issuers,
+        group_by: r.issuer,
+        select: {r.issuer, count(r.serial, :distinct)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Map.new()
+    end
+
+    def count_revoked_statuses(issuers, subject) do
+      from(s in Portal.OcspStatus,
+        where: s.issuer in ^issuers,
+        where: s.status == "revoked",
+        group_by: s.issuer,
+        select: {s.issuer, count(s.serial)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Map.new()
+    end
+
   end
 
   def mount(_params, _session, socket) do
@@ -64,6 +99,7 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
         |> assign(selected_trust_anchor: nil)
         |> assign(form: nil, input_mode: :paste)
         |> assign(confirm_delete?: false)
+        |> assign(revocation: [])
         |> assign(device_trust_enabled?: device_trust_enabled?)
         |> allow_upload(:cert_file,
           accept: ~w(.pem .crt .cer .der .txt),
@@ -105,11 +141,13 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
     trust_anchor = Database.get_trust_anchor!(id, socket.assigns.subject)
 
     socket =
-      assign(socket,
+      socket
+      |> assign(
         selected_trust_anchor: trust_anchor,
         form: nil,
         confirm_delete?: false
       )
+      |> assign_revocation(trust_anchor)
 
     {:noreply, socket}
   end
@@ -217,6 +255,7 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
           account={@account}
           trust_anchor={@selected_trust_anchor}
           confirm_delete?={@confirm_delete?}
+          revocation={@revocation}
         />
       </div>
 
@@ -345,6 +384,7 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
   attr :account, :any, required: true
   attr :trust_anchor, :any, required: true
   attr :confirm_delete?, :boolean, required: true
+  attr :revocation, :list, required: true
 
   defp trust_anchor_show_panel(assigns) do
     certificate_details = Enum.map(assigns.trust_anchor.certificates, &describe_certificate/1)
@@ -383,6 +423,55 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
               </dd>
             </div>
           </dl>
+        </section>
+
+        <div class="border-t border-border"></div>
+
+        <section>
+          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
+            Revocation
+          </h3>
+
+          <p :if={@revocation == []} class="text-xs text-subtle">
+            No revocation endpoint known yet. A CA publishes its address in the certificates it
+            issues, so this fills in the first time a device connects with one.
+          </p>
+
+          <div class="space-y-3">
+            <div
+              :for={entry <- @revocation}
+              class="border border-border rounded p-3 bg-surface space-y-3"
+            >
+              <p class="text-xs font-semibold text-heading truncate">
+                {X509.describe_name(entry.endpoint.issuer) || "(unnamed issuer)"}
+              </p>
+
+              <p
+                :if={revocation_error(entry.endpoint)}
+                class="text-xs text-danger break-all flex items-start gap-1.5"
+              >
+                <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>Last check failed: {revocation_error(entry.endpoint)}</span>
+              </p>
+
+              <div>
+                <dt class="text-[10px] text-subtle mb-0.5">Addresses</dt>
+                <dd
+                  :for={url <- revocation_addresses(entry.endpoint)}
+                  class="text-xs text-heading font-mono break-all"
+                >
+                  {url}
+                </dd>
+              </div>
+
+              <dl class="space-y-2">
+                <div :for={{label, value} <- revocation_rows(entry)}>
+                  <dt class="text-[10px] text-subtle mb-0.5">{label}</dt>
+                  <dd class="text-xs text-heading">{value}</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
         </section>
 
         <div class="border-t border-border"></div>
@@ -841,6 +930,88 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
     "#{count} certificate#{if count == 1, do: "", else: "s"}"
   end
 
+  # A CA advertises where it publishes in the certificates it issues, not in its
+  # own, so nothing is known here until a device presents one. Until then the
+  # panel says so rather than implying the CA publishes nothing.
+  defp assign_revocation(socket, trust_anchor) do
+    subject = socket.assigns.subject
+
+    issuers =
+      trust_anchor.certificates
+      |> Enum.flat_map(fn certificate ->
+        case X509.pem_decode(certificate.pem) do
+          {:ok, [{_type, der, _headers} | _rest]} -> [X509.subject(der)]
+          _other -> []
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    endpoints =
+      if issuers == [] do
+        []
+      else
+        counts = %{
+          crl: Database.count_revocations(issuers, subject),
+          ocsp: Database.count_revoked_statuses(issuers, subject)
+        }
+
+        issuers
+        |> Database.list_revocation_endpoints(subject)
+        |> Enum.map(&with_revoked_count(&1, counts))
+        |> Enum.sort_by(&X509.describe_name(&1.endpoint.issuer))
+      end
+
+    assign(socket, revocation: endpoints)
+  end
+
+  defp revocation_addresses(endpoint) do
+    case endpoint.crl_urls ++ endpoint.ocsp_urls do
+      [] -> ["(none advertised)"]
+      urls -> urls
+    end
+  end
+
+  defp with_revoked_count(endpoint, counts) do
+    by_issuer = if checks_via_list?(endpoint), do: counts.crl, else: counts.ocsp
+
+    %{endpoint: endpoint, revoked_count: Map.get(by_issuer, endpoint.issuer, 0)}
+  end
+
+  # A list that we cannot fetch, such as an ldap:// distribution point, is not
+  # coverage, so those issuers are checked through their responder instead.
+  defp checks_via_list?(endpoint) do
+    Enum.any?(endpoint.crl_urls, &String.starts_with?(&1, ["http://", "https://"]))
+  end
+
+  defp checked_via(endpoint) do
+    if checks_via_list?(endpoint), do: "CRL", else: "OCSP"
+  end
+
+  defp revocation_error(endpoint) do
+    if checks_via_list?(endpoint), do: endpoint.crl_error, else: endpoint.ocsp_error
+  end
+
+  defp revocation_rows(%{endpoint: endpoint, revoked_count: revoked_count}) do
+    [{"Checked via", checked_via(endpoint)}] ++
+      mechanism_rows(endpoint) ++
+      [{"Revoked certificates", to_string(revoked_count)}]
+    |> Enum.reject(fn {_label, value} -> value in [nil, ""] end)
+  end
+
+  defp mechanism_rows(endpoint) do
+    if checks_via_list?(endpoint) do
+      [
+        {"Last checked", format_date(endpoint.crl_fetched_at)},
+        {"List published", format_date(endpoint.crl_this_update)},
+        {"Next update", format_date(endpoint.crl_next_update)},
+        {"List number", endpoint.crl_number && to_string(endpoint.crl_number)}
+      ]
+    else
+      [{"Last checked", format_date(endpoint.ocsp_checked_at)}]
+    end
+  end
+
   defp describe_certificate(certificate) do
     with {:ok, [{_type, der, _headers} | _rest]} <- X509.pem_decode(certificate.pem),
          {:ok, otp_cert} <- X509.decode_der_certificate(der) do
@@ -866,7 +1037,7 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
         subject_key_identifier: X509.subject_key_identifier(otp_cert),
         authority_key_identifier: X509.authority_key_identifier(otp_cert),
         subject_alt_names: X509.subject_alt_names(otp_cert),
-        crl_distribution_points: X509.crl_distribution_points(otp_cert),
+        crl_distribution_points: otp_cert |> X509.crl_distribution_points() |> List.flatten(),
         ocsp_urls: aia.ocsp,
         ca_issuer_urls: aia.ca_issuers
       }

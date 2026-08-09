@@ -88,6 +88,27 @@ defmodule Portal.DeviceTrustFixtures do
     )
   end
 
+  # Carries CRL distribution point and OCSP endpoints, which real MDM CAs stamp
+  # into what they issue and the anchor learns from the first connect.
+  def leaf(pki, :with_crl) do
+    issue_leaf(pki.ca,
+      sans: @typed_sans,
+      extensions: [
+        {:Extension, {2, 5, 29, 31}, false,
+         :public_key.der_encode(:CRLDistributionPoints, [
+           {:DistributionPoint,
+            {:fullName, [{:uniformResourceIdentifier, ~c"http://crl.example.test/ca.crl"}]},
+            :asn1_NOVALUE, :asn1_NOVALUE}
+         ])},
+        {:Extension, {1, 3, 6, 1, 5, 5, 7, 1, 1}, false,
+         [
+           {:AccessDescription, {1, 3, 6, 1, 5, 5, 7, 48, 1},
+            {:uniformResourceIdentifier, ~c"http://ocsp.example.test"}}
+         ]}
+      ]
+    )
+  end
+
   def leaf(pki, :no_eku), do: issue_leaf(pki.ca, eku: [@server_auth_oid], sans: @typed_sans)
 
   def leaf(pki, :untrusted), do: issue_leaf(pki.untrusted_ca, sans: @typed_sans)
@@ -123,6 +144,217 @@ defmodule Portal.DeviceTrustFixtures do
   """
   def ca_der(common_name), do: new_ca(common_name).cert_der
 
+  @doc """
+  Mints a CRL signed by the given issuer handle (`pki.ca`, `pki.intermediate`,
+  or `pki.untrusted_ca`).
+
+  Options: `:revoked` (list of certificate DERs whose serials go on the list),
+  `:removed` (list of certificate DERs listed with CRLReason `removeFromCRL`),
+  `:number`, `:validity` in days as `{from, to}`, `:delta` (the base CRL number
+  the list applies to, stamped as a Delta CRL Indicator), `:freshest` (one URL
+  or a list of them, stamped as a Freshest CRL extension), and `:idp` (a keyword
+  list of `:distribution_point`, `:only_ca_certs`, `:indirect`) to stamp an
+  Issuing Distribution Point.
+  """
+  def crl(issuer, opts \\ []) do
+    {from_days, to_days} = Keyword.get(opts, :validity, {-1, 7})
+    now = DateTime.utc_now()
+
+    revoked =
+      case revoked_entries(opts, now) do
+        [] -> :asn1_NOVALUE
+        entries -> entries
+      end
+
+    extensions =
+      [
+        {:Extension, {2, 5, 29, 20}, false,
+         :public_key.der_encode(:CRLNumber, Keyword.get(opts, :number, 1))}
+      ] ++
+        case Keyword.get(opts, :idp) do
+          nil ->
+            []
+
+          idp ->
+            [
+              {:Extension, {2, 5, 29, 28}, true,
+               :public_key.der_encode(:IssuingDistributionPoint, issuing_distribution_point(idp))}
+            ]
+        end ++
+        case Keyword.get(opts, :delta) do
+          nil ->
+            []
+
+          base_number ->
+            [
+              {:Extension, {2, 5, 29, 27}, true,
+               :public_key.der_encode(:BaseCRLNumber, base_number)}
+            ]
+        end ++
+        case Keyword.get(opts, :freshest) do
+          nil -> []
+          urls -> [{:Extension, {2, 5, 29, 46}, false, freshest_crl(urls)}]
+        end
+
+    algorithm = {:AlgorithmIdentifier, @ecdsa_sha256_oid, :asn1_NOVALUE}
+
+    tbs =
+      {:TBSCertList, :v2, algorithm, issuer_name(issuer),
+       utc_time(DateTime.add(now, from_days, :day)),
+       utc_time(DateTime.add(now, to_days, :day)), revoked, extensions}
+
+    signature = :public_key.sign(:public_key.der_encode(:TBSCertList, tbs), :sha256, issuer.key)
+
+    :public_key.der_encode(:CertificateList, {:CertificateList, tbs, algorithm, signature})
+  end
+
+  defp freshest_crl(urls) do
+    urls
+    |> List.wrap()
+    |> Enum.map(
+      &{:DistributionPoint, {:fullName, [{:uniformResourceIdentifier, String.to_charlist(&1)}]},
+       :asn1_NOVALUE, :asn1_NOVALUE}
+    )
+    |> then(&:public_key.der_encode(:FreshestCRL, &1))
+  end
+
+  defp revoked_entries(opts, now) do
+    revoked = Enum.map(Keyword.get(opts, :revoked, []), &revoked_entry(&1, now, :asn1_NOVALUE))
+
+    removed =
+      Enum.map(Keyword.get(opts, :removed, []), &revoked_entry(&1, now, [crl_reason_extension()]))
+
+    revoked ++ removed
+  end
+
+  defp crl_reason_extension do
+    {:Extension, {2, 5, 29, 21}, false, :public_key.der_encode(:CRLReason, :removeFromCRL)}
+  end
+
+  defp issuing_distribution_point(opts) do
+    distribution_point =
+      case Keyword.get(opts, :distribution_point) do
+        nil -> :asn1_NOVALUE
+        url -> {:fullName, [{:uniformResourceIdentifier, String.to_charlist(url)}]}
+      end
+
+    {:IssuingDistributionPoint, distribution_point, false,
+     Keyword.get(opts, :only_ca_certs, false), :asn1_NOVALUE,
+     Keyword.get(opts, :indirect, false), false}
+  end
+
+  # Taken from the issued certificate rather than rebuilt, so the CRL carries
+  # the same issuer bytes the certificates do, which is what joins the two.
+  defp issuer_name(issuer) do
+    issuer.cert_der |> Portal.Crypto.X509.subject() |> then(&:public_key.der_decode(:Name, &1))
+  end
+
+  defp revoked_entry(cert_der, now, extensions) do
+    {:Certificate, tbs, _algorithm, _signature} = :public_key.der_decode(:Certificate, cert_der)
+
+    {:TBSCertList_revokedCertificates_SEQOF, elem(tbs, 2), utc_time(now), extensions}
+  end
+
+  @doc """
+  Mints an OCSP response for `leaf` signed by the given issuer handle.
+
+  Options: `:status` (`:good`, `:revoked` or `:unknown`), `:reason`,
+  `:next_update` in seconds from now (`nil` to omit, which reads as expired),
+  `:signer` to sign with a different handle, and `:delegate` to sign with a
+  freshly minted responder certificate that the issuer delegated to.
+  """
+  def ocsp_response(issuer, leaf, opts \\ []) do
+    now = DateTime.add(DateTime.utc_now(), Keyword.get(opts, :produced, 0), :second)
+    {signer, certs} = ocsp_signer(issuer, opts)
+
+    cert_id = ocsp_cert_id(issuer, leaf)
+    status = ocsp_status(Keyword.get(opts, :status, :good), now, opts)
+
+    next_update =
+      case Keyword.get(opts, :next_update, 86_400) do
+        nil -> :asn1_NOVALUE
+        seconds -> general_time(DateTime.add(now, seconds, :second))
+      end
+
+    single = {:SingleResponse, cert_id, status, general_time(now), next_update, :asn1_NOVALUE}
+
+    tbs =
+      {:ResponseData, :v1, {:byName, issuer_rdn(issuer)}, general_time(now), [single],
+       :asn1_NOVALUE}
+
+    algorithm = {:BasicOCSPResponse_signatureAlgorithm, @ecdsa_sha256_oid, :asn1_NOVALUE}
+
+    signature =
+      :public_key.sign(:public_key.der_encode(:ResponseData, tbs), :sha256, signer.key)
+
+    basic =
+      :public_key.der_encode(
+        :BasicOCSPResponse,
+        {:BasicOCSPResponse, tbs, algorithm, signature, certs}
+      )
+
+    :public_key.der_encode(
+      :OCSPResponse,
+      {:OCSPResponse, :successful, {:ResponseBytes, {1, 3, 6, 1, 5, 5, 7, 48, 1, 1}, basic}}
+    )
+  end
+
+  defp ocsp_signer(issuer, opts) do
+    cond do
+      signer = Keyword.get(opts, :signer) ->
+        {signer, :asn1_NOVALUE}
+
+      Keyword.get(opts, :delegate, false) ->
+        responder = new_ocsp_responder(issuer, Keyword.get(opts, :delegate_validity, {-1, 365}))
+        {responder, [:public_key.der_decode(:Certificate, responder.cert_der)]}
+
+      true ->
+        {issuer, :asn1_NOVALUE}
+    end
+  end
+
+  defp new_ocsp_responder(issuer, validity) do
+    key = gen_ec_key()
+    subject = rdn("Firezone Test OCSP Responder")
+
+    extensions = [
+      {:Extension, @extended_key_usage_oid, false, [{1, 3, 6, 1, 5, 5, 7, 3, 9}]}
+    ]
+
+    cert_der = sign_cert(issuer.subject, issuer.key, subject, spki(key), extensions, validity)
+    %{cert_der: cert_der, key: key, subject: subject}
+  end
+
+  defp ocsp_status(:good, _now, _opts), do: {:good, :NULL}
+  defp ocsp_status(:unknown, _now, _opts), do: {:unknown, :NULL}
+
+  defp ocsp_status(:revoked, now, opts) do
+    {:revoked,
+     {:RevokedInfo, general_time(now), Keyword.get(opts, :reason, :cessationOfOperation)}}
+  end
+
+  defp ocsp_cert_id(issuer, leaf) do
+    {:Certificate, leaf_tbs, _algorithm, _signature} =
+      :public_key.der_decode(:Certificate, leaf)
+
+    {:Certificate, ca_tbs, _ca_algorithm, _ca_signature} =
+      :public_key.der_decode(:Certificate, issuer.cert_der)
+
+    name_hash = ca_tbs |> elem(6) |> then(&:public_key.der_encode(:Name, &1)) |> then(&:crypto.hash(:sha, &1))
+    key_hash = ca_tbs |> elem(7) |> elem(2) |> then(&:crypto.hash(:sha, &1))
+
+    {:CertID, {:CertID_hashAlgorithm, {1, 3, 14, 3, 2, 26}, {:asn1_OPENTYPE, <<5, 0>>}},
+     name_hash, key_hash, elem(leaf_tbs, 2)}
+  end
+
+  defp issuer_rdn(issuer) do
+    issuer.cert_der |> Portal.Crypto.X509.subject() |> then(&:public_key.der_decode(:Name, &1))
+  end
+
+  defp general_time(datetime) do
+    datetime |> Calendar.strftime("%Y%m%d%H%M%SZ") |> String.to_charlist()
+  end
+
   defp new_ca(common_name) do
     key = gen_ec_key()
     subject = rdn(common_name)
@@ -154,7 +386,7 @@ defmodule Portal.DeviceTrustFixtures do
         case Keyword.get(opts, :key_usage) do
           nil -> []
           usages -> [{:Extension, @key_usage_oid, true, usages}]
-        end
+        end ++ Keyword.get(opts, :extensions, [])
 
     sign_cert(
       issuer.subject,

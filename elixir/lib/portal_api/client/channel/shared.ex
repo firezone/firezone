@@ -575,6 +575,41 @@ defmodule PortalAPI.Client.Channel.Shared do
     handle_info(:disconnect, socket)
   end
 
+  # A CA revoked a certificate. The session is only cut if it is the one this
+  # connection actually presented: the device columns the sync job matched on
+  # record the last certificate a device ever showed, so a device that attested
+  # once and has since been connecting without a certificate would otherwise be
+  # dropped over a certificate it is not using.
+  #
+  # Its authorizations go too. The tunnel is being torn down either way, so the
+  # client has to re-authorize on its next connect regardless, and nothing else
+  # clears them when a channel stops.
+  #
+  # A reason of its own rather than "token_expired": the token is fine, and a
+  # client that knows the difference can say so instead of reporting a sign-in
+  # problem. A client that does not recognize the reason ignores the payload and
+  # still sees the socket close, so it is cut either way.
+  def handle_info({:certificate_revoked, issuer, serial}, socket) do
+    if socket.assigns[:attestation] == %{issuer: issuer, serial: serial} do
+      Logger.info("Disconnecting device: its certificate was revoked",
+        account_id: socket.assigns.client.account_id,
+        device_id: socket.assigns.client.id,
+        cert_serial: serial
+      )
+
+      Database.delete_policy_authorizations(socket.assigns.client)
+      push(socket, "disconnect", %{reason: "certificate_revoked"})
+
+      # Stopping the channel alone leaves the transport up, and a client may
+      # rejoin on it without running Socket.connect/3 again, which is where the
+      # revoked certificate would be refused. Draining forces a new connect.
+      send(socket.transport_pid, :socket_drain)
+      {:stop, :shutdown, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
   # A monitored process crashed — determine which subsystem it belongs to and recover.
   def handle_info({:DOWN, _ref, :process, pid, _reason}, socket) do
     cond do
@@ -2604,6 +2639,17 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defmodule Database do
     import Ecto.Query, only: [from: 2]
+
+    # Nothing else clears these when a channel stops, so a cut session would
+    # otherwise leave its grants behind.
+    def delete_policy_authorizations(client) do
+      from(a in Portal.PolicyAuthorization,
+        where: a.account_id == ^client.account_id,
+        where: a.initiating_device_id == ^client.id
+      )
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.delete_all()
+    end
 
     def all_compatible_gateways_for_client_and_resource(
           client_version,

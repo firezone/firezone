@@ -958,6 +958,20 @@ defmodule Portal.Safe do
   def permit(:read, Portal.TrustAnchor, :api_client), do: :ok
   def permit(:read, Portal.TrustAnchorCertificate, _), do: :ok
 
+  # Every attested connect checks the cached CRL for the anchor that issued its
+  # certificate, so any actor type that can attest must be able to read it.
+  def permit(:read, Portal.CrlRevocation, _), do: :ok
+
+  # Readable by any actor type that can attest, since the connect path consults
+  # it to tell an issuer that publishes a list from one that only answers a
+  # responder. Read only: the rows are written by the connect that discovers
+  # them and by the fetch jobs, both of which pin the account themselves.
+  def permit(:read, Portal.RevocationEndpoint, _), do: :ok
+
+  # Every attested connect checks the cached status of its own certificate when
+  # its CA publishes no list, so any actor type that can attest must read it.
+  def permit(:read, Portal.OcspStatus, _), do: :ok
+
   # SessionLog permissions
   def permit(:read, Portal.SessionLog, :account_admin_user), do: :ok
   def permit(:read, Portal.SessionLog, :api_client), do: :ok

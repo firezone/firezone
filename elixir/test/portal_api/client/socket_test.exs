@@ -762,6 +762,9 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.last_attested_device_serial == "C02XK1ZGJGH5"
       assert client.last_attested_mdm_device_id == "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
       assert client.last_attested_cert_fingerprint == proof.last_attested_cert_fingerprint
+      # Recorded so a revocation learned after this connect can still find the
+      # row: a certificate serial only identifies a certificate with its issuer.
+      assert client.last_attested_cert_issuer == proof.last_attested_cert_issuer
     end
 
     test "a new MDM device id enrolls as a new row", %{

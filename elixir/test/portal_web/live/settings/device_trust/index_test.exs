@@ -14,6 +14,30 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
     der
   end
 
+  defp endpoint_fixture(account, issuer, attrs \\ []) do
+    Repo.insert!(%Portal.RevocationEndpoint{
+      account_id: account.id,
+      issuer: issuer,
+      distribution_point: "http://crl.test.invalid/ec-ca.crl",
+      crl_urls: Keyword.get(attrs, :crl_urls, ["http://crl.test.invalid/ec-ca.crl"]),
+      crl_number: Keyword.get(attrs, :crl_number),
+      crl_error: Keyword.get(attrs, :crl_error),
+      inserted_at: DateTime.utc_now(),
+      updated_at: DateTime.utc_now()
+    })
+  end
+
+  defp revocation_fixture(account, issuer, serial) do
+    Repo.insert!(%Portal.CrlRevocation{
+      account_id: account.id,
+      issuer: issuer,
+      distribution_point: "http://crl.test.invalid/ec-ca.crl",
+      serial: serial,
+      revoked_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      inserted_at: DateTime.utc_now()
+    })
+  end
+
   setup do
     account = account_fixture()
     actor = admin_actor_fixture(account: account)
@@ -184,6 +208,127 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
 
       assert_patch(lv, ~p"/#{account}/settings/device_trust/#{trust_anchor.id}/edit")
       assert render(lv) =~ "Edit Trust Anchor"
+    end
+  end
+
+  describe "revocation section" do
+    setup %{account: account} do
+      trust_anchor =
+        trust_anchor_fixture(account: account, name: "EC Anchor", certs: [sample_ec_ca_der()])
+
+      %{trust_anchor: trust_anchor, issuer: X509.subject(sample_ec_ca_der())}
+    end
+
+    test "says nothing is known before a device has connected", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+
+      assert render(lv) =~ "No revocation endpoint known yet"
+    end
+
+    test "shows the endpoint learned for the issuer", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer, crl_number: 42)
+      revocation_fixture(account, issuer, "AABBCC")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+
+      html = render(lv)
+      assert html =~ "http://crl.test.invalid/ec-ca.crl"
+      assert html =~ "CN=EC Trust Anchor CA"
+      assert html =~ "Revoked certificates"
+      assert html =~ "42"
+    end
+
+    test "surfaces the last failure", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer, crl_error: "unsupported_url_scheme")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+
+      assert render(lv) =~ "unsupported_url_scheme"
+    end
+
+
+    test "shows OCSP state for a CA that publishes no fetchable list", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      # An ldap:// distribution point is a list we can never read, so the issuer
+      # is checked through its responder and the panel has to say so.
+      Repo.insert!(%Portal.RevocationEndpoint{
+        account_id: account.id,
+        issuer: issuer,
+        distribution_point: "http://ocsp.test.invalid",
+        crl_urls: ["ldap://dc.corp.test/CN=CA"],
+        ocsp_urls: ["http://ocsp.test.invalid"],
+        ocsp_checked_at: DateTime.utc_now(),
+        ocsp_error: "unreachable responder",
+        inserted_at: DateTime.utc_now(),
+        updated_at: DateTime.utc_now()
+      })
+
+      Repo.insert!(%Portal.OcspStatus{
+        account_id: account.id,
+        issuer: issuer,
+        serial: "AABBCC",
+        status: "revoked",
+        updated_at: DateTime.utc_now()
+      })
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+
+      html = render(lv)
+      assert html =~ "OCSP"
+      assert html =~ "unreachable responder"
+      assert html =~ "Revoked certificates"
+      refute html =~ "List number"
+    end
+
+    test "an endpoint from another account is never shown", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account_fixture(), issuer)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+
+      assert render(lv) =~ "No revocation endpoint known yet"
     end
   end
 

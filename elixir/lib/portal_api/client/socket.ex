@@ -88,6 +88,10 @@ defmodule PortalAPI.Client.Socket do
         OpenTelemetry.Tracer.set_status(:error, "device_identity_conflict")
         {:error, :device_identity_conflict}
 
+      {:error, :certificate_revoked} ->
+        OpenTelemetry.Tracer.set_status(:error, "certificate_revoked")
+        {:error, :certificate_revoked}
+
       {:error, %Ecto.Changeset{} = changeset} ->
         changeset = public_socket_changeset(changeset)
         OpenTelemetry.Tracer.set_status(:error, inspect(changeset))
@@ -108,6 +112,17 @@ defmodule PortalAPI.Client.Socket do
 
       {:error, :not_attestation_host} ->
         {:ok, nil}
+
+      # Kept distinct from a certificate that never verified: the device holds a
+      # genuine certificate its CA has withdrawn, and saying so is what tells an
+      # administrator to reissue rather than to check the deployment.
+      {:error, :certificate_revoked} ->
+        Logger.warning("Refusing client connect: device certificate was revoked",
+          account_id: subject.account.id,
+          actor_id: subject.actor.id
+        )
+
+        {:error, :certificate_revoked}
 
       {:error, reason} ->
         Logger.warning("Refusing client connect: device certificate is not trusted",

@@ -203,6 +203,18 @@ config :portal, Portal.Google.APIClient,
     plug: {Req.Test, Portal.Google.APIClient}
   ]
 
+config :portal, Portal.Crl.Sync,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, Portal.Crl.Sync}
+  ]
+
+config :portal, Portal.Ocsp.Sync,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, Portal.Ocsp.Sync}
+  ]
+
 config :portal, Portal.TokenCache, enabled: false
 
 # Auth provider configs with Req.Test for OIDC mocking
