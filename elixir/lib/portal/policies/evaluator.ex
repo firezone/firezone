@@ -167,6 +167,37 @@ defmodule Portal.Policies.Evaluator do
     {:ok, nil}
   end
 
+  # Reads the live connection state, not the row's last_attested_at: a device
+  # that attested last week but connected without a certificate today has not
+  # proved anything for this session.
+  def fetch_conformation_expiration(
+        %{
+          property: :device_attested,
+          operator: :is,
+          values: ["true"]
+        },
+        %Device{type: :client, attested?: attested?},
+        _auth_provider_id
+      ) do
+    if attested? do
+      {:ok, nil}
+    else
+      :error
+    end
+  end
+
+  def fetch_conformation_expiration(
+        %{
+          property: :device_attested,
+          operator: :is,
+          values: _other
+        },
+        %Device{type: :client},
+        _auth_provider_id
+      ) do
+    {:ok, nil}
+  end
+
   def fetch_conformation_expiration(
         %{
           property: :current_utc_datetime,

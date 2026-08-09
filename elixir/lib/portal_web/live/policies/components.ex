@@ -18,6 +18,7 @@ defmodule PortalWeb.Policies.Components do
     :remote_ip,
     :auth_provider_id,
     :client_verified,
+    :device_attested,
     :current_utc_datetime
   ]
 
@@ -1328,6 +1329,7 @@ defmodule PortalWeb.Policies.Components do
 
   @spec condition_short_label(atom()) :: String.t()
   def condition_short_label(:client_verified), do: "Verified"
+  def condition_short_label(:device_attested), do: "Attested"
   def condition_short_label(:auth_provider_id), do: "Auth"
   def condition_short_label(:remote_ip_location_region), do: "Location"
   def condition_short_label(:remote_ip), do: "IP Range"
@@ -1356,7 +1358,7 @@ defmodule PortalWeb.Policies.Components do
       "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-raised text-body"
 
   @spec condition_type_badge_class(atom()) :: String.t()
-  defp condition_type_badge_class(:client_verified),
+  defp condition_type_badge_class(property) when property in [:client_verified, :device_attested],
     do:
       "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-success bg-success-light"
 
@@ -1383,6 +1385,9 @@ defmodule PortalWeb.Policies.Components do
   @spec condition_values_display(map(), list(), any()) :: String.t()
   defp condition_values_display(%{property: :client_verified}, _providers, _account),
     do: "Client must be verified"
+
+  defp condition_values_display(%{property: :device_attested}, _providers, _account),
+    do: "Client must be attested"
 
   defp condition_values_display(
          %{property: :auth_provider_id, values: values},
@@ -1561,6 +1566,16 @@ defmodule PortalWeb.Policies.Components do
     """
   end
 
+  defp condition(%{property: :device_attested} = assigns) do
+    ~H"""
+    <span :if={@values != []} class="mr-1">
+      <span>by clients that are</span>
+      <span :if={@values == ["true"]}>attested</span>
+      <span :if={@values == ["false"]}>not attested</span>
+    </span>
+    """
+  end
+
   defp condition(%{property: :current_utc_datetime, values: values} = assigns) do
     assigns =
       assign_new(assigns, :tz_time_ranges_by_dow, fn ->
@@ -1693,8 +1708,8 @@ defmodule PortalWeb.Policies.Components do
             providers={@providers}
             disabled={@policy_conditions_enabled? == false}
           />
-          <.client_verified_condition_form
-            :if={:client_verified in @enabled_conditions}
+          <.device_trust_condition_form
+            :if={:device_attested in @enabled_conditions}
             form={@form}
             disabled={@policy_conditions_enabled? == false}
           />
@@ -1971,14 +1986,31 @@ defmodule PortalWeb.Policies.Components do
     """
   end
 
-  defp client_verified_condition_form(assigns) do
+  defp device_trust_condition_form(assigns) do
     ~H"""
     <fieldset class="mb-4">
-      <% condition_form = find_condition_form(@form[:conditions], :client_verified) %>
+      <% attested_form = find_condition_form(@form[:conditions], :device_attested) %>
+      <% verified_form = find_condition_form(@form[:conditions], :client_verified) %>
 
       <.input
         type="hidden"
-        field={condition_form[:property]}
+        field={attested_form[:property]}
+        name="policy[conditions][device_attested][property]"
+        id="policy_conditions_device_attested_property"
+        value="device_attested"
+      />
+
+      <.input
+        type="hidden"
+        name="policy[conditions][device_attested][operator]"
+        id="policy_conditions_device_attested_operator"
+        field={attested_form[:operator]}
+        value={:is}
+      />
+
+      <.input
+        type="hidden"
+        field={verified_form[:property]}
         name="policy[conditions][client_verified][property]"
         id="policy_conditions_client_verified_property"
         value="client_verified"
@@ -1988,7 +2020,7 @@ defmodule PortalWeb.Policies.Components do
         type="hidden"
         name="policy[conditions][client_verified][operator]"
         id="policy_conditions_client_verified_operator"
-        field={condition_form[:operator]}
+        field={verified_form[:operator]}
         value={:is}
       />
 
@@ -1996,24 +2028,24 @@ defmodule PortalWeb.Policies.Components do
         class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
         phx-click={
           JS.toggle_class("hidden",
-            to: "#policy_conditions_client_verified_condition"
+            to: "#policy_conditions_device_trust_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
           |> JS.toggle_class("ri-arrow-down-s-line",
-            to: "#policy_conditions_client_verified_chevron"
+            to: "#policy_conditions_device_trust_chevron"
           )
           |> JS.toggle_class("ri-arrow-up-s-line",
-            to: "#policy_conditions_client_verified_chevron"
+            to: "#policy_conditions_device_trust_chevron"
           )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           <span class="flex items-center">
-            <.icon name="ri-shield-check-line" class="w-5 h-5 mr-2" /> Client verification
+            <.icon name="ri-shield-keyhole-line" class="w-5 h-5 mr-2" /> Device Trust
           </span>
           <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
-              id="policy_conditions_client_verified_chevron"
+              id="policy_conditions_device_trust_chevron"
               name="ri-arrow-down-s-line"
               class="w-5 h-5"
             />
@@ -2022,24 +2054,49 @@ defmodule PortalWeb.Policies.Components do
       </div>
 
       <div
-        id="policy_conditions_client_verified_condition"
+        id="policy_conditions_device_trust_condition"
         class={[
           "p-4 border-neutral-200 border-l border-r border-b rounded-b",
-          condition_values_empty?(condition_form) && "hidden"
+          condition_values_empty?(attested_form) && condition_values_empty?(verified_form) &&
+            "hidden"
         ]}
       >
-        <p class="text-sm text-neutral-500 mb-4">
-          Allow access when the Client is manually verified by the administrator.
-        </p>
-        <div class="space-y-2" phx-update="ignore" id="conditions-client-verified-values">
-          <.toggle
-            label="Require client verification"
-            name="policy[conditions][client_verified][values][]"
-            id="policy_conditions_client_verified_value"
-            value="true"
-            disabled={@disabled}
-            checked={List.first(List.wrap(condition_form[:values].value)) == "true"}
-          />
+        <div
+          class="space-y-4"
+          phx-update="ignore"
+          id="conditions-device-trust-values"
+          phx-hook="DeviceTrustConditions"
+        >
+          <div>
+            <.toggle
+              label="Require attestation"
+              name="policy[conditions][device_attested][values][]"
+              id="policy_conditions_device_attested_value"
+              value="true"
+              disabled={@disabled}
+              checked={List.first(List.wrap(attested_form[:values].value)) == "true"}
+              data-device-trust="attested"
+            />
+            <p class="text-sm text-neutral-500 mt-1">
+              Allow access only when the connection itself proved possession of an MDM-issued
+              client certificate. This is strong device identity, so it supersedes verification.
+            </p>
+          </div>
+
+          <div>
+            <.toggle
+              label="Require client verification"
+              name="policy[conditions][client_verified][values][]"
+              id="policy_conditions_client_verified_value"
+              value="true"
+              disabled={@disabled}
+              checked={List.first(List.wrap(verified_form[:values].value)) == "true"}
+              data-device-trust="verified"
+            />
+            <p class="text-sm text-neutral-500 mt-1">
+              Allow access when the Client is manually verified by the administrator.
+            </p>
+          </div>
         </div>
       </div>
     </fieldset>

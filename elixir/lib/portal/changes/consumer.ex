@@ -25,6 +25,8 @@ defmodule Portal.Changes.Consumer do
     "gateway_tokens" => Hooks.GatewayTokens,
     "sites" => Hooks.Sites,
     "policies" => Hooks.Policies,
+    "trust_anchors" => Hooks.TrustAnchors,
+    "trust_anchor_certificates" => Hooks.TrustAnchorCertificates,
     "resources" => Hooks.Resources,
     "static_device_pool_members" => Hooks.StaticDevicePoolMembers,
     "client_tokens" => Hooks.ClientTokens,

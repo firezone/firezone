@@ -13,7 +13,8 @@ defmodule Portal.Cache.Cacheable.Policy do
             | :remote_ip
             | :provider_id
             | :current_utc_datetime
-            | :client_verified,
+            | :client_verified
+            | :device_attested,
           operator:
             :contains
             | :does_not_contain
