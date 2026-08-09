@@ -62,7 +62,8 @@ defmodule PortalAPI.Client.ChannelTest do
         client: device,
         session_ref: session_ref,
         subject: subject,
-        client_version: client_version
+        client_version: client_version,
+        attestation: Keyword.get(opts, :attestation)
       })
       |> subscribe_and_join(channel, "client")
 
@@ -1044,6 +1045,64 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "cuts the session when its own certificate is revoked", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+      attestation = %{issuer: <<"issuer-der">>, serial: "AABBCC"}
+
+      authorization =
+        Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
+          account: account,
+          client: client
+        )
+
+      socket = join_channel(client, subject, attestation: attestation)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, {:certificate_revoked, attestation.issuer, attestation.serial})
+
+      # Distinct from "token_expired": the token is fine, and a client that
+      # knows the difference can say so rather than report a sign-in problem.
+      assert_push "disconnect", %{reason: "certificate_revoked"}
+
+      refute Repo.get_by(Portal.PolicyAuthorization,
+               account_id: account.id,
+               id: authorization.id
+             )
+    end
+
+    test "ignores a revocation of a certificate this session is not using", %{
+      client: client,
+      subject: subject
+    } do
+      # The device attested at some point, so its row carries a certificate, but
+      # this connection presented none. Revoking that certificate says nothing
+      # about a session that is not riding on it.
+      socket = join_channel(client, subject, attestation: nil)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, {:certificate_revoked, <<"issuer-der">>, "AABBCC"})
+
+      refute_push "disconnect", %{}
+      assert Process.alive?(socket.channel_pid)
+    end
+
+    test "ignores a revocation of a superseded certificate", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject, attestation: %{issuer: <<"i">>, serial: "NEW"})
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, {:certificate_revoked, <<"i">>, "OLD"})
+
+      refute_push "disconnect", %{}
+      assert Process.alive?(socket.channel_pid)
     end
 
     test "duplicate connection evicts the first client", %{
