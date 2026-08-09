@@ -66,6 +66,7 @@ defmodule Portal.Device do
           last_attested_mdm_device_id: String.t() | nil,
           last_attested_cert_serial: String.t() | nil,
           last_attested_cert_fingerprint: String.t() | nil,
+          last_attested_cert_issuer: binary() | nil,
           last_attested_at: DateTime.t() | nil,
           verified_at: DateTime.t() | nil,
           inserted_at: DateTime.t(),
@@ -100,6 +101,11 @@ defmodule Portal.Device do
     field :last_attested_mdm_device_id, :string
     field :last_attested_cert_serial, :string
     field :last_attested_cert_fingerprint, :string
+    # Who issued that certificate, DER-encoded exactly as the certificate
+    # carries the name. A serial only identifies a certificate together with
+    # its issuer, so both are needed to match a device against a revocation
+    # learned after it connected.
+    field :last_attested_cert_issuer, :binary
     # When the device last proved possession of an MDM-provisioned client
     # certificate. Point-in-time history, never cleared by the flush; whether
     # the CURRENT session proved possession is live connection state (the
@@ -203,6 +209,9 @@ defmodule Portal.Device do
         |> validate_length(:last_attested_mdm_device_id, max: 255)
         |> validate_length(:last_attested_cert_serial, max: 255)
         |> validate_length(:last_attested_cert_fingerprint, max: 255)
+        # Bounded so an absurd distinguished name cannot push the index row it
+        # shares with the certificate serial past what a btree entry holds.
+        |> validate_length(:last_attested_cert_issuer, max: 1024, count: :bytes)
         |> unique_constraint(:last_attested_mdm_device_id,
           name: :devices_account_id_actor_id_last_attested_mdm_device_id_index
         )

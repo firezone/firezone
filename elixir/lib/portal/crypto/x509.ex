@@ -17,6 +17,15 @@ defmodule Portal.Crypto.X509 do
   # Common Name, used to read a human-readable subject/issuer off a name.
   @common_name_oid {2, 5, 4, 3}
 
+  # Why a certificate appears on a CRL.
+  @crl_reason_oid {2, 5, 29, 21}
+
+  # A CRL's own version counter, and the two extensions that mark it as
+  # covering less than every certificate its issuer has published.
+  @crl_number_oid {2, 5, 29, 20}
+  @issuing_distribution_point_oid {2, 5, 29, 28}
+  @delta_crl_indicator_oid {2, 5, 29, 27}
+
   # Other extensions surfaced for certificate debugging.
   @extended_key_usage_oid {2, 5, 29, 37}
   @subject_key_identifier_oid {2, 5, 29, 14}
@@ -737,7 +746,37 @@ defmodule Portal.Crypto.X509 do
   defp decode_directory_string({:teletexString, value}), do: List.to_string(value)
   defp decode_directory_string({:universalString, value}), do: List.to_string(value)
   defp decode_directory_string({:bmpString, value}), do: List.to_string(value)
+
+  # Country, serial number and domain component are fixed to one string type
+  # by the schema rather than being a DirectoryString choice, so they arrive
+  # without a type tag.
+  defp decode_directory_string(value) when is_list(value), do: List.to_string(value)
+  defp decode_directory_string(value) when is_binary(value), do: value
   defp decode_directory_string(_other), do: nil
+
+  defp crl_reason(:asn1_NOVALUE), do: nil
+
+  defp crl_reason(extensions) do
+    case find_extension(extensions, @crl_reason_oid) do
+      {:Extension, @crl_reason_oid, _critical, value} -> decode_crl_reason(value)
+      _other -> nil
+    end
+  end
+
+  # Extension values survive `der_decode/2` undecoded, so the enumeration is
+  # decoded here. The atoms come from the ASN.1 schema, not from the input.
+  defp decode_crl_reason(value) when is_atom(value), do: Atom.to_string(value)
+
+  defp decode_crl_reason(value) when is_binary(value) do
+    case :public_key.der_decode(:CRLReason, value) do
+      reason when is_atom(reason) -> Atom.to_string(reason)
+      _other -> nil
+    end
+  rescue
+    _error -> nil
+  end
+
+  defp decode_crl_reason(_value), do: nil
 
   defp decode_time({:utcTime, value}), do: parse_asn1_time(List.to_string(value), 2)
   defp decode_time({:generalTime, value}), do: parse_asn1_time(List.to_string(value), 4)
@@ -765,4 +804,232 @@ defmodule Portal.Crypto.X509 do
   defp normalize_year(year, 2) when year < 50, do: 2000 + year
   defp normalize_year(year, 2), do: 1900 + year
   defp normalize_year(year, 4), do: year
+
+  @doc """
+  Decodes a DER-encoded certificate revocation list.
+
+  Serials are returned as uppercase hex so they compare directly against the
+  serial recorded when a device attests.
+  """
+  @spec decode_crl(binary()) ::
+          {:ok,
+           %{
+             this_update: DateTime.t() | nil,
+             next_update: DateTime.t() | nil,
+             number: integer() | nil,
+             scope: map(),
+             revocations: [map()]
+           }}
+          | {:error, :invalid}
+  def decode_crl(der) when is_binary(der) do
+    case :public_key.der_decode(:CertificateList, der) do
+      {:CertificateList, tbs_cert_list, _signature_algorithm, _signature} ->
+        {:ok, crl_fields(tbs_cert_list)}
+
+      _other ->
+        {:error, :invalid}
+    end
+  rescue
+    _error -> {:error, :invalid}
+  end
+
+  @doc """
+  Whether the CRL was signed by the given issuer certificate.
+  """
+  @spec crl_signed_by?(binary(), binary()) :: boolean()
+  def crl_signed_by?(crl_der, issuer_der) when is_binary(crl_der) and is_binary(issuer_der) do
+    crl = :public_key.der_decode(:CertificateList, crl_der)
+    issuer = :public_key.pkix_decode_cert(issuer_der, :otp)
+
+    :public_key.pkix_crl_verify(crl, issuer)
+  rescue
+    _error -> false
+  end
+
+  defp crl_fields(
+         {:TBSCertList, _version, _signature, _issuer, this_update, next_update, revoked,
+          extensions}
+       ) do
+    %{
+      this_update: decode_time(this_update),
+      next_update: decode_time(next_update),
+      number: crl_number(extensions),
+      scope: crl_scope(extensions),
+      revocations: crl_revocations(revoked)
+    }
+  end
+
+  defp crl_number(:asn1_NOVALUE), do: nil
+
+  defp crl_number(extensions) do
+    case find_extension(extensions, @crl_number_oid) do
+      {:Extension, @crl_number_oid, _critical, value} -> decode_crl_number(value)
+      _other -> nil
+    end
+  end
+
+  defp decode_crl_number(value) when is_integer(value), do: value
+
+  defp decode_crl_number(value) when is_binary(value) do
+    case :public_key.der_decode(:CRLNumber, value) do
+      number when is_integer(number) -> number
+      _other -> nil
+    end
+  rescue
+    _error -> nil
+  end
+
+  defp decode_crl_number(_other), do: nil
+
+  # What a CRL says about its own coverage. An Issuing Distribution Point does
+  # not by itself mean the list is incomplete: a CA may stamp one on a complete
+  # list purely to name itself, and RFC 5280 5.2.5 leaves every narrowing field
+  # optional. Only the fields that genuinely exclude our leaves are reported.
+  #
+  # `only_user_certs?` is deliberately absent: in X.509 a "user certificate" is
+  # any end-entity certificate, which is exactly what devices hold.
+  defp crl_scope(:asn1_NOVALUE), do: %{delta?: false, excludes: [], distribution_points: []}
+
+  defp crl_scope(extensions) do
+    delta? = not is_nil(find_extension(extensions, @delta_crl_indicator_oid))
+
+    case find_extension(extensions, @issuing_distribution_point_oid) do
+      {:Extension, @issuing_distribution_point_oid, _critical, value} ->
+        value |> decode_issuing_distribution_point() |> Map.put(:delta?, delta?)
+
+      _other ->
+        %{delta?: delta?, excludes: [], distribution_points: []}
+    end
+  end
+
+  defp decode_issuing_distribution_point(value) do
+    {:IssuingDistributionPoint, distribution_point, _only_user_certs, only_ca_certs,
+     only_some_reasons, indirect,
+     only_attribute_certs} = decode_extension(:IssuingDistributionPoint, value)
+
+    excludes =
+      [
+        {only_ca_certs == true, :only_ca_certs},
+        {only_attribute_certs == true, :only_attribute_certs},
+        {indirect == true, :indirect},
+        {only_some_reasons != :asn1_NOVALUE, :only_some_reasons}
+      ]
+      |> Enum.filter(&elem(&1, 0))
+      |> Enum.map(&elem(&1, 1))
+
+    %{excludes: excludes, distribution_points: distribution_point_uris(distribution_point)}
+  end
+
+  defp decode_extension(type, value) when is_binary(value), do: :public_key.der_decode(type, value)
+  defp decode_extension(_type, value), do: value
+
+  defp distribution_point_uris({:fullName, names}) do
+    for {:uniformResourceIdentifier, uri} <- names, do: List.to_string(uri)
+  end
+
+  defp distribution_point_uris(_other), do: []
+
+  defp crl_revocations(:asn1_NOVALUE), do: []
+
+  defp crl_revocations(entries) when is_list(entries) do
+    for {:TBSCertList_revokedCertificates_SEQOF, serial, revoked_at, extensions} <- entries,
+        revoked_at = decode_time(revoked_at),
+        not is_nil(revoked_at) do
+      %{
+        serial: Integer.to_string(serial, 16),
+        revoked_at: revoked_at,
+        reason: crl_reason(extensions)
+      }
+    end
+  end
+
+  defp crl_revocations(_other), do: []
+
+  @doc """
+  Returns the DER encoding of the certificate's issuer distinguished name.
+
+  Revocation is scoped to whoever issued a certificate, not to whoever we
+  happened to validate the chain against, so this is what a cached revocation
+  is keyed on. RFC 5280 4.1.2.4 leaves a CA free to encode its name as either
+  a `PrintableString` or a `UTF8String`, and both are still in wide use, so
+  the name is stored as it was encoded rather than folded into a canonical
+  form: a CA emits the same bytes in the certificates it issues and in the
+  CRL it publishes for them, which 5.1.2.3 requires, and normalizing would
+  sort the relative names and lose the difference between two distinct
+  issuers whose names are permutations of each other.
+  """
+  @spec issuer(binary()) :: binary() | nil
+  def issuer(cert_der) when is_binary(cert_der) do
+    {:Certificate, tbs_certificate, _signature_algorithm, _signature} =
+      :public_key.der_decode(:Certificate, cert_der)
+
+    tbs_certificate |> elem(4) |> encode_name()
+  rescue
+    _error -> nil
+  end
+
+  @doc """
+  Returns the DER encoding of the certificate's subject distinguished name.
+  """
+  @spec subject(binary()) :: binary() | nil
+  def subject(cert_der) when is_binary(cert_der) do
+    {:Certificate, tbs_certificate, _signature_algorithm, _signature} =
+      :public_key.der_decode(:Certificate, cert_der)
+
+    tbs_certificate |> elem(6) |> encode_name()
+  rescue
+    _error -> nil
+  end
+
+  @doc """
+  Returns the DER encoding of the distinguished name that signed a CRL.
+  """
+  @spec crl_issuer(binary()) :: binary() | nil
+  def crl_issuer(crl_der) when is_binary(crl_der) do
+    {:CertificateList, tbs_cert_list, _signature_algorithm, _signature} =
+      :public_key.der_decode(:CertificateList, crl_der)
+
+    tbs_cert_list |> elem(3) |> encode_name()
+  rescue
+    _error -> nil
+  end
+
+  @doc """
+  Renders a DER-encoded distinguished name for display.
+
+  Postgres cannot decode a name, so the readable form is written alongside
+  the bytes it was rendered from and is never matched on.
+  """
+  @spec describe_name(binary()) :: String.t() | nil
+  def describe_name(name_der) when is_binary(name_der) do
+    {:rdnSequence, rdns} = :public_key.der_decode(:Name, name_der)
+
+    rdns
+    |> Enum.flat_map(fn attributes ->
+      for {:AttributeTypeAndValue, oid, value} <- attributes,
+          label = attribute_label(oid),
+          decoded = decode_directory_string(value),
+          not is_nil(decoded) do
+        "#{label}=#{decoded}"
+      end
+    end)
+    |> Enum.join(", ")
+    |> case do
+      "" -> nil
+      described -> described
+    end
+  rescue
+    _error -> nil
+  end
+
+  defp encode_name(name), do: :public_key.der_encode(:Name, name)
+
+  defp attribute_label({2, 5, 4, 3}), do: "CN"
+  defp attribute_label({2, 5, 4, 5}), do: "SERIALNUMBER"
+  defp attribute_label({2, 5, 4, 6}), do: "C"
+  defp attribute_label({2, 5, 4, 7}), do: "L"
+  defp attribute_label({2, 5, 4, 8}), do: "ST"
+  defp attribute_label({2, 5, 4, 10}), do: "O"
+  defp attribute_label({2, 5, 4, 11}), do: "OU"
+  defp attribute_label(_oid), do: nil
 end
