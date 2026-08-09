@@ -49,6 +49,26 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       |> Safe.scoped(subject)
       |> Safe.one!()
     end
+
+    # Keyed on the issuer rather than on the anchor, so an endpoint is shown
+    # against whichever uploaded certificate bears that name.
+    def list_revocation_endpoints(issuers, subject) do
+      from(e in Portal.RevocationEndpoint, where: e.issuer in ^issuers)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    def count_revocations(issuers, subject) do
+      from(r in Portal.CrlRevocation,
+        where: r.issuer in ^issuers,
+        group_by: r.issuer,
+        select: {r.issuer, count(r.serial)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Map.new()
+    end
+
   end
 
   def mount(_params, _session, socket) do
@@ -64,6 +84,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         |> assign(selected_trust_anchor: nil)
         |> assign(form: nil, input_mode: :paste)
         |> assign(confirm_delete?: false)
+        |> assign(revocation: [])
         |> assign(trust_anchors_enabled?: trust_anchors_enabled?)
         |> allow_upload(:cert_file,
           accept: ~w(.pem .crt .cer .der .txt),
@@ -105,11 +126,13 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     trust_anchor = Database.get_trust_anchor!(id, socket.assigns.subject)
 
     socket =
-      assign(socket,
+      socket
+      |> assign(
         selected_trust_anchor: trust_anchor,
         form: nil,
         confirm_delete?: false
       )
+      |> assign_revocation(trust_anchor)
 
     {:noreply, socket}
   end
@@ -217,6 +240,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           account={@account}
           trust_anchor={@selected_trust_anchor}
           confirm_delete?={@confirm_delete?}
+          revocation={@revocation}
         />
       </div>
 
@@ -345,6 +369,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   attr :account, :any, required: true
   attr :trust_anchor, :any, required: true
   attr :confirm_delete?, :boolean, required: true
+  attr :revocation, :list, required: true
 
   defp trust_anchor_show_panel(assigns) do
     certificate_details = Enum.map(assigns.trust_anchor.certificates, &describe_certificate/1)
@@ -383,6 +408,55 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               </dd>
             </div>
           </dl>
+        </section>
+
+        <div class="border-t border-border"></div>
+
+        <section>
+          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
+            Revocation
+          </h3>
+
+          <p :if={@revocation == []} class="text-xs text-subtle">
+            No revocation endpoint known yet. A CA publishes its address in the certificates it
+            issues, so this fills in the first time a device connects with one.
+          </p>
+
+          <div class="space-y-3">
+            <div
+              :for={entry <- @revocation}
+              class="border border-border rounded p-3 bg-surface space-y-3"
+            >
+              <p class="text-xs font-semibold text-heading truncate">
+                {X509.describe_name(entry.endpoint.issuer) || "(unnamed issuer)"}
+              </p>
+
+              <p
+                :if={entry.endpoint.crl_error}
+                class="text-xs text-danger break-all flex items-start gap-1.5"
+              >
+                <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>Last check failed: {entry.endpoint.crl_error}</span>
+              </p>
+
+              <div>
+                <dt class="text-[10px] text-subtle mb-0.5">Addresses</dt>
+                <dd
+                  :for={url <- revocation_addresses(entry.endpoint)}
+                  class="text-xs text-heading font-mono break-all"
+                >
+                  {url}
+                </dd>
+              </div>
+
+              <dl class="space-y-2">
+                <div :for={{label, value} <- revocation_rows(entry)}>
+                  <dt class="text-[10px] text-subtle mb-0.5">{label}</dt>
+                  <dd class="text-xs text-heading">{value}</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
         </section>
 
         <div class="border-t border-border"></div>
@@ -839,6 +913,61 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   defp cert_count_label(certs) do
     count = length(certs)
     "#{count} certificate#{if count == 1, do: "", else: "s"}"
+  end
+
+  # A CA advertises where it publishes in the certificates it issues, not in its
+  # own, so nothing is known here until a device presents one. Until then the
+  # panel says so rather than implying the CA publishes nothing.
+  defp assign_revocation(socket, trust_anchor) do
+    subject = socket.assigns.subject
+
+    issuers =
+      trust_anchor.certificates
+      |> Enum.flat_map(fn certificate ->
+        case X509.pem_decode(certificate.pem) do
+          {:ok, [{_type, der, _headers} | _rest]} -> [X509.subject(der)]
+          _other -> []
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    endpoints =
+      if issuers == [] do
+        []
+      else
+        counts = Database.count_revocations(issuers, subject)
+
+        issuers
+        |> Database.list_revocation_endpoints(subject)
+        |> Enum.map(&%{endpoint: &1, revoked_count: Map.get(counts, &1.issuer, 0)})
+        |> Enum.sort_by(&X509.describe_name(&1.endpoint.issuer))
+      end
+
+    assign(socket, revocation: endpoints)
+  end
+
+  defp revocation_addresses(endpoint) do
+    case endpoint.crl_urls ++ endpoint.ocsp_urls do
+      [] -> ["(none advertised)"]
+      urls -> urls
+    end
+  end
+
+  defp checked_via(endpoint) do
+    if endpoint.crl_urls == [], do: "OCSP", else: "CRL"
+  end
+
+  defp revocation_rows(%{endpoint: endpoint, revoked_count: revoked_count}) do
+    [
+      {"Checked via", checked_via(endpoint)},
+      {"Last checked", format_date(endpoint.crl_fetched_at)},
+      {"List published", format_date(endpoint.crl_this_update)},
+      {"Next update", format_date(endpoint.crl_next_update)},
+      {"List number", endpoint.crl_number && to_string(endpoint.crl_number)},
+      {"Revoked certificates", to_string(revoked_count)}
+    ]
+    |> Enum.reject(fn {_label, value} -> value in [nil, ""] end)
   end
 
   defp describe_certificate(certificate) do

@@ -919,6 +919,11 @@ defmodule Portal.Safe do
   # certificate, so any actor type that can attest must be able to read it.
   def permit(:read, Portal.CrlRevocation, _), do: :ok
 
+  # Read only: the rows are written by the connect that discovers them and by
+  # the fetch job, both of which pin the account themselves.
+  def permit(:read, Portal.RevocationEndpoint, :account_admin_user), do: :ok
+  def permit(:read, Portal.RevocationEndpoint, :api_client), do: :ok
+
   # SessionLog permissions
   def permit(:read, Portal.SessionLog, :account_admin_user), do: :ok
   def permit(:read, Portal.SessionLog, :api_client), do: :ok
