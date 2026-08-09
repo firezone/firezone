@@ -29,7 +29,7 @@ runs:
       if: ${{ runner.os != 'Windows' }}
       run: echo "MISE_SCAN_PATH=$HOME/.local/share/mise/installs" >> "$GITHUB_ENV"
 
-    - uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+    - uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
       id: mise-1
       continue-on-error: true
       with:
@@ -39,7 +39,7 @@ runs:
         reshim: true
         cache_key_prefix: "mise-v2"
 
-    - uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+    - uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
       if: ${{ steps.mise-1.outcome == 'failure' }}
       id: mise-2
       continue-on-error: true
@@ -50,7 +50,7 @@ runs:
         reshim: true
         cache_key_prefix: "mise-v2"
 
-    - uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+    - uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
       if: ${{ steps.mise-2.outcome == 'failure' }}
       with:
         version: ${{ inputs.version }}
