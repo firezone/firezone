@@ -16,7 +16,11 @@ pub(super) enum Route {
     Client {
         filter: FilterEngine,
         resource_id: ResourceId,
-        target: ClientTarget,
+        client_id: ClientId,
+    },
+    ResolvedDevice {
+        filter: FilterEngine,
+        resource_id: ResourceId,
     },
     Gateway {
         filter: FilterEngine,
@@ -25,16 +29,13 @@ pub(super) enum Route {
     },
 }
 
-pub(super) enum ClientTarget {
-    Known(ClientId),
-    Resolved,
-}
-
 impl Route {
     #[cfg_attr(not(feature = "telemetry"), expect(dead_code))]
     pub(super) fn resource_id(&self) -> ResourceId {
         match self {
-            Self::Client { resource_id, .. } | Self::Gateway { resource_id, .. } => *resource_id,
+            Self::Client { resource_id, .. } => *resource_id,
+            Self::ResolvedDevice { resource_id, .. } => *resource_id,
+            Self::Gateway { resource_id, .. } => *resource_id,
         }
     }
 }
@@ -60,7 +61,7 @@ impl RoutingTables {
             return Some(Route::Client {
                 filter: entry.filter,
                 resource_id: entry.resource_id,
-                target: ClientTarget::Known(entry.client_id),
+                client_id: entry.client_id,
             });
         }
 
@@ -69,10 +70,9 @@ impl RoutingTables {
             .matches(destination, Ok(protocol))
             .cloned()
         {
-            return Some(Route::Client {
+            return Some(Route::ResolvedDevice {
                 filter: entry.filter,
                 resource_id: entry.resource_id,
-                target: ClientTarget::Resolved,
             });
         }
 
@@ -342,7 +342,7 @@ mod tests {
         assert!(matches!(
             route,
             Some(Route::Client {
-                target: ClientTarget::Known(c),
+                client_id: c,
                 ..
             }) if c == client_id
         ));
@@ -366,8 +366,7 @@ mod tests {
 
         assert!(matches!(
             route,
-            Some(Route::Client {
-                target: ClientTarget::Resolved,
+            Some(Route::ResolvedDevice {
                 resource_id: rid,
                 ..
             }) if rid == resource_id
