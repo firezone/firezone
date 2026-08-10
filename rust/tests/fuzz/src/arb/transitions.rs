@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    iter,
     time::{Duration, Instant},
 };
 
@@ -150,7 +151,22 @@ pub(super) fn generate(
                 portal_window,
             }
         }
-        K::DeployNewRelays => Transition::DeployNewRelays(arb_relays(g)),
+        K::DeployNewRelays => {
+            // An ICEless connection survives relay deployment changes. Keeping one deployed
+            // relay out of `connected` exercises refreshing an unmentioned live allocation.
+            let retained = if state.portal.iceless() && state.relays.len() >= 2 {
+                let index = g.choose_index(state.relays.len());
+                let (relay_id, relay) = state.relays.iter().nth(index).unwrap();
+
+                Some((*relay_id, relay.clone()))
+            } else {
+                None
+            };
+
+            let relays = iter::empty().chain(retained).chain(arb_relays(g)).collect();
+
+            Transition::DeployNewRelays(relays)
+        }
         K::PartitionRelaysFromPortal => Transition::PartitionRelaysFromPortal,
         K::RebootRelaysWhilePartitioned => {
             // Reboot the *existing* relays with fresh credentials (same ids).

@@ -93,7 +93,7 @@ pub(super) fn arb_relays(g: &mut Generator) -> BTreeMap<RelayId, Host<u64>> {
             let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
             (id, host)
         })
-        .collect::<BTreeMap<_, _>>()
+        .collect()
 }
 
 pub(super) fn with_interface<T>(

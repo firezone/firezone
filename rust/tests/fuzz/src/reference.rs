@@ -370,7 +370,7 @@ impl ReferenceState {
             }
             Transition::DeployNewRelays(new_relays) => state.deploy_new_relays(new_relays),
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
-                state.deploy_new_relays(new_relays)
+                state.reboot_relays_while_partitioned(new_relays)
             }
             Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
@@ -1109,7 +1109,25 @@ impl ReferenceState {
     }
 
     fn deploy_new_relays(&mut self, new_relays: &BTreeMap<RelayId, Host<u64>>) {
-        // Always take down all relays because we can't know which one was sampled for the connection.
+        for (_, relay) in self
+            .relays
+            .extract_if(.., |relay_id, _| !new_relays.contains_key(relay_id))
+        {
+            self.network.remove_host(&relay);
+        }
+
+        for (rid, new_relay) in new_relays {
+            if self.relays.contains_key(rid) {
+                continue;
+            }
+
+            self.relays.insert(*rid, new_relay.clone());
+            let added = self.network.add_host(*rid, new_relay);
+            debug_assert!(added);
+        }
+    }
+
+    fn reboot_relays_while_partitioned(&mut self, new_relays: &BTreeMap<RelayId, Host<u64>>) {
         for relay in self.relays.values() {
             self.network.remove_host(relay);
         }
