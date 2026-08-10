@@ -287,6 +287,7 @@ defmodule PortalWeb.OIDC do
   - "google_directory_sync" — OIDC code + PKCE identity proof for a Workspace admin probe
   - "entra" — Entra auth_provider admin consent + silent authorization code/PKCE proof
   - "entra_directory_sync" — Entra directory_sync admin consent + user-bound PKCE proof
+  - "intune_device_integration" — Intune admin consent + user-bound PKCE proof
 
   Options:
   - :okta_domain - Required for Okta providers
@@ -305,7 +306,15 @@ defmodule PortalWeb.OIDC do
 
   def setup_verification("entra_directory_sync", _opts) do
     config =
-      Portal.Config.fetch_env!(:portal, Portal.Entra.APIClient)
+      Portal.Microsoft.Graph.APIClient.verification_config(:entra)
+      |> entra_verification_config("openid profile", "https://graph.microsoft.com/.default")
+
+    {:ok, %{config: config}}
+  end
+
+  def setup_verification("intune_device_integration", _opts) do
+    config =
+      Portal.Microsoft.Graph.APIClient.verification_config(:intune)
       |> entra_verification_config("openid profile", "https://graph.microsoft.com/.default")
 
     {:ok, %{config: config}}
@@ -354,6 +363,7 @@ defmodule PortalWeb.OIDC do
   def verification_state_type("entra"), do: "entra-auth-provider"
   def verification_state_type("entra_directory_sync"), do: "entra-directory-sync"
   def verification_state_type("google_directory_sync"), do: "google-directory-sync"
+  def verification_state_type("intune_device_integration"), do: "intune-device-integration"
 
   def verification_state_type(type) when type in ["google", "okta", "oidc"],
     do: "oidc-auth-provider"
@@ -404,7 +414,8 @@ defmodule PortalWeb.OIDC do
   admin consent. Both Entra flows follow it with a tenant-specific PKCE identity
   proof that binds the setup to the signed-in user's immutable tenant and object IDs.
   The state_token (from sign_verification_state/2) is passed through the IdP unchanged.
-  Accepts types: "google", "okta", "oidc", "entra", "entra_directory_sync".
+  Accepts types: "google", "okta", "oidc", "entra", "entra_directory_sync",
+  and "intune_device_integration".
   Returns {:ok, uri} or {:error, reason}.
   """
   def build_verification_uri(type, config, verifier, state_token)
@@ -445,7 +456,7 @@ defmodule PortalWeb.OIDC do
   end
 
   def build_verification_uri(type, config, _verifier, state_token)
-      when type in ["entra", "entra_directory_sync"] do
+      when type in ["entra", "entra_directory_sync", "intune_device_integration"] do
     params = %{
       client_id: config[:client_id],
       redirect_uri: callback_url(),

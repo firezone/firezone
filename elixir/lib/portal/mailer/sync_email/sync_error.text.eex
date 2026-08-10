@@ -1,21 +1,22 @@
-Directory Sync Error!
+<%= @details_heading %>!
 
-The "<%= @directory.name %>" directory has encountered an unrecoverable error and sync has been disabled.
-Please visit your directory sync settings to re-verify the directory and enable sync:
+The "<%= @record.name %>" <%= @noun %> has encountered an unrecoverable error and sync has been disabled.
+Please visit your <%= @settings_link_text %> <%= @settings_action %>
 <%= @settings_url %>
 
 Below is the last sync error message:
 
-<%= @directory.error_message || "No error message available" %>
+<%= @record.error_message || "No error message available" %>
 
-Directory details:
+<%= @details_heading %>:
   Account: <%= @account.name %>
   Account ID: <%= @account.id %>
-  Directory Name: <%= @directory.name %>
-  Directory ID: <%= @directory.id %>
-  Error Occurred At: <%= @directory.errored_at || "Unknown" %>
+  <%= @record_label %> Name: <%= @record.name %>
+  <%= @record_label %> ID: <%= @record.id %>
+<%= for {label, value} <- @details_rows do %>  <%= label %>: <%= value %>
+<% end %>  Error Occurred At: <%= @record.errored_at || "Unknown" %>
 
-Please verify that all directory information entered into Firezone is correct. If the problem persists, please reach out to Firezone support via Slack or email.
+<%= @remediation %> If the problem persists, please reach out to Firezone support via Slack or email.
 
 Thanks,
 The Firezone Team

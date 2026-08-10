@@ -1,41 +1,57 @@
-defmodule Portal.Entra.APIClient do
+defmodule Portal.Microsoft.Graph.APIClient do
   @moduledoc """
-  Client for Microsoft Graph PortalAPI.
+  Client for Microsoft Graph APIs used by Entra directory sync and device inventory.
+
+  HTTP transport is shared, while each integration uses its own app registration.
   """
 
   require Logger
 
   @entra_user_select_fields "id,displayName,mail,userPrincipalName,givenName,surname,accountEnabled"
   @advanced_query_headers [{"ConsistencyLevel", "eventual"}]
+  @applications [:entra, :intune]
+  @page_size "999"
 
   @doc """
   Gets an access token using the OAuth2 client credentials flow.
   """
-  def get_access_token(tenant_id) do
-    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+  def get_access_token(application, tenant_id) when application in @applications do
+    config = config()
+    application_config = application_config(application)
     token_endpoint = "#{config[:token_base_url]}/#{tenant_id}/oauth2/v2.0/token"
 
-    with {:ok, credential} <- client_credential(config) do
+    with {:ok, credential} <- client_credential(application_config) do
       # Request access token to read what our app is set up to do (.default scope)
       payload =
         %{
-          "client_id" => config[:client_id],
+          "client_id" => application_config[:client_id],
           "scope" => "https://graph.microsoft.com/.default",
           "grant_type" => "client_credentials"
         }
         |> Map.merge(credential)
         |> URI.encode_query()
 
-      req_opts = fetch_config(:req_opts) || []
-
       Req.post(
         token_endpoint,
         [
           headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
           body: payload
-        ] ++ req_opts
+        ] ++ req_opts()
       )
     end
+  end
+
+  def client_id(application) when application in @applications do
+    application_config(application)[:client_id]
+  end
+
+  @doc """
+  Credentials for one application, shaped for the OIDC verification flow.
+  """
+  def verification_config(application) when application in @applications do
+    config()
+    |> Keyword.fetch!(:applications)
+    |> Keyword.fetch!(application)
   end
 
   # Production authenticates the app with workload identity federation: the
@@ -115,7 +131,7 @@ defmodule Portal.Entra.APIClient do
   def stream_app_role_assignments(access_token, service_principal_id) do
     query =
       URI.encode_query(%{
-        "$top" => "999",
+        "$top" => @page_size,
         "$select" => "id,principalId,principalType,principalDisplayName"
       })
 
@@ -128,7 +144,7 @@ defmodule Portal.Entra.APIClient do
   Returns a stream that yields pages of groups.
   """
   def stream_groups(access_token) do
-    query = URI.encode_query(%{"$top" => "999", "$select" => "id,displayName"})
+    query = URI.encode_query(%{"$top" => @page_size, "$select" => "id,displayName"})
 
     path = "/v1.0/groups"
     stream_pages(path, query, access_token)
@@ -144,7 +160,7 @@ defmodule Portal.Entra.APIClient do
     # users server-side before we build identities or memberships.
     query =
       URI.encode_query(%{
-        "$top" => "999",
+        "$top" => @page_size,
         "$count" => "true",
         "$filter" => "accountEnabled eq true",
         "$select" => @entra_user_select_fields
@@ -176,10 +192,7 @@ defmodule Portal.Entra.APIClient do
 
     batch_body = %{requests: requests}
 
-    config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    endpoint = config[:endpoint] || "https://graph.microsoft.com"
-    url = "#{endpoint}/v1.0/$batch"
-    req_opts = fetch_config(:req_opts) || []
+    url = "#{endpoint()}/v1.0/$batch"
 
     case Req.post(
            url,
@@ -189,7 +202,7 @@ defmodule Portal.Entra.APIClient do
                {"Content-Type", "application/json"}
              ],
              json: batch_body
-           ] ++ req_opts
+           ] ++ req_opts()
          ) do
       {:ok, %Req.Response{status: 200, body: %{"responses" => responses}}} ->
         Logger.debug("Batch API response",
@@ -296,8 +309,8 @@ defmodule Portal.Entra.APIClient do
   Makes minimal API calls ($top=1) to verify the application has
   proper permissions for users and groups endpoints.
   """
-  @spec test_connection(String.t()) :: :ok | {:error, term()}
-  def test_connection(access_token) do
+  @spec test_directory_connection(String.t()) :: :ok | {:error, term()}
+  def test_directory_connection(access_token) do
     with :ok <- test_users(access_token),
          :ok <- test_groups(access_token) do
       :ok
@@ -325,16 +338,39 @@ defmodule Portal.Entra.APIClient do
     get("/v1.0/subscribedSkus", "", access_token)
   end
 
-  defp get(path, query, access_token, headers \\ []) do
-    config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    endpoint = config[:endpoint] || "https://graph.microsoft.com"
-    req_opts = fetch_config(:req_opts) || []
+  @doc """
+  Fetches Intune managed devices with a limit of one.
+  """
+  def list_managed_devices(access_token) do
+    query = URI.encode_query(%{"$top" => "1"})
+    get("/v1.0/deviceManagement/managedDevices", query, access_token)
+  end
 
-    url = "#{endpoint}#{path}?#{query}"
+  @doc """
+  Streams every page of Intune managed devices.
+  """
+  def stream_managed_devices(access_token) do
+    query = URI.encode_query(%{"$top" => @page_size})
+    stream_pages("/v1.0/deviceManagement/managedDevices", query, access_token)
+  end
+
+  @doc """
+  Tests access to the Intune managed-devices endpoint.
+  """
+  def test_managed_devices_connection(access_token) do
+    case list_managed_devices(access_token) do
+      {:ok, %Req.Response{status: 200, body: %{"value" => value}}} when is_list(value) -> :ok
+      other -> other
+    end
+  end
+
+  defp get(path, query, access_token, headers \\ []) do
+    suffix = if query in [nil, ""], do: "", else: "?#{query}"
+    url = "#{endpoint()}#{path}#{suffix}"
 
     Req.get(
       url,
-      [headers: [{"Authorization", "Bearer #{access_token}"} | headers]] ++ req_opts
+      [headers: [{"Authorization", "Bearer #{access_token}"} | headers]] ++ req_opts()
     )
   end
 
@@ -383,7 +419,7 @@ defmodule Portal.Entra.APIClient do
 
             next_link ->
               uri = URI.parse(next_link)
-              next_path = String.replace(uri.path, "/v1.0", "")
+              next_path = uri.path
               next_query = uri.query || ""
               {next_path, next_query, headers}
           end
@@ -405,7 +441,14 @@ defmodule Portal.Entra.APIClient do
     end
   end
 
-  defp fetch_config(key) do
-    Portal.Config.fetch_env!(:portal, __MODULE__)[key]
+  defp config, do: Portal.Config.fetch_env!(:portal, __MODULE__)
+  defp endpoint, do: config()[:endpoint] || "https://graph.microsoft.com"
+  defp req_opts, do: config()[:req_opts] || []
+
+  defp application_config(application) do
+    config()
+    |> Keyword.fetch!(:applications)
+    |> Keyword.fetch!(application)
+    |> Enum.into(%{})
   end
 end

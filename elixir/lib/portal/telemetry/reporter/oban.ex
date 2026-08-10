@@ -46,6 +46,11 @@ defmodule Portal.Telemetry.Reporter.Oban do
     Portal.DirectorySync.ErrorHandler.handle_error(meta)
   end
 
+  defp handle_error(%{reason: reason, job: %{worker: "Portal.Intune.Sync"} = job}) do
+    Portal.Intune.ErrorHandler.handle(reason, job.args["device_integration_id"])
+    build_sentry_context(job)
+  end
+
   defp handle_error(%{job: job}) do
     # Default Sentry context for jobs without a domain-specific handler
     build_sentry_context(job)

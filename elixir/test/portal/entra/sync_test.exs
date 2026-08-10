@@ -6,7 +6,7 @@ defmodule Portal.Entra.SyncTest do
   import Portal.AccountFixtures
   import Portal.EntraDirectoryFixtures
 
-  alias Portal.Entra.APIClient
+  alias Portal.Microsoft.Graph.APIClient
   alias Portal.Entra.Sync
   alias Portal.Entra.Sync.Database
   alias Portal.ExternalIdentity
@@ -29,8 +29,7 @@ defmodule Portal.Entra.SyncTest do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
 
-      api_client_config = Portal.Config.get_env(:portal, Portal.Entra.APIClient)
-      directory_sync_client_id = api_client_config[:client_id]
+      directory_sync_client_id = APIClient.client_id(:entra)
 
       auth_provider_config = Portal.Config.get_env(:portal, Portal.Entra.AuthProvider)
       auth_provider_client_id = auth_provider_config[:client_id]
@@ -240,8 +239,7 @@ defmodule Portal.Entra.SyncTest do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
 
-      api_client_config = Portal.Config.get_env(:portal, Portal.Entra.APIClient)
-      directory_sync_client_id = api_client_config[:client_id]
+      directory_sync_client_id = APIClient.client_id(:entra)
 
       auth_provider_config = Portal.Config.get_env(:portal, Portal.Entra.AuthProvider)
       auth_provider_client_id = auth_provider_config[:client_id]
@@ -682,8 +680,7 @@ defmodule Portal.Entra.SyncTest do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
 
-      api_client_config = Portal.Config.get_env(:portal, Portal.Entra.APIClient)
-      directory_sync_client_id = api_client_config[:client_id]
+      directory_sync_client_id = APIClient.client_id(:entra)
 
       auth_provider_config = Portal.Config.get_env(:portal, Portal.Entra.AuthProvider)
       auth_provider_client_id = auth_provider_config[:client_id]
@@ -755,8 +752,7 @@ defmodule Portal.Entra.SyncTest do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
 
-      api_client_config = Portal.Config.get_env(:portal, Portal.Entra.APIClient)
-      directory_sync_client_id = api_client_config[:client_id]
+      directory_sync_client_id = APIClient.client_id(:entra)
 
       auth_provider_config = Portal.Config.get_env(:portal, Portal.Entra.AuthProvider)
       auth_provider_client_id = auth_provider_config[:client_id]
@@ -987,8 +983,7 @@ defmodule Portal.Entra.SyncTest do
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
 
       # Get the expected client_ids from config
-      api_client_config = Portal.Config.get_env(:portal, Portal.Entra.APIClient)
-      directory_sync_client_id = api_client_config[:client_id]
+      directory_sync_client_id = APIClient.client_id(:entra)
 
       auth_provider_config = Portal.Config.get_env(:portal, Portal.Entra.AuthProvider)
       auth_provider_client_id = auth_provider_config[:client_id]
@@ -1128,8 +1123,7 @@ defmodule Portal.Entra.SyncTest do
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
 
       # Get the expected client_ids from config
-      api_client_config = Portal.Config.get_env(:portal, Portal.Entra.APIClient)
-      directory_sync_client_id = api_client_config[:client_id]
+      directory_sync_client_id = APIClient.client_id(:entra)
 
       auth_provider_config = Portal.Config.get_env(:portal, Portal.Entra.AuthProvider)
       auth_provider_client_id = auth_provider_config[:client_id]
@@ -1269,8 +1263,7 @@ defmodule Portal.Entra.SyncTest do
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
 
       # Get the expected client_ids from config
-      api_client_config = Portal.Config.get_env(:portal, Portal.Entra.APIClient)
-      directory_sync_client_id = api_client_config[:client_id]
+      directory_sync_client_id = APIClient.client_id(:entra)
 
       auth_provider_config = Portal.Config.get_env(:portal, Portal.Entra.AuthProvider)
       auth_provider_client_id = auth_provider_config[:client_id]
@@ -1356,8 +1349,7 @@ defmodule Portal.Entra.SyncTest do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
 
-      api_client_config = Portal.Config.get_env(:portal, Portal.Entra.APIClient)
-      directory_sync_client_id = api_client_config[:client_id]
+      directory_sync_client_id = APIClient.client_id(:entra)
 
       auth_provider_config = Portal.Config.get_env(:portal, Portal.Entra.AuthProvider)
       auth_provider_client_id = auth_provider_config[:client_id]
@@ -1413,8 +1405,7 @@ defmodule Portal.Entra.SyncTest do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
 
-      api_client_config = Portal.Config.get_env(:portal, Portal.Entra.APIClient)
-      directory_sync_client_id = api_client_config[:client_id]
+      directory_sync_client_id = APIClient.client_id(:entra)
 
       # Mock access token and service principal lookup returning empty for directory sync
       Req.Test.expect(APIClient, 10, fn %{request_path: path, query_string: query} = conn ->
@@ -1453,8 +1444,7 @@ defmodule Portal.Entra.SyncTest do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
 
-      api_client_config = Portal.Config.get_env(:portal, Portal.Entra.APIClient)
-      directory_sync_client_id = api_client_config[:client_id]
+      directory_sync_client_id = APIClient.client_id(:entra)
 
       auth_provider_config = Portal.Config.get_env(:portal, Portal.Entra.AuthProvider)
       auth_provider_client_id = auth_provider_config[:client_id]
@@ -2897,10 +2887,9 @@ defmodule Portal.Entra.SyncTest do
   end
 
   defp entra_client_ids do
-    api_client_config = Portal.Config.get_env(:portal, Portal.Entra.APIClient)
     auth_provider_config = Portal.Config.get_env(:portal, Portal.Entra.AuthProvider)
 
-    {api_client_config[:client_id], auth_provider_config[:client_id]}
+    {APIClient.client_id(:entra), auth_provider_config[:client_id]}
   end
 
   defp expect_entra_direct_assignment_sync(batch_users) do

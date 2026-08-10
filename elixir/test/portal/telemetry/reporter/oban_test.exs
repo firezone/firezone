@@ -37,5 +37,31 @@ defmodule Portal.Telemetry.Reporter.ObanTest do
       updated_directory = Portal.Repo.get!(Portal.Entra.Directory, directory.id)
       assert updated_directory.errored_at != nil
     end
+
+    test "routes Intune device inventory sync exceptions to the Intune error handler" do
+      integration = Portal.IntuneFixtures.intune_integration_fixture()
+
+      job = %Oban.Job{
+        id: 2,
+        worker: "Portal.Intune.Sync",
+        queue: "intune_sync",
+        meta: %{},
+        args: %{"device_integration_id" => integration.id}
+      }
+
+      reason =
+        Portal.Intune.SyncError.exception(
+          integration_id: integration.id,
+          step: :list_managed_devices,
+          error: %Req.Response{status: 403, body: ""}
+        )
+
+      Reporter.handle_event([:oban, :job, :exception], %{}, %{reason: reason, job: job, stacktrace: []}, [])
+
+      assert Portal.Repo.get_by!(Portal.Intune.Integration,
+               account_id: integration.account_id,
+               id: integration.id
+             ).is_disabled
+    end
   end
 end

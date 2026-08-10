@@ -136,6 +136,21 @@
         "title": "MembershipPutRequest",
         "type": "object"
       },
+      "IntuneDeviceListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/IntuneDevice"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "title": "IntuneDeviceListResponse",
+        "type": "object"
+      },
       "PolicyCreateParams": {
         "description": "Policy attributes accepted when creating a Policy",
         "example": {
@@ -647,6 +662,15 @@
           "idp_id"
         ],
         "title": "ExternalIdentity",
+        "type": "object"
+      },
+      "IntuneDeviceResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/IntuneDevice"
+          }
+        },
+        "title": "IntuneDeviceResponse",
         "type": "object"
       },
       "ClientPutRequest": {
@@ -2556,6 +2580,15 @@
         "title": "EntraDirectory",
         "type": "object"
       },
+      "IntuneIntegrationResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/IntuneIntegration"
+          }
+        },
+        "title": "IntuneIntegrationResponse",
+        "type": "object"
+      },
       "LogsResponse": {
         "description": "Response schema for a page of Log entries.\n\nEntries are returned most recent first. Each page contains at most 100\nentries (50 by default); use the `metadata.next_page` cursor to fetch\nthe following page.\n",
         "example": {
@@ -3924,6 +3957,74 @@
         "title": "APIRequestLog",
         "type": "object"
       },
+      "IntuneIntegration": {
+        "description": "Microsoft Intune device inventory integration",
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "disabled_reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "error_message": {
+            "nullable": true,
+            "type": "string"
+          },
+          "errored_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "inserted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "is_disabled": {
+            "type": "boolean"
+          },
+          "is_verified": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "intune"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "type",
+          "name",
+          "tenant_id",
+          "is_verified",
+          "is_disabled"
+        ],
+        "title": "IntuneIntegration",
+        "type": "object"
+      },
       "SiteUpdateRequest": {
         "description": "PATCH/PUT body for updating a Site. All fields are optional; omitted fields keep their current value.",
         "example": {
@@ -4413,6 +4514,417 @@
           }
         },
         "title": "ResourceListResponse",
+        "type": "object"
+      },
+      "IntuneDevice": {
+        "description": "Device synced from Microsoft Intune",
+        "properties": {
+          "device_registration_state": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_operating_system_rev_list_info": {
+            "nullable": true,
+            "type": "string"
+          },
+          "entra_registered": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "attestation_boot_app_security_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "operating_system": {
+            "nullable": true,
+            "type": "string"
+          },
+          "is_supervised": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "notes": {
+            "nullable": true,
+            "type": "string"
+          },
+          "free_storage_space_bytes": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "attestation_issued_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "config_manager_compliance_policy": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "user_display_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "config_manager_device_configuration": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "config_manager_inventory": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "enrolled_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "total_storage_space_bytes": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "device_action_results": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "attestation_operating_system_kernel_debugging": {
+            "nullable": true,
+            "type": "string"
+          },
+          "ethernet_mac_address": {
+            "nullable": true,
+            "type": "string"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "inserted_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "remote_assistance_session_url": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_health_status_mismatch_info": {
+            "nullable": true,
+            "type": "string"
+          },
+          "intune_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "management_certificate_expires_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "compliance_state": {
+            "nullable": true,
+            "type": "string"
+          },
+          "require_user_enrollment_approval": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "attestation_code_integrity_check_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_pcr0": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_boot_revision_list_info": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_reset_count": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "attestation_safe_mode": {
+            "nullable": true,
+            "type": "string"
+          },
+          "managed_device_owner_type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "serial_number": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_secure_boot": {
+            "nullable": true,
+            "type": "string"
+          },
+          "device_category_display_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_code_integrity_policy": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_virtual_secure_mode": {
+            "nullable": true,
+            "type": "string"
+          },
+          "remote_assistance_session_error_details": {
+            "nullable": true,
+            "type": "string"
+          },
+          "last_sync_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_bit_locker_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "is_encrypted": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "eas_activated": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "manufacturer": {
+            "nullable": true,
+            "type": "string"
+          },
+          "eas_activated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "account_id": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_early_launch_anti_malware_driver_protection": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_last_update_date_time": {
+            "nullable": true,
+            "type": "string"
+          },
+          "management_agent": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_tpm_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "management_state": {
+            "nullable": true,
+            "type": "string"
+          },
+          "wifi_mac_address": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_code_integrity": {
+            "nullable": true,
+            "type": "string"
+          },
+          "user_principal_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "entra_device_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "android_security_patch_level": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_supported_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_pcr_hash_algorithm": {
+            "nullable": true,
+            "type": "string"
+          },
+          "device_enrollment_type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "device_integration_id": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "subscriber_carrier": {
+            "nullable": true,
+            "type": "string"
+          },
+          "enrollment_profile_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "model": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_boot_manager_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "partner_reported_threat_state": {
+            "nullable": true,
+            "type": "string"
+          },
+          "config_manager_modern_apps": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "user_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "jail_broken": {
+            "nullable": true,
+            "type": "string"
+          },
+          "eas_device_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "exchange_last_successful_sync_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_content_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "exchange_access_state": {
+            "nullable": true,
+            "type": "string"
+          },
+          "managed_device_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "udid": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_secure_boot_config_policy_fingerprint": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_identity_key": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_boot_manager_security_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "compliance_grace_period_expiration_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "exchange_access_state_reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_windows_pe": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "iccid": {
+            "nullable": true,
+            "type": "string"
+          },
+          "meid": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_test_signing": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_boot_debugging": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_data_execution_policy": {
+            "nullable": true,
+            "type": "string"
+          },
+          "phone_number": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_restart_count": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "imei": {
+            "nullable": true,
+            "type": "string"
+          },
+          "os_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "physical_memory_bytes": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "config_manager_windows_update_for_business": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "email_address": {
+            "nullable": true,
+            "type": "string"
+          },
+          "device_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attestation_content_namespace_url": {
+            "nullable": true,
+            "type": "string"
+          },
+          "config_manager_resource_access": {
+            "nullable": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "account_id",
+          "device_integration_id",
+          "intune_id",
+          "synced_at"
+        ],
+        "title": "IntuneDevice",
         "type": "object"
       },
       "FlowLogIngestRequest": {
@@ -8175,6 +8687,110 @@
         ]
       }
     },
+    "/intune_integration": {
+      "get": {
+        "callbacks": {},
+        "description": "An account has at most one Intune integration, so this is a singleton rather than a collection.",
+        "operationId": "PortalAPI.IntuneIntegrationController.show",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntuneIntegrationResponse"
+                }
+              }
+            },
+            "description": "Intune integration response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show the Intune device inventory integration",
+        "tags": [
+          "Intune Integrations"
+        ]
+      }
+    },
     "/resources": {
       "get": {
         "callbacks": {},
@@ -8649,6 +9265,119 @@
         "summary": "List Okta Auth Providers",
         "tags": [
           "Okta Auth Providers"
+        ]
+      }
+    },
+    "/intune_devices/{id}": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.IntuneDeviceController.show",
+        "parameters": [
+          {
+            "description": "Synced Intune device ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntuneDeviceResponse"
+                }
+              }
+            },
+            "description": "Intune device response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show a synced Intune device",
+        "tags": [
+          "Intune Devices"
         ]
       }
     },
@@ -10298,6 +11027,112 @@
         "summary": "Create a Gateway Token",
         "tags": [
           "Gateway Tokens"
+        ]
+      }
+    },
+    "/intune_devices": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.IntuneDeviceController.index",
+        "parameters": [
+          {
+            "description": "Limit devices returned",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/previous page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntuneDeviceListResponse"
+                }
+              }
+            },
+            "description": "Intune device response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List synced Intune devices",
+        "tags": [
+          "Intune Devices"
         ]
       }
     },

@@ -1,8 +1,8 @@
-defmodule Portal.Entra.APIClientTest do
+defmodule Portal.Microsoft.Graph.APIClientTest do
   use ExUnit.Case, async: true
   import ExUnit.CaptureLog
 
-  alias Portal.Entra.APIClient
+  alias Portal.Microsoft.Graph.APIClient
 
   @test_tenant_id "12345678-1234-1234-1234-123456789012"
   @test_access_token "test_access_token_123"
@@ -16,11 +16,9 @@ defmodule Portal.Entra.APIClientTest do
     :ok
   end
 
-  describe "get_access_token/1" do
+  describe "get_access_token/2" do
     test "requests access token using client credentials flow" do
       test_pid = self()
-      config = Portal.Config.get_env(:portal, APIClient)
-
       Req.Test.expect(APIClient, fn conn ->
         assert conn.method == "POST"
         assert String.ends_with?(conn.request_path, "/oauth2/v2.0/token")
@@ -36,7 +34,7 @@ defmodule Portal.Entra.APIClientTest do
       end)
 
       assert {:ok, %Req.Response{status: 200, body: body}} =
-               APIClient.get_access_token(@test_tenant_id)
+               APIClient.get_access_token(:entra, @test_tenant_id)
 
       assert body["access_token"] == "returned_access_token"
 
@@ -46,13 +44,15 @@ defmodule Portal.Entra.APIClientTest do
       params = URI.decode_query(request_body)
       assert params["grant_type"] == "client_credentials"
       assert params["scope"] == "https://graph.microsoft.com/.default"
-      assert params["client_id"] == config[:client_id]
-      assert params["client_secret"] == config[:client_secret]
+      assert params["client_id"] == "test_client_id"
+      assert params["client_secret"] == "test_client_secret"
     end
 
     test "authenticates with a managed-identity assertion when no secret is set" do
       test_pid = self()
-      Portal.Config.put_env_override(:portal, APIClient, client_secret: nil)
+      Portal.Config.merge_env_override(:portal, APIClient,
+        applications: [entra: [client_secret: nil]]
+      )
 
       Req.Test.stub(Portal.Azure.ManagedIdentity, fn conn ->
         Req.Test.json(conn, %{
@@ -67,7 +67,7 @@ defmodule Portal.Entra.APIClientTest do
         Req.Test.json(conn, %{"access_token" => "graph_token", "expires_in" => 3600})
       end)
 
-      assert {:ok, %Req.Response{status: 200}} = APIClient.get_access_token(@test_tenant_id)
+      assert {:ok, %Req.Response{status: 200}} = APIClient.get_access_token(:entra, @test_tenant_id)
 
       assert_receive {:token_request, request_body}
       params = URI.decode_query(request_body)
@@ -85,7 +85,7 @@ defmodule Portal.Entra.APIClientTest do
       end)
 
       assert {:error, %Req.TransportError{reason: :econnrefused}} =
-               APIClient.get_access_token(@test_tenant_id)
+               APIClient.get_access_token(:entra, @test_tenant_id)
     end
 
     test "returns 401 response on authentication failure" do
@@ -96,7 +96,7 @@ defmodule Portal.Entra.APIClientTest do
       end)
 
       assert {:ok, %Req.Response{status: 401}} =
-               APIClient.get_access_token(@test_tenant_id)
+               APIClient.get_access_token(:entra, @test_tenant_id)
     end
   end
 
@@ -739,13 +739,13 @@ defmodule Portal.Entra.APIClientTest do
     end
   end
 
-  describe "test_connection/1" do
+  describe "test_directory_connection/1" do
     test "returns :ok when all endpoints succeed" do
       Req.Test.expect(APIClient, 2, fn conn ->
         Req.Test.json(conn, %{"value" => [%{"id" => "test"}]})
       end)
 
-      assert :ok = APIClient.test_connection(@test_access_token)
+      assert :ok = APIClient.test_directory_connection(@test_access_token)
     end
 
     test "returns error when users endpoint fails" do
@@ -755,7 +755,7 @@ defmodule Portal.Entra.APIClientTest do
         |> Req.Test.json(%{"error" => "Forbidden"})
       end)
 
-      assert {:ok, %Req.Response{status: 403}} = APIClient.test_connection(@test_access_token)
+      assert {:ok, %Req.Response{status: 403}} = APIClient.test_directory_connection(@test_access_token)
     end
 
     test "returns error when groups endpoint fails" do
@@ -771,7 +771,7 @@ defmodule Portal.Entra.APIClientTest do
         |> Req.Test.json(%{"error" => "Forbidden"})
       end)
 
-      assert {:ok, %Req.Response{status: 403}} = APIClient.test_connection(@test_access_token)
+      assert {:ok, %Req.Response{status: 403}} = APIClient.test_directory_connection(@test_access_token)
     end
   end
 
@@ -848,6 +848,87 @@ defmodule Portal.Entra.APIClientTest do
         |> Enum.to_list()
 
       assert [{:error, %Req.TransportError{reason: :timeout}}] = result
+    end
+  end
+
+  describe "Intune managed devices" do
+    test "uses the Intune app registration for client-secret authentication" do
+      test_pid = self()
+
+      Req.Test.expect(APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:token_body, URI.decode_query(body)})
+        Req.Test.json(conn, %{"access_token" => "graph-token"})
+      end)
+
+      assert {:ok, %Req.Response{status: 200}} =
+               APIClient.get_access_token(:intune, "tenant-id")
+
+      assert_receive {:token_body, body}
+      assert body["client_id"] == "test_intune_client_id"
+      assert body["client_secret"] == "test_intune_client_secret"
+      assert body["scope"] == "https://graph.microsoft.com/.default"
+    end
+
+    test "uses workload identity federation when the Intune app has no secret" do
+      test_pid = self()
+
+      Portal.Config.merge_env_override(:portal, APIClient,
+        applications: [intune: [client_secret: nil]]
+      )
+
+      Req.Test.stub(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{
+          "access_token" => "workload-identity-assertion",
+          "expires_on" => Integer.to_string(System.system_time(:second) + 3600)
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:token_body, URI.decode_query(body)})
+        Req.Test.json(conn, %{"access_token" => "graph-token"})
+      end)
+
+      assert {:ok, %Req.Response{status: 200}} =
+               APIClient.get_access_token(:intune, "tenant-id")
+
+      assert_receive {:token_body, body}
+      assert body["client_assertion"] == "workload-identity-assertion"
+
+      assert body["client_assertion_type"] ==
+               "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+
+      refute body["client_secret"]
+    end
+
+    test "streams every managed-device page" do
+      Req.Test.expect(APIClient, 2, fn conn ->
+        case conn.query_string do
+          "$skiptoken=next" ->
+            Req.Test.json(conn, %{"value" => [%{"id" => "device-2"}]})
+
+          _ ->
+            Req.Test.json(conn, %{
+              "value" => [%{"id" => "device-1"}],
+              "@odata.nextLink" =>
+                "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?$skiptoken=next"
+            })
+        end
+      end)
+
+      assert APIClient.stream_managed_devices("token") |> Enum.to_list() == [
+               [%{"id" => "device-1"}],
+               [%{"id" => "device-2"}]
+             ]
+    end
+
+    test "tests access to managed devices" do
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"value" => [%{"id" => "device-1"}]})
+      end)
+
+      assert :ok = APIClient.test_managed_devices_connection("token")
     end
   end
 

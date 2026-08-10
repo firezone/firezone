@@ -12,6 +12,7 @@ defmodule Portal.Entra.Sync do
     ]
 
   alias Portal.Entra
+  alias Portal.Microsoft.Graph.APIClient
   alias __MODULE__.Database
   require Logger
 
@@ -92,7 +93,7 @@ defmodule Portal.Entra.Sync do
   defp get_access_token!(directory) do
     Logger.debug("Getting access token", entra_directory_id: directory.id)
 
-    case Entra.APIClient.get_access_token(directory.tenant_id) do
+    case APIClient.get_access_token(:entra, directory.tenant_id) do
       {:ok, %{body: %{"access_token" => access_token}}} ->
         Logger.debug("Successfully obtained access token", entra_directory_id: directory.id)
 
@@ -203,7 +204,7 @@ defmodule Portal.Entra.Sync do
       service_principal_id: service_principal_id
     )
 
-    Entra.APIClient.stream_app_role_assignments(access_token, service_principal_id)
+    APIClient.stream_app_role_assignments(access_token, service_principal_id)
     |> Stream.each(fn
       {:error, error} ->
         Logger.debug("Failed to stream app role assignments",
@@ -225,21 +226,22 @@ defmodule Portal.Entra.Sync do
   # Fetches the service principal ID for the specified app type.
   # Returns {:ok, id} on success, {:error, reason} on failure.
   defp fetch_service_principal_id(directory, access_token, app_type) do
-    {config_module, app_name} =
+    {client_id, app_name} =
       case app_type do
-        :directory_sync -> {Portal.Entra.APIClient, "Directory Sync"}
-        :auth_provider -> {Portal.Entra.AuthProvider, "Authentication"}
-      end
+        :directory_sync ->
+          {APIClient.client_id(:entra), "Directory Sync"}
 
-    config = Portal.Config.fetch_env!(:portal, config_module)
-    client_id = config[:client_id]
+        :auth_provider ->
+          config = Portal.Config.fetch_env!(:portal, Portal.Entra.AuthProvider)
+          {config[:client_id], "Authentication"}
+      end
 
     Logger.debug("Getting service principal for Entra #{app_name} app",
       entra_directory_id: directory.id,
       client_id: client_id
     )
 
-    case Entra.APIClient.get_service_principal(access_token, client_id) do
+    case APIClient.get_service_principal(access_token, client_id) do
       {:ok, %{body: %{"value" => [%{"id" => id} | _]} = body}} ->
         Logger.debug("Found service principal for #{app_name} app",
           entra_directory_id: directory.id,
@@ -356,7 +358,7 @@ defmodule Portal.Entra.Sync do
       batch_size: length(chunk)
     )
 
-    case Entra.APIClient.batch_get_users(access_token, chunk) do
+    case APIClient.batch_get_users(access_token, chunk) do
       {:ok, users} when is_list(users) ->
         active_users = Enum.filter(users, &syncable_user?(&1, directory.id))
 
@@ -412,7 +414,7 @@ defmodule Portal.Entra.Sync do
       group_name: group_name
     )
 
-    Entra.APIClient.stream_group_transitive_members(access_token, group_id)
+    APIClient.stream_group_transitive_members(access_token, group_id)
     |> Stream.each(fn
       {:error, error} ->
         raise Entra.SyncError,
@@ -472,7 +474,7 @@ defmodule Portal.Entra.Sync do
     # Stream all groups from the directory
     Logger.debug("Streaming all groups from directory", entra_directory_id: directory.id)
 
-    Entra.APIClient.stream_groups(access_token)
+    APIClient.stream_groups(access_token)
     |> Stream.each(fn
       {:error, error} ->
         Logger.debug("Failed to stream groups",
@@ -548,7 +550,7 @@ defmodule Portal.Entra.Sync do
       group_name: group_name
     )
 
-    Entra.APIClient.stream_group_transitive_members(access_token, group_id)
+    APIClient.stream_group_transitive_members(access_token, group_id)
     |> Stream.each(fn
       {:error, error} ->
         raise Entra.SyncError,

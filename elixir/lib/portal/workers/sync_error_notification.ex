@@ -18,6 +18,7 @@ defmodule Portal.Workers.SyncErrorNotification do
   alias Portal.Billing
   alias Portal.Entra
   alias Portal.Google
+  alias Portal.Intune
   alias Portal.Okta
   alias Portal.Mailer
   alias __MODULE__.Database
@@ -29,6 +30,7 @@ defmodule Portal.Workers.SyncErrorNotification do
       "entra" -> check_entra_directories(args)
       "google" -> check_google_directories(args)
       "okta" -> check_okta_directories(args)
+      "intune" -> check_intune_integrations(args)
       _ -> {:error, "Unknown provider: #{provider}"}
     end
   end
@@ -53,6 +55,16 @@ defmodule Portal.Workers.SyncErrorNotification do
     Okta.Directory
     |> Database.errored_disabled_directories(frequency)
     |> Enum.each(&send_notification(:okta, &1, frequency))
+
+    :ok
+  end
+
+  # An Intune integration carries the same error columns as a directory, so the
+  # shared query and escalation schedule apply unchanged.
+  defp check_intune_integrations(%{"frequency" => frequency}) do
+    Intune.Integration
+    |> Database.errored_disabled_directories(frequency)
+    |> Enum.each(&send_notification(:intune, &1, frequency))
 
     :ok
   end
@@ -85,7 +97,7 @@ defmodule Portal.Workers.SyncErrorNotification do
 
       true ->
         increment_error_email_count(directory)
-        send_email_notification(admins, directory, frequency)
+        send_email_notification(provider, admins, directory, frequency)
     end
   end
 
@@ -93,7 +105,7 @@ defmodule Portal.Workers.SyncErrorNotification do
     not Billing.paid_plan?(account) and not Database.account_active?(account.id)
   end
 
-  defp send_email_notification(admins, directory, frequency) do
+  defp send_email_notification(provider, admins, directory, frequency) do
     recipient_emails = Enum.map(admins, & &1.email)
 
     Logger.info("Sending sync error email",
@@ -105,7 +117,7 @@ defmodule Portal.Workers.SyncErrorNotification do
 
     # Attempt to send the email but log errors if it fails. Important not to raise here
     # otherwise we won't increment the error email count and potentially spam admins with emails.
-    sync_email_module().sync_error_email(directory, recipient_emails)
+    error_email(provider, directory, recipient_emails)
     |> mailer_module().enqueue()
     |> case do
       {:ok, _result} ->
@@ -122,6 +134,12 @@ defmodule Portal.Workers.SyncErrorNotification do
         )
     end
   end
+
+  defp error_email(:intune, integration, recipients),
+    do: sync_email_module().device_integration_error_email(integration, recipients)
+
+  defp error_email(provider, directory, recipients) when provider in [:entra, :google, :okta],
+    do: sync_email_module().sync_error_email(directory, recipients)
 
   defp mailer_module do
     Portal.Config.get_env(:portal, __MODULE__, [])

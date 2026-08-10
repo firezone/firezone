@@ -7,6 +7,7 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
   import Portal.ActorFixtures
   import Portal.EntraDirectoryFixtures
   import Portal.GoogleDirectoryFixtures
+  import Portal.IntuneFixtures
   import Portal.OktaDirectoryFixtures
   import Portal.OutboundEmailTestHelpers
   import Portal.SessionLogFixtures
@@ -207,6 +208,49 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
       assert Repo.get!(Portal.Entra.Directory, directory.id).error_email_count == 1
       refute_email_queued(account.id)
       assert collect_queued_emails(account.id) == []
+    end
+
+    test "notifies admins when an Intune integration is disabled by a sync error" do
+      account = device_posture_account_fixture()
+      session_log_fixture(account: account)
+      admin = admin_actor_fixture(account: account)
+
+      integration = intune_integration_fixture(account: account)
+
+      Portal.Intune.ErrorHandler.handle(
+        Portal.Intune.SyncError.exception(
+          integration_id: integration.id,
+          step: :list_managed_devices,
+          error: %Req.Response{status: 403, body: ""}
+        ),
+        integration.id
+      )
+
+      errored =
+        Repo.get_by!(Portal.Intune.Integration,
+          account_id: integration.account_id,
+          id: integration.id
+        )
+
+      assert errored.is_disabled
+      assert errored.disabled_reason == "Sync error"
+      refute errored.is_verified
+      assert errored.error_email_count == 0
+
+      assert :ok = perform_job(SyncErrorNotification, notification_args("intune", "daily"))
+
+      assert Repo.get_by!(Portal.Intune.Integration,
+               account_id: integration.account_id,
+               id: integration.id
+             ).error_email_count == 1
+
+      [email] = collect_queued_emails(account.id)
+      assert email.subject == "Device Integration Error - #{integration.name}"
+      assert {"", admin.email} in email.bcc
+      assert email.text_body =~ "device integration has encountered an unrecoverable error"
+      assert email.text_body =~ "settings/device_integrations"
+      assert email.text_body =~ integration.tenant_id
+      assert email.text_body =~ "DeviceManagementManagedDevices.Read.All"
     end
 
     test "returns an error for unknown providers" do

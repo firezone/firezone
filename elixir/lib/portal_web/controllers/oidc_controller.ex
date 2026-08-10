@@ -64,6 +64,9 @@ defmodule PortalWeb.OIDCController do
       {:entra_directory_sync, lv_pid_string, verification_ref} ->
         handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref)
 
+      {:intune_device_integration, lv_pid_string, verification_ref} ->
+        handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref)
+
       {:entra_tenant_proof,
        verification_type,
        lv_pid_string,
@@ -109,6 +112,15 @@ defmodule PortalWeb.OIDCController do
           conn,
           params,
           "entra-directory-sync",
+          lv_pid_string,
+          verification_ref
+        )
+
+      {:intune_device_integration, lv_pid_string, verification_ref} ->
+        handle_entra_admin_consent(
+          conn,
+          params,
+          "intune-device-integration",
           lv_pid_string,
           verification_ref
         )
@@ -1231,7 +1243,11 @@ defmodule PortalWeb.OIDCController do
          lv_pid_string,
          verification_ref
        )
-       when verification_type in ["entra-auth-provider", "entra-directory-sync"] do
+       when verification_type in [
+              "entra-auth-provider",
+              "entra-directory-sync",
+              "intune-device-integration"
+            ] do
     tenant_id = params["tenant"]
 
     pending_result =
@@ -1312,6 +1328,9 @@ defmodule PortalWeb.OIDCController do
 
   defp entra_tenant_proof_state_type("entra-directory-sync"),
     do: "entra-directory-sync-tenant-proof"
+
+  defp entra_tenant_proof_state_type("intune-device-integration"),
+    do: "intune-device-integration-tenant-proof"
 
   defp handle_entra_tenant_proof_error(
          conn,
@@ -1610,6 +1629,14 @@ defmodule PortalWeb.OIDCController do
        do: {:entra_directory_sync, lv_pid, verification_ref}
 
   defp parse_verified_callback_state(%{
+         type: "intune-device-integration",
+         lv_pid: lv_pid,
+         verification_ref: verification_ref
+       })
+       when is_binary(verification_ref),
+       do: {:intune_device_integration, lv_pid, verification_ref}
+
+  defp parse_verified_callback_state(%{
          type: "google-directory-sync",
          lv_pid: lv_pid,
          verification_ref: verification_ref
@@ -1637,6 +1664,18 @@ defmodule PortalWeb.OIDCController do
        })
        when is_binary(verification_ref) and is_binary(tenant_id) and is_boolean(silent?) do
     {:entra_tenant_proof, "entra-directory-sync", lv_pid, verification_ref, tenant_id, silent?}
+  end
+
+  defp parse_verified_callback_state(%{
+         type: "intune-device-integration-tenant-proof",
+         lv_pid: lv_pid,
+         verification_ref: verification_ref,
+         tenant_id: tenant_id,
+         silent: silent?
+       })
+       when is_binary(verification_ref) and is_binary(tenant_id) and is_boolean(silent?) do
+    {:entra_tenant_proof, "intune-device-integration", lv_pid, verification_ref, tenant_id,
+     silent?}
   end
 
   defp parse_verified_callback_state(_state), do: :authentication
