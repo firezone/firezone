@@ -13,6 +13,7 @@ env:
 permissions:
   contents: "read"
   id-token: "write" # OIDC auth
+  security-events: "write" # trivy SARIF upload from setup-mise
 
 jobs:
   update-release-draft:
@@ -76,15 +77,15 @@ jobs:
         timeout-minutes: 15
         with:
           runtime: true
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: "--cd rust github:mozilla/dump_syms"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm install
       - run: pnpm vite build
       - name: Build client
         run: cargo build -p firezone-gui-client --all-targets
-      - uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: dump_syms
       - name: Run smoke test
         working-directory: ./rust
         run: cargo run -p gui-smoke-test
