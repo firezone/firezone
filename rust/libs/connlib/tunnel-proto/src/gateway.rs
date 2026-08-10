@@ -363,8 +363,8 @@ impl GatewayState {
             peer.setup_nat(
                 entry.domain,
                 resource.id(),
-                Some(BTreeSet::from_iter(entry.resolved_ips)),
-                BTreeSet::from_iter(entry.proxy_ips),
+                Ok(entry.resolved_ips),
+                entry.proxy_ips.into_iter().collect(),
             )?;
         }
 
@@ -404,17 +404,6 @@ impl GatewayState {
     ) -> anyhow::Result<()> {
         use p2p_control::dns_resource_nat;
 
-        let (addresses, desired_status) = match resolve_result {
-            Ok(addresses) => (
-                Some(BTreeSet::from_iter(addresses)),
-                dns_resource_nat::NatStatus::Active,
-            ),
-            Err(error) => {
-                tracing::warn!("Failed to resolve DNS resource: {error:#}");
-
-                (None, dns_resource_nat::NatStatus::Inactive)
-            }
-        };
         let nat_status = self
             .peers
             .peer_by_id_mut(&req.client)
@@ -423,11 +412,9 @@ impl GatewayState {
                 peer.setup_nat(
                     req.domain.clone(),
                     req.resource,
-                    addresses,
-                    BTreeSet::from_iter(req.proxy_ips),
-                )?;
-
-                Ok(desired_status)
+                    resolve_result,
+                    req.proxy_ips.into_iter().collect(),
+                )
             })
             .unwrap_or_else(|e| {
                 tracing::warn!("Failed to setup DNS resource NAT: {e:#}");

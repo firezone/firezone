@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr};
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, ErrorExt, Result, bail};
@@ -16,6 +17,7 @@ use crate::filter_engine::FilterEngine;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken};
+use crate::p2p_control::dns_resource_nat::NatStatus;
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp};
@@ -87,9 +89,9 @@ impl ClientOnGateway {
         &mut self,
         name: DomainName,
         resource_id: ResourceId,
-        resolved_ips: Option<BTreeSet<IpAddr>>,
+        resolve_result: Result<Vec<IpAddr>, Arc<anyhow::Error>>,
         proxy_ips: BTreeSet<IpAddr>,
-    ) -> Result<()> {
+    ) -> Result<NatStatus> {
         // Proxy IPs are chosen by the Client; anything we accept here ends up in our routing table.
         for proxy_ip in &proxy_ips {
             anyhow::ensure!(
@@ -118,6 +120,15 @@ impl ClientOnGateway {
         };
 
         anyhow::ensure!(crate::dns::is_subdomain(&name, address));
+
+        let (resolved_ips, nat_status) = match resolve_result {
+            Ok(resolved_ips) => (Some(resolved_ips.into_iter().collect()), NatStatus::Active),
+            Err(error) => {
+                tracing::warn!("Failed to resolve DNS resource: {error:#}");
+
+                (None, NatStatus::Inactive)
+            }
+        };
 
         if resolved_ips.as_ref().is_some_and(BTreeSet::is_empty) {
             tracing::debug!(domain = %name, %resource_id, "No A / AAAA records for domain");
@@ -164,7 +175,7 @@ impl ClientOnGateway {
         }
         self.recalculate_filters();
 
-        Ok(())
+        Ok(nat_status)
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -993,7 +1004,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            Some(BTreeSet::from([foo_real_ip1().into()])),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
@@ -1059,7 +1070,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            Some(BTreeSet::from([foo_real_ip1().into()])),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
@@ -1155,7 +1166,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            Some(BTreeSet::from([foo_real_ip1().into()])),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
@@ -1223,7 +1234,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            Some(BTreeSet::from([foo_real_ip1().into()])),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
@@ -1245,7 +1256,7 @@ mod tests {
             peer.setup_nat(
                 foo_name().parse().unwrap(),
                 foo_resource_id(),
-                Some(BTreeSet::from([foo_real_ip2().into()])), // Setting up with a new IP!
+                Ok(vec![foo_real_ip2().into()]), // Setting up with a new IP!
                 BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
             )
             .unwrap();
@@ -1313,7 +1324,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            Some(BTreeSet::from([foo_real_ip1().into()])),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
@@ -1340,7 +1351,7 @@ mod tests {
         peer.setup_nat(
             baz_name().parse().unwrap(),
             baz_resource_id(),
-            Some(BTreeSet::from([baz_real_ip1().into()])),
+            Ok(vec![baz_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
@@ -1364,7 +1375,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            Some(BTreeSet::from([foo_real_ip1().into()])),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1(), proxy_ip4_2(), proxy_ip6_1(), proxy_ip6_2()]),
         )
         .unwrap();
@@ -1415,14 +1426,14 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            Some(BTreeSet::from([foo_real_ip1().into()])),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource2_id(),
-            Some(BTreeSet::from([foo_real_ip1().into()])),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
