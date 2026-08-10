@@ -1,18 +1,15 @@
 //! A stateful symmetric NAT table that performs conversion between a client's picked proxy ip and the actual resource's IP.
 use anyhow::{Context, Result};
 use bimap::BiMap;
-use connlib_model::ResourceId;
 use ip_packet::{FailedPacket, IcmpError, IpPacket, Protocol};
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
 /// This stateful NAT table converts a client's proxy IP for a domain name into a real IP for the domain.
 ///
-/// Outbound sessions are keyed by the resource, the source Layer-4 protocol and the proxy IP.
+/// Outbound sessions are keyed by the source Layer-4 protocol and the proxy IP.
 /// The Layer-4 value includes a UDP or TCP source port, or an ICMP echo identifier.
-/// Resource identity prevents DNS resources that share the same proxy IP and Layer-4 value from
-/// aliasing one another's NAT sessions.
 #[derive(Default, Debug)]
 pub(crate) struct NatTable {
     table: BiMap<Inside, Outside>,
@@ -23,11 +20,11 @@ pub(crate) struct NatTable {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
-struct Inside(ResourceId, Protocol, IpAddr);
+struct Inside(Protocol, IpAddr);
 
 impl Inside {
     fn into_inner(self) -> (Protocol, IpAddr) {
-        (self.1, self.2)
+        (self.0, self.1)
     }
 }
 
@@ -53,7 +50,7 @@ impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         let expired = self.state_by_inside.extract_if(.., |inside, state| {
             state
-                .remove_at(inside.1)
+                .remove_at(inside.0)
                 .is_some_and(|remove_at| now >= remove_at)
         });
 
@@ -81,45 +78,16 @@ impl NatTable {
         }
     }
 
-    pub(crate) fn expire_resource_inside_ips(
-        &mut self,
-        resource: ResourceId,
-        ips: &BTreeSet<IpAddr>,
-    ) {
-        self.expire_inside(|inside| inside.0 == resource && ips.contains(&inside.2));
-    }
-
-    pub(crate) fn expire_resource(&mut self, resource: ResourceId) {
-        self.expire_inside(|inside| inside.0 == resource);
-    }
-
-    fn expire_inside(&mut self, predicate: impl Fn(&Inside) -> bool) {
-        let expired = self
-            .state_by_inside
-            .extract_if(.., |inside, _| predicate(inside))
-            .map(|(inside, _)| inside)
-            .collect::<Vec<_>>();
-
-        for inside in expired {
-            let Some((_, outside)) = self.table.remove_by_left(&inside) else {
-                continue;
-            };
-
-            self.expired.insert(outside);
-        }
-    }
-
     pub(crate) fn translate_outgoing(
         &mut self,
         packet: &IpPacket,
         outside_dst: IpAddr,
-        resource: ResourceId,
         now: Instant,
     ) -> Result<(Protocol, IpAddr)> {
         let src = packet.source_protocol()?;
         let dst = packet.destination();
 
-        let inside = Inside(resource, src, dst);
+        let inside = Inside(src, dst);
 
         if let Some(outside) = self.table.get_by_left(&inside).copied()
             && let Some(state) = self.state_by_inside.get_mut(&inside)
@@ -164,7 +132,7 @@ impl NatTable {
         if let Some((failed_packet, icmp_error)) = packet.icmp_error()? {
             let outside = Outside(failed_packet.src_proto(), failed_packet.dst());
 
-            if let Some(Inside(_, inside_proto, inside_dst)) =
+            if let Some(Inside(inside_proto, inside_dst)) =
                 self.translate_incoming_inner(&outside, now)
             {
                 return Ok(TranslateIncomingResult::IcmpError(IcmpErrorPrototype {
@@ -369,9 +337,6 @@ mod tests {
     use ip_packet::{IpPacket, make::TcpFlags, proptest::*};
     use proptest::prelude::*;
 
-    const RESOURCE: ResourceId = ResourceId::from_u128(1);
-    const OTHER_RESOURCE: ResourceId = ResourceId::from_u128(2);
-
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
     fn translates_back_and_forth_packet(
         #[strategy(udp_or_tcp_or_icmp_packet())] packet: IpPacket,
@@ -389,9 +354,8 @@ mod tests {
         let dst = packet.destination();
 
         // Translate out
-        let (new_source_protocol, new_dst_ip) = table
-            .translate_outgoing(&packet, outside_dst, RESOURCE, now)
-            .unwrap();
+        let (new_source_protocol, new_dst_ip) =
+            table.translate_outgoing(&packet, outside_dst, now).unwrap();
 
         // Pretend we are getting a response.
         let mut response = packet.clone();
@@ -456,11 +420,9 @@ mod tests {
             .map(|(p, _)| (p.source_protocol().unwrap(), p.destination()));
 
         // Translate out
-        let new_src_p_and_dst = packets.clone().map(|(p, d)| {
-            table
-                .translate_outgoing(&p, d, RESOURCE, Instant::now())
-                .unwrap()
-        });
+        let new_src_p_and_dst = packets
+            .clone()
+            .map(|(p, d)| table.translate_outgoing(&p, d, Instant::now()).unwrap());
 
         // Pretend we are getting a response.
         for ((p, _), (new_src_p, new_d)) in packets.iter_mut().zip(new_src_p_and_dst) {
@@ -501,9 +463,7 @@ mod tests {
         let mut table = NatTable::default();
         let mut now = Instant::now();
 
-        let outside = table
-            .translate_outgoing(&req, outside_dst, RESOURCE, now)
-            .unwrap();
+        let outside = table.translate_outgoing(&req, outside_dst, now).unwrap();
 
         let mut response = req.clone();
         response.set_destination_protocol(outside.0.value());
@@ -520,9 +480,7 @@ mod tests {
 
         now += Duration::from_secs(1);
 
-        table
-            .translate_outgoing(&rst, outside_dst, RESOURCE, now)
-            .unwrap();
+        table.translate_outgoing(&rst, outside_dst, now).unwrap();
 
         now += Duration::from_secs(1);
         table.handle_timeout(now);
@@ -533,91 +491,5 @@ mod tests {
             | TranslateIncomingResult::Ok { .. }
             | TranslateIncomingResult::IcmpError(_)) => panic!("Wrong result: {result:?}"),
         };
-    }
-
-    #[test]
-    fn expired_inside_ip_uses_new_outside_destination() {
-        let now = Instant::now();
-        let client = Ipv4Addr::new(100, 64, 0, 1);
-        let proxy = Ipv4Addr::new(100, 96, 0, 1);
-        let old_destination = Ipv4Addr::new(192, 0, 2, 1);
-        let new_destination = Ipv4Addr::new(192, 0, 2, 2);
-        let packet = ip_packet::make::udp_packet(client, proxy, 1000, 2000, &[]).unwrap();
-        let mut table = NatTable::default();
-
-        let (_, destination) = table
-            .translate_outgoing(&packet, old_destination.into(), RESOURCE, now)
-            .unwrap();
-        table.expire_resource_inside_ips(RESOURCE, &BTreeSet::from([proxy.into()]));
-        let (_, refreshed_destination) = table
-            .translate_outgoing(&packet, new_destination.into(), RESOURCE, now)
-            .unwrap();
-
-        assert_eq!(destination, IpAddr::V4(old_destination));
-        assert_eq!(refreshed_destination, IpAddr::V4(new_destination));
-    }
-
-    #[test]
-    fn packet_for_expired_inside_ip_is_expired() {
-        let now = Instant::now();
-        let client = Ipv4Addr::new(100, 64, 0, 1);
-        let proxy = Ipv4Addr::new(100, 96, 0, 1);
-        let destination = Ipv4Addr::new(192, 0, 2, 1);
-        let packet = ip_packet::make::udp_packet(client, proxy, 1000, 2000, &[]).unwrap();
-        let mut table = NatTable::default();
-        let (outside_protocol, outside_destination) = table
-            .translate_outgoing(&packet, destination.into(), RESOURCE, now)
-            .unwrap();
-        let response = ip_packet::make::udp_packet(
-            outside_destination,
-            client,
-            2000,
-            outside_protocol.value(),
-            &[],
-        )
-        .unwrap();
-
-        table.expire_resource(RESOURCE);
-        let result = table.translate_incoming(&response, now).unwrap();
-
-        assert_eq!(result, TranslateIncomingResult::ExpiredNatSession);
-    }
-
-    #[test]
-    fn resources_have_distinct_sessions_for_same_inside_tuple() {
-        let now = Instant::now();
-        let client = Ipv4Addr::new(100, 64, 0, 1);
-        let proxy = Ipv4Addr::new(100, 96, 0, 1);
-        let first_destination = Ipv4Addr::new(192, 0, 2, 1);
-        let second_destination = Ipv4Addr::new(192, 0, 2, 2);
-        let refreshed_destination = Ipv4Addr::new(192, 0, 2, 3);
-        let packet = ip_packet::make::udp_packet(client, proxy, 1000, 2000, &[]).unwrap();
-        let mut table = NatTable::default();
-
-        let (_, first) = table
-            .translate_outgoing(&packet, first_destination.into(), RESOURCE, now)
-            .unwrap();
-        let (_, second) = table
-            .translate_outgoing(&packet, second_destination.into(), OTHER_RESOURCE, now)
-            .unwrap();
-        let (_, first_after_refresh) = table
-            .translate_outgoing(&packet, refreshed_destination.into(), RESOURCE, now)
-            .unwrap();
-
-        assert_eq!(first, IpAddr::V4(first_destination));
-        assert_eq!(second, IpAddr::V4(second_destination));
-        assert_eq!(first_after_refresh, IpAddr::V4(first_destination));
-
-        table.expire_resource(RESOURCE);
-
-        let (_, first_after_expiry) = table
-            .translate_outgoing(&packet, refreshed_destination.into(), RESOURCE, now)
-            .unwrap();
-        let (_, second_after_expiry) = table
-            .translate_outgoing(&packet, refreshed_destination.into(), OTHER_RESOURCE, now)
-            .unwrap();
-
-        assert_eq!(first_after_expiry, IpAddr::V4(refreshed_destination));
-        assert_eq!(second_after_expiry, IpAddr::V4(second_destination));
     }
 }
