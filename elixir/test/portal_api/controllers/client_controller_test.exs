@@ -153,6 +153,30 @@ defmodule PortalAPI.ClientControllerTest do
       assert Map.has_key?(data, "hostname")
     end
 
+    test "renders a null firezone_id for an attested client", %{
+      conn: conn,
+      actor: actor,
+      account: account
+    } do
+      # An attested client has no self-reported id to render, so the published
+      # schema has to allow null here or every such response breaks the contract.
+      client = client_fixture(account: account, actor: actor_fixture(account: account))
+      Portal.Repo.update_all(Portal.Device, set: [firezone_id: nil])
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients/#{client.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert Map.has_key?(data, "firezone_id")
+      assert is_nil(data["firezone_id"])
+
+      assert %OpenApiSpex.Schema{nullable: true} =
+               PortalAPI.Schemas.Client.GetSchema.schema().properties.firezone_id
+    end
+
     test "renders device trust fields", %{conn: conn, actor: actor, account: account} do
       client_actor = actor_fixture(account: account)
       attested_at = DateTime.utc_now() |> DateTime.truncate(:microsecond)

@@ -1,12 +1,11 @@
-defmodule Portal.DeviceTrustChallengeFixtures do
+defmodule Portal.DeviceTrustFixtures do
   @moduledoc """
-  Runtime-generated PKI for the device-trust challenge flow.
+  Runtime-generated PKI for certificate-based device trust.
 
   `pki/0` mints a fresh trusted CA (with an intermediate) and an unrelated
-  untrusted CA; `leaf/2` and `response_entry/4` mint client-authentication
-  leaves under them, including expired, not-yet-valid, and
-  key-usage-restricted profiles. Nothing is stored on disk, so no fixture
-  can silently expire.
+  untrusted CA; `leaf/2` mints client-authentication leaves under them,
+  including expired, not-yet-valid, and key-usage-restricted profiles.
+  Nothing is stored on disk, so no fixture can silently expire.
   """
 
   require Record
@@ -64,8 +63,8 @@ defmodule Portal.DeviceTrustChallengeFixtures do
   end
 
   @doc """
-  Returns `{leaf_der, private_key}` for the named profile, minted under the
-  given PKI. `private_key` is decoded and ready for `:public_key.sign/3`.
+  Returns the DER of a leaf certificate for the named profile, minted under
+  the given PKI.
 
   Profiles: `:rsa`, `:ec`, `:via_intermediate`, `:no_eku`, `:untrusted`,
   `:no_digital_signature` (keyAgreement-only Key Usage), `:expired`,
@@ -81,7 +80,11 @@ defmodule Portal.DeviceTrustChallengeFixtures do
 
   def leaf(pki, :via_intermediate) do
     issue_leaf(pki.intermediate,
-      sans: [{:uniformResourceIdentifier, ~c"firezone://serial/DMPXK1ZGXYZ9"}]
+      sans: [
+        {:uniformResourceIdentifier, ~c"firezone://serial/DMPXK1ZGXYZ9"},
+        {:uniformResourceIdentifier,
+         ~c"firezone://intune-id/9c1b0f2e-3a44-4d6b-8f21-77c0ab5e14d8"}
+      ]
     )
   end
 
@@ -107,21 +110,18 @@ defmodule Portal.DeviceTrustChallengeFixtures do
   end
 
   @doc """
-  Builds a `device_trust_response` entry (base64 leaf + optional
-  intermediates and a base64 signature over `nonce`) for the named profile.
+  Returns the `x-client-cert` header value the load balancer sends for the
+  named leaf profile.
   """
-  def response_entry(pki, name, nonce, opts \\ []) do
-    {leaf_der, private_key} = leaf(pki, name)
-    digest = Keyword.get(opts, :digest, :sha256)
-    intermediates = Keyword.get(opts, :intermediates, [])
-
-    signature = :public_key.sign(nonce, digest, private_key)
-
-    %{
-      "certs" => Enum.map([leaf_der | intermediates], &Base.encode64/1),
-      "signed_challenge" => Base.encode64(signature)
-    }
+  def client_cert_header(pki, name) do
+    pki |> leaf(name) |> Base.encode64()
   end
+
+  @doc """
+  Mints a standalone CA certificate under the given common name, for tests that
+  need several distinct anchors rather than a full PKI.
+  """
+  def ca_der(common_name), do: new_ca(common_name).cert_der
 
   defp new_ca(common_name) do
     key = gen_ec_key()
@@ -156,18 +156,15 @@ defmodule Portal.DeviceTrustChallengeFixtures do
           usages -> [{:Extension, @key_usage_oid, true, usages}]
         end
 
-    cert_der =
-      sign_cert(
-        issuer.subject,
-        issuer.key,
-        subject,
-        spki(key),
-        extensions,
-        validity,
-        Keyword.get(opts, :serial) || serial_number()
-      )
-
-    {cert_der, key}
+    sign_cert(
+      issuer.subject,
+      issuer.key,
+      subject,
+      spki(key),
+      extensions,
+      validity,
+      Keyword.get(opts, :serial) || serial_number()
+    )
   end
 
   defp ca_extensions do
