@@ -4,7 +4,6 @@ defmodule PortalAPI.ResourceControllerTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.FeaturesFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
   import Portal.SubjectFixtures
@@ -378,7 +377,6 @@ defmodule PortalAPI.ResourceControllerTest do
 
     test "creates a static device pool without site_id or address", %{
       conn: conn,
-      account: account,
       actor: actor
     } do
       attrs = %{

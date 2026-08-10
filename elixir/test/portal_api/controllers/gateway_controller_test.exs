@@ -424,7 +424,6 @@ defmodule PortalAPI.GatewayControllerTest do
       conn: conn,
       actor: actor,
       site: site,
-      gateway: gateway,
       token: token
     } do
       rotated_at = ~U[2026-01-01 00:00:00.000000Z]
