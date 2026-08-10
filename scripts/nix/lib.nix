@@ -39,7 +39,7 @@ rec {
   # release.
   versions = {
     # mark:current-gateway-version
-    gateway = "1.5.2";
+    gateway = "1.6.0";
 
     # mark:current-headless-version
     headless = "1.5.10";
