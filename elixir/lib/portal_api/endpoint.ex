@@ -93,6 +93,13 @@ defmodule PortalAPI.Endpoint do
 
   plug :fetch_user_agent
   plug :redirect_to_rest_api_url
+
+  plug Plug.Static,
+    at: "/",
+    from: :portal,
+    gzip: true,
+    only: ["openapi.json"]
+
   plug PortalAPI.Router
 
   plug Sentry.PlugContext

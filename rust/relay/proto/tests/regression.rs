@@ -2,7 +2,7 @@
 
 use Output::{CreateAllocation, FreeAllocation};
 use bytecodec::{DecodeExt, EncodeExt};
-use firezone_relay::{
+use relay_proto::{
     AddressFamily, Allocate, AllocationPort, Attribute, Binding, ChannelBind, ChannelData,
     ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, SOFTWARE, Server,
 };
@@ -56,7 +56,7 @@ use uuid::Uuid;
 
 #[proptest]
 fn can_answer_stun_request_from_ip4_address(
-    #[strategy(firezone_relay::proptest::binding())] request: Binding,
+    #[strategy(relay_proto::proptest::binding())] request: Binding,
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
 ) {
@@ -76,7 +76,7 @@ fn can_answer_stun_request_from_ip4_address(
 
 #[proptest]
 fn ignores_stun_request_from_port_0(
-    #[strategy(firezone_relay::proptest::transaction_id())] transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::transaction_id())] transaction_id: TransactionId,
     source: Ipv4Addr,
     public_relay_addr: Ipv4Addr,
 ) {
@@ -98,12 +98,12 @@ fn ignores_stun_request_from_port_0(
 
 #[proptest]
 fn deallocate_once_time_expired(
-    #[strategy(firezone_relay::proptest::transaction_id())] transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::allocation_lifetime())] lifetime: Lifetime,
-    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
+    #[strategy(relay_proto::proptest::transaction_id())] transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::allocation_lifetime())] lifetime: Lifetime,
+    #[strategy(relay_proto::proptest::username_salt())] username_salt: String,
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
+    #[strategy(relay_proto::proptest::nonce())] nonce: Uuid,
 ) {
     let now = Instant::now();
 
@@ -145,9 +145,9 @@ fn deallocate_once_time_expired(
 
 #[proptest]
 fn unauthenticated_allocate_triggers_authentication(
-    #[strategy(firezone_relay::proptest::transaction_id())] transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::allocation_lifetime())] lifetime: Lifetime,
-    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
+    #[strategy(relay_proto::proptest::transaction_id())] transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::allocation_lifetime())] lifetime: Lifetime,
+    #[strategy(relay_proto::proptest::username_salt())] username_salt: String,
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
 ) {
@@ -201,14 +201,14 @@ fn unauthenticated_allocate_triggers_authentication(
 
 #[proptest]
 fn when_refreshed_in_time_allocation_does_not_expire(
-    #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::transaction_id())] refresh_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::allocation_lifetime())] allocate_lifetime: Lifetime,
-    #[strategy(firezone_relay::proptest::allocation_lifetime())] refresh_lifetime: Lifetime,
-    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
+    #[strategy(relay_proto::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::transaction_id())] refresh_transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::allocation_lifetime())] allocate_lifetime: Lifetime,
+    #[strategy(relay_proto::proptest::allocation_lifetime())] refresh_lifetime: Lifetime,
+    #[strategy(relay_proto::proptest::username_salt())] username_salt: String,
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
+    #[strategy(relay_proto::proptest::nonce())] nonce: Uuid,
 ) {
     let now = Instant::now();
 
@@ -282,13 +282,13 @@ fn when_refreshed_in_time_allocation_does_not_expire(
 
 #[proptest]
 fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
-    #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::transaction_id())] refresh_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::allocation_lifetime())] allocate_lifetime: Lifetime,
-    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
+    #[strategy(relay_proto::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::transaction_id())] refresh_transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::allocation_lifetime())] allocate_lifetime: Lifetime,
+    #[strategy(relay_proto::proptest::username_salt())] username_salt: String,
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
+    #[strategy(relay_proto::proptest::nonce())] nonce: Uuid,
 ) {
     let now = Instant::now();
 
@@ -360,16 +360,15 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
 
 #[proptest]
 fn freeing_allocation_clears_all_channels(
-    #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::transaction_id())]
-    channel_bind_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::transaction_id())] refresh_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::channel_number())] channel: ChannelNumber,
-    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
+    #[strategy(relay_proto::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::transaction_id())] channel_bind_transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::transaction_id())] refresh_transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::channel_number())] channel: ChannelNumber,
+    #[strategy(relay_proto::proptest::username_salt())] username_salt: String,
     source: SocketAddr,
     peer: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
+    #[strategy(relay_proto::proptest::nonce())] nonce: Uuid,
 ) {
     let now = Instant::now();
 
@@ -432,16 +431,15 @@ fn freeing_allocation_clears_all_channels(
 
 #[proptest]
 fn ping_pong_relay(
-    #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::transaction_id())]
-    channel_bind_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
-    #[strategy(firezone_relay::proptest::source_v4())] source: SocketAddrV4,
+    #[strategy(relay_proto::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::transaction_id())] channel_bind_transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::username_salt())] username_salt: String,
+    #[strategy(relay_proto::proptest::source_v4())] source: SocketAddrV4,
     peer: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
     peer_to_client_ping: [u8; 32],
-    #[strategy(firezone_relay::proptest::channel_data())] client_to_peer_ping: ChannelData<'static>,
-    #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
+    #[strategy(relay_proto::proptest::channel_data())] client_to_peer_ping: ChannelData<'static>,
+    #[strategy(relay_proto::proptest::nonce())] nonce: Uuid,
 ) {
     let now = Instant::now();
 
@@ -541,18 +539,17 @@ fn ping_pong_relay(
 
 #[proptest]
 fn allows_rebind_channel_after_expiry(
-    #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::transaction_id())]
-    channel_bind_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::transaction_id())]
+    #[strategy(relay_proto::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::transaction_id())] channel_bind_transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::transaction_id())]
     channel_bind_2_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
-    #[strategy(firezone_relay::proptest::channel_number())] channel: ChannelNumber,
+    #[strategy(relay_proto::proptest::username_salt())] username_salt: String,
+    #[strategy(relay_proto::proptest::channel_number())] channel: ChannelNumber,
     source: SocketAddrV4,
     peer: SocketAddrV4,
     peer2: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
+    #[strategy(relay_proto::proptest::nonce())] nonce: Uuid,
 ) {
     let now = Instant::now();
 
@@ -664,18 +661,17 @@ fn allows_rebind_channel_after_expiry(
 
 #[proptest]
 fn ping_pong_ip6_relay(
-    #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::transaction_id())]
-    channel_bind_transaction_id: TransactionId,
-    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
-    #[strategy(firezone_relay::proptest::channel_number())] channel: ChannelNumber,
-    #[strategy(firezone_relay::proptest::source_v6())] source: SocketAddrV6,
+    #[strategy(relay_proto::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::transaction_id())] channel_bind_transaction_id: TransactionId,
+    #[strategy(relay_proto::proptest::username_salt())] username_salt: String,
+    #[strategy(relay_proto::proptest::channel_number())] channel: ChannelNumber,
+    #[strategy(relay_proto::proptest::source_v6())] source: SocketAddrV6,
     peer: SocketAddrV6,
     public_relay_ip4_addr: Ipv4Addr,
     public_relay_ip6_addr: Ipv6Addr,
     peer_to_client_ping: [u8; 32],
     mut client_to_peer_ping: [u8; 36],
-    #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
+    #[strategy(relay_proto::proptest::nonce())] nonce: Uuid,
 ) {
     let now = Instant::now();
 

@@ -1139,17 +1139,16 @@ defmodule PortalWeb.Actors.Components do
           account={@account}
         />
       </div>
-      <div
+      <.panel_footer
         :if={is_nil(@pending_email_change)}
-        class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated"
       >
-        <.button type="button" phx-click="cancel_actor_edit_form" size="xs">
+        <.panel_footer_button type="button" phx-click="cancel_actor_edit_form">
           Cancel
-        </.button>
-        <.button type="submit" style="primary" size="xs">
+        </.panel_footer_button>
+        <.panel_footer_button type="submit" style="primary">
           Save Changes
-        </.button>
-      </div>
+        </.panel_footer_button>
+      </.panel_footer>
       <div
         :if={not is_nil(@pending_email_change)}
         class="shrink-0 px-5 py-3 border-t border-error/20 bg-error-light"
@@ -1166,12 +1165,12 @@ defmodule PortalWeb.Actors.Components do
           </div>
         </div>
         <div class="flex items-center justify-end gap-1.5">
-          <.button type="button" phx-click="cancel_email_change" size="xs">
+          <.panel_footer_button type="button" phx-click="cancel_email_change">
             Cancel
-          </.button>
-          <.button type="button" phx-click="confirm_email_change" style="danger" size="xs">
+          </.panel_footer_button>
+          <.panel_footer_button type="button" phx-click="confirm_email_change" style="danger">
             Yes, change email and clear identities
-          </.button>
+          </.panel_footer_button>
         </div>
       </div>
     </.form>
@@ -1344,14 +1343,14 @@ defmodule PortalWeb.Actors.Components do
             account={@account}
           />
         </div>
-        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-          <.button type="button" phx-click="close_panel" size="xs">
+        <.panel_footer>
+          <.panel_footer_button type="button" phx-click="close_panel">
             Cancel
-          </.button>
-          <.button type="submit" style="primary" size="xs">
+          </.panel_footer_button>
+          <.panel_footer_button type="submit" style="primary">
             Create User
-          </.button>
-        </div>
+          </.panel_footer_button>
+        </.panel_footer>
       </.form>
 
       <.form
@@ -1391,14 +1390,14 @@ defmodule PortalWeb.Actors.Components do
             account={@account}
           />
         </div>
-        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-          <.button type="button" phx-click="close_panel" size="xs">
+        <.panel_footer>
+          <.panel_footer_button type="button" phx-click="close_panel">
             Cancel
-          </.button>
-          <.button type="submit" style="primary" size="xs">
+          </.panel_footer_button>
+          <.panel_footer_button type="submit" style="primary">
             Create Service Account
-          </.button>
-        </div>
+          </.panel_footer_button>
+        </.panel_footer>
       </.form>
     </div>
     """

@@ -1043,26 +1043,12 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    with true <- client_to_client_enabled?(socket.assigns.subject.account),
-         :ok <-
-           PG.deliver(
-             target_client_id,
-             {:client_ice_candidates, socket.assigns.client.id, candidates}
-           ) do
-      {:noreply, socket}
-    else
-      false ->
-        Logger.warning("Client-to-client communication is disabled, cannot send ICE candidates",
-          client_id: socket.assigns.client.id,
-          account_id: socket.assigns.client.account_id,
-          account_slug: socket.assigns.subject.account.slug,
-          target_client_id: target_client_id
-        )
-
-        {:noreply, socket}
-
-      {:error, :not_found} ->
-        {:noreply, socket}
+    case PG.deliver(
+           target_client_id,
+           {:client_ice_candidates, socket.assigns.client.id, candidates}
+         ) do
+      :ok -> {:noreply, socket}
+      {:error, :not_found} -> {:noreply, socket}
     end
   end
 
@@ -1071,20 +1057,11 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    with true <- client_to_client_enabled?(socket.assigns.subject.account),
-         :ok <-
-           PG.deliver(
-             target_client_id,
-             {:invalidate_client_ice_candidates, socket.assigns.client.id, candidates}
-           ) do
-      {:noreply, socket}
-    else
-      false ->
-        push(socket, "client_ice_candidate_error", %{
-          client_id: target_client_id,
-          reason: :disabled
-        })
-
+    case PG.deliver(
+           target_client_id,
+           {:invalidate_client_ice_candidates, socket.assigns.client.id, candidates}
+         ) do
+      :ok ->
         {:noreply, socket}
 
       {:error, :not_found} ->
@@ -1172,8 +1149,6 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     {:reply, {:error, %{reason: :unknown_message}}, socket}
   end
-
-  defp client_to_client_enabled?(account), do: Database.client_to_client_enabled?(account)
 
   # Reject peer connections when:
   #   - the target client predates `client_device_access_authorized` / `_denied`
@@ -1398,8 +1373,7 @@ defmodule PortalAPI.Client.Channel.Shared do
        ) do
     account_id = socket.assigns.client.account_id
 
-    with true <- client_to_client_enabled?(socket.assigns.subject.account),
-         {:ok, target} <- parse_target_address(payload),
+    with {:ok, target} <- parse_target_address(payload),
          {:ok, target_device_id} <-
            authorize_pool_target(
              resource,
@@ -1434,15 +1408,6 @@ defmodule PortalAPI.Client.Channel.Shared do
           {:noreply, socket}
       end
     else
-      false ->
-        push(socket, "client_device_access_denied", %{
-          ipv4: payload["ipv4"],
-          ipv6: payload["ipv6"],
-          reason: :disabled
-        })
-
-        {:noreply, socket}
-
       {:error, :ambiguous_address} ->
         Logger.warning("request_authorization for pool included both ipv4 and ipv6",
           client_id: socket.assigns.client.id,
@@ -2641,14 +2606,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     import Ecto.Query, only: [from: 2]
 
     alias Portal.Features
-
-    def client_to_client_enabled?(account) do
-      query = from(f in Features, where: f.feature == :client_to_client and f.enabled == true)
-
-      account_feature_enabled? = account.features.client_to_client == true
-
-      Portal.Safe.unscoped(query) |> Portal.Safe.exists?() and account_feature_enabled?
-    end
 
     def flow_logs_feature_enabled? do
       query = from(f in Features, where: f.feature == :flow_logs and f.enabled == true)

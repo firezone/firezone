@@ -354,7 +354,6 @@ defmodule PortalWeb.Resources.Components do
 
   attr :form, :any, required: true
   attr :resource, :any, default: nil
-  attr :client_to_client_enabled, :boolean, default: false
 
   def resource_type_picker(assigns) do
     ~H"""
@@ -362,7 +361,7 @@ defmodule PortalWeb.Resources.Components do
       <span class="block text-xs font-medium text-body mb-1.5">
         Type <span class="text-error">*</span>
       </span>
-      <ul class={"grid w-full gap-3 #{if @client_to_client_enabled, do: "grid-cols-4", else: "grid-cols-3"}"}>
+      <ul class="grid w-full gap-3 grid-cols-4">
         <li>
           <.input
             id="resource-form-type--dns"
@@ -432,7 +431,7 @@ defmodule PortalWeb.Resources.Components do
             </div>
           </label>
         </li>
-        <li :if={@client_to_client_enabled}>
+        <li>
           <.input
             id="resource-form-type--static-device-pool"
             type="radio_button_group"
@@ -446,11 +445,14 @@ defmodule PortalWeb.Resources.Components do
             class="inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
           >
             <div class="block">
-              <div class="w-full font-semibold mb-1 text-xs">
+              <div class="w-full font-semibold mb-1 text-xs flex items-center">
                 <.icon name="ri-computer-line" class="w-4 h-4 mr-1" /> Device Pool
+                <span class="ml-1.5 px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand">
+                  NEW
+                </span>
               </div>
               <div class="w-full text-[10px]">
-                Direct client access
+                Peer-to-peer, no Site
               </div>
             </div>
           </label>
@@ -981,11 +983,7 @@ defmodule PortalWeb.Resources.Components do
         class="flex flex-col flex-1 min-h-0 overflow-hidden"
       >
         <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          <.resource_type_picker
-            form={@resource_form}
-            resource={@resource}
-            client_to_client_enabled={@client_to_client_enabled}
-          />
+          <.resource_type_picker form={@resource_form} resource={@resource} />
 
           <.resource_core_fields form={@resource_form} resource={@resource} />
 
@@ -1014,14 +1012,14 @@ defmodule PortalWeb.Resources.Components do
           <.resource_site_selector form={@resource_form} sites={@resource_form_sites} />
         </div>
 
-        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-          <.button type="button" phx-click="cancel_resource_form" size="sm">
+        <.panel_footer>
+          <.panel_footer_button type="button" phx-click="cancel_resource_form">
             Cancel
-          </.button>
-          <.button type="submit" style="primary" size="sm">
+          </.panel_footer_button>
+          <.panel_footer_button type="submit" style="primary">
             {if @panel_view == :new_form, do: "Create Resource", else: "Save Changes"}
-          </.button>
-        </div>
+          </.panel_footer_button>
+        </.panel_footer>
       </.form>
     </div>
     """
@@ -1233,10 +1231,14 @@ defmodule PortalWeb.Resources.Components do
     <div class="flex-1 flex flex-col overflow-hidden">
       <div
         :if={@clients == []}
-        class="flex flex-col items-center justify-center h-full gap-2 text-subtle"
+        class="flex flex-col items-center justify-center h-full gap-2 px-6 text-center"
       >
-        <.icon name="ri-computer-line" class="w-8 h-8" />
-        <p class="text-sm">No clients in this pool</p>
+        <.icon name="ri-error-warning-line" class="w-8 h-8 text-warning" />
+        <p class="text-sm font-medium text-heading">No devices in this pool</p>
+        <p class="text-xs text-subtle max-w-sm">
+          An empty pool has nothing to connect to, so any Policy granting access to it has no
+          effect. Edit this Resource to add devices.
+        </p>
       </div>
       <div :if={@clients != []} class="flex-1 overflow-y-auto">
         <table class="w-full text-xs">
@@ -1269,7 +1271,12 @@ defmodule PortalWeb.Resources.Components do
                   {if client.actor, do: client.actor.name, else: "—"}
                 </td>
                 <td class="px-4 py-2 text-subtle font-mono">
-                  {client.ipv4}
+                  <.copy
+                    id={"pool-member-#{client.id}-ipv4"}
+                    class="flex items-center gap-1.5"
+                  >
+                    {client.ipv4}
+                  </.copy>
                 </td>
                 <td class="px-4 py-2">
                   <.client_status_badge online?={MapSet.member?(@online_client_ids, client.id)} />
@@ -1306,11 +1313,21 @@ defmodule PortalWeb.Resources.Components do
                     </div>
                     <div>
                       <p class="text-subtle font-medium mb-1">Tunnel IPv4</p>
-                      <p class="text-heading font-mono">{client.ipv4}</p>
+                      <.copy
+                        id={"pool-member-#{client.id}-detail-ipv4"}
+                        class="flex items-center gap-1.5 text-heading font-mono"
+                      >
+                        {client.ipv4}
+                      </.copy>
                     </div>
                     <div>
                       <p class="text-subtle font-medium mb-1">Tunnel IPv6</p>
-                      <p class="text-heading font-mono break-all">{client.ipv6}</p>
+                      <.copy
+                        id={"pool-member-#{client.id}-detail-ipv6"}
+                        class="flex items-start gap-1.5 text-heading font-mono break-all"
+                      >
+                        {client.ipv6}
+                      </.copy>
                     </div>
                     <div :if={client.last_seen_at}>
                       <p class="text-subtle font-medium mb-1">Last Seen</p>
@@ -1717,14 +1734,18 @@ defmodule PortalWeb.Resources.Components do
       >
         <p :for={{_field, {msg, _}} <- @grant_form.errors}>{msg}</p>
       </div>
-      <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-        <.button type="button" phx-click="close_grant_form" size="xs">
+      <.panel_footer>
+        <.panel_footer_button type="button" phx-click="close_grant_form">
           Cancel
-        </.button>
-        <.button type="submit" style="primary" disabled={@grant_selected_group_ids == []} size="xs">
+        </.panel_footer_button>
+        <.panel_footer_button
+          type="submit"
+          style="primary"
+          disabled={@grant_selected_group_ids == []}
+        >
           Grant access
-        </.button>
-      </div>
+        </.panel_footer_button>
+      </.panel_footer>
     </.form>
     """
   end
@@ -2070,7 +2091,10 @@ defmodule PortalWeb.Resources.Components do
     assigns = assign(assigns, online: online, total: length(assigns.pool_member_ids))
 
     ~H"""
-    <.status_badge style={if @online > 0, do: :success, else: :neutral}>
+    <.status_badge :if={@total == 0} style={:warning}>
+      No devices
+    </.status_badge>
+    <.status_badge :if={@total > 0} style={if @online > 0, do: :success, else: :neutral}>
       {@online} / {@total} online
     </.status_badge>
     """
@@ -2121,7 +2145,7 @@ defmodule PortalWeb.Resources.Components do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Device, Features, Resource, Safe, StaticDevicePoolMember}
+    alias Portal.{Device, Resource, Safe, StaticDevicePoolMember}
 
     def get_resource!(id, subject) do
       from(r in Resource, as: :resources)
@@ -2134,14 +2158,6 @@ defmodule PortalWeb.Resources.Components do
       from(r in Resource, as: :resources)
       |> Safe.scoped(subject)
       |> Safe.list(Database.ListQuery, opts)
-    end
-
-    def client_to_client_enabled?(account) do
-      query = from(f in Features, where: f.feature == :client_to_client and f.enabled == true)
-
-      account_feature_enabled? = account.features.client_to_client == true
-
-      Safe.unscoped(query) |> Safe.exists?() and account_feature_enabled?
     end
 
     def all_sites(subject) do
@@ -2227,19 +2243,6 @@ defmodule PortalWeb.Resources.Components do
 
         _ ->
           {:error, :invalid_clients}
-      end
-    end
-
-    def validate_static_device_pool_feature_enabled(changeset, account) do
-      if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool and
-           not client_to_client_enabled?(account) do
-        Ecto.Changeset.add_error(
-          changeset,
-          :type,
-          "device pools are not enabled for this account"
-        )
-      else
-        changeset
       end
     end
 

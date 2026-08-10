@@ -231,7 +231,7 @@ pub(super) fn generate(
         }
         K::SendPacket => {
             let target = packet_targets[g.choose_index(packet_targets.len())].clone();
-            packets::generate(g, state, target)
+            packets::generate(g, target)
         }
         K::SendDnsQuery => {
             let target = dns_query_targets[g.choose_index(dns_query_targets.len())].clone();

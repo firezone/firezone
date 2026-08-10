@@ -230,9 +230,6 @@ defmodule PortalAPI.ResourceControllerTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:client_to_client)
-      update_account(account, features: %{client_to_client: true})
-
       attrs = %{
         "name" => "Shared Devices",
         "type" => "static_device_pool"
@@ -303,30 +300,6 @@ defmodule PortalAPI.ResourceControllerTest do
                "status" => 422,
                "validation_errors" => %{
                  "filters" => ["traffic filters are not enabled for this account"]
-               }
-             } = json_response(conn, 422)
-    end
-
-    test "returns 422 when creating static_device_pool with feature disabled", %{
-      conn: conn,
-      actor: actor
-    } do
-      attrs = %{
-        "name" => "Shared Devices",
-        "type" => "static_device_pool"
-      }
-
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/resources", resource: attrs)
-
-      assert %{
-               "type" => "about:blank",
-               "status" => 422,
-               "validation_errors" => %{
-                 "type" => ["device pools are not enabled for this account"]
                }
              } = json_response(conn, 422)
     end
@@ -639,7 +612,7 @@ defmodule PortalAPI.ResourceControllerTest do
       assert reloaded.type == :dns
     end
 
-    test "returns 422 when updating resource to static_device_pool type with feature disabled", %{
+    test "updates a resource to the static_device_pool type", %{
       conn: conn,
       account: account,
       actor: actor
@@ -653,13 +626,9 @@ defmodule PortalAPI.ResourceControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/resources/#{resource.id}", resource: %{"type" => "static_device_pool"})
 
-      assert %{
-               "type" => "about:blank",
-               "status" => 422,
-               "validation_errors" => %{
-                 "type" => ["device pools are not enabled for this account"]
-               }
-             } = json_response(conn, 422)
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["type"] == "static_device_pool"
+      assert resp["data"]["address"] == nil
     end
   end
 

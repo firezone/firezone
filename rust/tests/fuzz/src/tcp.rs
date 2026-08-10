@@ -6,7 +6,10 @@ use l3_tcp::Socket;
 
 pub struct Client {
     sockets: l3_tcp::SocketSet<'static>,
-    sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), l3_tcp::SocketHandle>,
+    /// The socket for each connection, or `None` for one that [`Client::reset`] dropped.
+    ///
+    /// Closed connections are kept so late packets for them are still consumed.
+    sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), Option<l3_tcp::SocketHandle>>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
 
@@ -43,7 +46,7 @@ impl Client {
         // Sockets are keyed by the full `(local, remote)` 4-tuple, so the client
         // can hold several connections to one remote from different local ports.
         // Re-connecting an already-open 4-tuple is a no-op.
-        if self.sockets_by_conn.contains_key(&(local, remote)) {
+        if let Some(Some(_)) = self.sockets_by_conn.get(&(local, remote)) {
             return Ok(());
         }
 
@@ -60,7 +63,7 @@ impl Client {
 
         let handle = self.sockets.add(socket);
 
-        self.sockets_by_conn.insert((local, remote), handle);
+        self.sockets_by_conn.insert((local, remote), Some(handle));
 
         Ok(())
     }
@@ -82,11 +85,23 @@ impl Client {
             && let Layer4Protocol::Tcp { src, dst } = failed_packet.layer4_protocol()
             && let local = SocketAddr::new(failed_packet.src(), src)
             && let remote = SocketAddr::new(failed_packet.dst(), dst)
-            && let Some(handle) = self.sockets_by_conn.get(&(local, remote))
+            && let Some(Some(handle)) = self.sockets_by_conn.get(&(local, remote))
         {
             tracing::debug!(%local, %remote, "Received ICMP error");
 
             self.sockets.get_mut::<l3_tcp::Socket>(*handle).abort();
+        }
+
+        // A packet for a connection that [`Client::reset`] dropped has no socket to
+        // receive it. Feeding it to the TCP stack would answer it with an RST.
+        if let Some(tcp) = packet.as_tcp()
+            && let local = SocketAddr::new(packet.destination(), tcp.destination_port())
+            && let remote = SocketAddr::new(packet.source(), tcp.source_port())
+            && let Some(None) = self.sockets_by_conn.get(&(local, remote))
+        {
+            tracing::debug!(%local, %remote, "Ignoring packet for closed connection");
+
+            return;
         }
 
         self.device.receive(packet);
@@ -114,8 +129,11 @@ impl Client {
 
     pub fn reset(&mut self) {
         self.sockets = l3_tcp::SocketSet::new(Vec::default());
-        self.sockets_by_conn.clear();
         self.device.clear();
+
+        for maybe_socket in self.sockets_by_conn.values_mut() {
+            *maybe_socket = None;
+        }
     }
 }
 

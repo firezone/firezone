@@ -770,14 +770,19 @@ defmodule PortalWeb.Settings.Authentication do
                 submit_event="submit_provider"
               />
             </div>
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <.button phx-click="close_panel">
+            <.panel_footer>
+              <.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button form="auth-provider-form" type="submit" style="primary" disabled={not @form.source.valid?}>
+              </.panel_footer_button>
+              <.panel_footer_button
+                form="auth-provider-form"
+                type="submit"
+                style="primary"
+                disabled={not @form.source.valid?}
+              >
                 Create
-              </.button>
-            </div>
+              </.panel_footer_button>
+            </.panel_footer>
           </div>
         </div>
       </div>
@@ -817,22 +822,21 @@ defmodule PortalWeb.Settings.Authentication do
               is_legacy={assigns[:is_legacy]}
             />
           </div>
-          <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-            <.button phx-click="close_panel" size="sm">
+          <.panel_footer>
+            <.panel_footer_button phx-click="close_panel">
               Cancel
-            </.button>
-            <.button
+            </.panel_footer_button>
+            <.panel_footer_button
               form="auth-provider-form"
               type="submit"
               style="primary"
-              size="sm"
               disabled={
                 not @form.source.valid? or Enum.empty?(@form.source.changes) or not verified?(@form)
               }
             >
               Save
-            </.button>
-          </div>
+            </.panel_footer_button>
+          </.panel_footer>
         </div>
       </div>
     </div>

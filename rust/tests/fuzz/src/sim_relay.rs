@@ -1,9 +1,9 @@
 use super::sim_net::{ExecMutScope, Host};
 use bufferpool::Buffer;
 use connlib_model::RelayId;
-use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use ip_packet::Ecn;
 use rand::{SeedableRng as _, rngs::StdRng};
+use relay_proto::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use secrecy::SecretString;
 use snownet::{RelaySocket, Transmit};
 use std::{
@@ -13,7 +13,7 @@ use std::{
 };
 
 pub(crate) struct SimRelay {
-    pub(crate) sut: firezone_relay::Server<StdRng>,
+    pub(crate) sut: relay_proto::Server<StdRng>,
     pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,
 
     created_at: SystemTime,
@@ -38,7 +38,7 @@ pub(crate) fn map_explode<'a>(
 
 impl SimRelay {
     pub(crate) fn new(seed: u64, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) -> Self {
-        let sut = firezone_relay::Server::new(
+        let sut = relay_proto::Server::new(
             IpStack::from((ip4, ip6)),
             rand::rngs::StdRng::seed_from_u64(seed),
             3478,
@@ -59,11 +59,9 @@ impl SimRelay {
         public_address: IpStack,
     ) -> (RelaySocket, String, String, String) {
         let relay_socket = match public_address {
-            firezone_relay::IpStack::Ip4(ip4) => RelaySocket::V4(SocketAddrV4::new(ip4, 3478)),
-            firezone_relay::IpStack::Ip6(ip6) => {
-                RelaySocket::V6(SocketAddrV6::new(ip6, 3478, 0, 0))
-            }
-            firezone_relay::IpStack::Dual { ip4, ip6 } => RelaySocket::Dual {
+            relay_proto::IpStack::Ip4(ip4) => RelaySocket::V4(SocketAddrV4::new(ip4, 3478)),
+            relay_proto::IpStack::Ip6(ip6) => RelaySocket::V6(SocketAddrV6::new(ip6, 3478, 0, 0)),
+            relay_proto::IpStack::Dual { ip4, ip6 } => RelaySocket::Dual {
                 v4: SocketAddrV4::new(ip4, 3478),
                 v6: SocketAddrV6::new(ip6, 3478, 0, 0),
             },
@@ -163,7 +161,7 @@ impl SimRelay {
         let data_len = payload.len() as u16;
         let header = payload.shift_start_left(4);
 
-        firezone_relay::ChannelData::encode_header_to_slice(channel, data_len, header);
+        relay_proto::ChannelData::encode_header_to_slice(channel, data_len, header);
 
         let receiving_socket = client.into_socket();
         let sending_socket = self
@@ -188,7 +186,7 @@ impl SimRelay {
             .expect("expiry must be later than UNIX_EPOCH")
             .as_secs();
 
-        let password = firezone_relay::auth::generate_password(auth_secret, secs, username);
+        let password = relay_proto::auth::generate_password(auth_secret, secs, username);
 
         (format!("{secs}:{username}"), password)
     }

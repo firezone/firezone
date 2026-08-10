@@ -519,19 +519,19 @@ defmodule PortalWeb.Settings.LogSinks do
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} s3_setup_tab={@s3_setup_tab} />
             </div>
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <.button phx-click="close_panel">
+            <.panel_footer>
+              <.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button
+              </.panel_footer_button>
+              <.panel_footer_button
                 form="log-sink-form"
                 type="submit"
                 style="primary"
                 disabled={not @form.source.valid?}
               >
                 Create
-              </.button>
-            </div>
+              </.panel_footer_button>
+            </.panel_footer>
           </div>
         </div>
 
@@ -562,19 +562,19 @@ defmodule PortalWeb.Settings.LogSinks do
               </.flash>
               <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} s3_setup_tab={@s3_setup_tab} />
             </div>
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <.button phx-click="close_panel">
+            <.panel_footer>
+              <.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button
+              </.panel_footer_button>
+              <.panel_footer_button
                 form="log-sink-form"
                 type="submit"
                 style="primary"
                 disabled={not @form.source.valid?}
               >
                 Save
-              </.button>
-            </div>
+              </.panel_footer_button>
+            </.panel_footer>
           </div>
         </div>
       <% else %>

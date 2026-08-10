@@ -18,20 +18,16 @@ defmodule PortalAPI.Router do
     plug :accepts, ["html", "xml", "json"]
   end
 
-  pipeline :openapi do
-    plug OpenApiSpex.Plug.PutApiSpec, module: PortalAPI.ApiSpec
-  end
-
   scope "/openapi" do
-    pipe_through :openapi
+    pipe_through :public
 
-    get "/", OpenApiSpex.Plug.RenderSpec, []
+    get "/", PortalAPI.OpenAPIController, :index
   end
 
   scope "/swaggerui" do
     pipe_through :public
 
-    get "/", OpenApiSpex.Plug.SwaggerUI, path: "/openapi"
+    get "/", OpenApiSpex.Plug.SwaggerUI, path: "/openapi.json"
   end
 
   pipeline :ingestion do

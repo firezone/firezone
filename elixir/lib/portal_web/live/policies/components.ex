@@ -731,14 +731,14 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_form_actions(assigns) do
     ~H"""
-    <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-      <.button type="button" phx-click="cancel_policy_form" size="xs">
+    <.panel_footer>
+      <.panel_footer_button type="button" phx-click="cancel_policy_form">
         Cancel
-      </.button>
-      <.button type="submit" style="primary" size="xs">
+      </.panel_footer_button>
+      <.panel_footer_button type="submit" style="primary">
         {if @mode == :new, do: "Create Policy", else: "Save Changes"}
-      </.button>
-    </div>
+      </.panel_footer_button>
+    </.panel_footer>
     """
   end
 

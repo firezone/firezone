@@ -226,14 +226,14 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               <.trust_anchor_form_fields form={@form} input_mode={@input_mode} uploads={@uploads} />
             </div>
 
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-              <.button type="button" phx-click="close_panel" size="sm">
+            <.panel_footer>
+              <.panel_footer_button type="button" phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button type="submit" style="primary" size="sm">
+              </.panel_footer_button>
+              <.panel_footer_button type="submit" style="primary">
                 Create
-              </.button>
-            </div>
+              </.panel_footer_button>
+            </.panel_footer>
           </.form>
         </div>
       </div>
@@ -271,14 +271,14 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               <.trust_anchor_form_fields form={@form} input_mode={@input_mode} uploads={@uploads} />
             </div>
 
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-              <.button type="button" phx-click="close_panel" size="sm">
+            <.panel_footer>
+              <.panel_footer_button type="button" phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button type="submit" style="primary" size="sm">
+              </.panel_footer_button>
+              <.panel_footer_button type="submit" style="primary">
                 Save
-              </.button>
-            </div>
+              </.panel_footer_button>
+            </.panel_footer>
           </.form>
         </div>
       </div>

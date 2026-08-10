@@ -132,7 +132,9 @@ impl TunnelTest {
         for gateway in gateways.values_mut() {
             let upstream_do53_servers = upstream_do53_servers.clone();
 
-            gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
+            gateway.exec_mut(|g| {
+                g.deploy_new_dns_servers(upstream_do53_servers, &ref_state.icmp_error_hosts)
+            })
         }
 
         let mut this = Self {
@@ -314,11 +316,9 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
-                expected_route: _,
                 seq,
                 identifier,
-                payload,
-                ..
+                probe_id,
             } => {
                 let dst = address_from_destination(&dst, &state, &src, client_id);
 
@@ -327,12 +327,12 @@ impl TunnelTest {
                     dst,
                     seq.0,
                     identifier.0,
-                    &payload.to_be_bytes(),
+                    &probe_id.to_be_bytes(),
                 )
                 .unwrap();
 
                 let client = state.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| sim.encapsulate(packet, now));
+                let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
 
                 buffered_transmits.push_from(transmit, client, now);
             }
@@ -340,19 +340,23 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
-                expected_route: _,
                 sport,
                 dport,
-                payload,
+                probe_id,
             } => {
                 let dst = address_from_destination(&dst, &state, &src, client_id);
 
-                let packet =
-                    ip_packet::make::udp_packet(src, dst, sport.0, dport.0, &payload.to_be_bytes())
-                        .unwrap();
+                let packet = ip_packet::make::udp_packet(
+                    src,
+                    dst,
+                    sport.0,
+                    dport.0,
+                    &probe_id.to_be_bytes(),
+                )
+                .unwrap();
 
                 let client = state.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| sim.encapsulate(packet, now));
+                let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
 
                 buffered_transmits.push_from(transmit, client, now);
             }
@@ -360,7 +364,6 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
-                expected_route: _,
                 sport,
                 dport,
             } => {
@@ -417,7 +420,9 @@ impl TunnelTest {
                 for gateway in state.gateways.values_mut() {
                     let upstream_do53_servers = upstream_do53_servers.clone();
 
-                    gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
+                    gateway.exec_mut(|g| {
+                        g.deploy_new_dns_servers(upstream_do53_servers, &ref_state.icmp_error_hosts)
+                    })
                 }
             }
             Transition::UpdateUpstreamDoHServers(upstream_doh) => {
@@ -663,26 +668,13 @@ impl TunnelTest {
             .iter()
             .map(|(id, g)| (*id, g.inner()))
             .collect();
-        let ref_gateways = ref_state
-            .gateways
-            .iter()
-            .map(|(id, g)| (*id, g.inner()))
-            .collect();
-
-        // System-wide packet assertions
-        assert_icmp_packets_properties(
+        assert_probes(
+            &ref_state.expected_probes,
             &all_ref_clients,
-            &ref_gateways,
             &all_sim_clients,
             &sim_gateways,
             &ref_state.global_dns_records,
-        );
-        assert_udp_packets_properties(
-            &all_ref_clients,
-            &ref_gateways,
-            &all_sim_clients,
-            &sim_gateways,
-            &ref_state.global_dns_records,
+            &ref_state.icmp_error_hosts,
         );
 
         // Per-client assertions for client-specific state
@@ -696,7 +688,7 @@ impl TunnelTest {
             assert_dns_servers_are_valid(ref_client, sut_client, &ref_state.portal);
             assert_search_domain_is_valid(&ref_state.portal, sut_client);
             assert_routes_are_valid(ref_client, sut_client);
-            assert_resource_status(ref_client, sut_client);
+            assert_resource_list(ref_client, sut_client);
         }
     }
 
@@ -839,7 +831,7 @@ impl TunnelTest {
                 };
 
                 match message {
-                    firezone_relay::Command::SendMessage { payload, recipient } => {
+                    relay_proto::Command::SendMessage { payload, recipient } => {
                         let dst = recipient.into_socket();
                         let src = relay
                             .sending_socket_for(dst.ip())
@@ -857,16 +849,16 @@ impl TunnelTest {
                         );
                     }
 
-                    firezone_relay::Command::CreateAllocation { port, family } => {
+                    relay_proto::Command::CreateAllocation { port, family } => {
                         relay.allocate_port(port.value(), family);
                         relay.exec_mut(|r| r.allocations.insert((family, port)));
                     }
-                    firezone_relay::Command::FreeAllocation { port, family } => {
+                    relay_proto::Command::FreeAllocation { port, family } => {
                         relay.deallocate_port(port.value(), family);
                         relay.exec_mut(|r| r.allocations.remove(&(family, port)));
                     }
-                    firezone_relay::Command::CreateChannelBinding { .. }
-                    | firezone_relay::Command::DeleteChannelBinding { .. } => {}
+                    relay_proto::Command::CreateChannelBinding { .. }
+                    | relay_proto::Command::DeleteChannelBinding { .. } => {}
                 }
 
                 continue 'outer;
@@ -1348,11 +1340,7 @@ impl TunnelTest {
             ClientEvent::ResourcesChanged { resources } => {
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| {
-                    c.resource_status = resources
-                        .resources
-                        .into_iter()
-                        .map(|r| (r.id(), r.status()))
-                        .collect();
+                    c.observed_resource_list = resources;
                 });
 
                 Ok(())

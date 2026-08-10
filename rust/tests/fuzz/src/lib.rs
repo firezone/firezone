@@ -11,6 +11,7 @@ mod dns_server_resource;
 mod echo;
 mod flux_capacitor;
 mod icmp_error_hosts;
+mod probe;
 mod ref_client;
 mod ref_gateway;
 mod reference;

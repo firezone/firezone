@@ -200,6 +200,45 @@ defmodule PortalWeb.ClientsTest do
       assert_patch(lv, ~p"/#{account}/clients")
     end
 
+    test "lists the device pools the client belongs to", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      pool =
+        static_device_pool_resource_fixture(
+          account: account,
+          name: "Engineering Laptops",
+          clients: [client]
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}")
+
+      assert html =~ "Device Pools"
+      assert html =~ pool.name
+      assert html =~ ~p"/#{account}/resources/#{pool.id}"
+    end
+
+    test "omits the device pools section when the client is in no pools", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}")
+
+      refute html =~ "Device Pools"
+    end
+
     test "ignores a tab switch queued while the client panel is closing", %{
       conn: conn,
       account: account,

@@ -24,6 +24,17 @@ run = "rustup toolchain install nightly-2025-05-30 --profile minimal --component
 # Individual checks (matching CI)
 # =============================================================================
 
+[tasks.workspace-crates]
+description = "List the name and directory of every crate in the workspace, as JSON"
+shell = "bash -c"
+hide = true
+run = '''
+set -euo pipefail
+
+cargo metadata --format-version=1 --no-deps |
+  jq -ce '[.packages[] | {name, dir: (.manifest_path | sub("/Cargo.toml$"; "") + "/")}]'
+'''
+
 [tasks.fmt]
 description = "Format Rust code"
 run = "cargo fmt"
