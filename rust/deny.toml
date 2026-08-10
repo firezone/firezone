@@ -267,7 +267,6 @@ skip = [
     "cpufeatures", # Same root cause as `chacha20` — pulled in via chacha20 0.10 from hickory 0.26.
     "crypto-common", # See `block-buffer`: pulled by boringtun 0.7's RC crypto crates (0.2 vs 0.1 elsewhere).
     "digest", # See `block-buffer`: pulled by boringtun 0.7's RC crypto crates (0.11 vs 0.10 elsewhere).
-    "foldhash",
     "getrandom",
     "hashbrown",
     "heck",
@@ -295,6 +294,7 @@ skip = [
     "toml_datetime",
     "toml_edit",
     "webpki-roots",
+    "which", # native-dialog 0.9 is still on which 7; aya-build and the workspace are on 8.
     "windows-link",
     "windows-result",
     "windows-strings",
