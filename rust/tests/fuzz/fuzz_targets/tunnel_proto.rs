@@ -23,8 +23,6 @@ fuzz_target!(|data: &[u8]| {
 
     let mut tunnel = TunnelTest::init_test(&reference, flux_capacitor.clone());
     TunnelTest::check_invariants(&tunnel, &reference);
-    ReferenceState::clear_expected_probes(&mut reference);
-    TunnelTest::clear_probe_observations(&mut tunnel);
 
     for applied in 0..MAX_TRANSITIONS {
         if generator.is_empty() {
