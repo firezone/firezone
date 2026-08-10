@@ -9,10 +9,6 @@ auto_install = false
 "github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
-# Turns the built GUI client into Breakpad symbols for the smoke test.
-#
-# Upstream only publishes x86_64 binaries for Linux, so this does not install on
-# arm64 Linux.
 "github:mozilla/dump_syms" = "2.3.7"
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
 
