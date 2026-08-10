@@ -18,6 +18,7 @@ tracing = { workspace = true }
 [dev-dependencies]
 flow-log-spool = { workspace = true }
 flow-log-writer = { workspace = true }
+jsonschema = { workspace = true }
 tempfile = { workspace = true }
 tracing-subscriber = { workspace = true }
 

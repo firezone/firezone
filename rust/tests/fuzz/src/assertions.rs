@@ -12,12 +12,12 @@ use super::{
     stub_portal::StubPortal,
     transition::Destination,
 };
-use connlib_model::{ClientId, GatewayId};
+use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceView};
 use dns_types::DomainName;
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools;
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque, hash_map::Entry},
+    collections::{BTreeMap, HashMap, hash_map::Entry},
     iter,
     marker::PhantomData,
     net::{IpAddr, SocketAddr},
@@ -586,37 +586,142 @@ pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimCli
     }
 }
 
-pub(crate) fn assert_resource_status(ref_client: &RefClient, sim_client: &SimClient) {
-    use connlib_model::ResourceStatus::*;
-
-    let expected_status_map = &ref_client.expected_resource_status();
-    let actual_status_map = &sim_client.resource_status;
+pub(crate) fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClient) {
+    let expected_resources = ref_client.expected_resources();
+    let actual_resources = &sim_client.observed_resource_list.resources;
     let maybe_online_resources = ref_client.maybe_online_resources();
+    let expected_ids = expected_resources
+        .iter()
+        .map(ResourceView::id)
+        .collect_vec();
+    let actual_ids = actual_resources.iter().map(ResourceView::id).collect_vec();
 
-    if expected_status_map != actual_status_map {
-        for (resource, expected_status) in expected_status_map {
-            match actual_status_map.get(resource) {
-                Some(&Online)
-                    if expected_status == &Unknown && maybe_online_resources.contains(resource) => {
-                }
-                Some(&Unknown)
-                    if expected_status == &Online && maybe_online_resources.contains(resource) => {}
+    if expected_ids != actual_ids {
+        tracing::error!(target: "assertions", ?expected_ids, ?actual_ids, "Resource list order or membership doesn't match");
+    }
 
-                Some(actual_status) if actual_status != expected_status => {
-                    tracing::error!(target: "assertions", %expected_status, %actual_status, %resource, ?maybe_online_resources, "Resource status doesn't match");
-                }
-                Some(_) => {}
-                None => {
-                    tracing::error!(target: "assertions", %expected_status, %resource, "Missing resource status");
-                }
-            }
+    let actual_by_id = actual_resources
+        .iter()
+        .map(|resource| (resource.id(), resource))
+        .collect::<BTreeMap<_, _>>();
+
+    for expected in &expected_resources {
+        let resource = expected.id();
+        let Some(actual) = actual_by_id.get(&resource) else {
+            tracing::error!(target: "assertions", %resource, "Missing resource");
+            continue;
+        };
+
+        assert_resource_definition(expected, actual);
+        assert_resource_status(
+            resource,
+            expected.status(),
+            actual.status(),
+            maybe_online_resources.contains(&resource),
+        );
+    }
+
+    for actual in actual_resources {
+        if !expected_ids.contains(&actual.id()) {
+            tracing::error!(target: "assertions", resource = %actual.id(), "Unexpected resource");
         }
+    }
+}
 
-        for (resource, actual_status) in actual_status_map {
-            if expected_status_map.get(resource).is_none() {
-                tracing::error!(target: "assertions", %actual_status, %resource, "Unexpected resource status");
-            }
+fn assert_resource_definition(expected: &ResourceView, actual: &ResourceView) {
+    use ResourceView::*;
+
+    let resource = expected.id();
+
+    match (expected, actual) {
+        (Dns(expected), Dns(actual)) => {
+            assert_resource_field(resource, "address", &expected.address, &actual.address);
+            assert_resource_field(resource, "name", &expected.name, &actual.name);
+            assert_resource_field(
+                resource,
+                "address description",
+                &expected.address_description,
+                &actual.address_description,
+            );
+            assert_resource_field(resource, "sites", &expected.sites, &actual.sites);
         }
+        (Cidr(expected), Cidr(actual)) => {
+            assert_resource_field(resource, "address", &expected.address, &actual.address);
+            assert_resource_field(resource, "name", &expected.name, &actual.name);
+            assert_resource_field(
+                resource,
+                "address description",
+                &expected.address_description,
+                &actual.address_description,
+            );
+            assert_resource_field(resource, "sites", &expected.sites, &actual.sites);
+        }
+        (Internet(expected), Internet(actual)) => {
+            assert_resource_field(resource, "name", &expected.name, &actual.name);
+            assert_resource_field(resource, "sites", &expected.sites, &actual.sites);
+        }
+        (Dns(_), Cidr(_)) => {
+            tracing::error!(target: "assertions", %resource, "DNS resource was emitted as a CIDR resource");
+        }
+        (Dns(_), Internet(_)) => {
+            tracing::error!(target: "assertions", %resource, "DNS resource was emitted as an Internet resource");
+        }
+        (Cidr(_), Dns(_)) => {
+            tracing::error!(target: "assertions", %resource, "CIDR resource was emitted as a DNS resource");
+        }
+        (Cidr(_), Internet(_)) => {
+            tracing::error!(target: "assertions", %resource, "CIDR resource was emitted as an Internet resource");
+        }
+        (Internet(_), Dns(_)) => {
+            tracing::error!(target: "assertions", %resource, "Internet resource was emitted as a DNS resource");
+        }
+        (Internet(_), Cidr(_)) => {
+            tracing::error!(target: "assertions", %resource, "Internet resource was emitted as a CIDR resource");
+        }
+    }
+}
+
+fn assert_resource_field<T>(resource: ResourceId, field: &str, expected: &T, actual: &T)
+where
+    T: std::fmt::Debug + PartialEq,
+{
+    if expected != actual {
+        tracing::error!(target: "assertions", %resource, field, ?expected, ?actual, "Resource field doesn't match");
+    }
+}
+
+fn assert_resource_status(
+    resource: ResourceId,
+    expected: ResourceStatus,
+    actual: ResourceStatus,
+    maybe_online: bool,
+) {
+    use ResourceStatus::*;
+
+    match (expected, actual) {
+        (Unknown, Unknown) => {}
+        (Unknown, Online) if maybe_online => {}
+        (Unknown, Online) => {
+            tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
+        }
+        (Unknown, Offline) => {
+            tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
+        }
+        (Online, Unknown) if maybe_online => {}
+        (Online, Unknown) => {
+            tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
+        }
+        (Online, Online) => {}
+        (Online, Offline) => {
+            tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
+        }
+        (Offline, Unknown) => {
+            tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
+        }
+        (Offline, Online) => {
+            tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
+        }
+        (Offline, Offline) => {}
     }
 }
 
@@ -655,11 +760,11 @@ pub(crate) fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimCl
 }
 
 pub(crate) fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_client: &SimClient) {
-    let unexpected_dns_replies = find_unexpected_entries(
-        &ref_client.expected_udp_dns_handshakes,
-        &sim_client.received_udp_dns_responses,
-        |(_, id_a, _), (_, id_b, _)| id_a == id_b,
-    );
+    let unexpected_dns_replies = sim_client
+        .received_udp_dns_responses
+        .keys()
+        .filter(|response| !ref_client.expected_udp_dns_handshakes.contains(response))
+        .collect_vec();
 
     if !unexpected_dns_replies.is_empty() {
         tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Unexpected UDP DNS replies on client");
@@ -673,21 +778,36 @@ pub(crate) fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_clie
         let queries = &sim_client.sent_udp_dns_queries;
         let responses = &sim_client.received_udp_dns_responses;
 
-        let Some(client_sent_query) = queries.get(key) else {
-            tracing::error!(target: "assertions", ?queries, "❌ Missing UDP DNS query on client");
-            continue;
-        };
-        let Some(client_received_response) = responses.get(key) else {
-            tracing::error!(target: "assertions", ?responses, "❌ Missing UDP DNS response on client");
-            continue;
-        };
-
-        assert_correct_src_and_dst_ips(client_sent_query, client_received_response);
-        assert_correct_src_and_dst_udp_ports(client_sent_query, client_received_response);
+        match (queries.get(key), responses.get(key)) {
+            (Some(client_sent_query), Some(client_received_response)) => {
+                assert_correct_src_and_dst_ips(client_sent_query, client_received_response);
+                assert_correct_src_and_dst_udp_ports(client_sent_query, client_received_response);
+            }
+            (Some(_), None) => {
+                tracing::error!(target: "assertions", ?responses, "❌ Missing UDP DNS response on client");
+            }
+            (None, Some(_)) => {
+                tracing::error!(target: "assertions", ?queries, "❌ Missing UDP DNS query on client");
+            }
+            (None, None) => {
+                tracing::error!(target: "assertions", ?queries, "❌ Missing UDP DNS query on client");
+                tracing::error!(target: "assertions", ?responses, "❌ Missing UDP DNS response on client");
+            }
+        }
     }
 }
 
 pub(crate) fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
+    let unexpected_dns_responses = sim_client
+        .received_tcp_dns_responses
+        .iter()
+        .filter(|response| !ref_client.expected_tcp_dns_handshakes.contains(response))
+        .collect_vec();
+
+    if !unexpected_dns_responses.is_empty() {
+        tracing::error!(target: "assertions", ?unexpected_dns_responses, "❌ Unexpected TCP DNS responses on client");
+    }
+
     for (dns_server, query_id) in ref_client.expected_tcp_dns_handshakes.iter() {
         let _guard =
             tracing::info_span!(target: "assertions", "tcp_dns", %query_id, %dns_server).entered();
@@ -696,14 +816,19 @@ pub(crate) fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
         let queries = &sim_client.sent_tcp_dns_queries;
         let responses = &sim_client.received_tcp_dns_responses;
 
-        if queries.get(key).is_none() {
-            tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
-            continue;
-        };
-        if responses.get(key).is_none() {
-            tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
-            continue;
-        };
+        match (queries.contains(key), responses.contains(key)) {
+            (true, true) => {}
+            (true, false) => {
+                tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
+            }
+            (false, true) => {
+                tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
+            }
+            (false, false) => {
+                tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
+                tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
+            }
+        }
     }
 }
 
@@ -814,18 +939,6 @@ fn assert_proxy_ip_mapping_is_stable(
             }
         }
     }
-}
-
-fn find_unexpected_entries<'a, E, K, V>(
-    expected: &VecDeque<E>,
-    actual: &'a BTreeMap<K, V>,
-    is_expected: impl Fn(&E, &K) -> bool,
-) -> Vec<&'a V> {
-    actual
-        .iter()
-        .filter(|(k, _)| !expected.iter().any(|e| is_expected(e, k)))
-        .map(|(_, v)| v)
-        .collect()
 }
 
 /// Tracks whether any [`Level::ERROR`] events are emitted and panics on `Drop` in case.

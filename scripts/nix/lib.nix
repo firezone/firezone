@@ -175,7 +175,7 @@ rec {
     gateway = "1.5.2";
 
     # mark:current-headless-version
-    headless = "1.5.10";
+    headless = "1.5.11";
 
     # mark:current-gui-version
     gui = "1.5.16";

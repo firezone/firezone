@@ -471,6 +471,38 @@ defmodule Portal.Okta.ReqDPoP do
     end
   end
 
+  @doc false
+  @spec run(Req.Request.t()) :: {Req.Request.t(), Req.Response.t() | Exception.t()}
+  def run(%Req.Request{} = req) do
+    now = System.system_time(:second)
+    exp = now + 300
+    jti = "#{now}_" <> Base.url_encode64(:crypto.strong_rand_bytes(8), padding: false)
+
+    claims =
+      %{
+        "htm" => req.method |> to_string() |> String.upcase(),
+        "htu" => htu_string(req.url),
+        "iat" => now,
+        "exp" => exp,
+        "jti" => jti
+      }
+      |> maybe_put_ath(req.options[:access_token])
+      |> maybe_put_nonce(req.options[:nonce])
+
+    dpop = req.options[:sign_fun].(claims)
+
+    req =
+      req
+      |> Req.Request.put_header("dpop", dpop)
+      |> maybe_put_auth(req.options[:access_token])
+
+    orig = Req.Request.get_private(req, :dpop_orig_adapter, Req.Finch)
+    call_adapter(orig, req)
+  end
+
+  defp call_adapter(adapter, req) when is_atom(adapter), do: adapter.run(req)
+  defp call_adapter(adapter, req) when is_function(adapter, 1), do: adapter.(req)
+
   defp retry(%Req.Request{} = req, %Req.Response{} = resp) do
     method_safe? = req.method in [:get, :head]
 
@@ -545,34 +577,7 @@ defmodule Portal.Okta.ReqDPoP do
 
   defp wrap_adapter(%Req.Request{adapter: orig} = req) do
     Req.Request.put_private(req, :dpop_orig_adapter, orig)
-    |> Map.put(:adapter, &adapter_with_dpop/1)
-  end
-
-  defp adapter_with_dpop(%Req.Request{} = req) do
-    now = System.system_time(:second)
-    exp = now + 300
-    jti = "#{now}_" <> Base.url_encode64(:crypto.strong_rand_bytes(8), padding: false)
-
-    claims =
-      %{
-        "htm" => req.method |> to_string() |> String.upcase(),
-        "htu" => htu_string(req.url),
-        "iat" => now,
-        "exp" => exp,
-        "jti" => jti
-      }
-      |> maybe_put_ath(req.options[:access_token])
-      |> maybe_put_nonce(req.options[:nonce])
-
-    dpop = req.options[:sign_fun].(claims)
-
-    req =
-      req
-      |> Req.Request.put_header("dpop", dpop)
-      |> maybe_put_auth(req.options[:access_token])
-
-    orig = Req.Request.get_private(req, :dpop_orig_adapter, &Req.Steps.run_finch/1)
-    orig.(req)
+    |> Map.put(:adapter, __MODULE__)
   end
 
   defp maybe_put_auth(req, nil), do: req

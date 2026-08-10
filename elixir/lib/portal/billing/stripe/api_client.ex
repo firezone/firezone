@@ -29,7 +29,7 @@ defmodule Portal.Billing.Stripe.APIClient do
   end
 
   def fetch_customer(api_token, customer_id) do
-    request(api_token, :get, "customers/#{customer_id}", "")
+    request(api_token, :get, "customers/#{customer_id}")
   end
 
   def list_all_subscriptions(api_token, page_after \\ nil, acc \\ []) do
@@ -40,7 +40,7 @@ defmodule Portal.Billing.Stripe.APIClient do
         ""
       end
 
-    case request(api_token, :get, "subscriptions#{query_params}", "") do
+    case request(api_token, :get, "subscriptions#{query_params}") do
       {:ok, %{"has_more" => true, "data" => data}} ->
         page_after = List.last(data)["id"]
         list_all_subscriptions(api_token, page_after, acc ++ data)
@@ -54,11 +54,11 @@ defmodule Portal.Billing.Stripe.APIClient do
   end
 
   def fetch_product(api_token, product_id) do
-    request(api_token, :get, "products/#{product_id}", "")
+    request(api_token, :get, "products/#{product_id}")
   end
 
   def fetch_customer_subscriptions(api_token, customer_id) do
-    request(api_token, :get, "subscriptions?customer=#{customer_id}&status=active", "")
+    request(api_token, :get, "subscriptions?customer=#{customer_id}&status=active")
   end
 
   def create_billing_portal_session(api_token, customer_id, return_url) do
@@ -80,10 +80,11 @@ defmodule Portal.Billing.Stripe.APIClient do
   end
 
   def cancel_subscription(api_token, subscription_id) do
-    request(api_token, :delete, "subscriptions/#{subscription_id}", "")
+    request(api_token, :delete, "subscriptions/#{subscription_id}")
   end
 
-  def request(api_token, method, path, body) do
+  # Req turns a GET with a body, even an empty one, into a POST.
+  def request(api_token, method, path, body \\ nil) do
     endpoint = fetch_config!(:endpoint)
     url = "#{endpoint}/v1/#{path}"
 

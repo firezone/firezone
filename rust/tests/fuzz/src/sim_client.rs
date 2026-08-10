@@ -12,7 +12,7 @@ use super::{
     transition::{DPort, DnsTransport, Identifier, SPort, Seq},
 };
 use chrono::{DateTime, Utc};
-use connlib_model::{ClientId, RelayId, ResourceId, ResourceStatus};
+use connlib_model::{ClientId, RelayId, ResourceList};
 use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::IpNetwork;
 use ip_packet::{IcmpEchoHeader, IcmpError, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
@@ -55,7 +55,8 @@ pub(crate) struct SimClient {
     /// The search-domain emitted by connlib.
     pub(crate) search_domain: Option<DomainName>,
 
-    pub(crate) resource_status: BTreeMap<ResourceId, ResourceStatus>,
+    /// The latest resource list emitted by connlib.
+    pub(crate) observed_resource_list: ResourceList,
 
     pub(crate) sent_udp_dns_queries: HashMap<(dns::Upstream, QueryId, u16), IpPacket>,
     pub(crate) received_udp_dns_responses: BTreeMap<(dns::Upstream, QueryId, u16), IpPacket>,
@@ -79,10 +80,12 @@ pub(crate) struct SimClient {
 impl SimClient {
     pub(crate) fn new(
         id: ClientId,
-        sut: ClientState,
+        mut sut: ClientState,
         malicious_behaviour: MaliciousBehaviour,
         now: Instant,
     ) -> Self {
+        sut.set_flow_logs_enabled(true);
+
         Self {
             id,
             sut,
@@ -97,7 +100,7 @@ impl SimClient {
             sent_probes: Default::default(),
             routes: Default::default(),
             search_domain: Default::default(),
-            resource_status: Default::default(),
+            observed_resource_list: Default::default(),
             tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(15), [0u8; 32]),
             tcp_client: crate::tcp::Client::new(now),
             failed_tcp_packets: Default::default(),
@@ -130,6 +133,7 @@ impl SimClient {
                 .to_std()
                 .unwrap(),
         );
+        self.sut.set_flow_logs_enabled(true);
 
         self.search_domain = None;
         self.dns_by_sentinel = DnsMapping::default();
