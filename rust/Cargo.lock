@@ -723,7 +723,7 @@ dependencies = [
  "libc",
  "logging",
  "netlink-packet-core",
- "netlink-packet-route 0.31.0",
+ "netlink-packet-route",
  "nix 0.31.3",
  "opentelemetry",
  "otel-attributes",
@@ -4792,18 +4792,6 @@ dependencies = [
 
 [[package]]
 name = "netlink-packet-route"
-version = "0.29.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df9854ea6ad14e3f4698a7f03b65bce0833dd2d81d594a0e4a984170537146b6"
-dependencies = [
- "bitflags 2.10.0",
- "libc",
- "log",
- "netlink-packet-core",
-]
-
-[[package]]
-name = "netlink-packet-route"
 version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2288fcb784eb3defd5fb16f4c4160d5f477de192eac730f43e1d11c24d9a007"
@@ -6334,18 +6322,18 @@ dependencies = [
 
 [[package]]
 name = "rtnetlink"
-version = "0.20.0"
-source = "git+https://github.com/rust-netlink/rtnetlink?branch=main#eb685374ba7f7a1201754f6b2b40c491d3d50cb3"
+version = "0.21.0"
+source = "git+https://github.com/rust-netlink/rtnetlink?branch=main#e7799b6ee24267586e6aadc0e3fb415b4d921dd4"
 dependencies = [
  "futures-channel",
  "futures-util",
  "log",
  "netlink-packet-core",
- "netlink-packet-route 0.29.0",
+ "netlink-packet-route",
  "netlink-proto",
  "netlink-sys",
  "nix 0.30.1",
- "thiserror 1.0.69",
+ "thiserror 2.0.19",
  "tokio",
 ]
 
