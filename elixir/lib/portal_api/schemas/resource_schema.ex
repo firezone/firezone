@@ -90,8 +90,10 @@ defmodule PortalAPI.Schemas.Resource do
     OpenApiSpex.schema(%{
       title: "ResourceCreateRequest",
       description:
-        "POST body for creating a Resource. `site_id` is required unless `type` is " <>
-          "`static_device_pool`.",
+        "POST body for creating a Resource. `site_id` is required.\n\n" <>
+          "Device pools (`static_device_pool`) cannot currently be created through this " <>
+          "API - create them in the admin portal. Existing pools can be read, updated, " <>
+          "deleted, and have their members managed here as normal.",
       type: :object,
       properties: %{
         resource: %Schema{
@@ -100,7 +102,7 @@ defmodule PortalAPI.Schemas.Resource do
             name: %Schema{type: :string, description: "Resource name"},
             address: %Schema{
               type: :string,
-              description: "Resource address. Not applicable to `static_device_pool`.",
+              description: "Resource address.",
               nullable: true
             },
             address_description: %Schema{
@@ -110,9 +112,14 @@ defmodule PortalAPI.Schemas.Resource do
             },
             type: %Schema{
               type: :string,
-              description:
-                "Resource type. For `static_device_pool`, `address` is not applicable.",
-              enum: ["cidr", "ip", "dns", "static_device_pool"]
+              # static_device_pool is deliberately absent: pools cannot be
+              # created or converted to through this API for now. It stays
+              # in the response schema below, since existing pools are
+              # still returned. See
+              # PortalAPI.ResourceController.Database.reject_device_pool_type/1
+              # for what to change to re-enable it.
+              description: "Resource type.",
+              enum: ["cidr", "ip", "dns"]
             },
             ip_stack: %Schema{
               type: :string,
@@ -123,7 +130,7 @@ defmodule PortalAPI.Schemas.Resource do
             site_id: %Schema{
               title: "SiteID",
               description:
-                "Site to connect the Resource to. Required for all types except `static_device_pool`. " <>
+                "Site to connect the Resource to. Required. " <>
                   "The Internet Site is reserved for the Internet Resource and cannot be used.",
               type: :string,
               format: :uuid,
@@ -173,7 +180,7 @@ defmodule PortalAPI.Schemas.Resource do
             name: %Schema{type: :string, description: "Resource name"},
             address: %Schema{
               type: :string,
-              description: "Resource address. Not applicable to `static_device_pool`.",
+              description: "Resource address.",
               nullable: true
             },
             address_description: %Schema{
@@ -183,9 +190,14 @@ defmodule PortalAPI.Schemas.Resource do
             },
             type: %Schema{
               type: :string,
-              description:
-                "Resource type. For `static_device_pool`, `address` is not applicable.",
-              enum: ["cidr", "ip", "dns", "static_device_pool"]
+              # static_device_pool is deliberately absent: pools cannot be
+              # created or converted to through this API for now. It stays
+              # in the response schema below, since existing pools are
+              # still returned. See
+              # PortalAPI.ResourceController.Database.reject_device_pool_type/1
+              # for what to change to re-enable it.
+              description: "Resource type.",
+              enum: ["cidr", "ip", "dns"]
             },
             ip_stack: %Schema{
               type: :string,
@@ -196,7 +208,7 @@ defmodule PortalAPI.Schemas.Resource do
             site_id: %Schema{
               title: "SiteID",
               description:
-                "Site to connect the Resource to. Required for all types except `static_device_pool`. " <>
+                "Site to connect the Resource to. Required. " <>
                   "The Internet Site is reserved for the Internet Resource and cannot be used.",
               type: :string,
               format: :uuid,

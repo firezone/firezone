@@ -290,7 +290,7 @@
         "type": "object"
       },
       "ResourceCreateRequest": {
-        "description": "POST body for creating a Resource. `site_id` is required unless `type` is `static_device_pool`.",
+        "description": "POST body for creating a Resource. `site_id` is required.\n\nDevice pools (`static_device_pool`) cannot currently be created through this API - create them in the admin portal. Existing pools can be read, updated, deleted, and have their members managed here as normal.",
         "example": {
           "resource": {
             "address": "10.0.0.10",
@@ -312,7 +312,7 @@
           "resource": {
             "properties": {
               "address": {
-                "description": "Resource address. Not applicable to `static_device_pool`.",
+                "description": "Resource address.",
                 "nullable": true,
                 "type": "string"
               },
@@ -343,19 +343,18 @@
                 "type": "string"
               },
               "site_id": {
-                "description": "Site to connect the Resource to. Required for all types except `static_device_pool`. The Internet Site is reserved for the Internet Resource and cannot be used.",
+                "description": "Site to connect the Resource to. Required. The Internet Site is reserved for the Internet Resource and cannot be used.",
                 "format": "uuid",
                 "nullable": true,
                 "title": "SiteID",
                 "type": "string"
               },
               "type": {
-                "description": "Resource type. For `static_device_pool`, `address` is not applicable.",
+                "description": "Resource type.",
                 "enum": [
                   "cidr",
                   "ip",
-                  "dns",
-                  "static_device_pool"
+                  "dns"
                 ],
                 "type": "string"
               }
@@ -3250,7 +3249,7 @@
         "type": "object"
       },
       "SiteID": {
-        "description": "Site to connect the Resource to. Required for all types except `static_device_pool`. The Internet Site is reserved for the Internet Resource and cannot be used.",
+        "description": "Site to connect the Resource to. Required. The Internet Site is reserved for the Internet Resource and cannot be used.",
         "format": "uuid",
         "nullable": true,
         "title": "SiteID",
@@ -3391,7 +3390,7 @@
           "resource": {
             "properties": {
               "address": {
-                "description": "Resource address. Not applicable to `static_device_pool`.",
+                "description": "Resource address.",
                 "nullable": true,
                 "type": "string"
               },
@@ -3422,19 +3421,18 @@
                 "type": "string"
               },
               "site_id": {
-                "description": "Site to connect the Resource to. Required for all types except `static_device_pool`. The Internet Site is reserved for the Internet Resource and cannot be used.",
+                "description": "Site to connect the Resource to. Required. The Internet Site is reserved for the Internet Resource and cannot be used.",
                 "format": "uuid",
                 "nullable": true,
                 "title": "SiteID",
                 "type": "string"
               },
               "type": {
-                "description": "Resource type. For `static_device_pool`, `address` is not applicable.",
+                "description": "Resource type.",
                 "enum": [
                   "cidr",
                   "ip",
-                  "dns",
-                  "static_device_pool"
+                  "dns"
                 ],
                 "type": "string"
               }
