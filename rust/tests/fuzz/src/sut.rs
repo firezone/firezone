@@ -20,7 +20,6 @@ use rand::SeedableRng;
 use rand::distr::SampleString;
 use sha2::Digest;
 use snownet::{NoTurnServers, Transmit};
-use std::collections::BTreeSet;
 use std::iter;
 use std::net::SocketAddr;
 use std::{
@@ -599,32 +598,30 @@ impl TunnelTest {
                 state.reboot_relays_while_partitioned(new_relays, now);
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(rid) => {
-                for (client_id, client) in &mut state.clients {
-                    let ref_client = ref_state.clients.get(client_id).unwrap();
-                    let new_authorized_resources = {
-                        let mut all_resources =
-                            BTreeSet::from_iter(ref_client.inner().all_resource_ids());
-                        all_resources.remove(&rid);
+                let authorizations = state
+                    .clients
+                    .iter_mut()
+                    .map(|(client_id, client)| {
+                        let ref_client = ref_state.clients.get(client_id).unwrap();
+                        let resources = ref_client
+                            .inner()
+                            .all_resource_ids()
+                            .into_iter()
+                            .filter(|resource| *resource != rid)
+                            .collect();
 
-                        all_resources
-                    };
+                        client.exec_mut(|c| c.sut.remove_resource(rid, now));
 
-                    client.exec_mut(|c| c.sut.remove_resource(rid, now));
+                        (*client_id, resources)
+                    })
+                    .collect();
 
-                    if let Some(gid) = ref_state.portal.gateway_for_resource(rid)
-                        && let Some(g) = state.gateways.get_mut(gid)
-                    {
-                        g.exec_mut(|g| {
-                            // This is partly an `init` message.
-                            // The relays don't change so we don't bother setting them.
-                            g.sut.retain_authorizations(BTreeMap::from([(
-                                *client_id,
-                                new_authorized_resources,
-                            )]))
-                        });
-                    } else {
-                        tracing::error!(%rid, "No gateway for resource");
-                    }
+                if let Some(gid) = ref_state.portal.gateway_for_resource(rid)
+                    && let Some(gateway) = state.gateways.get_mut(gid)
+                {
+                    gateway.exec_mut(|gateway| gateway.sut.retain_authorizations(authorizations));
+                } else {
+                    tracing::error!(%rid, "No gateway for resource");
                 }
             }
             Transition::RestartClient { client_id, key } => {
