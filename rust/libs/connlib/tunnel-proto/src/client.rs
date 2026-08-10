@@ -17,7 +17,7 @@ use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
 use crate::client::dns_config::DnsConfig;
 use crate::client::pending_authorizations::{DnsQueryForSite, PendingAuthorizations};
-use crate::client::routing::{ClientTarget, Route, RoutingTables};
+use crate::client::routing::{Route, RoutingTables};
 use crate::client::tracked_state::TrackedState;
 use crate::conn_track::Originator;
 use crate::dns::{
@@ -425,43 +425,8 @@ impl ClientState {
         domain: DomainName,
         result: Result<(Ipv4Addr, Ipv6Addr), FailReason>,
     ) {
-        let outcome =
-            self.device_stub_resolver
-                .handle_device_domain_resolved(resource_id, domain, result);
-
-        match (outcome, self.resources_by_id.get(&resource_id)) {
-            (
-                device_stub_resolver::ResolutionOutcome::Resolved { ipv4, ipv6 },
-                Some(Resource::DynamicDevicePool(pool)),
-            ) => {
-                let filter = FilterEngine::new(&pool.filters);
-
-                self.routing_tables.upsert_resolved_device(
-                    ipv4.into(),
-                    resource_id,
-                    filter.clone(),
-                );
-                self.routing_tables
-                    .upsert_resolved_device(ipv6.into(), resource_id, filter);
-            }
-            (
-                device_stub_resolver::ResolutionOutcome::Resolved { .. },
-                Some(
-                    Resource::Dns(_)
-                    | Resource::Cidr(_)
-                    | Resource::Internet(_)
-                    | Resource::StaticDevicePool(_),
-                )
-                | None,
-            ) => {
-                tracing::warn!(%resource_id, "Resolved device pool domain for unknown resource");
-            }
-            (
-                device_stub_resolver::ResolutionOutcome::Ignored
-                | device_stub_resolver::ResolutionOutcome::Failed,
-                _,
-            ) => {}
-        }
+        self.device_stub_resolver
+            .handle_device_domain_resolved(resource_id, domain, result);
 
         self.drain_device_stub_resolver_events();
     }
@@ -658,9 +623,6 @@ impl ClientState {
                 return Ok(());
             }
         };
-        let pending_authorizations = &mut self.pending_authorizations;
-        let resources = &self.resources_by_id;
-
         let route = self
             .routing_tables
             .resolve(dst, dst_proto, internet_resource);
@@ -690,7 +652,7 @@ impl ClientState {
                 Some(Route::Client {
                     filter,
                     resource_id: rid,
-                    target,
+                    client_id: cid,
                 }),
             ) => {
                 // A new direct-client flow must be permitted and authorized before it is sent.
@@ -699,39 +661,59 @@ impl ClientState {
                     return Ok(());
                 }
 
-                let cid = match target {
-                    ClientTarget::Known(cid) => cid,
-                    ClientTarget::Resolved => {
-                        let Some((cid, _)) = self.clients.peer_by_ip(dst) else {
-                            pending_authorizations
-                                .on_not_authorized_device(rid, dst, packet, resources, now);
-                            return Ok(());
-                        };
-
-                        cid
-                    }
+                let Some(packet) = Self::prepare_client_packet(
+                    packet,
+                    rid,
+                    cid,
+                    now,
+                    &self.authorized_resources,
+                    &mut self.pending_authorizations,
+                    &self.resources_by_id,
+                    &mut self.clients,
+                )?
+                else {
+                    return Ok(());
                 };
 
-                let already_authorised = self
-                    .authorized_resources
-                    .get(&rid)
-                    .is_some_and(|p| p.has_client(cid));
-
-                if !already_authorised {
-                    // Not yet authorized: Buffer + send request.
-                    pending_authorizations
-                        .on_not_authorized_device(rid, dst, packet, resources, now);
+                (packet, cid.into())
+            }
+            (
+                None,
+                None,
+                Some(Route::ResolvedDevice {
+                    filter,
+                    resource_id: rid,
+                }),
+            ) => {
+                if !filter_allows(&filter, dst_proto) {
+                    reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
                     return Ok(());
                 }
 
-                let peer = self
-                    .clients
-                    .peer_by_id_mut(&cid)
-                    .with_context(|| UnroutablePacket::no_peer_state(&packet))?;
+                let Some((cid, _)) = self.clients.peer_by_ip(dst) else {
+                    self.pending_authorizations.on_not_authorized_device(
+                        rid,
+                        dst,
+                        packet,
+                        &self.resources_by_id,
+                        now,
+                    );
+                    return Ok(());
+                };
 
-                peer.record_outbound_as_originator(&packet, now);
-                flow_tracker::record_peer(cid, flow_tracker::Role::Initiator);
-                flow_tracker::record_ingest_token(peer.ingest_token(&rid));
+                let Some(packet) = Self::prepare_client_packet(
+                    packet,
+                    rid,
+                    cid,
+                    now,
+                    &self.authorized_resources,
+                    &mut self.pending_authorizations,
+                    &self.resources_by_id,
+                    &mut self.clients,
+                )?
+                else {
+                    return Ok(());
+                };
 
                 (packet, cid.into())
             }
@@ -756,7 +738,12 @@ impl ClientState {
                     .copied()
                 else {
                     // Not yet authorized: Buffer + send intent.
-                    pending_authorizations.on_not_authorized_resource(rid, packet, resources, now);
+                    self.pending_authorizations.on_not_authorized_resource(
+                        rid,
+                        packet,
+                        &self.resources_by_id,
+                        now,
+                    );
                     return Ok(());
                 };
 
@@ -801,6 +788,42 @@ impl ClientState {
         )?;
 
         Ok(())
+    }
+
+    fn prepare_client_packet(
+        packet: IpPacket,
+        resource_id: ResourceId,
+        client_id: ClientId,
+        now: Instant,
+        authorized_resources: &HashMap<ResourceId, AccessPath>,
+        pending_authorizations: &mut PendingAuthorizations,
+        resources_by_id: &BTreeMap<ResourceId, Resource>,
+        clients: &mut PeerStore<ClientId, ClientOnClient>,
+    ) -> Result<Option<IpPacket>> {
+        let already_authorised = authorized_resources
+            .get(&resource_id)
+            .is_some_and(|path| path.has_client(client_id));
+
+        if !already_authorised {
+            pending_authorizations.on_not_authorized_device(
+                resource_id,
+                packet.destination(),
+                packet,
+                resources_by_id,
+                now,
+            );
+            return Ok(None);
+        }
+
+        let peer = clients
+            .peer_by_id_mut(&client_id)
+            .with_context(|| UnroutablePacket::no_peer_state(&packet))?;
+
+        peer.record_outbound_as_originator(&packet, now);
+        flow_tracker::record_peer(client_id, flow_tracker::Role::Initiator);
+        flow_tracker::record_ingest_token(peer.ingest_token(&resource_id));
+
+        Ok(Some(packet))
     }
 
     /// Feed an internally-produced or previously-buffered IP packet through normal TUN routing
@@ -2273,6 +2296,43 @@ impl ClientState {
         }
     }
 
+    fn update_resolved_device_routes(
+        &mut self,
+        resource_id: ResourceId,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+    ) {
+        let filters = match self.resources_by_id.get(&resource_id) {
+            Some(Resource::DynamicDevicePool(pool)) => &pool.filters,
+            Some(Resource::Dns(_)) => {
+                tracing::warn!(%resource_id, "Resolved device for DNS resource");
+                return;
+            }
+            Some(Resource::Cidr(_)) => {
+                tracing::warn!(%resource_id, "Resolved device for CIDR resource");
+                return;
+            }
+            Some(Resource::Internet(_)) => {
+                tracing::warn!(%resource_id, "Resolved device for Internet Resource");
+                return;
+            }
+            Some(Resource::StaticDevicePool(_)) => {
+                tracing::warn!(%resource_id, "Resolved device for static device pool");
+                return;
+            }
+            None => {
+                tracing::warn!(%resource_id, "Resolved device for unknown resource");
+                return;
+            }
+        };
+        let filter = FilterEngine::new(filters);
+
+        self.routing_tables
+            .upsert_resolved_device(ipv4.into(), resource_id, filter.clone());
+        self.routing_tables
+            .upsert_resolved_device(ipv6.into(), resource_id, filter);
+    }
+
     fn drain_resource_stub_resolver_events(&mut self) {
         while let Some(resource_stub_resolver::Event::RecordsChanged(records)) =
             self.resource_stub_resolver.poll_event()
@@ -2294,6 +2354,13 @@ impl ClientState {
                             resource_id,
                             domain,
                         });
+                }
+                device_stub_resolver::Event::ResolvedDevice {
+                    resource_id,
+                    ipv4,
+                    ipv6,
+                } => {
+                    self.update_resolved_device_routes(resource_id, ipv4, ipv6);
                 }
                 device_stub_resolver::Event::SendResponse {
                     local,
