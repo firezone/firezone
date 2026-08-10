@@ -1653,6 +1653,16 @@ impl ClientState {
                     .min()
                     .map(|instant| (instant, "Client peer authorization expiry")),
             )
+            .chain(
+                self.sites_status
+                    .values()
+                    .filter_map(|(status, set_at)| match status {
+                        ResourceStatus::Offline => Some(*set_at + OFFLINE_SITE_STATUS_TIMEOUT),
+                        ResourceStatus::Unknown | ResourceStatus::Online => None,
+                    })
+                    .min()
+                    .map(|instant| (instant, "Offline site status expiry")),
+            )
             .chain(self.node.poll_timeout())
             .min_by_key(|(instant, _)| *instant)
     }
@@ -3020,7 +3030,7 @@ mod tests {
 
     #[test]
     fn offline_site_status_resets_after_5_minutes() {
-        let mut now = Instant::now();
+        let now = Instant::now();
         let mut state = ClientState::for_test();
         let site = SiteId::from_u128(1);
 
@@ -3028,13 +3038,18 @@ mod tests {
             .sites_status
             .insert(site, (ResourceStatus::Offline, now));
 
-        now += Duration::from_secs(5 * 60);
+        let expires_at = now + OFFLINE_SITE_STATUS_TIMEOUT;
 
-        state.handle_timeout(now);
+        assert_eq!(
+            state.poll_timeout(),
+            Some((expires_at, "Offline site status expiry"))
+        );
+
+        state.handle_timeout(expires_at);
 
         assert_eq!(
             state.sites_status.get(&site).unwrap(),
-            &(ResourceStatus::Unknown, now)
+            &(ResourceStatus::Unknown, expires_at)
         );
         assert!(matches!(
             state.poll_event().unwrap(),
