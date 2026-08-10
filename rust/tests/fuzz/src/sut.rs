@@ -533,15 +533,8 @@ impl TunnelTest {
                 });
             }
             Transition::DeployNewRelays(new_relays) => {
-                // If we are connected to the portal, we will learn, which ones went down, i.e. `relays_presence`.
-                let to_remove = state.relays.keys().copied().collect();
-
-                state.deploy_new_relays(new_relays, now, to_remove);
+                state.deploy_new_relays(new_relays, now);
             }
-            Transition::UpdateRelayPresence {
-                disconnected,
-                connected,
-            } => state.update_relay_presence(disconnected, connected, now),
             Transition::Idle => {
                 const IDLE_DURATION: Duration = Duration::from_secs(6 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
                 let cut_off = state.flux_capacitor.now::<Instant>() + IDLE_DURATION;
@@ -579,9 +572,7 @@ impl TunnelTest {
             }
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 // If we are partitioned from the portal, we will only learn which relays to use, potentially replacing existing ones.
-                let to_remove = Vec::default();
-
-                state.deploy_new_relays(new_relays, now, to_remove);
+                state.reboot_relays_while_partitioned(new_relays, now);
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(rid) => {
                 for (client_id, client) in &mut state.clients {
@@ -1433,11 +1424,51 @@ impl TunnelTest {
         response
     }
 
-    fn deploy_new_relays(
+    fn deploy_new_relays(&mut self, new_relays: BTreeMap<RelayId, Host<u64>>, now: Instant) {
+        let disconnected = self
+            .relays
+            .keys()
+            .filter(|relay_id| !new_relays.contains_key(relay_id))
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let connected = new_relays
+            .into_iter()
+            .filter(|(relay_id, _)| !self.relays.contains_key(relay_id))
+            .map(|(relay_id, relay)| {
+                (
+                    relay_id,
+                    relay.map(SimRelay::new, debug_span!("relay", %relay_id)),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        for relay_id in &disconnected {
+            let relay = self.relays.remove(relay_id).unwrap();
+            self.network.remove_host(&relay);
+        }
+
+        for (relay_id, relay) in &connected {
+            let added = self.network.add_host(*relay_id, relay);
+            debug_assert!(added);
+        }
+
+        for client in self.clients.values_mut() {
+            client.exec_mut(|c| {
+                c.update_relays(disconnected.iter().copied(), connected.iter(), now);
+            });
+        }
+        for gateway in self.gateways.values_mut() {
+            gateway
+                .exec_mut(|g| g.update_relays(disconnected.iter().copied(), connected.iter(), now));
+        }
+
+        self.relays.extend(connected);
+    }
+
+    fn reboot_relays_while_partitioned(
         &mut self,
         new_relays: BTreeMap<RelayId, Host<u64>>,
         now: Instant,
-        to_remove: Vec<RelayId>,
     ) {
         for relay in self.relays.values() {
             self.network.remove_host(relay);
@@ -1454,57 +1485,12 @@ impl TunnelTest {
         }
 
         for client in self.clients.values_mut() {
-            client.exec_mut(|c| {
-                c.update_relays(to_remove.iter().copied(), online.iter(), now);
-            });
+            client.exec_mut(|c| c.update_relays(iter::empty(), online.iter(), now));
         }
         for gateway in self.gateways.values_mut() {
-            gateway.exec_mut(|g| g.update_relays(to_remove.iter().copied(), online.iter(), now));
+            gateway.exec_mut(|g| g.update_relays(iter::empty(), online.iter(), now));
         }
-        self.relays = online; // Override all relays.
-    }
-
-    fn update_relay_presence(
-        &mut self,
-        disconnected: BTreeSet<RelayId>,
-        connected: BTreeMap<RelayId, Host<u64>>,
-        now: Instant,
-    ) {
-        for relay_id in &disconnected {
-            let Some(relay) = self.relays.remove(relay_id) else {
-                continue;
-            };
-
-            self.network.remove_host(&relay);
-        }
-
-        let connected = connected
-            .into_iter()
-            .map(|(relay_id, relay)| {
-                (
-                    relay_id,
-                    relay.map(SimRelay::new, debug_span!("relay", %relay_id)),
-                )
-            })
-            .collect::<BTreeMap<_, _>>();
-
-        for (relay_id, relay) in &connected {
-            let added = self.network.add_host(*relay_id, relay);
-            debug_assert!(added);
-        }
-
-        for client in self.clients.values_mut() {
-            client.exec_mut(|client| {
-                client.update_relays(disconnected.iter().copied(), connected.iter(), now)
-            });
-        }
-        for gateway in self.gateways.values_mut() {
-            gateway.exec_mut(|gateway| {
-                gateway.update_relays(disconnected.iter().copied(), connected.iter(), now)
-            });
-        }
-
-        self.relays.extend(connected);
+        self.relays = online;
     }
 }
 

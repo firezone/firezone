@@ -84,15 +84,7 @@ pub(super) fn pick_site<'a>(g: &mut Generator, sites: &'a [Site]) -> &'a Site {
 pub(super) fn arb_relays(g: &mut Generator) -> BTreeMap<RelayId, Host<u64>> {
     let n = g.count(1, 2);
 
-    arb_relays_with_count(g, n)
-}
-
-pub(super) fn arb_two_relays(g: &mut Generator) -> BTreeMap<RelayId, Host<u64>> {
-    arb_relays_with_count(g, 2)
-}
-
-fn arb_relays_with_count(g: &mut Generator, count: usize) -> BTreeMap<RelayId, Host<u64>> {
-    (0..count)
+    (0..n)
         .map(|_| {
             let id = g.fresh_relay_id();
             let seed = g.u64();
