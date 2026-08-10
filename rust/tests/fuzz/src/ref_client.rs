@@ -18,7 +18,7 @@ use tunnel_proto::{
 };
 
 use chrono::{DateTime, Utc};
-use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, Site, SiteId};
+use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceView, Site, SiteId};
 use dns_types::{DomainName, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
@@ -448,19 +448,43 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn expected_resource_status(&self) -> BTreeMap<ResourceId, ResourceStatus> {
+    pub(crate) fn expected_resources(&self) -> Vec<ResourceView> {
         self.resources
             .iter()
-            .filter_map(|r| {
-                let status = self
-                    .site_status
-                    .get(&r.site().ok()?.id)
-                    .copied()
-                    .unwrap_or(ResourceStatus::Unknown);
+            .cloned()
+            .filter_map(|resource| {
+                let status = self.expected_resource_status(&resource);
 
-                Some((r.id(), status))
+                resource.into_view(status)
             })
+            .sorted()
             .collect()
+    }
+
+    fn expected_resource_status(&self, resource: &Resource) -> ResourceStatus {
+        let sites = resource.sites();
+
+        if sites.is_empty() {
+            return ResourceStatus::Unknown;
+        }
+
+        if sites.iter().any(|site| {
+            self.site_status
+                .get(&site.id)
+                .is_some_and(|status| *status == ResourceStatus::Online)
+        }) {
+            return ResourceStatus::Online;
+        }
+
+        if sites.iter().all(|site| {
+            self.site_status
+                .get(&site.id)
+                .is_some_and(|status| *status == ResourceStatus::Offline)
+        }) {
+            return ResourceStatus::Offline;
+        }
+
+        ResourceStatus::Unknown
     }
 
     /// Returns the list of resources where we are not "sure" whether they are online or unknown.

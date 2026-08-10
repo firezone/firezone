@@ -688,7 +688,7 @@ impl TunnelTest {
             assert_dns_servers_are_valid(ref_client, sut_client, &ref_state.portal);
             assert_search_domain_is_valid(&ref_state.portal, sut_client);
             assert_routes_are_valid(ref_client, sut_client);
-            assert_resource_status(ref_client, sut_client);
+            assert_resource_list(ref_client, sut_client);
         }
     }
 
@@ -1340,11 +1340,7 @@ impl TunnelTest {
             ClientEvent::ResourcesChanged { resources } => {
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| {
-                    c.resource_status = resources
-                        .resources
-                        .into_iter()
-                        .map(|r| (r.id(), r.status()))
-                        .collect();
+                    c.observed_resource_list = resources;
                 });
 
                 Ok(())
