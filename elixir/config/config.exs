@@ -319,7 +319,6 @@ config :portal, Portal.Cluster,
 
 config :portal, :enabled_features,
   idp_sync: true,
-  traffic_filters: true,
   sign_up: true,
   policy_conditions: true,
   rest_api: true,

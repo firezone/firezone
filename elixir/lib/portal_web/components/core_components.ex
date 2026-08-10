@@ -1575,12 +1575,6 @@ defmodule PortalWeb.CoreComponents do
     """
   end
 
-  def feature_name(%{feature: :traffic_filters} = assigns) do
-    ~H"""
-    Restrict access based on port and protocol rules
-    """
-  end
-
   def feature_name(%{feature: :rest_api} = assigns) do
     ~H"""
     REST API

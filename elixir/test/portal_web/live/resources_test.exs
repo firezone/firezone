@@ -154,7 +154,6 @@ defmodule PortalWeb.ResourcesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
             idp_sync: true,
             rest_api: true
           }
@@ -355,11 +354,13 @@ defmodule PortalWeb.ResourcesTest do
       assert Repo.aggregate(Resource, :count) == 0
     end
 
-    test "manages DNS traffic restriction controls", %{
+    test "manages DNS traffic restriction controls for Starter accounts", %{
       conn: conn,
       account: account,
       actor: actor
     } do
+      account = update_account(account, metadata: %{stripe: %{product_name: "Starter"}})
+
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
@@ -667,7 +668,6 @@ defmodule PortalWeb.ResourcesTest do
         starter_account_fixture(
           features: %{
             policy_conditions: false,
-            traffic_filters: true,
             idp_sync: true,
             rest_api: true
           }

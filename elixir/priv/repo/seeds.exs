@@ -972,7 +972,6 @@ defmodule Portal.Repo.Seeds do
       |> put_change(:id, "c89bcc8c-9392-4dae-a40d-888aef6d28e0")
       |> put_change(:features, %{
         policy_conditions: true,
-        traffic_filters: true,
         idp_sync: true,
         rest_api: true,
         internet_resource: true,

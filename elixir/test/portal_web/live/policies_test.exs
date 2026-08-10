@@ -124,7 +124,6 @@ defmodule PortalWeb.PoliciesTest do
           features: %{
             internet_resource: false,
             policy_conditions: false,
-            traffic_filters: true,
             idp_sync: true,
             rest_api: true
           }
@@ -153,7 +152,6 @@ defmodule PortalWeb.PoliciesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
             idp_sync: true,
             rest_api: true
           }
@@ -178,7 +176,6 @@ defmodule PortalWeb.PoliciesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
             idp_sync: true,
             rest_api: true
           }
@@ -523,7 +520,6 @@ defmodule PortalWeb.PoliciesTest do
         starter_account_fixture(
           features: %{
             policy_conditions: false,
-            traffic_filters: true,
             idp_sync: true,
             rest_api: true
           }
@@ -653,7 +649,6 @@ defmodule PortalWeb.PoliciesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
             idp_sync: true,
             rest_api: true
           }
@@ -680,7 +675,6 @@ defmodule PortalWeb.PoliciesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
             idp_sync: true,
             rest_api: true
           }
@@ -720,7 +714,6 @@ defmodule PortalWeb.PoliciesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
             idp_sync: true,
             rest_api: true
           }

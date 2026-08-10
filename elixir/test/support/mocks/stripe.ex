@@ -556,8 +556,7 @@ defmodule Portal.Mocks.Stripe do
       "monthly_active_users_count" => "unlimited",
       "policy_conditions" => true,
       "service_accounts_count" => 100,
-      "support_type" => "email",
-      "traffic_filters" => true
+      "support_type" => "email"
     }
     |> Map.merge(opts)
   end
@@ -575,7 +574,6 @@ defmodule Portal.Mocks.Stripe do
       "rest_api" => true,
       "service_accounts_count" => "unlimited",
       "support_type" => "email_and_slack",
-      "traffic_filters" => true,
       "users_count" => "unlimited"
     }
     |> Map.merge(opts)

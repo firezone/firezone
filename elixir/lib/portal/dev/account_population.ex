@@ -32,7 +32,6 @@ defmodule Portal.Dev.AccountPopulation do
       support_type: "community",
       features: %{
         policy_conditions: false,
-        traffic_filters: false,
         idp_sync: false,
         rest_api: false,
         internet_resource: false
@@ -85,7 +84,6 @@ defmodule Portal.Dev.AccountPopulation do
       support_type: "email",
       features: %{
         policy_conditions: true,
-        traffic_filters: true,
         idp_sync: false,
         rest_api: false,
         internet_resource: true
@@ -138,7 +136,6 @@ defmodule Portal.Dev.AccountPopulation do
       support_type: "email_and_slack",
       features: %{
         policy_conditions: true,
-        traffic_filters: true,
         idp_sync: true,
         rest_api: true,
         internet_resource: true
@@ -480,12 +477,7 @@ defmodule Portal.Dev.AccountPopulation do
     current_total = length(state.resources.managed) + 1
     additional_count = max(targets.resources - current_total, 0)
 
-    filtered_count =
-      subset_count(
-        additional_count,
-        resource_filter_ratio(targets),
-        spec.features.traffic_filters
-      )
+    filtered_count = floor(additional_count * resource_filter_ratio(targets))
 
     new_resources =
       for index <- positive_range(additional_count) do
