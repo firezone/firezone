@@ -199,6 +199,32 @@ impl SimClient {
         }
     }
 
+    pub(crate) fn send_malformed_dns_query(
+        &mut self,
+        payload: &[u8],
+        upstream: dns::Upstream,
+        local_port: u16,
+        now: Instant,
+    ) -> Option<Transmit> {
+        let Some(sentinel) = self.dns_by_sentinel.sentinel_by_upstream(&upstream) else {
+            tracing::error!(%upstream, "Unknown DNS server");
+            return None;
+        };
+
+        tracing::debug!(%sentinel, len = %payload.len(), "Sending malformed DNS query");
+
+        let src = self
+            .sut
+            .tunnel_ip_for(sentinel)
+            .expect("tunnel should be initialised");
+
+        let packet = ip_packet::make::udp_packet(src, sentinel, local_port, 53, payload).unwrap();
+
+        // Deliberately not tracked in `sent_udp_dns_queries`: the client must drop
+        // the query, and any response shows up as an unexpected UDP DNS reply.
+        self.encapsulate(packet, now)
+    }
+
     pub fn connect_tcp(&mut self, src: IpAddr, dst: IpAddr, sport: SPort, dport: DPort) {
         let local = SocketAddr::new(src, sport.0);
         let remote = SocketAddr::new(dst, dport.0);
