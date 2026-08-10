@@ -6,5 +6,5 @@ use ebpf_shared::StatsEvent;
 static STATS: PerfEventArray<StatsEvent> = PerfEventArray::new(0);
 
 pub fn emit(ctx: &XdpContext, bytes: impl Into<u64>, processing_duration: Duration) {
-    STATS.output(ctx, StatsEvent::new(bytes.into(), processing_duration), 0);
+    STATS.output(ctx, &StatsEvent::new(bytes.into(), processing_duration), 0);
 }

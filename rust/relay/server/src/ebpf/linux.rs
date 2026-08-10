@@ -6,11 +6,10 @@ use std::{
 use anyhow::{Context as _, Result};
 use aya::{
     Pod,
-    maps::{HashMap, MapData, PerCpuArray, PerCpuValues, PerfEventArray},
-    programs::{Xdp, XdpFlags},
+    maps::{HashMap, MapData, PerCpuArray, PerCpuValues, PerfEventArray, perf::PerfEvent},
+    programs::{Xdp, XdpMode},
 };
 use aya_log::EbpfLogger;
-use bytes::BytesMut;
 use ebpf_shared::{
     ClientAndChannelV4, ClientAndChannelV6, PortAndPeerV4, PortAndPeerV6, StatsEvent,
 };
@@ -21,10 +20,10 @@ use crate::ebpf::AttachMode;
 
 use crate::{AllocationPort, ClientSocket, PeerSocket};
 
-/// How many [`StatsEvent`]s we will at most read in one batch.
+/// How many pages each per-CPU perf ring buffer spans.
 ///
 /// Must be a power of two, hence it is defined as a hex value.
-/// Must be sufficiently large to read large batches from the kernel every time we get scheduled.
+/// Must be sufficiently large to buffer large batches of [`StatsEvent`]s until we get scheduled.
 /// Otherwise the kernel has to drop some and we skew our metrics.
 const PAGE_COUNT: usize = 0x1000;
 
@@ -70,13 +69,13 @@ impl Program {
             .try_into()?;
         program.load().context("Failed to load program")?;
 
-        let xdp_flags = match attach_mode {
-            AttachMode::Generic => XdpFlags::SKB_MODE,
-            AttachMode::Driver => XdpFlags::DRV_MODE,
+        let xdp_mode = match attach_mode {
+            AttachMode::Generic => XdpMode::Skb,
+            AttachMode::Driver => XdpMode::Driver,
         };
 
         program
-            .attach(interface, xdp_flags)
+            .attach(interface, xdp_mode)
             .with_context(|| format!("Failed to attached to interface {interface}"))?;
 
         let mut stats = PerfEventArray::try_from(
@@ -104,10 +103,6 @@ impl Program {
                 let processing_duration = processing_duration.clone();
 
                 async move {
-                    let mut buffers = (0..PAGE_COUNT)
-                        .map(|_| BytesMut::with_capacity(std::mem::size_of::<StatsEvent>()))
-                        .collect::<Vec<_>>();
-
                     loop {
                         let events = fd
                             .async_io_mut(Interest::READABLE, |fd| {
@@ -115,11 +110,41 @@ impl Program {
                                     return Err(io::Error::from(io::ErrorKind::WouldBlock));
                                 }
 
-                                fd.read_events(&mut buffers).map_err(io::Error::other)
+                                let events = fd.fold(
+                                    (0_u64, 0_u64),
+                                    |(num_read, num_lost), event| match event {
+                                        PerfEvent::Sample { head, tail } => {
+                                            let Some(stats) = StatsEvent::from_chunks(head, tail)
+                                            else {
+                                                tracing::warn!(
+                                                    ?head,
+                                                    ?tail,
+                                                    "Failed to create stats event from byte buffer"
+                                                );
+
+                                                return (num_read + 1, num_lost);
+                                            };
+
+                                            packet_size.record(
+                                                stats.relayed_data(),
+                                                &[crate::metrics::datapath_xdp()],
+                                            );
+                                            processing_duration.record(
+                                                stats.processing_duration().as_nanos() as u64,
+                                                &[],
+                                            );
+
+                                            (num_read + 1, num_lost)
+                                        }
+                                        PerfEvent::Lost { count } => (num_read, num_lost + count),
+                                    },
+                                );
+
+                                Ok(events)
                             })
                             .await;
 
-                        let events = match events {
+                        let (num_read, num_lost) = match events {
                             Ok(events) => events,
                             Err(e) => {
                                 tracing::warn!("Failed to read perf events: {e}");
@@ -127,27 +152,11 @@ impl Program {
                             }
                         };
 
-                        if events.lost > 0 {
-                            tracing::warn!(%cpu_id, num_lost = %events.lost, "Lost perf events");
+                        if num_lost > 0 {
+                            tracing::warn!(%cpu_id, %num_lost, "Lost perf events");
                         }
 
-                        tracing::trace!(%cpu_id, num_read = %events.read, "Read perf events from eBPF kernel");
-
-                        for bytes in buffers.iter().take(events.read) {
-                            let Some(stats) = StatsEvent::from_bytes(bytes) else {
-                                tracing::warn!(
-                                    ?bytes,
-                                    "Failed to create stats event from byte buffer"
-                                );
-
-                                continue;
-                            };
-
-                            packet_size
-                                .record(stats.relayed_data(), &[crate::metrics::datapath_xdp()]);
-                            processing_duration
-                                .record(stats.processing_duration().as_nanos() as u64, &[]);
-                        }
+                        tracing::trace!(%cpu_id, %num_read, "Read perf events from eBPF kernel");
                     }
                 }
             });
@@ -191,9 +200,9 @@ impl Program {
                 let port_and_peer = PortAndPeerV4::from_socket(peer, allocation_port.value());
 
                 self.chan_to_udp_44_map_mut()?
-                    .insert(client_and_channel, port_and_peer, 0)?;
+                    .insert(&client_and_channel, &port_and_peer, 0)?;
                 self.udp_to_chan_44_map_mut()?
-                    .insert(port_and_peer, client_and_channel, 0)?;
+                    .insert(&port_and_peer, &client_and_channel, 0)?;
             }
             (SocketAddr::V6(client), SocketAddr::V6(peer)) => {
                 let client_and_channel =
@@ -201,9 +210,9 @@ impl Program {
                 let port_and_peer = PortAndPeerV6::from_socket(peer, allocation_port.value());
 
                 self.chan_to_udp_66_map_mut()?
-                    .insert(client_and_channel, port_and_peer, 0)?;
+                    .insert(&client_and_channel, &port_and_peer, 0)?;
                 self.udp_to_chan_66_map_mut()?
-                    .insert(port_and_peer, client_and_channel, 0)?;
+                    .insert(&port_and_peer, &client_and_channel, 0)?;
             }
             (SocketAddr::V4(client), SocketAddr::V6(peer)) => {
                 let client_and_channel =
@@ -211,9 +220,9 @@ impl Program {
                 let port_and_peer = PortAndPeerV6::from_socket(peer, allocation_port.value());
 
                 self.chan_to_udp_46_map_mut()?
-                    .insert(client_and_channel, port_and_peer, 0)?;
+                    .insert(&client_and_channel, &port_and_peer, 0)?;
                 self.udp_to_chan_64_map_mut()?
-                    .insert(port_and_peer, client_and_channel, 0)?;
+                    .insert(&port_and_peer, &client_and_channel, 0)?;
             }
             (SocketAddr::V6(client), SocketAddr::V4(peer)) => {
                 let client_and_channel =
@@ -221,9 +230,9 @@ impl Program {
                 let port_and_peer = PortAndPeerV4::from_socket(peer, allocation_port.value());
 
                 self.chan_to_udp_64_map_mut()?
-                    .insert(client_and_channel, port_and_peer, 0)?;
+                    .insert(&client_and_channel, &port_and_peer, 0)?;
                 self.udp_to_chan_46_map_mut()?
-                    .insert(port_and_peer, client_and_channel, 0)?;
+                    .insert(&port_and_peer, &client_and_channel, 0)?;
             }
         }
 
