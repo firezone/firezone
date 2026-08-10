@@ -177,7 +177,7 @@ refute_file_contains() {
     [ -f "$(init_script)" ]
 
     grep -q '^ARTIFACT_BASE_URL="https://www.firezone.dev/dl/firezone-gateway"$' "$(init_script)"
-    grep -q '^GATEWAY_VERSION="1.5.2"$' "$(init_script)"
+    grep -q '^GATEWAY_VERSION="1.6.0"$' "$(init_script)"
     grep -q 'download_url="$ARTIFACT_BASE_URL/$GATEWAY_VERSION/$arch"' "$(init_script)"
     [ "$(grep -Ec 'expected_sha256="[0-9a-f]{64}"' "$(init_script)")" -eq 3 ]
     grep -q 'failed checksum verification' "$(init_script)"
