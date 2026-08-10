@@ -248,11 +248,12 @@ defmodule PortalAPI.ResourceControllerTest do
       refute Map.has_key?(resp["data"], "site_id")
     end
 
-    test "creates a resource with filters when feature enabled", %{
+    test "creates a resource with filters for Starter accounts", %{
       conn: conn,
       account: account,
       actor: actor
     } do
+      account = update_account(account, metadata: %{stripe: %{product_name: "Starter"}})
       site = site_fixture(account: account)
 
       attrs = %{
@@ -271,37 +272,6 @@ defmodule PortalAPI.ResourceControllerTest do
 
       assert resp = json_response(conn, 201)
       assert resp["data"]["filters"] == [%{"protocol" => "tcp", "ports" => ["5432"]}]
-    end
-
-    test "returns 422 when creating with filters and feature disabled", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      update_account(account, features: %{traffic_filters: false})
-      site = site_fixture(account: account)
-
-      attrs = %{
-        "address" => "10.0.0.10",
-        "name" => "Prod DB",
-        "type" => "ip",
-        "site_id" => site.id,
-        "filters" => [%{"protocol" => "tcp", "ports" => ["5432"]}]
-      }
-
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/resources", resource: attrs)
-
-      assert %{
-               "type" => "about:blank",
-               "status" => 422,
-               "validation_errors" => %{
-                 "filters" => ["traffic filters are not enabled for this account"]
-               }
-             } = json_response(conn, 422)
     end
 
     test "returns 422 when creating a resource in the Internet Site", %{
@@ -461,35 +431,6 @@ defmodule PortalAPI.ResourceControllerTest do
 
       reloaded = Portal.Repo.get_by!(Resource, id: resource.id, account_id: account.id)
       assert [%{protocol: :tcp}] = reloaded.filters
-    end
-
-    test "returns 422 when providing filters with feature disabled", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      update_account(account, features: %{traffic_filters: false})
-      site = site_fixture(account: account)
-      resource = dns_resource_fixture(account: account, site: site)
-
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> put("/resources/#{resource.id}",
-          resource: %{"filters" => [%{"protocol" => "tcp", "ports" => ["8080"]}]}
-        )
-
-      assert %{
-               "type" => "about:blank",
-               "status" => 422,
-               "validation_errors" => %{
-                 "filters" => ["traffic filters are not enabled for this account"]
-               }
-             } = json_response(conn, 422)
-
-      reloaded = Portal.Repo.get_by!(Resource, id: resource.id, account_id: account.id)
-      assert reloaded.filters == []
     end
 
     test "clears filters when an empty list is provided", %{

@@ -73,14 +73,7 @@ defmodule PortalWeb.Resources.Components do
   def nil_site_label(%{type: :static_device_pool}), do: "No Site Needed"
   def nil_site_label(_resource), do: "No Site Associated"
 
-  def map_filters_form_attrs(attrs, account) do
-    attrs =
-      if Portal.Account.traffic_filters_enabled?(account) do
-        attrs
-      else
-        Map.put(attrs, "filters", %{})
-      end
-
+  def map_filters_form_attrs(attrs) do
     Map.update(attrs, "filters", [], fn filters ->
       filters =
         for {id, filter_attrs} <- filters,
@@ -106,7 +99,6 @@ defmodule PortalWeb.Resources.Components do
   end
 
   attr :form, :any, required: true
-  attr :account, :any, required: true
 
   def filters_form(assigns) do
     # Code is taken from https://github.com/phoenixframework/phoenix_live_view/blob/v0.19.5/lib/phoenix_component.ex#L2356
@@ -125,26 +117,12 @@ defmodule PortalWeb.Resources.Components do
         {id, new_form}
       end
 
-    assigns =
-      assigns
-      |> Map.put(:forms_by_protocol, forms_by_protocol)
-      |> Map.put(
-        :traffic_filters_enabled?,
-        Portal.Account.traffic_filters_enabled?(assigns.account)
-      )
+    assigns = Map.put(assigns, :forms_by_protocol, forms_by_protocol)
 
     ~H"""
     <fieldset class="flex flex-col gap-2">
       <div class="mb-1 flex items-center justify-between">
         <legend class="text-xl">Traffic Restriction</legend>
-
-        <%= if @traffic_filters_enabled? == false do %>
-          <.link navigate={~p"/#{@account}/settings/account"} class="text-sm text-primary-500">
-            <.badge type="primary" title="Feature available on a higher pricing plan">
-              <.icon name="ri-lock-line" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
-            </.badge>
-          </.link>
-        <% end %>
       </div>
 
       <p class="text-sm text-neutral-500">
@@ -152,10 +130,7 @@ defmodule PortalWeb.Resources.Components do
         protocols and ports are accessible.
       </p>
 
-      <div class={[
-        @traffic_filters_enabled? == false && "opacity-50",
-        "mt-4"
-      ]}>
+      <div class="mt-4">
         <div class="flex items-top mb-4">
           <.input type="hidden" name={"#{@form.name}[tcp][protocol]"} value="tcp" />
           <div class="mt-2.5 w-24" phx-update="ignore" id="tcp-filter-checkbox">
@@ -165,7 +140,6 @@ defmodule PortalWeb.Resources.Components do
               name={"#{@form.name}[tcp][enabled]"}
               value="true"
               checked={Map.has_key?(@forms_by_protocol, :tcp)}
-              disabled={!@traffic_filters_enabled?}
               label="TCP"
             />
           </div>
@@ -178,7 +152,7 @@ defmodule PortalWeb.Resources.Components do
               field={ports}
               name={"#{@form.name}[tcp][ports]"}
               value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
-              disabled={!@traffic_filters_enabled? || !Map.has_key?(@forms_by_protocol, :tcp)}
+              disabled={!Map.has_key?(@forms_by_protocol, :tcp)}
               placeholder="E.g. 80, 443, 8080-8090"
               class="w-96"
             />
@@ -196,7 +170,6 @@ defmodule PortalWeb.Resources.Components do
               name={"#{@form.name}[udp][enabled]"}
               value="true"
               checked={Map.has_key?(@forms_by_protocol, :udp)}
-              disabled={!@traffic_filters_enabled?}
               label="UDP"
             />
           </div>
@@ -209,7 +182,7 @@ defmodule PortalWeb.Resources.Components do
               field={ports}
               name={"#{@form.name}[udp][ports]"}
               value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
-              disabled={!@traffic_filters_enabled? || !Map.has_key?(@forms_by_protocol, :udp)}
+              disabled={!Map.has_key?(@forms_by_protocol, :udp)}
               placeholder="E.g. 53, 60000-61000"
               class="w-96"
             />
@@ -229,7 +202,6 @@ defmodule PortalWeb.Resources.Components do
               name={"#{@form.name}[icmp][enabled]"}
               value="true"
               checked={Map.has_key?(@forms_by_protocol, :icmp)}
-              disabled={!@traffic_filters_enabled?}
               label="ICMP echo"
             />
           </div>
@@ -646,7 +618,6 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
-  attr :account, :any, required: true
   attr :resource, :any, default: nil
   attr :form, :any, required: true
   attr :active_protocols, :list, default: []
@@ -655,20 +626,13 @@ defmodule PortalWeb.Resources.Components do
   attr :filter_errors, :map, default: %{}
 
   def resource_traffic_restrictions_section(assigns) do
-    assigns =
-      assign(
-        assigns,
-        :traffic_filters_enabled?,
-        Portal.Account.traffic_filters_enabled?(assigns.account)
-      )
-
     ~H"""
     <div :if={is_nil(@resource) || @resource.type != :internet}>
       <div class="flex items-center justify-between mb-2">
         <span class="block text-xs font-medium text-body">
           Traffic Restrictions <span class="font-normal text-subtle">(optional)</span>
         </span>
-        <div :if={@traffic_filters_enabled?} class="relative">
+        <div class="relative">
           <.button
             type="button"
             phx-click="toggle_resource_filters_dropdown"
@@ -722,78 +686,65 @@ defmodule PortalWeb.Resources.Components do
         </div>
       </div>
 
-      <%= if @traffic_filters_enabled? == false do %>
-        <.upgrade_locked_section
-          id="resource-traffic-filters-locked-container"
-          account={@account}
-          message="Upgrade your plan to unlock traffic restrictions."
-          description="Restrict access to specific protocols and ports."
-        >
-          <p class="flex items-center justify-center rounded border border-dashed border-border-strong px-4 py-5 text-xs text-subtle">
-            No restrictions — All protocols/ports permitted
-          </p>
-        </.upgrade_locked_section>
-      <% else %>
-        <div
-          :if={@active_protocols == []}
-          class="flex items-center justify-center rounded border border-dashed border-border-strong px-4 py-5 text-xs text-subtle"
-        >
-          No restrictions — All protocols/ports permitted
-        </div>
+      <div
+        :if={@active_protocols == []}
+        class="flex items-center justify-center rounded border border-dashed border-border-strong px-4 py-5 text-xs text-subtle"
+      >
+        No restrictions — All protocols/ports permitted
+      </div>
 
-        <div :if={@active_protocols != []} class="flex flex-col gap-2">
-          <div
-            :for={protocol <- @active_protocols}
-            class="flex items-center gap-2 rounded border border-border bg-surface px-3 py-2"
-          >
-            <input type="hidden" name={"resource[filters][#{protocol}][enabled]"} value="true" />
+      <div :if={@active_protocols != []} class="flex flex-col gap-2">
+        <div
+          :for={protocol <- @active_protocols}
+          class="flex items-center gap-2 rounded border border-border bg-surface px-3 py-2"
+        >
+          <input type="hidden" name={"resource[filters][#{protocol}][enabled]"} value="true" />
+          <input
+            type="hidden"
+            name={"resource[filters][#{protocol}][protocol]"}
+            value={"#{protocol}"}
+          />
+          <span class="w-10 shrink-0 text-xs font-medium text-heading uppercase">
+            {protocol}
+          </span>
+          <div :if={protocol != :icmp} class="flex-1">
             <input
-              type="hidden"
-              name={"resource[filters][#{protocol}][protocol]"}
-              value={"#{protocol}"}
+              type="text"
+              name={"resource[filters][#{protocol}][ports]"}
+              value={Map.get(@filter_ports, protocol, "")}
+              placeholder="All ports"
+              class={[
+                "w-full px-3 py-2 text-sm rounded-md border font-mono bg-input text-heading placeholder:text-muted outline-none transition-colors focus:ring-1 focus:ring-border-focus/30",
+                if(Map.has_key?(@filter_errors, protocol),
+                  do: "border-error focus:border-error",
+                  else: "border-input-border focus:border-border-focus"
+                )
+              ]}
             />
-            <span class="w-10 shrink-0 text-xs font-medium text-heading uppercase">
-              {protocol}
-            </span>
-            <div :if={protocol != :icmp} class="flex-1">
-              <input
-                type="text"
-                name={"resource[filters][#{protocol}][ports]"}
-                value={Map.get(@filter_ports, protocol, "")}
-                placeholder="All ports"
-                class={[
-                  "w-full px-3 py-2 text-sm rounded-md border font-mono bg-input text-heading placeholder:text-muted outline-none transition-colors focus:ring-1 focus:ring-border-focus/30",
-                  if(Map.has_key?(@filter_errors, protocol),
-                    do: "border-error focus:border-error",
-                    else: "border-input-border focus:border-border-focus"
-                  )
-                ]}
-              />
-              <p
-                :if={Map.has_key?(@filter_errors, protocol)}
-                class="mt-1 text-xs text-error"
-              >
-                {Map.get(@filter_errors, protocol)}
-              </p>
-            </div>
-            <span
-              :if={protocol == :icmp}
-              class="flex-1 text-xs text-subtle italic"
+            <p
+              :if={Map.has_key?(@filter_errors, protocol)}
+              class="mt-1 text-xs text-error"
             >
-              echo request/reply
-            </span>
-            <button
-              type="button"
-              phx-click="remove_resource_filter"
-              phx-value-protocol={"#{protocol}"}
-              class="shrink-0 text-subtle hover:text-heading transition-colors"
-              aria-label={"Remove #{protocol} filter"}
-            >
-              <.icon name="ri-close-line" class="w-3.5 h-3.5" />
-            </button>
+              {Map.get(@filter_errors, protocol)}
+            </p>
           </div>
+          <span
+            :if={protocol == :icmp}
+            class="flex-1 text-xs text-subtle italic"
+          >
+            echo request/reply
+          </span>
+          <button
+            type="button"
+            phx-click="remove_resource_filter"
+            phx-value-protocol={"#{protocol}"}
+            class="shrink-0 text-subtle hover:text-heading transition-colors"
+            aria-label={"Remove #{protocol} filter"}
+          >
+            <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+          </button>
         </div>
-      <% end %>
+      </div>
     </div>
     """
   end
@@ -1000,7 +951,6 @@ defmodule PortalWeb.Resources.Components do
           />
 
           <.resource_traffic_restrictions_section
-            account={@account}
             resource={@resource}
             form={@resource_form}
             active_protocols={@resource_form_active_protocols}

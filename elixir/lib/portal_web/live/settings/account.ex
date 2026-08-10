@@ -119,10 +119,6 @@ defmodule PortalWeb.Settings.Account do
             />
             <.feature_row label="REST API" enabled={feature_enabled?(@account, :rest_api)} />
             <.feature_row
-              label="Traffic Filters"
-              enabled={feature_enabled?(@account, :traffic_filters)}
-            />
-            <.feature_row
               label="Internet Resource"
               enabled={feature_enabled?(@account, :internet_resource)}
             />

@@ -201,7 +201,6 @@ defmodule PortalAPI.ResourceController do
     changeset
     |> Ecto.Changeset.validate_required(required)
     |> Portal.Resource.validate_site_matches_type(subject)
-    |> Database.validate_traffic_filters_feature_enabled(subject.account)
   end
 
   defmodule Database do
@@ -223,23 +222,6 @@ defmodule PortalAPI.ResourceController do
       case result do
         nil -> {:error, :not_found}
         resource -> {:ok, resource}
-      end
-    end
-
-    def validate_traffic_filters_feature_enabled(changeset, account) do
-      adding_filters? =
-        changeset
-        |> Ecto.Changeset.get_change(:filters, [])
-        |> Enum.any?(fn filter -> filter.action in [:insert, :update] end)
-
-      if adding_filters? and not Portal.Account.traffic_filters_enabled?(account) do
-        Ecto.Changeset.add_error(
-          changeset,
-          :filters,
-          "traffic filters are not enabled for this account"
-        )
-      else
-        changeset
       end
     end
 
@@ -279,7 +261,6 @@ defmodule PortalAPI.ResourceController do
       changeset
       |> Ecto.Changeset.validate_required(required_fields)
       |> Portal.Resource.validate_site_matches_type(subject)
-      |> validate_traffic_filters_feature_enabled(subject.account)
     end
 
     def cursor_fields do

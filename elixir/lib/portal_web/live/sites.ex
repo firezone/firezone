@@ -1,7 +1,7 @@
 defmodule PortalWeb.Sites do
   use PortalWeb, :live_view
   import PortalWeb.Sites.Components
-  import PortalWeb.Resources.Components, only: [map_filters_form_attrs: 2]
+  import PortalWeb.Resources.Components, only: [map_filters_form_attrs: 1]
   alias Portal.Presence
   alias Portal.PubSub
   alias __MODULE__.Database
@@ -951,7 +951,7 @@ defmodule PortalWeb.Sites do
     attrs =
       attrs
       |> then(fn a -> if name_changed?, do: a, else: Map.put(a, "name", a["address"]) end)
-      |> map_filters_form_attrs(socket.assigns.account)
+      |> map_filters_form_attrs()
       |> Map.put("site_id", socket.assigns.selected_site.id)
 
     changeset =
@@ -973,7 +973,7 @@ defmodule PortalWeb.Sites do
           do: a,
           else: Map.put(a, "name", a["address"])
       end)
-      |> map_filters_form_attrs(socket.assigns.account)
+      |> map_filters_form_attrs()
       |> Map.put("site_id", socket.assigns.selected_site.id)
 
     case Database.create_resource(attrs, socket.assigns.subject) do
