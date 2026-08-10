@@ -428,7 +428,7 @@ impl ReferenceState {
             Transition::UpdateDnsRecords { domain, records } => {
                 state
                     .global_dns_records
-                    .insert(domain.clone(), records.clone());
+                    .replace(domain.clone(), records.clone());
             }
         };
 

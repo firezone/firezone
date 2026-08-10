@@ -39,11 +39,13 @@ impl DnsRecords {
         self.inner.keys().cloned()
     }
 
-    pub(crate) fn overwrite_with(&mut self, other: Self) {
-        self.inner.extend(other.inner);
+    pub(crate) fn merge(&mut self, other: Self) {
+        for (domain, records) in other.inner {
+            self.inner.entry(domain).or_default().extend(records);
+        }
     }
 
-    pub(crate) fn insert(&mut self, domain: DomainName, records: BTreeSet<OwnedRecordData>) {
+    pub(crate) fn replace(&mut self, domain: DomainName, records: BTreeSet<OwnedRecordData>) {
         self.inner.insert(domain, records);
     }
 
@@ -67,13 +69,13 @@ where
     }
 }
 
-impl<I> FromIterator<I> for DnsRecords
-where
-    BTreeMap<DomainName, BTreeSet<OwnedRecordData>>: FromIterator<I>,
-{
-    fn from_iter<T: IntoIterator<Item = I>>(iter: T) -> Self {
-        Self {
-            inner: BTreeMap::from_iter(iter),
-        }
+impl FromIterator<(DomainName, BTreeSet<OwnedRecordData>)> for DnsRecords {
+    fn from_iter<T: IntoIterator<Item = (DomainName, BTreeSet<OwnedRecordData>)>>(iter: T) -> Self {
+        iter.into_iter()
+            .fold(Self::default(), |mut records, (domain, next)| {
+                records.inner.entry(domain).or_default().extend(next);
+
+                records
+            })
     }
 }
