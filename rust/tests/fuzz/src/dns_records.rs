@@ -39,7 +39,7 @@ impl DnsRecords {
         self.inner.keys().cloned()
     }
 
-    pub(crate) fn merge(&mut self, other: Self) {
+    pub(crate) fn overwrite_with(&mut self, other: Self) {
         self.inner.extend(other.inner);
     }
 
