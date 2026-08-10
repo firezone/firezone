@@ -83,7 +83,7 @@ defmodule Portal.MailerTest do
         replace_test_adapter: fn req ->
           Map.put(req, :adapter, fn req ->
             send(test_pid, :replace_req_adapter_plugin_called)
-            Req.Steps.run_plug(req)
+            Req.Plug.run(req)
           end)
         end
       )

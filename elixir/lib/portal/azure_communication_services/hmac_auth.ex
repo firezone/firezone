@@ -4,35 +4,24 @@ defmodule Portal.AzureCommunicationServices.HMACAuth do
   @spec attach(Req.Request.t(), String.t()) :: Req.Request.t()
   def attach(%Req.Request{} = req, access_key) when is_binary(access_key) do
     Req.Request.append_request_steps(req,
-      refresh_acs_hmac_auth: &wrap_adapter(&1, access_key)
+      refresh_acs_hmac_auth: &sign_request(&1, access_key)
     )
   end
 
-  defp wrap_adapter(%Req.Request{adapter: original_adapter} = req, access_key) do
-    req
-    |> Req.Request.put_private(:acs_hmac_original_adapter, original_adapter)
-    |> Map.put(:adapter, &sign_and_run(&1, access_key))
-  end
-
-  defp sign_and_run(%Req.Request{} = req, access_key) do
+  # Req re-runs request steps on each retry, so every attempt gets a fresh signature.
+  defp sign_request(%Req.Request{} = req, access_key) do
     timestamp = timestamp()
     content_hash = content_hash(req.body)
     host = host(req.url)
 
-    req =
-      req
-      |> Req.Request.put_header("x-ms-date", timestamp)
-      |> Req.Request.put_header("x-ms-content-sha256", content_hash)
-      |> Req.Request.put_header("host", host)
-      |> Req.Request.put_header(
-        "authorization",
-        authorization(req, access_key, timestamp, content_hash, host)
-      )
-
-    original_adapter =
-      Req.Request.get_private(req, :acs_hmac_original_adapter, &Req.Steps.run_finch/1)
-
-    original_adapter.(req)
+    req
+    |> Req.Request.put_header("x-ms-date", timestamp)
+    |> Req.Request.put_header("x-ms-content-sha256", content_hash)
+    |> Req.Request.put_header("host", host)
+    |> Req.Request.put_header(
+      "authorization",
+      authorization(req, access_key, timestamp, content_hash, host)
+    )
   end
 
   defp authorization(req, access_key, timestamp, content_hash, host) do

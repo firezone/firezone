@@ -16,7 +16,7 @@ defmodule Portal.MixProject do
     [
       app: :portal,
       version: version(),
-      elixir: "~> 1.14",
+      elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
@@ -148,7 +148,7 @@ defmodule Portal.MixProject do
       {:opentelemetry_semantic_conventions, "~> 1.27", override: true},
       {:sentry, "~> 13.1"},
       {:logger_json, "~> 7.0"},
-      {:req, "~> 0.6.2"},
+      {:req, "~> 0.7.2"},
 
       # Asset pipeline
       {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},
