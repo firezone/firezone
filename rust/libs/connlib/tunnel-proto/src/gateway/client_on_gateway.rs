@@ -48,11 +48,6 @@ pub enum TranslateOutboundResult {
     IcmpError(IpPacket),
 }
 
-enum AllowedOutbound {
-    GatewayTun,
-    Resource(ResourceId),
-}
-
 impl ClientOnGateway {
     pub(crate) fn new(
         id: ClientId,
@@ -83,13 +78,16 @@ impl ClientOnGateway {
         ]
     }
 
-    /// Setup the NAT for a domain of a DNS resource.
+    /// Sets up NAT for a DNS resource domain.
+    ///
+    /// A missing resolution registers the proxy addresses without replacing the last successful
+    /// destination. A completed resolution replaces it, including when it contains no addresses.
     #[tracing::instrument(level = "debug", skip_all, fields(cid = %self.id))]
     pub(crate) fn setup_nat(
         &mut self,
         name: DomainName,
         resource_id: ResourceId,
-        resolved_ips: BTreeSet<IpAddr>,
+        resolved_ips: Option<BTreeSet<IpAddr>>,
         proxy_ips: BTreeSet<IpAddr>,
     ) -> Result<()> {
         // Proxy IPs are chosen by the Client; anything we accept here ends up in our routing table.
@@ -121,53 +119,49 @@ impl ClientOnGateway {
 
         anyhow::ensure!(crate::dns::is_subdomain(&name, address));
 
-        if resolved_ips.is_empty() {
+        if resolved_ips.as_ref().is_some_and(BTreeSet::is_empty) {
             tracing::debug!(domain = %name, %resource_id, "No A / AAAA records for domain");
         }
 
-        let mut resolved_ipv4 = resolved_ips.iter().filter(|ip| ip.is_ipv4()).cycle();
-        let mut resolved_ipv6 = resolved_ips.iter().filter(|ip| ip.is_ipv6()).cycle();
-
         tracing::debug!(domain = %name, ?resolved_ips, ?proxy_ips, "Setting up DNS resource NAT");
 
-        let translations = proxy_ips
-            .into_iter()
-            .map(|proxy_ip| {
+        {
+            let mut resolved_ipv4 = resolved_ips
+                .iter()
+                .flatten()
+                .filter(|ip| ip.is_ipv4())
+                .cycle();
+            let mut resolved_ipv6 = resolved_ips
+                .iter()
+                .flatten()
+                .filter(|ip| ip.is_ipv6())
+                .cycle();
+
+            for proxy_ip in proxy_ips {
                 let resolved_ip = match proxy_ip {
                     IpAddr::V4(_) => resolved_ipv4.next(),
                     IpAddr::V6(_) => resolved_ipv6.next(),
-                };
+                }
+                .copied();
+                let update = resolved_ips
+                    .as_ref()
+                    .map(|_| ResolutionUpdate::Succeeded(resolved_ip))
+                    .unwrap_or(ResolutionUpdate::Failed);
 
-                (proxy_ip, resolved_ip.copied())
-            })
-            .collect::<Vec<_>>();
-        let unresolved_proxy_ips = translations
-            .iter()
-            .filter_map(|(proxy_ip, resolved_ip)| {
-                self.permanent_translations
-                    .get(proxy_ip)
-                    .is_some_and(|state| {
-                        state.resolved_ip(resource_id).is_some() && resolved_ip.is_none()
-                    })
-                    .then_some(*proxy_ip)
-            })
-            .collect();
+                tracing::debug!(%name, %proxy_ip, real_ip = ?resolved_ip);
 
-        self.nat_table
-            .expire_resource_inside_ips(resource_id, &unresolved_proxy_ips);
+                let state = self
+                    .permanent_translations
+                    .entry(proxy_ip)
+                    .or_insert_with(|| TranslationState::new(name.clone()));
 
-        for (proxy_ip, resolved_ip) in translations {
-            tracing::debug!(%name, %proxy_ip, real_ip = ?resolved_ip);
-
-            let state = self
-                .permanent_translations
-                .entry(proxy_ip)
-                .or_insert_with(|| TranslationState::new(name.clone()));
-
-            state.resolved_ips.insert(resource_id, resolved_ip);
+                state.update(resource_id, update);
+            }
         }
 
-        domains.insert(name, resolved_ips);
+        if let Some(resolved_ips) = resolved_ips {
+            domains.insert(name, resolved_ips);
+        }
         self.recalculate_filters();
 
         Ok(())
@@ -285,13 +279,9 @@ impl ClientOnGateway {
     ) {
         match resource {
             ResourceOnGateway::Dns { .. } => {
-                self.permanent_translations
-                    .extract_if(.., |_, state| {
-                        state.resolved_ips.remove(&resource_id);
-                        state.resolved_ips.is_empty()
-                    })
-                    .for_each(drop);
-                self.nat_table.expire_resource(resource_id);
+                for state in self.permanent_translations.values_mut() {
+                    state.detach_resource(resource_id);
+                }
             }
             ResourceOnGateway::Cidr { .. } => {}
             ResourceOnGateway::Internet => {}
@@ -354,8 +344,8 @@ impl ClientOnGateway {
     }
 
     fn recalculate_dns_filters(&mut self) {
-        for (addr, TranslationState { resolved_ips, .. }) in &self.permanent_translations {
-            for resource_id in resolved_ips.keys() {
+        for (addr, TranslationState { resources, .. }) in &self.permanent_translations {
+            for resource_id in resources {
                 let Some(entry) = self.resources.get(resource_id) else {
                     continue;
                 };
@@ -384,23 +374,20 @@ impl ClientOnGateway {
             bail!(UnroutablePacket::outbound_icmp_error(&packet))
         }
 
-        let allowed_outbound = match self.ensure_allowed_outbound(&packet) {
-            Ok(allowed_outbound) => allowed_outbound,
-            Err(error) => {
-                tracing::debug!(filtered_packet = ?packet, "{error:#}");
+        if let Err(error) = self.ensure_allowed_outbound(&packet) {
+            tracing::debug!(filtered_packet = ?packet, "{error:#}");
 
-                let reply = match error.any_downcast_ref::<InternetResourceRejectedAddress>() {
-                    Some(InternetResourceRejectedAddress(_)) => {
-                        ip_packet::make::icmp_dest_unreachable_network(&packet)?
-                    }
-                    None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
-                };
+            let reply = match error.any_downcast_ref::<InternetResourceRejectedAddress>() {
+                Some(InternetResourceRejectedAddress(_)) => {
+                    ip_packet::make::icmp_dest_unreachable_network(&packet)?
+                }
+                None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
+            };
 
-                return Ok(TranslateOutboundResult::IcmpError(reply));
-            }
-        };
+            return Ok(TranslateOutboundResult::IcmpError(reply));
+        }
 
-        let result = self.transform_network_to_tun(packet, allowed_outbound, now)?;
+        let result = self.transform_network_to_tun(packet, now)?;
 
         Ok(result)
     }
@@ -440,14 +427,14 @@ impl ClientOnGateway {
     fn transform_network_to_tun(
         &mut self,
         mut packet: IpPacket,
-        allowed_outbound: AllowedOutbound,
         now: Instant,
     ) -> anyhow::Result<TranslateOutboundResult> {
-        let resource_id = match allowed_outbound {
-            AllowedOutbound::GatewayTun => return Ok(TranslateOutboundResult::Send(packet)),
-            AllowedOutbound::Resource(resource_id) => resource_id,
-        };
         let dst = packet.destination();
+
+        // Packets to the TUN interface don't get transformed.
+        if self.gateway_tun.is_ip(dst) {
+            return Ok(TranslateOutboundResult::Send(packet));
+        }
 
         // Packets for CIDR resources / Internet resource are forwarded as is.
         if !is_dns_addr(dst) {
@@ -462,7 +449,7 @@ impl ClientOnGateway {
             ));
         };
 
-        let Some(resolved_ip) = state.resolved_ip(resource_id) else {
+        let Some(resolved_ip) = state.resolved_ip else {
             return Ok(TranslateOutboundResult::IcmpError(
                 ip_packet::make::icmp_dest_unreachable_network(&packet)?,
             ));
@@ -484,7 +471,7 @@ impl ClientOnGateway {
 
         let (source_protocol, real_ip) =
             self.nat_table
-                .translate_outgoing(&packet, resolved_ip, resource_id, now)?;
+                .translate_outgoing(&packet, resolved_ip, now)?;
 
         packet
             .translate_destination(source_protocol, real_ip)
@@ -530,12 +517,12 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
-    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> anyhow::Result<AllowedOutbound> {
+    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
         self.ensure_client_ip(packet.source())?;
 
         // Traffic to our own IP is allowed.
         if self.gateway_tun.is_ip(packet.destination()) {
-            return Ok(AllowedOutbound::GatewayTun);
+            return Ok(());
         }
 
         ensure_not_peer_ip(packet.destination())?;
@@ -544,12 +531,12 @@ impl ClientOnGateway {
 
         if !self.resources.contains_key(&rid) {
             tracing::warn!(%rid, "Internal state mismatch: No resource for ID");
-            return Ok(AllowedOutbound::Resource(rid));
+            return Ok(());
         }
         flow_tracker::record_resource(rid);
         flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid).cloned());
 
-        Ok(AllowedOutbound::Resource(rid))
+        Ok(())
     }
 
     fn ensure_client_ip(&self, ip: IpAddr) -> anyhow::Result<()> {
@@ -718,22 +705,40 @@ impl routing_table::RouteEntry for RouteEntry {
 // Current state of a translation for a given proxy ip
 #[derive(Debug)]
 struct TranslationState {
-    /// The IP each DNS resource resolved for the domain.
-    resolved_ips: BTreeMap<ResourceId, Option<IpAddr>>,
+    /// Which DNS resources use this translation.
+    resources: BTreeSet<ResourceId>,
+    /// The latest IP resolved for the domain.
+    resolved_ip: Option<IpAddr>,
     /// The domain we have resolved.
     domain: DomainName,
+}
+
+#[derive(Clone, Copy)]
+enum ResolutionUpdate {
+    Failed,
+    Succeeded(Option<IpAddr>),
 }
 
 impl TranslationState {
     fn new(domain: DomainName) -> Self {
         Self {
-            resolved_ips: BTreeMap::default(),
+            resources: BTreeSet::default(),
+            resolved_ip: None,
             domain,
         }
     }
 
-    fn resolved_ip(&self, resource: ResourceId) -> Option<IpAddr> {
-        self.resolved_ips.get(&resource).copied().flatten()
+    fn update(&mut self, resource: ResourceId, resolution: ResolutionUpdate) {
+        self.resources.insert(resource);
+
+        match resolution {
+            ResolutionUpdate::Failed => {}
+            ResolutionUpdate::Succeeded(resolved_ip) => self.resolved_ip = resolved_ip,
+        }
+    }
+
+    fn detach_resource(&mut self, resource: ResourceId) {
+        self.resources.remove(&resource);
     }
 }
 
@@ -801,6 +806,53 @@ mod tests {
         messages::{Filter, PortRange, gateway::ResourceDescriptionCidr},
         unroutable_packet::RoutingError,
     };
+
+    #[test]
+    fn failed_resolution_preserves_last_success() {
+        let resource = foo_resource_id();
+        let mut state = TranslationState::new(foo_name().parse().unwrap());
+
+        state.update(resource, ResolutionUpdate::Failed);
+        assert_eq!(state.resolved_ip, None);
+        assert_eq!(state.resources, BTreeSet::from([resource]));
+
+        state.update(
+            resource,
+            ResolutionUpdate::Succeeded(Some(foo_real_ip1().into())),
+        );
+        state.update(resource, ResolutionUpdate::Failed);
+
+        assert_eq!(state.resolved_ip, Some(foo_real_ip1().into()));
+    }
+
+    #[test]
+    fn successful_empty_resolution_clears_last_success() {
+        let resource = foo_resource_id();
+        let mut state = TranslationState::new(foo_name().parse().unwrap());
+        state.update(
+            resource,
+            ResolutionUpdate::Succeeded(Some(foo_real_ip1().into())),
+        );
+
+        state.update(resource, ResolutionUpdate::Succeeded(None));
+
+        assert_eq!(state.resolved_ip, None);
+    }
+
+    #[test]
+    fn detaching_resource_preserves_shared_resolution() {
+        let resource = foo_resource_id();
+        let other_resource = foo_resource2_id();
+        let resolved_ip = foo_real_ip1().into();
+        let mut state = TranslationState::new(foo_name().parse().unwrap());
+        state.update(resource, ResolutionUpdate::Succeeded(Some(resolved_ip)));
+        state.update(other_resource, ResolutionUpdate::Failed);
+
+        state.detach_resource(resource);
+
+        assert_eq!(state.resolved_ip, Some(resolved_ip));
+        assert_eq!(state.resources, BTreeSet::from([other_resource]));
+    }
 
     #[test]
     fn gateway_filters_expire_individually() {
@@ -941,7 +993,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Some(BTreeSet::from([foo_real_ip1().into()])),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
@@ -1007,7 +1059,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Some(BTreeSet::from([foo_real_ip1().into()])),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
@@ -1103,7 +1155,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Some(BTreeSet::from([foo_real_ip1().into()])),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
@@ -1171,7 +1223,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Some(BTreeSet::from([foo_real_ip1().into()])),
             BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
@@ -1193,7 +1245,7 @@ mod tests {
             peer.setup_nat(
                 foo_name().parse().unwrap(),
                 foo_resource_id(),
-                BTreeSet::from([foo_real_ip2().into()]), // Setting up with a new IP!
+                Some(BTreeSet::from([foo_real_ip2().into()])), // Setting up with a new IP!
                 BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
             )
             .unwrap();
@@ -1261,7 +1313,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Some(BTreeSet::from([foo_real_ip1().into()])),
             BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
@@ -1288,7 +1340,7 @@ mod tests {
         peer.setup_nat(
             baz_name().parse().unwrap(),
             baz_resource_id(),
-            BTreeSet::from([baz_real_ip1().into()]),
+            Some(BTreeSet::from([baz_real_ip1().into()])),
             BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
@@ -1312,7 +1364,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Some(BTreeSet::from([foo_real_ip1().into()])),
             BTreeSet::from([proxy_ip4_1(), proxy_ip4_2(), proxy_ip6_1(), proxy_ip6_2()]),
         )
         .unwrap();
@@ -1363,14 +1415,14 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Some(BTreeSet::from([foo_real_ip1().into()])),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource2_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Some(BTreeSet::from([foo_real_ip1().into()])),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
