@@ -20,11 +20,10 @@ use rand::SeedableRng;
 use rand::distr::SampleString;
 use sha2::Digest;
 use snownet::{NoTurnServers, Transmit};
-use std::collections::BTreeSet;
 use std::iter;
 use std::net::SocketAddr;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     net::IpAddr,
     time::{Duration, Instant},
 };
@@ -557,10 +556,7 @@ impl TunnelTest {
                 });
             }
             Transition::DeployNewRelays(new_relays) => {
-                // If we are connected to the portal, we will learn, which ones went down, i.e. `relays_presence`.
-                let to_remove = state.relays.keys().copied().collect();
-
-                state.deploy_new_relays(new_relays, now, to_remove);
+                state.deploy_new_relays(new_relays, now);
             }
             Transition::Idle => {
                 const IDLE_DURATION: Duration = Duration::from_secs(6 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
@@ -599,37 +595,33 @@ impl TunnelTest {
             }
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 // If we are partitioned from the portal, we will only learn which relays to use, potentially replacing existing ones.
-                let to_remove = Vec::default();
-
-                state.deploy_new_relays(new_relays, now, to_remove);
+                state.reboot_relays_while_partitioned(new_relays, now);
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(rid) => {
-                for (client_id, client) in &mut state.clients {
-                    let ref_client = ref_state.clients.get(client_id).unwrap();
-                    let new_authorized_resources = {
-                        let mut all_resources =
-                            BTreeSet::from_iter(ref_client.inner().all_resource_ids());
-                        all_resources.remove(&rid);
+                let authorizations = state
+                    .clients
+                    .iter_mut()
+                    .map(|(client_id, client)| {
+                        let ref_client = ref_state.clients.get(client_id).unwrap();
+                        let resources = ref_client
+                            .inner()
+                            .all_resource_ids()
+                            .into_iter()
+                            .filter(|resource| *resource != rid)
+                            .collect();
 
-                        all_resources
-                    };
+                        client.exec_mut(|c| c.sut.remove_resource(rid, now));
 
-                    client.exec_mut(|c| c.sut.remove_resource(rid, now));
+                        (*client_id, resources)
+                    })
+                    .collect();
 
-                    if let Some(gid) = ref_state.portal.gateway_for_resource(rid)
-                        && let Some(g) = state.gateways.get_mut(gid)
-                    {
-                        g.exec_mut(|g| {
-                            // This is partly an `init` message.
-                            // The relays don't change so we don't bother setting them.
-                            g.sut.retain_authorizations(BTreeMap::from([(
-                                *client_id,
-                                new_authorized_resources,
-                            )]))
-                        });
-                    } else {
-                        tracing::error!(%rid, "No gateway for resource");
-                    }
+                if let Some(gid) = ref_state.portal.gateway_for_resource(rid)
+                    && let Some(gateway) = state.gateways.get_mut(gid)
+                {
+                    gateway.exec_mut(|gateway| gateway.sut.retain_authorizations(authorizations));
+                } else {
+                    tracing::error!(%rid, "No gateway for resource");
                 }
             }
             Transition::RestartClient { client_id, key } => {
@@ -1453,11 +1445,51 @@ impl TunnelTest {
         response
     }
 
-    fn deploy_new_relays(
+    fn deploy_new_relays(&mut self, new_relays: BTreeMap<RelayId, Host<u64>>, now: Instant) {
+        let disconnected = self
+            .relays
+            .keys()
+            .filter(|relay_id| !new_relays.contains_key(relay_id))
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let connected = new_relays
+            .into_iter()
+            .filter(|(relay_id, _)| !self.relays.contains_key(relay_id))
+            .map(|(relay_id, relay)| {
+                (
+                    relay_id,
+                    relay.map(SimRelay::new, debug_span!("relay", %relay_id)),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        for relay_id in &disconnected {
+            let relay = self.relays.remove(relay_id).unwrap();
+            self.network.remove_host(&relay);
+        }
+
+        for (relay_id, relay) in &connected {
+            let added = self.network.add_host(*relay_id, relay);
+            debug_assert!(added);
+        }
+
+        for client in self.clients.values_mut() {
+            client.exec_mut(|c| {
+                c.update_relays(disconnected.iter().copied(), connected.iter(), now);
+            });
+        }
+        for gateway in self.gateways.values_mut() {
+            gateway
+                .exec_mut(|g| g.update_relays(disconnected.iter().copied(), connected.iter(), now));
+        }
+
+        self.relays.extend(connected);
+    }
+
+    fn reboot_relays_while_partitioned(
         &mut self,
         new_relays: BTreeMap<RelayId, Host<u64>>,
         now: Instant,
-        to_remove: Vec<RelayId>,
     ) {
         for relay in self.relays.values() {
             self.network.remove_host(relay);
@@ -1474,14 +1506,12 @@ impl TunnelTest {
         }
 
         for client in self.clients.values_mut() {
-            client.exec_mut(|c| {
-                c.update_relays(to_remove.iter().copied(), online.iter(), now);
-            });
+            client.exec_mut(|c| c.update_relays(iter::empty(), online.iter(), now));
         }
         for gateway in self.gateways.values_mut() {
-            gateway.exec_mut(|g| g.update_relays(to_remove.iter().copied(), online.iter(), now));
+            gateway.exec_mut(|g| g.update_relays(iter::empty(), online.iter(), now));
         }
-        self.relays = online; // Override all relays.
+        self.relays = online;
     }
 }
 
