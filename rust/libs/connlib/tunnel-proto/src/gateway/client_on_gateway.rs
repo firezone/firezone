@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::iter;
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::Instant;
 
@@ -45,6 +46,11 @@ pub struct ClientOnGateway {
 pub enum TranslateOutboundResult {
     Send(IpPacket),
     IcmpError(IpPacket),
+}
+
+enum AllowedOutbound {
+    GatewayTun,
+    Resource(ResourceId),
 }
 
 impl ClientOnGateway {
@@ -124,21 +130,41 @@ impl ClientOnGateway {
 
         tracing::debug!(domain = %name, ?resolved_ips, ?proxy_ips, "Setting up DNS resource NAT");
 
-        for proxy_ip in proxy_ips {
-            let maybe_real_ip = match proxy_ip {
-                IpAddr::V4(_) => resolved_ipv4.next(),
-                IpAddr::V6(_) => resolved_ipv6.next(),
-            };
+        let translations = proxy_ips
+            .into_iter()
+            .map(|proxy_ip| {
+                let resolved_ip = match proxy_ip {
+                    IpAddr::V4(_) => resolved_ipv4.next(),
+                    IpAddr::V6(_) => resolved_ipv6.next(),
+                };
 
-            tracing::debug!(%name, %proxy_ip, real_ip = ?maybe_real_ip);
+                (proxy_ip, resolved_ip.copied())
+            })
+            .collect::<Vec<_>>();
+        let unresolved_proxy_ips = translations
+            .iter()
+            .filter_map(|(proxy_ip, resolved_ip)| {
+                self.permanent_translations
+                    .get(proxy_ip)
+                    .is_some_and(|state| {
+                        state.resolved_ip(resource_id).is_some() && resolved_ip.is_none()
+                    })
+                    .then_some(*proxy_ip)
+            })
+            .collect();
+
+        self.nat_table
+            .expire_resource_inside_ips(resource_id, &unresolved_proxy_ips);
+
+        for (proxy_ip, resolved_ip) in translations {
+            tracing::debug!(%name, %proxy_ip, real_ip = ?resolved_ip);
 
             let state = self
                 .permanent_translations
                 .entry(proxy_ip)
                 .or_insert_with(|| TranslationState::new(name.clone()));
 
-            state.resources.insert(resource_id);
-            state.resolved_ip = maybe_real_ip.copied();
+            state.resolved_ips.insert(resource_id, resolved_ip);
         }
 
         domains.insert(name, resolved_ips);
@@ -159,13 +185,17 @@ impl ClientOnGateway {
         self.nat_table.handle_timeout(now);
         self.resources.handle_timeout(now);
 
+        let expired_resources = iter::from_fn(|| self.resources.poll_event())
+            .map(|event| match event {
+                expiring_map::Event::EntryExpired { key, value } => (key, value),
+            })
+            .collect::<Vec<_>>();
+        let any_expired = !expired_resources.is_empty();
         let cid = self.id;
-        let mut any_expired = false;
-        while let Some(expiring_map::Event::EntryExpired { key, .. }) = self.resources.poll_event()
-        {
+
+        for (key, resource) in expired_resources {
             tracing::info!(%cid, rid = %key, "Access to resource expired");
-            self.ingest_tokens.remove(&key);
-            any_expired = true;
+            self.cleanup_removed_authorization(key, resource);
         }
 
         if any_expired {
@@ -174,8 +204,10 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
-        self.resources.remove(resource);
-        self.ingest_tokens.remove(resource);
+        if let Some(entry) = self.resources.remove(resource) {
+            self.cleanup_removed_authorization(*resource, entry.value);
+        }
+
         self.recalculate_filters();
     }
 
@@ -233,15 +265,39 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn retain_authorizations(&mut self, authorization: BTreeSet<ResourceId>) {
-        for (rid, _) in self
+        let revoked = self
             .resources
             .extract_if(|rid, _| !authorization.contains(rid))
-        {
+            .collect::<Vec<_>>();
+
+        for (rid, resource) in revoked {
             tracing::info!(%rid, "Revoking resource authorization");
-            self.ingest_tokens.remove(&rid);
+            self.cleanup_removed_authorization(rid, resource);
         }
 
         self.recalculate_filters();
+    }
+
+    fn cleanup_removed_authorization(
+        &mut self,
+        resource_id: ResourceId,
+        resource: ResourceOnGateway,
+    ) {
+        match resource {
+            ResourceOnGateway::Dns { .. } => {
+                self.permanent_translations
+                    .extract_if(.., |_, state| {
+                        state.resolved_ips.remove(&resource_id);
+                        state.resolved_ips.is_empty()
+                    })
+                    .for_each(drop);
+                self.nat_table.expire_resource(resource_id);
+            }
+            ResourceOnGateway::Cidr { .. } => {}
+            ResourceOnGateway::Internet => {}
+        }
+
+        self.ingest_tokens.remove(&resource_id);
     }
 
     /// Checks if the given proxy IPs assigned for a domain are consistent with what we have stored.
@@ -298,8 +354,8 @@ impl ClientOnGateway {
     }
 
     fn recalculate_dns_filters(&mut self) {
-        for (addr, TranslationState { resources, .. }) in &self.permanent_translations {
-            for resource_id in resources {
+        for (addr, TranslationState { resolved_ips, .. }) in &self.permanent_translations {
+            for resource_id in resolved_ips.keys() {
                 let Some(entry) = self.resources.get(resource_id) else {
                     continue;
                 };
@@ -328,20 +384,23 @@ impl ClientOnGateway {
             bail!(UnroutablePacket::outbound_icmp_error(&packet))
         }
 
-        if let Err(error) = self.ensure_allowed_outbound(&packet) {
-            tracing::debug!(filtered_packet = ?packet, "{error:#}");
+        let allowed_outbound = match self.ensure_allowed_outbound(&packet) {
+            Ok(allowed_outbound) => allowed_outbound,
+            Err(error) => {
+                tracing::debug!(filtered_packet = ?packet, "{error:#}");
 
-            let reply = match error.any_downcast_ref::<InternetResourceRejectedAddress>() {
-                Some(InternetResourceRejectedAddress(_)) => {
-                    ip_packet::make::icmp_dest_unreachable_network(&packet)?
-                }
-                None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
-            };
+                let reply = match error.any_downcast_ref::<InternetResourceRejectedAddress>() {
+                    Some(InternetResourceRejectedAddress(_)) => {
+                        ip_packet::make::icmp_dest_unreachable_network(&packet)?
+                    }
+                    None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
+                };
 
-            return Ok(TranslateOutboundResult::IcmpError(reply));
-        }
+                return Ok(TranslateOutboundResult::IcmpError(reply));
+            }
+        };
 
-        let result = self.transform_network_to_tun(packet, now)?;
+        let result = self.transform_network_to_tun(packet, allowed_outbound, now)?;
 
         Ok(result)
     }
@@ -381,14 +440,14 @@ impl ClientOnGateway {
     fn transform_network_to_tun(
         &mut self,
         mut packet: IpPacket,
+        allowed_outbound: AllowedOutbound,
         now: Instant,
     ) -> anyhow::Result<TranslateOutboundResult> {
+        let resource_id = match allowed_outbound {
+            AllowedOutbound::GatewayTun => return Ok(TranslateOutboundResult::Send(packet)),
+            AllowedOutbound::Resource(resource_id) => resource_id,
+        };
         let dst = packet.destination();
-
-        // Packets to the TUN interface don't get transformed.
-        if self.gateway_tun.is_ip(dst) {
-            return Ok(TranslateOutboundResult::Send(packet));
-        }
 
         // Packets for CIDR resources / Internet resource are forwarded as is.
         if !is_dns_addr(dst) {
@@ -403,7 +462,7 @@ impl ClientOnGateway {
             ));
         };
 
-        let Some(resolved_ip) = state.resolved_ip else {
+        let Some(resolved_ip) = state.resolved_ip(resource_id) else {
             return Ok(TranslateOutboundResult::IcmpError(
                 ip_packet::make::icmp_dest_unreachable_network(&packet)?,
             ));
@@ -425,7 +484,7 @@ impl ClientOnGateway {
 
         let (source_protocol, real_ip) =
             self.nat_table
-                .translate_outgoing(&packet, resolved_ip, now)?;
+                .translate_outgoing(&packet, resolved_ip, resource_id, now)?;
 
         packet
             .translate_destination(source_protocol, real_ip)
@@ -471,12 +530,12 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
-    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
+    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> anyhow::Result<AllowedOutbound> {
         self.ensure_client_ip(packet.source())?;
 
         // Traffic to our own IP is allowed.
         if self.gateway_tun.is_ip(packet.destination()) {
-            return Ok(());
+            return Ok(AllowedOutbound::GatewayTun);
         }
 
         ensure_not_peer_ip(packet.destination())?;
@@ -485,12 +544,12 @@ impl ClientOnGateway {
 
         if !self.resources.contains_key(&rid) {
             tracing::warn!(%rid, "Internal state mismatch: No resource for ID");
-            return Ok(());
+            return Ok(AllowedOutbound::Resource(rid));
         }
         flow_tracker::record_resource(rid);
         flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid).cloned());
 
-        Ok(())
+        Ok(AllowedOutbound::Resource(rid))
     }
 
     fn ensure_client_ip(&self, ip: IpAddr) -> anyhow::Result<()> {
@@ -659,10 +718,8 @@ impl routing_table::RouteEntry for RouteEntry {
 // Current state of a translation for a given proxy ip
 #[derive(Debug)]
 struct TranslationState {
-    /// Which (DNS) resources we belong to.
-    resources: BTreeSet<ResourceId>,
-    /// The IP we have resolved for the domain.
-    resolved_ip: Option<IpAddr>,
+    /// The IP each DNS resource resolved for the domain.
+    resolved_ips: BTreeMap<ResourceId, Option<IpAddr>>,
     /// The domain we have resolved.
     domain: DomainName,
 }
@@ -670,10 +727,13 @@ struct TranslationState {
 impl TranslationState {
     fn new(domain: DomainName) -> Self {
         Self {
-            resources: BTreeSet::default(),
-            resolved_ip: None,
+            resolved_ips: BTreeMap::default(),
             domain,
         }
+    }
+
+    fn resolved_ip(&self, resource: ResourceId) -> Option<IpAddr> {
+        self.resolved_ips.get(&resource).copied().flatten()
     }
 }
 
