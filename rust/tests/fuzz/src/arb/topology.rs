@@ -40,7 +40,7 @@ pub(super) fn generate(g: &mut Generator) -> ReferenceState {
         arb_icmp_error_hosts(g, &clients, &dns_resource_records, portal.upstream_do53());
     let tcp_resources = arb_tcp_resources(g, &dns_resource_records, &icmp_error_hosts);
 
-    let global_dns_records = overwrite_dns_records(arb_global_dns_records(g), dns_resource_records);
+    let global_dns_records = merge_dns_records(arb_global_dns_records(g), dns_resource_records);
 
     let network = clients
         .iter()
@@ -499,7 +499,7 @@ fn arb_dns_resource_records(g: &mut Generator, portal: &StubPortal) -> DnsRecord
     portal
         .dns_resources()
         .map(|resource| arb_records_for_dns_resource(g, &resource.address))
-        .fold(DnsRecords::default(), overwrite_dns_records)
+        .fold(DnsRecords::default(), merge_dns_records)
 }
 
 fn arb_site_specific_dns_records(
@@ -511,7 +511,7 @@ fn arb_site_specific_dns_records(
         .dns_resources()
         .filter(|resource| resource.sites.iter().any(|candidate| candidate.id == site))
         .map(|resource| arb_records_for_dns_resource(g, &resource.address))
-        .fold(DnsRecords::default(), overwrite_dns_records)
+        .fold(DnsRecords::default(), merge_dns_records)
 }
 
 fn arb_records_for_dns_resource(g: &mut Generator, address: &str) -> DnsRecords {
@@ -522,8 +522,8 @@ fn arb_records_for_dns_resource(g: &mut Generator, address: &str) -> DnsRecords 
     }
 }
 
-fn overwrite_dns_records(mut records: DnsRecords, next: DnsRecords) -> DnsRecords {
-    records.overwrite_with(next);
+fn merge_dns_records(mut records: DnsRecords, next: DnsRecords) -> DnsRecords {
+    records.merge(next);
     records
 }
 
