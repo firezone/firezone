@@ -42,11 +42,13 @@ pub(crate) struct SimGateway {
 impl SimGateway {
     pub(crate) fn new(
         id: GatewayId,
-        sut: GatewayState,
+        mut sut: GatewayState,
         tcp_resources: BTreeSet<SocketAddr>,
         site_specific_dns_records: DnsRecords,
         now: Instant,
     ) -> Self {
+        sut.set_flow_logs_enabled(true);
+
         Self {
             id,
             sut,
