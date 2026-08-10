@@ -32,7 +32,16 @@ defmodule Portal.Repo.Filter do
   @type datetime_type :: :date | :time | :datetime
   @type binary_type ::
           :string
-          | {:string, :email | :ip | :phone_number | :uuid | :uuid_or_blank | :websearch | :websearch_wide | :protocol_port | :select}
+          | {:string,
+             :email
+             | :ip
+             | :phone_number
+             | :uuid
+             | :uuid_or_blank
+             | :websearch
+             | :websearch_wide
+             | :protocol_port
+             | :select}
   @type range_type :: {:range, numeric_type() | datetime_type()}
   @type type ::
           :boolean
