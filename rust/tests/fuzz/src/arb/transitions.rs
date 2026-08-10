@@ -152,13 +152,13 @@ pub(super) fn generate(
             }
         }
         K::DeployNewRelays => {
-            // An ICEless connection survives relay deployment changes. Retaining one relay
-            // without selecting it exercises refreshing an unmentioned live allocation.
+            // An ICEless connection survives relay deployment changes. Keeping one deployed
+            // relay out of `connected` exercises refreshing an unmentioned live allocation.
             let retained = if state.portal.iceless() && state.relays.len() >= 2 {
-                state
-                    .relays
-                    .first_key_value()
-                    .map(|(relay_id, relay)| (*relay_id, relay.clone()))
+                let index = g.choose_index(state.relays.len());
+                let (relay_id, relay) = state.relays.iter().nth(index).unwrap();
+
+                Some((*relay_id, relay.clone()))
             } else {
                 None
             };
