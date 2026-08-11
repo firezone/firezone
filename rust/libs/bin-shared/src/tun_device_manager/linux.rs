@@ -747,6 +747,34 @@ impl Tun {
     }
 }
 
+/// Attaches to the TUN device via `TUNSETIFF`, retrying `EBUSY` for a short window.
+///
+/// A previous session's device releases its FD asynchronously: the worker threads
+/// exit only after the session state is dropped. A device that stays busy beyond
+/// the retry window is held by another process and we must not share it.
+fn attach(fd: RawFd) -> Result<()> {
+    const ATTACH_RETRIES: u32 = 25;
+    const ATTACH_RETRY_DELAY: Duration = Duration::from_millis(20);
+
+    let mut request =
+        ioctl::Request::<ioctl::SetTunFlagsPayload>::new(TunDeviceManager::IFACE_NAME);
+    let mut attempt = 0;
+
+    loop {
+        // Safety: The file descriptor is valid.
+        match unsafe { ioctl::exec(fd, TUNSETIFF, &mut request) } {
+            Ok(()) => break,
+            Err(e) if e.raw_os_error() == Some(libc::EBUSY) && attempt < ATTACH_RETRIES => {
+                attempt += 1;
+                std::thread::sleep(ATTACH_RETRY_DELAY);
+            }
+            Err(e) => return Err(anyhow::Error::new(e)),
+        }
+    }
+
+    Ok(())
+}
+
 fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
     let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
         -1 => {
@@ -758,14 +786,7 @@ fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
         fd => fd,
     };
 
-    unsafe {
-        ioctl::exec(
-            fd,
-            TUNSETIFF,
-            &mut ioctl::Request::<ioctl::SetTunFlagsPayload>::new(TunDeviceManager::IFACE_NAME),
-        )
-        .context("Failed to set flags on TUN device")?;
-    }
+    attach(fd).context("Failed to set flags on TUN device")?;
 
     // A successful `TUNSETOFFLOAD` is the kernel promising it handles these offloads on both the
     // read (GRO) and write (GSO) side, so we use it directly as the capability probe rather than
