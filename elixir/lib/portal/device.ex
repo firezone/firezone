@@ -215,8 +215,8 @@ defmodule Portal.Device do
         |> unique_constraint(:last_attested_mdm_device_id,
           name: :devices_account_id_actor_id_last_attested_mdm_device_id_index
         )
-        |> unique_constraint(:last_attested_cert_fingerprint,
-          name: :devices_account_id_actor_id_last_attested_cert_fingerprint_index
+        |> unique_constraint(:last_attested_cert_serial,
+          name: :devices_account_id_cert_issuer_serial_actor_id_index
         )
 
       :gateway ->

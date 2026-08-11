@@ -849,6 +849,8 @@ defmodule PortalAPI.Client.SocketTest do
           actor: actor,
           last_attested_device_serial: "SN-MOSYLE",
           last_attested_cert_fingerprint: "fp-mosyle",
+          last_attested_cert_serial: "4A2F008C",
+          last_attested_cert_issuer: <<"issuer-der">>,
           firezone_id: nil
         )
 
@@ -878,6 +880,8 @@ defmodule PortalAPI.Client.SocketTest do
           actor: actor,
           last_attested_device_serial: "SN-RENEW",
           last_attested_cert_fingerprint: "fp-old",
+          last_attested_cert_serial: "OLDSERIAL",
+          last_attested_cert_issuer: <<"issuer-der">>,
           firezone_id: nil
         )
 
@@ -914,6 +918,8 @@ defmodule PortalAPI.Client.SocketTest do
           account: account,
           actor: actor,
           last_attested_cert_fingerprint: "fp-shared",
+          last_attested_cert_serial: "AA",
+          last_attested_cert_issuer: <<"issuer-der">>,
           firezone_id: nil
         )
 
@@ -1005,6 +1011,8 @@ defmodule PortalAPI.Client.SocketTest do
         actor: actor,
         last_attested_mdm_device_id: "mdm-was",
         last_attested_cert_fingerprint: "fp-shared",
+        last_attested_cert_serial: "AA",
+        last_attested_cert_issuer: <<"issuer-der">>,
         firezone_id: nil
       )
 
@@ -1037,6 +1045,8 @@ defmodule PortalAPI.Client.SocketTest do
         actor: actor,
         last_attested_mdm_device_id: "mdm-known",
         last_attested_cert_fingerprint: "fp-lossy",
+        last_attested_cert_serial: "CC",
+        last_attested_cert_issuer: <<"issuer-der">>,
         firezone_id: nil
       )
 
@@ -1069,6 +1079,8 @@ defmodule PortalAPI.Client.SocketTest do
         account: account,
         actor: actor,
         last_attested_cert_fingerprint: "fp-repair",
+        last_attested_cert_serial: "BB",
+        last_attested_cert_issuer: <<"issuer-der">>,
         firezone_id: nil
       )
 
