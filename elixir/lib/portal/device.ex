@@ -205,7 +205,7 @@ defmodule Portal.Device do
     case get_field(changeset, :type) do
       :client ->
         changeset
-        |> validate_required([:actor_id, :firezone_id])
+        |> validate_required([:actor_id])
         |> validate_client_firezone_id()
         |> validate_length(:device_serial, max: 255)
         |> validate_length(:device_uuid, max: 255)
@@ -228,7 +228,7 @@ defmodule Portal.Device do
 
       :gateway ->
         changeset
-        |> validate_required([:site_id, :firezone_id])
+        |> validate_required([:site_id])
         |> validate_gateway_verification()
 
       _ ->
