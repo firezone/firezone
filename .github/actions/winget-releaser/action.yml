@@ -73,6 +73,39 @@ runs:
         GITHUB_TOKEN: ${{ inputs.token }}
       id: version-and-urls
       shell: pwsh
+    - run: |
+        # Pre-sync the fork through its own sync-upstream workflow. That
+        # workflow runs with a token that may update workflow files, which
+        # the token here may not (see the WINGET_TOKEN notes in
+        # publish-release.yml), so it can move the fork across upstream
+        # changes to .github/workflows/* that would make `komac sync-fork`
+        # below fail. Non-fatal: `komac sync-fork` remains the gate.
+        try {
+          $Fork = '${{ inputs.fork-user }}/winget-pkgs'
+          $DispatchedAt = (Get-Date).ToUniversalTime()
+          gh workflow run sync-upstream.yml --repo $Fork --ref master
+          if (-not $?) {
+            Write-Output "::warning::Could not dispatch sync-upstream.yml in $Fork; relying on komac sync-fork."
+            exit 0
+          }
+          foreach ($i in 1..36) {
+            Start-Sleep -Seconds 5
+            $Run = gh run list --repo $Fork --workflow sync-upstream.yml --limit 1 --json status,conclusion,createdAt | ConvertFrom-Json | Select-Object -First 1
+            if ($Run -and ([DateTime]::Parse($Run.createdAt).ToUniversalTime() -ge $DispatchedAt.AddSeconds(-10)) -and ($Run.status -eq 'completed')) {
+              if ($Run.conclusion -ne 'success') {
+                Write-Output "::warning::Fork sync concluded with '$($Run.conclusion)'; relying on komac sync-fork."
+              }
+              exit 0
+            }
+          }
+          Write-Output "::warning::Fork sync did not complete within 3 minutes; relying on komac sync-fork."
+        } catch {
+          Write-Output "::warning::Pre-sync failed unexpectedly: $($_.Exception.Message); relying on komac sync-fork."
+        }
+        exit 0
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      shell: pwsh
     - run: komac sync-fork
       env:
         KOMAC_FORK_OWNER: ${{ inputs.fork-user }}
