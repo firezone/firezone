@@ -715,7 +715,7 @@ async fn link_states(handle: &Handle, link_scope_routes: &[RouteMessage]) -> Has
 }
 
 pub struct Tun {
-    workers: TunWorkers<()>,
+    workers: TunWorkers,
 }
 
 impl Tun {
@@ -725,7 +725,6 @@ impl Tun {
         let fd = open_tun()?;
 
         let workers = TunWorkers::spawn(
-            (),
             {
                 let fd = fd.clone();
 

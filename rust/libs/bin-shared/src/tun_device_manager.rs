@@ -21,36 +21,30 @@ pub use platform::TunDeviceManager;
 
 /// A TUN device backed by one worker thread per direction.
 ///
-/// Owns the channels connecting the workers to the main thread as well as the
-/// platform state `S` that the workers need released in order to exit.
-/// Dropping releases the channels and `S` first and then joins both workers,
-/// so the underlying device is gone once drop returns.
+/// Owns the channels connecting the workers to the main thread.
+/// Dropping closes the channels and then joins both workers. Platform state
+/// that the workers additionally need released in order to exit (e.g. the
+/// WinTUN session) must be released before this drops.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-pub(crate) struct TunWorkers<S> {
-    state: Option<WorkerState<S>>,
+pub(crate) struct TunWorkers {
+    state: Option<WorkerState>,
 
     send_thread: Option<std::thread::JoinHandle<()>>,
     recv_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-struct WorkerState<S> {
+struct WorkerState {
     outbound_tx: tun::OutboundTx,
     inbound_rx: tun::InboundRx,
-    #[expect(
-        dead_code,
-        reason = "Only held so it is dropped together with the channels"
-    )]
-    platform: S,
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-impl<S> TunWorkers<S> {
+impl TunWorkers {
     /// Spawns the send and recv worker threads for a TUN device.
     ///
     /// Panics if called without a Tokio runtime.
     pub(crate) fn spawn(
-        platform: S,
         send: impl FnOnce(tun::OutboundRx) + Send + 'static,
         recv: impl FnOnce(tun::InboundTx) + Send + 'static,
     ) -> std::io::Result<Self> {
@@ -83,7 +77,6 @@ impl<S> TunWorkers<S> {
             state: Some(WorkerState {
                 outbound_tx,
                 inbound_rx,
-                platform,
             }),
             send_thread: Some(send_thread),
             recv_thread: Some(recv_thread),
@@ -108,7 +101,7 @@ impl<S> TunWorkers<S> {
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-impl<S> Drop for TunWorkers<S> {
+impl Drop for TunWorkers {
     fn drop(&mut self) {
         use std::time::{Duration, Instant};
 
@@ -124,7 +117,7 @@ impl<S> Drop for TunWorkers<S> {
             .take()
             .expect("`send_thread` should always be `Some` until `TunWorkers` drops");
 
-        let _ = self.state.take(); // Drop all channel and platform state, allowing the worker threads to exit gracefully.
+        let _ = self.state.take(); // Drop all channel state, allowing the worker threads to exit gracefully.
 
         let start = Instant::now();
 

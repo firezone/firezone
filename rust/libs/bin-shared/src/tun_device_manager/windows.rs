@@ -226,15 +226,15 @@ pub struct Tun {
     iface_idx: u32,
     luid: wintun::NET_LUID_LH,
 
-    workers: TunWorkers<SessionHandle>,
+    session: Arc<wintun::Session>,
+    workers: TunWorkers,
 }
 
-/// Keeps the WinTUN session alive for the worker threads.
-struct SessionHandle(Arc<wintun::Session>);
-
-impl Drop for SessionHandle {
+impl Drop for Tun {
     fn drop(&mut self) {
-        let _ = self.0.shutdown(); // Cancels any `receive_blocking` calls.
+        // Shut down the session before `workers` drops: it cancels any
+        // `receive_blocking` calls, so the worker threads can exit and be joined.
+        let _ = self.session.shutdown();
     }
 }
 
@@ -277,7 +277,6 @@ impl Tun {
         let recv_session = Arc::downgrade(&session);
 
         let workers = TunWorkers::spawn(
-            SessionHandle(session),
             move |outbound_rx| send_worker(outbound_rx, send_session),
             move |inbound_tx| recv_worker(inbound_tx, recv_session),
         )
@@ -286,6 +285,7 @@ impl Tun {
         Ok(Self {
             iface_idx,
             luid,
+            session,
             workers,
         })
     }
