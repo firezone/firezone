@@ -14,7 +14,6 @@ enum_representation = "discriminated"
 [dependencies]
 anyhow = { workspace = true }
 arboard = { workspace = true }
-atomicwrites = { workspace = true }
 backoff = { workspace = true }
 bin-shared = { workspace = true }
 chrono = { workspace = true }
@@ -130,6 +129,10 @@ features = [
     # a new external location.
     "ApplicationModel",
     "Foundation_Collections",
+    # `XmlDocument` and `ToastNotification` / `ToastNotificationManager`
+    # for the protocol-activated update toast.
+    "Data_Xml_Dom",
+    "UI_Notifications",
 ]
 
 [build-dependencies]

@@ -44,7 +44,6 @@ pub struct Controller<I: GuiIntegration> {
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
-    ctrl_tx: mpsc::Sender<ControllerRequest>,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
     ipc_rx: ipc::ClientRead<service::ServerMsg>,
     integration: I,
@@ -55,7 +54,7 @@ pub struct Controller<I: GuiIntegration> {
     status: Status,
     quit_timeout: Option<Pin<Box<tokio::time::Sleep>>>,
     telemetry_allowed: bool,
-    updates_rx: Option<ReceiverStream<Option<updates::Notification>>>,
+    updates_rx: Option<ReceiverStream<Option<updates::Release>>>,
     uptime: uptime::Tracker,
 
     gui_ipc_clients: BoxStream<
@@ -87,6 +86,9 @@ pub trait GuiIntegration {
         title: impl Into<String>,
         body: impl Into<String>,
     ) -> Result<NotificationHandle>;
+
+    /// Shows a notification about a new release, opening `download_url` on click where the platform supports it.
+    fn show_update_notification(&self, title: impl Into<String>, download_url: Url) -> Result<()>;
 
     fn save_general_settings(&self, settings: &GeneralSettings)
     -> impl Future<Output = Result<()>>;
@@ -123,7 +125,6 @@ pub enum ControllerRequest {
     SignOut,
     UpdateState,
     SystemTrayMenu(system_tray::Event),
-    UpdateNotificationClicked(Url),
 }
 
 // The failure flags are all mutually exclusive
@@ -168,7 +169,7 @@ impl Status {
 enum EventloopTick {
     IpcMsg(Option<Result<service::ServerMsg>>),
     ControllerRequest(Option<ControllerRequest>),
-    UpdateNotification(Option<updates::Notification>),
+    UpdateNotification(Option<updates::Release>),
     NewInstanceLaunched(
         Option<
             Result<(
@@ -188,13 +189,12 @@ impl<I: GuiIntegration> Controller<I> {
     pub(crate) async fn start(
         socket: SocketId,
         integration: I,
-        ctrl_tx: mpsc::Sender<ControllerRequest>,
         ctrl_rx: mpsc::Receiver<ControllerRequest>,
         general_settings: GeneralSettings,
         legacy_advanced_settings_path: PathBuf,
         log_filter_reloader: FilterReloadHandle,
         telemetry_allowed: bool,
-        updates_rx: mpsc::Receiver<Option<updates::Notification>>,
+        updates_rx: mpsc::Receiver<Option<updates::Release>>,
         gui_ipc: ipc::Server,
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
@@ -239,7 +239,6 @@ impl<I: GuiIntegration> Controller<I> {
             legacy_advanced_settings_path,
             auth,
             clear_logs_callback: None,
-            ctrl_tx,
             ipc_client,
             ipc_rx,
             integration,
@@ -633,12 +632,6 @@ impl<I: GuiIntegration> Controller<I> {
                 self.send_ipc(&service::ClientMsg::Disconnect).await?;
                 self.refresh_ui_state();
             }
-            UpdateNotificationClicked(download_url) => {
-                tracing::info!("UpdateNotificationClicked in run_controller!");
-                self.integration
-                    .open_url(&download_url)
-                    .context("Couldn't open update page")?;
-            }
             UpdateState => {
                 self.notify_settings_changed()?;
 
@@ -843,46 +836,21 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     /// Set (or clear) update notification
-    fn handle_update_notification(
-        &mut self,
-        notification: Option<updates::Notification>,
-    ) -> Result<()> {
-        let Some(notification) = notification else {
+    fn handle_update_notification(&mut self, release: Option<updates::Release>) -> Result<()> {
+        let Some(release) = release else {
             self.release = None;
             self.refresh_ui_state();
             return Ok(());
         };
 
-        let release = notification.release;
         self.release = Some(release.clone());
         self.refresh_ui_state();
 
-        if notification.tell_user {
-            #[cfg(target_os = "linux")]
-            let body = ""; // TODO: Clickable notifications don't work on Linux yet.
-            #[cfg(target_os = "macos")]
-            let body = "";
-            #[cfg(target_os = "windows")]
-            let body = "Click here to download the new version";
+        self.integration.show_update_notification(
+            format!("Firezone {} available for download", release.version),
+            release.download_url,
+        )?;
 
-            let NotificationHandle { on_click } = self.integration.show_notification(
-                format!("Firezone {} available for download", release.version),
-                body,
-            )?;
-            let ctrl_tx = self.ctrl_tx.clone();
-
-            tokio::spawn(async move {
-                if on_click.await.is_err() {
-                    return;
-                };
-
-                let _ = ctrl_tx
-                    .send(ControllerRequest::UpdateNotificationClicked(
-                        release.download_url,
-                    ))
-                    .await;
-            });
-        }
         Ok(())
     }
 
@@ -1207,6 +1175,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shows_update_notification() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        let release = updates::Release {
+            download_url: Url::parse(
+                "https://www.firezone.dev/dl/firezone-client-gui-windows/1.99.0/x86_64",
+            )
+            .unwrap(),
+            version: semver::Version::new(1, 99, 0),
+        };
+        test_controller
+            .updates_tx
+            .send(Some(release.clone()))
+            .await
+            .unwrap();
+
+        let (title, url) = test_controller
+            .wait_integration(|i| i.update_notifications.first().cloned())
+            .await;
+        assert_eq!(title, "Firezone 1.99.0 available for download");
+        assert_eq!(url, release.download_url);
+    }
+
+    #[tokio::test]
     async fn shows_offline_gateway_notification() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
@@ -1420,12 +1415,11 @@ mod tests {
         }
     }
 
-    #[expect(dead_code, reason = "It is a test.")]
     struct TestController {
         join_handle: tokio::task::JoinHandle<Result<()>>,
         tunnel_server: ipc::Server,
         ctrl_tx: mpsc::Sender<ControllerRequest>,
-        updates_tx: mpsc::Sender<Option<updates::Notification>>,
+        updates_tx: mpsc::Sender<Option<updates::Release>>,
         integration: Arc<Mutex<MockIntegration>>,
         gui_id: u32,
         legacy_advanced_settings_path: PathBuf,
@@ -1508,6 +1502,7 @@ mod tests {
         tray_icons: Vec<system_tray::Icon>,
         tray_states: Vec<system_tray::AppState>,
         notifications: Vec<(String, String, futures::channel::oneshot::Sender<()>)>,
+        update_notifications: Vec<(String, Url)>,
         window_visibilities: Vec<bool>,
         shown_overview_page: Vec<SessionViewModel>,
         shown_settings_page: Vec<(MdmSettings, GeneralSettings, AdvancedSettings)>,
@@ -1576,6 +1571,18 @@ mod tests {
                 .push((title.into(), body.into(), tx));
 
             Ok(NotificationHandle { on_click: rx })
+        }
+
+        fn show_update_notification(
+            &self,
+            title: impl Into<String>,
+            download_url: Url,
+        ) -> Result<()> {
+            self.lock()
+                .update_notifications
+                .push((title.into(), download_url));
+
+            Ok(())
         }
 
         fn set_window_visible(&self, visible: bool) -> Result<()> {
@@ -1706,7 +1713,6 @@ mod tests {
             let join_handle = tokio::spawn(Self::start(
                 SocketId::Test(tunnel_id),
                 integration.clone(),
-                ctrl_tx.clone(),
                 ctrl_rx,
                 GeneralSettings::default(),
                 legacy_advanced_settings_path.clone(),

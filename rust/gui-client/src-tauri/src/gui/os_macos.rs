@@ -20,3 +20,13 @@ pub(crate) fn show_notification(_title: String, _body: String) -> Result<Notific
 
     Ok(NotificationHandle { on_click })
 }
+
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "Signature must match other platforms."
+)]
+pub(crate) fn show_update_notification(_title: String, _download_url: url::Url) -> Result<()> {
+    tracing::warn!("show_update_notification is not implemented on macOS; skipping");
+
+    Ok(())
+}
