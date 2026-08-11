@@ -44,8 +44,7 @@ impl Notifier {
 
     /// Shows a notification.
     ///
-    /// Activating the notification opens `open_url`; only Windows supports
-    /// this, other platforms ignore it.
+    /// Clicking the notification opens `open_url` (ignored on macOS).
     ///
     /// Resolves once the notification has been handled: on Windows right
     /// after hand-off to the toast platform, on Linux once the notification
