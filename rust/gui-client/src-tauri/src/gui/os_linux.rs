@@ -60,3 +60,13 @@ pub(crate) fn show_notification(title: String, body: String) -> Result<Notificat
 
     Ok(NotificationHandle { on_click: rx })
 }
+
+/// Show a notification about a new release
+///
+/// Clickable notifications don't work on Linux yet, so the notification only
+/// announces the release and the user downloads it via the tray menu.
+pub(crate) fn show_update_notification(title: String, _download_url: url::Url) -> Result<()> {
+    let _ = show_notification(title, String::new())?;
+
+    Ok(())
+}

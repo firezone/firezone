@@ -166,6 +166,14 @@ impl GuiIntegration for TauriIntegration {
         os::show_notification(title.into(), body.into())
     }
 
+    fn show_update_notification(
+        &self,
+        title: impl Into<String>,
+        download_url: url::Url,
+    ) -> Result<()> {
+        os::show_update_notification(title.into(), download_url)
+    }
+
     fn set_window_visible(&self, visible: bool) -> Result<()> {
         let win = self.main_window()?;
 
@@ -355,7 +363,6 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
         let ctrl_task = tokio::spawn(Controller::start(
             SocketId::Tunnel,
             integration,
-            ctlr_tx,
             ctlr_rx,
             general_settings,
             legacy_advanced_settings_path,

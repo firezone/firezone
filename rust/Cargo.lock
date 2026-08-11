@@ -2431,7 +2431,6 @@ dependencies = [
  "admx-macro",
  "anyhow-ext",
  "arboard",
- "atomicwrites",
  "backoff",
  "bin-shared",
  "chrono",
