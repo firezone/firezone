@@ -610,7 +610,11 @@ impl<'a> Handler<'a> {
                 is_internet_resource_active,
             } => {
                 if !self.session.is_none() {
-                    tracing::debug!(session = ?self.session, "Connecting despite existing session");
+                    tracing::debug!(session = ?self.session, "Dropping existing session before connecting");
+
+                    // Release the TUN device before we create a new one:
+                    // attaching to a device that is still in use is not reliable.
+                    self.session = Session::None;
                 }
 
                 let result = self.try_connect(token.clone(), is_internet_resource_active);
