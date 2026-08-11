@@ -1,6 +1,9 @@
 //! Virtual network interface
 
-use crate::{FIREZONE_MARK, tun_device_manager::TunIpStack};
+use crate::{
+    FIREZONE_MARK,
+    tun_device_manager::{TunIpStack, TunWorkers},
+};
 use anyhow::{Context as _, Result};
 use futures::{
     StreamExt, TryStreamExt,
@@ -712,91 +715,36 @@ async fn link_states(handle: &Handle, link_scope_routes: &[RouteMessage]) -> Has
 }
 
 pub struct Tun {
-    state: Option<TunState>,
-
-    send_thread: Option<std::thread::JoinHandle<()>>,
-    recv_thread: Option<std::thread::JoinHandle<()>>,
-}
-
-/// All channel state of the TUN device.
-struct TunState {
-    outbound_tx: tun::OutboundTx,
-    inbound_rx: tun::InboundRx,
-}
-
-impl Drop for Tun {
-    fn drop(&mut self) {
-        let recv_thread = self
-            .recv_thread
-            .take()
-            .expect("`recv_thread` should always be `Some` until `Tun` drops");
-
-        let send_thread = self
-            .send_thread
-            .take()
-            .expect("`send_thread` should always be `Some` until `Tun` drops");
-
-        let _ = self.state.take(); // Drop all channel state, allowing the worker threads to exit gracefully.
-
-        crate::tun_device_manager::join_worker_threads(recv_thread, send_thread);
-    }
+    workers: TunWorkers<()>,
 }
 
 impl Tun {
     pub fn new() -> Result<Self> {
         create_tun_device()?;
 
-        let (inbound_tx, inbound_rx) = tun::inbound_channel();
-        let (outbound_tx, outbound_rx) = tun::outbound_channel();
-
-        tokio::spawn(otel_instruments::periodic_queue_length(
-            outbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_transmit(),
-            ],
-        ));
-        tokio::spawn(otel_instruments::periodic_queue_length(
-            inbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_receive(),
-            ],
-        ));
-
         let fd = open_tun()?;
 
-        let send_thread = std::thread::Builder::new()
-            .name("TUN send".to_owned())
-            .spawn({
+        let workers = TunWorkers::spawn(
+            (),
+            {
                 let fd = fd.clone();
 
-                move || {
+                move |outbound_rx| {
                     logging::unwrap_or_warn!(
                         tun::linux::tun_send(fd, outbound_rx),
                         "Failed to send to TUN device: {}"
                     )
                 }
-            })
-            .map_err(io::Error::other)?;
-        let recv_thread = std::thread::Builder::new()
-            .name("TUN recv".to_owned())
-            .spawn(move || {
+            },
+            move |inbound_tx| {
                 logging::unwrap_or_warn!(
                     tun::linux::tun_recv(fd, inbound_tx),
                     "Failed to recv from TUN device: {}"
                 )
-            })
-            .map_err(io::Error::other)?;
+            },
+        )?;
 
-        Ok(Self {
-            state: Some(TunState {
-                outbound_tx,
-                inbound_rx,
-            }),
-            send_thread: Some(send_thread),
-            recv_thread: Some(recv_thread),
-        })
+        Ok(Self { workers })
     }
 }
 
@@ -855,19 +803,11 @@ fn try_enable_offloads(fd: RawFd) -> bool {
 
 impl tun::Tun for Tun {
     fn sender(&self) -> &tun::OutboundTx {
-        &self
-            .state
-            .as_ref()
-            .expect("`state` should always be `Some` until `Tun` drops")
-            .outbound_tx
+        self.workers.sender()
     }
 
     fn receiver(&mut self) -> &mut tun::InboundRx {
-        &mut self
-            .state
-            .as_mut()
-            .expect("`state` should always be `Some` until `Tun` drops")
-            .inbound_rx
+        self.workers.receiver()
     }
 
     fn name(&self) -> &str {

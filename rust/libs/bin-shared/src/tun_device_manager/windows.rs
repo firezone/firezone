@@ -1,5 +1,5 @@
 use crate::TUNNEL_NAME;
-use crate::tun_device_manager::TunIpStack;
+use crate::tun_device_manager::{TunIpStack, TunWorkers};
 use crate::windows::TUNNEL_UUID;
 use crate::windows::error::{NOT_FOUND, NOT_SUPPORTED, OBJECT_EXISTS};
 use anyhow::{Context as _, Result};
@@ -15,7 +15,7 @@ use std::time::Duration;
 use std::{
     collections::HashSet,
     env::VarError,
-    io::{self, Read as _},
+    io::Read as _,
     net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
     path::{Path, PathBuf},
     sync::Arc,
@@ -226,41 +226,15 @@ pub struct Tun {
     iface_idx: u32,
     luid: wintun::NET_LUID_LH,
 
-    state: Option<TunState>,
-
-    send_thread: Option<std::thread::JoinHandle<()>>,
-    recv_thread: Option<std::thread::JoinHandle<()>>,
+    workers: TunWorkers<SessionHandle>,
 }
 
-/// All state relevant to the WinTUN device.
-struct TunState {
-    session: Arc<wintun::Session>,
+/// Keeps the WinTUN session alive for the worker threads.
+struct SessionHandle(Arc<wintun::Session>);
 
-    outbound_tx: tun::OutboundTx,
-    inbound_rx: tun::InboundRx,
-}
-
-impl Drop for Tun {
+impl Drop for SessionHandle {
     fn drop(&mut self) {
-        let recv_thread = self
-            .recv_thread
-            .take()
-            .expect("`recv_thread` should always be `Some` until `Tun` drops");
-
-        let send_thread = self
-            .send_thread
-            .take()
-            .expect("`send_thread` should always be `Some` until `Tun` drops");
-
-        let _ = self.state.take(); // Drop all channel / tunnel state, allowing the worker threads to exit gracefully.
-
-        crate::tun_device_manager::join_worker_threads(recv_thread, send_thread);
-    }
-}
-
-impl Drop for TunState {
-    fn drop(&mut self) {
-        let _ = self.session.shutdown(); // Cancels any `receive_blocking` calls.
+        let _ = self.0.shutdown(); // Cancels any `receive_blocking` calls.
     }
 }
 
@@ -299,39 +273,20 @@ impl Tun {
                 .start_session(capacity)
                 .with_context(|| format!("Failed to start session with capacity {capacity}"))?,
         );
-        let (outbound_tx, outbound_rx) = tun::outbound_channel();
-        let (inbound_tx, inbound_rx) = tun::inbound_channel();
+        let send_session = Arc::downgrade(&session);
+        let recv_session = Arc::downgrade(&session);
 
-        tokio::spawn(otel_instruments::periodic_queue_length(
-            outbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_transmit(),
-            ],
-        ));
-        tokio::spawn(otel_instruments::periodic_queue_length(
-            inbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_receive(),
-            ],
-        ));
-
-        let send_thread = start_send_thread(outbound_rx, Arc::downgrade(&session))
-            .context("Failed to start send thread")?;
-        let recv_thread = start_recv_thread(inbound_tx, Arc::downgrade(&session))
-            .context("Failed to start recv thread")?;
+        let workers = TunWorkers::spawn(
+            SessionHandle(session),
+            move |outbound_rx| send_worker(outbound_rx, send_session),
+            move |inbound_tx| recv_worker(inbound_tx, recv_session),
+        )
+        .context("Failed to start TUN worker threads")?;
 
         Ok(Self {
             iface_idx,
             luid,
-            state: Some(TunState {
-                session,
-                outbound_tx,
-                inbound_rx,
-            }),
-            send_thread: Some(send_thread),
-            recv_thread: Some(recv_thread),
+            workers,
         })
     }
 
@@ -342,19 +297,11 @@ impl Tun {
 
 impl tun::Tun for Tun {
     fn sender(&self) -> &tun::OutboundTx {
-        &self
-            .state
-            .as_ref()
-            .expect("`tun_state` to always be `Some` until we drop")
-            .outbound_tx
+        self.workers.sender()
     }
 
     fn receiver(&mut self) -> &mut tun::InboundRx {
-        &mut self
-            .state
-            .as_mut()
-            .expect("`tun_state` to always be `Some` until we drop")
-            .inbound_rx
+        self.workers.receiver()
     }
 
     fn name(&self) -> &str {
@@ -416,104 +363,94 @@ const MAX_RING_FULL_RETRIES: u32 = 24;
 const SPIN_LIMIT: u32 = 6;
 
 // Moves packets from Internet towards the user
-fn start_send_thread(
-    mut packet_rx: tun::OutboundRx,
-    session: Weak<wintun::Session>,
-) -> io::Result<std::thread::JoinHandle<()>> {
+fn send_worker(mut packet_rx: tun::OutboundRx, session: Weak<wintun::Session>) {
     let batch_size_histogram = otel_instruments::network_packets_batch_count();
     let write_retry_histogram = otel_instruments::network_retries();
     let dropped_packets_counter = otel_instruments::network_packet_dropped();
 
-    std::thread::Builder::new()
-        .name("TUN send".into())
-        .spawn(move || {
-            let mut tcp_coalescer = packet_coalescer::PacketCoalescer::new(
-                [packet_coalescer::Protocol::Tcp],
-                packet_coalescer::ChecksumMode::Complete,
-            );
-            let mut passthrough = packet_coalescer::PacketCoalescer::passthrough();
+    let mut tcp_coalescer = packet_coalescer::PacketCoalescer::new(
+        [packet_coalescer::Protocol::Tcp],
+        packet_coalescer::ChecksumMode::Complete,
+    );
+    let mut passthrough = packet_coalescer::PacketCoalescer::passthrough();
 
-            while let Some(mut batch) = packet_rx.blocking_recv() {
-                let coalesce_tcp = telemetry::feature_flags::wintun_tcp_coalescing();
-                let coalescer = if coalesce_tcp {
-                    &mut tcp_coalescer
-                } else {
-                    &mut passthrough
+    while let Some(mut batch) = packet_rx.blocking_recv() {
+        let coalesce_tcp = telemetry::feature_flags::wintun_tcp_coalescing();
+        let coalescer = if coalesce_tcp {
+            &mut tcp_coalescer
+        } else {
+            &mut passthrough
+        };
+
+        for packet in batch.drain() {
+            #[cfg(debug_assertions)]
+            tracing::trace!(target: "wire::dev::send", ?packet);
+
+            coalescer.enqueue(packet);
+        }
+
+        'next_packet: for packet in coalescer.drain() {
+            let bytes = packet.packet();
+            let num_segments = packet.num_segments();
+
+            let Ok(len) = bytes.len().try_into() else {
+                tracing::warn!("Packet too large; length does not fit into u16");
+                dropped_packets_counter.add(num_segments as u64, &drop_attributes_without_error());
+                continue 'next_packet;
+            };
+
+            let mut attempt = 0;
+
+            loop {
+                let Some(session) = session.upgrade() else {
+                    tracing::debug!(
+                        "Stopping TUN send worker thread because the `wintun::Session` was dropped"
+                    );
+                    return;
                 };
 
-                for packet in batch.drain() {
-                    #[cfg(debug_assertions)]
-                    tracing::trace!(target: "wire::dev::send", ?packet);
+                match session.allocate_send_packet(len) {
+                    Ok(mut pkt) => {
+                        pkt.bytes_mut().copy_from_slice(bytes);
+                        // `send_packet` cannot fail to enqueue the packet, since we already allocated
+                        // space in the ring buffer.
+                        session.send_packet(pkt);
 
-                    coalescer.enqueue(packet);
-                }
-
-                'next_packet: for packet in coalescer.drain() {
-                    let bytes = packet.packet();
-                    let num_segments = packet.num_segments();
-
-                    let Ok(len) = bytes.len().try_into() else {
-                        tracing::warn!("Packet too large; length does not fit into u16");
-                        dropped_packets_counter
-                            .add(num_segments as u64, &drop_attributes_without_error());
-                        continue 'next_packet;
-                    };
-
-                    let mut attempt = 0;
-
-                    loop {
-                        let Some(session) = session.upgrade() else {
-                            tracing::debug!(
-                                "Stopping TUN send worker thread because the `wintun::Session` was dropped"
-                            );
-                            return;
-                        };
-
-                        match session.allocate_send_packet(len) {
-                            Ok(mut pkt) => {
-                                pkt.bytes_mut().copy_from_slice(bytes);
-                                // `send_packet` cannot fail to enqueue the packet, since we already allocated
-                                // space in the ring buffer.
-                                session.send_packet(pkt);
-
-                                if num_segments > 1 {
-                                    batch_size_histogram
-                                        .record(num_segments as u64, &metric_attributes());
-                                }
-                                record_write_retries(&write_retry_histogram, attempt);
-
-                                continue 'next_packet;
-                            }
-                            Err(e) if is_ring_full(&e) && attempt < MAX_RING_FULL_RETRIES => {
-                                if attempt == 0 {
-                                    tracing::trace!("WinTUN ring buffer is full");
-                                }
-
-                                spin_and_yield(attempt);
-
-                                attempt += 1;
-                            }
-                            Err(e) => {
-                                record_write_retries(&write_retry_histogram, attempt);
-                                dropped_packets_counter
-                                    .add(num_segments as u64, &drop_attributes(&e));
-
-                                if is_ring_full(&e) {
-                                    // The ring buffer is still full after all retries; dropping is by design, like for any congested network device.
-                                    tracing::debug!("Failed to write to WinTUN ring buffer: {e}");
-                                } else {
-                                    tracing::warn!("Failed to allocate WinTUN packet: {e}");
-                                }
-
-                                continue 'next_packet;
-                            }
+                        if num_segments > 1 {
+                            batch_size_histogram.record(num_segments as u64, &metric_attributes());
                         }
+                        record_write_retries(&write_retry_histogram, attempt);
+
+                        continue 'next_packet;
+                    }
+                    Err(e) if is_ring_full(&e) && attempt < MAX_RING_FULL_RETRIES => {
+                        if attempt == 0 {
+                            tracing::trace!("WinTUN ring buffer is full");
+                        }
+
+                        spin_and_yield(attempt);
+
+                        attempt += 1;
+                    }
+                    Err(e) => {
+                        record_write_retries(&write_retry_histogram, attempt);
+                        dropped_packets_counter.add(num_segments as u64, &drop_attributes(&e));
+
+                        if is_ring_full(&e) {
+                            // The ring buffer is still full after all retries; dropping is by design, like for any congested network device.
+                            tracing::debug!("Failed to write to WinTUN ring buffer: {e}");
+                        } else {
+                            tracing::warn!("Failed to allocate WinTUN packet: {e}");
+                        }
+
+                        continue 'next_packet;
                     }
                 }
             }
+        }
+    }
 
-            tracing::debug!("Stopping TUN send worker thread because the packet channel closed");
-        })
+    tracing::debug!("Stopping TUN send worker thread because the packet channel closed");
 }
 
 /// Whether the write failed because the WinTUN ring buffer is full.
@@ -582,74 +519,63 @@ fn drop_attributes_without_error() -> [KeyValue; 3] {
     ]
 }
 
-fn start_recv_thread(
-    packet_tx: tun::InboundTx,
-    session: Weak<wintun::Session>,
-) -> io::Result<std::thread::JoinHandle<()>> {
-    std::thread::Builder::new()
-        .name("TUN recv".into())
-        .spawn(move || {
-            let mut batch = tun::PacketBatch::default();
+fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
+    let mut batch = tun::PacketBatch::default();
 
-            'recv: loop {
-                let Some(session) = session.upgrade() else {
-                    tracing::debug!(
-                        "Stopping TUN recv worker thread because the `wintun::Session` was dropped"
-                    );
-                    break;
-                };
+    'recv: loop {
+        let Some(session) = session.upgrade() else {
+            tracing::debug!(
+                "Stopping TUN recv worker thread because the `wintun::Session` was dropped"
+            );
+            break;
+        };
 
-                // Block for the first packet of a batch.
-                let pkt = match session.receive_blocking() {
-                    Ok(pkt) => pkt,
-                    Err(wintun::Error::ShuttingDown) => {
-                        tracing::debug!(
-                            "Stopping TUN recv worker thread because Wintun is shutting down"
-                        );
-                        break;
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to receive from wintun session: {e}");
-                        break;
-                    }
-                };
-
-                if let Some(packet) = parse_packet(&pkt)
-                    && push_or_start_new_batch(&mut batch, packet, &packet_tx).is_err()
-                {
-                    break 'recv;
-                }
-
-                // Drain whatever else is already in the ring buffer, so one channel item
-                // carries the whole burst.
-                loop {
-                    match session.try_receive() {
-                        Ok(Some(pkt)) => {
-                            if let Some(packet) = parse_packet(&pkt)
-                                && push_or_start_new_batch(&mut batch, packet, &packet_tx).is_err()
-                            {
-                                break 'recv;
-                            }
-                        }
-                        // Ring buffer is drained; hand off what we have.
-                        Ok(None) => break,
-                        // Any genuine error will surface via `receive_blocking` above.
-                        Err(_) => break,
-                    }
-                }
-
-                if batch.is_empty() {
-                    continue;
-                }
-
-                if packet_tx.blocking_send(std::mem::take(&mut batch)).is_err() {
-                    tracing::debug!(
-                        "Stopping TUN recv worker thread because the packet channel closed"
-                    );
-                    break 'recv;
-                }
+        // Block for the first packet of a batch.
+        let pkt = match session.receive_blocking() {
+            Ok(pkt) => pkt,
+            Err(wintun::Error::ShuttingDown) => {
+                tracing::debug!("Stopping TUN recv worker thread because Wintun is shutting down");
+                break;
             }
-        })
+            Err(e) => {
+                tracing::error!("Failed to receive from wintun session: {e}");
+                break;
+            }
+        };
+
+        if let Some(packet) = parse_packet(&pkt)
+            && push_or_start_new_batch(&mut batch, packet, &packet_tx).is_err()
+        {
+            break 'recv;
+        }
+
+        // Drain whatever else is already in the ring buffer, so one channel item
+        // carries the whole burst.
+        loop {
+            match session.try_receive() {
+                Ok(Some(pkt)) => {
+                    if let Some(packet) = parse_packet(&pkt)
+                        && push_or_start_new_batch(&mut batch, packet, &packet_tx).is_err()
+                    {
+                        break 'recv;
+                    }
+                }
+                // Ring buffer is drained; hand off what we have.
+                Ok(None) => break,
+                // Any genuine error will surface via `receive_blocking` above.
+                Err(_) => break,
+            }
+        }
+
+        if batch.is_empty() {
+            continue;
+        }
+
+        if packet_tx.blocking_send(std::mem::take(&mut batch)).is_err() {
+            tracing::debug!("Stopping TUN recv worker thread because the packet channel closed");
+            break 'recv;
+        }
+    }
 }
 
 /// Appends the packet to the batch; if the batch is full, hands it off and starts a

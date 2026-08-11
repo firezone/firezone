@@ -19,47 +19,142 @@ pub use macos as platform;
 
 pub use platform::TunDeviceManager;
 
-/// Waits for the TUN worker threads to exit and joins them, surfacing panics in the log.
+/// A TUN device backed by one worker thread per direction.
 ///
-/// Must be called after the state that keeps the threads alive (channels, sessions)
-/// has been dropped; otherwise the threads never exit and we hit the timeout.
+/// Owns the channels connecting the workers to the main thread as well as the
+/// platform state `S` that the workers need released in order to exit.
+/// Dropping releases the channels and `S` first and then joins both workers,
+/// so the underlying device is gone once drop returns.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-pub(crate) fn join_worker_threads(
-    recv_thread: std::thread::JoinHandle<()>,
-    send_thread: std::thread::JoinHandle<()>,
-) {
-    use std::time::{Duration, Instant};
+pub(crate) struct TunWorkers<S> {
+    state: Option<WorkerState<S>>,
 
-    const SHUTDOWN_WAIT: Duration = Duration::from_secs(10);
+    send_thread: Option<std::thread::JoinHandle<()>>,
+    recv_thread: Option<std::thread::JoinHandle<()>>,
+}
 
-    let start = Instant::now();
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+struct WorkerState<S> {
+    outbound_tx: tun::OutboundTx,
+    inbound_rx: tun::InboundRx,
+    #[expect(
+        dead_code,
+        reason = "Only held so it is dropped together with the channels"
+    )]
+    platform: S,
+}
 
-    loop {
-        let recv_thread_finished = recv_thread.is_finished();
-        let send_thread_finished = send_thread.is_finished();
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+impl<S> TunWorkers<S> {
+    /// Spawns the send and recv worker threads for a TUN device.
+    ///
+    /// Panics if called without a Tokio runtime.
+    pub(crate) fn spawn(
+        platform: S,
+        send: impl FnOnce(tun::OutboundRx) + Send + 'static,
+        recv: impl FnOnce(tun::InboundTx) + Send + 'static,
+    ) -> std::io::Result<Self> {
+        let (outbound_tx, outbound_rx) = tun::outbound_channel();
+        let (inbound_tx, inbound_rx) = tun::inbound_channel();
 
-        if recv_thread_finished && send_thread_finished {
-            break;
-        }
+        tokio::spawn(otel_instruments::periodic_queue_length(
+            outbound_tx.downgrade(),
+            [
+                otel_attributes::queue_item_ip_packet_batch(),
+                otel_attributes::network_io_direction_transmit(),
+            ],
+        ));
+        tokio::spawn(otel_instruments::periodic_queue_length(
+            inbound_tx.downgrade(),
+            [
+                otel_attributes::queue_item_ip_packet_batch(),
+                otel_attributes::network_io_direction_receive(),
+            ],
+        ));
 
-        if start.elapsed() > SHUTDOWN_WAIT {
-            tracing::warn!(%recv_thread_finished, %send_thread_finished, "TUN worker threads did not exit gracefully in {SHUTDOWN_WAIT:?}");
-            return;
-        }
+        let send_thread = std::thread::Builder::new()
+            .name("TUN send".to_owned())
+            .spawn(move || send(outbound_rx))?;
+        let recv_thread = std::thread::Builder::new()
+            .name("TUN recv".to_owned())
+            .spawn(move || recv(inbound_tx))?;
 
-        std::thread::sleep(Duration::from_millis(100));
+        Ok(Self {
+            state: Some(WorkerState {
+                outbound_tx,
+                inbound_rx,
+                platform,
+            }),
+            send_thread: Some(send_thread),
+            recv_thread: Some(recv_thread),
+        })
     }
 
-    tracing::debug!(
-        "Worker threads exited gracefully after {:?}",
-        start.elapsed()
-    );
-
-    if let Err(error) = recv_thread.join() {
-        tracing::error!("`Tun::recv_thread` panicked: {error:?}");
+    pub(crate) fn sender(&self) -> &tun::OutboundTx {
+        &self
+            .state
+            .as_ref()
+            .expect("`state` should always be `Some` until `TunWorkers` drops")
+            .outbound_tx
     }
-    if let Err(error) = send_thread.join() {
-        tracing::error!("`Tun::send_thread` panicked: {error:?}");
+
+    pub(crate) fn receiver(&mut self) -> &mut tun::InboundRx {
+        &mut self
+            .state
+            .as_mut()
+            .expect("`state` should always be `Some` until `TunWorkers` drops")
+            .inbound_rx
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+impl<S> Drop for TunWorkers<S> {
+    fn drop(&mut self) {
+        use std::time::{Duration, Instant};
+
+        const SHUTDOWN_WAIT: Duration = Duration::from_secs(10);
+
+        let recv_thread = self
+            .recv_thread
+            .take()
+            .expect("`recv_thread` should always be `Some` until `TunWorkers` drops");
+
+        let send_thread = self
+            .send_thread
+            .take()
+            .expect("`send_thread` should always be `Some` until `TunWorkers` drops");
+
+        let _ = self.state.take(); // Drop all channel and platform state, allowing the worker threads to exit gracefully.
+
+        let start = Instant::now();
+
+        loop {
+            let recv_thread_finished = recv_thread.is_finished();
+            let send_thread_finished = send_thread.is_finished();
+
+            if recv_thread_finished && send_thread_finished {
+                break;
+            }
+
+            if start.elapsed() > SHUTDOWN_WAIT {
+                tracing::warn!(%recv_thread_finished, %send_thread_finished, "TUN worker threads did not exit gracefully in {SHUTDOWN_WAIT:?}");
+                return;
+            }
+
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        tracing::debug!(
+            "Worker threads exited gracefully after {:?}",
+            start.elapsed()
+        );
+
+        if let Err(error) = recv_thread.join() {
+            tracing::error!("TUN recv thread panicked: {error:?}");
+        }
+        if let Err(error) = send_thread.join() {
+            tracing::error!("TUN send thread panicked: {error:?}");
+        }
     }
 }
 
