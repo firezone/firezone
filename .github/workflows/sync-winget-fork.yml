@@ -1,25 +1,29 @@
-# Keeps `master` of the fork firezone/winget-pkgs in sync with upstream
-# microsoft/winget-pkgs, using the same `merge-upstream` API call and the
-# same token as `komac sync-fork` in publish-release.yml. A regularly
-# synced fork keeps that release-time sync a quick fast-forward.
+# Keeps `master` of the fork firezone/winget-pkgs an exact fast-forward
+# mirror of microsoft/winget-pkgs by calling the same `merge-upstream` API
+# as the "Sync fork" button every five minutes. A continuously fresh fork
+# means `komac sync-fork` during client releases never has anything
+# non-trivial to do, so releases stop failing on a stale fork.
 #
-# This workflow lives here instead of in the fork so it can reuse
-# `WINGET_TOKEN` and the fork stays an exact mirror of upstream, without
-# any Firezone-specific commits on its `master`.
+# This lives here rather than in the fork so the fork's `master` carries no
+# Firezone-specific commits: any commit of our own there would force every
+# sync to create a merge commit instead of fast-forwarding.
 #
-# Known failure mode: `WINGET_TOKEN` deliberately lacks the `workflow`
-# scope (see the notes in publish-release.yml), so this sync fails
-# whenever the upstream changes touch `.github/workflows/*`. Sync once
-# manually via the "Sync fork" button on the fork's repository page; the
-# next scheduled run recovers from there.
+# `SYNC_TOKEN` is a fine-grained PAT (resource owner: firezone, repository
+# access: only firezone/winget-pkgs, permissions: Contents and Workflows
+# read-write). The Workflows permission lets the sync move `master` across
+# upstream commits that touch `.github/workflows/*`, which `WINGET_TOKEN`
+# cannot (see the notes in publish-release.yml).
 name: Sync winget-pkgs fork
 
 on:
   schedule:
-    - cron: "17 */6 * * *" # every 6 hours
+    - cron: "2-57/5 * * * *" # every 5 minutes, offset to avoid the congested top of the hour
   workflow_dispatch:
 
 permissions: {}
+
+concurrency:
+  group: sync-winget-fork
 
 jobs:
   sync:
@@ -27,5 +31,5 @@ jobs:
     steps:
       - name: Merge microsoft/winget-pkgs into firezone/winget-pkgs
         env:
-          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: gh api --method POST repos/firezone/winget-pkgs/merge-upstream -f branch=master
