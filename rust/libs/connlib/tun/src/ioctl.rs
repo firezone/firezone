@@ -24,6 +24,11 @@ pub struct Request<P> {
     payload: P,
 }
 
+/// The flags we request for our TUN device.
+#[cfg(target_os = "linux")]
+pub const TUN_FLAGS: std::ffi::c_short =
+    (libc::IFF_TUN | libc::IFF_NO_PI | libc::IFF_MULTI_QUEUE | libc::IFF_VNET_HDR) as _;
+
 #[cfg(target_os = "linux")]
 impl Request<SetTunFlagsPayload> {
     pub fn new(name: &str) -> Self {
@@ -35,13 +40,29 @@ impl Request<SetTunFlagsPayload> {
 
         Self {
             name,
-            payload: SetTunFlagsPayload {
-                flags: (libc::IFF_TUN
-                    | libc::IFF_NO_PI
-                    | libc::IFF_MULTI_QUEUE
-                    | libc::IFF_VNET_HDR) as _,
-            },
+            payload: SetTunFlagsPayload { flags: TUN_FLAGS },
         }
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Request<GetTunFlagsPayload> {
+    pub fn new() -> Self {
+        Self {
+            name: [0u8; libc::IF_NAMESIZE],
+            payload: GetTunFlagsPayload::default(),
+        }
+    }
+
+    pub fn flags(&self) -> std::ffi::c_short {
+        self.payload.flags
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Default for Request<GetTunFlagsPayload> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -71,6 +92,16 @@ impl Default for Request<GetInterfaceNamePayload> {
 #[repr(C)]
 pub struct SetTunFlagsPayload {
     flags: std::ffi::c_short,
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Default)]
+#[repr(C)]
+pub struct GetTunFlagsPayload {
+    flags: std::ffi::c_short,
+    // `TUNGETIFF` copies a full `struct ifreq` (40 bytes) back to userspace;
+    // pad the payload to the size of the `ifreq` union so the write stays in bounds.
+    _padding: [u8; 22],
 }
 
 #[derive(Default)]

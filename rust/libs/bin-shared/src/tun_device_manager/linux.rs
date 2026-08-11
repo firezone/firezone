@@ -41,6 +41,7 @@ use tun::ioctl;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUNSETOFFLOAD: libc::c_ulong = 0x4004_54d0;
+const TUNGETIFF: libc::c_ulong = 0x8004_54d2;
 
 const TUN_F_CSUM: libc::c_uint = 0x01;
 const TUN_F_TSO4: libc::c_uint = 0x02;
@@ -790,6 +791,8 @@ fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
         .context("Failed to set flags on TUN device")?;
     }
 
+    verify_flags(fd).context("Failed to verify TUN device flags")?;
+
     // A successful `TUNSETOFFLOAD` is the kernel promising it handles these offloads on both the
     // read (GRO) and write (GSO) side, so we use it directly as the capability probe rather than
     // gating on a kernel version. It fails on kernels without UDP segmentation offload (added in
@@ -808,6 +811,34 @@ fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
     let fd = unsafe { OwnedFd::from_raw_fd(fd) };
 
     Ok(tun::linux::TunFd::new(Arc::new(fd), offloads))
+}
+
+/// Verifies that the TUN device carries the flags we requested via `TUNSETIFF`.
+///
+/// `TUNSETIFF` against an existing multi-queue device whose other queues are still attached
+/// (e.g. held by another process on the same host) attaches us as an additional queue and leaves
+/// the device's flags untouched, so they may silently differ from the ones we requested.
+/// A missing `IFF_VNET_HDR` in particular makes both sides misinterpret every packet:
+/// we would parse the leading bytes of each read as a `virtio_net_hdr` and the kernel would
+/// reject or misparse our writes.
+fn verify_flags(fd: RawFd) -> Result<()> {
+    let mut request = ioctl::Request::<ioctl::GetTunFlagsPayload>::new();
+
+    // Safety: The file descriptor is valid.
+    unsafe {
+        ioctl::exec(fd, TUNGETIFF, &mut request).context("TUNGETIFF failed")?;
+    }
+
+    let flags = request.flags();
+
+    anyhow::ensure!(
+        flags & ioctl::TUN_FLAGS == ioctl::TUN_FLAGS,
+        "TUN device '{}' is missing required flags (expected {:#06x}, got {flags:#06x}); is it attached to another process?",
+        TunDeviceManager::IFACE_NAME,
+        ioctl::TUN_FLAGS,
+    );
+
+    Ok(())
 }
 
 /// Enables checksum and segmentation offloads on the TUN device, returning whether the kernel
