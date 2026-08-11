@@ -83,8 +83,8 @@ pub trait GuiIntegration {
     fn set_tray_menu(&mut self, app_state: system_tray::AppState);
     fn show_notification(&self, title: impl Into<String>, body: impl Into<String>) -> Result<()>;
 
-    /// Shows a notification about a new release, opening `download_url` on click where the platform supports it.
-    fn show_update_notification(&self, title: impl Into<String>, download_url: Url) -> Result<()>;
+    /// Shows a notification about a new release, opening its download URL on click where the platform supports it.
+    fn show_update_notification(&self, release: updates::Release) -> Result<()>;
 
     fn save_general_settings(&self, settings: &GeneralSettings)
     -> impl Future<Output = Result<()>>;
@@ -837,10 +837,7 @@ impl<I: GuiIntegration> Controller<I> {
         self.release = Some(release.clone());
         self.refresh_ui_state();
 
-        self.integration.show_update_notification(
-            format!("Firezone {} available for download", release.version),
-            release.download_url,
-        )?;
+        self.integration.show_update_notification(release)?;
 
         Ok(())
     }
@@ -1185,11 +1182,10 @@ mod tests {
             .await
             .unwrap();
 
-        let (title, url) = test_controller
+        let shown = test_controller
             .wait_integration(|i| i.update_notifications.first().cloned())
             .await;
-        assert_eq!(title, "Firezone 1.99.0 available for download");
-        assert_eq!(url, release.download_url);
+        assert_eq!(shown, release);
     }
 
     #[tokio::test]
@@ -1493,7 +1489,7 @@ mod tests {
         tray_icons: Vec<system_tray::Icon>,
         tray_states: Vec<system_tray::AppState>,
         notifications: Vec<(String, String)>,
-        update_notifications: Vec<(String, Url)>,
+        update_notifications: Vec<updates::Release>,
         window_visibilities: Vec<bool>,
         shown_overview_page: Vec<SessionViewModel>,
         shown_settings_page: Vec<(MdmSettings, GeneralSettings, AdvancedSettings)>,
@@ -1558,14 +1554,8 @@ mod tests {
             Ok(())
         }
 
-        fn show_update_notification(
-            &self,
-            title: impl Into<String>,
-            download_url: Url,
-        ) -> Result<()> {
-            self.lock()
-                .update_notifications
-                .push((title.into(), download_url));
+        fn show_update_notification(&self, release: updates::Release) -> Result<()> {
+            self.lock().update_notifications.push(release);
 
             Ok(())
         }

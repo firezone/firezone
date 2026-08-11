@@ -164,15 +164,11 @@ impl GuiIntegration for TauriIntegration {
         Ok(())
     }
 
-    fn show_update_notification(
-        &self,
-        title: impl Into<String>,
-        download_url: url::Url,
-    ) -> Result<()> {
+    fn show_update_notification(&self, release: updates::Release) -> Result<()> {
         spawn_notification(
-            title.into(),
+            format!("Firezone {} available for download", release.version),
             "Click here to download the new version".to_owned(),
-            Some(download_url),
+            Some(release.download_url),
         );
 
         Ok(())

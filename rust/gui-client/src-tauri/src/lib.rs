@@ -6,7 +6,7 @@
 // TODO: remove once all clients have migrated.
 #[cfg(target_os = "windows")]
 mod mdm_migration;
-mod updates;
+pub mod updates;
 mod uptime;
 mod view;
 
