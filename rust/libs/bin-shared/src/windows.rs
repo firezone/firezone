@@ -214,6 +214,10 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
 
         // Safety: The `entry` is initialised.
         if let Err(e) = unsafe { DeleteIpForwardEntry2(entry) }.ok() {
+            if e.code() == error::NOT_FOUND {
+                continue;
+            }
+
             tracing::warn!("Failed to remove routing entry: {}", err_with_src(&e));
             continue;
         };
