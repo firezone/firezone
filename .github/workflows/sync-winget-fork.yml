@@ -1,0 +1,31 @@
+# Keeps `master` of the fork firezone/winget-pkgs in sync with upstream
+# microsoft/winget-pkgs, using the same `merge-upstream` API call and the
+# same token as `komac sync-fork` in publish-release.yml. A regularly
+# synced fork keeps that release-time sync a quick fast-forward.
+#
+# This workflow lives here instead of in the fork so it can reuse
+# `WINGET_TOKEN` and the fork stays an exact mirror of upstream, without
+# any Firezone-specific commits on its `master`.
+#
+# Known failure mode: `WINGET_TOKEN` deliberately lacks the `workflow`
+# scope (see the notes in publish-release.yml), so this sync fails
+# whenever the upstream changes touch `.github/workflows/*`. Sync once
+# manually via the "Sync fork" button on the fork's repository page; the
+# next scheduled run recovers from there.
+name: Sync winget-pkgs fork
+
+on:
+  schedule:
+    - cron: "17 */6 * * *" # every 6 hours
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge microsoft/winget-pkgs into firezone/winget-pkgs
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: gh api --method POST repos/firezone/winget-pkgs/merge-upstream -f branch=master
