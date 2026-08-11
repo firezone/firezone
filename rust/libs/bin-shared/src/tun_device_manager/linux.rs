@@ -712,8 +712,64 @@ async fn link_states(handle: &Handle, link_scope_routes: &[RouteMessage]) -> Has
 }
 
 pub struct Tun {
+    state: Option<TunState>,
+
+    send_thread: Option<std::thread::JoinHandle<()>>,
+    recv_thread: Option<std::thread::JoinHandle<()>>,
+}
+
+/// All channel state of the TUN device.
+struct TunState {
     outbound_tx: tun::OutboundTx,
     inbound_rx: tun::InboundRx,
+}
+
+impl Drop for Tun {
+    fn drop(&mut self) {
+        const SHUTDOWN_WAIT: Duration = Duration::from_secs(10);
+
+        let recv_thread = self
+            .recv_thread
+            .take()
+            .expect("`recv_thread` should always be `Some` until `Tun` drops");
+
+        let send_thread = self
+            .send_thread
+            .take()
+            .expect("`send_thread` should always be `Some` until `Tun` drops");
+
+        let _ = self.state.take(); // Drop all channel state, allowing the worker threads to exit gracefully.
+
+        let start = Instant::now();
+
+        loop {
+            let recv_thread_finished = recv_thread.is_finished();
+            let send_thread_finished = send_thread.is_finished();
+
+            if recv_thread_finished && send_thread_finished {
+                break;
+            }
+
+            if start.elapsed() > SHUTDOWN_WAIT {
+                tracing::warn!(%recv_thread_finished, %send_thread_finished, "TUN worker threads did not exit gracefully in {SHUTDOWN_WAIT:?}");
+                return;
+            }
+
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        tracing::debug!(
+            "Worker threads exited gracefully after {:?}",
+            start.elapsed()
+        );
+
+        if let Err(error) = recv_thread.join() {
+            tracing::error!("`Tun::recv_thread` panicked: {error:?}");
+        }
+        if let Err(error) = send_thread.join() {
+            tracing::error!("`Tun::send_thread` panicked: {error:?}");
+        }
+    }
 }
 
 impl Tun {
@@ -740,7 +796,7 @@ impl Tun {
 
         let fd = open_tun()?;
 
-        std::thread::Builder::new()
+        let send_thread = std::thread::Builder::new()
             .name("TUN send".to_owned())
             .spawn({
                 let fd = fd.clone();
@@ -753,7 +809,7 @@ impl Tun {
                 }
             })
             .map_err(io::Error::other)?;
-        std::thread::Builder::new()
+        let recv_thread = std::thread::Builder::new()
             .name("TUN recv".to_owned())
             .spawn(move || {
                 logging::unwrap_or_warn!(
@@ -764,8 +820,12 @@ impl Tun {
             .map_err(io::Error::other)?;
 
         Ok(Self {
-            outbound_tx,
-            inbound_rx,
+            state: Some(TunState {
+                outbound_tx,
+                inbound_rx,
+            }),
+            send_thread: Some(send_thread),
+            recv_thread: Some(recv_thread),
         })
     }
 }
@@ -825,11 +885,19 @@ fn try_enable_offloads(fd: RawFd) -> bool {
 
 impl tun::Tun for Tun {
     fn sender(&self) -> &tun::OutboundTx {
-        &self.outbound_tx
+        &self
+            .state
+            .as_ref()
+            .expect("`state` should always be `Some` until `Tun` drops")
+            .outbound_tx
     }
 
     fn receiver(&mut self) -> &mut tun::InboundRx {
-        &mut self.inbound_rx
+        &mut self
+            .state
+            .as_mut()
+            .expect("`state` should always be `Some` until `Tun` drops")
+            .inbound_rx
     }
 
     fn name(&self) -> &str {

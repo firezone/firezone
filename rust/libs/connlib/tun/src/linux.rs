@@ -196,7 +196,17 @@ where
             let mut overflow = VecDeque::new();
 
             loop {
-                let mut guard = fd.readable().await?;
+                // Without the explicit wake-up on `closed`, this task would idle in
+                // `readable` until the next packet arrives, keeping the TUN fd (and
+                // thereby the device) alive long after the receiver is gone.
+                let mut guard = tokio::select! {
+                    guard = fd.readable() => guard?,
+                    () = inbound_tx.closed() => {
+                        tracing::debug!("Inbound packet receiver gone, shutting down task");
+
+                        return anyhow::Ok(());
+                    }
+                };
 
                 loop {
                     // A full batch spills the rest of its super packet into `overflow`:
