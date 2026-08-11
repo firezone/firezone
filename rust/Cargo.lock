@@ -1865,6 +1865,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "desktop-notifications"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "futures",
+ "tokio",
+ "tracing",
+ "url",
+ "windows",
+ "zbus",
+]
+
+[[package]]
 name = "difference"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2439,6 +2452,7 @@ dependencies = [
  "connlib-model",
  "dbus-secret-service-keyring-store",
  "derive_more",
+ "desktop-notifications",
  "dirs",
  "embed-resource",
  "fd-lock",
@@ -2503,7 +2517,6 @@ dependencies = [
  "windows-security",
  "windows-service",
  "winreg 0.56.0",
- "zbus",
  "zip",
 ]
 

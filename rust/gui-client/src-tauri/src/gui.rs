@@ -159,7 +159,9 @@ impl GuiIntegration for TauriIntegration {
     }
 
     fn show_notification(&self, title: impl Into<String>, body: impl Into<String>) -> Result<()> {
-        os::show_notification(title.into(), body.into())
+        spawn_notification(title.into(), body.into(), None);
+
+        Ok(())
     }
 
     fn show_update_notification(
@@ -167,7 +169,15 @@ impl GuiIntegration for TauriIntegration {
         title: impl Into<String>,
         download_url: url::Url,
     ) -> Result<()> {
-        os::show_update_notification(title.into(), download_url)
+        // Clickable notifications only work on Windows.
+        #[cfg(target_os = "windows")]
+        let body = "Click here to download the new version";
+        #[cfg(not(target_os = "windows"))]
+        let body = "";
+
+        spawn_notification(title.into(), body.to_owned(), Some(download_url));
+
+        Ok(())
     }
 
     fn set_window_visible(&self, visible: bool) -> Result<()> {
@@ -230,6 +240,21 @@ pub struct RunConfig {
     pub telemetry_allowed: bool,
     pub quit_after: Option<u64>,
     pub fail_with: Option<Failure>,
+}
+
+/// Shows a notification without blocking the caller.
+///
+/// Notifications are fire-and-forget: failures are only logged because
+/// there is nothing the caller could do about them.
+fn spawn_notification(title: String, body: String, open_url: Option<url::Url>) {
+    let notifier = desktop_notifications::Notifier::new(os::notification_app_id());
+
+    tokio::spawn(async move {
+        match notifier.show(&title, &body, open_url.as_ref()).await {
+            Ok(()) => tracing::debug!(%title, %body, "Showed notification"),
+            Err(e) => tracing::debug!(%title, "Failed to show notification: {e:#}"),
+        }
+    });
 }
 
 /// IPC messages that a newly launched instance may send to an already

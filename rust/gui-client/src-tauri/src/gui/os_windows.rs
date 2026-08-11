@@ -1,10 +1,5 @@
 use anyhow::{Context, Result};
 use std::env;
-use windows::{
-    Data::Xml::Dom::XmlDocument,
-    UI::Notifications::{ToastNotification, ToastNotificationManager},
-    core::HSTRING,
-};
 use winreg::RegKey;
 use winreg::enums::*;
 
@@ -43,73 +38,7 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
     Ok(())
 }
 
-/// Show a notification in the bottom right of the screen
-pub(crate) fn show_notification(title: String, body: String) -> Result<()> {
-    let toast_xml = format!(
-        r#"<toast>
-    <visual>
-        <binding template="ToastGeneric">
-            <text id="1">{title}</text>
-            <text id="2">{body}</text>
-        </binding>
-    </visual>
-</toast>"#,
-        title = xml_escape(&title),
-        body = xml_escape(&body),
-    );
-
-    show_toast(&toast_xml).context("Failed to show notification")?;
-
-    tracing::debug!(%title, %body, "Showing notification");
-
-    Ok(())
-}
-
-/// Show a notification about a new release that opens `download_url` when activated
-///
-/// The toast declares `activationType="protocol"`, so the shell opens the URL
-/// itself. Unlike an in-process activation callback, this also works after the
-/// toast has moved into the notification center. `duration="long"` keeps the
-/// toast on screen for 25 seconds instead of the default ~6.
-pub(crate) fn show_update_notification(title: String, download_url: url::Url) -> Result<()> {
-    let toast_xml = format!(
-        r#"<toast duration="long" activationType="protocol" launch="{url}">
-    <visual>
-        <binding template="ToastGeneric">
-            <text id="1">{title}</text>
-            <text id="2">Click here to download the new version</text>
-        </binding>
-    </visual>
-</toast>"#,
-        url = xml_escape(download_url.as_str()),
-        title = xml_escape(&title),
-    );
-
-    show_toast(&toast_xml).context("Failed to show update notification")?;
-
-    tracing::debug!(%title, %download_url, "Showing update notification");
-
-    Ok(())
-}
-
-/// Displays a toast notification from the given [toast content XML].
-///
-/// [toast content XML]: https://learn.microsoft.com/en-us/uwp/schemas/tiles/toastschema/element-toast
-fn show_toast(toast_xml: &str) -> Result<()> {
-    let xml = XmlDocument::new()?;
-    xml.LoadXml(&HSTRING::from(toast_xml))
-        .context("Failed to load toast XML")?;
-    let toast =
-        ToastNotification::CreateToastNotification(&xml).context("Failed to create toast")?;
-    ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(&app_id()))
-        .context("Failed to create toast notifier")?
-        .Show(&toast)
-        .context("Failed to show toast")?;
-
-    Ok(())
-}
-
-/// The AppUserModelID Windows attributes our toasts to
+/// The AppUserModelID Windows attributes our notifications to
 ///
 /// Windows silently drops a toast whose AUMID doesn't match the calling
 /// process's identity. Packaged builds run under the sparse MSIX identity, so
@@ -119,18 +48,10 @@ fn show_toast(toast_xml: &str) -> Result<()> {
 /// come from the manifest's `VisualElements`. Un-packaged dev builds (no
 /// package identity) fall back to [`crate::BUNDLE_ID`].
 /// <https://github.com/tauri-apps/winrt-notification/issues/17#issuecomment-1988715694>
-fn app_id() -> String {
+pub(crate) fn notification_app_id() -> String {
     if crate::package_identity::has_package_identity() {
         format!("{}!Firezone", crate::PACKAGE_FAMILY_NAME)
     } else {
         crate::BUNDLE_ID.to_owned()
     }
-}
-
-fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
 }

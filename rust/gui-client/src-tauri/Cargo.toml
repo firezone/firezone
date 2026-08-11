@@ -21,6 +21,7 @@ clap = { workspace = true, features = ["derive", "env"] }
 client-shared = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
+desktop-notifications = { workspace = true }
 fd-lock = { workspace = true }
 flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
@@ -84,7 +85,6 @@ mimalloc = { workspace = true }
 nix = { workspace = true, features = ["user"] }
 sd-notify = { workspace = true }
 tracing-journald = { workspace = true }
-zbus = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mimalloc = { workspace = true }
@@ -128,10 +128,6 @@ features = [
     # a new external location.
     "ApplicationModel",
     "Foundation_Collections",
-    # `XmlDocument` and `ToastNotification` / `ToastNotificationManager`
-    # for the protocol-activated update toast.
-    "Data_Xml_Dom",
-    "UI_Notifications",
 ]
 
 [build-dependencies]
