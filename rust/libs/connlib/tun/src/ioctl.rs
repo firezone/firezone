@@ -25,9 +25,13 @@ pub struct Request<P> {
 }
 
 /// The flags we request for our TUN device.
+///
+/// Deliberately not `IFF_MULTI_QUEUE`: we only ever open a single queue, and attaching
+/// to a device that another process still holds must fail instead of splitting traffic
+/// between two processes.
 #[cfg(target_os = "linux")]
 pub const TUN_FLAGS: std::ffi::c_short =
-    (libc::IFF_TUN | libc::IFF_NO_PI | libc::IFF_MULTI_QUEUE | libc::IFF_VNET_HDR) as _;
+    (libc::IFF_TUN | libc::IFF_NO_PI | libc::IFF_VNET_HDR) as _;
 
 #[cfg(target_os = "linux")]
 impl Request<SetTunFlagsPayload> {
