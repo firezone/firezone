@@ -29,7 +29,6 @@ defmodule Portal.AccountFixtures do
       },
       features: %{
         policy_conditions: true,
-        traffic_filters: true,
         idp_sync: true,
         rest_api: true,
         iceless: false

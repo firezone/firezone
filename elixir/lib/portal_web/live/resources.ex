@@ -10,7 +10,7 @@ defmodule PortalWeb.Resources do
 
   import PortalWeb.Resources.Components,
     only: [
-      map_filters_form_attrs: 2,
+      map_filters_form_attrs: 1,
       nil_site_label: 1,
       panel_shell: 1,
       resource_details_panel: 1,
@@ -706,7 +706,7 @@ defmodule PortalWeb.Resources do
       socket.assigns.resource_form.address_description_changed? ||
         payload["_target"] == ["resource", "address_description"]
 
-    attrs = map_filters_form_attrs(attrs, socket.assigns.account)
+    attrs = map_filters_form_attrs(attrs)
 
     changeset =
       if socket.assigns.resource_panel.view == :new_form do
@@ -725,7 +725,7 @@ defmodule PortalWeb.Resources do
   end
 
   def handle_event("submit_resource_form", %{"resource" => attrs}, socket) do
-    attrs = map_filters_form_attrs(attrs, socket.assigns.account)
+    attrs = map_filters_form_attrs(attrs)
 
     if socket.assigns.resource_panel.view == :new_form do
       case Database.create_resource(

@@ -2656,7 +2656,8 @@
             "type": "string"
           },
           "firezone_id": {
-            "description": "Firezone ID",
+            "description": "Identifier the Client reports for itself. Null for a Client whose identity comes from an MDM-issued certificate, since a self-reported value could otherwise be used to claim another Client's record.",
+            "nullable": true,
             "type": "string"
           },
           "hostname": {

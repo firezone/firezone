@@ -60,11 +60,16 @@ defmodule PortalAPI.Sockets.LatestSession do
         device_id: attrs.device_id,
         actor_id: attrs[:actor_id],
         firezone_id: attrs[:firezone_id],
+        device_serial: attrs[:device_serial],
+        device_uuid: attrs[:device_uuid],
+        identifier_for_vendor: attrs[:identifier_for_vendor],
+        firebase_installation_id: attrs[:firebase_installation_id],
         last_attested_device_serial: attested[:last_attested_device_serial],
         last_attested_device_uuid: attested[:last_attested_device_uuid],
         last_attested_mdm_device_id: attested[:last_attested_mdm_device_id],
         last_attested_cert_serial: attested[:last_attested_cert_serial],
         last_attested_cert_fingerprint: attested[:last_attested_cert_fingerprint],
+        last_attested_cert_issuer: attested[:last_attested_cert_issuer],
         last_attested_at: attested[:last_attested_at],
         token_id: Map.fetch!(attrs, token_field),
         public_key: attrs[:public_key],
@@ -131,11 +136,16 @@ defmodule PortalAPI.Sockets.LatestSession do
       device_id: Ecto.UUID,
       actor_id: Ecto.UUID,
       firezone_id: :string,
+      device_serial: :string,
+      device_uuid: :string,
+      identifier_for_vendor: :string,
+      firebase_installation_id: :string,
       last_attested_device_serial: :string,
       last_attested_device_uuid: :string,
       last_attested_mdm_device_id: :string,
       last_attested_cert_serial: :string,
       last_attested_cert_fingerprint: :string,
+      last_attested_cert_issuer: :binary,
       last_attested_at: :utc_datetime_usec,
       token_id: Ecto.UUID,
       public_key: :string,
@@ -159,15 +169,22 @@ defmodule PortalAPI.Sockets.LatestSession do
     }
 
     @attested_identifier_fields ~w[last_attested_device_serial last_attested_device_uuid last_attested_mdm_device_id]a
+
+    # The MDM device id and the pinned certificate fingerprint are the
+    # identifiers a flush can collide on, since they are the ones carrying
+    # unique indexes. A hardware serial or UUID shared across rows is normal: a
+    # device whose MDM record changed enrolls as a new row and keeps the
+    # hardware it reports.
+    @attested_unique_fields ~w[last_attested_mdm_device_id last_attested_cert_fingerprint]a
     @attested_fields @attested_identifier_fields ++
-                       ~w[last_attested_cert_serial last_attested_cert_fingerprint last_attested_at]a
+                       ~w[last_attested_cert_serial last_attested_cert_fingerprint
+                          last_attested_cert_issuer last_attested_at]a
     @attested_probe_types %{
       account_id: Ecto.UUID,
       actor_id: Ecto.UUID,
       device_id: Ecto.UUID,
-      last_attested_device_serial: :string,
-      last_attested_device_uuid: :string,
-      last_attested_mdm_device_id: :string
+      last_attested_mdm_device_id: :string,
+      last_attested_cert_fingerprint: :string
     }
 
     @token_schemas %{
@@ -227,12 +244,32 @@ defmodule PortalAPI.Sockets.LatestSession do
 
       set =
         [
-          # The latest session's firezone_id follows the device: an attested
-          # connect merges a reinstalled client (new firezone_id, same attested
-          # identity) onto its existing row in memory, and this flush persists
-          # the new firezone_id. Entries that carry none (gateways) keep the
-          # row's current value.
-          firezone_id: dynamic([d, v], coalesce(v.firezone_id, d.firezone_id)),
+          # An attested device is identified by its certificate alone, so its
+          # firezone_id column is cleared: nothing can then resolve the row
+          # from a client-supplied value. Keyed on the pinned certificate
+          # rather than the MDM device id, since a certificate asserting no
+          # MDM id still attests and would otherwise keep an id an unattested
+          # connect could later use to adopt the row. Otherwise the latest
+          # session's firezone_id follows the device, and entries that carry
+          # none (gateways) keep the row's current value.
+          firezone_id:
+            dynamic(
+              [d, v],
+              fragment(
+                "CASE WHEN ? IS NOT NULL THEN NULL ELSE COALESCE(?, ?) END",
+                v.last_attested_cert_fingerprint,
+                v.firezone_id,
+                d.firezone_id
+              )
+            ),
+          # Self-reported and refreshed on every connect. A client that omits
+          # one keeps the row's current value; only the client can correct it.
+          device_serial: dynamic([d, v], coalesce(v.device_serial, d.device_serial)),
+          device_uuid: dynamic([d, v], coalesce(v.device_uuid, d.device_uuid)),
+          identifier_for_vendor:
+            dynamic([d, v], coalesce(v.identifier_for_vendor, d.identifier_for_vendor)),
+          firebase_installation_id:
+            dynamic([d, v], coalesce(v.firebase_installation_id, d.firebase_installation_id)),
           # The attested fields move as one snapshot, keyed by
           # last_attested_at (when the device last proved possession).
           # Entries that carry no snapshot keep the row's current values, and
@@ -246,6 +283,7 @@ defmodule PortalAPI.Sockets.LatestSession do
           last_attested_mdm_device_id: attested_field(:last_attested_mdm_device_id),
           last_attested_cert_serial: attested_field(:last_attested_cert_serial),
           last_attested_cert_fingerprint: attested_field(:last_attested_cert_fingerprint),
+          last_attested_cert_issuer: attested_field(:last_attested_cert_issuer),
           last_attested_at: attested_field(:last_attested_at),
           public_key: dynamic([d, v], v.public_key),
           last_seen_user_agent: dynamic([d, v], v.user_agent),
@@ -348,8 +386,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     end
 
     # A merged firezone_id can collide with another device row of the same
-    # actor (e.g. an unattested row created before the device started
-    # attesting). The colliding entry keeps its session but skips the identity
+    # actor. The colliding entry keeps its session but skips the identity
     # change, so one poisoned entry cannot fail the whole batch; the merge
     # retries on the device's next connect. Entries carry a firezone_id only
     # when their connect actually adopted a new one, so in the steady state
@@ -358,11 +395,8 @@ defmodule PortalAPI.Sockets.LatestSession do
     # between still raises unique_violation, which the caller's rescue turns
     # into failed entries that reconnect and retry.
     #
-    # NOTE (deferred, pending design decision): the intended end state is
-    # attested-row-wins with the stale unattested row absorbed/deleted, rather
-    # than skip-forever. Until that lands, a device whose attested identity
-    # displaced an older row will keep this firezone_id split until the stale
-    # row is removed; the log line below is the actionable signal.
+    # Attested devices never contend here: they carry no firezone_id and the
+    # column is cleared for them, so only unattested merges reach this probe.
     defp strip_conflicting_firezone_ids(rows) do
       probe_rows =
         for row <- rows, not is_nil(row.firezone_id), not is_nil(row.actor_id) do
@@ -412,7 +446,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     # attested update entirely, since the snapshot is all-or-nothing.
     defp dedupe_proposed_attested_identities(rows) do
       losers =
-        for field <- @attested_identifier_fields,
+        for field <- @attested_unique_fields,
             {_key, contenders} <-
               rows
               |> Enum.filter(&(not is_nil(Map.fetch!(&1, field)) and not is_nil(&1.actor_id)))
@@ -456,8 +490,8 @@ defmodule PortalAPI.Sockets.LatestSession do
       probe_rows =
         for row <- rows,
             not is_nil(row.actor_id),
-            Enum.any?(@attested_identifier_fields, &(not is_nil(Map.fetch!(row, &1)))) do
-          Map.take(row, [:account_id, :actor_id, :device_id | @attested_identifier_fields])
+            Enum.any?(@attested_unique_fields, &(not is_nil(Map.fetch!(row, &1)))) do
+          Map.take(row, [:account_id, :actor_id, :device_id | @attested_unique_fields])
         end
 
       conflicts =
@@ -469,9 +503,8 @@ defmodule PortalAPI.Sockets.LatestSession do
             on: d.account_id == v.account_id and d.actor_id == v.actor_id and d.id != v.device_id,
             where:
               d.type == :client and
-                (d.last_attested_device_serial == v.last_attested_device_serial or
-                   d.last_attested_device_uuid == v.last_attested_device_uuid or
-                   d.last_attested_mdm_device_id == v.last_attested_mdm_device_id),
+                (d.last_attested_mdm_device_id == v.last_attested_mdm_device_id or
+                   d.last_attested_cert_fingerprint == v.last_attested_cert_fingerprint),
             select: %{device_id: v.device_id, conflicting_id: d.id}
           )
           |> probe()

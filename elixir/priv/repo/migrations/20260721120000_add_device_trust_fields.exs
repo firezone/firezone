@@ -4,8 +4,8 @@ defmodule Portal.Repo.Migrations.AddDeviceTrustFields do
 
   The existing `device_serial` / `device_uuid` / `identifier_for_vendor`
   columns are self-reported by the client and therefore spoofable. The
-  `attested_*` columns hold identifiers proven by answering the portal's
-  challenge-response with an MDM-provisioned client certificate:
+  `attested_*` columns hold identifiers proven by presenting an
+  MDM-provisioned client certificate over mutual TLS:
 
     * `last_attested_device_serial` / `last_attested_device_uuid` - hardware identifiers
       (serial, SMBIOS UUID / UDID) asserted in the certificate subject/SAN.
@@ -14,8 +14,8 @@ defmodule Portal.Repo.Migrations.AddDeviceTrustFields do
     * `last_attested_mdm_device_id` - the MDM's logical device ID asserted in the
       certificate (e.g. Intune {{DeviceId}}), the stable link to the MDM
       record on every platform.
-    * `last_attested_cert_serial` / `last_attested_cert_fingerprint` - the pinned client certificate used
-      to answer the challenge-response.
+    * `last_attested_cert_serial` / `last_attested_cert_fingerprint` - the pinned client certificate
+      presented at connect.
 
   An attested identifier anchors a physical device, so each one is unique per
   actor: the partial unique indexes let the attested-first lookup merge a

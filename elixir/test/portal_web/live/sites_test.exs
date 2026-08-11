@@ -118,7 +118,6 @@ defmodule PortalWeb.SitesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
             idp_sync: true,
             rest_api: true
           }

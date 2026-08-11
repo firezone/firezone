@@ -274,6 +274,32 @@ impl StatsEvent {
             processing_duration_ns: u64::from_ne_bytes(*duration_chunk),
         })
     }
+
+    /// Parses a [`StatsEvent`] from a perf-buffer sample split into up to two chunks.
+    ///
+    /// A sample that straddles the ring-buffer boundary arrives as two slices; `tail` is empty
+    /// for samples that fit contiguously.
+    #[cfg(feature = "std")]
+    pub fn from_chunks(head: &[u8], tail: &[u8]) -> Option<Self> {
+        if tail.is_empty() {
+            return Self::from_bytes(head);
+        }
+
+        let mut bytes = [0_u8; core::mem::size_of::<Self>()];
+
+        let head_len = head.len().min(bytes.len());
+        let (head_dst, tail_dst) = bytes.split_at_mut(head_len);
+        head_dst.copy_from_slice(&head[..head_len]);
+
+        let tail_len = tail.len().min(tail_dst.len());
+        tail_dst[..tail_len].copy_from_slice(&tail[..tail_len]);
+
+        if head_len + tail_len < bytes.len() {
+            return None;
+        }
+
+        Self::from_bytes(&bytes)
+    }
 }
 
 #[inline]
@@ -306,6 +332,39 @@ mod stats_event_tests {
             parsed.processing_duration_ns,
             original.processing_duration_ns
         );
+    }
+
+    #[test]
+    fn from_chunks_reassembles_straddled_samples() {
+        let original = StatsEvent {
+            relayed_data: 4242,
+            processing_duration_ns: 9999,
+        };
+
+        // SAFETY: `StatsEvent` is `#[repr(C)]` and contains only `u64`s, so every byte pattern
+        // of its size is a valid `[u8; 16]` and vice versa.
+        let bytes: [u8; 16] = unsafe { core::mem::transmute(original) };
+
+        // The kernel pads samples to 8-byte alignment; emulate a padded record.
+        let mut padded = [0_u8; 24];
+        padded[..16].copy_from_slice(&bytes);
+
+        for split in 0..=padded.len() {
+            let (head, tail) = padded.split_at(split);
+
+            let parsed = StatsEvent::from_chunks(head, tail).expect("chunks cover the sample");
+
+            assert_eq!(parsed.relayed_data, original.relayed_data);
+            assert_eq!(
+                parsed.processing_duration_ns,
+                original.processing_duration_ns
+            );
+        }
+    }
+
+    #[test]
+    fn from_chunks_rejects_a_truncated_sample() {
+        assert!(StatsEvent::from_chunks(&[0; 10], &[0; 5]).is_none());
     }
 }
 
