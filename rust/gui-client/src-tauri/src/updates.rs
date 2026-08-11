@@ -109,18 +109,11 @@ impl Checker {
 
     /// Call this when we just checked the network
     fn handle_check(&mut self, release: Release) {
-        let different_than_latest_notified = match &self.notification {
-            None => release.version != self.ours,
-            Some(notified) => release.version != notified.version,
-        };
+        let desired = (release.version > self.ours).then_some(release);
 
-        if different_than_latest_notified {
+        if desired != self.notification {
+            self.notification = desired;
             self.notification_dirty = true;
-            self.notification = if release.version == self.ours {
-                None
-            } else {
-                Some(release)
-            };
         }
     }
 
@@ -261,6 +254,17 @@ mod tests {
         assert_eq!(fsm.poll(), Event::CheckNetwork);
         fsm.handle_check(release(1, 0, 0));
         assert_eq!(fsm.poll(), Event::Notify(None));
+        assert_eq!(fsm.poll(), Event::WaitInterval);
+    }
+
+    #[test]
+    fn checker_ignores_older_release() {
+        let mut fsm = Checker::new(Version::new(1, 0, 1));
+        assert_eq!(fsm.poll(), Event::WaitRandom);
+        assert_eq!(fsm.poll(), Event::CheckNetwork);
+
+        // The website may advertise an older release than ours, e.g. right after we shipped a new one; don't notify.
+        fsm.handle_check(release(1, 0, 0));
         assert_eq!(fsm.poll(), Event::WaitInterval);
     }
 
