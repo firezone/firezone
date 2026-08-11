@@ -4,7 +4,7 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::{
-    controller::{Controller, ControllerRequest, Failure, GuiIntegration, NotificationHandle},
+    controller::{Controller, ControllerRequest, Failure, GuiIntegration},
     deep_link,
     ipc::{self, ClientRead, ClientWrite, SocketId},
     launch_lock::{self, FirstInstance, LaunchLock},
@@ -158,11 +158,7 @@ impl GuiIntegration for TauriIntegration {
         self.tray.update(app_state)
     }
 
-    fn show_notification(
-        &self,
-        title: impl Into<String>,
-        body: impl Into<String>,
-    ) -> Result<NotificationHandle> {
+    fn show_notification(&self, title: impl Into<String>, body: impl Into<String>) -> Result<()> {
         os::show_notification(title.into(), body.into())
     }
 

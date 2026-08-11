@@ -34,7 +34,7 @@ pub mod settings;
 ///
 /// Note: under the sparse MSIX identity this is *not* the
 /// AppUserModelId Windows uses to label notifications; that is derived
-/// from [`PACKAGE_FAMILY_NAME`] in `gui::os::show_notification`. It is
+/// from [`PACKAGE_FAMILY_NAME`] in `gui::os::app_id`. It is
 /// still used as the toast AUMID for un-packaged dev builds, which have
 /// no package identity.
 pub const BUNDLE_ID: &str = "dev.firezone.client";
@@ -52,7 +52,7 @@ pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 /// `register-sparse.exe` to stage / provision / deprovision the
 /// package against the AppX deployment service, and to derive the
 /// package AUMID (`<PACKAGE_FAMILY_NAME>!Firezone`) that Windows uses to
-/// label toast notifications (see `gui::os::show_notification`).
+/// label toast notifications (see `gui::os::app_id`).
 pub const PACKAGE_FAMILY_NAME: &str = env!("FIREZONE_PACKAGE_FAMILY_NAME");
 
 #[cfg(target_os = "linux")]

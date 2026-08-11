@@ -1,9 +1,12 @@
 use anyhow::{Context, Result};
 use std::env;
+use windows::{
+    Data::Xml::Dom::XmlDocument,
+    UI::Notifications::{ToastNotification, ToastNotificationManager},
+    core::HSTRING,
+};
 use winreg::RegKey;
 use winreg::enums::*;
-
-use crate::controller::NotificationHandle;
 
 pub async fn set_autostart(enabled: bool) -> Result<()> {
     // Get path to the current executable
@@ -41,57 +44,34 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
 }
 
 /// Show a notification in the bottom right of the screen
-///
-/// Known issue: If the notification times out and goes into the notification center
-/// (the little thing that pops up when you click the bell icon), then we may not get the
-/// click signal.
-///
-/// I've seen this reported by people using Powershell, C#, etc., so I think it might
-/// be a Windows bug?
-/// - <https://superuser.com/questions/1488763/windows-10-notifications-not-activating-the-associated-app-when-clicking-on-it>
-/// - <https://stackoverflow.com/questions/65835196/windows-toast-notification-com-not-working>
-/// - <https://answers.microsoft.com/en-us/windows/forum/all/notifications-not-activating-the-associated-app/7a3b31b0-3a20-4426-9c88-c6e3f2ac62c6>
-///
-/// Firefox doesn't have this problem. Maybe they're using a different API.
-pub(crate) fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
-    let (tx, rx) = futures::channel::oneshot::channel();
+pub(crate) fn show_notification(title: String, body: String) -> Result<()> {
+    let toast_xml = format!(
+        r#"<toast>
+    <visual>
+        <binding template="ToastGeneric">
+            <text id="1">{title}</text>
+            <text id="2">{body}</text>
+        </binding>
+    </visual>
+</toast>"#,
+        title = xml_escape(&title),
+        body = xml_escape(&body),
+    );
 
-    // For some reason `on_activated` is FnMut
-    let mut tx = Some(tx);
-
-    tauri_winrt_notification::Toast::new(&app_id())
-        .title(&title)
-        .text1(&body)
-        .scenario(tauri_winrt_notification::Scenario::Reminder)
-        .on_activated(move |_| {
-            let Some(tx) = tx.take() else { return Ok(()) };
-
-            let _ = tx.send(());
-
-            Ok(())
-        })
-        .show()
-        .context("Failed to show notification")?;
+    show_toast(&toast_xml).context("Failed to show notification")?;
 
     tracing::debug!(%title, %body, "Showing notification");
 
-    Ok(NotificationHandle { on_click: rx })
+    Ok(())
 }
 
 /// Show a notification about a new release that opens `download_url` when activated
 ///
 /// The toast declares `activationType="protocol"`, so the shell opens the URL
-/// itself. Unlike the in-process activation callback used by
-/// [`show_notification`], this also works after the toast has moved into the
-/// notification center. `duration="long"` keeps the toast on screen for 25
-/// seconds instead of the default ~6.
+/// itself. Unlike an in-process activation callback, this also works after the
+/// toast has moved into the notification center. `duration="long"` keeps the
+/// toast on screen for 25 seconds instead of the default ~6.
 pub(crate) fn show_update_notification(title: String, download_url: url::Url) -> Result<()> {
-    use windows::{
-        Data::Xml::Dom::XmlDocument,
-        UI::Notifications::{ToastNotification, ToastNotificationManager},
-        core::HSTRING,
-    };
-
     let toast_xml = format!(
         r#"<toast duration="long" activationType="protocol" launch="{url}">
     <visual>
@@ -105,8 +85,19 @@ pub(crate) fn show_update_notification(title: String, download_url: url::Url) ->
         title = xml_escape(&title),
     );
 
+    show_toast(&toast_xml).context("Failed to show update notification")?;
+
+    tracing::debug!(%title, %download_url, "Showing update notification");
+
+    Ok(())
+}
+
+/// Displays a toast notification from the given [toast content XML].
+///
+/// [toast content XML]: https://learn.microsoft.com/en-us/uwp/schemas/tiles/toastschema/element-toast
+fn show_toast(toast_xml: &str) -> Result<()> {
     let xml = XmlDocument::new()?;
-    xml.LoadXml(&HSTRING::from(&toast_xml))
+    xml.LoadXml(&HSTRING::from(toast_xml))
         .context("Failed to load toast XML")?;
     let toast =
         ToastNotification::CreateToastNotification(&xml).context("Failed to create toast")?;
@@ -114,8 +105,6 @@ pub(crate) fn show_update_notification(title: String, download_url: url::Url) ->
         .context("Failed to create toast notifier")?
         .Show(&toast)
         .context("Failed to show toast")?;
-
-    tracing::debug!(%title, %download_url, "Showing update notification");
 
     Ok(())
 }

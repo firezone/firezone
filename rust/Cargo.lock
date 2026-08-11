@@ -2486,7 +2486,6 @@ dependencies = [
  "tauri-runtime",
  "tauri-specta",
  "tauri-utils",
- "tauri-winrt-notification",
  "telemetry",
  "tempfile",
  "thiserror 2.0.19",

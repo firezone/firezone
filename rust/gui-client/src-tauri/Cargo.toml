@@ -92,7 +92,6 @@ mimalloc = { workspace = true }
 [target.'cfg(target_os = "windows")'.dependencies]
 admx-macro = { workspace = true }
 mimalloc = { workspace = true }
-tauri-winrt-notification = "0.7.2"
 windows-native-keyring-store = { workspace = true }
 windows-security = { workspace = true }
 windows-service = { workspace = true }
