@@ -152,7 +152,7 @@ mio = "1.2.1"
 moka = "0.12.15"
 native-dialog = "0.9.0"
 netlink-packet-core = "0.8.1"
-netlink-packet-route = "0.29.0"
+netlink-packet-route = "0.31.0"
 network-types = { version = "0.2.0", default-features = false }
 nix = "0.31.3"
 notify-rust = "4.17.0"
@@ -183,7 +183,7 @@ resolv-conf = "0.7.6"
 ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
 rpassword = "7.5.3"
-rtnetlink = { version = "0.20.0", default-features = false, features = ["tokio_socket"] }
+rtnetlink = { version = "0.21.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.40", default-features = false, features = ["ring"] }
 rustls-pki-types = "1.14.1"
 rustls-platform-verifier = "0.7.0"
