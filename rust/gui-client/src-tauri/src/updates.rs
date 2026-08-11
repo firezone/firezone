@@ -29,6 +29,8 @@ struct ApiReleasesResponse {
 /// The last version we notified about is only kept in memory, so the user
 /// is reminded about a pending update once per GUI session.
 pub async fn checker_task(ctlr_tx: mpsc::Sender<Option<Release>>, debug_mode: bool) -> Result<()> {
+    delete_legacy_version_file().await;
+
     let (current_version, interval_in_seconds) = if debug_mode {
         (Version::new(1, 0, 0), 30)
     } else {
@@ -64,6 +66,20 @@ pub async fn checker_task(ctlr_tx: mpsc::Sender<Option<Release>>, debug_mode: bo
                 ctlr_tx.send(notification).await?;
             }
         }
+    }
+}
+
+/// Deletes the file where previous versions persisted the last version we notified about.
+// TODO: Remove this after a few releases.
+async fn delete_legacy_version_file() {
+    let Some(path) = known_dirs::session().map(|dir| dir.join("latest_version_seen.txt")) else {
+        return;
+    };
+
+    match tokio::fs::remove_file(&path).await {
+        Ok(()) => tracing::debug!(path = %path.display(), "Deleted legacy version file"),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => tracing::debug!("Failed to delete legacy version file: {e}"),
     }
 }
 
