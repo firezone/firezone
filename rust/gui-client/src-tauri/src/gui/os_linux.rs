@@ -1,7 +1,5 @@
 use anyhow::{Context as _, Result};
 
-use crate::controller::NotificationHandle;
-
 pub async fn set_autostart(enabled: bool) -> Result<()> {
     let dir = dirs::config_local_dir()
         .context("Can't compute `config_local_dir`")?
@@ -36,9 +34,7 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
     clippy::unnecessary_wraps,
     reason = "Signature must match other platforms."
 )]
-pub(crate) fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
-    let (_, rx) = futures::channel::oneshot::channel();
-
+pub(crate) fn show_notification(title: String, body: String) -> Result<()> {
     tokio::spawn(async move {
         let notification = match notify_rust::Notification::new()
             .summary(&title)
@@ -58,7 +54,7 @@ pub(crate) fn show_notification(title: String, body: String) -> Result<Notificat
         notification.wait_for_action_async(|_| {}).await;
     });
 
-    Ok(NotificationHandle { on_click: rx })
+    Ok(())
 }
 
 /// Show a notification about a new release
@@ -66,7 +62,7 @@ pub(crate) fn show_notification(title: String, body: String) -> Result<Notificat
 /// Clickable notifications don't work on Linux yet, so the notification only
 /// announces the release and the user downloads it via the tray menu.
 pub(crate) fn show_update_notification(title: String, _download_url: url::Url) -> Result<()> {
-    let _ = show_notification(title, String::new())?;
+    show_notification(title, String::new())?;
 
     Ok(())
 }

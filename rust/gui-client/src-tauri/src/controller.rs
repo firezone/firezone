@@ -81,11 +81,7 @@ pub trait GuiIntegration {
 
     fn set_tray_icon(&mut self, icon: system_tray::Icon);
     fn set_tray_menu(&mut self, app_state: system_tray::AppState);
-    fn show_notification(
-        &self,
-        title: impl Into<String>,
-        body: impl Into<String>,
-    ) -> Result<NotificationHandle>;
+    fn show_notification(&self, title: impl Into<String>, body: impl Into<String>) -> Result<()>;
 
     /// Shows a notification about a new release, opening `download_url` on click where the platform supports it.
     fn show_update_notification(&self, title: impl Into<String>, download_url: Url) -> Result<()>;
@@ -102,10 +98,6 @@ pub trait GuiIntegration {
         settings: AdvancedSettings,
     ) -> Result<()>;
     fn show_about_page(&self) -> Result<()>;
-}
-
-pub struct NotificationHandle {
-    pub on_click: futures::channel::oneshot::Receiver<()>,
 }
 
 #[derive(strum::Display)]
@@ -654,7 +646,7 @@ impl<I: GuiIntegration> Controller<I> {
         gui::set_autostart(self.general_settings.start_on_login.is_some_and(|v| v)).await?;
 
         self.notify_settings_changed()?;
-        let _ = self.integration.show_notification("Settings saved", "")?;
+        self.integration.show_notification("Settings saved", "")?;
 
         Ok(())
     }
@@ -688,7 +680,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.sign_out().await?;
                 if is_authentication_error {
                     tracing::info!(?error_msg, "Auth error");
-                    let _ = self.integration.show_notification(
+                    self.integration.show_notification(
                         "Firezone disconnected",
                         "To access resources, sign in again.",
                     )?;
@@ -705,7 +697,7 @@ impl<I: GuiIntegration> Controller<I> {
 
                 // If this is the first time we receive resources, show the notification that we are connected.
                 if let &Status::WaitingForTunnel = &self.status {
-                    let _ = self.integration.show_notification(
+                    self.integration.show_notification(
                         "Firezone connected",
                         "You are now signed in and able to access resources.",
                     )?;
@@ -726,7 +718,7 @@ impl<I: GuiIntegration> Controller<I> {
                 tracing::info!("Tunnel service exited gracefully");
                 self.integration
                     .set_tray_icon(system_tray::icon_terminating());
-                let _ = self.integration.show_notification(
+                self.integration.show_notification(
                     "Firezone disconnected",
                     "The Firezone Tunnel service was shut down, quitting GUI process.",
                 )?;
@@ -750,12 +742,11 @@ impl<I: GuiIntegration> Controller<I> {
                 self.notify_settings_changed()?;
                 self.refresh_ui_state();
 
-                let _ = self.integration.show_notification("Settings saved", "")?;
+                self.integration.show_notification("Settings saved", "")?;
             }
             service::ServerMsg::AdvancedSettingsApplied(Err(err)) => {
                 tracing::error!("Tunnel service failed to save advanced settings: {err}");
-                let _ = self
-                    .integration
+                self.integration
                     .show_notification("Failed to save settings", &err)?;
             }
             service::ServerMsg::GatewayVersionMismatch { resource_id } => {
@@ -1501,7 +1492,7 @@ mod tests {
         opened_urls: Vec<String>,
         tray_icons: Vec<system_tray::Icon>,
         tray_states: Vec<system_tray::AppState>,
-        notifications: Vec<(String, String, futures::channel::oneshot::Sender<()>)>,
+        notifications: Vec<(String, String)>,
         update_notifications: Vec<(String, Url)>,
         window_visibilities: Vec<bool>,
         shown_overview_page: Vec<SessionViewModel>,
@@ -1511,9 +1502,7 @@ mod tests {
 
     impl MockIntegration {
         fn nth_notification(&self, idx: usize) -> Option<(String, String)> {
-            let (title, body, _) = self.notifications.get(idx)?;
-
-            Some((title.clone(), body.clone()))
+            self.notifications.get(idx).cloned()
         }
     }
 
@@ -1563,14 +1552,10 @@ mod tests {
             &self,
             title: impl Into<String>,
             body: impl Into<String>,
-        ) -> Result<NotificationHandle> {
-            let (tx, rx) = futures::channel::oneshot::channel();
+        ) -> Result<()> {
+            self.lock().notifications.push((title.into(), body.into()));
 
-            self.lock()
-                .notifications
-                .push((title.into(), body.into(), tx));
-
-            Ok(NotificationHandle { on_click: rx })
+            Ok(())
         }
 
         fn show_update_notification(
