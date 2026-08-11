@@ -23,36 +23,21 @@ mod platform;
 #[path = "platform/windows.rs"]
 mod platform;
 
-/// Shows notifications under a fixed application identity.
-#[derive(Clone, Debug)]
-pub struct Notifier {
-    app_id: String,
-}
+/// Shows a notification.
+///
+/// `app_id` is the application identity: on Windows, the AppUserModelID that
+/// toasts are attributed to (Windows silently drops toasts whose AUMID
+/// doesn't match the calling process's identity); on Linux, the application
+/// name that some desktops use to group notifications.
+///
+/// Clicking the notification opens `open_url` (ignored on macOS).
+///
+/// Resolves once the notification has been handled: on Windows right after
+/// hand-off to the toast platform, on Linux once the notification is closed.
+/// Callers that don't want to wait for that should spawn the future into a
+/// task.
+pub async fn show(app_id: &str, title: &str, body: &str, open_url: Option<&Url>) -> Result<()> {
+    platform::show(app_id, title, body, open_url).await?;
 
-impl Notifier {
-    /// Creates a notifier for the given application identity.
-    ///
-    /// On Windows, this is the AppUserModelID that toasts are attributed to;
-    /// Windows silently drops toasts whose AUMID doesn't match the calling
-    /// process's identity. On Linux, it is the application name that some
-    /// desktops use to group notifications.
-    pub fn new(app_id: impl Into<String>) -> Self {
-        Self {
-            app_id: app_id.into(),
-        }
-    }
-
-    /// Shows a notification.
-    ///
-    /// Clicking the notification opens `open_url` (ignored on macOS).
-    ///
-    /// Resolves once the notification has been handled: on Windows right
-    /// after hand-off to the toast platform, on Linux once the notification
-    /// is closed. Callers that don't want to wait for that should spawn the
-    /// future into a task.
-    pub async fn show(&self, title: &str, body: &str, open_url: Option<&Url>) -> Result<()> {
-        platform::show(&self.app_id, title, body, open_url).await?;
-
-        Ok(())
-    }
+    Ok(())
 }

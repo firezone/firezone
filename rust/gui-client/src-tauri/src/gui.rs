@@ -241,10 +241,10 @@ pub struct RunConfig {
 /// Notifications are fire-and-forget: failures are only logged because
 /// there is nothing the caller could do about them.
 fn spawn_notification(title: String, body: String, open_url: Option<url::Url>) {
-    let notifier = desktop_notifications::Notifier::new(os::notification_app_id());
+    let app_id = os::notification_app_id();
 
     tokio::spawn(async move {
-        match notifier.show(&title, &body, open_url.as_ref()).await {
+        match desktop_notifications::show(&app_id, &title, &body, open_url.as_ref()).await {
             Ok(()) => tracing::debug!(%title, %body, "Showed notification"),
             Err(e) => tracing::debug!(%title, "Failed to show notification: {e:#}"),
         }
