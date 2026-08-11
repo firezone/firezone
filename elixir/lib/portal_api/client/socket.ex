@@ -417,9 +417,9 @@ defmodule PortalAPI.Client.Socket do
 
       case find_by_mdm_device_id(actor_id, mdm_device_id, subject) do
         nil ->
-          case find_by_cert_fingerprint(actor_id, proof.last_attested_cert_fingerprint, subject) do
+          case find_by_cert_identity(actor_id, proof, subject) do
             nil -> nil
-            client -> {client, :cert_fingerprint}
+            client -> {client, :cert_identity}
           end
 
         client ->
@@ -444,15 +444,17 @@ defmodule PortalAPI.Client.Socket do
       |> Safe.one()
     end
 
-    # The fingerprint rather than the certificate serial: a serial is unique
+    # Issuer and serial together, never the serial alone: a serial is unique
     # only per issuing CA (RFC 5280 4.1.2.2), and an account may trust several
     # anchors, so matching on it would let a certificate from one CA resolve to
-    # a device enrolled under another. A SHA-256 of the DER cannot collide.
-    defp find_by_cert_fingerprint(actor_id, fingerprint, subject) do
+    # a device enrolled under another. The pair is what a revocation list names
+    # a certificate by, so it is also what a revoked device is found by.
+    defp find_by_cert_identity(actor_id, proof, subject) do
       from(d in Device,
         where: d.actor_id == ^actor_id,
         where: d.type == :client,
-        where: d.last_attested_cert_fingerprint == ^fingerprint
+        where: d.last_attested_cert_issuer == ^proof.last_attested_cert_issuer,
+        where: d.last_attested_cert_serial == ^proof.last_attested_cert_serial
       )
       |> Safe.scoped(subject)
       |> Safe.one()
@@ -498,10 +500,10 @@ defmodule PortalAPI.Client.Socket do
     # the one the row was written by, so an identifier appearing or disappearing
     # is a profile that changed what it emits, and the row follows.
     #
-    # A certificate reached by its fingerprint is the same certificate. Its
-    # identifiers cannot have changed, so anything but an exact match means we
-    # read the same bytes differently than we did before. That is a bug in the
-    # reading, and the connect is refused rather than letting a worse read
+    # A certificate reached by its issuer and serial is the same certificate.
+    # Its identifiers cannot have changed, so anything but an exact match means
+    # we read the same bytes differently than we did before. That is a bug in
+    # the reading, and the connect is refused rather than letting a worse read
     # rewrite the row. Fixing the reading is what repairs those rows.
     defp contradicted_attested_ids(client, cert_identifiers, matched_on) do
       Enum.filter(@attested_id_fields, fn field ->
@@ -512,7 +514,7 @@ defmodule PortalAPI.Client.Socket do
       end)
     end
 
-    defp contradicts?(row_value, cert_value, :cert_fingerprint), do: row_value != cert_value
+    defp contradicts?(row_value, cert_value, :cert_identity), do: row_value != cert_value
     defp contradicts?(nil, _cert_value, :mdm_device_id), do: false
     defp contradicts?(_row_value, nil, :mdm_device_id), do: false
     defp contradicts?(row_value, cert_value, :mdm_device_id), do: row_value != cert_value
