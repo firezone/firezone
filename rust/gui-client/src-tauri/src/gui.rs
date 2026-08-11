@@ -169,13 +169,11 @@ impl GuiIntegration for TauriIntegration {
         title: impl Into<String>,
         download_url: url::Url,
     ) -> Result<()> {
-        // Clickable notifications only work on Windows.
-        #[cfg(target_os = "windows")]
-        let body = "Click here to download the new version";
-        #[cfg(not(target_os = "windows"))]
-        let body = "";
-
-        spawn_notification(title.into(), body.to_owned(), Some(download_url));
+        spawn_notification(
+            title.into(),
+            "Click here to download the new version".to_owned(),
+            Some(download_url),
+        );
 
         Ok(())
     }

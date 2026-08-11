@@ -11,6 +11,7 @@ url = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 futures = { workspace = true }
+tracing = { workspace = true }
 zbus = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
