@@ -80,24 +80,28 @@ runs:
         # publish-release.yml), so it can move the fork across upstream
         # changes to .github/workflows/* that would make `komac sync-fork`
         # below fail. Non-fatal: `komac sync-fork` remains the gate.
-        $Fork = '${{ inputs.fork-user }}/winget-pkgs'
-        $DispatchedAt = (Get-Date).ToUniversalTime()
-        gh workflow run sync-upstream.yml --repo $Fork --ref master
-        if (-not $?) {
-          Write-Output "::warning::Could not dispatch sync-upstream.yml in $Fork; relying on komac sync-fork."
-          exit 0
-        }
-        foreach ($i in 1..36) {
-          Start-Sleep -Seconds 5
-          $Run = gh run list --repo $Fork --workflow sync-upstream.yml --limit 1 --json status,conclusion,createdAt | ConvertFrom-Json | Select-Object -First 1
-          if ($Run -and ([DateTime]::Parse($Run.createdAt).ToUniversalTime() -ge $DispatchedAt.AddSeconds(-10)) -and ($Run.status -eq 'completed')) {
-            if ($Run.conclusion -ne 'success') {
-              Write-Output "::warning::Fork sync concluded with '$($Run.conclusion)'; relying on komac sync-fork."
-            }
+        try {
+          $Fork = '${{ inputs.fork-user }}/winget-pkgs'
+          $DispatchedAt = (Get-Date).ToUniversalTime()
+          gh workflow run sync-upstream.yml --repo $Fork --ref master
+          if (-not $?) {
+            Write-Output "::warning::Could not dispatch sync-upstream.yml in $Fork; relying on komac sync-fork."
             exit 0
           }
+          foreach ($i in 1..36) {
+            Start-Sleep -Seconds 5
+            $Run = gh run list --repo $Fork --workflow sync-upstream.yml --limit 1 --json status,conclusion,createdAt | ConvertFrom-Json | Select-Object -First 1
+            if ($Run -and ([DateTime]::Parse($Run.createdAt).ToUniversalTime() -ge $DispatchedAt.AddSeconds(-10)) -and ($Run.status -eq 'completed')) {
+              if ($Run.conclusion -ne 'success') {
+                Write-Output "::warning::Fork sync concluded with '$($Run.conclusion)'; relying on komac sync-fork."
+              }
+              exit 0
+            }
+          }
+          Write-Output "::warning::Fork sync did not complete within 3 minutes; relying on komac sync-fork."
+        } catch {
+          Write-Output "::warning::Pre-sync failed unexpectedly: $($_.Exception.Message); relying on komac sync-fork."
         }
-        Write-Output "::warning::Fork sync did not complete within 3 minutes; relying on komac sync-fork."
         exit 0
       env:
         GH_TOKEN: ${{ inputs.token }}
