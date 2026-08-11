@@ -218,8 +218,7 @@ pub(crate) async fn check() -> Result<Release> {
     let arch = std::env::consts::ARCH;
     let os = std::env::consts::OS;
 
-    let current_version = current_version()?;
-    let user_agent = format!("Firezone Client/{current_version} ({os}; {arch})");
+    let user_agent = format!("Firezone Client/{} ({os}; {arch})", current_version()?);
 
     let api_url = format!("{BASE_URL}/api/releases");
 
