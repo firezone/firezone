@@ -1,5 +1,5 @@
 defmodule Portal.Google.APIClientTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   import ExUnit.CaptureLog
 
   alias Portal.Google.APIClient
@@ -57,7 +57,7 @@ defmodule Portal.Google.APIClientTest do
         Req.Test.json(conn, %{"error" => "not mocked"})
       end)
 
-      server = start_supervised!({TokenCache, name: Portal.Google.TokenCache})
+      server = start_token_cache()
       Req.Test.allow(APIClient, self(), server)
       Req.Test.allow(Portal.Azure.ManagedIdentity, self(), server)
 
@@ -145,7 +145,7 @@ defmodule Portal.Google.APIClientTest do
     end
 
     test "caches a service-account-key access token" do
-      server = start_supervised!({TokenCache, name: Portal.Google.TokenCache})
+      server = start_token_cache()
       Req.Test.allow(APIClient, self(), server)
 
       Req.Test.expect(APIClient, fn conn ->
@@ -193,7 +193,7 @@ defmodule Portal.Google.APIClientTest do
         Req.Test.json(conn, %{"error" => "not mocked"})
       end)
 
-      server = start_supervised!({TokenCache, name: Portal.Google.TokenCache})
+      server = start_token_cache()
       Req.Test.allow(APIClient, self(), server)
       Req.Test.allow(Portal.Azure.ManagedIdentity, self(), server)
 
@@ -1472,6 +1472,13 @@ defmodule Portal.Google.APIClientTest do
       workload_identity_audience: @workload_identity_audience,
       service_account_email: @service_account_email
     )
+  end
+
+  defp start_token_cache do
+    name = :"google_token_cache_#{System.unique_integer([:positive])}"
+    server = start_supervised!({TokenCache, name: name})
+    Portal.Config.merge_env_override(:portal, APIClient, token_cache: server)
+    server
   end
 
   defp assert_authorization_header(conn, expected_token) do
