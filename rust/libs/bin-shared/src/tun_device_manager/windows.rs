@@ -11,7 +11,7 @@ use opentelemetry::metrics::Histogram;
 use ring::digest;
 use std::net::IpAddr;
 use std::sync::Weak;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{
     collections::HashSet,
     env::VarError,
@@ -242,8 +242,6 @@ struct TunState {
 
 impl Drop for Tun {
     fn drop(&mut self) {
-        const SHUTDOWN_WAIT: Duration = Duration::from_secs(10);
-
         let recv_thread = self
             .recv_thread
             .take()
@@ -256,35 +254,7 @@ impl Drop for Tun {
 
         let _ = self.state.take(); // Drop all channel / tunnel state, allowing the worker threads to exit gracefully.
 
-        let start = Instant::now();
-
-        loop {
-            let recv_thread_finished = recv_thread.is_finished();
-            let send_thread_finished = send_thread.is_finished();
-
-            if recv_thread_finished && send_thread_finished {
-                break;
-            }
-
-            if start.elapsed() > SHUTDOWN_WAIT {
-                tracing::warn!(%recv_thread_finished, %send_thread_finished, "TUN worker threads did not exit gracefully in {SHUTDOWN_WAIT:?}");
-                return;
-            }
-
-            std::thread::sleep(Duration::from_millis(100));
-        }
-
-        tracing::debug!(
-            "Worker threads exited gracefully after {:?}",
-            start.elapsed()
-        );
-
-        if let Err(error) = recv_thread.join() {
-            tracing::error!("`Tun::recv_thread` panicked: {error:?}");
-        }
-        if let Err(error) = send_thread.join() {
-            tracing::error!("`Tun::send_thread` panicked: {error:?}");
-        }
+        crate::tun_device_manager::join_worker_threads(recv_thread, send_thread);
     }
 }
 
