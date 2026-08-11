@@ -17,11 +17,13 @@ mod virtio;
 mod tests;
 
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
+use futures::future::{self, Either};
 use opentelemetry::KeyValue;
 use std::collections::VecDeque;
 use std::io;
 use std::mem;
 use std::os::fd::{AsRawFd, RawFd};
+use std::pin::pin;
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 use virtio::VNET_HDR_LEN;
@@ -199,9 +201,12 @@ where
                 // Without the explicit wake-up on `closed`, this task would idle in
                 // `readable` until the next packet arrives, keeping the TUN fd (and
                 // thereby the device) alive long after the receiver is gone.
-                let mut guard = tokio::select! {
-                    guard = fd.readable() => guard?,
-                    () = inbound_tx.closed() => {
+                let readable = pin!(fd.readable());
+                let closed = pin!(inbound_tx.closed());
+
+                let mut guard = match future::select(readable, closed).await {
+                    Either::Left((guard, _)) => guard?,
+                    Either::Right(((), _)) => {
                         tracing::debug!("Inbound packet receiver gone, shutting down task");
 
                         return anyhow::Ok(());
