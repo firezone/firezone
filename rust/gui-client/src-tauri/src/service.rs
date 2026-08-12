@@ -304,8 +304,44 @@ impl Session {
         }
     }
 
+    fn into_event_stream(self) -> Option<client_shared::EventStream> {
+        match self {
+            Session::Creating { event_stream, .. } => Some(event_stream),
+            Session::Connected { event_stream, .. } => Some(event_stream),
+            Session::WaitingForNetwork { .. } => None,
+            Session::None => None,
+        }
+    }
+
     fn is_none(&self) -> bool {
         matches!(self, Self::None)
+    }
+}
+
+/// Shuts down the session and waits until its eventloop has exited.
+///
+/// The eventloop owns the TUN device; only once the event stream ends is the
+/// device released and a new session can attach to the interface name again.
+async fn shut_down_session(session: Session) {
+    const SHUTDOWN_WAIT: Duration = Duration::from_secs(10);
+
+    let Some(mut event_stream) = session.into_event_stream() else {
+        return;
+    };
+
+    let drained = tokio::time::timeout(SHUTDOWN_WAIT, async {
+        loop {
+            match event_stream.next().await {
+                None => break,
+                Some(client_shared::Event::Disconnected(_)) => break,
+                Some(_) => {}
+            }
+        }
+    })
+    .await;
+
+    if drained.is_err() {
+        tracing::warn!("Previous session did not shut down within {SHUTDOWN_WAIT:?}");
     }
 }
 
@@ -612,9 +648,7 @@ impl<'a> Handler<'a> {
                 if !self.session.is_none() {
                     tracing::debug!(session = ?self.session, "Dropping existing session before connecting");
 
-                    // Release the TUN device before we create a new one:
-                    // attaching to a device that is still in use is not reliable.
-                    self.session = Session::None;
+                    shut_down_session(mem::take(&mut self.session)).await;
                 }
 
                 let result = self.try_connect(token.clone(), is_internet_resource_active);
