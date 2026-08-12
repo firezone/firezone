@@ -22,7 +22,7 @@ async fn refuses_tun_device_held_by_another_process() {
 
     // A multi-queue device, as created by older versions.
     {
-        let _foreign_device = create_foreign_device(libc::IFF_MULTI_QUEUE);
+        let _foreign_device = create_foreign_device(libc::IFF_MULTI_QUEUE | libc::IFF_VNET_HDR);
 
         assert_make_tun_fails(&mut tun_device_manager);
     }

@@ -27,7 +27,7 @@ use std::sync::Arc;
 use std::{collections::BTreeSet, path::Path};
 use std::{
     collections::HashMap,
-    os::fd::{FromRawFd as _, OwnedFd},
+    os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd},
 };
 use std::{
     collections::HashSet,
@@ -783,16 +783,19 @@ fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
             return Err(anyhow::Error::new(get_last_error()))
                 .with_context(|| format!("Failed to open '{file}'"));
         }
-        fd => fd,
+        fd => {
+            // Safety: We just opened the FD.
+            unsafe { OwnedFd::from_raw_fd(fd) }
+        }
     };
 
-    attach(fd).context("Failed to set flags on TUN device")?;
+    attach(fd.as_raw_fd()).context("Failed to set flags on TUN device")?;
 
     // A successful `TUNSETOFFLOAD` is the kernel promising it handles these offloads on both the
     // read (GRO) and write (GSO) side, so we use it directly as the capability probe rather than
     // gating on a kernel version. It fails on kernels without UDP segmentation offload (added in
     // Linux 6.2), where we run without offloads and exchange plain packets.
-    let offloads = try_enable_offloads(fd);
+    let offloads = try_enable_offloads(fd.as_raw_fd());
 
     if !offloads {
         tracing::info!(
@@ -800,10 +803,7 @@ fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
         );
     }
 
-    set_non_blocking(fd).context("Failed to make TUN device non-blocking")?;
-
-    // Safety: We are not closing the FD.
-    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+    set_non_blocking(fd.as_raw_fd()).context("Failed to make TUN device non-blocking")?;
 
     Ok(tun::linux::TunFd::new(Arc::new(fd), offloads))
 }
