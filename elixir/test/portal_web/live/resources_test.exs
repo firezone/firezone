@@ -9,7 +9,6 @@ defmodule PortalWeb.ResourcesTest do
   import Portal.ActorFixtures
   import Portal.ClientSessionFixtures
   import Portal.DeviceFixtures
-  import Portal.FeaturesFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
   import Portal.PolicyAuthorizationFixtures
@@ -597,7 +596,6 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:flow_logs)
       resource = resource_fixture(account: account)
       group = group_fixture(account: account)
 
@@ -620,7 +618,6 @@ defmodule PortalWeb.ResourcesTest do
     end
 
     test "defaults Internet Resource flow logs off and allows enabling them", %{conn: conn} do
-      enable_feature(:flow_logs)
       account = account_fixture(features: %{internet_resource: true})
       actor = admin_actor_fixture(account: account)
       resource = internet_resource_fixture(account: account)

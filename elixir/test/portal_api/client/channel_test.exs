@@ -20,7 +20,6 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.SiteFixtures
   import Portal.SubjectFixtures
   import Portal.TokenFixtures
-  import Portal.FeaturesFixtures
 
   defp join_channel(client, subject, opts \\ []) do
     channel = Keyword.get(opts, :channel, PortalAPI.Client.Channel)
@@ -3451,7 +3450,6 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject,
       global_relay: global_relay
     } do
-      enable_feature(:flow_logs)
       resource = resource_fixture(account: account, site: site)
 
       policy_fixture(
@@ -3507,7 +3505,6 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject,
       global_relay: global_relay
     } do
-      enable_feature(:flow_logs)
       resource = resource_fixture(account: account, site: site)
 
       policy_fixture(
@@ -3548,34 +3545,6 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert {:ok, initiator_claims} = Portal.FlowLogToken.verify(initiator_token)
       assert initiator_claims["uploads_enabled"] == false
-    end
-
-    test "ingest tokens carry uploads_enabled=false when the feature is disabled", %{
-      dns_resource: resource,
-      client: client,
-      gateway_token: gateway_token,
-      gateway: gateway,
-      subject: subject,
-      global_relay: global_relay
-    } do
-      # No enable_feature(:flow_logs) — the policy defaults to enabled, but the
-      # global flag is off so the claim must be false.
-      socket = join_channel(client, subject)
-      assert_push "init", _init_payload
-      :ok = Portal.Presence.Relays.connect(global_relay)
-      :ok = PG.register(gateway.id)
-      :ok = connect_gateway_presence(gateway, gateway_token.id)
-
-      push(socket, "create_flow", %{
-        "resource_id" => resource.id,
-        "connected_gateway_ids" => []
-      })
-
-      assert_receive {:create_authorization, _refs, payload}
-      assert is_binary(payload.flow_logs_ingest_token)
-
-      assert {:ok, claims} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
-      assert claims["uploads_enabled"] == false
     end
 
     test "flow_created sends site_id to clients that support renamed site payloads", %{
