@@ -542,7 +542,7 @@ defmodule PortalWeb.NavigationComponents do
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/device_trust"}
           tab_path="settings/device_trust"
-          icon="ri-shield-check-fill"
+          icon="ri-fingerprint-fill"
         >
           Device Trust
         </.settings_tab>
