@@ -8551,6 +8551,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "bufferpool",
+ "futures",
  "ingot",
  "ip-packet",
  "libc",

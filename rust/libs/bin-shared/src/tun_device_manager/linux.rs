@@ -1,6 +1,9 @@
 //! Virtual network interface
 
-use crate::{FIREZONE_MARK, tun_device_manager::TunIpStack};
+use crate::{
+    FIREZONE_MARK,
+    tun_device_manager::{TunIpStack, TunWorkers},
+};
 use anyhow::{Context as _, Result};
 use futures::{
     StreamExt, TryStreamExt,
@@ -712,61 +715,35 @@ async fn link_states(handle: &Handle, link_scope_routes: &[RouteMessage]) -> Has
 }
 
 pub struct Tun {
-    outbound_tx: tun::OutboundTx,
-    inbound_rx: tun::InboundRx,
+    workers: TunWorkers,
 }
 
 impl Tun {
     pub fn new() -> Result<Self> {
         create_tun_device()?;
 
-        let (inbound_tx, inbound_rx) = tun::inbound_channel();
-        let (outbound_tx, outbound_rx) = tun::outbound_channel();
-
-        tokio::spawn(otel_instruments::periodic_queue_length(
-            outbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_transmit(),
-            ],
-        ));
-        tokio::spawn(otel_instruments::periodic_queue_length(
-            inbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_receive(),
-            ],
-        ));
-
         let fd = open_tun()?;
 
-        std::thread::Builder::new()
-            .name("TUN send".to_owned())
-            .spawn({
+        let workers = TunWorkers::spawn(
+            {
                 let fd = fd.clone();
 
-                move || {
+                move |outbound_rx| {
                     logging::unwrap_or_warn!(
                         tun::linux::tun_send(fd, outbound_rx),
                         "Failed to send to TUN device: {}"
                     )
                 }
-            })
-            .map_err(io::Error::other)?;
-        std::thread::Builder::new()
-            .name("TUN recv".to_owned())
-            .spawn(move || {
+            },
+            move |inbound_tx| {
                 logging::unwrap_or_warn!(
                     tun::linux::tun_recv(fd, inbound_tx),
                     "Failed to recv from TUN device: {}"
                 )
-            })
-            .map_err(io::Error::other)?;
+            },
+        )?;
 
-        Ok(Self {
-            outbound_tx,
-            inbound_rx,
-        })
+        Ok(Self { workers })
     }
 }
 
@@ -825,11 +802,11 @@ fn try_enable_offloads(fd: RawFd) -> bool {
 
 impl tun::Tun for Tun {
     fn sender(&self) -> &tun::OutboundTx {
-        &self.outbound_tx
+        self.workers.sender()
     }
 
     fn receiver(&mut self) -> &mut tun::InboundRx {
-        &mut self.inbound_rx
+        self.workers.receiver()
     }
 
     fn name(&self) -> &str {
