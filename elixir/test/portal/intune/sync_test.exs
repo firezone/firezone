@@ -29,7 +29,7 @@ defmodule Portal.Intune.SyncTest do
       })
     ])
 
-    assert :ok = perform_job(Sync, %{"device_integration_id" => integration.id})
+    assert :ok = perform_job(Sync, %{"account_id" => integration.account_id, "device_integration_id" => integration.id})
 
     assert [first, second] = Repo.all(from(d in Device, order_by: d.intune_id))
 
@@ -54,7 +54,7 @@ defmodule Portal.Intune.SyncTest do
 
     stub_managed_devices([full_managed_device()])
 
-    assert :ok = perform_job(Sync, %{"device_integration_id" => integration.id})
+    assert :ok = perform_job(Sync, %{"account_id" => integration.account_id, "device_integration_id" => integration.id})
 
     device = Repo.get_by!(Device, intune_id: "705c034c")
 
@@ -167,7 +167,7 @@ defmodule Portal.Intune.SyncTest do
     integration = intune_integration_fixture()
     stub_managed_devices([full_managed_device()])
 
-    assert :ok = perform_job(Sync, %{"device_integration_id" => integration.id})
+    assert :ok = perform_job(Sync, %{"account_id" => integration.account_id, "device_integration_id" => integration.id})
 
     ours = ~w[account_id device_integration_id intune_id synced_at inserted_at updated_at]a
     device = Repo.get_by!(Device, intune_id: "705c034c")
@@ -196,7 +196,7 @@ defmodule Portal.Intune.SyncTest do
       })
     ])
 
-    assert :ok = perform_job(Sync, %{"device_integration_id" => integration.id})
+    assert :ok = perform_job(Sync, %{"account_id" => integration.account_id, "device_integration_id" => integration.id})
 
     device = Repo.get_by!(Device, intune_id: "managed-device")
     assert is_nil(device.eas_activated_at)
@@ -239,7 +239,7 @@ defmodule Portal.Intune.SyncTest do
       })
     ])
 
-    assert :ok = perform_job(Sync, %{"device_integration_id" => integration.id})
+    assert :ok = perform_job(Sync, %{"account_id" => integration.account_id, "device_integration_id" => integration.id})
 
     device = Repo.get_by!(Device, intune_id: "managed-device")
     assert is_nil(device.config_manager_inventory)
@@ -280,7 +280,7 @@ defmodule Portal.Intune.SyncTest do
       end
     end)
 
-    assert :ok = perform_job(Sync, %{"device_integration_id" => integration.id})
+    assert :ok = perform_job(Sync, %{"account_id" => integration.account_id, "device_integration_id" => integration.id})
 
     assert Repo.aggregate(Device, :count) == 2
     assert Repo.get_by!(Device, intune_id: "page-one-device")
@@ -299,7 +299,7 @@ defmodule Portal.Intune.SyncTest do
 
     stub_managed_devices(devices)
 
-    assert :ok = perform_job(Sync, %{"device_integration_id" => integration.id})
+    assert :ok = perform_job(Sync, %{"account_id" => integration.account_id, "device_integration_id" => integration.id})
     assert Repo.aggregate(Device, :count) == 999
   end
 
@@ -309,7 +309,7 @@ defmodule Portal.Intune.SyncTest do
 
     stub_managed_devices([managed_device(%{"id" => "current-device"})])
 
-    assert :ok = perform_job(Sync, %{device_integration_id: integration.id})
+    assert :ok = perform_job(Sync, %{account_id: integration.account_id, device_integration_id: integration.id})
     refute Repo.get_by(Device, account_id: stale.account_id, intune_id: stale.intune_id)
     assert Repo.get_by!(Device, intune_id: "current-device")
   end
@@ -318,11 +318,11 @@ defmodule Portal.Intune.SyncTest do
     integration = intune_integration_fixture()
 
     stub_managed_devices([managed_device(%{"id" => "managed-device", "deviceName" => "Before"})])
-    assert :ok = perform_job(Sync, %{device_integration_id: integration.id})
+    assert :ok = perform_job(Sync, %{account_id: integration.account_id, device_integration_id: integration.id})
     first = Repo.get_by!(Device, intune_id: "managed-device")
 
     stub_managed_devices([managed_device(%{"id" => "managed-device", "deviceName" => "After"})])
-    assert :ok = perform_job(Sync, %{device_integration_id: integration.id})
+    assert :ok = perform_job(Sync, %{account_id: integration.account_id, device_integration_id: integration.id})
 
     assert Repo.aggregate(Device, :count) == 1
     updated = Repo.get_by!(Device, intune_id: "managed-device")
@@ -340,7 +340,7 @@ defmodule Portal.Intune.SyncTest do
 
     stub_managed_devices([managed_device(%{"id" => "managed-device"})])
 
-    assert :ok = perform_job(Sync, %{device_integration_id: integration.id})
+    assert :ok = perform_job(Sync, %{account_id: integration.account_id, device_integration_id: integration.id})
 
     integration = Repo.get_by!(Integration, account_id: integration.account_id, id: integration.id)
     assert integration.synced_at
@@ -353,8 +353,31 @@ defmodule Portal.Intune.SyncTest do
     disabled = intune_integration_fixture(is_disabled: true)
     unverified = intune_integration_fixture(is_verified: false)
 
-    assert :ok = perform_job(Sync, %{device_integration_id: disabled.id})
-    assert :ok = perform_job(Sync, %{device_integration_id: unverified.id})
+    assert :ok = perform_job(Sync, %{account_id: disabled.account_id, device_integration_id: disabled.id})
+    assert :ok = perform_job(Sync, %{account_id: unverified.account_id, device_integration_id: unverified.id})
+
+    assert Repo.aggregate(Device, :count) == 0
+  end
+
+  test "does not sync an integration belonging to another account" do
+    integration = intune_integration_fixture()
+    other_account = Portal.AccountFixtures.account_fixture()
+    stub_managed_devices([full_managed_device()])
+
+    assert :ok =
+             perform_job(Sync, %{
+               account_id: other_account.id,
+               device_integration_id: integration.id
+             })
+
+    assert Repo.aggregate(Device, :count) == 0
+  end
+
+  test "skips a job queued without an account id" do
+    integration = intune_integration_fixture()
+    stub_managed_devices([full_managed_device()])
+
+    assert :ok = perform_job(Sync, %{device_integration_id: integration.id})
 
     assert Repo.aggregate(Device, :count) == 0
   end
@@ -365,7 +388,7 @@ defmodule Portal.Intune.SyncTest do
     stub_managed_devices([%{"deviceName" => "No ID"}])
 
     assert_raise Portal.Intune.SyncError, fn ->
-      perform_job(Sync, %{device_integration_id: integration.id})
+      perform_job(Sync, %{account_id: integration.account_id, device_integration_id: integration.id})
     end
 
     assert Repo.aggregate(Device, :count) == 0
@@ -379,7 +402,7 @@ defmodule Portal.Intune.SyncTest do
     end)
 
     assert_raise Portal.Intune.SyncError, fn ->
-      perform_job(Sync, %{device_integration_id: integration.id})
+      perform_job(Sync, %{account_id: integration.account_id, device_integration_id: integration.id})
     end
   end
 

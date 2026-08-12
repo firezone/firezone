@@ -191,7 +191,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
 
       assert_enqueued(
         worker: Portal.Intune.Sync,
-        args: %{"device_integration_id" => integration.id}
+        args: %{"account_id" => integration.account_id, "device_integration_id" => integration.id}
       )
     end
 
@@ -207,13 +207,17 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
 
-      Process.flag(:trap_exit, true)
-      catch_exit(render_click(lv, "sync", %{"id" => other_integration.id}))
+      render_click(lv, "sync", %{"id" => other_integration.id})
 
       refute_enqueued(
         worker: Portal.Intune.Sync,
-        args: %{"device_integration_id" => other_integration.id}
+        args: %{
+          "account_id" => other_integration.account_id,
+          "device_integration_id" => other_integration.id
+        }
       )
+
+      refute_enqueued(worker: Portal.Intune.Sync)
     end
 
     test "refuses to queue a sync when the feature is switched off mid-session", %{
@@ -232,7 +236,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
 
       refute_enqueued(
         worker: Portal.Intune.Sync,
-        args: %{"device_integration_id" => integration.id}
+        args: %{"account_id" => integration.account_id, "device_integration_id" => integration.id}
       )
     end
   end

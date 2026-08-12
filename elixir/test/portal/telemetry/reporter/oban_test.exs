@@ -46,7 +46,7 @@ defmodule Portal.Telemetry.Reporter.ObanTest do
         worker: "Portal.Intune.Sync",
         queue: "intune_sync",
         meta: %{},
-        args: %{"device_integration_id" => integration.id}
+        args: %{"account_id" => integration.account_id, "device_integration_id" => integration.id}
       }
 
       reason =

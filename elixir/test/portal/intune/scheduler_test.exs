@@ -38,5 +38,6 @@ defmodule Portal.Intune.SchedulerTest do
 
     assert [job] = all_enqueued(worker: Sync)
     assert job.args["device_integration_id"] == enabled.id
+    assert job.args["account_id"] == enabled.account_id
   end
 end

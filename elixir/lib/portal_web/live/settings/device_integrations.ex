@@ -235,17 +235,17 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
 
   def handle_event("sync", %{"id" => id}, socket) do
     socket = assign(socket, open_integration_actions_id: nil)
+    integration = Enum.find(socket.assigns.integrations, &(&1.id == id))
 
-    case Database.queue_sync(id, socket.assigns.subject) do
-      {:ok, _job} ->
-        {:noreply, put_flash(socket, :success, "Device inventory sync queued.")}
-
-      {:error, :feature_disabled} ->
+    cond do
+      not account_feature_enabled?(socket) ->
         {:noreply, put_flash(socket, :error, @feature_disabled)}
 
-      {:error, reason} ->
-        Logger.info("Failed to queue Intune device inventory sync", reason: inspect(reason))
+      is_nil(integration) ->
         {:noreply, put_flash(socket, :error, "Could not queue device inventory sync.")}
+
+      true ->
+        queue_sync(integration, socket)
     end
   end
 
@@ -833,7 +833,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
 
   defp handle_submit({:ok, integration}, socket) do
     if socket.assigns.live_action == :new do
-      _ = Oban.insert(Intune.Sync.new(%{"device_integration_id" => integration.id}))
+      _ = Oban.insert(Intune.Sync.new(sync_args(integration)))
     end
 
     {:noreply,
@@ -876,6 +876,26 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
 
   defp maybe_send_verification_ack(_), do: :ok
 
+  defp queue_sync(integration, socket) do
+    case Oban.insert(Intune.Sync.new(sync_args(integration))) do
+      {:ok, _job} ->
+        {:noreply, put_flash(socket, :success, "Device inventory sync queued.")}
+
+      {:error, reason} ->
+        Logger.info("Failed to queue Intune device inventory sync",
+          id: integration.id,
+          reason: inspect(reason)
+        )
+
+        {:noreply, put_flash(socket, :error, "Could not queue device inventory sync.")}
+    end
+  end
+
+  # The worker resolves the integration by both ids, so the account has to ride
+  # along with the row id rather than being trusted from the browser.
+  defp sync_args(integration),
+    do: %{"account_id" => integration.account_id, "device_integration_id" => integration.id}
+
   defp account_feature_enabled?(socket),
     do: Portal.Account.device_posture_enabled?(socket.assigns.subject.account)
 
@@ -917,15 +937,6 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
     def insert_integration(changeset, subject) do
       with :ok <- ensure_enabled(subject) do
         changeset |> Safe.scoped(subject) |> Safe.insert()
-      end
-    end
-
-    # The worker looks the integration up unscoped, so the id has to be proven
-    # to belong to the caller's account before it reaches the job.
-    def queue_sync(id, subject) do
-      with :ok <- ensure_enabled(subject) do
-        integration = get_integration!(id, subject)
-        Oban.insert(Intune.Sync.new(%{"device_integration_id" => integration.id}))
       end
     end
 

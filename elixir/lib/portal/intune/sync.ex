@@ -23,10 +23,13 @@ defmodule Portal.Intune.Sync do
   @upsert_chunk_size div(65_535, length(Portal.Intune.Device.__schema__(:fields)))
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"device_integration_id" => integration_id}}) do
-    case Database.get_integration(integration_id) do
+  def perform(%Oban.Job{
+        args: %{"account_id" => account_id, "device_integration_id" => integration_id}
+      }) do
+    case Database.get_integration(account_id, integration_id) do
       nil ->
         Logger.info("Intune integration not found or disabled; skipping sync",
+          account_id: account_id,
           device_integration_id: integration_id
         )
 
@@ -36,6 +39,8 @@ defmodule Portal.Intune.Sync do
         run_sync(integration)
     end
   end
+
+  def perform(_), do: :ok
 
   defp run_sync(%Intune.Integration{} = integration) do
     started_at = DateTime.utc_now() |> DateTime.truncate(:microsecond)
@@ -288,10 +293,11 @@ defmodule Portal.Intune.Sync do
     alias Portal.Safe
     alias Portal.Intune
 
-    def get_integration(id) do
+    def get_integration(account_id, id) do
       from(i in Intune.Integration,
         join: a in Portal.Account,
         on: a.id == i.account_id,
+        where: i.account_id == ^account_id,
         where: i.id == ^id,
         where: i.is_disabled == false,
         where: i.is_verified == true,

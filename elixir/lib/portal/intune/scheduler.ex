@@ -23,7 +23,7 @@ defmodule Portal.Intune.Scheduler do
         |> Safe.stream()
         |> Stream.each(fn integration ->
           {:ok, _job} =
-            %{device_integration_id: integration.id}
+            %{account_id: integration.account_id, device_integration_id: integration.id}
             |> Portal.Intune.Sync.new()
             |> Oban.insert()
         end)
