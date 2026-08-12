@@ -1,4 +1,4 @@
-defmodule PortalWeb.Settings.TrustAnchors.Index do
+defmodule PortalWeb.Settings.DeviceTrust.Index do
   use PortalWeb, :live_view
 
   import Ecto.Changeset, only: [cast: 3, put_change: 3, add_error: 3, get_field: 3]
@@ -52,19 +52,19 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   end
 
   def mount(_params, _session, socket) do
-    trust_anchors_enabled? = PortalWeb.NavigationComponents.trust_anchors_enabled?()
+    device_trust_enabled? = PortalWeb.NavigationComponents.device_trust_enabled?()
 
-    if trust_anchors_enabled? do
+    if device_trust_enabled? do
       trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
 
       socket =
         socket
-        |> assign(page_title: "Trust Anchors")
+        |> assign(page_title: "Device Trust")
         |> assign(trust_anchors: trust_anchors)
         |> assign(selected_trust_anchor: nil)
         |> assign(form: nil, input_mode: :paste)
         |> assign(confirm_delete?: false)
-        |> assign(trust_anchors_enabled?: trust_anchors_enabled?)
+        |> assign(device_trust_enabled?: device_trust_enabled?)
         |> allow_upload(:cert_file,
           accept: ~w(.pem .crt .cer .der .txt),
           max_entries: @max_upload_entries,
@@ -130,7 +130,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
+        device_trust_enabled?={@device_trust_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">
@@ -143,7 +143,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           </div>
           <div class="flex items-center gap-2">
             <.link
-              patch={~p"/#{@account}/settings/trust_anchors/new"}
+              patch={~p"/#{@account}/settings/device_trust/new"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
             >
               <.icon name="ri-add-line" class="w-3 h-3" /> Add
@@ -165,7 +165,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                   </p>
                 </div>
                 <.link
-                  patch={~p"/#{@account}/settings/trust_anchors/new"}
+                  patch={~p"/#{@account}/settings/device_trust/new"}
                   class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
                 >
                   <.icon name="ri-add-line" class="w-3 h-3" /> Add a trust anchor
@@ -360,7 +360,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
             <.link
-              patch={~p"/#{@account}/settings/trust_anchors/#{@trust_anchor.id}/edit"}
+              patch={~p"/#{@account}/settings/device_trust/#{@trust_anchor.id}/edit"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
             >
               <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
@@ -601,7 +601,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   end
 
   def handle_event("close_panel", _params, socket) do
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors")}
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/device_trust")}
   end
 
   def handle_event(
@@ -610,7 +610,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         %{assigns: %{live_action: action}} = socket
       )
       when action in [:new, :edit, :show] do
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors")}
+    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/device_trust")}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -619,7 +619,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   def handle_event("select_trust_anchor", %{"id" => id}, socket) do
     {:noreply,
-     push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors/#{id}")}
+     push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/device_trust/#{id}")}
   end
 
   def handle_event("cancel_upload", %{"ref" => ref}, socket) do
@@ -650,7 +650,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           socket
           |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
           |> put_flash(:success, "Trust anchor created successfully")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/device_trust")
 
         {:noreply, socket}
 
@@ -685,7 +685,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           socket
           |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
           |> put_flash(:success, "Trust anchor updated successfully")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/device_trust")
 
         {:noreply, socket}
 
@@ -711,7 +711,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           socket
           |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
           |> put_flash(:success, "Trust anchor deleted successfully")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/device_trust")
 
         {:noreply, socket}
 
@@ -731,7 +731,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       socket =
         socket
         |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
-        |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
+        |> push_patch(to: ~p"/#{socket.assigns.account}/settings/device_trust")
 
       {:noreply, socket}
   end

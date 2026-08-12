@@ -571,7 +571,7 @@ defmodule PortalAPI.Client.DeviceTrust do
         # The features table is global per-deployment state with no account_id.
         # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
         join: f in Portal.Features,
-        on: f.feature == :trust_anchors and f.enabled == true,
+        on: f.feature == :device_trust and f.enabled == true,
         select: c.pem
       )
       |> Safe.scoped(subject)
