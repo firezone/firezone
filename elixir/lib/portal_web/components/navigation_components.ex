@@ -7,18 +7,18 @@ defmodule PortalWeb.NavigationComponents do
     import Ecto.Query, only: [from: 2]
     alias Portal.{Features, Safe}
 
-    def trust_anchors_feature_enabled? do
-      query = from(f in Features, where: f.feature == :trust_anchors and f.enabled == true)
+    def device_trust_feature_enabled? do
+      query = from(f in Features, where: f.feature == :device_trust and f.enabled == true)
       Safe.unscoped(query) |> Safe.exists?()
     end
   end
 
   @doc """
-  Returns whether the global `trust_anchors` feature flag is enabled. Callers
+  Returns whether the global `device_trust` feature flag is enabled. Callers
   should compute this once in `mount/3` and pass it to `settings_nav/1` as the
-  `trust_anchors_enabled?` assign, rather than calling this on every render.
+  `device_trust_enabled?` assign, rather than calling this on every render.
   """
-  def trust_anchors_enabled?, do: Database.trust_anchors_feature_enabled?()
+  def device_trust_enabled?, do: Database.device_trust_feature_enabled?()
 
   @doc """
   Renders the top navigation bar.
@@ -410,7 +410,7 @@ defmodule PortalWeb.NavigationComponents do
   """
   attr :account, :any, required: true
   attr :current_path, :string, required: true
-  attr :trust_anchors_enabled?, :boolean, default: false
+  attr :device_trust_enabled?, :boolean, default: false
   slot :actions
 
   def settings_nav(assigns) do
@@ -521,13 +521,13 @@ defmodule PortalWeb.NavigationComponents do
           REST API
         </.settings_tab>
         <.settings_tab
-          :if={@trust_anchors_enabled?}
+          :if={@device_trust_enabled?}
           current_path={@current_path}
-          navigate={~p"/#{@account}/settings/trust_anchors"}
-          tab_path="settings/trust_anchors"
+          navigate={~p"/#{@account}/settings/device_trust"}
+          tab_path="settings/device_trust"
           icon="ri-shield-check-fill"
         >
-          Trust Anchors
+          Device Trust
         </.settings_tab>
       </div>
     </div>

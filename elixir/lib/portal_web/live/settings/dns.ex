@@ -10,7 +10,7 @@ defmodule PortalWeb.Settings.DNS do
       socket
       |> assign(page_title: "DNS")
       |> assign(dns_account: account)
-      |> assign(trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?())
+      |> assign(device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?())
 
     {:ok, socket}
   end
@@ -38,7 +38,7 @@ defmodule PortalWeb.Settings.DNS do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
+        device_trust_enabled?={@device_trust_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">

@@ -6,7 +6,6 @@ defmodule PortalWeb.GroupsTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.FeaturesFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
   import Portal.PolicyFixtures
@@ -226,7 +225,6 @@ defmodule PortalWeb.GroupsTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:flow_logs)
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
 
@@ -250,7 +248,6 @@ defmodule PortalWeb.GroupsTest do
 
     test "defaults flow log reporting off when granting access to the Internet Resource",
          %{conn: conn} do
-      enable_feature(:flow_logs)
       account = account_fixture(features: %{internet_resource: true})
       actor = admin_actor_fixture(account: account)
       group = group_fixture(account: account)

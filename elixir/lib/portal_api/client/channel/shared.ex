@@ -8,7 +8,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     FlowLogToken,
     PG,
     Changes.Change,
-    Features,
     PubSub,
     Presence,
     SchemaHelpers,
@@ -2325,19 +2324,15 @@ defmodule PortalAPI.Client.Channel.Shared do
     }
   end
 
-  # Whether flow logs may be uploaded for a flow this policy authorizes: the
-  # global flow_logs feature flag must be on and the policy must not have opted
-  # out. Stamped into the ingest token so devices know whether to upload and
-  # the ingest endpoint can enforce it. A policy missing from the cache fails
-  # closed to false.
+  # Whether flow logs may be uploaded for a flow this policy authorizes, which
+  # is to say whether the policy has opted out. Stamped into the ingest token
+  # so devices know whether to upload and the ingest endpoint can enforce it. A
+  # policy missing from the cache fails closed to false.
   defp flow_log_uploads_enabled?(cache, policy_id) do
-    case Map.get(cache.policies, Ecto.UUID.dump!(policy_id)) do
-      %Cache.Cacheable.Policy{flow_log_uploads_enabled: true} ->
-        Database.flow_logs_feature_enabled?()
-
-      _ ->
-        false
-    end
+    match?(
+      %Cache.Cacheable.Policy{flow_log_uploads_enabled: true},
+      Map.get(cache.policies, Ecto.UUID.dump!(policy_id))
+    )
   end
 
   # Mints the pair of per-flow ingest tokens for an authorization: one for the
@@ -2609,14 +2604,6 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defmodule Database do
     import Ecto.Query, only: [from: 2]
-
-    alias Portal.Features
-
-    def flow_logs_feature_enabled? do
-      query = from(f in Features, where: f.feature == :flow_logs and f.enabled == true)
-
-      Portal.Safe.unscoped(query) |> Portal.Safe.exists?()
-    end
 
     def all_compatible_gateways_for_client_and_resource(
           client_version,

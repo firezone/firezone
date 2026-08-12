@@ -83,7 +83,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
         |> assign(selected_actor: nil)
         |> assign(form: nil, encoded_token: nil)
         |> assign(pending_confirm: nil, open_actor_actions_id: nil)
-        |> assign(trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?())
+        |> assign(device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?())
 
       {:ok, socket}
     else
@@ -145,7 +145,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
+        device_trust_enabled?={@device_trust_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">

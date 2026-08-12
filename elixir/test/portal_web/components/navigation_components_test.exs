@@ -40,35 +40,35 @@ defmodule PortalWeb.NavigationComponentsTest do
     end
   end
 
-  describe "settings_nav trust anchors tab" do
-    test "hidden when trust_anchors feature is disabled", %{
+  describe "settings_nav device trust tab" do
+    test "hidden when device_trust feature is disabled", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      disable_feature(:trust_anchors)
+      disable_feature(:device_trust)
 
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      refute html =~ "Trust Anchors"
+      refute html =~ "Device Trust"
     end
 
-    test "shown when trust_anchors feature is enabled", %{
+    test "shown when device_trust feature is enabled", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      enable_feature(:trust_anchors)
+      enable_feature(:device_trust)
 
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      assert html =~ "Trust Anchors"
+      assert html =~ "Device Trust"
     end
   end
 end
