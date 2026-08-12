@@ -28,8 +28,8 @@ defmodule Portal.LogSinks.Delivery do
   # Bounds one run; the next scheduler tick resumes from the cursor.
   @max_batches_per_stream 20
 
-  def get_sink(schema, id) do
-    Database.get_sink(schema, id)
+  def get_sink(schema, account_id, id) do
+    Database.get_sink(schema, account_id, id)
   end
 
   def sync(sink, adapter) do
@@ -498,10 +498,11 @@ defmodule Portal.LogSinks.Delivery do
       flow: {Portal.FlowLog, :inserted_at}
     }
 
-    def get_sink(schema, id) do
+    def get_sink(schema, account_id, id) do
       from(s in schema,
         join: a in Portal.Account,
         on: a.id == s.account_id,
+        where: s.account_id == ^account_id,
         where: s.id == ^id,
         where: s.is_disabled == false,
         where: a.is_disabled == false,

@@ -124,7 +124,7 @@ defmodule Portal.Okta.SyncTest do
         end
       end)
 
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # Verify identity was created
       identities = Repo.all(ExternalIdentity)
@@ -260,7 +260,7 @@ defmodule Portal.Okta.SyncTest do
 
       log =
         capture_log(fn ->
-          assert :ok = perform_job(Sync, %{directory_id: directory.id})
+          assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end)
 
       identities = Repo.all(ExternalIdentity)
@@ -309,7 +309,7 @@ defmodule Portal.Okta.SyncTest do
         }
       ])
 
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       suspended_identity =
         Repo.get_by!(ExternalIdentity,
@@ -340,7 +340,7 @@ defmodule Portal.Okta.SyncTest do
         }
       ])
 
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       identities = Repo.all(ExternalIdentity)
       assert Enum.map(identities, & &1.email) == ["active@example.com"]
@@ -450,7 +450,7 @@ defmodule Portal.Okta.SyncTest do
         end
       end)
 
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       assert Repo.get_by!(Portal.Policy, account_id: account.id, id: policy.id).group_id ==
                group.id
@@ -459,7 +459,7 @@ defmodule Portal.Okta.SyncTest do
     test "handles missing directory gracefully" do
       non_existent_id = Ecto.UUID.generate()
 
-      assert :ok = perform_job(Sync, %{directory_id: non_existent_id})
+      assert :ok = perform_job(Sync, %{account_id: Ecto.UUID.generate(), directory_id: non_existent_id})
 
       # No data should be created
       assert Repo.all(ExternalIdentity) == []
@@ -480,7 +480,7 @@ defmodule Portal.Okta.SyncTest do
           is_disabled: true
         )
 
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # No data should be created
       assert Repo.all(ExternalIdentity) == []
@@ -548,7 +548,7 @@ defmodule Portal.Okta.SyncTest do
 
       # Should raise SyncError with appropriate message
       assert_raise SyncError, ~r/missing 'email' field/, fn ->
-        perform_job(Sync, %{directory_id: directory.id})
+        perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
       end
     end
 
@@ -613,7 +613,7 @@ defmodule Portal.Okta.SyncTest do
 
       # Should raise SyncError with appropriate message
       assert_raise SyncError, ~r/missing 'email' field/, fn ->
-        perform_job(Sync, %{directory_id: directory.id})
+        perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
       end
     end
 
@@ -674,7 +674,7 @@ defmodule Portal.Okta.SyncTest do
 
       error =
         assert_raise SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :batch_upsert_identities
@@ -760,7 +760,7 @@ defmodule Portal.Okta.SyncTest do
 
       error =
         assert_raise SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :batch_upsert_memberships
@@ -784,7 +784,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       assert_raise SyncError, ~r/get_access_token/, fn ->
-        perform_job(Sync, %{directory_id: directory.id})
+        perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
       end
     end
 
@@ -821,7 +821,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       assert_raise SyncError, ~r/scopes: missing.*okta\.users\.read/, fn ->
-        perform_job(Sync, %{directory_id: directory.id})
+        perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
       end
     end
 
@@ -855,7 +855,7 @@ defmodule Portal.Okta.SyncTest do
       assert_raise SyncError,
                    ~r/missing okta\.apps\.read, okta\.users\.read, okta\.groups\.read/,
                    fn ->
-                     perform_job(Sync, %{directory_id: directory.id})
+                     perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
                    end
     end
 
@@ -892,7 +892,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       assert_raise SyncError, ~r/list_apps/, fn ->
-        perform_job(Sync, %{directory_id: directory.id})
+        perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
       end
     end
 
@@ -935,7 +935,7 @@ defmodule Portal.Okta.SyncTest do
         end
       end)
 
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # Error state should be cleared
       updated_directory = Repo.get(Portal.Okta.Directory, directory.id)
@@ -983,7 +983,7 @@ defmodule Portal.Okta.SyncTest do
 
       error =
         assert_raise SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :stream_app_users
@@ -1024,7 +1024,7 @@ defmodule Portal.Okta.SyncTest do
 
       error =
         assert_raise SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :stream_app_users
@@ -1071,7 +1071,7 @@ defmodule Portal.Okta.SyncTest do
 
       error =
         assert_raise SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :stream_app_groups
@@ -1115,7 +1115,7 @@ defmodule Portal.Okta.SyncTest do
 
       error =
         assert_raise SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :stream_app_groups
@@ -1221,7 +1221,7 @@ defmodule Portal.Okta.SyncTest do
 
       log =
         capture_log(fn ->
-          assert :ok = perform_job(Sync, %{directory_id: directory.id})
+          assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end)
 
       memberships = Repo.all(Membership)
@@ -1283,7 +1283,7 @@ defmodule Portal.Okta.SyncTest do
 
       error =
         assert_raise SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :stream_group_members
@@ -1350,7 +1350,7 @@ defmodule Portal.Okta.SyncTest do
       # Capture the raised exception
       exception =
         assert_raise SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       # Simulate Oban telemetry error handling
@@ -1411,7 +1411,7 @@ defmodule Portal.Okta.SyncTest do
       # Capture the raised exception
       exception =
         assert_raise SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       # Simulate Oban telemetry error handling
@@ -1512,7 +1512,7 @@ defmodule Portal.Okta.SyncTest do
 
       # Should raise SyncError due to circuit breaker
       assert_raise SyncError, ~r/would delete all identities/, fn ->
-        perform_job(Sync, %{directory_id: directory.id})
+        perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
       end
 
       # Verify no identities were deleted
@@ -1622,7 +1622,7 @@ defmodule Portal.Okta.SyncTest do
 
       # Should raise SyncError due to circuit breaker on groups
       assert_raise SyncError, ~r/would delete all groups/, fn ->
-        perform_job(Sync, %{directory_id: directory.id})
+        perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
       end
 
       # Verify no groups were deleted
@@ -1719,7 +1719,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       # Should succeed - deletion is below threshold
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # Verify 2 identities were deleted
       identity_count =
@@ -1772,7 +1772,7 @@ defmodule Portal.Okta.SyncTest do
       end)
 
       # Should succeed even though nothing is returned (first sync)
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
     end
   end
 

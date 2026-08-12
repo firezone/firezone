@@ -244,7 +244,9 @@ defmodule PortalWeb.Settings.LogSinks do
          )}
 
       true ->
-        case Oban.insert(sync_module(sink).new(%{"log_sink_id" => sink.id})) do
+        args = %{"account_id" => sink.account_id, "log_sink_id" => sink.id}
+
+        case Oban.insert(sync_module(sink).new(args)) do
           {:ok, _job} ->
             {:noreply,
              socket

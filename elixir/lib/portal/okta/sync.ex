@@ -26,15 +26,17 @@ defmodule Portal.Okta.Sync do
   ]
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"directory_id" => directory_id}}) do
+  def perform(%Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}}) do
     Logger.info("Starting Okta directory sync",
+      account_id: account_id,
       okta_directory_id: directory_id,
       timestamp: DateTime.utc_now()
     )
 
-    case Database.get_directory(directory_id) do
+    case Database.get_directory(account_id, directory_id) do
       nil ->
         Logger.info("Okta directory not found, disabled, or account disabled, skipping",
+          account_id: account_id,
           okta_directory_id: directory_id
         )
 
@@ -634,10 +636,11 @@ defmodule Portal.Okta.Sync do
     import Ecto.Query
     alias Portal.Safe
 
-    def get_directory(id) do
+    def get_directory(account_id, id) do
       from(d in Okta.Directory,
         join: a in Portal.Account,
         on: a.id == d.account_id,
+        where: d.account_id == ^account_id,
         where: d.id == ^id,
         where: d.is_disabled == false,
         where: a.is_disabled == false

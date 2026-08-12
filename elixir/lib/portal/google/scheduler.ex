@@ -30,7 +30,7 @@ defmodule Portal.Google.Scheduler do
         |> Safe.unscoped()
         |> Safe.stream()
         |> Stream.each(fn directory ->
-          args = %{directory_id: directory.id}
+          args = %{account_id: directory.account_id, directory_id: directory.id}
           {:ok, _job} = Portal.Google.Sync.new(args) |> Oban.insert()
         end)
         |> Stream.run()

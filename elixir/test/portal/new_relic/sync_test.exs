@@ -27,11 +27,11 @@ defmodule Portal.NewRelic.SyncTest do
   describe "perform/1" do
     test "delivers the detailed payload format", %{account: account} do
       sink = newrelic_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(NewRelic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(NewRelic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       log = session_log_fixture(account: account)
 
-      assert :ok = perform_job(NewRelic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(NewRelic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:intake, conn, [%{"logs" => [event]}]}
       assert conn.request_path == "/log/v1"
@@ -64,9 +64,9 @@ defmodule Portal.NewRelic.SyncTest do
           enabled_streams: [:session]
         )
 
-      assert :ok = perform_job(NewRelic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(NewRelic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
-      assert :ok = perform_job(NewRelic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(NewRelic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:intake, conn, _payload}
       assert conn.host == "log-api.eu.newrelic.com"
@@ -80,9 +80,9 @@ defmodule Portal.NewRelic.SyncTest do
           enabled_streams: [:session]
         )
 
-      assert :ok = perform_job(NewRelic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(NewRelic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
-      assert :ok = perform_job(NewRelic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(NewRelic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:intake, conn, _payload}
       assert conn.host == "log-api.jp.nr-data.net"
@@ -90,7 +90,7 @@ defmodule Portal.NewRelic.SyncTest do
 
     test "a 403 disables the sink immediately", %{account: account} do
       sink = newrelic_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(NewRelic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(NewRelic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(NewRelic.APIClient, fn conn ->
@@ -99,7 +99,7 @@ defmodule Portal.NewRelic.SyncTest do
         |> Req.Test.json(%{"message" => "Invalid license key"})
       end)
 
-      assert :ok = perform_job(NewRelic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(NewRelic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       assert sink.is_disabled
@@ -109,7 +109,7 @@ defmodule Portal.NewRelic.SyncTest do
 
     test "a 429 is transient", %{account: account} do
       sink = newrelic_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(NewRelic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(NewRelic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(NewRelic.APIClient, fn conn ->
@@ -118,7 +118,7 @@ defmodule Portal.NewRelic.SyncTest do
         |> Req.Test.json(%{"message" => "Too many requests"})
       end)
 
-      assert :ok = perform_job(NewRelic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(NewRelic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       refute sink.is_disabled

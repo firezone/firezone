@@ -1039,7 +1039,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
       |> element("button[phx-click='sync_sink'][phx-value-id='#{sink.id}']")
       |> render_click()
 
-      assert_enqueued(worker: Splunk.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: Splunk.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
     end
 
     test "deliver now rejects sinks from other accounts", %{

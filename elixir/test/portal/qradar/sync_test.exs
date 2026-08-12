@@ -31,13 +31,13 @@ defmodule Portal.QRadar.SyncTest do
           auth_header: "Bearer test-shared-secret"
         )
 
-      assert :ok = perform_job(QRadar.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(QRadar.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       refute_receive {:receiver, _conn, _body}
 
       log = session_log_fixture(account: account)
 
-      assert :ok = perform_job(QRadar.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(QRadar.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:receiver, conn, body}
       assert conn.method == "POST"
@@ -64,12 +64,12 @@ defmodule Portal.QRadar.SyncTest do
       account: account
     } do
       sink = qradar_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(QRadar.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(QRadar.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       session_log_fixture(account: account)
       session_log_fixture(account: account)
 
-      assert :ok = perform_job(QRadar.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(QRadar.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:receiver, conn, body}
       assert Plug.Conn.get_req_header(conn, "authorization") == []
@@ -85,14 +85,14 @@ defmodule Portal.QRadar.SyncTest do
 
     test "a 403 disables the sink immediately with an actionable message", %{account: account} do
       sink = qradar_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(QRadar.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(QRadar.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(QRadar.APIClient, fn conn ->
         Plug.Conn.send_resp(conn, 403, "Forbidden")
       end)
 
-      assert :ok = perform_job(QRadar.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(QRadar.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       assert sink.is_disabled
@@ -103,7 +103,7 @@ defmodule Portal.QRadar.SyncTest do
 
     test "a redirect disables the sink and points at the listen port", %{account: account} do
       sink = qradar_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(QRadar.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(QRadar.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(QRadar.APIClient, fn conn ->
@@ -112,7 +112,7 @@ defmodule Portal.QRadar.SyncTest do
         |> Plug.Conn.send_resp(301, "")
       end)
 
-      assert :ok = perform_job(QRadar.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(QRadar.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       assert sink.is_disabled
@@ -123,14 +123,14 @@ defmodule Portal.QRadar.SyncTest do
 
     test "a 429 is transient", %{account: account} do
       sink = qradar_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(QRadar.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(QRadar.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(QRadar.APIClient, fn conn ->
         Plug.Conn.send_resp(conn, 429, "")
       end)
 
-      assert :ok = perform_job(QRadar.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(QRadar.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       cursor = get_cursor(sink, :session, :live)
       assert cursor.synced_count == 0
@@ -143,14 +143,14 @@ defmodule Portal.QRadar.SyncTest do
 
     test "a 503 is transient", %{account: account} do
       sink = qradar_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(QRadar.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(QRadar.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(QRadar.APIClient, fn conn ->
         Plug.Conn.send_resp(conn, 503, "")
       end)
 
-      assert :ok = perform_job(QRadar.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(QRadar.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       refute sink.is_disabled

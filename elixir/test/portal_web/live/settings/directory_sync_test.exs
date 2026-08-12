@@ -1,5 +1,6 @@
 defmodule PortalWeb.Settings.DirectorySyncTest do
   use PortalWeb.ConnCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -144,12 +145,35 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ "Directory enabled successfully."
       assert html =~ "Active"
 
-      html = render_click(lv, "sync_directory", %{"id" => directory.id, "type" => "google"})
+      html = render_click(lv, "sync_directory", %{"id" => directory.id})
       assert html =~ "Directory sync has been queued successfully."
+
+      assert_enqueued(
+        worker: Portal.Google.Sync,
+        args: %{account_id: account.id, directory_id: directory.id}
+      )
 
       html = render_click(lv, "delete_directory", %{"id" => directory.id})
       assert html =~ "Directory deleted successfully."
       refute html =~ "Ops Google"
+    end
+
+    test "sync rejects directories from other accounts", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_directory = google_directory_fixture(name: "Other Account Google")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      html = render_click(lv, "sync_directory", %{"id" => other_directory.id})
+
+      assert html =~ "Failed to queue directory sync."
+      refute_enqueued(worker: Portal.Google.Sync)
     end
 
     test "closes the actions menu when navigating to edit", %{

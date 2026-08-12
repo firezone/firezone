@@ -290,27 +290,31 @@ defmodule PortalWeb.Settings.DirectorySync do
     end
   end
 
-  def handle_event("sync_directory", %{"id" => id, "type" => type}, socket) do
-    sync_module =
-      case type do
-        "entra" -> Portal.Entra.Sync
-        "google" -> Portal.Google.Sync
-        "okta" -> Portal.Okta.Sync
-        _ -> raise "Unsupported directory type for sync: #{type}"
+  def handle_event("sync_directory", %{"id" => id}, socket) do
+    directory = socket.assigns.directories |> Enum.find(fn d -> d.id == id end)
+
+    if is_nil(directory) do
+      {:noreply, put_flash(socket, :error, "Failed to queue directory sync.")}
+    else
+      args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
+
+      case Oban.insert(sync_module(directory).new(args)) do
+        {:ok, _job} ->
+          socket =
+            socket
+            |> init()
+            |> put_flash(:success, "Directory sync has been queued successfully.")
+
+          {:noreply, socket}
+
+        {:error, reason} ->
+          Logger.info("Failed to enqueue directory sync job",
+            id: directory.id,
+            reason: inspect(reason)
+          )
+
+          {:noreply, put_flash(socket, :error, "Failed to queue directory sync.")}
       end
-
-    case Oban.insert(sync_module.new(%{"directory_id" => id})) do
-      {:ok, _job} ->
-        socket =
-          socket
-          |> init()
-          |> put_flash(:success, "Directory sync has been queued successfully.")
-
-        {:noreply, socket}
-
-      {:error, reason} ->
-        Logger.info("Failed to enqueue #{type} sync job", id: id, reason: inspect(reason))
-        {:noreply, put_flash(socket, :error, "Failed to queue directory sync.")}
     end
   end
 
@@ -928,7 +932,6 @@ defmodule PortalWeb.Settings.DirectorySync do
               type="button"
               phx-click="sync_directory"
               phx-value-id={@directory.id}
-              phx-value-type={@type}
               disabled={@directory.is_disabled or @directory.has_active_job}
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -1972,6 +1975,10 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     {String.trim(key), clean_value}
   end
+
+  defp sync_module(%Entra.Directory{}), do: Entra.Sync
+  defp sync_module(%Google.Directory{}), do: Google.Sync
+  defp sync_module(%Okta.Directory{}), do: Okta.Sync
 
   defmodule Database do
     alias Portal.{Entra, Google, Okta, Safe}

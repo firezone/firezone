@@ -115,7 +115,7 @@ defmodule Portal.Google.SchedulerTest do
       # Verify job structure
       assert job.worker == "Portal.Google.Sync"
       assert job.queue == "google_sync"
-      assert job.args == %{"directory_id" => directory.id}
+      assert job.args == %{"account_id" => directory.account_id, "directory_id" => directory.id}
     end
 
     test "schedules multiple jobs for multiple accounts" do
