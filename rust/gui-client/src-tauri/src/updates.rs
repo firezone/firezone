@@ -188,15 +188,57 @@ pub(crate) async fn check() -> Result<Release> {
     let version = api_response.gui;
     tracing::debug!(?version, "Latest GUI version from API");
 
-    let download_url = url::Url::parse(&format!(
-        "{BASE_URL}/dl/firezone-client-gui-{os}/{version}/{arch}"
-    ))
-    .context("Failed to construct download URL")?;
+    let download_url = download_url_for(os, arch, package_suffix(), &version)?;
 
     Ok(Release {
         download_url,
         version,
     })
+}
+
+fn download_url_for(
+    os: &str,
+    arch: &str,
+    package_suffix: &str,
+    version: &Version,
+) -> Result<url::Url> {
+    let url = url::Url::parse(&format!(
+        "{BASE_URL}/dl/firezone-client-gui-{os}/{version}/{arch}{package_suffix}"
+    ))
+    .context("Failed to construct download URL")?;
+
+    Ok(url)
+}
+
+/// The package-specific suffix of the download URL.
+///
+/// Linux is the only OS where a release consists of more than one package
+/// format per architecture: a `.deb` (the URL's default) and an `.rpm`.
+#[cfg(target_os = "linux")]
+fn package_suffix() -> &'static str {
+    match std::fs::read_to_string("/etc/os-release") {
+        Ok(os_release) if is_rpm_based(&os_release) => ".rpm",
+        Ok(_) => "",
+        Err(_) => "",
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn package_suffix() -> &'static str {
+    ""
+}
+
+/// Whether the given [`os-release`] contents describe an RPM-based distribution.
+///
+/// [`os-release`]: https://www.freedesktop.org/software/systemd/man/latest/os-release.html
+#[cfg(target_os = "linux")]
+fn is_rpm_based(os_release: &str) -> bool {
+    os_release
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .filter(|(key, _)| matches!(*key, "ID" | "ID_LIKE"))
+        .flat_map(|(_, value)| value.trim_matches('"').split_whitespace())
+        .any(|id| matches!(id, "fedora" | "rhel" | "centos" | "suse") || id.starts_with("opensuse"))
 }
 
 pub(crate) fn current_version() -> Result<Version> {
@@ -318,14 +360,44 @@ mod tests {
 
     #[test]
     fn download_url_construction() {
-        let arch = std::env::consts::ARCH;
-        let os = std::env::consts::OS;
-
-        let release = release(1, 5, 9);
-
         assert_eq!(
-            release.download_url.as_str(),
-            format!("{BASE_URL}/dl/firezone-client-gui-{os}/1.5.9/{arch}")
+            download_url_for("windows", "x86_64", "", &Version::new(1, 5, 9))
+                .unwrap()
+                .as_str(),
+            "https://www.firezone.dev/dl/firezone-client-gui-windows/1.5.9/x86_64"
         );
+        assert_eq!(
+            download_url_for("linux", "x86_64", ".rpm", &Version::new(1, 5, 9))
+                .unwrap()
+                .as_str(),
+            "https://www.firezone.dev/dl/firezone-client-gui-linux/1.5.9/x86_64.rpm"
+        );
+        assert_eq!(
+            download_url_for("linux", "aarch64", "", &Version::new(1, 5, 9))
+                .unwrap()
+                .as_str(),
+            "https://www.firezone.dev/dl/firezone-client-gui-linux/1.5.9/aarch64"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn rpm_detection() {
+        // Fedora has no `ID_LIKE`.
+        assert!(is_rpm_based("NAME=\"Fedora Linux\"\nID=fedora\n"));
+        // Derivatives reference their ancestry via `ID_LIKE`.
+        assert!(is_rpm_based(
+            "ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\n"
+        ));
+        assert!(is_rpm_based(
+            "ID=\"opensuse-tumbleweed\"\nID_LIKE=\"opensuse suse\"\n"
+        ));
+        assert!(is_rpm_based(
+            "ID=almalinux\nID_LIKE=\"rhel centos fedora\"\n"
+        ));
+
+        assert!(!is_rpm_based("ID=ubuntu\nID_LIKE=debian\n"));
+        assert!(!is_rpm_based("ID=debian\n"));
+        assert!(!is_rpm_based(""));
     }
 }
