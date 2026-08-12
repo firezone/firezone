@@ -1,5 +1,6 @@
 defmodule PortalWeb.Settings.DeviceIntegrationsTest do
   use PortalWeb.ConnCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   import Portal.ActorFixtures
   import Portal.IntuneFixtures
@@ -173,6 +174,103 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
     assert integration.name == "Corporate Intune"
     assert integration.tenant_id == "tenant-123"
     assert integration.is_verified
+  end
+
+  describe "sync action" do
+    test "queues a sync for an integration in the caller's account", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      integration = intune_integration_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+
+      render_click(lv, "sync", %{"id" => integration.id})
+
+      assert_enqueued(
+        worker: Portal.Intune.Sync,
+        args: %{"device_integration_id" => integration.id}
+      )
+    end
+
+    test "refuses to queue a sync for another account's integration", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      enable_device_posture()
+      other_account = device_posture_account_fixture()
+      other_integration = intune_integration_fixture(account: other_account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+
+      Process.flag(:trap_exit, true)
+      catch_exit(render_click(lv, "sync", %{"id" => other_integration.id}))
+
+      refute_enqueued(
+        worker: Portal.Intune.Sync,
+        args: %{"device_integration_id" => other_integration.id}
+      )
+    end
+
+    test "refuses to queue a sync when the feature is switched off mid-session", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      integration = intune_integration_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+
+      enable_device_posture(false)
+
+      render_click(lv, "sync", %{"id" => integration.id})
+
+      refute_enqueued(
+        worker: Portal.Intune.Sync,
+        args: %{"device_integration_id" => integration.id}
+      )
+    end
+  end
+
+  test "returns a changeset error when a second integration races the first", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_integrations/intune/new")
+
+    lv |> element("#intune-admin-consent-button") |> render_click()
+    assert_push_event(lv, "open_url", %{url: url})
+
+    state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+    {:ok, %{verification_ref: verification_ref}} = PortalWeb.OIDC.verify_verification_state(state)
+    ack_ref = make_ref()
+
+    send(
+      lv.pid,
+      {:intune_device_integration_complete, "tenant-123", verification_ref, {self(), ack_ref}}
+    )
+
+    assert_receive {:verification_ack, ^ack_ref}
+
+    # The page decided the account had none while this was open.
+    intune_integration_fixture(account: account)
+
+    html =
+      lv
+      |> form("#device-integration-form", integration: %{name: "Corporate Intune"})
+      |> render_submit()
+
+    assert html =~ "device-integration-form"
+    assert Portal.Repo.aggregate(Portal.DeviceIntegration, :count) == 1
   end
 
   test "allows only one configured inventory provider", %{conn: conn, account: account, actor: actor} do

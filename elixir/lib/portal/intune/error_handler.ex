@@ -27,6 +27,12 @@ defmodule Portal.Intune.ErrorHandler do
 
   defp classify(%Req.Response{}), do: :transient
   defp classify(%Req.TransportError{}), do: :transient
+
+  # A managedDevice with no id is a Graph anomaly, not a misconfiguration, so it
+  # rides out the transient window instead of disabling the integration and
+  # telling the admin to re-grant consent they never lost.
+  defp classify(:missing_device_id), do: :transient
+
   defp classify(_unrecognized), do: :transient
 
   # Formatting

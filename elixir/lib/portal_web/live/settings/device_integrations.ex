@@ -236,9 +236,12 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
   def handle_event("sync", %{"id" => id}, socket) do
     socket = assign(socket, open_integration_actions_id: nil)
 
-    case Oban.insert(Intune.Sync.new(%{"device_integration_id" => id})) do
+    case Database.queue_sync(id, socket.assigns.subject) do
       {:ok, _job} ->
         {:noreply, put_flash(socket, :success, "Device inventory sync queued.")}
+
+      {:error, :feature_disabled} ->
+        {:noreply, put_flash(socket, :error, @feature_disabled)}
 
       {:error, reason} ->
         Logger.info("Failed to queue Intune device inventory sync", reason: inspect(reason))
@@ -821,6 +824,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
         account_id: socket.assigns.subject.account.id,
         type: :intune
       })
+      |> DeviceIntegration.changeset()
 
     changeset
     |> put_change(:id, id)
@@ -913,6 +917,15 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
     def insert_integration(changeset, subject) do
       with :ok <- ensure_enabled(subject) do
         changeset |> Safe.scoped(subject) |> Safe.insert()
+      end
+    end
+
+    # The worker looks the integration up unscoped, so the id has to be proven
+    # to belong to the caller's account before it reaches the job.
+    def queue_sync(id, subject) do
+      with :ok <- ensure_enabled(subject) do
+        integration = get_integration!(id, subject)
+        Oban.insert(Intune.Sync.new(%{"device_integration_id" => integration.id}))
       end
     end
 

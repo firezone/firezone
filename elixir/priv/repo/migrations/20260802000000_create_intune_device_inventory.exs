@@ -176,7 +176,9 @@ defmodule Portal.Repo.Migrations.CreateIntuneDeviceInventory do
       add(:attestation_supported_status, :string)
 
       # deviceActionResults is the one collection-valued property on
-      # managedDevice, so it cannot become a column of its own.
+      # managedDevice, so it cannot become a column of its own. `:map` is jsonb,
+      # which stores the JSON array the schema reads back as {:array, :map}.
+      # Declaring the array type here would give jsonb[], which is not the same.
       add(:device_action_results, :map)
 
       add(:enrolled_at, :timestamptz)
