@@ -28,28 +28,54 @@ defmodule Portal.Ocsp.Sync do
           "account_id" => account_id,
           "issuer" => encoded_issuer,
           "distribution_point" => distribution_point
-        }
+        } = args
       }) do
     with {:ok, issuer} <- Base.decode64(encoded_issuer),
          endpoint when not is_nil(endpoint) <-
            Database.fetch_endpoint(account_id, issuer, distribution_point) do
-      refresh(endpoint)
+      refresh(endpoint, Map.get(args, "serial"))
     else
       _other -> {:ok, :deleted}
     end
   end
 
-  defp refresh(endpoint) do
+  @doc """
+  Queues a check of one certificate, for a device that has just connected.
+
+  The scheduled run only asks about certificates whose cached answer has run
+  out, which leaves two gaps a connect can close. A certificate nobody has ever
+  asked about is let on unchecked until the next run, and a certificate revoked
+  during a long-lived session is not noticed until its cached answer expires.
+
+  Deduplicated on the certificate rather than the device, so a reconnect storm
+  across a fleet holding the same certificate is one question, and made unique
+  for an hour so a device that keeps reconnecting does not keep paying for
+  answers a responder bills per query.
+  """
+  @spec enqueue_check(Ecto.UUID.t(), binary(), String.t()) :: :ok
+  def enqueue_check(account_id, issuer, serial) do
+    Database.ocsp_distribution_points(account_id, issuer)
+    |> Enum.each(fn distribution_point ->
+      %{
+        account_id: account_id,
+        issuer: Base.encode64(issuer),
+        distribution_point: distribution_point,
+        serial: serial
+      }
+      |> new(unique: [period: {1, :hour}, states: Oban.Job.states() -- [:discarded]])
+      |> Oban.insert()
+    end)
+
+    :ok
+  end
+
+  defp refresh(endpoint, serial) do
     case Database.issuer_certificate(endpoint) do
       nil ->
         record_failure(endpoint, :issuer_certificate_missing)
 
       issuer_der ->
-        due =
-          Database.due_serials(
-            endpoint,
-            DateTime.add(DateTime.utc_now(), @refresh_margin_seconds, :second)
-          )
+        due = due_serials(endpoint, serial)
 
         case ask_each(endpoint, issuer_der, due) do
           :ok ->
@@ -67,6 +93,18 @@ defmodule Portal.Ocsp.Sync do
             record_failure(endpoint, reason)
         end
     end
+  end
+
+  # A connect names the one certificate it is asking about, and is asked
+  # unconditionally: the point of the check is to notice a revocation the cached
+  # answer is too old to know about.
+  defp due_serials(_endpoint, serial) when is_binary(serial), do: [serial]
+
+  defp due_serials(endpoint, nil) do
+    Database.due_serials(
+      endpoint,
+      DateTime.add(DateTime.utc_now(), @refresh_margin_seconds, :second)
+    )
   end
 
   # Stops at the first failure that is about the responder rather than about one
@@ -233,14 +271,33 @@ defmodule Portal.Ocsp.Sync do
     alias Portal.Revocation.Failure
     alias Portal.Safe
 
+    # Gated on the feature flag as well, so a job already queued when the flag is
+    # turned off does nothing rather than recording a failure against an
+    # endpoint whose anchors it can no longer see.
     def fetch_endpoint(account_id, issuer, distribution_point) do
       from(e in Portal.RevocationEndpoint,
+        # The features table is global per-deployment state with no account_id.
+        # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
+        join: f in Portal.Features,
+        on: f.feature == :device_trust and f.enabled == true,
         where: e.account_id == ^account_id,
         where: e.issuer == ^issuer,
         where: e.distribution_point == ^distribution_point
       )
       |> Safe.unscoped()
       |> Safe.one()
+    end
+
+    def ocsp_distribution_points(account_id, issuer) do
+      from(e in Portal.RevocationEndpoint,
+        where: e.account_id == ^account_id,
+        where: e.issuer == ^issuer,
+        where: e.ocsp_urls != [],
+        where: e.is_disabled == false,
+        select: e.distribution_point
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
     end
 
     # The request names the certificate by hashes of its issuer's name and key,

@@ -52,7 +52,7 @@ defmodule Portal.Revocation.Failure do
   @spec success_fields(Portal.RevocationEndpoint.t(), mechanism()) :: keyword()
   def success_fields(endpoint, mechanism) do
     if is_nil(other_error(endpoint, mechanism)) do
-      [errored_at: nil, error_email_count: 0, last_error_email_at: nil]
+      [errored_at: nil]
     else
       []
     end

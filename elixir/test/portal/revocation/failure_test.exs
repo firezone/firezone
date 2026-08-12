@@ -62,8 +62,6 @@ defmodule Portal.Revocation.FailureTest do
       fields = Failure.success_fields(endpoint(), :crl)
 
       assert fields[:errored_at] == nil
-      assert fields[:error_email_count] == 0
-      assert fields[:last_error_email_at] == nil
     end
 
     test "a working responder does not reset the clock on a broken list" do

@@ -26,6 +26,10 @@ defmodule Portal.Ocsp.Scheduler do
         from(e in Portal.RevocationEndpoint,
           join: a in Portal.Account,
           on: a.id == e.account_id,
+          # The features table is global per-deployment state with no account_id.
+          # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
+          join: f in Portal.Features,
+          on: f.feature == :device_trust and f.enabled == true,
           where:
             not fragment(
               "EXISTS (SELECT 1 FROM unnest(?) AS u WHERE u LIKE 'http://%' OR u LIKE 'https://%')",

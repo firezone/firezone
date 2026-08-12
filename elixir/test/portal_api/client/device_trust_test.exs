@@ -1,5 +1,6 @@
 defmodule PortalAPI.Client.DeviceTrustTest do
   use Portal.DataCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
   import Portal.SubjectFixtures
@@ -55,6 +56,39 @@ defmodule PortalAPI.Client.DeviceTrustTest do
 
       assert DeviceTrust.attest(connect_info(leaf(pki, :rsa)), subject) ==
                {:error, :no_trust_anchors}
+    end
+  end
+
+  describe "attest/2 when the device_trust feature is off" do
+    setup do
+      configure_attestation_host()
+      start_revocation_endpoint_queue()
+
+      account = account_fixture()
+      pki = pki()
+      trust_anchor_fixture(account: account, certs: [pki.ca_der])
+      subject = subject_fixture(account: account)
+
+      %{account: account, pki: pki, subject: subject}
+    end
+
+    test "the certificate is refused rather than trusted unchecked", %{
+      pki: pki,
+      subject: subject
+    } do
+      connect_info = connect_info(leaf(pki, :rsa))
+
+      assert DeviceTrust.attest(connect_info, subject) == {:error, :no_trust_anchors}
+    end
+
+    test "nothing is recorded about the certificate's CA", %{pki: pki, subject: subject} do
+      assert {:error, :no_trust_anchors} =
+               DeviceTrust.attest(connect_info(leaf(pki, :with_crl)), subject)
+
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      assert Repo.all(Portal.RevocationEndpoint) == []
+      assert all_enqueued(worker: Portal.Ocsp.Sync) == []
     end
   end
 
@@ -372,6 +406,38 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert endpoint.distribution_point == "http://crl.example.test/ca.crl"
     end
 
+    test "a known endpoint is not enqueued again", %{pki: pki, subject: subject} do
+      leaf = leaf(pki, :with_crl)
+
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+      Portal.Queue.flush(:revocation_endpoint_queue)
+      assert [endpoint] = Repo.all(Portal.RevocationEndpoint)
+
+      # A later connect has nothing left to learn, so the queue stays empty and
+      # the flush has no rows to write.
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+      Repo.delete!(endpoint)
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      assert Repo.all(Portal.RevocationEndpoint) == []
+    end
+
+    test "a partition the CA adds later is still learned", %{pki: pki, subject: subject} do
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf(pki, :with_crl)), subject)
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      assert {:ok, _verified} =
+               DeviceTrust.attest(connect_info(leaf(pki, :two_partitions)), subject)
+
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      points =
+        Portal.RevocationEndpoint |> Repo.all() |> Enum.map(& &1.distribution_point) |> Enum.sort()
+
+      assert "http://crl.example.test/a.crl" in points
+      assert "http://crl.example.test/b.crl" in points
+    end
+
     test "the endpoint is learned once and not rewritten by later connects", %{
       pki: pki,
       subject: subject
@@ -388,6 +454,57 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       Portal.Queue.flush(:revocation_endpoint_queue)
 
       assert Repo.one!(Portal.RevocationEndpoint).crl_urls == ["http://mirror.example.test/a.crl"]
+    end
+
+    test "a connect asks the responder about its own certificate", %{
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :ocsp_only)
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      # The endpoint is only learned once the batch lands, so the first connect
+      # has nowhere to send the question yet and the second is what asks.
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+
+      assert [job] = all_enqueued(worker: Portal.Ocsp.Sync)
+      assert job.args["serial"] == cert_serial_hex(leaf)
+      assert job.args["issuer"] == Base.encode64(X509.issuer(leaf))
+    end
+
+    test "a CA that publishes a list is not asked through its responder", %{
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :with_crl)
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+      Portal.Queue.flush(:revocation_endpoint_queue)
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+
+      assert all_enqueued(worker: Portal.Ocsp.Sync) == []
+    end
+
+    test "a certificate with a current answer is not asked about again", %{
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :ocsp_only)
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      Repo.insert!(%Portal.OcspStatus{
+        account_id: subject.account.id,
+        issuer: X509.issuer(leaf),
+        serial: cert_serial_hex(leaf),
+        status: "good",
+        next_update: DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second),
+        updated_at: DateTime.utc_now()
+      })
+
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+
+      assert all_enqueued(worker: Portal.Ocsp.Sync) == []
     end
 
     test "rejects a leaf whose serial number cannot be recorded", %{pki: pki, subject: subject} do

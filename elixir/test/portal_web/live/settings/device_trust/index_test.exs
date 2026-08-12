@@ -27,6 +27,18 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
     })
   end
 
+  defp open_certificates_tab(lv) do
+    render_click(lv, "switch_anchor_tab", %{"tab" => "certificates"})
+  end
+
+  defp open_revocation_tab(lv) do
+    render_click(lv, "switch_anchor_tab", %{"tab" => "revocation"})
+  end
+
+  defp expand_first_endpoint(lv) do
+    lv |> element("tr[phx-click='toggle_revocation_endpoint']") |> render_click()
+  end
+
   defp revocation_fixture(account, issuer, serial) do
     Repo.insert!(%Portal.CrlRevocation{
       account_id: account.id,
@@ -128,6 +140,9 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
         |> render_click()
 
       assert_patch(lv, ~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+      refute html =~ "Company Issuing CA"
+
+      html = open_certificates_tab(lv)
       assert html =~ "Company Issuing CA"
       assert html =~ "Company Root CA"
       assert html =~ Base.encode16(:crypto.hash(:sha256, sample_cert_der()), case: :lower)
@@ -154,7 +169,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
 
-      html = render(lv)
+      html = open_certificates_tab(lv)
 
       assert html =~ "CN=EC Trust Anchor CA"
       assert html =~ "ecdsa-with-SHA256"
@@ -230,7 +245,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
 
-      assert render(lv) =~ "No revocation endpoint known yet"
+      assert open_revocation_tab(lv) =~ "No revocation endpoint known yet"
     end
 
     test "shows the endpoint learned for the issuer", %{
@@ -248,10 +263,12 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
 
-      html = render(lv)
+      assert open_revocation_tab(lv) =~ "CN=EC Trust Anchor CA"
+
+      html = expand_first_endpoint(lv)
       assert html =~ "http://crl.test.invalid/ec-ca.crl"
-      assert html =~ "CN=EC Trust Anchor CA"
       assert html =~ "Revoked certificates"
+      assert html =~ "CRL number"
       assert html =~ "42"
     end
 
@@ -269,7 +286,8 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
 
-      assert render(lv) =~ "unsupported_url_scheme"
+      open_revocation_tab(lv)
+      assert expand_first_endpoint(lv) =~ "unsupported_url_scheme"
     end
 
 
@@ -307,11 +325,12 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
 
-      html = render(lv)
-      assert html =~ "OCSP"
+      assert open_revocation_tab(lv) =~ "OCSP"
+
+      html = expand_first_endpoint(lv)
       assert html =~ "unreachable responder"
       assert html =~ "Revoked certificates"
-      refute html =~ "List number"
+      refute html =~ "CRL number"
     end
 
     test "an endpoint from another account is never shown", %{
@@ -328,7 +347,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
 
-      assert render(lv) =~ "No revocation endpoint known yet"
+      assert open_revocation_tab(lv) =~ "No revocation endpoint known yet"
     end
   end
 
@@ -353,11 +372,10 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/trust_anchors")
+        |> live(~p"/#{account}/settings/device_trust")
 
-      assert html =~ "Warning"
-      assert html =~ "connection refused"
-      assert html =~ "Checking stops if this keeps failing"
+      assert html =~ "ri-error-warning-fill"
+      assert html =~ "having trouble reaching"
     end
 
     test "the list says when an issuer is no longer checked at all", %{
@@ -377,10 +395,10 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/trust_anchors")
+        |> live(~p"/#{account}/settings/device_trust")
 
-      assert html =~ "Not checked"
-      assert html =~ "Edit and Save this trust anchor"
+      assert html =~ "ri-error-warning-fill"
+      assert html =~ "not being checked"
     end
 
     test "the list says nothing about a healthy issuer", %{
@@ -394,10 +412,9 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/trust_anchors")
+        |> live(~p"/#{account}/settings/device_trust")
 
-      refute html =~ "Not checked"
-      refute html =~ "Warning"
+      refute html =~ "ri-error-warning-fill"
     end
 
     test "saving the trust anchor starts the checking again", %{
@@ -411,16 +428,14 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       |> Ecto.Changeset.change(
         errored_at: DateTime.utc_now(),
         is_disabled: true,
-        disabled_reason: Portal.Revocation.Failure.disabled_reason(),
-        error_email_count: 4,
-        last_error_email_at: DateTime.utc_now()
+        disabled_reason: Portal.Revocation.Failure.disabled_reason()
       )
       |> Repo.update!()
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
+        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}/edit")
 
       lv
       |> form("#trust-anchor-edit-form",
@@ -433,8 +448,6 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       assert is_nil(endpoint.disabled_reason)
       assert is_nil(endpoint.errored_at)
       assert is_nil(endpoint.crl_error)
-      assert endpoint.error_email_count == 0
-      assert is_nil(endpoint.last_error_email_at)
     end
   end
 

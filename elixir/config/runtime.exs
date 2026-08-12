@@ -215,10 +215,10 @@ if config_env() == :prod do
     {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations},
 
     # Refresh cached certificate revocation lists hourly
-    {"15 * * * *", Portal.Crl.Scheduler},
+    {"15 */2 * * *", Portal.Crl.Scheduler},
 
     # Refresh cached OCSP statuses hourly, for CAs that publish no list
-    {"45 * * * *", Portal.Ocsp.Scheduler},
+    {"45 3 * * *", Portal.Ocsp.Scheduler},
 
     # Schedule Entra directory sync every 2 hours
     {"0 */2 * * *", Portal.Entra.Scheduler},
@@ -265,7 +265,6 @@ if config_env() == :prod do
 
     # Log sink delivery error notifications
     {"0 9 * * *", Portal.Workers.LogSinkErrorNotification},
-    {"0 9 * * *", Portal.Workers.RevocationEndpointErrorNotification},
 
     # Check account limits every 30 minutes
     {"*/30 * * * *", Portal.Workers.CheckAccountLimits},

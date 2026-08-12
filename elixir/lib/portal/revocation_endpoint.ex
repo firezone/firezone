@@ -50,8 +50,6 @@ defmodule Portal.RevocationEndpoint do
           errored_at: DateTime.t() | nil,
           is_disabled: boolean(),
           disabled_reason: String.t() | nil,
-          error_email_count: integer(),
-          last_error_email_at: DateTime.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -90,8 +88,6 @@ defmodule Portal.RevocationEndpoint do
     field :errored_at, :utc_datetime_usec
     field :is_disabled, :boolean, default: false
     field :disabled_reason, :string
-    field :error_email_count, :integer, default: 0
-    field :last_error_email_at, :utc_datetime_usec
 
     timestamps()
   end
@@ -107,7 +103,6 @@ defmodule Portal.RevocationEndpoint do
     |> validate_length(:ocsp_error, max: 255)
     |> validate_length(:delta_error, max: 255)
     |> validate_length(:disabled_reason, max: 255)
-    |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
     |> assoc_constraint(:account)
   end
 

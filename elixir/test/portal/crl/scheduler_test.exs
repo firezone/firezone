@@ -3,12 +3,28 @@ defmodule Portal.Crl.SchedulerTest do
 
   import Portal.AccountFixtures
   import Portal.DeviceTrustFixtures
+  import Portal.FeaturesFixtures
 
   alias Portal.Crl.Scheduler
   alias Portal.Crypto.X509
 
   setup do
+    enable_feature(:device_trust)
     %{account: account_fixture(), pki: pki()}
+  end
+
+  describe "perform/1 when the device_trust feature is off" do
+    test "nothing is queued, so endpoints are left exactly as they are", %{
+      account: account,
+      pki: pki
+    } do
+      endpoint_fixture(account, pki.ca_der)
+      Portal.Repo.delete_all(Portal.Features)
+
+      assert Scheduler.perform(%Oban.Job{}) == {:ok, :scheduled}
+
+      assert all_sync_jobs() == []
+    end
   end
 
   describe "perform/1" do

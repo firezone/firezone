@@ -545,7 +545,6 @@ defmodule Portal.Crl.SyncTest do
       endpoint = Repo.one!(Portal.RevocationEndpoint)
       assert is_nil(endpoint.errored_at)
       assert is_nil(endpoint.crl_error)
-      assert endpoint.error_email_count == 0
     end
 
     test "a disabled endpoint is never scheduled again", %{account: account, pki: pki} do

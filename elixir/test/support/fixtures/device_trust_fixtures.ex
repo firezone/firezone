@@ -109,6 +109,40 @@ defmodule Portal.DeviceTrustFixtures do
     )
   end
 
+  # A CA that answers a responder but publishes no list, which is what makes the
+  # connect ask about its own certificate rather than wait for a fetch.
+  def leaf(pki, :ocsp_only) do
+    issue_leaf(pki.ca,
+      sans: @typed_sans,
+      extensions: [
+        {:Extension, {1, 3, 6, 1, 5, 5, 7, 1, 1}, false,
+         [
+           {:AccessDescription, {1, 3, 6, 1, 5, 5, 7, 48, 1},
+            {:uniformResourceIdentifier, ~c"http://ocsp.example.test"}}
+         ]}
+      ]
+    )
+  end
+
+  # Two DistributionPoints, which is a CA that has split its list, so the
+  # certificate names two separate partitions rather than two addresses for one.
+  def leaf(pki, :two_partitions) do
+    issue_leaf(pki.ca,
+      sans: @typed_sans,
+      extensions: [
+        {:Extension, {2, 5, 29, 31}, false,
+         :public_key.der_encode(:CRLDistributionPoints, [
+           {:DistributionPoint,
+            {:fullName, [{:uniformResourceIdentifier, ~c"http://crl.example.test/a.crl"}]},
+            :asn1_NOVALUE, :asn1_NOVALUE},
+           {:DistributionPoint,
+            {:fullName, [{:uniformResourceIdentifier, ~c"http://crl.example.test/b.crl"}]},
+            :asn1_NOVALUE, :asn1_NOVALUE}
+         ])}
+      ]
+    )
+  end
+
   def leaf(pki, :no_eku), do: issue_leaf(pki.ca, eku: [@server_auth_oid], sans: @typed_sans)
 
   def leaf(pki, :untrusted), do: issue_leaf(pki.untrusted_ca, sans: @typed_sans)

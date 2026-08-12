@@ -152,7 +152,8 @@ defmodule PortalAPI.Client.DeviceTrust do
       flush_interval: :timer.seconds(30),
       flush_threshold: 500,
       label: "revocation endpoint",
-      on_flush: &flush_revocation_endpoints/1
+      on_flush: &flush_revocation_endpoints/1,
+      dedup_key: &{&1.account_id, &1.issuer, &1.distribution_point}
     ]
   end
 
@@ -183,7 +184,8 @@ defmodule PortalAPI.Client.DeviceTrust do
          state = Database.attestation_state(issuer, serial, mdm_device_id(leaf), subject),
          :ok <- ensure_not_revoked(state, issuer, serial),
          {:ok, identifiers} <- device_identifiers(leaf) do
-      learn_revocation_endpoint(issuer, leaf, subject)
+      learn_revocation_endpoint(state, issuer, leaf, subject)
+      check_responder(state, issuer, serial, subject)
 
       {:ok,
        %{
@@ -393,15 +395,36 @@ defmodule PortalAPI.Client.DeviceTrust do
   # would revoke the CA. The list covering devices is named only by the leaves,
   # which is why the endpoint is learned here rather than at anchor upload.
   #
+  # Asked about after the connect is already decided, so the answer lands for the
+  # next one rather than holding this device at the door waiting on a responder.
+  #
+  # Skipped where the CA publishes a list, which covers the whole fleet in one
+  # fetch and already answers for this certificate, and skipped again where the
+  # cached answer is still current. What is left is the gap the scheduled run
+  # cannot close on its own: a certificate nobody has asked about yet, because
+  # it belongs to a device connecting for the first time.
+  defp check_responder(%{crl_published?: true}, _issuer, _serial, _subject), do: :ok
+
+  defp check_responder(%{ocsp_next_update: next_update}, issuer, serial, subject) do
+    if is_nil(next_update) or stale?(next_update) do
+      Portal.Ocsp.Sync.enqueue_check(subject.account.id, issuer, serial)
+    end
+
+    :ok
+  end
+
   # Every address the certificate carries is kept, grouped as the certificate
   # groups them. A CA that partitions its revocations gives one certificate
   # several distribution points, and reading only one of them would miss every
   # revocation recorded in the others.
-  defp learn_revocation_endpoint(issuer, leaf, subject) do
+  defp learn_revocation_endpoint(state, issuer, leaf, subject) do
     crl_groups = leaf |> X509.crl_distribution_points() |> Enum.map(&order_by_scheme/1)
     ocsp_urls = leaf |> X509.authority_info_access() |> Map.fetch!(:ocsp) |> order_by_scheme()
 
-    Enum.each(endpoint_rows(crl_groups, ocsp_urls), fn {point, crl_urls, row_ocsp_urls} ->
+    crl_groups
+    |> endpoint_rows(ocsp_urls)
+    |> Enum.reject(fn {point, _crl_urls, _ocsp_urls} -> point in state.known_points end)
+    |> Enum.each(fn {point, crl_urls, row_ocsp_urls} ->
       enqueue_endpoint(issuer, point, crl_urls, row_ocsp_urls, subject)
     end)
 
@@ -748,6 +771,7 @@ defmodule PortalAPI.Client.DeviceTrust do
     @empty_state %{
       revoked?: false,
       crl_published?: false,
+      known_points: [],
       ocsp_status: nil,
       ocsp_next_update: nil,
       device: nil,
@@ -812,6 +836,17 @@ defmodule PortalAPI.Client.DeviceTrust do
               a.id,
               ^issuer
             ),
+          known_points:
+            fragment(
+              """
+              ARRAY(
+                SELECT distribution_point FROM revocation_endpoints e
+                WHERE e.account_id = ? AND e.issuer = ?
+              )
+              """,
+              a.id,
+              ^issuer
+            ),
           ocsp_status: s.status,
           ocsp_next_update: s.next_update,
           device: d
@@ -833,8 +868,8 @@ defmodule PortalAPI.Client.DeviceTrust do
     def put_revocation_endpoints(attrs_list) do
       rows =
         attrs_list
-        |> Enum.flat_map(&build_row/1)
         |> Enum.uniq_by(&{&1.account_id, &1.issuer, &1.distribution_point})
+        |> Enum.flat_map(&build_row/1)
 
       case rows do
         [] ->
