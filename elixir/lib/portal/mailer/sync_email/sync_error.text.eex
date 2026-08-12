@@ -1,4 +1,4 @@
-<%= @details_heading %>!
+<%= @record.name %> Sync Error!
 
 The "<%= @record.name %>" <%= @noun %> has encountered an unrecoverable error and sync has been disabled.
 Please visit your <%= @settings_link_text %> <%= @settings_action %>

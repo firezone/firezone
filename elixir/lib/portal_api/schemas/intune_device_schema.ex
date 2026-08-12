@@ -8,16 +8,20 @@ defmodule PortalAPI.Schemas.IntuneDevice do
     # The device table mirrors the Microsoft Graph managedDevice resource field
     # for field, so the documented properties are derived from the Ecto schema.
     # A newly synced field cannot end up in the database but missing here.
+    @required [:account_id, :device_integration_id, :intune_id, :synced_at]
+
     @properties Map.new(Portal.Intune.Device.__schema__(:fields), fn field ->
+                  nullable = field not in @required
+
                   schema =
                     case Portal.Intune.Device.__schema__(:type, field) do
-                      :binary_id -> %Schema{type: :string, format: :uuid, nullable: true}
-                      :string -> %Schema{type: :string, nullable: true}
-                      :boolean -> %Schema{type: :boolean, nullable: true}
-                      :integer -> %Schema{type: :integer, nullable: true}
-                      :utc_datetime_usec -> %Schema{type: :string, format: :"date-time", nullable: true}
-                      :map -> %Schema{type: :object, additionalProperties: true}
-                      {:array, :map} -> %Schema{type: :array, items: %Schema{type: :object}}
+                      :binary_id -> %Schema{type: :string, format: :uuid, nullable: nullable}
+                      :string -> %Schema{type: :string, nullable: nullable}
+                      :boolean -> %Schema{type: :boolean, nullable: nullable}
+                      :integer -> %Schema{type: :integer, nullable: nullable}
+                      :utc_datetime_usec -> %Schema{type: :string, format: :"date-time", nullable: nullable}
+                      :map -> %Schema{type: :object, additionalProperties: true, nullable: nullable}
+                      {:array, :map} -> %Schema{type: :array, items: %Schema{type: :object}, nullable: nullable}
                     end
 
                   {field, schema}
@@ -28,7 +32,7 @@ defmodule PortalAPI.Schemas.IntuneDevice do
       description: "Device synced from Microsoft Intune",
       type: :object,
       properties: @properties,
-      required: [:account_id, :device_integration_id, :intune_id, :synced_at]
+      required: @required
     })
   end
 

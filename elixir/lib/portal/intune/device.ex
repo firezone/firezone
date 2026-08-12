@@ -29,7 +29,7 @@ defmodule Portal.Intune.Device do
     # enrollment, so it is the key rather than an id of our own.
     field :intune_id, :string, primary_key: true
 
-    belongs_to :device_integration, Portal.Intune.Integration
+    belongs_to :device_integration, Portal.DeviceIntegration
 
     field :device_name, :string
     field :managed_device_name, :string

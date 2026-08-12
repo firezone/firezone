@@ -4590,6 +4590,7 @@
             "items": {
               "type": "object"
             },
+            "nullable": true,
             "type": "array"
           },
           "attestation_operating_system_kernel_debugging": {
@@ -4602,7 +4603,7 @@
           },
           "synced_at": {
             "format": "date-time",
-            "nullable": true,
+            "nullable": false,
             "type": "string"
           },
           "inserted_at": {
@@ -4619,7 +4620,7 @@
             "type": "string"
           },
           "intune_id": {
-            "nullable": true,
+            "nullable": false,
             "type": "string"
           },
           "management_certificate_expires_at": {
@@ -4711,7 +4712,7 @@
           },
           "account_id": {
             "format": "uuid",
-            "nullable": true,
+            "nullable": false,
             "type": "string"
           },
           "attestation_early_launch_anti_malware_driver_protection": {
@@ -4768,7 +4769,7 @@
           },
           "device_integration_id": {
             "format": "uuid",
-            "nullable": true,
+            "nullable": false,
             "type": "string"
           },
           "subscriber_carrier": {
