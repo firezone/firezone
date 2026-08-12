@@ -33,7 +33,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
      socket
      |> assign(
        page_title: "Device Integrations",
-       trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
+       device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?(),
        verification_error: nil,
        active_verification: nil,
        pending_verification: nil,
@@ -376,7 +376,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
+        device_trust_enabled?={@device_trust_enabled?}
       />
 
       <%= if Portal.Account.device_posture_enabled?(@account) do %>

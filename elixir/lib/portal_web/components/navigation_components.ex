@@ -23,7 +23,7 @@ defmodule PortalWeb.NavigationComponents do
   @doc """
   Whether device posture is enabled globally.
 
-  Unlike `trust_anchors_enabled?/0` this reads application config rather than the
+  Unlike `device_trust_enabled?/0` this reads application config rather than the
   database, so it is cheap enough to call from a template.
   """
   def device_posture_enabled?, do: Portal.Config.global_feature_enabled?(:device_posture)
