@@ -1,0 +1,32 @@
+Certificate revocation checks have stopped!
+
+Firezone could not reach the revocation information published by the certificate
+authority "<%= @issuer %>", and has stopped trying.
+
+Until this is fixed, devices holding a certificate from this CA are let on even
+if the CA has since revoked that certificate. Everything else about the
+certificate is still checked, so an expired or untrusted one is still refused.
+
+Below is the last error:
+
+<%= @error_message %>
+
+Details:
+  Account: <%= @account.name %>
+  Account ID: <%= @account.id %>
+  Certificate Authority: <%= @issuer %>
+  Address: <%= @endpoint.distribution_point %>
+  Last Checked At: <%= @endpoint.crl_fetched_at || @endpoint.ocsp_checked_at || "Never" %>
+  Failing Since: <%= @endpoint.errored_at || "Unknown" %>
+
+How to fix it:
+
+  1. Check that the address above is reachable from the public internet, and
+     that it is served over http:// or https://. Firezone will not fetch from a
+     private or internal address.
+
+  2. Edit and Save the trust anchor this CA belongs to, in your Firezone
+     settings, to start checking again:
+     <%= @settings_url %>
+
+     Checks resume on the next scheduled run.

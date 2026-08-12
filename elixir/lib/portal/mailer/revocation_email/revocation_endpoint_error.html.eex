@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml">
+	<head>
+		<meta charset="utf-8">
+		<meta name="x-apple-disable-message-reformatting">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="format-detection" content="telephone=no, date=no, address=no, email=no, url=no">
+		<meta name="color-scheme" content="light dark">
+		<meta name="supported-color-schemes" content="light dark">
+		<!--[if mso]>
+		<noscript>
+			<xml>
+				<o:OfficeDocumentSettings xmlns:o="urn:schemas-microsoft-com:office:office">
+					<o:PixelsPerInch>96</o:PixelsPerInch>
+				</o:OfficeDocumentSettings>
+			</xml>
+		</noscript>
+		<style>
+			td,th,div,p,a,h1,h2,h3,h4,h5,h6 {font-family: "Segoe UI", sans-serif; mso-line-height-rule: exactly;}
+		</style>
+		<![endif]-->
+		<title>Firezone Certificate Revocation Error</title>
+		<style>
+			.hover-important-text-decoration-underline:hover {
+				text-decoration: underline !important
+			}
+			:is([dir="rtl"] .rtl-text-right) {
+				text-align: right !important
+			}
+			@media (max-width: 600px) {
+				.sm-my-8 {
+					margin-top: 32px !important;
+					margin-bottom: 32px !important
+				}
+				.sm-px-4 {
+					padding-left: 16px !important;
+					padding-right: 16px !important
+				}
+				.sm-px-6 {
+					padding-left: 24px !important;
+					padding-right: 24px !important
+				}
+				.sm-leading-8 {
+					line-height: 32px !important
+				}
+			}
+			<%= File.read!(Application.app_dir(:portal, "priv/static/emails/dark_mode.css")) %>
+		</style>
+	</head>
+	<body style="margin: 0; width: 100%; background-color: #f6f6f6; padding: 0; -webkit-font-smoothing: antialiased; word-break: break-word">
+		<div role="article" aria-roledescription="email" aria-label="Firezone Certificate Revocation Error" lang="en">
+			<div class="sm-px-4 email-container" style="background-color: #f6f6f6; font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif">
+				<table align="center" cellpadding="0" cellspacing="0" role="none">
+					<tr>
+						<td style="width: 552px; max-width: 100%">
+							<div class="sm-my-8" style="margin-top: 48px; margin-bottom: 48px; text-align: center">
+								<a href="https://www.firezone.dev">
+									<div>
+										<img class="logo-light" src="https://www.firezone.dev/images/logo-lockup.png" width="250" alt="Firezone logo" style="max-width: 100%; vertical-align: middle; line-height: 1">
+										<img class="logo-dark" src="https://www.firezone.dev/images/logo-text-dark.svg" width="250" alt="Firezone logo" style="display: none; max-width: 100%; vertical-align: middle; line-height: 1">
+									</div>
+								</a>
+							</div>
+							<table style="width: 100%;" cellpadding="0" cellspacing="0" role="none">
+								<tr>
+									<td class="sm-px-6 content-box" style="border-radius: 4px; background-color: #ffffff; padding: 48px; font-size: 16px; color: #4f4f4f; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05)">
+										<h1 class="sm-leading-8" style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #000000">
+											Certificate revocation checks have stopped!
+										</h1>
+										<p style="margin: 0; line-height: 24px">
+											Firezone could not reach the revocation information published by the certificate
+											authority <strong><%= @issuer %></strong>, and has stopped trying.
+										</p>
+										<div role="separator" style="line-height: 16px">&zwj;</div>
+										<p style="margin: 0; line-height: 24px">
+											Until this is fixed, devices holding a certificate from this CA are let on even if the
+											CA has since revoked that certificate. Everything else about the certificate is still
+											checked, so an expired or untrusted one is still refused.
+										</p>
+										<div role="separator" style="line-height: 16px">&zwj;</div>
+										<p style="margin: 0; line-height: 24px;">
+											Below is the last error:
+										</p>
+										<div role="separator" style="line-height: 8px">&zwj;</div>
+										<div>
+											<pre style="margin: 0; white-space: pre-wrap; border-radius: 4px; background-color: #f3f4f6; padding: 8px 12px; line-height: 24px; color: #1f2937"><code><%= @error_message %></code></pre>
+										</div>
+										<div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
+										<p style="margin: 0; line-height: 24px;">
+											<span style="font-weight: 500; text-decoration-line: underline; text-underline-offset: 2px">Details</span>
+										</p>
+										<table class="rtl-text-right" style="width: 100%; text-align: left; font-size: 14px; color: #6d6d6d" cellpadding="0" cellspacing="0" role="none">
+											<tr style="border-bottom-width: 1px; background-color: #ffffff">
+												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d">Account</th>
+												<td style="padding: 4px 24px"><%= @account.name %></td>
+											</tr>
+											<tr style="border-bottom-width: 1px; background-color: #ffffff;">
+												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;">Account ID</th>
+												<td style="padding: 4px 24px;"><%= @account.id %></td>
+											</tr>
+											<tr style="border-bottom-width: 1px; background-color: #ffffff;">
+												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;">Certificate Authority</th>
+												<td style="padding: 4px 24px;"><%= @issuer %></td>
+											</tr>
+											<tr style="border-bottom-width: 1px; background-color: #ffffff;">
+												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;">Address</th>
+												<td style="padding: 4px 24px;"><%= @endpoint.distribution_point %></td>
+											</tr>
+											<tr style="border-bottom-width: 1px; background-color: #ffffff;">
+												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;">Last Checked At</th>
+												<td style="padding: 4px 24px;"><%= @endpoint.crl_fetched_at || @endpoint.ocsp_checked_at || "Never" %></td>
+											</tr>
+											<tr style="border-bottom-width: 1px; background-color: #ffffff;">
+												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;">Failing Since</th>
+												<td style="padding: 4px 24px;"><%= @endpoint.errored_at || "Unknown" %></td>
+											</tr>
+										</table>
+										<div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0;">&zwj;</div>
+										<p style="margin: 0; line-height: 24px;">
+											<span style="font-weight: 500; text-decoration-line: underline; text-underline-offset: 2px">How to fix it</span>
+										</p>
+										<div role="separator" style="line-height: 8px">&zwj;</div>
+										<ol style="margin: 0; padding-left: 20px; line-height: 24px;">
+											<li style="margin-bottom: 8px;">
+												Check that the address above is reachable from the public internet, and that it is
+												served over <strong>http://</strong> or <strong>https://</strong>. Firezone will not
+												fetch from a private or internal address.
+											</li>
+											<li>
+												<strong>Edit and Save</strong> the trust anchor this CA belongs to, in your
+												<a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: underline;">trust anchor settings</a>,
+												to start checking again. Checks resume on the next scheduled run.
+											</li>
+										</ol>
+										<div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0;">&zwj;</div>
+										<p style="margin: 0; line-height: 24px;">
+											If the problem persists, please reach out to Firezone support via Slack or email.
+											<br>
+											<br>
+											Thanks, <br>The Firezone Team
+										</p>
+										<div role="separator" style="line-height: 16px">&zwj;</div>
+									</td>
+								</tr>
+								<tr role="separator">
+									<td style="line-height: 48px">&zwj;</td>
+								</tr>
+								<tr>
+									<td class="footer-text" style="padding-left: 24px; padding-right: 24px; text-align: center; font-size: 12px; color: #575757">
+										<p style="margin: 0; font-style: italic">
+											Blazing-fast alternative to legacy VPNs
+										</p>
+										<p style="cursor: default">
+											<a href="https://www.firezone.dev/kb" class="hover-important-text-decoration-underline" style="color: #5e00d6; text-decoration: none">Docs</a>
+											&bull;
+											<a href="https://github.com/firezone" class="hover-important-text-decoration-underline" style="color: #5e00d6; text-decoration: none;">GitHub</a>
+											&bull;
+											<a href="https://x.com/firezonehq" class="hover-important-text-decoration-underline" style="color: #5e00d6; text-decoration: none;">X</a>
+										</p>
+									</td>
+								</tr>
+							</table>
+						</td>
+					</tr>
+				</table>
+			</div>
+		</div>
+	</body>
+</html>

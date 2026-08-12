@@ -172,6 +172,7 @@ config :portal, Portal.Entra.APIClient,
 config :portal, Portal.Workers.SyncErrorNotification, []
 
 config :portal, Portal.Workers.LogSinkErrorNotification, []
+config :portal, Portal.Workers.RevocationEndpointErrorNotification, []
 
 config :portal, Portal.Telemetry, enabled: false
 
@@ -182,6 +183,7 @@ config :portal, Portal.ClockDriftAlarm, enabled: false
 config :portal, :client_session_queue, enabled: false
 config :portal, :gateway_session_queue, enabled: false
 config :portal, :policy_authorization_queue, enabled: false
+config :portal, :revocation_endpoint_queue, enabled: false
 
 config :portal, Portal.ComponentVersions,
   fetch_from_url: false,

@@ -145,6 +145,22 @@ defmodule PortalAPI.Client.DeviceTrust do
           | :no_device_identifiers
           | :certificate_revoked
 
+  @doc false
+  def revocation_endpoint_queue_opts do
+    [
+      name: :revocation_endpoint_queue,
+      flush_interval: :timer.seconds(30),
+      flush_threshold: 500,
+      label: "revocation endpoint",
+      on_flush: &flush_revocation_endpoints/1
+    ]
+  end
+
+  @doc false
+  def flush_revocation_endpoints(entries) do
+    entries |> Enum.map(fn {attrs, _metadata} -> attrs end) |> Database.put_revocation_endpoints()
+  end
+
   @doc """
   Attests the connecting device from the certificate the load balancer passed
   up.
@@ -386,10 +402,30 @@ defmodule PortalAPI.Client.DeviceTrust do
     ocsp_urls = leaf |> X509.authority_info_access() |> Map.fetch!(:ocsp) |> order_by_scheme()
 
     Enum.each(endpoint_rows(crl_groups, ocsp_urls), fn {point, crl_urls, row_ocsp_urls} ->
-      Database.put_revocation_endpoint(issuer, point, crl_urls, row_ocsp_urls, subject)
+      enqueue_endpoint(issuer, point, crl_urls, row_ocsp_urls, subject)
     end)
 
     :ok
+  end
+
+  # Off the connect path. A certificate that partitions its list writes a row
+  # per partition, and every connect rediscovers the same rows, so this is a
+  # write that repeats forever and changes nothing after the first one.
+  #
+  # Losing a batch costs a scheduling round rather than a fetch: the next
+  # connect on that certificate rediscovers the endpoint and enqueues it again.
+  defp enqueue_endpoint(issuer, distribution_point, crl_urls, ocsp_urls, subject) do
+    Portal.Queue.enqueue(:revocation_endpoint_queue, %{
+      account_id: subject.account.id,
+      issuer: issuer,
+      distribution_point: distribution_point,
+      crl_urls: crl_urls,
+      ocsp_urls: ocsp_urls
+    })
+
+    :ok
+  catch
+    :exit, _reason -> :ok
   end
 
   # A certificate names one list per distribution point, so each becomes its own
@@ -794,34 +830,39 @@ defmodule PortalAPI.Client.DeviceTrust do
     # Inserted once per issuer and left alone afterwards, so a later connect
     # never overwrites what the fetch job has since recorded, nor an address an
     # administrator corrected by hand.
-    def put_revocation_endpoint(issuer, distribution_point, crl_urls, ocsp_urls, subject) do
+    def put_revocation_endpoints(attrs_list) do
+      rows =
+        attrs_list
+        |> Enum.flat_map(&build_row/1)
+        |> Enum.uniq_by(&{&1.account_id, &1.issuer, &1.distribution_point})
+
+      case rows do
+        [] ->
+          0
+
+        rows ->
+          {count, _returned} =
+            Safe.unscoped()
+            |> Safe.insert_all(Portal.RevocationEndpoint, rows, on_conflict: :nothing)
+
+          count
+      end
+    end
+
+    # Validated before insert rather than after, so a certificate advertising an
+    # address too long to record leaves the endpoint unlearned instead of taking
+    # the rest of the batch down with it.
+    defp build_row(attrs) do
       now = DateTime.utc_now()
 
       changeset =
         %Portal.RevocationEndpoint{}
-        |> Ecto.Changeset.change(%{
-          account_id: subject.account.id,
-          issuer: issuer,
-          distribution_point: distribution_point,
-          crl_urls: crl_urls,
-          ocsp_urls: ocsp_urls,
-          inserted_at: now,
-          updated_at: now
-        })
+        |> Ecto.Changeset.change(Map.merge(attrs, %{inserted_at: now, updated_at: now}))
         |> Portal.RevocationEndpoint.changeset()
 
-      # Validated before insert rather than after, so a certificate advertising
-      # an address too long to record leaves the endpoint unlearned instead of
-      # failing the connect over bookkeeping.
       case Ecto.Changeset.apply_action(changeset, :insert) do
-        {:ok, endpoint} ->
-          row = Map.take(endpoint, Portal.RevocationEndpoint.__schema__(:fields))
-
-          Safe.unscoped()
-          |> Safe.insert_all(Portal.RevocationEndpoint, [row], on_conflict: :nothing)
-
-        {:error, _changeset} ->
-          :ok
+        {:ok, endpoint} -> [Map.take(endpoint, Portal.RevocationEndpoint.__schema__(:fields))]
+        {:error, _changeset} -> []
       end
     end
 

@@ -72,6 +72,48 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
       |> Map.new()
     end
 
+    # One row per issuer for the whole table, so the list does not read an
+    # endpoint per anchor.
+    def revocation_health(issuers, subject) do
+      from(e in Portal.RevocationEndpoint,
+        where: e.issuer in ^issuers,
+        group_by: e.issuer,
+        select: {
+          e.issuer,
+          %{
+            disabled: fragment("bool_or(?)", e.is_disabled),
+            errored: fragment("bool_or(? IS NOT NULL)", e.errored_at),
+            error_message: fragment("max(coalesce(?, ?))", e.crl_error, e.ocsp_error)
+          }
+        }
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Map.new()
+    end
+
+    # Editing the anchor is the only way back: a disabled endpoint never fetches,
+    # so it can never notice that the CA has recovered.
+    def clear_revocation_errors(issuers, subject) do
+      now = DateTime.utc_now()
+
+      from(e in Portal.RevocationEndpoint, where: e.issuer in ^issuers)
+      |> update(
+        set: [
+          errored_at: nil,
+          is_disabled: false,
+          disabled_reason: nil,
+          error_email_count: 0,
+          last_error_email_at: nil,
+          crl_error: nil,
+          ocsp_error: nil,
+          updated_at: ^now
+        ]
+      )
+      |> Safe.scoped(subject)
+      |> Safe.update_all([])
+    end
+
     def count_revoked_statuses(issuers, subject) do
       from(s in Portal.OcspStatus,
         where: s.issuer in ^issuers,
@@ -96,6 +138,7 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
         socket
         |> assign(page_title: "Device Trust")
         |> assign(trust_anchors: trust_anchors)
+        |> assign_revocation_health(trust_anchors)
         |> assign(selected_trust_anchor: nil)
         |> assign(form: nil, input_mode: :paste)
         |> assign(confirm_delete?: false)
@@ -221,6 +264,9 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
                     Certificates
                   </th>
                   <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
+                    Revocation
+                  </th>
+                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
                     Created
                   </th>
                 </tr>
@@ -229,6 +275,7 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
                 <.trust_anchor_row
                   :for={trust_anchor <- @trust_anchors}
                   trust_anchor={trust_anchor}
+                  health={@revocation_health[trust_anchor.id]}
                   selected?={
                     !!@selected_trust_anchor && @selected_trust_anchor.id == trust_anchor.id
                   }
@@ -349,8 +396,46 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
     """
   end
 
+  attr :id, :string, required: true
+  attr :health, :any, required: true
+
+  # Nothing is shown for an anchor that is fine, or for one no device has
+  # attested against yet: an empty cell says "no problem" without claiming
+  # revocation is being checked when there is nothing to check.
+  defp revocation_health_badge(%{health: nil} = assigns) do
+    ~H"""
+    <span class="text-sm text-subtle">&mdash;</span>
+    """
+  end
+
+  defp revocation_health_badge(%{health: %{state: :disabled}} = assigns) do
+    ~H"""
+    <.status_popover id={@id} label="Not checked" color="red">
+      <p class="text-xs text-body break-words">{@health.error_message}</p>
+      <p class="mt-2 text-xs text-subtle">
+        Firezone cannot reach this CA's revocation list, so it has stopped trying.
+        Certificates it has revoked are still let on. Edit and Save this trust anchor
+        to start checking again.
+      </p>
+    </.status_popover>
+    """
+  end
+
+  defp revocation_health_badge(assigns) do
+    ~H"""
+    <.status_popover id={@id} label="Warning" color="yellow">
+      <p class="text-xs text-body break-words">{@health.error_message}</p>
+      <p class="mt-2 text-xs text-subtle">
+        Firezone is retrying automatically. Checking stops if this keeps failing
+        for 24 hours.
+      </p>
+    </.status_popover>
+    """
+  end
+
   attr :trust_anchor, :any, required: true
   attr :selected?, :boolean, required: true
+  attr :health, :any, required: true
 
   defp trust_anchor_row(assigns) do
     ~H"""
@@ -371,6 +456,9 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
       </td>
       <td class="px-6 py-3 w-36">
         <span class="text-sm text-body">{cert_count_label(@trust_anchor.certificates)}</span>
+      </td>
+      <td class="px-6 py-3 w-36">
+        <.revocation_health_badge id={"anchor-revocation-#{@trust_anchor.id}"} health={@health} />
       </td>
       <td class="px-6 py-3 w-36">
         <span class="text-sm text-body">
@@ -452,6 +540,17 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
               >
                 <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 <span>Last check failed: {revocation_error(entry.endpoint)}</span>
+              </p>
+
+              <p
+                :if={entry.endpoint.is_disabled}
+                class="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400"
+              >
+                <.icon name="ri-forbid-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>
+                  Checks are stopped, so certificates this CA has revoked are still
+                  let on. Save this trust anchor to start checking again.
+                </span>
               </p>
 
               <div>
@@ -769,10 +868,14 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
       build_edit_changeset(socket.assigns.selected_trust_anchor, attrs, socket.assigns.subject)
 
     case Safe.scoped(changeset, socket.assigns.subject) |> Safe.update() do
-      {:ok, _trust_anchor} ->
+      {:ok, trust_anchor} ->
+        clear_revocation_errors(trust_anchor, socket.assigns.subject)
+        trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
+
         socket =
           socket
-          |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
+          |> assign(trust_anchors: trust_anchors)
+          |> assign_revocation_health(trust_anchors)
           |> put_flash(:success, "Trust anchor updated successfully")
           |> push_patch(to: ~p"/#{socket.assigns.account}/settings/device_trust")
 
@@ -933,19 +1036,66 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
   # A CA advertises where it publishes in the certificates it issues, not in its
   # own, so nothing is known here until a device presents one. Until then the
   # panel says so rather than implying the CA publishes nothing.
+  # Saving the anchor is what an admin is told to do to start checking again, so
+  # it clears the failure state whether or not the certificates changed.
+  defp clear_revocation_errors(trust_anchor, subject) do
+    trust_anchor = Safe.preload(trust_anchor, :certificates)
+
+    case anchor_issuers(trust_anchor) do
+      [] -> :ok
+      issuers -> Database.clear_revocation_errors(issuers, subject)
+    end
+  end
+
+  defp anchor_issuers(trust_anchor) do
+    trust_anchor.certificates
+    |> Enum.flat_map(fn certificate ->
+      case X509.pem_decode(certificate.pem) do
+        {:ok, [{_type, der, _headers} | _rest]} -> [X509.subject(der)]
+        _other -> []
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  # Every anchor's issuers in one lookup, keyed by anchor, so the table reads
+  # the endpoints once rather than once per row.
+  defp assign_revocation_health(socket, trust_anchors) do
+    issuers = Enum.flat_map(trust_anchors, &anchor_issuers/1) |> Enum.uniq()
+
+    by_issuer =
+      if issuers == [] do
+        %{}
+      else
+        Database.revocation_health(issuers, socket.assigns.subject)
+      end
+
+    health =
+      Map.new(trust_anchors, fn trust_anchor ->
+        {trust_anchor.id,
+         trust_anchor |> anchor_issuers() |> Enum.map(&Map.get(by_issuer, &1)) |> worst_health()}
+      end)
+
+    assign(socket, revocation_health: health)
+  end
+
+  # An anchor is only as healthy as its unhealthiest issuer: one CA that cannot
+  # be reached is one CA whose revocations are not being seen.
+  defp worst_health(entries) do
+    entries = Enum.reject(entries, &is_nil/1)
+
+    cond do
+      Enum.any?(entries, & &1.disabled) -> Enum.find(entries, & &1.disabled) |> Map.put(:state, :disabled)
+      Enum.any?(entries, & &1.errored) -> Enum.find(entries, & &1.errored) |> Map.put(:state, :errored)
+      true -> nil
+    end
+  end
+
   defp assign_revocation(socket, trust_anchor) do
     subject = socket.assigns.subject
 
-    issuers =
-      trust_anchor.certificates
-      |> Enum.flat_map(fn certificate ->
-        case X509.pem_decode(certificate.pem) do
-          {:ok, [{_type, der, _headers} | _rest]} -> [X509.subject(der)]
-          _other -> []
-        end
-      end)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.uniq()
+    issuers = anchor_issuers(trust_anchor)
 
     endpoints =
       if issuers == [] do

@@ -49,8 +49,7 @@ defmodule Portal.Crl.Sync do
         Database.record_error(endpoint, reason)
 
         # Logged as an error rather than a warning: an endpoint that keeps
-        # failing means revocation is not being enforced for that CA, and the
-        # only way that surfaces is here. The endpoint is never disabled for it.
+        # failing means revocation is not being enforced for that CA.
         Logger.error("Failed to refresh certificate revocation list",
           account_id: endpoint.account_id,
           issuer: X509.describe_name(endpoint.issuer),
@@ -375,6 +374,7 @@ defmodule Portal.Crl.Sync do
 
   defmodule Database do
     import Ecto.Query
+    alias Portal.Revocation.Failure
     alias Portal.Crypto.X509
     alias Portal.Safe
 
@@ -453,7 +453,11 @@ defmodule Portal.Crl.Sync do
         endpoint
         |> endpoint_query()
         |> Safe.unscoped()
-        |> Safe.update_all(set: crl_fields(crl, now) ++ delta_fields(delta, now))
+        |> Safe.update_all(
+          set:
+            crl_fields(crl, now) ++
+              delta_fields(delta, now) ++ Failure.success_fields(endpoint, :crl)
+        )
 
         {:ok, {length(rows), newly_revoked}}
       end)
@@ -487,11 +491,13 @@ defmodule Portal.Crl.Sync do
     def record_error(endpoint, reason) do
       now = DateTime.utc_now()
 
+      fields =
+        [crl_fetched_at: now, crl_error: to_message(reason), updated_at: now] ++
+          Failure.error_fields(endpoint, reason, now)
+
       endpoint
       |> endpoint_query()
-      |> update(
-        set: [crl_fetched_at: ^now, crl_error: ^to_message(reason), updated_at: ^now]
-      )
+      |> update(set: ^fields)
       |> Safe.unscoped()
       |> Safe.update_all([])
     end

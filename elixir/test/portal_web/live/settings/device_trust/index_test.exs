@@ -332,6 +332,112 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
     end
   end
 
+  describe "revocation failures" do
+    setup %{account: account} do
+      trust_anchor =
+        trust_anchor_fixture(account: account, name: "EC Anchor", certs: [sample_ec_ca_der()])
+
+      %{trust_anchor: trust_anchor, issuer: X509.subject(sample_ec_ca_der())}
+    end
+
+    test "the list warns about an issuer that is still being retried", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer, crl_error: "connection refused")
+      |> Ecto.Changeset.change(errored_at: DateTime.utc_now())
+      |> Repo.update!()
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors")
+
+      assert html =~ "Warning"
+      assert html =~ "connection refused"
+      assert html =~ "Checking stops if this keeps failing"
+    end
+
+    test "the list says when an issuer is no longer checked at all", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer, crl_error: "connection refused")
+      |> Ecto.Changeset.change(
+        errored_at: DateTime.utc_now(),
+        is_disabled: true,
+        disabled_reason: Portal.Revocation.Failure.disabled_reason()
+      )
+      |> Repo.update!()
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors")
+
+      assert html =~ "Not checked"
+      assert html =~ "Edit and Save this trust anchor"
+    end
+
+    test "the list says nothing about a healthy issuer", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors")
+
+      refute html =~ "Not checked"
+      refute html =~ "Warning"
+    end
+
+    test "saving the trust anchor starts the checking again", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer, crl_error: "connection refused")
+      |> Ecto.Changeset.change(
+        errored_at: DateTime.utc_now(),
+        is_disabled: true,
+        disabled_reason: Portal.Revocation.Failure.disabled_reason(),
+        error_email_count: 4,
+        last_error_email_at: DateTime.utc_now()
+      )
+      |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
+
+      lv
+      |> form("#trust-anchor-edit-form",
+        trust_anchor: %{name: "EC Anchor", certs: [sample_ec_ca_pem()]}
+      )
+      |> render_submit()
+
+      endpoint = Repo.one!(Portal.RevocationEndpoint)
+      refute endpoint.is_disabled
+      assert is_nil(endpoint.disabled_reason)
+      assert is_nil(endpoint.errored_at)
+      assert is_nil(endpoint.crl_error)
+      assert endpoint.error_email_count == 0
+      assert is_nil(endpoint.last_error_email_at)
+    end
+  end
+
   describe ":new action" do
     test "renders create panel and closes it", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, html} =

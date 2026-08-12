@@ -40,6 +40,7 @@ defmodule Portal.Crl.Scheduler do
           on: a.id == e.account_id,
           where: e.crl_urls != [],
           where: a.is_disabled == false,
+          where: e.is_disabled == false,
           # A failed delta leaves the partition due, so a delta that is broken
           # rather than absent is retried instead of waiting out the complete
           # list's own validity.

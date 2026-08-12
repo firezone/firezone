@@ -265,6 +265,7 @@ if config_env() == :prod do
 
     # Log sink delivery error notifications
     {"0 9 * * *", Portal.Workers.LogSinkErrorNotification},
+    {"0 9 * * *", Portal.Workers.RevocationEndpointErrorNotification},
 
     # Check account limits every 30 minutes
     {"*/30 * * * *", Portal.Workers.CheckAccountLimits},

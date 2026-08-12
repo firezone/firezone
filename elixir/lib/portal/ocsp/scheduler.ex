@@ -32,7 +32,8 @@ defmodule Portal.Ocsp.Scheduler do
               e.crl_urls
             ),
           where: e.ocsp_urls != [],
-          where: a.is_disabled == false
+          where: a.is_disabled == false,
+          where: e.is_disabled == false
         )
         |> Safe.unscoped()
         |> Safe.stream()

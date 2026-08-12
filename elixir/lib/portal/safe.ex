@@ -964,9 +964,13 @@ defmodule Portal.Safe do
 
   # Readable by any actor type that can attest, since the connect path consults
   # it to tell an issuer that publishes a list from one that only answers a
-  # responder. Read only: the rows are written by the connect that discovers
-  # them and by the fetch jobs, both of which pin the account themselves.
+  # responder. The rows are otherwise written by the connect that discovers them
+  # and by the fetch jobs, both of which pin the account themselves.
   def permit(:read, Portal.RevocationEndpoint, _), do: :ok
+
+  # An endpoint that keeps failing stops being fetched from, and saving the
+  # trust anchor its issuer belongs to is the only way to start again.
+  def permit(:update_all, Portal.RevocationEndpoint, :account_admin_user), do: :ok
 
   # Every attested connect checks the cached status of its own certificate when
   # its CA publishes no list, so any actor type that can attest must read it.

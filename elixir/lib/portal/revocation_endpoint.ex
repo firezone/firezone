@@ -47,6 +47,11 @@ defmodule Portal.RevocationEndpoint do
           delta_next_update: DateTime.t() | nil,
           delta_fetched_at: DateTime.t() | nil,
           delta_error: String.t() | nil,
+          errored_at: DateTime.t() | nil,
+          is_disabled: boolean(),
+          disabled_reason: String.t() | nil,
+          error_email_count: integer(),
+          last_error_email_at: DateTime.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -79,6 +84,15 @@ defmodule Portal.RevocationEndpoint do
     field :delta_fetched_at, :utc_datetime_usec
     field :delta_error, :string
 
+    # Shared by the list and the responder: what gets reported is whether
+    # revocation works for this CA at all, so a streak ends only once both are
+    # healthy.
+    field :errored_at, :utc_datetime_usec
+    field :is_disabled, :boolean, default: false
+    field :disabled_reason, :string
+    field :error_email_count, :integer, default: 0
+    field :last_error_email_at, :utc_datetime_usec
+
     timestamps()
   end
 
@@ -92,6 +106,8 @@ defmodule Portal.RevocationEndpoint do
     |> validate_length(:crl_error, max: 255)
     |> validate_length(:ocsp_error, max: 255)
     |> validate_length(:delta_error, max: 255)
+    |> validate_length(:disabled_reason, max: 255)
+    |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
     |> assoc_constraint(:account)
   end
 

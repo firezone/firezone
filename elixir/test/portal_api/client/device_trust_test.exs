@@ -61,6 +61,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
   describe "attest/2" do
     setup do
       configure_attestation_host()
+      start_revocation_endpoint_queue()
 
       account = account_fixture()
       enable_feature(:device_trust)
@@ -362,6 +363,8 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       leaf = leaf(pki, :with_crl)
       assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
 
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
       endpoint = Repo.one!(Portal.RevocationEndpoint)
       assert endpoint.issuer == Portal.Crypto.X509.issuer(leaf)
       assert endpoint.crl_urls == ["http://crl.example.test/ca.crl"]
@@ -375,12 +378,14 @@ defmodule PortalAPI.Client.DeviceTrustTest do
     } do
       leaf = leaf(pki, :with_crl)
       assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+      Portal.Queue.flush(:revocation_endpoint_queue)
 
       Repo.update_all(Portal.RevocationEndpoint,
         set: [crl_urls: ["http://mirror.example.test/a.crl"]]
       )
 
       assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+      Portal.Queue.flush(:revocation_endpoint_queue)
 
       assert Repo.one!(Portal.RevocationEndpoint).crl_urls == ["http://mirror.example.test/a.crl"]
     end
@@ -624,5 +629,14 @@ defmodule PortalAPI.Client.DeviceTrustTest do
   defp cert_serial_hex(der) do
     {:ok, leaf} = Portal.Crypto.X509.decode_der_certificate(der, :otp)
     leaf |> Portal.Crypto.X509.serial_number() |> Integer.to_string(16)
+  end
+  defp start_revocation_endpoint_queue do
+    start_supervised!(
+      {Portal.Queue,
+       Keyword.merge(DeviceTrust.revocation_endpoint_queue_opts(),
+         callers: [self()],
+         flush_on_terminate: false
+       )}
+    )
   end
 end

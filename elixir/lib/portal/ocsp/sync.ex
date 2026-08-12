@@ -98,9 +98,7 @@ defmodule Portal.Ocsp.Sync do
     Database.record_error(endpoint, reason)
 
     # Logged as an error rather than a warning: an endpoint that keeps failing
-    # means revocation is not being enforced for that CA, and the only way that
-    # surfaces is here. The endpoint is never disabled for it, so a responder
-    # that comes back is picked up on the next run.
+    # means revocation is not being enforced for that CA.
     Logger.error("Failed to refresh OCSP statuses",
       account_id: endpoint.account_id,
       issuer: X509.describe_name(endpoint.issuer),
@@ -232,6 +230,7 @@ defmodule Portal.Ocsp.Sync do
   defmodule Database do
     import Ecto.Query
     alias Portal.Crypto.X509
+    alias Portal.Revocation.Failure
     alias Portal.Safe
 
     def fetch_endpoint(account_id, issuer, distribution_point) do
@@ -325,17 +324,28 @@ defmodule Portal.Ocsp.Sync do
     end
 
     def record_success(endpoint) do
+      now = DateTime.utc_now()
+
+      fields =
+        [ocsp_checked_at: now, ocsp_error: nil] ++ Failure.success_fields(endpoint, :ocsp)
+
       endpoint
       |> endpoint_query()
-      |> update(set: [ocsp_checked_at: ^DateTime.utc_now(), ocsp_error: nil])
+      |> update(set: ^fields)
       |> Safe.unscoped()
       |> Safe.update_all([])
     end
 
     def record_error(endpoint, reason) do
+      now = DateTime.utc_now()
+
+      fields =
+        [ocsp_checked_at: now, ocsp_error: to_message(reason)] ++
+          Failure.error_fields(endpoint, reason, now)
+
       endpoint
       |> endpoint_query()
-      |> update(set: [ocsp_checked_at: ^DateTime.utc_now(), ocsp_error: ^to_message(reason)])
+      |> update(set: ^fields)
       |> Safe.unscoped()
       |> Safe.update_all([])
     end

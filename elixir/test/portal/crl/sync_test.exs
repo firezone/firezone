@@ -1,5 +1,6 @@
 defmodule Portal.Crl.SyncTest do
   use Portal.DataCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
   import Portal.TrustAnchorFixtures
@@ -488,6 +489,72 @@ defmodule Portal.Crl.SyncTest do
       Repo.delete_all(Portal.RevocationEndpoint)
 
       assert perform(endpoint) == {:ok, :deleted}
+    end
+  end
+
+  describe "perform/1 when the endpoint keeps failing" do
+    test "an address we will never reach stops the fetching at once", %{
+      account: account,
+      pki: pki
+    } do
+      endpoint = endpoint_fixture(account, pki.ca_der, crl_urls: ["ldap://crl.example.test/ca"])
+
+      failure(endpoint)
+
+      endpoint = Repo.one!(Portal.RevocationEndpoint)
+      assert endpoint.is_disabled
+      assert endpoint.disabled_reason == Portal.Revocation.Failure.disabled_reason()
+      assert endpoint.errored_at
+    end
+
+    test "a timeout only starts the clock", %{account: account, pki: pki} do
+      endpoint = endpoint_fixture(account, pki.ca_der)
+      Req.Test.stub(Sync, fn conn -> Req.Test.transport_error(conn, :timeout) end)
+
+      failure(endpoint)
+
+      endpoint = Repo.one!(Portal.RevocationEndpoint)
+      refute endpoint.is_disabled
+      assert endpoint.errored_at
+    end
+
+    test "a day of timeouts stops the fetching", %{account: account, pki: pki} do
+      endpoint = endpoint_fixture(account, pki.ca_der)
+      Req.Test.stub(Sync, fn conn -> Req.Test.transport_error(conn, :timeout) end)
+
+      failure(endpoint)
+
+      started = DateTime.add(DateTime.utc_now(), -25, :hour)
+      Repo.update_all(Portal.RevocationEndpoint, set: [errored_at: started])
+
+      failure(endpoint)
+
+      endpoint = Repo.one!(Portal.RevocationEndpoint)
+      assert endpoint.is_disabled
+      assert endpoint.errored_at == started
+    end
+
+    test "a list that comes back clears the streak", %{account: account, pki: pki} do
+      endpoint = endpoint_fixture(account, pki.ca_der)
+      Req.Test.stub(Sync, fn conn -> Req.Test.transport_error(conn, :timeout) end)
+      failure(endpoint)
+
+      stub_crl(crl(pki.ca, revoked: []))
+      assert perform(endpoint) == {:ok, :refreshed}
+
+      endpoint = Repo.one!(Portal.RevocationEndpoint)
+      assert is_nil(endpoint.errored_at)
+      assert is_nil(endpoint.crl_error)
+      assert endpoint.error_email_count == 0
+    end
+
+    test "a disabled endpoint is never scheduled again", %{account: account, pki: pki} do
+      endpoint_fixture(account, pki.ca_der)
+      Repo.update_all(Portal.RevocationEndpoint, set: [is_disabled: true])
+
+      assert {:ok, :scheduled} = Portal.Crl.Scheduler.perform(%Oban.Job{args: %{}})
+
+      assert [] = all_enqueued(worker: Sync)
     end
   end
 
