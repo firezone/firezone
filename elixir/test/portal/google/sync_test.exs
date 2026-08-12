@@ -125,6 +125,24 @@ defmodule Portal.Google.SyncTest do
       assert log =~ fake_directory_id
     end
 
+    test "logs and returns :ok when directory belongs to another account" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account)
+      other_account = account_fixture()
+
+      log =
+        capture_log(fn ->
+          assert :ok =
+                   perform_job(Sync, %{
+                     "account_id" => other_account.id,
+                     "directory_id" => directory.id
+                   })
+        end)
+
+      assert log =~ "Google directory not found, disabled, or account disabled, skipping"
+      assert log =~ directory.id
+    end
+
     test "logs and returns :ok when directory is disabled" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, is_disabled: true)

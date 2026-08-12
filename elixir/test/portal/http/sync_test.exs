@@ -177,6 +177,17 @@ defmodule Portal.HTTP.SyncTest do
       assert sink.errored_at
       assert sink.error_message == "The endpoint returned HTTP 429: slow down"
     end
+
+    test "skips sink belonging to another account", %{account: account} do
+      sink = http_log_sink_fixture(account: account, enabled_streams: [:session])
+      session_log_fixture(account: account)
+      other_account = account_fixture(features: %{log_sinks: true})
+
+      assert :ok = perform_job(HTTP.Sync, %{account_id: other_account.id, log_sink_id: sink.id})
+
+      refute_receive {:post, _conn, _events}
+      assert Repo.all(LogSinkCursor) == []
+    end
   end
 
   describe "Scheduler" do
@@ -188,7 +199,7 @@ defmodule Portal.HTTP.SyncTest do
 
       assert {:ok, :scheduled} = perform_job(HTTP.Scheduler, %{})
 
-      assert_enqueued(worker: HTTP.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: HTTP.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_enqueued(worker: HTTP.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: HTTP.Sync, args: %{log_sink_id: feature_off_sink.id})
     end

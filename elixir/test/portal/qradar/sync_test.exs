@@ -157,6 +157,17 @@ defmodule Portal.QRadar.SyncTest do
       assert sink.errored_at
       assert sink.error_message == "IBM QRadar returned HTTP 503"
     end
+
+    test "skips sink belonging to another account", %{account: account} do
+      sink = qradar_log_sink_fixture(account: account, enabled_streams: [:session])
+      session_log_fixture(account: account)
+      other_account = account_fixture(features: %{log_sinks: true})
+
+      assert :ok = perform_job(QRadar.Sync, %{account_id: other_account.id, log_sink_id: sink.id})
+
+      refute_receive {:receiver, _conn, _body}
+      assert Repo.all(LogSinkCursor) == []
+    end
   end
 
   describe "Scheduler" do
@@ -168,7 +179,7 @@ defmodule Portal.QRadar.SyncTest do
 
       assert {:ok, :scheduled} = perform_job(QRadar.Scheduler, %{})
 
-      assert_enqueued(worker: QRadar.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: QRadar.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_enqueued(worker: QRadar.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: QRadar.Sync, args: %{log_sink_id: feature_off_sink.id})
     end

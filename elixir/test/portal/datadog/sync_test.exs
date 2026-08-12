@@ -99,6 +99,17 @@ defmodule Portal.Datadog.SyncTest do
       assert sink.errored_at
       assert sink.error_message == "Datadog returned HTTP 429: Too many requests"
     end
+
+    test "skips sink belonging to another account", %{account: account} do
+      sink = datadog_log_sink_fixture(account: account, enabled_streams: [:session])
+      session_log_fixture(account: account)
+      other_account = account_fixture(features: %{log_sinks: true})
+
+      assert :ok = perform_job(Datadog.Sync, %{account_id: other_account.id, log_sink_id: sink.id})
+
+      refute_receive {:intake, _conn, _events}
+      assert Repo.all(LogSinkCursor) == []
+    end
   end
 
   describe "Scheduler" do
@@ -110,7 +121,7 @@ defmodule Portal.Datadog.SyncTest do
 
       assert {:ok, :scheduled} = perform_job(Datadog.Scheduler, %{})
 
-      assert_enqueued(worker: Datadog.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: Datadog.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_enqueued(worker: Datadog.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: Datadog.Sync, args: %{log_sink_id: feature_off_sink.id})
     end

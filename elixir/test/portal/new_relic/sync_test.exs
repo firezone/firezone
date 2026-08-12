@@ -124,6 +124,17 @@ defmodule Portal.NewRelic.SyncTest do
       refute sink.is_disabled
       assert sink.errored_at
     end
+
+    test "skips sink belonging to another account", %{account: account} do
+      sink = newrelic_log_sink_fixture(account: account, enabled_streams: [:session])
+      session_log_fixture(account: account)
+      other_account = account_fixture(features: %{log_sinks: true})
+
+      assert :ok = perform_job(NewRelic.Sync, %{account_id: other_account.id, log_sink_id: sink.id})
+
+      refute_receive {:intake, _conn, _events}
+      assert Repo.all(LogSinkCursor) == []
+    end
   end
 
   describe "Scheduler" do
@@ -135,7 +146,7 @@ defmodule Portal.NewRelic.SyncTest do
 
       assert {:ok, :scheduled} = perform_job(NewRelic.Scheduler, %{})
 
-      assert_enqueued(worker: NewRelic.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: NewRelic.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_enqueued(worker: NewRelic.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: NewRelic.Sync, args: %{log_sink_id: feature_off_sink.id})
     end

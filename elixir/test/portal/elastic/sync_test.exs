@@ -372,6 +372,17 @@ defmodule Portal.Elastic.SyncTest do
       assert sink.error_message ==
                "Elasticsearch returned HTTP 401: unable to authenticate user"
     end
+
+    test "skips sink belonging to another account", %{account: account} do
+      sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
+      session_log_fixture(account: account)
+      other_account = account_fixture(features: %{log_sinks: true})
+
+      assert :ok = perform_job(Elastic.Sync, %{account_id: other_account.id, log_sink_id: sink.id})
+
+      refute_receive {:bulk, _conn, _lines}
+      assert Repo.all(LogSinkCursor) == []
+    end
   end
 
   describe "Scheduler" do
@@ -383,7 +394,7 @@ defmodule Portal.Elastic.SyncTest do
 
       assert {:ok, :scheduled} = perform_job(Elastic.Scheduler, %{})
 
-      assert_enqueued(worker: Elastic.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: Elastic.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_enqueued(worker: Elastic.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: Elastic.Sync, args: %{log_sink_id: feature_off_sink.id})
     end

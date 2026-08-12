@@ -264,6 +264,17 @@ defmodule Portal.S3.SyncTest do
       assert sink.disabled_reason == "Sync error"
       assert sink.error_message == "Amazon S3 returned HTTP 403 (AccessDenied): Access Denied"
     end
+
+    test "skips sink belonging to another account", %{account: account} do
+      sink = s3_log_sink_fixture(account: account, enabled_streams: [:session])
+      session_log_fixture(account: account)
+      other_account = account_fixture(features: %{log_sinks: true})
+
+      assert :ok = perform_job(S3.Sync, %{account_id: other_account.id, log_sink_id: sink.id})
+
+      refute_receive {:put_object, _conn, _body}
+      assert Repo.all(LogSinkCursor) == []
+    end
   end
 
   describe "Scheduler" do
@@ -275,7 +286,7 @@ defmodule Portal.S3.SyncTest do
 
       assert {:ok, :scheduled} = perform_job(S3.Scheduler, %{})
 
-      assert_enqueued(worker: S3.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: S3.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_enqueued(worker: S3.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: S3.Sync, args: %{log_sink_id: feature_off_sink.id})
     end

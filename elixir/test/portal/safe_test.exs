@@ -2,6 +2,7 @@ defmodule Portal.SafeTest do
   use Portal.DataCase, async: true
   import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.SubjectFixtures
   alias Portal.Safe
   alias Portal.Account
 
@@ -209,5 +210,85 @@ defmodule Portal.SafeTest do
       assert Safe.permit(:read, __MODULE__, :account_admin_user) == {:error, :unauthorized}
       assert Safe.permit(:delete, Portal.ChangeLog, :service_account) == {:error, :unauthorized}
     end
+  end
+
+  describe "scoped bulk writes" do
+    setup do
+      account = account_fixture()
+      other_account = account_fixture()
+
+      %{
+        account: account,
+        other_account: other_account,
+        subject: admin_subject_fixture(account: account)
+      }
+    end
+
+    test "insert_all stamps the subject's account on entries that omit it", %{
+      account: account,
+      subject: subject
+    } do
+      assert {1, nil} =
+               Safe.scoped(subject)
+               |> Safe.insert_all(Portal.Group, [group_entry("Stamped")])
+
+      assert [group] = Repo.all(Portal.Group)
+      assert group.account_id == account.id
+      assert group.name == "Stamped"
+    end
+
+    test "insert_all refuses entries naming another account", %{
+      other_account: other_account,
+      subject: subject
+    } do
+      entries = [group_entry("Mine"), group_entry("Theirs", other_account.id)]
+
+      assert {:error, :unauthorized} =
+               Safe.scoped(subject) |> Safe.insert_all(Portal.Group, entries)
+
+      assert Repo.all(Portal.Group) == []
+    end
+
+    test "insert_all refuses the query form", %{subject: subject} do
+      query = from(g in Portal.Group, select: %{})
+
+      assert {:error, :unauthorized} =
+               Safe.scoped(subject) |> Safe.insert_all(Portal.Group, query)
+    end
+
+    test "update_all only touches rows in the subject's account", %{
+      account: account,
+      other_account: other_account,
+      subject: subject
+    } do
+      Safe.unscoped()
+      |> Safe.insert_all(Portal.Group, [
+        group_entry("Mine", account.id),
+        group_entry("Theirs", other_account.id)
+      ])
+
+      assert {1, nil} =
+               from(g in Portal.Group)
+               |> Safe.scoped(subject)
+               |> Safe.update_all(set: [name: "Renamed"])
+
+      assert Repo.get_by!(Portal.Group, account_id: account.id).name == "Renamed"
+      assert Repo.get_by!(Portal.Group, account_id: other_account.id).name == "Theirs"
+    end
+  end
+
+  defp group_entry(name, account_id \\ nil) do
+    now = DateTime.utc_now()
+
+    entry = %{
+      id: Ecto.UUID.generate(),
+      name: name,
+      type: :static,
+      entity_type: :group,
+      inserted_at: now,
+      updated_at: now
+    }
+
+    if account_id, do: Map.put(entry, :account_id, account_id), else: entry
   end
 end

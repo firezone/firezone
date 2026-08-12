@@ -466,6 +466,17 @@ defmodule Portal.Okta.SyncTest do
       assert Repo.all(Group) == []
     end
 
+    test "skips directory belonging to another account" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = okta_directory_fixture(account: account)
+      other_account = account_fixture(features: %{idp_sync: true})
+
+      assert :ok = perform_job(Sync, %{account_id: other_account.id, directory_id: directory.id})
+
+      assert Repo.all(ExternalIdentity) == []
+      assert Repo.all(Group) == []
+    end
+
     test "returns :ok for jobs without a directory_id arg" do
       assert :ok = Sync.perform(%Oban.Job{args: %{"foo" => "bar"}})
     end

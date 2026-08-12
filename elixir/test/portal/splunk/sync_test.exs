@@ -658,7 +658,7 @@ defmodule Portal.Splunk.SyncTest do
 
       assert {:ok, :scheduled} = perform_job(Splunk.Scheduler, %{})
 
-      assert_enqueued(worker: Splunk.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: Splunk.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_enqueued(worker: Splunk.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: Splunk.Sync, args: %{log_sink_id: feature_off_sink.id})
     end

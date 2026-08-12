@@ -233,6 +233,17 @@ defmodule Portal.Sentinel.SyncTest do
       assert sink.errored_at
       assert sink.error_message == "Azure Monitor returned HTTP 429: Rate limit exceeded"
     end
+
+    test "skips sink belonging to another account", %{account: account} do
+      sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
+      session_log_fixture(account: account)
+      other_account = account_fixture(features: %{log_sinks: true})
+
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: other_account.id, log_sink_id: sink.id})
+
+      refute_receive {:ingest, _conn, _events}
+      assert Repo.all(LogSinkCursor) == []
+    end
   end
 
   describe "Scheduler" do
@@ -244,7 +255,7 @@ defmodule Portal.Sentinel.SyncTest do
 
       assert {:ok, :scheduled} = perform_job(Sentinel.Scheduler, %{})
 
-      assert_enqueued(worker: Sentinel.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: Sentinel.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_enqueued(worker: Sentinel.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: Sentinel.Sync, args: %{log_sink_id: feature_off_sink.id})
     end
