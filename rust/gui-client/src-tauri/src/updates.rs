@@ -213,7 +213,7 @@ fn download_url_for(
 /// The package-specific suffix of the download URL.
 ///
 /// Linux is the only OS where a release consists of more than one package
-/// format per architecture: a `.deb` (the URL's default) and an `.rpm`.
+/// format per architecture: a `.deb` and an `.rpm`.
 #[cfg(target_os = "linux")]
 fn package_suffix() -> &'static str {
     // `/etc/os-release` takes precedence but is allowed to be absent:
@@ -223,8 +223,8 @@ fn package_suffix() -> &'static str {
 
     match os_release {
         Ok(os_release) if is_rpm_based(&os_release) => ".rpm",
-        Ok(_) => "",
-        Err(_) => "",
+        Ok(_) => ".deb",
+        Err(_) => ".deb",
     }
 }
 
@@ -378,10 +378,10 @@ mod tests {
             "https://www.firezone.dev/dl/firezone-client-gui-linux/1.5.9/x86_64.rpm"
         );
         assert_eq!(
-            download_url_for("linux", "aarch64", "", &Version::new(1, 5, 9))
+            download_url_for("linux", "aarch64", ".deb", &Version::new(1, 5, 9))
                 .unwrap()
                 .as_str(),
-            "https://www.firezone.dev/dl/firezone-client-gui-linux/1.5.9/aarch64"
+            "https://www.firezone.dev/dl/firezone-client-gui-linux/1.5.9/aarch64.deb"
         );
     }
 
