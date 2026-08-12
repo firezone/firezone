@@ -18,10 +18,11 @@ defmodule Portal.S3.Sync do
   require Logger
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"log_sink_id" => log_sink_id}}) do
-    case Delivery.get_sink(S3.LogSink, log_sink_id) do
+  def perform(%Oban.Job{args: %{"account_id" => account_id, "log_sink_id" => log_sink_id}}) do
+    case Delivery.get_sink(S3.LogSink, account_id, log_sink_id) do
       nil ->
         Logger.info("Amazon S3 log sink not found, disabled, or account ineligible, skipping",
+          account_id: account_id,
           s3_log_sink_id: log_sink_id
         )
 

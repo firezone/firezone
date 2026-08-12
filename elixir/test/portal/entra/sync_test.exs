@@ -130,7 +130,7 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       # Perform sync
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # Verify identities created (3 total: 1 direct user + 2 group members)
       identities = Repo.all(ExternalIdentity)
@@ -216,7 +216,7 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       # Perform sync
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # Verify identities created (2 users)
       identities = Repo.all(ExternalIdentity)
@@ -361,7 +361,7 @@ defmodule Portal.Entra.SyncTest do
         end
       end)
 
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       identities = Repo.all(ExternalIdentity)
       identity_emails = Enum.map(identities, & &1.email) |> Enum.sort()
@@ -396,7 +396,7 @@ defmodule Portal.Entra.SyncTest do
         }
       ])
 
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       disabled_identity =
         Repo.get_by!(ExternalIdentity,
@@ -427,7 +427,7 @@ defmodule Portal.Entra.SyncTest do
         }
       ])
 
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       identities = Repo.all(ExternalIdentity)
       assert Enum.map(identities, & &1.email) == ["active@example.com"]
@@ -441,9 +441,20 @@ defmodule Portal.Entra.SyncTest do
       non_existent_id = Ecto.UUID.generate()
 
       # Should not raise an error
-      assert :ok = perform_job(Sync, %{directory_id: non_existent_id})
+      assert :ok = perform_job(Sync, %{account_id: Ecto.UUID.generate(), directory_id: non_existent_id})
 
       # No data should be created
+      assert Repo.all(ExternalIdentity) == []
+      assert Repo.all(Group) == []
+    end
+
+    test "skips directory belonging to another account" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account)
+      other_account = account_fixture(features: %{idp_sync: true})
+
+      assert :ok = perform_job(Sync, %{account_id: other_account.id, directory_id: directory.id})
+
       assert Repo.all(ExternalIdentity) == []
       assert Repo.all(Group) == []
     end
@@ -453,7 +464,7 @@ defmodule Portal.Entra.SyncTest do
       directory = entra_directory_fixture(account: account, is_disabled: true)
 
       # Should not perform sync
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # No data should be created
       assert Repo.all(ExternalIdentity) == []
@@ -471,7 +482,7 @@ defmodule Portal.Entra.SyncTest do
       directory = entra_directory_fixture(account: account)
 
       # Should not perform sync
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # No data should be created
       assert Repo.all(ExternalIdentity) == []
@@ -550,7 +561,7 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       # Perform sync
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # Old identity should be deleted
       refute Repo.get_by(ExternalIdentity, id: old_identity.id)
@@ -601,7 +612,7 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       # Perform sync
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # Old group should be deleted
       refute Repo.get_by(Group, id: old_group.id)
@@ -659,7 +670,7 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       # Perform sync
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # Only the user identity should be created
       identities = Repo.all(ExternalIdentity)
@@ -732,7 +743,7 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       # Perform sync
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # Identity should use userPrincipalName as email
       identities = Repo.all(ExternalIdentity)
@@ -815,7 +826,7 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       # Perform sync
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # Only the successful user should be synced
       identities = Repo.all(ExternalIdentity)
@@ -850,7 +861,7 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       # Perform sync
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # Error state should be cleared
       updated_directory = Repo.get(Portal.Entra.Directory, directory.id)
@@ -898,7 +909,7 @@ defmodule Portal.Entra.SyncTest do
 
       # Should raise SyncError
       assert_raise Portal.Entra.SyncError, fn ->
-        perform_job(Sync, %{directory_id: directory.id})
+        perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
       end
     end
 
@@ -941,7 +952,7 @@ defmodule Portal.Entra.SyncTest do
 
       # Should raise SyncError
       assert_raise Portal.Entra.SyncError, fn ->
-        perform_job(Sync, %{directory_id: directory.id})
+        perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
       end
     end
 
@@ -967,7 +978,7 @@ defmodule Portal.Entra.SyncTest do
 
       # Should raise SyncError
       assert_raise Portal.Entra.SyncError, fn ->
-        perform_job(Sync, %{directory_id: directory.id})
+        perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
       end
     end
 
@@ -1092,7 +1103,7 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       # Perform sync
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # Verify both service principals were looked up
       lookups = receive_all_messages(:service_principal_lookup)
@@ -1224,7 +1235,7 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       # Perform sync
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # Verify BOTH groups were created
       groups = Repo.all(Group)
@@ -1333,7 +1344,7 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       # Perform sync
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # Verify user from auth provider was synced
       identities = Repo.all(ExternalIdentity)
@@ -1391,7 +1402,7 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       # Perform sync - should complete successfully with no data
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # No identities should be created
       assert Repo.all(ExternalIdentity) == []
@@ -1430,7 +1441,7 @@ defmodule Portal.Entra.SyncTest do
       # Should raise SyncError with appropriate step
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :fetch_directory_sync_service_principal
@@ -1511,7 +1522,7 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       # Should complete successfully even though auth provider app is not found
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       # User should be synced from directory sync app
       identities = Repo.all(ExternalIdentity)
@@ -1533,7 +1544,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :get_access_token
@@ -1549,7 +1560,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :get_access_token
@@ -1581,7 +1592,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :fetch_directory_sync_service_principal
@@ -1623,7 +1634,7 @@ defmodule Portal.Entra.SyncTest do
         end
       end)
 
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
       assert Repo.all(ExternalIdentity) == []
     end
 
@@ -1663,7 +1674,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :stream_app_role_assignments
@@ -1705,7 +1716,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :process_assignment
@@ -1748,7 +1759,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :process_assignment
@@ -1791,7 +1802,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :process_assignment
@@ -1845,7 +1856,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :batch_get_users
@@ -1898,7 +1909,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :stream_group_transitive_members
@@ -1925,7 +1936,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :stream_groups
@@ -1957,7 +1968,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :stream_group_transitive_members
@@ -1982,7 +1993,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :process_group
@@ -2043,7 +2054,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :process_group_member
@@ -2108,7 +2119,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :process_user
@@ -2177,7 +2188,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :process_user
@@ -2226,7 +2237,7 @@ defmodule Portal.Entra.SyncTest do
         end
       end)
 
-      assert :ok = perform_job(Sync, %{directory_id: directory.id})
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
       assert Repo.get_by!(Portal.Policy, account_id: account.id, id: policy.id).group_id ==
                group.id
@@ -2308,7 +2319,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :batch_upsert_memberships
@@ -2389,7 +2400,7 @@ defmodule Portal.Entra.SyncTest do
 
       error =
         assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{directory_id: directory.id})
+          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
       assert error.step == :batch_upsert_identities

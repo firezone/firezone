@@ -33,7 +33,7 @@ defmodule Portal.Splunk.SyncTest do
       sink = splunk_log_sink_fixture(account: account)
       session_log_fixture(account: account)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       refute_receive {:hec, _conn, _events}
       refute get_cursor(sink, :session, :live)
@@ -43,12 +43,12 @@ defmodule Portal.Splunk.SyncTest do
       session_log_fixture(account: account)
       sink = splunk_log_sink_fixture(account: account)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_receive {:hec, _conn, _events}
 
       log = session_log_fixture(account: account)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:hec, conn, [event]}
       assert conn.request_path == "/services/collector/event"
@@ -69,14 +69,14 @@ defmodule Portal.Splunk.SyncTest do
 
     test "delivers every enabled stream with its own sourcetype", %{account: account} do
       sink = splunk_log_sink_fixture(account: account)
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       change_log_fixture(account: account)
       session_log_fixture(account: account)
       api_request_log_fixture(account: account)
       flow_log_fixture(account: account)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sourcetypes =
         for _batch <- 1..4 do
@@ -100,7 +100,7 @@ defmodule Portal.Splunk.SyncTest do
           enabled_streams: [:session]
         )
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:hec, _conn, events}
       assert length(events) == 3
@@ -134,7 +134,7 @@ defmodule Portal.Splunk.SyncTest do
           enabled_streams: [:session]
         )
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:hec, _conn, events}
       assert length(events) == 2
@@ -146,7 +146,7 @@ defmodule Portal.Splunk.SyncTest do
       from(l in Portal.SessionLog, where: l.account_id == ^account.id)
       |> Repo.update_all(set: [timestamp: old])
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:hec, _conn, events}
       assert length(events) == 2
@@ -182,7 +182,7 @@ defmodule Portal.Splunk.SyncTest do
 
     test "closing a delivered flow sends only the end event", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:flow])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       flow =
         flow_log_fixture(
@@ -195,7 +195,7 @@ defmodule Portal.Splunk.SyncTest do
           tx_bytes: nil
         )
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:hec, _conn, [start_event]}
       assert start_event["event"]["log_id"] == flow.log_id <> "-s"
@@ -208,7 +208,7 @@ defmodule Portal.Splunk.SyncTest do
       flow_end = DateTime.utc_now()
       close_flow(account, flow_end)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       # start_seq sits at or below this sink's frontier, so the start is known
       # to be delivered and only the end event ships: no duplicates.
@@ -223,7 +223,7 @@ defmodule Portal.Splunk.SyncTest do
 
     test "a flow that closes before delivery sends both events", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:flow])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       flow =
         flow_log_fixture(
@@ -240,7 +240,7 @@ defmodule Portal.Splunk.SyncTest do
       # the sink's frontier, so the start must be synthesized.
       close_flow(account, DateTime.utc_now())
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:hec, _conn, [start_event, end_event]}
       assert start_event["event"]["log_id"] == flow.log_id <> "-s"
@@ -259,7 +259,7 @@ defmodule Portal.Splunk.SyncTest do
           enabled_streams: [:flow]
         )
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:hec, _conn, [start_event, end_event]}
       assert start_event["event"]["log_id"] == flow.log_id <> "-s"
@@ -278,13 +278,13 @@ defmodule Portal.Splunk.SyncTest do
 
     test "splits deliveries that exceed the HEC request size limit", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       blob = String.duplicate("x", 400_000)
       session_log_fixture(account: account, subject: %{"blob" => blob})
       session_log_fixture(account: account, subject: %{"blob" => blob})
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:hec, _conn, [_event_a]}
       assert_receive {:hec, _conn, [_event_b]}
@@ -295,7 +295,7 @@ defmodule Portal.Splunk.SyncTest do
 
     test "bisects a rejected batch until events deliver individually", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       for _ <- 1..4 do
         session_log_fixture(account: account)
@@ -317,7 +317,7 @@ defmodule Portal.Splunk.SyncTest do
         end
       end)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       for _ <- 1..4 do
         assert_receive {:hec_single, _event}
@@ -334,7 +334,7 @@ defmodule Portal.Splunk.SyncTest do
       account: account
     } do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       log =
         session_log_fixture(
@@ -350,7 +350,7 @@ defmodule Portal.Splunk.SyncTest do
 
       log_output =
         ExUnit.CaptureLog.capture_log([level: :error], fn ->
-          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+          assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
       assert log_output =~ "Log sink event cannot be delivered, halting stream"
@@ -370,7 +370,7 @@ defmodule Portal.Splunk.SyncTest do
       account: account
     } do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       session_log_fixture(account: account, actor_email: "fine@example.com")
       poison = session_log_fixture(account: account, actor_email: "poison@example.com")
@@ -394,7 +394,7 @@ defmodule Portal.Splunk.SyncTest do
 
       log_output =
         ExUnit.CaptureLog.capture_log([level: :error], fn ->
-          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+          assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
       assert log_output =~ "Log sink event cannot be delivered, halting stream"
@@ -414,7 +414,7 @@ defmodule Portal.Splunk.SyncTest do
 
     test "round timestamps render in fixed sec.ms notation", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       # 1752480000.0 JSON-encodes as 1.75248e9, which HEC rejects with
       # "Error in handling indexed fields (code 15)".
@@ -423,7 +423,7 @@ defmodule Portal.Splunk.SyncTest do
         timestamp: DateTime.from_unix!(1_752_480_000_000_000, :microsecond)
       )
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:hec, _conn, [event]}
       assert event["time"] == "1752480000.000"
@@ -431,7 +431,7 @@ defmodule Portal.Splunk.SyncTest do
 
     test "an indexed-fields rejection parks the stream and pages us", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       poison = session_log_fixture(account: account, actor_email: "poison@example.com")
 
@@ -449,7 +449,7 @@ defmodule Portal.Splunk.SyncTest do
 
       log_output =
         ExUnit.CaptureLog.capture_log(fn ->
-          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+          assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
       assert log_output =~ "Log sink event cannot be delivered, halting stream"
@@ -466,7 +466,7 @@ defmodule Portal.Splunk.SyncTest do
 
     test "capacity warnings on successful deliveries are still successes", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       log = session_log_fixture(account: account)
 
       Req.Test.stub(Splunk.APIClient, fn conn ->
@@ -476,7 +476,7 @@ defmodule Portal.Splunk.SyncTest do
         })
       end)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       cursor = get_cursor(sink, :session, :live)
       assert cursor.cursor == log.seq
@@ -490,7 +490,7 @@ defmodule Portal.Splunk.SyncTest do
       account: account
     } do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(Splunk.APIClient, fn conn ->
@@ -501,7 +501,7 @@ defmodule Portal.Splunk.SyncTest do
 
       log_output =
         ExUnit.CaptureLog.capture_log([level: :error], fn ->
-          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+          assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
       assert log_output =~ "Log sink event cannot be delivered, halting stream"
@@ -518,7 +518,7 @@ defmodule Portal.Splunk.SyncTest do
 
     test "a redirect disables the sink with a pointed error", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(Splunk.APIClient, fn conn ->
@@ -530,7 +530,7 @@ defmodule Portal.Splunk.SyncTest do
         |> Plug.Conn.send_resp(303, "")
       end)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       cursor = get_cursor(sink, :session, :live)
       assert cursor.synced_count == 0
@@ -542,7 +542,7 @@ defmodule Portal.Splunk.SyncTest do
 
     test "a 4xx response disables the sink immediately", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(Splunk.APIClient, fn conn ->
@@ -551,7 +551,7 @@ defmodule Portal.Splunk.SyncTest do
         |> Req.Test.json(%{"text" => "Invalid token", "code" => 4})
       end)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       assert sink.is_disabled
@@ -565,7 +565,7 @@ defmodule Portal.Splunk.SyncTest do
 
     test "transient errors disable the sink only after 24 hours", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(Splunk.APIClient, fn conn ->
@@ -574,7 +574,7 @@ defmodule Portal.Splunk.SyncTest do
         |> Req.Test.json(%{"text" => "Server is busy", "code" => 9})
       end)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       refute sink.is_disabled
@@ -588,7 +588,7 @@ defmodule Portal.Splunk.SyncTest do
         |> Ecto.Changeset.change(errored_at: stale_errored_at)
         |> Repo.update()
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       assert sink.is_disabled
@@ -597,14 +597,14 @@ defmodule Portal.Splunk.SyncTest do
 
     test "transport errors are transient", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(Splunk.APIClient, fn conn ->
         Req.Test.transport_error(conn, :econnrefused)
       end)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       refute sink.is_disabled
@@ -621,7 +621,7 @@ defmodule Portal.Splunk.SyncTest do
           error_message: "Splunk HEC returned HTTP 503: Server is busy"
         )
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       refute sink.errored_at
@@ -631,8 +631,18 @@ defmodule Portal.Splunk.SyncTest do
     test "skips sinks that are disabled or missing", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, is_disabled: true)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: Ecto.UUID.generate()})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{account_id: account.id, log_sink_id: Ecto.UUID.generate()})
+
+      refute_receive {:hec, _conn, _events}
+      assert Repo.all(LogSinkCursor) == []
+    end
+
+    test "skips sink belonging to another account", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account)
+      other_account = account_fixture(features: %{log_sinks: true})
+
+      assert :ok = perform_job(Splunk.Sync, %{account_id: other_account.id, log_sink_id: sink.id})
 
       refute_receive {:hec, _conn, _events}
       assert Repo.all(LogSinkCursor) == []
@@ -648,7 +658,7 @@ defmodule Portal.Splunk.SyncTest do
 
       assert {:ok, :scheduled} = perform_job(Splunk.Scheduler, %{})
 
-      assert_enqueued(worker: Splunk.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: Splunk.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_enqueued(worker: Splunk.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: Splunk.Sync, args: %{log_sink_id: feature_off_sink.id})
     end

@@ -29,7 +29,7 @@ defmodule Portal.Elastic.Scheduler do
         |> Safe.unscoped()
         |> Safe.stream()
         |> Stream.each(fn sink ->
-          args = %{log_sink_id: sink.id}
+          args = %{account_id: sink.account_id, log_sink_id: sink.id}
           {:ok, _job} = Portal.Elastic.Sync.new(args) |> Oban.insert()
         end)
         |> Stream.run()

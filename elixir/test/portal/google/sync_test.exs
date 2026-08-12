@@ -118,11 +118,29 @@ defmodule Portal.Google.SyncTest do
 
       log =
         capture_log(fn ->
-          assert :ok = perform_job(Sync, %{"directory_id" => fake_directory_id})
+          assert :ok = perform_job(Sync, %{"account_id" => Ecto.UUID.generate(), "directory_id" => fake_directory_id})
         end)
 
       assert log =~ "Google directory not found, disabled, or account disabled, skipping"
       assert log =~ fake_directory_id
+    end
+
+    test "logs and returns :ok when directory belongs to another account" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account)
+      other_account = account_fixture()
+
+      log =
+        capture_log(fn ->
+          assert :ok =
+                   perform_job(Sync, %{
+                     "account_id" => other_account.id,
+                     "directory_id" => directory.id
+                   })
+        end)
+
+      assert log =~ "Google directory not found, disabled, or account disabled, skipping"
+      assert log =~ directory.id
     end
 
     test "logs and returns :ok when directory is disabled" do
@@ -131,7 +149,7 @@ defmodule Portal.Google.SyncTest do
 
       log =
         capture_log(fn ->
-          assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+          assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
         end)
 
       assert log =~ "Google directory not found, disabled, or account disabled, skipping"
@@ -150,7 +168,7 @@ defmodule Portal.Google.SyncTest do
 
       log =
         capture_log(fn ->
-          assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+          assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
         end)
 
       assert log =~ "Google directory not found, disabled, or account disabled, skipping"
@@ -216,7 +234,7 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Verify directory was updated with synced_at
       updated_directory = Repo.get!(Portal.Google.Directory, directory.id)
@@ -279,7 +297,7 @@ defmodule Portal.Google.SyncTest do
         respond_with_batch_users(conn, [%{"id" => "user1", "primaryEmail" => "user1@example.com"}])
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       identities = Repo.all(Portal.ExternalIdentity)
       assert Enum.map(identities, & &1.idp_id) == ["user1"]
@@ -297,7 +315,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/get_access_token/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -318,7 +336,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/at stream_groups: HTTP 500/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -344,7 +362,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/at stream_org_units: HTTP 403/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -381,7 +399,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/member missing 'id' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -424,7 +442,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/user .* missing 'primaryEmail' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -447,7 +465,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/group missing 'id' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -470,7 +488,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/group .* missing 'name' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -498,7 +516,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/org_unit missing 'orgUnitId' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -526,7 +544,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/org_unit .* missing 'name' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -554,7 +572,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/org_unit .* missing 'orgUnitPath' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -580,7 +598,7 @@ defmodule Portal.Google.SyncTest do
 
       # No group members, no org unit members, no get_user calls
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       updated_directory = Repo.get!(Portal.Google.Directory, directory.id)
       assert updated_directory.synced_at != nil
@@ -651,7 +669,7 @@ defmodule Portal.Google.SyncTest do
         ])
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Verify old identity was deleted
       refute Repo.get_by(Portal.ExternalIdentity, id: old_identity.id)
@@ -741,7 +759,7 @@ defmodule Portal.Google.SyncTest do
         ])
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       identities = Repo.all(Portal.ExternalIdentity)
       assert Enum.map(identities, & &1.email) == ["active@example.com"]
@@ -783,7 +801,7 @@ defmodule Portal.Google.SyncTest do
         ]
       )
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       suspended_identity =
         Repo.get_by!(Portal.ExternalIdentity,
@@ -813,7 +831,7 @@ defmodule Portal.Google.SyncTest do
         ]
       )
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       identities = Repo.all(Portal.ExternalIdentity)
       assert Enum.map(identities, & &1.email) == ["active@example.com"]
@@ -879,7 +897,7 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       assert Repo.all(Portal.ExternalIdentity) == []
       assert Repo.all(Portal.Membership) == []
@@ -933,7 +951,7 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"organizationUnits" => []})
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Verify the legacy key was used by checking the JWT assertion
       assert_receive {:token_request, body}
@@ -1002,7 +1020,7 @@ defmodule Portal.Google.SyncTest do
         ])
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Verify both users were synced
       identities = Repo.all(Portal.ExternalIdentity)
@@ -1079,7 +1097,7 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"members" => []})
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Verify group1 (seed) and group2 (discovered via BFS) both exist as portal groups
       groups = Repo.all(Portal.Group) |> Enum.sort_by(& &1.idp_id)
@@ -1140,7 +1158,7 @@ defmodule Portal.Google.SyncTest do
         |> Plug.Conn.send_resp(200, body)
       end)
 
-      assert_raise SyncError, fn -> perform_job(Sync, %{"directory_id" => directory.id}) end
+      assert_raise SyncError, fn -> perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id}) end
 
       assert Repo.get_by(Portal.ExternalIdentity, id: identity.id, account_id: account.id)
     end
@@ -1210,7 +1228,7 @@ defmodule Portal.Google.SyncTest do
         flunk("unexpected extra request to #{conn.request_path}")
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       identities = Repo.all(Portal.ExternalIdentity)
       assert Enum.map(identities, & &1.idp_id) |> Enum.sort() == ["user1", "user2"]
@@ -1262,7 +1280,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise Portal.Google.SyncError, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
 
       assert Repo.get_by(Portal.ExternalIdentity, id: identity.id, account_id: account.id)
@@ -1320,7 +1338,7 @@ defmodule Portal.Google.SyncTest do
         ])
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       identities = Repo.all(Portal.ExternalIdentity)
       assert Enum.map(identities, & &1.idp_id) == ["user1"]
@@ -1431,7 +1449,7 @@ defmodule Portal.Google.SyncTest do
         ])
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # All three portal groups were created
       groups = Repo.all(Portal.Group) |> Enum.sort_by(& &1.idp_id)
@@ -1531,7 +1549,7 @@ defmodule Portal.Google.SyncTest do
 
       # No get_group("group1") call — it's already in visited, BFS skips it
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       groups = Repo.all(Portal.Group) |> Enum.sort_by(& &1.idp_id)
       assert Enum.map(groups, & &1.idp_id) == ["group1", "group2"]
@@ -1591,7 +1609,7 @@ defmodule Portal.Google.SyncTest do
 
       # No group2 members call — it was skipped
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Only group1 exists; deleted_group was silently skipped
       groups = Repo.all(Portal.Group)
@@ -1644,7 +1662,7 @@ defmodule Portal.Google.SyncTest do
 
       # No members call for external_group — it was skipped
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Only group1 exists; external_group was silently skipped
       groups = Repo.all(Portal.Group)
@@ -1731,7 +1749,7 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"members" => []})
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       groups = Repo.all(Portal.Group) |> Enum.sort_by(& &1.idp_id)
       assert length(groups) == 2
@@ -1777,7 +1795,7 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"organizationUnits" => []})
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Stale group was not synced this run — delete_unsynced removes it
       refute Repo.get_by(Portal.Group, id: existing_group.id)
@@ -1817,7 +1835,7 @@ defmodule Portal.Google.SyncTest do
 
       # No org units API call expected (orgunit_sync_enabled: false)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Stale org unit was not synced this run — delete_unsynced removes it
       refute Repo.get_by(Portal.Group, id: existing_ou.id)
@@ -1863,7 +1881,7 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Both are stale — delete_unsynced removes them
       refute Repo.get_by(Portal.Group, id: existing_group.id)
@@ -1908,7 +1926,7 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"organizationUnits" => []})
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Non-matching group is stale — delete_unsynced removes it
       refute Repo.get_by(Portal.Group, id: non_matching_group.id)
@@ -1945,7 +1963,7 @@ defmodule Portal.Google.SyncTest do
 
       # No get_user calls — no members
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Verify org unit was created
       groups = Repo.all(Portal.Group)
@@ -1968,7 +1986,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/get_access_token/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -1981,7 +1999,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/get_access_token/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -1998,7 +2016,7 @@ defmodule Portal.Google.SyncTest do
       )
 
       assert_raise SyncError, ~r/service account key is not configured/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -2037,7 +2055,7 @@ defmodule Portal.Google.SyncTest do
 
       log =
         capture_log(fn ->
-          assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+          assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
         end)
 
       assert log =~ "Reconnected 1 orphaned policies after sync"
@@ -2073,7 +2091,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/discovered group 'group2' missing 'name' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -2106,7 +2124,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/discovered group missing 'id' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -2141,7 +2159,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/get_group/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -2170,7 +2188,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/at stream_group_members: HTTP 403/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -2205,7 +2223,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/at batch_get_users: HTTP 500/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -2246,7 +2264,7 @@ defmodule Portal.Google.SyncTest do
         ])
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       assert Repo.aggregate(Portal.Group, :count, :id) == 1
       assert Repo.aggregate(Portal.Membership, :count, :id) == 1
     end
@@ -2278,7 +2296,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/at stream_org_unit_members: HTTP 403/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -2309,7 +2327,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/user missing 'id' field in org unit ou1/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -2345,7 +2363,7 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       assert Repo.aggregate(Portal.ExternalIdentity, :count, :id) == 1
       assert Repo.aggregate(Portal.Membership, :count, :id) == 1
     end

@@ -25,12 +25,12 @@ defmodule Portal.HTTP.SyncTest do
   describe "perform/1" do
     test "delivers a JSON array of events with the bearer token", %{account: account} do
       sink = http_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(HTTP.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(HTTP.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_receive {:post, _conn, _events}
 
       log = session_log_fixture(account: account)
 
-      assert :ok = perform_job(HTTP.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(HTTP.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:post, conn, [event]}
       assert conn.request_path == "/ingest"
@@ -50,10 +50,10 @@ defmodule Portal.HTTP.SyncTest do
       sink =
         http_log_sink_fixture(account: account, bearer_token: nil, enabled_streams: [:session])
 
-      assert :ok = perform_job(HTTP.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(HTTP.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
-      assert :ok = perform_job(HTTP.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(HTTP.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:post, conn, [_event]}
       assert Plug.Conn.get_req_header(conn, "authorization") == []
@@ -63,11 +63,11 @@ defmodule Portal.HTTP.SyncTest do
       sink =
         http_log_sink_fixture(account: account, batch_max_events: 2, enabled_streams: [:session])
 
-      assert :ok = perform_job(HTTP.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(HTTP.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       logs = for _ <- 1..5, do: session_log_fixture(account: account)
 
-      assert :ok = perform_job(HTTP.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(HTTP.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       batches =
         for _ <- 1..3 do
@@ -89,7 +89,7 @@ defmodule Portal.HTTP.SyncTest do
       sink =
         http_log_sink_fixture(account: account, batch_max_events: 1, enabled_streams: [:flow])
 
-      assert :ok = perform_job(HTTP.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(HTTP.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       flow1 =
         flow_log_fixture(
@@ -108,7 +108,7 @@ defmodule Portal.HTTP.SyncTest do
 
       flow2 = flow_log_fixture(account: account)
 
-      assert :ok = perform_job(HTTP.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(HTTP.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:post, _conn, [start1, end1]}
       assert start1["log_id"] == flow1.log_id <> "-s"
@@ -143,14 +143,14 @@ defmodule Portal.HTTP.SyncTest do
 
     test "a 401 disables the sink immediately with the response excerpt", %{account: account} do
       sink = http_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(HTTP.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(HTTP.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(HTTP.APIClient, fn conn ->
         Plug.Conn.send_resp(conn, 401, "invalid token")
       end)
 
-      assert :ok = perform_job(HTTP.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(HTTP.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       assert sink.is_disabled
@@ -160,14 +160,14 @@ defmodule Portal.HTTP.SyncTest do
 
     test "a 429 is transient", %{account: account} do
       sink = http_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(HTTP.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(HTTP.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(HTTP.APIClient, fn conn ->
         Plug.Conn.send_resp(conn, 429, "slow down")
       end)
 
-      assert :ok = perform_job(HTTP.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(HTTP.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       cursor = get_cursor(sink, :session, :live)
       assert cursor.synced_count == 0
@@ -176,6 +176,17 @@ defmodule Portal.HTTP.SyncTest do
       refute sink.is_disabled
       assert sink.errored_at
       assert sink.error_message == "The endpoint returned HTTP 429: slow down"
+    end
+
+    test "skips sink belonging to another account", %{account: account} do
+      sink = http_log_sink_fixture(account: account, enabled_streams: [:session])
+      session_log_fixture(account: account)
+      other_account = account_fixture(features: %{log_sinks: true})
+
+      assert :ok = perform_job(HTTP.Sync, %{account_id: other_account.id, log_sink_id: sink.id})
+
+      refute_receive {:post, _conn, _events}
+      assert Repo.all(LogSinkCursor) == []
     end
   end
 
@@ -188,7 +199,7 @@ defmodule Portal.HTTP.SyncTest do
 
       assert {:ok, :scheduled} = perform_job(HTTP.Scheduler, %{})
 
-      assert_enqueued(worker: HTTP.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: HTTP.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_enqueued(worker: HTTP.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: HTTP.Sync, args: %{log_sink_id: feature_off_sink.id})
     end

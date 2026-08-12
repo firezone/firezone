@@ -18,10 +18,11 @@ defmodule Portal.QRadar.Sync do
   require Logger
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"log_sink_id" => log_sink_id}}) do
-    case Delivery.get_sink(QRadar.LogSink, log_sink_id) do
+  def perform(%Oban.Job{args: %{"account_id" => account_id, "log_sink_id" => log_sink_id}}) do
+    case Delivery.get_sink(QRadar.LogSink, account_id, log_sink_id) do
       nil ->
         Logger.info("QRadar log sink not found, disabled, or account ineligible, skipping",
+          account_id: account_id,
           qradar_log_sink_id: log_sink_id
         )
 
