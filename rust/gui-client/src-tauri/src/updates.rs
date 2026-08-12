@@ -216,7 +216,12 @@ fn download_url_for(
 /// format per architecture: a `.deb` (the URL's default) and an `.rpm`.
 #[cfg(target_os = "linux")]
 fn package_suffix() -> &'static str {
-    match std::fs::read_to_string("/etc/os-release") {
+    // `/etc/os-release` takes precedence but is allowed to be absent:
+    // <https://www.freedesktop.org/software/systemd/man/latest/os-release.html>
+    let os_release = std::fs::read_to_string("/etc/os-release")
+        .or_else(|_| std::fs::read_to_string("/usr/lib/os-release"));
+
+    match os_release {
         Ok(os_release) if is_rpm_based(&os_release) => ".rpm",
         Ok(_) => "",
         Err(_) => "",
