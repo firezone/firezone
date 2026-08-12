@@ -40,6 +40,7 @@
       # them here, so they can be loaded by Credo before running the analysis.
       #
       requires: [
+        ".credo/check/warning/async_false_in_test.ex",
         ".credo/check/warning/unsafe_repo_usage.ex",
         ".credo/check/warning/safe_calls_outside_database_module.ex",
         ".credo/check/warning/missing_database_alias.ex",
@@ -163,6 +164,7 @@
           {Credo.Check.Warning.UnsafeExec, []},
 
           # Custom Checks
+          {Credo.Check.Warning.AsyncFalseInTest, []},
           {Credo.Check.Warning.ActionFallbackUsage, []},
           {Credo.Check.Warning.MissingChangesetFunction, []},
           {Credo.Check.Warning.SafeCallsOutsideDatabaseModule, []},

@@ -57,7 +57,7 @@ defmodule Portal.Google.APIClient do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
     cache_key = workspace_cache_key(impersonation_email, {:service_account_key, key})
 
-    TokenCache.fetch(@token_cache, cache_key, fn ->
+    TokenCache.fetch(token_cache(config), cache_key, fn ->
       fetch_key_access_token(impersonation_email, key, config)
     end)
   end
@@ -68,7 +68,7 @@ defmodule Portal.Google.APIClient do
        workload_identity_config.audience}
 
     with {:ok, federated_token} <-
-           TokenCache.fetch(@token_cache, federated_cache_key, fn ->
+           TokenCache.fetch(token_cache(config), federated_cache_key, fn ->
              fetch_federated_token(workload_identity_config, config)
            end) do
       cache_key =
@@ -77,7 +77,7 @@ defmodule Portal.Google.APIClient do
           {:federated, workload_identity_config}
         )
 
-      TokenCache.fetch(@token_cache, cache_key, fn ->
+      TokenCache.fetch(token_cache(config), cache_key, fn ->
         fetch_federated_access_token(
           impersonation_email,
           workload_identity_config.service_account_email,
@@ -87,6 +87,8 @@ defmodule Portal.Google.APIClient do
       end)
     end
   end
+
+  defp token_cache(config), do: Keyword.get(config, :token_cache, @token_cache)
 
   defp fetch_federated_token(workload_identity_config, config) do
     with {:ok, azure_token} <-
