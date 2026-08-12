@@ -4,7 +4,7 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::{
-    controller::{Controller, ControllerRequest, Failure, GuiIntegration, NotificationHandle},
+    controller::{Controller, ControllerRequest, Failure, GuiIntegration},
     deep_link,
     ipc::{self, ClientRead, ClientWrite, SocketId},
     launch_lock::{self, FirstInstance, LaunchLock},
@@ -158,12 +158,20 @@ impl GuiIntegration for TauriIntegration {
         self.tray.update(app_state)
     }
 
-    fn show_notification(
-        &self,
-        title: impl Into<String>,
-        body: impl Into<String>,
-    ) -> Result<NotificationHandle> {
-        os::show_notification(title.into(), body.into())
+    fn show_notification(&self, title: impl Into<String>, body: impl Into<String>) -> Result<()> {
+        spawn_notification(title.into(), body.into(), None);
+
+        Ok(())
+    }
+
+    fn show_update_notification(&self, release: updates::Release) -> Result<()> {
+        spawn_notification(
+            format!("Firezone {} available for download", release.version),
+            "Click here to download the new version".to_owned(),
+            Some(release.download_url),
+        );
+
+        Ok(())
     }
 
     fn set_window_visible(&self, visible: bool) -> Result<()> {
@@ -226,6 +234,21 @@ pub struct RunConfig {
     pub telemetry_allowed: bool,
     pub quit_after: Option<u64>,
     pub fail_with: Option<Failure>,
+}
+
+/// Shows a notification without blocking the caller.
+///
+/// Notifications are fire-and-forget: failures are only logged because
+/// there is nothing the caller could do about them.
+fn spawn_notification(title: String, body: String, open_url: Option<url::Url>) {
+    let app_id = os::notification_app_id();
+
+    tokio::spawn(async move {
+        match desktop_notifications::show(&app_id, &title, &body, open_url.as_ref()).await {
+            Ok(()) => tracing::debug!(%title, %body, "Showed notification"),
+            Err(e) => tracing::debug!(%title, "Failed to show notification: {e:#}"),
+        }
+    });
 }
 
 /// IPC messages that a newly launched instance may send to an already
@@ -355,7 +378,6 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
         let ctrl_task = tokio::spawn(Controller::start(
             SocketId::Tunnel,
             integration,
-            ctlr_tx,
             ctlr_rx,
             general_settings,
             legacy_advanced_settings_path,

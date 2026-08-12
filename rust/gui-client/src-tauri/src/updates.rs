@@ -4,22 +4,15 @@ use anyhow::{Context, Result};
 use rand::RngExt as _;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use std::{io::Write, path::PathBuf, str::FromStr, time::Duration};
+use std::{str::FromStr, time::Duration};
 use tokio::sync::mpsc;
 
 const BASE_URL: &str = "https://www.firezone.dev";
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Notification {
-    pub release: Release,
-    /// If true, show a pop-up notification and set the dot. If false, only set the dot.
-    pub tell_user: bool,
-}
-
 /// GUI-friendly release struct
 ///
 /// Serialize is derived for debugging
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Release {
     pub download_url: url::Url,
     pub version: Version,
@@ -31,19 +24,20 @@ struct ApiReleasesResponse {
     gui: Version,
 }
 
-pub async fn checker_task(
-    ctlr_tx: mpsc::Sender<Option<Notification>>,
-    debug_mode: bool,
-) -> Result<()> {
+/// Periodically checks the website for newer releases and notifies the GUI.
+///
+/// The last version we notified about is only kept in memory, so the user
+/// is reminded about a pending update once per GUI session.
+pub async fn checker_task(ctlr_tx: mpsc::Sender<Option<Release>>, debug_mode: bool) -> Result<()> {
+    delete_legacy_version_file().await;
+
     let (current_version, interval_in_seconds) = if debug_mode {
         (Version::new(1, 0, 0), 30)
     } else {
         (current_version()?, 86_400)
     };
 
-    // Always check the file first, then wait a random amount of time before entering the loop.
-    let latest_seen = read_latest_release_file().await;
-    let mut fsm = Checker::new(current_version, latest_seen);
+    let mut fsm = Checker::new(current_version);
     let mut interval = tokio::time::interval(Duration::from_secs(interval_in_seconds));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -69,68 +63,45 @@ pub async fn checker_task(
             }
             Event::Notify(notification) => {
                 tracing::debug!("Notify");
-                write_latest_release_file(notification.as_ref().map(|n| &n.release)).await?;
                 ctlr_tx.send(notification).await?;
             }
         }
     }
 }
 
-/// Reads the latest version and download URL we've seen, from disk
-async fn read_latest_release_file() -> Option<Release> {
-    tokio::fs::read_to_string(version_file_path().ok()?)
-        .await
-        .ok()
-        .as_deref()
-        .map(serde_json::from_str)
-        .transpose()
-        .ok()
-        .flatten()
-}
-
-async fn write_latest_release_file(release: Option<&Release>) -> Result<()> {
-    let path = version_file_path()?;
-    let Some(release) = release else {
-        let _ = tokio::fs::remove_file(&path).await;
-        return Ok(());
+/// Deletes the file where previous versions persisted the last version we notified about.
+// TODO: Remove this after a few releases.
+async fn delete_legacy_version_file() {
+    let Some(path) = known_dirs::session().map(|dir| dir.join("latest_version_seen.txt")) else {
+        return;
     };
 
-    // `atomicwrites` is sync so use `spawn_blocking` so we don't block an
-    // executor thread
-    let s = serde_json::to_string(release)?;
-    tokio::task::spawn_blocking(move || {
-        std::fs::create_dir_all(
-            path.parent()
-                .context("release file path should always have a parent.")?,
-        )?;
-        let f =
-            atomicwrites::AtomicFile::new(&path, atomicwrites::OverwriteBehavior::AllowOverwrite);
-        f.write(|f| f.write_all(s.as_bytes()))?;
-        Ok::<_, anyhow::Error>(())
-    })
-    .await??;
-    Ok(())
+    match tokio::fs::remove_file(&path).await {
+        Ok(()) => tracing::debug!(path = %path.display(), "Deleted legacy version file"),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => tracing::debug!("Failed to delete legacy version file: {e}"),
+    }
 }
 
 struct Checker {
     ours: Version,
     state: State,
-    /// The last notification we pushed to the GUI
-    notification: Option<Notification>,
+    /// The last release we notified the GUI about
+    notification: Option<Release>,
     /// Have we changed our desired notification since we last told the GUI about it?
     notification_dirty: bool,
 }
 
 #[derive(Debug, PartialEq)]
 enum Event {
-    /// Check the latest version from the Firezone website and write it to disk.
+    /// Check the latest version from the Firezone website.
     CheckNetwork,
     /// Wait approximately a day using `tokio::time::interval`.
     WaitInterval,
     /// Wait a random amount of time up to the full interval, to avoid the thundering herd problem. This is only used at startup.
     WaitRandom,
     /// Set / clear a GUI notification.
-    Notify(Option<Notification>),
+    Notify(Option<Release>),
 }
 
 enum State {
@@ -143,41 +114,22 @@ enum State {
 }
 
 impl Checker {
-    fn new(ours: Version, latest_seen: Option<Release>) -> Self {
-        let notification = latest_seen
-            .filter(|r| r.version > ours)
-            .map(|release| Notification {
-                release,
-                // Never show a pop-up right at startup.
-                tell_user: false,
-            });
-        let notification_dirty = notification.is_some();
-
+    fn new(ours: Version) -> Self {
         Self {
             ours,
             state: State::WaitRandom,
-            notification,
-            notification_dirty,
+            notification: None,
+            notification_dirty: false,
         }
     }
 
     /// Call this when we just checked the network
     fn handle_check(&mut self, release: Release) {
-        let different_than_latest_notified = match &self.notification {
-            None => release.version != self.ours,
-            Some(notification) => release.version != notification.release.version,
-        };
+        let desired = (release.version > self.ours).then_some(release);
 
-        if different_than_latest_notified {
+        if desired != self.notification {
+            self.notification = desired;
             self.notification_dirty = true;
-            self.notification = if release.version == self.ours {
-                None
-            } else {
-                Some(Notification {
-                    release,
-                    tell_user: true,
-                })
-            };
         }
     }
 
@@ -202,12 +154,6 @@ impl Checker {
             }
         }
     }
-}
-
-fn version_file_path() -> Result<PathBuf> {
-    Ok(known_dirs::session()
-        .context("Couldn't find session dir")?
-        .join("latest_version_seen.txt"))
 }
 
 /// Returns the latest release, even if ours is already newer
@@ -242,15 +188,62 @@ pub(crate) async fn check() -> Result<Release> {
     let version = api_response.gui;
     tracing::debug!(?version, "Latest GUI version from API");
 
-    let download_url = url::Url::parse(&format!(
-        "{BASE_URL}/dl/firezone-client-gui-{os}/{version}/{arch}"
-    ))
-    .context("Failed to construct download URL")?;
+    let download_url = download_url_for(os, arch, package_suffix(), &version)?;
 
     Ok(Release {
         download_url,
         version,
     })
+}
+
+fn download_url_for(
+    os: &str,
+    arch: &str,
+    package_suffix: &str,
+    version: &Version,
+) -> Result<url::Url> {
+    let url = url::Url::parse(&format!(
+        "{BASE_URL}/dl/firezone-client-gui-{os}/{version}/{arch}{package_suffix}"
+    ))
+    .context("Failed to construct download URL")?;
+
+    Ok(url)
+}
+
+/// The package-specific suffix of the download URL.
+///
+/// Linux is the only OS where a release consists of more than one package
+/// format per architecture: a `.deb` and an `.rpm`.
+#[cfg(target_os = "linux")]
+fn package_suffix() -> &'static str {
+    // `/etc/os-release` takes precedence but is allowed to be absent:
+    // <https://www.freedesktop.org/software/systemd/man/latest/os-release.html>
+    let os_release = std::fs::read_to_string("/etc/os-release")
+        .or_else(|_| std::fs::read_to_string("/usr/lib/os-release"));
+
+    match os_release {
+        Ok(os_release) if is_rpm_based(&os_release) => ".rpm",
+        Ok(_) => ".deb",
+        Err(_) => ".deb",
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn package_suffix() -> &'static str {
+    ""
+}
+
+/// Whether the given [`os-release`] contents describe an RPM-based distribution.
+///
+/// [`os-release`]: https://www.freedesktop.org/software/systemd/man/latest/os-release.html
+#[cfg(target_os = "linux")]
+fn is_rpm_based(os_release: &str) -> bool {
+    os_release
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .filter(|(key, _)| matches!(*key, "ID" | "ID_LIKE"))
+        .flat_map(|(_, value)| value.trim_matches('"').split_whitespace())
+        .any(|id| matches!(id, "fedora" | "rhel" | "centos" | "suse") || id.starts_with("opensuse"))
 }
 
 pub(crate) fn current_version() -> Result<Version> {
@@ -263,8 +256,7 @@ mod tests {
 
     #[test]
     fn checker_happy_path() {
-        // There's no file, this is a new system
-        let mut fsm = Checker::new(Version::new(1, 0, 0), None);
+        let mut fsm = Checker::new(Version::new(1, 0, 0));
         // After our initial random sleep we always check the network
         assert_eq!(fsm.poll(), Event::WaitRandom);
         assert_eq!(fsm.poll(), Event::CheckNetwork);
@@ -284,7 +276,7 @@ mod tests {
 
         // There's a new version, so tell the UI
         fsm.handle_check(release(1, 0, 1));
-        assert_eq!(fsm.poll(), Event::Notify(Some(notification(1, 0, 1))));
+        assert_eq!(fsm.poll(), Event::Notify(Some(release(1, 0, 1))));
         assert_eq!(fsm.poll(), Event::WaitInterval);
         assert_eq!(fsm.poll(), Event::CheckNetwork);
 
@@ -295,67 +287,30 @@ mod tests {
 
         // There's an even newer version, so tell the UI
         fsm.handle_check(release(1, 0, 2));
-        assert_eq!(fsm.poll(), Event::Notify(Some(notification(1, 0, 2))));
-    }
-
-    #[test]
-    fn checker_existing_system() {
-        // We check the file and we're already up to date, so do nothing
-        let mut fsm = Checker::new(Version::new(1, 0, 0), Some(release(1, 0, 0)));
-        assert_eq!(fsm.poll(), Event::WaitRandom);
-        assert_eq!(fsm.poll(), Event::CheckNetwork);
-
-        // We're on the latest version, so do nothing
-        fsm.handle_check(release(1, 0, 0));
-        assert_eq!(fsm.poll(), Event::WaitInterval);
-        assert_eq!(fsm.poll(), Event::CheckNetwork);
-    }
-
-    #[test]
-    fn checker_ignored_update() {
-        // We check the file and Firezone has restarted when we already knew about an update, but we don't tell the user for that, we just show the dot
-        let mut fsm = Checker::new(Version::new(1, 0, 0), Some(release(1, 0, 1)));
-        assert_eq!(
-            fsm.poll(),
-            Event::Notify(Some(Notification {
-                release: release(1, 0, 1),
-                tell_user: false,
-            }))
-        );
-        assert_eq!(fsm.poll(), Event::WaitRandom);
-        assert_eq!(fsm.poll(), Event::CheckNetwork);
-
-        // Don't notify since we already have the dot up.
-        fsm.handle_check(release(1, 0, 1));
-        assert_eq!(fsm.poll(), Event::WaitInterval);
-        assert_eq!(fsm.poll(), Event::CheckNetwork);
-
-        // There's an even newer version, so tell the user
-        fsm.handle_check(release(1, 0, 2));
-        assert_eq!(fsm.poll(), Event::Notify(Some(notification(1, 0, 2))));
+        assert_eq!(fsm.poll(), Event::Notify(Some(release(1, 0, 2))));
     }
 
     #[test]
     fn checker_rollback() {
-        let mut fsm = Checker::new(Version::new(1, 0, 0), Some(release(1, 0, 0)));
+        let mut fsm = Checker::new(Version::new(1, 0, 0));
         assert_eq!(fsm.poll(), Event::WaitRandom);
 
         // We first hear about 1.0.2 and notify for that
         assert_eq!(fsm.poll(), Event::CheckNetwork);
         fsm.handle_check(release(1, 0, 2));
-        assert_eq!(fsm.poll(), Event::Notify(Some(notification(1, 0, 2))));
+        assert_eq!(fsm.poll(), Event::Notify(Some(release(1, 0, 2))));
         assert_eq!(fsm.poll(), Event::WaitInterval);
 
         // Then we hear it's actually just 1.0.1, we still notify
         assert_eq!(fsm.poll(), Event::CheckNetwork);
         fsm.handle_check(release(1, 0, 1));
-        assert_eq!(fsm.poll(), Event::Notify(Some(notification(1, 0, 1))));
+        assert_eq!(fsm.poll(), Event::Notify(Some(release(1, 0, 1))));
         assert_eq!(fsm.poll(), Event::WaitInterval);
 
         // When we hear about 1.0.2 again, we notify again.
         assert_eq!(fsm.poll(), Event::CheckNetwork);
         fsm.handle_check(release(1, 0, 2));
-        assert_eq!(fsm.poll(), Event::Notify(Some(notification(1, 0, 2))));
+        assert_eq!(fsm.poll(), Event::Notify(Some(release(1, 0, 2))));
         assert_eq!(fsm.poll(), Event::WaitInterval);
 
         // But if we hear about 1.0.0, our own version, we remove the notification
@@ -365,11 +320,15 @@ mod tests {
         assert_eq!(fsm.poll(), Event::WaitInterval);
     }
 
-    fn notification(major: u64, minor: u64, patch: u64) -> Notification {
-        Notification {
-            release: release(major, minor, patch),
-            tell_user: true,
-        }
+    #[test]
+    fn checker_ignores_older_release() {
+        let mut fsm = Checker::new(Version::new(1, 0, 1));
+        assert_eq!(fsm.poll(), Event::WaitRandom);
+        assert_eq!(fsm.poll(), Event::CheckNetwork);
+
+        // The website may advertise an older release than ours, e.g. right after we shipped a new one; don't notify.
+        fsm.handle_check(release(1, 0, 0));
+        assert_eq!(fsm.poll(), Event::WaitInterval);
     }
 
     fn release(major: u64, minor: u64, patch: u64) -> Release {
@@ -406,14 +365,44 @@ mod tests {
 
     #[test]
     fn download_url_construction() {
-        let arch = std::env::consts::ARCH;
-        let os = std::env::consts::OS;
-
-        let release = release(1, 5, 9);
-
         assert_eq!(
-            release.download_url.as_str(),
-            format!("{BASE_URL}/dl/firezone-client-gui-{os}/1.5.9/{arch}")
+            download_url_for("windows", "x86_64", "", &Version::new(1, 5, 9))
+                .unwrap()
+                .as_str(),
+            "https://www.firezone.dev/dl/firezone-client-gui-windows/1.5.9/x86_64"
         );
+        assert_eq!(
+            download_url_for("linux", "x86_64", ".rpm", &Version::new(1, 5, 9))
+                .unwrap()
+                .as_str(),
+            "https://www.firezone.dev/dl/firezone-client-gui-linux/1.5.9/x86_64.rpm"
+        );
+        assert_eq!(
+            download_url_for("linux", "aarch64", ".deb", &Version::new(1, 5, 9))
+                .unwrap()
+                .as_str(),
+            "https://www.firezone.dev/dl/firezone-client-gui-linux/1.5.9/aarch64.deb"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn rpm_detection() {
+        // Fedora has no `ID_LIKE`.
+        assert!(is_rpm_based("NAME=\"Fedora Linux\"\nID=fedora\n"));
+        // Derivatives reference their ancestry via `ID_LIKE`.
+        assert!(is_rpm_based(
+            "ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\n"
+        ));
+        assert!(is_rpm_based(
+            "ID=\"opensuse-tumbleweed\"\nID_LIKE=\"opensuse suse\"\n"
+        ));
+        assert!(is_rpm_based(
+            "ID=almalinux\nID_LIKE=\"rhel centos fedora\"\n"
+        ));
+
+        assert!(!is_rpm_based("ID=ubuntu\nID_LIKE=debian\n"));
+        assert!(!is_rpm_based("ID=debian\n"));
+        assert!(!is_rpm_based(""));
     }
 }

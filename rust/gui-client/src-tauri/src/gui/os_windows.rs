@@ -3,8 +3,6 @@ use std::env;
 use winreg::RegKey;
 use winreg::enums::*;
 
-use crate::controller::NotificationHandle;
-
 pub async fn set_autostart(enabled: bool) -> Result<()> {
     // Get path to the current executable
     let exec_path = env::current_exe().context("Failed to get current executable path")?;
@@ -40,56 +38,20 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
     Ok(())
 }
 
-/// Show a notification in the bottom right of the screen
+/// The AppUserModelID Windows attributes our notifications to
 ///
 /// Windows silently drops a toast whose AUMID doesn't match the calling
-/// process's identity. Packaged builds run under the sparse MSIX
-/// identity, so we register under the package AUMID and the title and
-/// icon come from the manifest's `VisualElements`. Un-packaged dev
-/// builds (no package identity) fall back to [`crate::BUNDLE_ID`].
+/// process's identity. Packaged builds run under the sparse MSIX identity, so
+/// we register under the package AUMID (`Firezone` is the
+/// `<Application Id="Firezone">` from `win_files/AppxManifest.xml`; together
+/// with the package family name it forms the AUMID) and the title and icon
+/// come from the manifest's `VisualElements`. Un-packaged dev builds (no
+/// package identity) fall back to [`crate::BUNDLE_ID`].
 /// <https://github.com/tauri-apps/winrt-notification/issues/17#issuecomment-1988715694>
-///
-/// Known issue: If the notification times out and goes into the notification center
-/// (the little thing that pops up when you click the bell icon), then we may not get the
-/// click signal.
-///
-/// I've seen this reported by people using Powershell, C#, etc., so I think it might
-/// be a Windows bug?
-/// - <https://superuser.com/questions/1488763/windows-10-notifications-not-activating-the-associated-app-when-clicking-on-it>
-/// - <https://stackoverflow.com/questions/65835196/windows-toast-notification-com-not-working>
-/// - <https://answers.microsoft.com/en-us/windows/forum/all/notifications-not-activating-the-associated-app/7a3b31b0-3a20-4426-9c88-c6e3f2ac62c6>
-///
-/// Firefox doesn't have this problem. Maybe they're using a different API.
-pub(crate) fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
-    let (tx, rx) = futures::channel::oneshot::channel();
-
-    // For some reason `on_activated` is FnMut
-    let mut tx = Some(tx);
-
-    // `Firezone` is the `<Application Id="Firezone">` from
-    // `win_files/AppxManifest.xml`; together with the package family
-    // name it forms the package AUMID Windows attributes toasts to.
-    let app_id = if crate::package_identity::has_package_identity() {
+pub(crate) fn notification_app_id() -> String {
+    if crate::package_identity::has_package_identity() {
         format!("{}!Firezone", crate::PACKAGE_FAMILY_NAME)
     } else {
         crate::BUNDLE_ID.to_owned()
-    };
-
-    tauri_winrt_notification::Toast::new(&app_id)
-        .title(&title)
-        .text1(&body)
-        .scenario(tauri_winrt_notification::Scenario::Reminder)
-        .on_activated(move |_| {
-            let Some(tx) = tx.take() else { return Ok(()) };
-
-            let _ = tx.send(());
-
-            Ok(())
-        })
-        .show()
-        .context("Failed to show notification")?;
-
-    tracing::debug!(%title, %body, "Showing notification");
-
-    Ok(NotificationHandle { on_click: rx })
+    }
 }

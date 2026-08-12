@@ -32,6 +32,7 @@ members = [
     "libs/connlib/tun",
     "libs/connlib/tunnel",
     "libs/connlib/tunnel-proto",
+    "libs/desktop-notifications",
     "libs/eventloop-budget",
     "libs/flow-log-spool",
     "libs/flow-log-upload",
@@ -96,6 +97,7 @@ crossbeam-queue = "0.3.12"
 dashmap = "6.2.1"
 dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
 derive_more = { version = "2.1.1", default-features = false }
+desktop-notifications = { path = "libs/desktop-notifications" }
 difference = "2.0.0"
 dirs = "6.0.0"
 divan = "0.1.21"
@@ -155,7 +157,6 @@ netlink-packet-core = "0.8.1"
 netlink-packet-route = "0.31.0"
 network-types = { version = "0.2.0", default-features = false }
 nix = "0.31.3"
-notify-rust = "4.17.0"
 nu-ansi-term = "0.50.3"
 once_cell = "1.21.4"
 opentelemetry = "0.32.0"

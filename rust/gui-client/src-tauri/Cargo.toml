@@ -14,7 +14,6 @@ enum_representation = "discriminated"
 [dependencies]
 anyhow = { workspace = true }
 arboard = { workspace = true }
-atomicwrites = { workspace = true }
 backoff = { workspace = true }
 bin-shared = { workspace = true }
 chrono = { workspace = true }
@@ -22,6 +21,7 @@ clap = { workspace = true, features = ["derive", "env"] }
 client-shared = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
+desktop-notifications = { workspace = true }
 fd-lock = { workspace = true }
 flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
@@ -83,7 +83,6 @@ ksni = { workspace = true } # Tray icon for Linux.
 libc = { workspace = true }
 mimalloc = { workspace = true }
 nix = { workspace = true, features = ["user"] }
-notify-rust = { workspace = true }
 sd-notify = { workspace = true }
 tracing-journald = { workspace = true }
 
@@ -93,7 +92,6 @@ mimalloc = { workspace = true }
 [target.'cfg(target_os = "windows")'.dependencies]
 admx-macro = { workspace = true }
 mimalloc = { workspace = true }
-tauri-winrt-notification = "0.7.2"
 windows-native-keyring-store = { workspace = true }
 windows-security = { workspace = true }
 windows-service = { workspace = true }
