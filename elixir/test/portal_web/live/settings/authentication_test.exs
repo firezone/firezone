@@ -129,6 +129,19 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert Floki.text(add_button) =~ "Add"
     end
 
+    test "renders authentication documentation link", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      assert html =~ "https://www.firezone.dev/kb/authenticate?utm_source=product#"
+    end
+
     test "renders make default option for providers", %{
       account: account,
       actor: actor,

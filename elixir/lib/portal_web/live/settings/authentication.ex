@@ -607,12 +607,15 @@ defmodule PortalWeb.Settings.Authentication do
             <h2 class="text-xs font-semibold text-heading">Identity Providers</h2>
             <span class="text-xs text-subtle tabular-nums">{length(@providers)}</span>
           </div>
-          <.link
-            patch={~p"/#{@account}/settings/authentication/new"}
-            class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-          >
-            <.icon name="ri-add-line" class="w-3 h-3" /> Add
-          </.link>
+          <div class="flex items-center gap-2">
+            <.docs_action path="/authenticate" />
+            <.link
+              patch={~p"/#{@account}/settings/authentication/new"}
+              class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+            >
+              <.icon name="ri-add-line" class="w-3 h-3" /> Add
+            </.link>
+          </div>
         </div>
 
         <div class="flex-1 overflow-auto">
