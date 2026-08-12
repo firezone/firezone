@@ -126,7 +126,9 @@ defmodule PortalAPI.Client.DeviceTrust do
           identifiers: identifiers(),
           last_attested_cert_serial: String.t(),
           last_attested_cert_fingerprint: String.t(),
-          last_attested_cert_issuer: binary()
+          last_attested_cert_issuer: binary(),
+          device: Portal.Device.t() | nil,
+          matched_on: :mdm_device_id | :cert_identity | nil
         }
 
   @type reason ::
@@ -162,7 +164,8 @@ defmodule PortalAPI.Client.DeviceTrust do
          :ok <- validate_leaf(leaf, der, anchors),
          {:ok, serial} <- cert_serial(leaf),
          {:ok, issuer} <- cert_issuer(der),
-         :ok <- ensure_not_revoked(issuer, serial, subject),
+         state = Database.attestation_state(issuer, serial, mdm_device_id(leaf), subject),
+         :ok <- ensure_not_revoked(state, issuer, serial),
          {:ok, identifiers} <- device_identifiers(leaf) do
       learn_revocation_endpoint(issuer, leaf, subject)
 
@@ -171,8 +174,21 @@ defmodule PortalAPI.Client.DeviceTrust do
          identifiers: identifiers,
          last_attested_cert_serial: serial,
          last_attested_cert_fingerprint: sha256_hex(der),
-         last_attested_cert_issuer: issuer
+         last_attested_cert_issuer: issuer,
+         device: state.device,
+         matched_on: state.matched_on
        }}
+    end
+  end
+
+  # Read ahead of the revocation check so both reach the database together, and
+  # separately from the identifiers the caller gets: a certificate carrying none
+  # is still worth checking for revocation, and refusing it belongs to that
+  # check rather than to this one.
+  defp mdm_device_id(leaf) do
+    case device_identifiers(leaf) do
+      {:ok, identifiers} -> Map.get(identifiers, :last_attested_mdm_device_id)
+      {:error, _reason} -> nil
     end
   end
 
@@ -299,13 +315,14 @@ defmodule PortalAPI.Client.DeviceTrust do
   #
   # Checked against cached rows rather than the network, so the connect stays
   # indexed lookups and a reconnect storm never reaches the CA.
-  defp ensure_not_revoked(issuer, serial, subject) do
-    if Database.revoked_by_list?(issuer, serial, subject) do
-      refuse(issuer, serial)
-    else
-      ensure_not_revoked_by_responder(issuer, serial, subject)
-    end
-  end
+  defp ensure_not_revoked(%{revoked?: true}, issuer, serial), do: refuse(issuer, serial)
+
+  # Nothing for a responder to add where the issuer publishes a list: absence
+  # from that list already means not revoked.
+  defp ensure_not_revoked(%{crl_published?: true}, _issuer, _serial), do: :ok
+
+  defp ensure_not_revoked(state, issuer, serial),
+    do: ensure_not_revoked_by_responder(state, issuer, serial)
 
   # Only consulted where the CA publishes no list, since a list covers every
   # device in one fetch and a responder is one request per certificate.
@@ -315,25 +332,25 @@ defmodule PortalAPI.Client.DeviceTrust do
   # background job has not run yet would make a responder outage an outage for
   # the fleet. It is logged as an error because it means revocation is not
   # actually being enforced for that CA.
-  defp ensure_not_revoked_by_responder(issuer, serial, subject) do
-    case Database.responder_status(issuer, serial, subject) do
-      :not_applicable ->
-        :ok
+  defp ensure_not_revoked_by_responder(%{ocsp_status: "revoked"}, issuer, serial) do
+    refuse(issuer, serial)
+  end
 
-      %{status: "revoked"} ->
-        refuse(issuer, serial)
-
-      %{status: "good", next_update: next_update} ->
-        if stale?(next_update) do
-          log_unenforced(issuer, serial, "cached OCSP answer has expired")
-        end
-
-        :ok
-
-      nil ->
-        log_unenforced(issuer, serial, "no cached OCSP answer")
-        :ok
+  defp ensure_not_revoked_by_responder(
+         %{ocsp_status: "good", ocsp_next_update: next_update},
+         issuer,
+         serial
+       ) do
+    if stale?(next_update) do
+      log_unenforced(issuer, serial, "cached OCSP answer has expired")
     end
+
+    :ok
+  end
+
+  defp ensure_not_revoked_by_responder(_state, issuer, serial) do
+    log_unenforced(issuer, serial, "no cached OCSP answer")
+    :ok
   end
 
   defp refuse(issuer, serial) do
@@ -689,6 +706,18 @@ defmodule PortalAPI.Client.DeviceTrust do
     alias Portal.Crypto.X509
     alias Portal.Safe
 
+    # A refused read leaves the connect with no facts rather than with false
+    # ones, which the caller treats the same way it treats a certificate no
+    # table has heard of.
+    @empty_state %{
+      revoked?: false,
+      crl_published?: false,
+      ocsp_status: nil,
+      ocsp_next_update: nil,
+      device: nil,
+      matched_on: nil
+    }
+
     # One round trip: the join on the global feature-flag row makes the query
     # return no anchors at all when the flag is off, so the caller's gate
     # check and verification material come from the same query.
@@ -696,50 +725,65 @@ defmodule PortalAPI.Client.DeviceTrust do
     # returns the permission error itself when a read is refused, and an error
     # tuple reading as "revoked" would lock out every device over something
     # that is not a revocation at all.
-    def revoked_by_list?(issuer, serial, subject) do
-      from(r in Portal.CrlRevocation,
-        where: r.issuer == ^issuer,
-        where: r.serial == ^serial
+    #
+    # Everything the connect needs to decide about this certificate, in one
+    # round trip: whether a list revoked it, whether its issuer publishes a
+    # list we can actually fetch, what its responder last said, and which
+    # device row it belongs to. Read apart they also raced each other, so an
+    # endpoint appearing between the coverage check and the responder read
+    # could make the connect ignore an answer it had just decided to trust.
+    #
+    # The account is the base because it is the one row guaranteed to exist,
+    # which keeps the outer joins from dropping the result when a certificate
+    # is unknown to every one of these tables.
+    def attestation_state(issuer, serial, mdm_device_id, subject) do
+      actor_id = subject.actor.id
+
+      from(a in Portal.Account,
+        left_join: r in Portal.CrlRevocation,
+        on: r.account_id == a.id and r.issuer == ^issuer and r.serial == ^serial,
+        left_join: s in Portal.OcspStatus,
+        on: s.account_id == a.id and s.issuer == ^issuer and s.serial == ^serial,
+        left_join: d in Portal.Device,
+        on:
+          d.account_id == a.id and d.actor_id == ^actor_id and d.type == :client and
+            (fragment("? = ?", d.last_attested_mdm_device_id, ^mdm_device_id) or
+               (d.last_attested_cert_issuer == ^issuer and
+                  d.last_attested_cert_serial == ^serial)),
+        order_by: [
+          asc:
+            fragment(
+              "CASE WHEN ? = ? THEN 0 ELSE 1 END",
+              d.last_attested_mdm_device_id,
+              ^mdm_device_id
+            )
+        ],
+        limit: 1,
+        select: %{
+          revoked?: not is_nil(r.serial),
+          crl_published?:
+            fragment(
+              """
+              EXISTS (
+                SELECT 1 FROM revocation_endpoints e
+                WHERE e.account_id = ? AND e.issuer = ?
+                AND EXISTS (
+                  SELECT 1 FROM unnest(e.crl_urls) AS u
+                  WHERE u LIKE 'http://%' OR u LIKE 'https://%'
+                )
+              )
+              """,
+              a.id,
+              ^issuer
+            ),
+          ocsp_status: s.status,
+          ocsp_next_update: s.next_update,
+          device: d
+        }
       )
       |> Safe.scoped(subject)
-      |> Safe.exists?()
-      |> Kernel.===(true)
-    end
-
-    # `:not_applicable` when the issuer publishes a list, so absence there
-    # already means not revoked and there is nothing for a responder to add.
-    def responder_status(issuer, serial, subject) do
-      if list_published?(issuer, subject) do
-        :not_applicable
-      else
-        from(s in Portal.OcspStatus,
-          where: s.issuer == ^issuer,
-          where: s.serial == ^serial
-        )
-        |> Safe.scoped(subject)
-        |> Safe.one()
-        |> case do
-          %Portal.OcspStatus{} = status -> status
-          _other -> nil
-        end
-      end
-    end
-
-    # Covered means a list we can fetch, not merely one advertised. An
-    # `ldap://` distribution point is a list we will never read, so an issuer
-    # carrying only that falls through to its responder.
-    defp list_published?(issuer, subject) do
-      from(e in Portal.RevocationEndpoint,
-        where: e.issuer == ^issuer,
-        where:
-          fragment(
-            "EXISTS (SELECT 1 FROM unnest(?) AS u WHERE u LIKE 'http://%' OR u LIKE 'https://%')",
-            e.crl_urls
-          )
-      )
-      |> Safe.scoped(subject)
-      |> Safe.exists?()
-      |> Kernel.===(true)
+      |> Safe.one()
+      |> normalize_state(mdm_device_id)
     end
 
     # Unscoped with the account pinned explicitly rather than scoped to the
@@ -806,6 +850,31 @@ defmodule PortalAPI.Client.DeviceTrust do
 
         {:error, _reason} ->
           []
+      end
+    end
+
+    # An outer join that matched nothing still fills the struct, with every
+    # field nil, so the primary key is what says whether there was a row.
+    defp normalize_state(%{device: %Portal.Device{id: id} = device} = state, mdm_device_id)
+         when not is_nil(id) do
+      Map.put(state, :matched_on, matched_on(device, mdm_device_id))
+    end
+
+    defp normalize_state(%{} = state, _mdm_device_id) do
+      state |> Map.put(:device, nil) |> Map.put(:matched_on, nil)
+    end
+
+    defp normalize_state(_other, _mdm_device_id), do: @empty_state
+
+    # The MDM device id is assigned by the MDM service rather than reported by
+    # the device, so it is the only identifier a device cannot choose for
+    # itself and the row it names wins. A certificate carrying none resolves by
+    # the certificate itself, which lasts exactly as long as the certificate.
+    defp matched_on(device, mdm_device_id) do
+      if not is_nil(mdm_device_id) and device.last_attested_mdm_device_id == mdm_device_id do
+        :mdm_device_id
+      else
+        :cert_identity
       end
     end
   end

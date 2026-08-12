@@ -411,68 +411,21 @@ defmodule PortalAPI.Client.Socket do
       else
         changeset
         |> put_proof_changes(proof)
-        |> resolve_attested(actor_id, proof, subject)
+        |> resolve_attested(proof, subject)
       end
     end
 
-    # Identity is looked up strongest-first. The MDM device id is assigned by
-    # the MDM service rather than reported by the device, so it is the only
-    # identifier a device cannot choose for itself. When a certificate carries
-    # none, the pinned certificate stands in: the row survives for as long as
-    # that certificate does and a renewal enrolls a new one.
-    defp resolve_attested(changeset, actor_id, proof, subject) do
-      case find_attested_row(actor_id, proof, subject) do
+    # The row and how it was matched both come from the attestation read, which
+    # resolves identity in the same statement that checks the certificate for
+    # revocation. A device that re-enrolls arrives with a new MDM device id and
+    # gets a new row: the hardware identifiers it might otherwise be relocated
+    # by are self-reported at enrollment, and Microsoft documents them as
+    # spoofable by anyone with access to the device.
+    defp resolve_attested(changeset, proof, subject) do
+      case proof.device do
         nil -> insert_attested(changeset, subject)
-        {client, matched_on} -> adopt_attested(client, changeset, proof, matched_on)
+        client -> adopt_attested(client, changeset, proof, proof.matched_on)
       end
-    end
-
-    defp find_attested_row(actor_id, proof, subject) do
-      mdm_device_id = Map.get(proof.identifiers, :last_attested_mdm_device_id)
-
-      case find_by_mdm_device_id(actor_id, mdm_device_id, subject) do
-        nil ->
-          case find_by_cert_identity(actor_id, proof, subject) do
-            nil -> nil
-            client -> {client, :cert_identity}
-          end
-
-        client ->
-          {client, :mdm_device_id}
-      end
-    end
-
-    # The MDM device id is unique per actor, so this is a direct read. A
-    # device that re-enrolls arrives with a new id and gets a new row: the
-    # hardware identifiers it might otherwise be relocated by are self-reported
-    # at enrollment, and Microsoft documents them as spoofable by anyone with
-    # access to the device.
-    defp find_by_mdm_device_id(_actor_id, nil, _subject), do: nil
-
-    defp find_by_mdm_device_id(actor_id, mdm_device_id, subject) do
-      from(d in Device,
-        where: d.actor_id == ^actor_id,
-        where: d.type == :client,
-        where: d.last_attested_mdm_device_id == ^mdm_device_id
-      )
-      |> Safe.scoped(subject)
-      |> Safe.one()
-    end
-
-    # Issuer and serial together, never the serial alone: a serial is unique
-    # only per issuing CA (RFC 5280 4.1.2.2), and an account may trust several
-    # anchors, so matching on it would let a certificate from one CA resolve to
-    # a device enrolled under another. The pair is what a revocation list names
-    # a certificate by, so it is also what a revoked device is found by.
-    defp find_by_cert_identity(actor_id, proof, subject) do
-      from(d in Device,
-        where: d.actor_id == ^actor_id,
-        where: d.type == :client,
-        where: d.last_attested_cert_issuer == ^proof.last_attested_cert_issuer,
-        where: d.last_attested_cert_serial == ^proof.last_attested_cert_serial
-      )
-      |> Safe.scoped(subject)
-      |> Safe.one()
     end
 
     # The row this resolves to is this device by definition. The hardware
