@@ -509,9 +509,9 @@ defmodule PortalWeb.NavigationComponents do
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/device_integrations"}
           tab_path="settings/device_integrations"
-          icon="ri-device-fill"
+          icon="ri-shield-star-fill"
         >
-          Device Integrations
+          Device Posture
         </.settings_tab>
         <.settings_tab
           current_path={@current_path}

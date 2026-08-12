@@ -34,6 +34,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/directory_sync")
 
       assert html =~ "settings/device_integrations"
+      assert html =~ "Device Posture"
     end
 
     test "redirects away from the page when the global flag is off", %{

@@ -8,7 +8,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
 
   require Logger
 
-  @feature_disabled "Device integrations are not enabled for your account."
+  @feature_disabled "Device posture is not enabled for your account."
 
   @form_fields ~w[name]a
   @programmatic_fields ~w[tenant_id is_verified]a
@@ -32,7 +32,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
     {:ok,
      socket
      |> assign(
-       page_title: "Device Integrations",
+       page_title: "Device Posture",
        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?(),
        verification_error: nil,
        active_verification: nil,
