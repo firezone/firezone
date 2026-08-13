@@ -291,7 +291,9 @@ defmodule PortalAPI.Client.DeviceTrustTest do
              end) =~ "revoked by its CA"
     end
 
-    test "allows a leaf with no cached answer but says revocation is unenforced", %{
+    # A responder outage, or a job that has simply not run yet, must not become
+    # an outage for the fleet.
+    test "allows a leaf with no cached answer", %{
       account: account,
       pki: pki,
       subject: subject
@@ -299,18 +301,10 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       leaf = leaf(pki, :rsa)
       ocsp_endpoint(account, pki)
 
-      # A responder outage must not become an outage for the fleet, but it does
-      # mean nothing is being enforced, so it is not allowed to pass quietly.
-      log =
-        ExUnit.CaptureLog.capture_log(fn ->
-          assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
-        end)
-
-      assert log =~ "without a revocation check"
-      assert log =~ "no cached OCSP answer"
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
     end
 
-    test "allows a leaf whose cached answer has expired and says so", %{
+    test "allows a leaf whose cached answer has expired and asks again", %{
       account: account,
       pki: pki,
       subject: subject
@@ -327,12 +321,10 @@ defmodule PortalAPI.Client.DeviceTrustTest do
         updated_at: DateTime.utc_now()
       })
 
-      log =
-        ExUnit.CaptureLog.capture_log(fn ->
-          assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
-        end)
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
 
-      assert log =~ "has expired"
+      assert [job] = all_enqueued(worker: Portal.Ocsp.Sync)
+      assert job.args["serial"] == cert_serial_hex(leaf)
     end
 
     test "falls through to the responder when the only list is unfetchable", %{
@@ -353,39 +345,10 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       })
 
       # Treating an ldap:// list as coverage would leave revocation unenforced
-      # while the responder sat unused, and say nothing about it either.
-      log =
-        ExUnit.CaptureLog.capture_log(fn ->
-          assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
-        end)
+      # while the responder sat unused.
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
 
-      assert log =~ "without a revocation check"
-    end
-
-    test "says nothing when the CA publishes a list instead", %{
-      account: account,
-      pki: pki,
-      subject: subject
-    } do
-      leaf = leaf(pki, :rsa)
-
-      Repo.insert!(%Portal.RevocationEndpoint{
-        account_id: account.id,
-        issuer: Portal.Crypto.X509.issuer(leaf),
-        distribution_point: "http://crl.example.test/ca.crl",
-        crl_urls: ["http://crl.example.test/ca.crl"],
-        inserted_at: DateTime.utc_now(),
-        updated_at: DateTime.utc_now()
-      })
-
-      # A list is the whole truth for its issuer, so a serial missing from the
-      # cache is simply not revoked and there is nothing to warn about.
-      log =
-        ExUnit.CaptureLog.capture_log(fn ->
-          assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
-        end)
-
-      refute log =~ "without a revocation check"
+      assert [_job] = all_enqueued(worker: Portal.Ocsp.Sync)
     end
 
     test "the issuer learns its revocation endpoints from the first leaf", %{
