@@ -12,6 +12,12 @@ defmodule Portal.Entra.ErrorHandler do
 
   @non_disabling_steps [:batch_upsert_identities, :batch_upsert_memberships]
 
+  # Req has already retried these before the response reaches us, so an
+  # exhausted throttle means the provider is busy, not that the directory is
+  # misconfigured. Disabling on one would make the admin re-verify to recover
+  # from rate limiting.
+  @throttled_statuses [408, 429]
+
   def handle(%Entra.SyncError{error: error, step: step}, directory_id) do
     type = classify(error, step)
     message = format(error)
@@ -31,17 +37,26 @@ defmodule Portal.Entra.ErrorHandler do
 
   # Classification
 
-  defp classify(%Req.Response{status: status} = _resp) when status >= 400 and status < 500 do
+  defp classify(%Req.Response{status: status}) when status in @throttled_statuses,
+    do: :transient
+
+  defp classify(%Req.Response{status: status}) when status >= 400 and status < 500 do
     :client_error
   end
 
   defp classify(%Req.Response{}), do: :transient
+
+  defp classify({:batch_all_failed, status, _body}) when status in @throttled_statuses,
+    do: :transient
 
   defp classify({:batch_all_failed, status, _body}) when status >= 400 and status < 500 do
     :client_error
   end
 
   defp classify({:batch_all_failed, _status, _body}), do: :transient
+
+  defp classify({:batch_request_failed, status, _body}) when status in @throttled_statuses,
+    do: :transient
 
   defp classify({:batch_request_failed, status, _body}) when status >= 400 and status < 500 do
     :client_error

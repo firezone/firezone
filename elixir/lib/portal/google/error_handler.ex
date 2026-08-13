@@ -12,6 +12,12 @@ defmodule Portal.Google.ErrorHandler do
 
   @non_disabling_steps [:batch_upsert_identities, :batch_upsert_memberships]
 
+  # Req has already retried these before the response reaches us, so an
+  # exhausted throttle means the provider is busy, not that the directory is
+  # misconfigured. Disabling on one would make the admin re-verify to recover
+  # from rate limiting.
+  @throttled_statuses [408, 429]
+
   def handle(%Google.SyncError{error: error, step: step}, directory_id) do
     type = classify(error, step)
     message = format(error)
@@ -30,6 +36,9 @@ defmodule Portal.Google.ErrorHandler do
   defp classify(error, _step), do: classify(error)
 
   # Classification
+
+  defp classify(%Req.Response{status: status}) when status in @throttled_statuses,
+    do: :transient
 
   defp classify(%Req.Response{status: status}) when status >= 400 and status < 500 do
     :client_error
