@@ -22,6 +22,12 @@ defmodule Portal.Intune.ErrorHandler do
 
   # Classification
 
+  # Req has already retried these four times, honouring Retry-After, before the
+  # response gets here, so an exhausted throttle is a busy tenant rather than a
+  # misconfigured one. Disabling would make a large tenant re-run the admin
+  # consent flow to recover from being rate limited.
+  defp classify(%Req.Response{status: status}) when status in [408, 429], do: :transient
+
   defp classify(%Req.Response{status: status}) when status >= 400 and status < 500,
     do: :client_error
 

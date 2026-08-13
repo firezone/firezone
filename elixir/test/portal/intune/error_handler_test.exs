@@ -18,6 +18,24 @@ defmodule Portal.Intune.ErrorHandlerTest do
     assert integration.error_message =~ "DeviceManagementManagedDevices.Read.All"
   end
 
+  test "does not disable the integration when Microsoft Graph throttles the tenant" do
+    for status <- [408, 429] do
+      integration = intune_integration_fixture()
+
+      ErrorHandler.handle(
+        sync_error(%Req.Response{status: status, body: %{"error" => %{"code" => "TooManyRequests"}}}),
+        integration.id
+      )
+
+      integration =
+        Repo.get_by!(Integration, account_id: integration.account_id, id: integration.id)
+
+      refute integration.is_disabled
+      assert integration.is_verified
+      assert integration.errored_at
+    end
+  end
+
   test "records a transient error without disabling the integration" do
     integration = intune_integration_fixture()
 
