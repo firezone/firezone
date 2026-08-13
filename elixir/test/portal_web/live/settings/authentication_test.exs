@@ -445,6 +445,11 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert html =~ "Clients will be <strong>signed out</strong>"
       assert html =~ "after this and forced to re-authenticate."
       assert html =~ "Verify Now"
+      assert html =~ "Sign in with your Google account to verify the sign-in flow."
+      assert html =~ "Google verification confirms that the sign-in flow works."
+      assert html =~ "does not verify"
+      assert html =~ "Google Workspace administrator privileges"
+      assert html =~ "ownership of a Workspace domain"
     end
 
     test "validates portal_session_lifetime_secs minimum", %{
@@ -821,6 +826,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert html =~ "Edit Test Google"
       assert html =~ "Verification"
       assert html =~ "Verified"
+      assert html =~ "Verified sign-in"
+      assert html =~ "The Google sign-in flow has been successfully verified."
+      assert html =~ "Google verification confirms that the sign-in flow works."
+      assert html =~ "ownership of a Workspace domain"
     end
 
     test "shows reset verification button when verified", %{

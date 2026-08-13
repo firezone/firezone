@@ -1494,13 +1494,22 @@ defmodule PortalWeb.Settings.Authentication do
           <.flash :if={@verification_error} kind={:error} class="mb-3">
             {@verification_error}
           </.flash>
+          <.flash
+            :if={@type == "google"}
+            id="google-verification-scope-warning"
+            kind={:warning}
+            class="mb-3"
+          >
+            Google verification confirms that the sign-in flow works. It does not verify
+            Google Workspace administrator privileges or ownership of a Workspace domain.
+          </.flash>
           <div class="rounded border border-border overflow-hidden">
             <div class="flex items-center justify-between px-4 py-3">
               <p class="text-sm text-body">
                 {verification_help_text(@form, @type)}
               </p>
               <div class="ml-4 shrink-0">
-                <.verification_status_badge id="verify-button" form={@form} />
+                <.verification_status_badge id="verify-button" form={@form} type={@type} />
               </div>
             </div>
             <div
@@ -1528,6 +1537,14 @@ defmodule PortalWeb.Settings.Authentication do
     """
   end
 
+  defp verification_help_text(form, "google") do
+    if verified?(form) do
+      "The Google sign-in flow has been successfully verified."
+    else
+      "Sign in with your Google account to verify the sign-in flow."
+    end
+  end
+
   defp verification_help_text(form, type) do
     if verified?(form) do
       "This provider has been successfully verified."
@@ -1542,7 +1559,8 @@ defmodule PortalWeb.Settings.Authentication do
       :if={verified?(@form)}
       class="flex items-center gap-1.5 text-xs font-medium text-success bg-success-light px-2.5 py-1 rounded"
     >
-      <.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" /> Verified
+      <.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" />
+      {if @type == "google", do: "Verified sign-in", else: "Verified"}
     </div>
     <.button
       :if={not verified?(@form) and ready_to_verify?(@form)}
