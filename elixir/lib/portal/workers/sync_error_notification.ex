@@ -60,9 +60,9 @@ defmodule Portal.Workers.SyncErrorNotification do
   end
 
   # An Intune integration carries the same error columns as a directory, so the
-  # shared query and escalation schedule apply unchanged.
-  # An account that loses device posture stops syncing, so chasing its admins
-  # about an error they can no longer act on would be noise.
+  # shared query and escalation schedule apply unchanged. An account that loses
+  # device posture stops syncing, so chasing its admins about an error they can
+  # no longer act on would be noise.
   defp check_intune_integrations(%{"frequency" => frequency}) do
     Intune.Integration
     |> Database.errored_disabled_directories(frequency)

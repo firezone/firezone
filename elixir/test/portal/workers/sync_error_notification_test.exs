@@ -254,39 +254,58 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
       assert email.text_body =~ "DeviceManagementManagedDevices.Read.All"
     end
 
-    test "does not email an account that lost the device_posture feature" do
+    test "does not email when the global device_posture flag is off" do
       enable_device_posture()
       account = device_posture_account_fixture()
-      session_log_fixture(account: account)
-      admin_actor_fixture(account: account)
-
-      integration = intune_integration_fixture(account: account)
-
-      Portal.Intune.ErrorHandler.handle(
-        Portal.Intune.SyncError.exception(
-          integration_id: integration.id,
-          step: :list_managed_devices,
-          error: %Req.Response{status: 403, body: ""}
-        ),
-        integration.id
-      )
+      integration = errored_intune_integration(account)
 
       enable_device_posture(false)
 
       assert :ok = perform_job(SyncErrorNotification, notification_args("intune", "daily"))
 
       assert collect_queued_emails(account.id) == []
+      assert error_email_count(integration) == 0
+    end
 
-      assert Repo.get_by!(Portal.Intune.Integration,
-               account_id: integration.account_id,
-               id: integration.id
-             ).error_email_count == 0
+    test "does not email an account whose device_posture feature is off" do
+      enable_device_posture()
+      account = account_fixture(features: %{device_posture: false})
+      integration = errored_intune_integration(account)
+
+      assert :ok = perform_job(SyncErrorNotification, notification_args("intune", "daily"))
+
+      assert collect_queued_emails(account.id) == []
+      assert error_email_count(integration) == 0
     end
 
     test "returns an error for unknown providers" do
       assert {:error, "Unknown provider: ldap"} =
                perform_job(SyncErrorNotification, notification_args("ldap", "daily"))
     end
+  end
+
+  defp errored_intune_integration(account) do
+    session_log_fixture(account: account)
+    admin_actor_fixture(account: account)
+    integration = intune_integration_fixture(account: account)
+
+    Portal.Intune.ErrorHandler.handle(
+      Portal.Intune.SyncError.exception(
+        integration_id: integration.id,
+        step: :list_managed_devices,
+        error: %Req.Response{status: 403, body: ""}
+      ),
+      integration.id
+    )
+
+    integration
+  end
+
+  defp error_email_count(integration) do
+    Repo.get_by!(Portal.Intune.Integration,
+      account_id: integration.account_id,
+      id: integration.id
+    ).error_email_count
   end
 
   defp notification_args(provider, frequency) do
