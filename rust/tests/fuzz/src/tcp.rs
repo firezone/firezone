@@ -6,10 +6,13 @@ use l3_tcp::Socket;
 
 /// The TCP give-up behaviour of the operating system a client simulates.
 ///
-/// Established connections abort once outstanding data goes unacknowledged for
-/// the profile's duration, mirroring each stack's retransmission budget. Idle
-/// connections never time out: keep-alives are opt-in on every stack and
-/// default to probing only after two hours.
+/// Real stacks abort an established connection once outstanding data goes
+/// unacknowledged for the duration of their retransmission budget and let idle
+/// connections live forever. `smoltcp`'s abort timer instead counts from the
+/// last packet received from the remote, whether or not anything is
+/// outstanding, so each socket pairs the profile's timeout with short
+/// keep-alives: an idle connection stays alive through keep-alive round-trips
+/// and only aborts once the path has been dead for the profile's duration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TcpStackProfile {
     /// Linux and Android: `tcp_retries2 = 15` gives up after ~15 minutes.
@@ -84,6 +87,7 @@ impl Client {
             .context("Failed to create TCP connection")?;
 
         socket.set_timeout(Some(self.stack_profile.timeout()));
+        socket.set_keep_alive(Some(l3_tcp::Duration::from_secs(5)));
 
         let handle = self.sockets.add(socket);
 
