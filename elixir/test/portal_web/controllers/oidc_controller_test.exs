@@ -987,6 +987,8 @@ defmodule PortalWeb.OIDCControllerTest do
       Mocks.OIDC.set_token_response(%{"access_token" => "interactive-google-token"})
 
       Req.Test.expect(Portal.Google.APIClient, fn req_conn ->
+        assert req_conn.request_path == "/admin/directory/v1/customers/my_customer"
+
         assert Plug.Conn.get_req_header(req_conn, "authorization") == [
                  "Bearer interactive-google-token"
                ]
@@ -1063,6 +1065,65 @@ defmodule PortalWeb.OIDCControllerTest do
 
       assert error =~ "must be a Workspace administrator"
       assert error =~ "permission to view customer information"
+    end
+
+    test "does not exchange the authorization code when a Google verification callback is replayed",
+         %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
+      state = google_directory_verification_state(lv_pid, verification_ref)
+
+      Mocks.OIDC.set_token_response(%{"access_token" => "interactive-google-token"})
+
+      Req.Test.expect(Portal.Google.APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{
+          "id" => "C0123",
+          "customerDomain" => "verified.example.com"
+        })
+      end)
+
+      first_conn =
+        get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert {:ok, %{ok: true}} = oidc_verification_result_from_redirect(redirected_to(first_conn))
+      flush_oidc_requests()
+
+      replayed_conn =
+        get(recycle(first_conn), ~p"/auth/oidc/callback", %{
+          "state" => state,
+          "code" => "replayed-code"
+        })
+
+      assert {:ok, %{ok: false, error: error}} =
+               oidc_verification_result_from_redirect(redirected_to(replayed_conn))
+
+      assert error =~ "Verification session was not found or has expired"
+      refute_received {:oidc_request, _path, _conn}
+    end
+
+    test "does not consume a newer pending verification when a stale Google callback arrives", %{
+      conn: conn
+    } do
+      stale_ref = Ecto.UUID.generate()
+      current_ref = Ecto.UUID.generate()
+      lv_pid = google_directory_pending_verification_process(current_ref, "C0123")
+      state = google_directory_verification_state(lv_pid, stale_ref)
+      flush_oidc_requests()
+
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{
+          "state" => state,
+          "code" => "stale-code"
+        })
+
+      assert {:ok, %{ok: false, error: error, verification_ref: ^stale_ref}} =
+               oidc_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Verification session was not found or has expired"
+      refute_received {:oidc_request, _path, _conn}
+
+      send(lv_pid, {:peek_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^current_ref}}
     end
 
     test "returns a signed failure when Google authorization is denied", %{conn: conn} do

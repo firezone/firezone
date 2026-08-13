@@ -75,6 +75,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
   end
 
   defp expect_google_directory_service_access(customer_id, domain) do
+    test_pid = self()
+
     Req.Test.expect(ManagedIdentity, fn req_conn ->
       Req.Test.json(req_conn, %{
         "access_token" => "azure-managed-identity-token",
@@ -83,6 +85,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
     end)
 
     Req.Test.expect(APIClient, 7, fn req_conn ->
+      send(test_pid, {:google_api_request, req_conn.request_path})
+
       case req_conn.request_path do
         "/v1/token" ->
           Req.Test.json(req_conn, %{
@@ -365,6 +369,22 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert_push_event(lv, "open_url", %{url: url})
       params = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
 
+      paths = drain_google_api_request_paths()
+      customer_index = Enum.find_index(paths, &(&1 == "/admin/directory/v1/customers/my_customer"))
+      users_index = Enum.find_index(paths, &(&1 == "/admin/directory/v1/users"))
+      groups_index = Enum.find_index(paths, &(&1 == "/admin/directory/v1/groups"))
+
+      orgunits_index =
+        Enum.find_index(paths, &(&1 == "/admin/directory/v1/customer/my_customer/orgunits"))
+
+      assert is_integer(customer_index)
+      assert is_integer(users_index)
+      assert is_integer(groups_index)
+      assert is_integer(orgunits_index)
+      assert customer_index < users_index
+      assert users_index < groups_index
+      assert groups_index < orgunits_index
+
       assert params["scope"] ==
                "https://www.googleapis.com/auth/admin.directory.customer.readonly"
 
@@ -406,6 +426,56 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
                  account_id: account.id,
                  name: "Google Directory"
                )
+    end
+
+    test "does not consume a Google directory verifier for a stale callback reference", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      configure_google_directory_workload_identity()
+      configure_google_sync_authorization()
+
+      Req.Test.stub(ManagedIdentity, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      Req.Test.stub(APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/new")
+
+      Req.Test.allow(ManagedIdentity, self(), lv.pid)
+      Req.Test.allow(APIClient, self(), lv.pid)
+      Req.Test.allow(PortalWeb.OIDC, self(), lv.pid)
+      expect_google_directory_service_access("C0123", "verified.example.com")
+
+      lv
+      |> form("#directory-form",
+        directory: %{
+          name: "Google Directory",
+          impersonation_email: "sync-admin@verified.example.com"
+        }
+      )
+      |> render_change()
+
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+      assert {:ok, %{verification_ref: verification_ref}} =
+               PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:get_pending_verification, Ecto.UUID.generate(), self()})
+      assert_receive {:pending_verification, nil}
+
+      send(lv.pid, {:peek_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
     end
 
     test "rejects a Google verification completed after the impersonation email changes", %{
@@ -717,6 +787,14 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ "Add Google Directory"
       refute html =~ "Verified"
       refute html =~ "stale-tenant"
+    end
+  end
+
+  defp drain_google_api_request_paths(paths \\ []) do
+    receive do
+      {:google_api_request, path} -> drain_google_api_request_paths([path | paths])
+    after
+      0 -> Enum.reverse(paths)
     end
   end
 
