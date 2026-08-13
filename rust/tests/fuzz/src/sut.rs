@@ -1067,7 +1067,7 @@ impl TunnelTest {
             HostId::Client(id) => {
                 let client = self.clients.get_mut(&id).unwrap();
 
-                match client.ingress(src, dst) {
+                match client.ingress(src, dst, at) {
                     Ok(local_dst) => client.receive(
                         Transmit {
                             dst: local_dst,
@@ -1083,7 +1083,7 @@ impl TunnelTest {
             HostId::Gateway(id) => {
                 let gateway = self.gateways.get_mut(&id).expect("unknown gateway");
 
-                match gateway.ingress(src, dst) {
+                match gateway.ingress(src, dst, at) {
                     Ok(local_dst) => gateway.receive(
                         Transmit {
                             dst: local_dst,
