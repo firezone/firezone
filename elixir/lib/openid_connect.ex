@@ -237,8 +237,7 @@ defmodule OpenIDConnect do
       verify_with_retry(
         config,
         jwt,
-        token_alg,
-        token_kid,
+        {token_alg, token_kid},
         discovery_document_uri,
         req_opts,
         opts
@@ -246,13 +245,13 @@ defmodule OpenIDConnect do
     end
   end
 
-  defp verify_with_retry(config, jwt, token_alg, token_kid, uri, req_opts, opts) do
+  defp verify_with_retry(config, jwt, {token_alg, _token_kid} = token_header, uri, req_opts, opts) do
     # Snapshot pre-call so we only retry when JWKS was cached (cold cache = already fresh).
     pre_cached = Cache.peek(uri)
 
     case do_verify(config, jwt, token_alg, uri, req_opts, opts) do
       {:error, {:invalid_jwt, "verification failed"}} = error ->
-        retry_verify(config, jwt, token_alg, token_kid, uri, req_opts, opts, pre_cached, error)
+        retry_verify(config, jwt, token_header, uri, req_opts, opts, pre_cached, error)
 
       result ->
         result
@@ -262,7 +261,16 @@ defmodule OpenIDConnect do
   # Refresh out-of-band so a failed refetch (provider unreachable) leaves the old
   # cached JWKS intact for legitimate cached-key-signed tokens. `allow_refresh?`
   # enforces a per-URI cooldown to throttle DoS via unknown-kid spam.
-  defp retry_verify(config, jwt, token_alg, token_kid, uri, req_opts, opts, pre_cached, error) do
+  defp retry_verify(
+         config,
+         jwt,
+         {token_alg, token_kid},
+         uri,
+         req_opts,
+         opts,
+         pre_cached,
+         error
+       ) do
     with true <- should_refresh_jwks?(token_kid, pre_cached),
          true <- Cache.allow_refresh?(uri),
          {:ok, _fresh} <- Document.refresh_document(uri, req_opts) do
