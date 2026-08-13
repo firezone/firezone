@@ -57,6 +57,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
       assert redirected_to(conn) =~ "/authorize"
       assert oidc_cookie_from_response(conn) != nil
+      assert_oidc_nonce_bound(conn)
     end
 
     test "accepts account slug instead of id", %{conn: conn} do
@@ -1320,6 +1321,16 @@ defmodule PortalWeb.OIDCControllerTest do
       assert_portal_sign_in_success(ctx)
     end
 
+    test "rejects an ID token whose nonce is not bound to the sign-in session", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor, nonce: "attacker-nonce")
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+
+      assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
+      assert flash(conn, :error) == "Unable to verify your identity token. Please try signing in again."
+    end
+
     test "recreated user with a new idp_id overwrites their identity in place", ctx do
       actor = admin_actor_fixture(account: ctx.account, email: unique_email())
 
@@ -1528,7 +1539,8 @@ defmodule PortalWeb.OIDCControllerTest do
           "sub" => "admin-user-123",
           "name" => actor.name,
           "aud" => ctx.provider.client_id,
-          "exp" => token_exp()
+          "exp" => token_exp(),
+          "nonce" => PortalWeb.OIDC.nonce("test-verifier")
         })
 
       expect_token_exchange(id_token)
@@ -2579,7 +2591,8 @@ defmodule PortalWeb.OIDCControllerTest do
           "sub" => "nonexistent-user-123",
           "name" => "Test User",
           "aud" => ctx.provider.client_id,
-          "exp" => token_exp()
+          "exp" => token_exp(),
+          "nonce" => PortalWeb.OIDC.nonce("test-verifier")
         })
 
       expect_token_exchange(id_token)
@@ -2607,7 +2620,8 @@ defmodule PortalWeb.OIDCControllerTest do
           "sub" => "user-without-email-123",
           "name" => "User Without Email",
           "aud" => ctx.provider.client_id,
-          "exp" => token_exp()
+          "exp" => token_exp(),
+          "nonce" => PortalWeb.OIDC.nonce("test-verifier")
         })
 
       expect_token_exchange(id_token)
@@ -2638,7 +2652,6 @@ defmodule PortalWeb.OIDCControllerTest do
     # Format: {field_name, claim_name, limit}
     for {field, claim, limit} <- [
           {"email", "email", 160},
-          {"issuer", "iss", 2048},
           {"idp_id", "sub", 255},
           {"name", "name", 255},
           {"given_name", "given_name", 255},
@@ -2675,7 +2688,8 @@ defmodule PortalWeb.OIDCControllerTest do
                 "sub" => "admin-user-123",
                 "name" => actor.name,
                 "aud" => ctx.provider.client_id,
-                "exp" => token_exp()
+                "exp" => token_exp(),
+                "nonce" => PortalWeb.OIDC.nonce("test-verifier")
               },
               overrides
             )
@@ -2740,6 +2754,7 @@ defmodule PortalWeb.OIDCControllerTest do
       redirect_url = redirected_to(conn)
       assert redirect_url =~ "#{mock_endpoint}/authorize"
       assert redirect_url =~ "prompt=select_account"
+      assert_oidc_nonce_bound(conn)
     end
   end
 
@@ -2769,6 +2784,7 @@ defmodule PortalWeb.OIDCControllerTest do
       redirect_url = redirected_to(conn)
       assert redirect_url =~ "#{mock_endpoint}/authorize"
       assert redirect_url =~ "prompt=select_account"
+      assert_oidc_nonce_bound(conn)
     end
   end
 
@@ -2797,6 +2813,7 @@ defmodule PortalWeb.OIDCControllerTest do
       redirect_url = redirected_to(conn)
       assert redirect_url =~ "#{mock_endpoint}/authorize"
       assert redirect_url =~ "prompt=select_account"
+      assert_oidc_nonce_bound(conn)
     end
   end
 
@@ -3529,6 +3546,10 @@ defmodule PortalWeb.OIDCControllerTest do
   end
 
   defp set_entra_claims_response(claims) do
+    Mocks.OIDC.set_discovery_document_overrides(%{
+      "issuer" => "https://login.microsoftonline.com/{tenantid}/v2.0"
+    })
+
     claims
     |> Mocks.OIDC.sign_openid_connect_token()
     |> set_entra_id_token_response()
@@ -3592,7 +3613,8 @@ defmodule PortalWeb.OIDCControllerTest do
         "email" => email,
         "sub" => sub,
         "aud" => provider.client_id,
-        "exp" => token_exp()
+        "exp" => token_exp(),
+        "nonce" => Keyword.get(opts, :nonce, PortalWeb.OIDC.nonce("test-verifier"))
       }
       |> maybe_add_email_verified(opts)
       |> maybe_add_claim("name", opts, actor.name)
@@ -3629,6 +3651,13 @@ defmodule PortalWeb.OIDCControllerTest do
       "id_token" => id_token,
       "token_type" => "Bearer"
     })
+  end
+
+  defp assert_oidc_nonce_bound(conn) do
+    params = conn |> redirected_to() |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+    cookie = oidc_cookie_from_response(conn)
+
+    assert params["nonce"] == PortalWeb.OIDC.nonce(cookie.verifier)
   end
 
   # Sets up the userinfo endpoint mock response.

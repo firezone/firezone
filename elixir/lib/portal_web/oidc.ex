@@ -113,8 +113,21 @@ defmodule PortalWeb.OIDC do
       additional_params = Keyword.get(opts, :additional_params, %{})
 
       oidc_params =
-        %{state: state, code_challenge_method: :S256, code_challenge: challenge}
-        |> Map.merge(additional_params)
+        additional_params
+        |> Map.drop([
+          :state,
+          "state",
+          :nonce,
+          "nonce",
+          :code_challenge_method,
+          "code_challenge_method",
+          :code_challenge,
+          "code_challenge"
+        ])
+        |> Map.put(:state, state)
+        |> Map.put(:nonce, nonce(verifier))
+        |> Map.put(:code_challenge_method, :S256)
+        |> Map.put(:code_challenge, challenge)
 
       case OpenIDConnect.authorization_uri(config, callback_url(provider), oidc_params) do
         {:ok, uri} -> {:ok, uri, state, verifier}
@@ -175,9 +188,9 @@ defmodule PortalWeb.OIDC do
   Verifies ID token and returns claims.
   Returns {:ok, claims} or {:error, reason}.
   """
-  def verify_token(provider, id_token) do
+  def verify_token(provider, id_token, verifier) do
     with {:ok, config} <- config_for_provider(provider) do
-      OpenIDConnect.verify(config, id_token)
+      OpenIDConnect.verify(config, id_token, nonce: nonce(verifier))
     end
   end
 
@@ -208,6 +221,10 @@ defmodule PortalWeb.OIDC do
   """
   def verify_token_with_config(config, id_token) do
     OpenIDConnect.verify(config, id_token)
+  end
+
+  def verify_token_with_config(config, id_token, verifier) do
+    OpenIDConnect.verify(config, id_token, nonce: nonce(verifier))
   end
 
   @doc """
@@ -351,6 +368,7 @@ defmodule PortalWeb.OIDC do
 
     oidc_params = %{
       state: state_token,
+      nonce: nonce(verifier),
       code_challenge_method: :S256,
       code_challenge: challenge,
       prompt: "login"
@@ -432,9 +450,15 @@ defmodule PortalWeb.OIDC do
   """
   def verify_callback(config, code, verifier) do
     with {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
-         {:ok, claims} <- verify_token_with_config(config, tokens["id_token"]) do
+         {:ok, claims} <- verify_token_with_config(config, tokens["id_token"], verifier) do
       {:ok, claims, fetch_userinfo_with_config(config, tokens["access_token"])}
     end
+  end
+
+  @doc false
+  def nonce(verifier) when is_binary(verifier) do
+    :crypto.hash(:sha256, "oidc-nonce:" <> verifier)
+    |> Base.url_encode64(padding: false)
   end
 
   @doc """
@@ -461,6 +485,9 @@ defmodule PortalWeb.OIDC do
        }}
     else
       nil -> {:error, {:invalid_entra_id_token, :missing_id_token}}
+      {:error, {:invalid_jwt, reason}} ->
+        {:error, {:invalid_entra_id_token, {:invalid_jwt, reason}}}
+
       error -> error
     end
   end

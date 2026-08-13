@@ -63,6 +63,62 @@ defmodule PortalWeb.OIDCTest do
     end
   end
 
+  describe "OIDC verification URI" do
+    test "binds Google, Okta, and generic OIDC verification requests to the PKCE verifier",
+         %{config: config} do
+      config = Map.new(config)
+
+      for type <- ["google", "okta", "oidc"] do
+        assert {:ok, url} =
+                 OIDC.build_verification_uri(type, config, "verification-verifier", "signed-state")
+
+        params = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+        assert params["nonce"] == OIDC.nonce("verification-verifier")
+      end
+    end
+  end
+
+  describe "authorization URI" do
+    test "does not allow additional parameters to override state, nonce, or PKCE", %{
+      config: config,
+      provider: provider
+    } do
+      Portal.Config.put_env_override(:portal, Entra.AuthProvider, config)
+
+      additional_params = %{
+        "state" => "attacker-state",
+        "nonce" => "attacker-nonce",
+        "code_challenge_method" => "plain",
+        "code_challenge" => "attacker-challenge"
+      }
+
+      assert {:ok, url, "trusted-state", verifier} =
+               OIDC.authorization_uri(provider,
+                 state: "trusted-state",
+                 additional_params: additional_params
+               )
+
+      query_params = url |> URI.parse() |> Map.fetch!(:query) |> URI.query_decoder() |> Enum.to_list()
+
+      assert Enum.filter(query_params, &match?({"state", _value}, &1)) == [
+               {"state", "trusted-state"}
+             ]
+
+      assert Enum.filter(query_params, &match?({"nonce", _value}, &1)) == [
+               {"nonce", OIDC.nonce(verifier)}
+             ]
+
+      assert Enum.filter(query_params, &match?({"code_challenge_method", _value}, &1)) == [
+               {"code_challenge_method", "S256"}
+             ]
+
+      assert Enum.filter(query_params, &match?({"code_challenge", _value}, &1)) == [
+               {"code_challenge", pkce_challenge(verifier)}
+             ]
+    end
+  end
+
   describe "Entra tenant-proof authorization URI" do
     @tenant_id "12345678-1234-1234-1234-123456789012"
 
