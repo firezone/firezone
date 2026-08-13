@@ -121,6 +121,10 @@ if config_env() == :prod do
     client_id: env_var_to_config!(:google_oidc_client_id),
     client_secret: env_var_to_config!(:google_oidc_client_secret)
 
+  config :portal, Portal.Google.SyncAuthorization,
+    client_id: env_var_to_config!(:google_sync_authz_client_id),
+    client_secret: env_var_to_config!(:google_sync_authz_client_secret)
+
   # When ENTRA_OIDC_CLIENT_SECRET is unset, authorization-code redemption
   # authenticates with a token-exchange assertion from the portal's managed
   # identity. The optional secret supports dev and migration environments.

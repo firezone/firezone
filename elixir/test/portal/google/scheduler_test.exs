@@ -51,6 +51,19 @@ defmodule Portal.Google.SchedulerTest do
       assert hd(jobs).args["directory_id"] == enabled_dir.id
     end
 
+    test "does not schedule unverified directories" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = google_directory_fixture(account: account)
+
+      directory
+      |> Ecto.Changeset.change(is_verified: false)
+      |> Repo.update!()
+
+      perform_job(Scheduler, %{})
+
+      assert all_enqueued(worker: Sync) == []
+    end
+
     test "does not schedule jobs for directories with disabled accounts" do
       # Create a disabled account
       disabled_account = account_fixture(features: %{idp_sync: true})

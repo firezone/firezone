@@ -436,13 +436,59 @@ defmodule PortalWeb.Settings.DirectorySync do
     handle_info({:entra_directory_sync_complete, tenant_id, nil, nil}, socket)
   end
 
+  # Sent by the verification controller after the interactive administrator's
+  # Workspace customer ID matches the service-account impersonation customer ID.
+  def handle_info(
+        {:google_directory_sync_complete, domain, verification_ref, ack_to},
+        socket
+      ) do
+    if active_google_verification?(socket, verification_ref) do
+      changeset = socket.assigns.form.source
+
+      attrs =
+        changeset.changes
+        |> Map.put(:domain, domain)
+        |> Map.put(:is_verified, true)
+        |> Map.new(fn {key, value} -> {to_string(key), value} end)
+
+      changeset =
+        changeset
+        |> apply_changes()
+        |> changeset(attrs)
+
+      maybe_send_verification_ack(ack_to)
+
+      {:noreply,
+       assign(socket,
+         active_verification: nil,
+         form: to_form(changeset),
+         verification_error: nil,
+         verifying: false
+       )}
+    else
+      maybe_send_verification_ack(ack_to)
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(
+        {:google_directory_sync_complete, domain, verification_ref},
+        socket
+      ) do
+    handle_info(
+      {:google_directory_sync_complete, domain, verification_ref, nil},
+      socket
+    )
+  end
+
   # Sent directly by the verification controller on any failure
   def handle_info({:verification_failed, reason, verification_ref}, socket) do
     if active_verification?(socket, verification_ref) do
       {:noreply,
        assign(socket,
          active_verification: nil,
-         verification_error: format_verification_error_reason(reason)
+         verification_error: format_verification_error_reason(reason),
+         verifying: false
        )}
     else
       {:noreply, socket}
@@ -469,6 +515,25 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp active_verification?(socket, verification_ref) do
     case socket.assigns[:active_verification] do
       %{verification_ref: ^verification_ref} when is_binary(verification_ref) ->
+        true
+
+      _ ->
+        false
+    end
+  end
+
+  defp active_google_verification?(socket, verification_ref) do
+    current_impersonation_email =
+      socket.assigns.form.source
+      |> get_field(:impersonation_email)
+
+    case socket.assigns[:active_verification] do
+      %{
+        type: "google_directory_sync",
+        verification_ref: ^verification_ref,
+        impersonation_email: ^current_impersonation_email
+      }
+      when is_binary(verification_ref) ->
         true
 
       _ ->
@@ -1500,10 +1565,9 @@ defmodule PortalWeb.Settings.DirectorySync do
   attr :type, :string, required: true
 
   defp verification_status_badge(assigns) do
-    # Entra opens a new window, so show the arrow icon and use OpenURL hook
-    # Google/Okta are server-side only, no icon or hook needed
+    # Entra and Google open a new window for user-bound authorization.
     button_attrs =
-      if assigns.type == "entra" do
+      if assigns.type in ["entra", "google"] do
         [icon: "ri-external-link-line", "phx-hook": "OpenURL"]
       else
         []
@@ -1670,7 +1734,8 @@ defmodule PortalWeb.Settings.DirectorySync do
          %{assigns: %{live_action: :edit, form: %{source: changeset}, directory: directory}} =
            socket
        ) do
-    # If directory was disabled due to sync error and is now verified, clear error state and enable it
+    # Re-enable directories disabled by a sync error once the administrator
+    # completes verification.
     changeset =
       if directory.disabled_reason == "Sync error" and get_field(changeset, :is_verified) == true do
         changeset
@@ -1724,29 +1789,50 @@ defmodule PortalWeb.Settings.DirectorySync do
     result =
       with {:ok, access_token} <-
              Google.APIClient.get_access_token(impersonation_email),
-           {:ok, %Req.Response{status: 200, body: body}} <-
+           {:ok, %Req.Response{status: 200, body: customer}} <-
              Google.APIClient.get_customer(access_token),
-           :ok <- Google.APIClient.test_connection(access_token, body["customerDomain"]) do
-        {:ok, body["customerDomain"]}
+           {:ok, workspace_customer_id, domain} <- google_customer_identity(customer),
+           :ok <- Google.APIClient.test_connection(access_token, domain),
+           {:ok, %{config: config}} <-
+             PortalWeb.OIDC.setup_verification("google_directory_sync", []),
+           verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
+           verification_ref = Ecto.UUID.generate(),
+           lv_pid_string = self() |> :erlang.pid_to_list() |> to_string(),
+           state_token <-
+             PortalWeb.OIDC.sign_verification_state(
+               lv_pid_string,
+               PortalWeb.OIDC.verification_state_type("google_directory_sync"),
+               %{verification_ref: verification_ref}
+             ),
+           {:ok, uri} <-
+             PortalWeb.OIDC.build_verification_uri(
+               "google_directory_sync",
+               config,
+               verifier,
+               state_token
+             ) do
+        verification = %{
+          type: "google_directory_sync",
+          config: config,
+          verifier: verifier,
+          verification_ref: verification_ref,
+          workspace_customer_id: workspace_customer_id,
+          impersonation_email: impersonation_email
+        }
+
+        {:ok, verification, uri}
       end
 
     case result do
-      {:ok, domain} when is_binary(domain) ->
-        # Merge existing changes with new verification data and re-run validation
-        # This preserves form changes (like name, impersonation_email) while adding domain
-        attrs =
-          changeset.changes
-          |> Map.put(:domain, domain)
-          |> Map.put(:is_verified, true)
-          |> Map.new(fn {k, v} -> {to_string(k), v} end)
+      {:ok, verification, uri} ->
+        socket =
+          assign(socket,
+            active_verification: nil,
+            pending_verification: verification,
+            verification_error: nil
+          )
 
-        changeset =
-          changeset
-          |> apply_changes()
-          |> changeset(attrs)
-
-        {:noreply,
-         assign(socket, form: to_form(changeset), verification_error: nil, verifying: false)}
+        {:noreply, push_event(socket, "open_url", %{url: uri})}
 
       error ->
         msg = parse_google_verification_error(error)
@@ -1816,6 +1902,13 @@ defmodule PortalWeb.Settings.DirectorySync do
     end
   end
 
+  defp google_customer_identity(%{"id" => customer_id, "customerDomain" => domain})
+       when is_binary(customer_id) and customer_id != "" and is_binary(domain) and domain != "" do
+    {:ok, customer_id, domain}
+  end
+
+  defp google_customer_identity(_customer), do: {:error, :invalid_google_customer}
+
   defp clear_verification_if_trigger_fields_changed(changeset) do
     fields = [:impersonation_email, :okta_domain, :client_id, :private_key_jwk, :kid, :tenant_id]
 
@@ -1834,6 +1927,8 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp preserve_programmatic_fields(changeset, attrs) do
+    attrs = Map.drop(attrs, Enum.map(@programmatic_fields, &to_string/1))
+
     Enum.reduce(@programmatic_fields, attrs, fn field, acc ->
       case Map.fetch(changeset.changes, field) do
         {:ok, value} -> Map.put(acc, to_string(field), value)
@@ -1909,6 +2004,10 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   defp parse_google_verification_error({:error, :service_account_not_configured}) do
     "No Google Workspace credentials are configured for this deployment. Please contact your administrator."
+  end
+
+  defp parse_google_verification_error({:error, :invalid_google_customer}) do
+    "Google returned invalid Workspace customer information. Please verify the impersonation account and try again."
   end
 
   defp parse_google_verification_error({:error, reason}) when is_exception(reason) do

@@ -16,7 +16,12 @@ defmodule Portal.Google.DirectoryTest do
     test "validates required fields", %{account: account} do
       changeset =
         %Directory{account_id: account.id}
-        |> Ecto.Changeset.cast(%{}, [:name, :domain, :impersonation_email, :is_verified])
+        |> Ecto.Changeset.cast(%{}, [
+          :name,
+          :domain,
+          :impersonation_email,
+          :is_verified
+        ])
         |> Directory.changeset()
 
       refute changeset.valid?

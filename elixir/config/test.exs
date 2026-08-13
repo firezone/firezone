@@ -225,6 +225,14 @@ config :portal, Portal.Google.AuthProvider,
     plug: {Req.Test, PortalWeb.OIDC}
   ]
 
+config :portal, Portal.Google.SyncAuthorization,
+  client_id: "test_google_sync_authz_client_id",
+  client_secret: "test_google_sync_authz_client_secret",
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, PortalWeb.OIDC}
+  ]
+
 config :portal, Portal.Okta.AuthProvider,
   req_opts: [
     retry: false,

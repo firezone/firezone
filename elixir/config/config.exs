@@ -235,6 +235,14 @@ config :portal, Portal.Google.AuthProvider,
   scope: "openid email profile",
   discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
 
+config :portal, Portal.Google.SyncAuthorization,
+  # Dedicated OAuth client used only to authorize Google Workspace directory setup
+  client_id: System.get_env("GOOGLE_SYNC_AUTHZ_CLIENT_ID"),
+  client_secret: System.get_env("GOOGLE_SYNC_AUTHZ_CLIENT_SECRET"),
+  response_type: "code",
+  scope: "https://www.googleapis.com/auth/admin.directory.customer.readonly",
+  discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
+
 config :portal, Portal.Okta.AuthProvider,
   # Should match an external OAuth2 client in Okta
   response_type: "code",

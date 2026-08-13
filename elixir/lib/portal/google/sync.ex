@@ -1046,6 +1046,7 @@ defmodule Portal.Google.Sync do
         where: d.account_id == ^account_id,
         where: d.id == ^id,
         where: d.is_disabled == false,
+        where: d.is_verified == true,
         where: a.is_disabled == false
       )
       |> Safe.unscoped()

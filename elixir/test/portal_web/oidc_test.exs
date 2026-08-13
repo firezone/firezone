@@ -115,7 +115,44 @@ defmodule PortalWeb.OIDCTest do
 
       assert Enum.filter(query_params, &match?({"code_challenge", _value}, &1)) == [
                {"code_challenge", pkce_challenge(verifier)}
-             ]
+      ]
+    end
+  end
+
+  describe "Google directory verification URI" do
+    test "requests only Workspace customer read access for Google directory verification" do
+      Portal.Config.put_env_override(:portal, Portal.Google.SyncAuthorization,
+        client_id: "google-sync-authz-client-id",
+        client_secret: "google-sync-authz-client-secret",
+        response_type: "code",
+        scope: "openid email profile",
+        discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+        req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
+      )
+
+      assert {:ok, %{config: config}} = OIDC.setup_verification("google_directory_sync", [])
+
+      assert {:ok, url} =
+               OIDC.build_verification_uri(
+                 "google_directory_sync",
+                 config,
+                 "verification-verifier",
+                 "signed-state"
+               )
+
+      params = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+      assert params["client_id"] == "google-sync-authz-client-id"
+      assert params["scope"] ==
+               "https://www.googleapis.com/auth/admin.directory.customer.readonly"
+
+      assert params["state"] == "signed-state"
+      assert params["response_type"] == "code"
+      assert params["prompt"] == "select_account"
+      assert params["code_challenge_method"] == "S256"
+      assert params["code_challenge"] == pkce_challenge("verification-verifier")
+      refute Map.has_key?(params, "nonce")
+      refute params["scope"] =~ "openid"
     end
   end
 

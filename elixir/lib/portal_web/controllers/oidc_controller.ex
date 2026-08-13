@@ -1,7 +1,7 @@
 defmodule PortalWeb.OIDCController do
   use PortalWeb, :controller
 
-  alias Portal.AuthProvider
+  alias Portal.{AuthProvider, Google}
 
   alias __MODULE__.Database
 
@@ -43,6 +43,14 @@ defmodule PortalWeb.OIDCController do
           expected_tenant_id
         )
 
+      {:google_directory_sync, lv_pid_string, verification_ref} ->
+        handle_google_directory_sync_verification(
+          conn,
+          code,
+          lv_pid_string,
+          verification_ref
+        )
+
       _ ->
         handle_authentication_callback(conn, state, code)
     end
@@ -70,6 +78,14 @@ defmodule PortalWeb.OIDCController do
           verification_ref,
           expected_tenant_id,
           silent?
+        )
+
+      {:google_directory_sync, lv_pid_string, verification_ref} ->
+        handle_google_directory_sync_authorization_error(
+          conn,
+          params,
+          lv_pid_string,
+          verification_ref
         )
 
       _ ->
@@ -935,6 +951,181 @@ defmodule PortalWeb.OIDCController do
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
   end
 
+  defp handle_google_directory_sync_verification(
+         conn,
+         code,
+         lv_pid_string,
+         verification_ref
+       ) do
+    result =
+      lv_pid_string
+      |> PortalWeb.OIDC.deserialize_pid()
+      |> request_pending_verification(verification_ref)
+      |> verify_google_directory_sync_callback(code, lv_pid_string, verification_ref)
+
+    redirect_with_oidc_verification_result(conn, result)
+  end
+
+  defp verify_google_directory_sync_callback(
+         {:ok,
+          %{
+            config: config,
+            verifier: verifier,
+            workspace_customer_id: expected_customer_id
+          }},
+         code,
+         lv_pid_string,
+         verification_ref
+       ) do
+    with {:ok, tokens} <- PortalWeb.OIDC.exchange_code_with_config(config, code, verifier),
+         access_token when is_binary(access_token) <- tokens["access_token"],
+         {:ok, %Req.Response{status: 200, body: customer}} <-
+           Google.APIClient.get_customer(access_token),
+         {:ok, customer_id, domain} <- google_customer_identity(customer),
+         :ok <- verify_google_customer_match(customer_id, expected_customer_id) do
+      %{
+        ok: true,
+        type: "google-directory-sync",
+        domain: domain,
+        lv_pid: lv_pid_string,
+        verification_ref: verification_ref
+      }
+    else
+      nil ->
+        google_directory_sync_failure(
+          :missing_access_token,
+          lv_pid_string,
+          verification_ref
+        )
+
+      error ->
+        maybe_log_verification_error(error)
+        google_directory_sync_failure(error, lv_pid_string, verification_ref)
+    end
+  end
+
+  defp verify_google_directory_sync_callback(
+         {:error, reason},
+         _code,
+         lv_pid_string,
+         verification_ref
+       ) do
+    google_directory_sync_failure(
+      pending_verification_error_message(reason),
+      lv_pid_string,
+      verification_ref
+    )
+  end
+
+  defp google_customer_identity(%{"id" => customer_id, "customerDomain" => domain})
+       when is_binary(customer_id) and customer_id != "" and is_binary(domain) and domain != "" do
+    {:ok, customer_id, domain}
+  end
+
+  defp google_customer_identity(_customer), do: {:error, :invalid_google_customer}
+
+  defp verify_google_customer_match(customer_id, expected_customer_id)
+       when is_binary(customer_id) and is_binary(expected_customer_id) do
+    if byte_size(customer_id) == byte_size(expected_customer_id) and
+         Plug.Crypto.secure_compare(customer_id, expected_customer_id) do
+      :ok
+    else
+      {:error, :google_workspace_mismatch}
+    end
+  end
+
+  defp verify_google_customer_match(_customer_id, _expected_customer_id),
+    do: {:error, :google_workspace_mismatch}
+
+  defp handle_google_directory_sync_authorization_error(
+         conn,
+         params,
+         lv_pid_string,
+         verification_ref
+       ) do
+    error =
+      case params do
+        %{"error_description" => description}
+        when is_binary(description) and description != "" ->
+          description
+
+        %{"error" => error} when is_binary(error) and error != "" ->
+          error
+
+        _ ->
+          "Google Workspace authorization failed. Please try again."
+      end
+
+    result =
+      case lv_pid_string
+           |> PortalWeb.OIDC.deserialize_pid()
+           |> request_pending_verification(verification_ref) do
+        {:ok, _pending} ->
+          google_directory_sync_failure(error, lv_pid_string, verification_ref)
+
+        {:error, reason} ->
+          google_directory_sync_failure(
+            pending_verification_error_message(reason),
+            lv_pid_string,
+            verification_ref
+          )
+      end
+
+    redirect_with_oidc_verification_result(conn, result)
+  end
+
+  defp google_directory_sync_failure(reason, lv_pid_string, verification_ref) do
+    %{
+      ok: false,
+      type: "google-directory-sync",
+      error: google_directory_sync_error_message(reason),
+      lv_pid: lv_pid_string,
+      verification_ref: verification_ref
+    }
+  end
+
+  defp google_directory_sync_error_message(reason) when is_binary(reason), do: reason
+
+  defp google_directory_sync_error_message({:error, reason}),
+    do: google_directory_sync_error_message(reason)
+
+  defp google_directory_sync_error_message(%Req.Response{status: status, body: body}),
+    do: google_directory_sync_api_error(status, body)
+
+  defp google_directory_sync_error_message({:ok, %Req.Response{status: status, body: body}}),
+    do: google_directory_sync_api_error(status, body)
+
+  defp google_directory_sync_error_message({status, body}) when is_integer(status),
+    do: google_directory_sync_api_error(status, body)
+
+  defp google_directory_sync_error_message(:google_workspace_mismatch) do
+    "The Google account completing verification belongs to a different Workspace than the configured impersonation account."
+  end
+
+  defp google_directory_sync_error_message(:missing_access_token),
+    do: "Google did not return an access token. Please try verification again."
+
+  defp google_directory_sync_error_message(:invalid_google_customer),
+    do: "Google returned invalid Workspace customer information. Please try verification again."
+
+  defp google_directory_sync_error_message(reason), do: verification_error_message(reason)
+
+  defp google_directory_sync_api_error(401, _body) do
+    "Google rejected the authorization. Please sign in with a Google Workspace administrator account."
+  end
+
+  defp google_directory_sync_api_error(403, _body) do
+    "The Google account completing verification must be a Workspace administrator with permission to view customer information."
+  end
+
+  defp google_directory_sync_api_error(status, body),
+    do: token_exchange_error_message(status, body)
+
+  defp redirect_with_oidc_verification_result(conn, result) do
+    token = Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
+    redirect(conn, to: ~p"/verification/oidc?result=#{token}")
+  end
+
   defp handle_entra_verification(
          conn,
          code,
@@ -1357,46 +1548,61 @@ defmodule PortalWeb.OIDCController do
 
   defp parse_callback_state(state) do
     case PortalWeb.OIDC.verify_verification_state(state) do
-      {:ok, %{type: "oidc-auth-provider", lv_pid: lv_pid}} -> {:oidc_verification, lv_pid}
+      {:ok, verified_state} -> parse_verified_callback_state(verified_state)
+      _ -> :authentication
+    end
+  end
 
-      {:ok,
-       %{type: "entra-auth-provider", lv_pid: lv_pid, verification_ref: verification_ref}}
-      when is_binary(verification_ref) ->
-        {:entra_auth_provider, lv_pid, verification_ref}
+  defp parse_verified_callback_state(%{type: "oidc-auth-provider", lv_pid: lv_pid}),
+    do: {:oidc_verification, lv_pid}
 
-      {:ok,
-       %{type: "entra-directory-sync", lv_pid: lv_pid, verification_ref: verification_ref}}
-      when is_binary(verification_ref) ->
-        {:entra_directory_sync, lv_pid, verification_ref}
+  defp parse_verified_callback_state(%{
+         type: "entra-auth-provider",
+         lv_pid: lv_pid,
+         verification_ref: verification_ref
+       })
+       when is_binary(verification_ref),
+       do: {:entra_auth_provider, lv_pid, verification_ref}
 
-      {:ok,
-       %{
+  defp parse_verified_callback_state(%{
+         type: "entra-directory-sync",
+         lv_pid: lv_pid,
+         verification_ref: verification_ref
+       })
+       when is_binary(verification_ref),
+       do: {:entra_directory_sync, lv_pid, verification_ref}
+
+  defp parse_verified_callback_state(%{
+         type: "google-directory-sync",
+         lv_pid: lv_pid,
+         verification_ref: verification_ref
+       })
+       when is_binary(verification_ref),
+       do: {:google_directory_sync, lv_pid, verification_ref}
+
+  defp parse_verified_callback_state(%{
          type: "entra-auth-provider-tenant-proof",
          lv_pid: lv_pid,
          verification_ref: verification_ref,
          tenant_id: tenant_id,
          silent: silent?
-       }}
-      when is_binary(verification_ref) and is_binary(tenant_id) and is_boolean(silent?) ->
-        {:entra_tenant_proof, "entra-auth-provider", lv_pid, verification_ref, tenant_id,
-         silent?}
+       })
+       when is_binary(verification_ref) and is_binary(tenant_id) and is_boolean(silent?) do
+    {:entra_tenant_proof, "entra-auth-provider", lv_pid, verification_ref, tenant_id, silent?}
+  end
 
-      {:ok,
-       %{
+  defp parse_verified_callback_state(%{
          type: "entra-directory-sync-tenant-proof",
          lv_pid: lv_pid,
          verification_ref: verification_ref,
          tenant_id: tenant_id,
          silent: silent?
-       }}
-      when is_binary(verification_ref) and is_binary(tenant_id) and is_boolean(silent?) ->
-        {:entra_tenant_proof, "entra-directory-sync", lv_pid, verification_ref, tenant_id,
-         silent?}
-
-      {:error, _} -> :authentication
-      _ -> :authentication
-    end
+       })
+       when is_binary(verification_ref) and is_binary(tenant_id) and is_boolean(silent?) do
+    {:entra_tenant_proof, "entra-directory-sync", lv_pid, verification_ref, tenant_id, silent?}
   end
+
+  defp parse_verified_callback_state(_state), do: :authentication
 
   defp identity_provider_transport_error_message(:nxdomain),
     do:
