@@ -18,21 +18,21 @@ defmodule Portal.Repo.Migrations.AddAccountIdToLogTimestampIndexes do
 
   def up do
     for {table, timestamp} <- @indexes do
-      create(index(table, [timestamp, :account_id], concurrently: true))
+      create_if_not_exists(index(table, [timestamp, :account_id], concurrently: true))
     end
 
     for {table, timestamp} <- @indexes do
-      drop(index(table, [timestamp], concurrently: true))
+      drop_if_exists(index(table, [timestamp], concurrently: true))
     end
   end
 
   def down do
     for {table, timestamp} <- @indexes do
-      create(index(table, [timestamp], concurrently: true))
+      create_if_not_exists(index(table, [timestamp], concurrently: true))
     end
 
     for {table, timestamp} <- @indexes do
-      drop(index(table, [timestamp, :account_id], concurrently: true))
+      drop_if_exists(index(table, [timestamp, :account_id], concurrently: true))
     end
   end
 end
