@@ -452,7 +452,7 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
       </td>
       <td class="px-6 py-3 w-36">
         <span class="text-sm text-body">
-          {PortalWeb.Format.short_date(@trust_anchor.inserted_at)}
+          <.relative_datetime datetime={@trust_anchor.inserted_at} />
         </span>
       </td>
     </tr>
@@ -545,12 +545,26 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
               label == "Error" && "text-danger",
               label != "Error" && "text-heading"
             ]}>
-              {value}
+              <.detail_value value={value} />
             </dd>
           </div>
         </dl>
       </div>
     </div>
+    """
+  end
+
+  attr :value, :any, required: true
+
+  defp detail_value(%{value: %DateTime{}} = assigns) do
+    ~H"""
+    <.relative_datetime datetime={@value} />
+    """
+  end
+
+  defp detail_value(assigns) do
+    ~H"""
+    {@value}
     """
   end
 
@@ -612,7 +626,7 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
             <div>
               <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
               <dd class="text-xs text-body">
-                {PortalWeb.Format.short_date(@trust_anchor.inserted_at)}
+                <.relative_datetime datetime={@trust_anchor.inserted_at} />
               </dd>
             </div>
             <div>
@@ -704,7 +718,9 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
               <dl class="space-y-2">
                 <div :for={{label, value} <- certificate_detail_rows(detail)}>
                   <dt class="text-[10px] text-subtle mb-0.5">{label}</dt>
-                  <dd class="text-xs text-heading font-mono break-all">{value}</dd>
+                  <dd class="text-xs text-heading font-mono break-all">
+                    <.detail_value value={value} />
+                  </dd>
                 </div>
               </dl>
             </div>
@@ -1279,9 +1295,9 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
       {"Revoked certificates", to_string(revoked_count)},
       {"List addresses", format_urls(endpoint.crl_urls)},
       {"Responder addresses", format_urls(endpoint.ocsp_urls)},
-      {"Failing since", format_datetime(endpoint.errored_at)},
+      {"Failing since", endpoint.errored_at},
       {"Stopped because", endpoint.is_disabled && endpoint.disabled_reason},
-      {"First seen", format_datetime(endpoint.inserted_at)}
+      {"First seen", endpoint.inserted_at}
     ]
     |> drop_blanks()
   end
@@ -1291,9 +1307,9 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
       []
     else
       [
-        {"Last fetched", format_datetime(endpoint.crl_fetched_at) || "Never"},
-        {"Published", format_datetime(endpoint.crl_this_update)},
-        {"Expires", format_datetime(endpoint.crl_next_update)},
+        {"Last fetched", endpoint.crl_fetched_at || "Never"},
+        {"Published", endpoint.crl_this_update},
+        {"Expires", endpoint.crl_next_update},
         {"CRL number", endpoint.crl_number && to_string(endpoint.crl_number)},
         {"Error", endpoint.crl_error}
       ]
@@ -1303,9 +1319,9 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
 
   defp delta_rows(endpoint) do
     [
-      {"Last fetched", format_datetime(endpoint.delta_fetched_at)},
-      {"Published", format_datetime(endpoint.delta_this_update)},
-      {"Expires", format_datetime(endpoint.delta_next_update)},
+      {"Last fetched", endpoint.delta_fetched_at},
+      {"Published", endpoint.delta_this_update},
+      {"Expires", endpoint.delta_next_update},
       {"Delta number", endpoint.delta_number && to_string(endpoint.delta_number)},
       {"Error", endpoint.delta_error}
     ]
@@ -1317,7 +1333,7 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
       []
     else
       [
-        {"Last checked", format_datetime(endpoint.ocsp_checked_at) || "Never"},
+        {"Last checked", endpoint.ocsp_checked_at || "Never"},
         {"Error", endpoint.ocsp_error}
       ]
       |> drop_blanks()
@@ -1326,9 +1342,6 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
 
   defp format_urls([]), do: nil
   defp format_urls(urls), do: Enum.join(urls, "\n")
-
-  defp format_datetime(nil), do: nil
-  defp format_datetime(datetime), do: PortalWeb.Format.short_datetime(datetime)
 
   defp drop_blanks(rows) do
     Enum.reject(rows, fn {_label, value} -> value in [nil, "", false] end)
@@ -1377,8 +1390,8 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
       {"Issuer", Map.get(detail, :issuer_name)},
       {"Serial Number", detail |> Map.get(:serial_number) |> format_serial()},
       {"Version", detail |> Map.get(:version) |> format_version()},
-      {"Valid From", detail |> Map.get(:not_before) |> format_date()},
-      {"Expires", detail |> Map.get(:not_after) |> format_date()},
+      {"Valid From", Map.get(detail, :not_before)},
+      {"Expires", Map.get(detail, :not_after)},
       {"Public Key",
        format_public_key(Map.get(detail, :public_key_algorithm), Map.get(detail, :public_key_size))},
       {"Signature Algorithm", Map.get(detail, :signature_algorithm)},
@@ -1412,9 +1425,6 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
 
   defp format_version(nil), do: nil
   defp format_version(version), do: version |> Atom.to_string() |> String.trim_leading("v")
-
-  defp format_date(nil), do: nil
-  defp format_date(datetime), do: PortalWeb.Format.short_date(datetime)
 
   defp format_public_key(nil, _key_size), do: nil
   defp format_public_key(algorithm, nil), do: algorithm
