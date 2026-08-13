@@ -61,9 +61,12 @@ defmodule Portal.Workers.SyncErrorNotification do
 
   # An Intune integration carries the same error columns as a directory, so the
   # shared query and escalation schedule apply unchanged.
+  # An account that loses device posture stops syncing, so chasing its admins
+  # about an error they can no longer act on would be noise.
   defp check_intune_integrations(%{"frequency" => frequency}) do
     Intune.Integration
     |> Database.errored_disabled_directories(frequency)
+    |> Enum.filter(&Portal.Account.device_posture_enabled?(&1.account))
     |> Enum.each(&send_notification(:intune, &1, frequency))
 
     :ok

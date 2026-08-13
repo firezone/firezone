@@ -7,6 +7,11 @@ defmodule Portal.Intune.SchedulerTest do
 
   alias Portal.Intune.{Scheduler, Sync}
 
+  setup do
+    enable_device_posture()
+    :ok
+  end
+
   test "enqueues a sync job for each enabled and verified integration" do
     first = intune_integration_fixture()
     second = intune_integration_fixture()
@@ -39,5 +44,26 @@ defmodule Portal.Intune.SchedulerTest do
     assert [job] = all_enqueued(worker: Sync)
     assert job.args["device_integration_id"] == enabled.id
     assert job.args["account_id"] == enabled.account_id
+  end
+
+  test "skips integrations whose account lost the device_posture feature" do
+    downgraded = account_fixture(features: %{device_posture: false})
+    intune_integration_fixture(account: downgraded)
+
+    enabled = intune_integration_fixture()
+
+    perform_job(Scheduler, %{})
+
+    assert [job] = all_enqueued(worker: Sync)
+    assert job.args["device_integration_id"] == enabled.id
+  end
+
+  test "queues nothing when the global device_posture flag is off" do
+    enable_device_posture(false)
+    intune_integration_fixture()
+
+    assert {:ok, :skipped} = perform_job(Scheduler, %{})
+
+    assert all_enqueued(worker: Sync) == []
   end
 end

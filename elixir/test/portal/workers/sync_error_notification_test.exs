@@ -211,6 +211,7 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
     end
 
     test "notifies admins when an Intune integration is disabled by a sync error" do
+      enable_device_posture()
       account = device_posture_account_fixture()
       session_log_fixture(account: account)
       admin = admin_actor_fixture(account: account)
@@ -251,6 +252,35 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
       assert email.text_body =~ "settings/device_integrations"
       assert email.text_body =~ integration.tenant_id
       assert email.text_body =~ "DeviceManagementManagedDevices.Read.All"
+    end
+
+    test "does not email an account that lost the device_posture feature" do
+      enable_device_posture()
+      account = device_posture_account_fixture()
+      session_log_fixture(account: account)
+      admin_actor_fixture(account: account)
+
+      integration = intune_integration_fixture(account: account)
+
+      Portal.Intune.ErrorHandler.handle(
+        Portal.Intune.SyncError.exception(
+          integration_id: integration.id,
+          step: :list_managed_devices,
+          error: %Req.Response{status: 403, body: ""}
+        ),
+        integration.id
+      )
+
+      enable_device_posture(false)
+
+      assert :ok = perform_job(SyncErrorNotification, notification_args("intune", "daily"))
+
+      assert collect_queued_emails(account.id) == []
+
+      assert Repo.get_by!(Portal.Intune.Integration,
+               account_id: integration.account_id,
+               id: integration.id
+             ).error_email_count == 0
     end
 
     test "returns an error for unknown providers" do

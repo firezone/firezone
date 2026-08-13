@@ -3,7 +3,11 @@ defmodule Portal.Intune.Scheduler do
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
-    __MODULE__.Database.queue_sync_jobs()
+    if Portal.Config.global_feature_enabled?(:device_posture) do
+      __MODULE__.Database.queue_sync_jobs()
+    else
+      {:ok, :skipped}
+    end
   end
 
   defmodule Database do
@@ -17,7 +21,8 @@ defmodule Portal.Intune.Scheduler do
           on: a.id == i.account_id,
           where: i.is_disabled == false,
           where: i.is_verified == true,
-          where: a.is_disabled == false
+          where: a.is_disabled == false,
+          where: fragment("(?)->>'device_posture' = 'true'", a.features)
         )
         |> Safe.unscoped()
         |> Safe.stream()

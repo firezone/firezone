@@ -26,9 +26,22 @@ defmodule Portal.Intune.Sync do
   def perform(%Oban.Job{
         args: %{"account_id" => account_id, "device_integration_id" => integration_id}
       }) do
+    if Portal.Config.global_feature_enabled?(:device_posture) do
+      sync(account_id, integration_id)
+    else
+      :ok
+    end
+  end
+
+  def perform(_), do: :ok
+
+  # A downgrade has to stop the syncing that is already queued, not just the
+  # scheduling of new runs, so the account is re-checked here rather than only
+  # in the scheduler.
+  defp sync(account_id, integration_id) do
     case Database.get_integration(account_id, integration_id) do
       nil ->
-        Logger.info("Intune integration not found or disabled; skipping sync",
+        Logger.info("Intune integration not found, disabled, or account ineligible; skipping sync",
           account_id: account_id,
           device_integration_id: integration_id
         )
@@ -39,8 +52,6 @@ defmodule Portal.Intune.Sync do
         run_sync(integration)
     end
   end
-
-  def perform(_), do: :ok
 
   defp run_sync(%Intune.Integration{} = integration) do
     started_at = DateTime.utc_now() |> DateTime.truncate(:microsecond)
@@ -301,7 +312,8 @@ defmodule Portal.Intune.Sync do
         where: i.id == ^id,
         where: i.is_disabled == false,
         where: i.is_verified == true,
-        where: a.is_disabled == false
+        where: a.is_disabled == false,
+        where: fragment("(?)->>'device_posture' = 'true'", a.features)
       )
       |> Safe.unscoped()
       |> Safe.one()

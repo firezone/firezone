@@ -9,6 +9,7 @@ defmodule Portal.Intune.SyncTest do
   alias Portal.Microsoft.Graph.APIClient
 
   setup do
+    enable_device_posture()
     Req.Test.stub(APIClient, fn conn -> Req.Test.json(conn, %{"error" => "not mocked"}) end)
     :ok
   end
@@ -378,6 +379,34 @@ defmodule Portal.Intune.SyncTest do
     stub_managed_devices([full_managed_device()])
 
     assert :ok = perform_job(Sync, %{device_integration_id: integration.id})
+
+    assert Repo.aggregate(Device, :count) == 0
+  end
+
+  test "does not sync an account that lost the device_posture feature" do
+    downgraded = Portal.AccountFixtures.account_fixture(features: %{device_posture: false})
+    integration = intune_integration_fixture(account: downgraded)
+    stub_managed_devices([full_managed_device()])
+
+    assert :ok =
+             perform_job(Sync, %{
+               account_id: integration.account_id,
+               device_integration_id: integration.id
+             })
+
+    assert Repo.aggregate(Device, :count) == 0
+  end
+
+  test "does not sync when the global device_posture flag is off" do
+    enable_device_posture(false)
+    integration = intune_integration_fixture()
+    stub_managed_devices([full_managed_device()])
+
+    assert :ok =
+             perform_job(Sync, %{
+               account_id: integration.account_id,
+               device_integration_id: integration.id
+             })
 
     assert Repo.aggregate(Device, :count) == 0
   end
