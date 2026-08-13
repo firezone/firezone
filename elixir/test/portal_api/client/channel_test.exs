@@ -5515,7 +5515,8 @@ defmodule PortalAPI.Client.ChannelTest do
       target_socket = join_channel(target_client, target_subject)
       assert_push "init", _
 
-      # Both peers are iceless-capable; the account fixture leaves the feature off.
+      # The account fixture has the feature on, so both peers advertising the
+      # capability is the case where the connection actually goes ICE-less.
       push(initiating_socket, "set_snownet_capabilities", %{"iceless" => true})
       push(target_socket, "set_snownet_capabilities", %{"iceless" => true})
 
@@ -5529,7 +5530,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "ipv4" => Portal.Types.INET.to_string(target_client.ipv4)
       })
 
-      assert_push "client_device_access_authorized", %{use_iceless: false}
+      assert_push "client_device_access_authorized", %{use_iceless: true}
 
       # The handler runs in the emitting channel, so match on the target's pid to
       # ignore events from other tests sharing the globally attached handler.
@@ -5538,7 +5539,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert metadata == %{
                receiver: :client,
-               iceless_feature_enabled: false,
+               iceless_feature_enabled: true,
                initiator_iceless_capable: true,
                receiver_iceless_capable: true
              }
