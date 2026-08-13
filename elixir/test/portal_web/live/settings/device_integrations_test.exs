@@ -12,6 +12,13 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
     %{account: account, actor: actor}
   end
 
+  defp reload(integration) do
+    Portal.Repo.get_by!(Portal.Intune.Integration,
+      account_id: integration.account_id,
+      id: integration.id
+    )
+  end
+
   describe "device_posture feature gate" do
     test "hides the settings tab when the global flag is off", %{
       conn: conn,
@@ -238,6 +245,121 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
         worker: Portal.Intune.Sync,
         args: %{"account_id" => integration.account_id, "device_integration_id" => integration.id}
       )
+    end
+  end
+
+  describe "recovering from a sync error" do
+    setup %{account: account} do
+      integration =
+        intune_integration_fixture(
+          account: account,
+          is_disabled: true,
+          is_verified: false,
+          disabled_reason: "Sync error",
+          error_message: "403 - Forbidden",
+          errored_at: DateTime.utc_now(),
+          error_email_count: 2
+        )
+
+      %{integration: integration}
+    end
+
+    test "refuses to enable an integration that is not verified", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      integration: integration
+    } do
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+
+      assert render_click(lv, "toggle", %{"id" => integration.id}) =~
+               "must be verified before enabling"
+
+      assert reload(integration).is_disabled
+    end
+
+    test "clears the error state when a verified integration is enabled", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      integration: integration
+    } do
+      integration
+      |> Ecto.Changeset.change(is_verified: true)
+      |> Portal.Repo.update!()
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+
+      render_click(lv, "toggle", %{"id" => integration.id})
+
+      integration = reload(integration)
+      refute integration.is_disabled
+      refute integration.disabled_reason
+      refute integration.error_message
+      refute integration.errored_at
+      assert integration.error_email_count == 0
+    end
+  end
+
+  describe "editing an integration" do
+    test "queues a sync when the verified tenant changes", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      integration = intune_integration_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_integrations/intune/#{integration.id}/edit")
+
+      lv |> element("button[phx-click=reset_verification]") |> render_click()
+      lv |> element("#intune-admin-consent-button") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+      {:ok, %{verification_ref: ref}} = PortalWeb.OIDC.verify_verification_state(state)
+      ack_ref = make_ref()
+
+      send(lv.pid, {:intune_device_integration_complete, "new-tenant", ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+
+      lv
+      |> form("#device-integration-form", integration: %{name: integration.name})
+      |> render_submit()
+
+      assert reload(integration).tenant_id == "new-tenant"
+
+      assert_enqueued(
+        worker: Portal.Intune.Sync,
+        args: %{
+          "account_id" => integration.account_id,
+          "device_integration_id" => integration.id
+        }
+      )
+    end
+
+    test "does not queue a sync when the tenant is unchanged", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      integration = intune_integration_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_integrations/intune/#{integration.id}/edit")
+
+      lv
+      |> form("#device-integration-form", integration: %{name: "Renamed"})
+      |> render_submit()
+
+      assert reload(integration).name == "Renamed"
+      refute_enqueued(worker: Portal.Intune.Sync)
     end
   end
 

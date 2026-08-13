@@ -210,7 +210,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
 
     changeset
     |> Database.insert_integration(socket.assigns.subject)
-    |> handle_submit(socket)
+    |> handle_submit(socket, true)
   end
 
   def handle_event(
@@ -218,10 +218,15 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
         %{"integration" => attrs},
         %{assigns: %{live_action: :edit}} = socket
       ) do
-    socket
-    |> submitted_changeset(attrs)
+    changeset = submitted_changeset(socket, attrs)
+
+    # Devices already stored belong to the old tenant, so leaving them until the
+    # next scheduled run would show one tenant's inventory under another's name.
+    tenant_changed? = Map.has_key?(changeset.changes, :tenant_id)
+
+    changeset
     |> Database.update_integration(socket.assigns.subject)
-    |> handle_submit(socket)
+    |> handle_submit(socket, tenant_changed?)
   end
 
   def handle_event("toggle_integration_actions", %{"id" => id}, socket) do
@@ -253,11 +258,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
     socket = assign(socket, open_integration_actions_id: nil)
     integration = Database.get_integration!(id, socket.assigns.subject)
 
-    changeset =
-      Ecto.Changeset.change(integration, %{
-        is_disabled: not integration.is_disabled,
-        disabled_reason: if(integration.is_disabled, do: nil, else: "Disabled by admin")
-      })
+    changeset = toggle_changeset(integration, not integration.is_disabled)
 
     case Database.update_integration(changeset, socket.assigns.subject) do
       {:ok, _integration} ->
@@ -271,6 +272,9 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
 
       {:error, :feature_disabled} ->
         {:noreply, put_flash(socket, :error, @feature_disabled)}
+
+      {:error, %Ecto.Changeset{errors: [{:is_verified, {message, _}} | _]}} ->
+        {:noreply, put_flash(socket, :error, message)}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Could not update the integration.")}
@@ -831,8 +835,8 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
     |> put_assoc(:device_integration, parent_changeset)
   end
 
-  defp handle_submit({:ok, integration}, socket) do
-    if socket.assigns.live_action == :new do
+  defp handle_submit({:ok, integration}, socket, queue_sync?) do
+    if queue_sync? do
       _ = Oban.insert(Intune.Sync.new(sync_args(integration)))
     end
 
@@ -843,7 +847,11 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
      |> push_patch(to: index_path(socket))}
   end
 
-  defp handle_submit({:error, changeset}, socket) do
+  defp handle_submit({:error, :feature_disabled}, socket, _queue_sync?) do
+    {:noreply, put_flash(socket, :error, @feature_disabled)}
+  end
+
+  defp handle_submit({:error, changeset}, socket, _queue_sync?) do
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
@@ -875,6 +883,35 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
   end
 
   defp maybe_send_verification_ack(_), do: :ok
+
+  defp toggle_changeset(integration, true) do
+    Ecto.Changeset.change(integration, %{
+      is_disabled: true,
+      disabled_reason: "Disabled by admin"
+    })
+  end
+
+  # Re-enabling is the only way back from a sync error, so it has to clear the
+  # error state too. Leaving errored_at behind would measure the next transient
+  # error's 24 hour window from the old failure and disable again at once.
+  defp toggle_changeset(integration, false) do
+    if integration.is_verified do
+      Ecto.Changeset.change(integration, %{
+        is_disabled: false,
+        disabled_reason: nil,
+        error_email_count: 0,
+        error_message: nil,
+        errored_at: nil
+      })
+    else
+      integration
+      |> Ecto.Changeset.change(%{})
+      |> Ecto.Changeset.add_error(
+        :is_verified,
+        "Integration must be verified before enabling"
+      )
+    end
+  end
 
   defp queue_sync(integration, socket) do
     case Oban.insert(Intune.Sync.new(sync_args(integration))) do
