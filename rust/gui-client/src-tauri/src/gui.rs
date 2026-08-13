@@ -423,7 +423,7 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
             .export(
                 specta_typescript::Typescript::default()
                     .bigint(specta_typescript::BigIntExportBehavior::Number)
-                    .header("/* eslint-disable */\n/* tslint:disable */\n")
+                    .header("/* eslint-disable */\n// @ts-nocheck\n/* tslint:disable */\n")
                     .formatter(specta_typescript::formatter::prettier),
                 bindings_path,
             )
