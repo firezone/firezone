@@ -401,7 +401,7 @@ defmodule PortalWeb.OIDCControllerTest do
       assert {:ok, %{ok: false, error: error}} =
                entra_verification_result_from_redirect(redirected_to(conn))
 
-      assert error =~ "Unable to verify your identity token"
+      assert error =~ "Unable to verify the Microsoft Entra tenant"
     end
 
     test "rejects an Entra identity proof whose ID token audience does not match", %{conn: conn} do
@@ -417,7 +417,7 @@ defmodule PortalWeb.OIDCControllerTest do
       assert {:ok, %{ok: false, error: error}} =
                entra_verification_result_from_redirect(redirected_to(conn))
 
-      assert error =~ "Unable to verify your identity token"
+      assert error =~ "Unable to verify the Microsoft Entra tenant"
     end
 
     test "rejects an Entra identity proof whose ID token signature is invalid", %{conn: conn} do
@@ -440,7 +440,7 @@ defmodule PortalWeb.OIDCControllerTest do
       assert {:ok, %{ok: false, error: error}} =
                entra_verification_result_from_redirect(redirected_to(conn))
 
-      assert error =~ "Unable to verify your identity token"
+      assert error =~ "Unable to verify the Microsoft Entra tenant"
     end
 
     test "does not exchange the authorization code when an Entra identity-proof callback is replayed",
