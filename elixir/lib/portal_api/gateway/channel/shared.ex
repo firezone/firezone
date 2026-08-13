@@ -309,9 +309,18 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     rid_bytes = Ecto.UUID.dump!(resource.id)
 
+    iceless_enabled = Account.iceless_enabled?(socket.assigns.account)
+
     use_iceless =
       socket.assigns.iceless_capable == true and initiator_iceless_capable == true and
-        Account.iceless_enabled?(socket.assigns.account)
+        iceless_enabled
+
+    Portal.Telemetry.connection_authorized(
+      :client_to_gateway,
+      iceless_enabled,
+      initiator_iceless_capable == true,
+      socket.assigns.iceless_capable == true
+    )
 
     ref =
       encode_ref(socket, {

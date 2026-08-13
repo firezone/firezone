@@ -458,6 +458,16 @@ defmodule Portal.Telemetry do
   defp register_application_instruments(meter) do
     :otel_meter.create_counter(
       meter,
+      :"connections.authorized",
+      %{
+        description:
+          "Connections authorized, by ICE-less feature flag state and peer capability",
+        unit: :"1"
+      }
+    )
+
+    :otel_meter.create_counter(
+      meter,
       :"http.server.requests",
       %{description: "Total HTTP requests by route, method, and status", unit: :"1"}
     )
@@ -742,6 +752,47 @@ defmodule Portal.Telemetry do
 
     :otel_counter.add(ctx, meter, :"phoenix.channel.messages", 1, attrs)
     :otel_histogram.record(ctx, meter, :"phoenix.channel.message.duration", duration_ms, attrs)
+    :ok
+  end
+
+  @doc """
+  Records an authorized connection on the `connections.authorized` counter.
+
+  The attributes break the count down by the ICE-less feature flag state and
+  which peers reported the ICE-less capability, so adoption can be tracked as
+  a share of all connections and blockers (flag off vs. incapable peers) can
+  be told apart.
+  """
+  @spec connection_authorized(
+          :client_to_gateway | :client_to_client,
+          boolean(),
+          boolean(),
+          boolean()
+        ) :: :ok
+  def connection_authorized(
+        connection_type,
+        feature_enabled?,
+        initiator_capable?,
+        receiver_capable?
+      ) do
+    capability =
+      case {initiator_capable?, receiver_capable?} do
+        {true, true} -> "both"
+        {true, false} -> "initiator_only"
+        {false, true} -> "receiver_only"
+        {false, false} -> "neither"
+      end
+
+    attrs = %{
+      "connection_type" => to_string(connection_type),
+      "feature_flag" => if(feature_enabled?, do: "enabled", else: "disabled"),
+      "capability" => capability,
+      "iceless" => feature_enabled? and initiator_capable? and receiver_capable?,
+      "node_name" => System.get_env("NODE_NAME", to_string(node()))
+    }
+
+    meter = :opentelemetry_experimental.get_meter()
+    :otel_counter.add(:otel_ctx.get_current(), meter, :"connections.authorized", 1, attrs)
     :ok
   end
 

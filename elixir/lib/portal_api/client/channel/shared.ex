@@ -449,9 +449,18 @@ defmodule PortalAPI.Client.Channel.Shared do
     {policy_authorization, payload} = Map.pop(payload, :policy_authorization)
     {initiator_iceless_capable, payload} = Map.pop(payload, :initiator_iceless_capable, false)
 
+    iceless_enabled = Portal.Account.iceless_enabled?(socket.assigns.subject.account)
+
     use_iceless =
       socket.assigns.iceless_capable == true and initiator_iceless_capable == true and
-        Portal.Account.iceless_enabled?(socket.assigns.subject.account)
+        iceless_enabled
+
+    Portal.Telemetry.connection_authorized(
+      :client_to_client,
+      iceless_enabled,
+      initiator_iceless_capable == true,
+      socket.assigns.iceless_capable == true
+    )
 
     payload = Map.put(payload, :use_iceless, use_iceless)
 

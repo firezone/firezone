@@ -450,6 +450,23 @@ defmodule Portal.TelemetryTest do
     end
   end
 
+  describe "connection_authorized/4" do
+    test "returns :ok for every feature flag and capability combination" do
+      for connection_type <- [:client_to_gateway, :client_to_client],
+          feature_enabled? <- [true, false],
+          initiator_capable? <- [true, false],
+          receiver_capable? <- [true, false] do
+        assert :ok =
+                 Portal.Telemetry.connection_authorized(
+                   connection_type,
+                   feature_enabled?,
+                   initiator_capable?,
+                   receiver_capable?
+                 )
+      end
+    end
+  end
+
   defp metric_names do
     Enum.map(Portal.Telemetry.metrics(), & &1.name)
   end
