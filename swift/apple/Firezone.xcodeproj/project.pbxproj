@@ -438,13 +438,28 @@
 					05CF1CEF290B1CEE00CF4755 = {
 						CreatedOnToolsVersion = 14.0.1;
 						LastSwiftMigration = 1430;
+						SystemCapabilities = {
+							com.apple.Keychain = {
+								enabled = 1;
+							};
+						};
 					};
 					8D5047E22CE6A8F4009802E9 = {
 						CreatedOnToolsVersion = 16.1;
+						SystemCapabilities = {
+							com.apple.Keychain = {
+								enabled = 1;
+							};
+						};
 					};
 					8DCC021828D512AC007E12D2 = {
 						CreatedOnToolsVersion = 14.0;
 						LastSwiftMigration = 1400;
+						SystemCapabilities = {
+							com.apple.Keychain = {
+								enabled = 1;
+							};
+						};
 					};
 					9A1000082F10000100BEEF01 = {
 						CreatedOnToolsVersion = 16.4;
