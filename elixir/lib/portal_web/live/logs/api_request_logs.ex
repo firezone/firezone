@@ -460,7 +460,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
       result =
         from(arl in APIRequestLog, as: :api_request_logs)
         |> Safe.scoped(subject)
-        |> Safe.list_offset(__MODULE__, opts)
+        |> Safe.list_offset(__MODULE__, Keyword.put(opts, :order_by_nulls, :natural))
 
       case result do
         {:ok, logs, metadata} -> {:ok, enrich(logs, subject), metadata}

@@ -385,7 +385,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
     def list_change_logs(subject, opts \\ []) do
       from(cl in ChangeLog, as: :change_logs)
       |> Safe.scoped(subject)
-      |> Safe.list_offset(__MODULE__, opts)
+      |> Safe.list_offset(__MODULE__, Keyword.put(opts, :order_by_nulls, :natural))
     end
 
     def fetch_change_log(log_id, subject) do

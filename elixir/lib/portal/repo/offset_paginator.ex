@@ -57,6 +57,7 @@ defmodule Portal.Repo.OffsetPaginator do
      %{
        query_module: query_module,
        order_fields: order_fields,
+       order_by_nulls: Keyword.get(opts, :order_by_nulls, :last),
        limit: limit,
        offset: offset
      }}
@@ -69,9 +70,12 @@ defmodule Portal.Repo.OffsetPaginator do
     |> limit_page_size(paginator_opts)
   end
 
-  defp order_by_fields(queryable, %{order_fields: order_fields}) do
+  defp order_by_fields(queryable, %{
+         order_fields: order_fields,
+         order_by_nulls: order_by_nulls
+       }) do
     Enum.reduce(order_fields, queryable, fn
-      {binding, :desc, field}, queryable ->
+      {binding, :desc, field}, queryable when order_by_nulls == :last ->
         order_by(queryable, [{^binding, b}], [{:desc_nulls_last, field(b, ^field)}])
 
       {binding, order, field}, queryable ->
