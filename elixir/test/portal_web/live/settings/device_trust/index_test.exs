@@ -39,6 +39,17 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
     lv |> element("tr[phx-click='toggle_revocation_endpoint']") |> render_click()
   end
 
+  defp timestamp_popovers(html) do
+    html
+    |> Floki.parse_fragment!()
+    |> Floki.find("[role='tooltip']")
+    |> Enum.map(&(Floki.text(&1) |> String.trim()))
+  end
+
+  defp assert_timestamp_popover(popovers, datetime) do
+    assert DateTime.to_iso8601(datetime) in popovers
+  end
+
   defp revocation_fixture(account, issuer, serial) do
     Repo.insert!(%Portal.CrlRevocation{
       account_id: account.id,
@@ -112,6 +123,36 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       assert html =~ "Corporate Issuing CA"
       assert html =~ "1 certificate"
     end
+
+    test "shows created timestamps with their raw values in popovers", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      inserted_at = ~U[2026-01-02 03:04:05.123456Z]
+
+      trust_anchor =
+        trust_anchor_fixture(account: account, name: "Corporate Issuing CA")
+        |> Ecto.Changeset.change(inserted_at: inserted_at)
+        |> Repo.update!()
+
+      conn = authorize_conn(conn, actor)
+
+      {:ok, _lv, index_html} =
+        conn
+        |> live(~p"/#{account}/settings/device_trust")
+
+      assert timestamp_popovers(index_html) == [DateTime.to_iso8601(inserted_at)]
+
+      {:ok, _lv, show_html} =
+        conn
+        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+
+      assert timestamp_popovers(show_html) == [
+               DateTime.to_iso8601(inserted_at),
+               DateTime.to_iso8601(inserted_at)
+             ]
+    end
   end
 
   describe "show panel" do
@@ -181,6 +222,11 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       assert html =~ "http://crl.test.invalid/ec-ca.crl"
       assert html =~ "http://ocsp.test.invalid"
       assert html =~ "http://ca.test.invalid/root.cer"
+
+      {:ok, certificate} = X509.decode_der_certificate(sample_ec_ca_der())
+      popovers = timestamp_popovers(html)
+      assert_timestamp_popover(popovers, X509.not_before(certificate))
+      assert_timestamp_popover(popovers, X509.not_after(certificate))
 
       assert [download_link] =
                html
@@ -290,6 +336,41 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       assert expand_first_endpoint(lv) =~ "unsupported_url_scheme"
     end
 
+    test "shows revocation timestamps with their raw values in popovers", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      timestamps = %{
+        inserted_at: ~U[2026-01-02 03:04:05.100001Z],
+        errored_at: ~U[2026-01-03 03:04:05.100002Z],
+        crl_fetched_at: ~U[2026-01-04 03:04:05.100003Z],
+        crl_this_update: ~U[2026-01-05 03:04:05Z],
+        crl_next_update: ~U[2026-01-06 03:04:05Z],
+        delta_fetched_at: ~U[2026-01-07 03:04:05.100004Z],
+        delta_this_update: ~U[2026-01-08 03:04:05Z],
+        delta_next_update: ~U[2026-01-09 03:04:05Z],
+        ocsp_checked_at: ~U[2026-01-10 03:04:05.100005Z]
+      }
+
+      endpoint_fixture(account, issuer)
+      |> Ecto.Changeset.change(Map.put(timestamps, :ocsp_urls, ["http://ocsp.test.invalid"]))
+      |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+
+      open_revocation_tab(lv)
+      popovers = lv |> expand_first_endpoint() |> timestamp_popovers()
+
+      Enum.each(timestamps, fn {_field, datetime} ->
+        assert_timestamp_popover(popovers, datetime)
+      end)
+    end
 
     test "shows OCSP state for a CA that publishes no fetchable list", %{
       conn: conn,
