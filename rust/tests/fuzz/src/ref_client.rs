@@ -1636,6 +1636,7 @@ mod tests {
             Vec::new(),
             false,
             MaliciousBehaviour::default(),
+            crate::tcp::TcpStackProfile::Linux,
         );
         client.add_cidr_resource(CidrResource {
             id: broad_id,
