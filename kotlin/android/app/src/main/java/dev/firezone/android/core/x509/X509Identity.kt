@@ -394,9 +394,10 @@ class X509Identity
                 message: ByteArray,
             ): ByteArray =
                 try {
-                    signature(scheme).run {
+                    val (signature, parameters) = signature(scheme)
+                    signature.run {
                         initSign(privateKey)
-                        pssParameters(scheme)?.let(::setParameter)
+                        parameters?.let(::setParameter)
                         update(message)
                         sign()
                     }
@@ -409,17 +410,28 @@ class X509Identity
                     )
                 }
 
-            private fun signature(scheme: TlsSignatureScheme): Signature {
+            private fun signature(scheme: TlsSignatureScheme): ConfiguredSignature {
                 val algorithm = signatureAlgorithm(scheme)
-                return runCatching { Signature.getInstance(algorithm) }
-                    .getOrElse {
-                        if (pssParameters(scheme) != null) {
-                            Signature.getInstance("RSASSA-PSS")
-                        } else {
-                            throw it
-                        }
+                return runCatching {
+                    // Android's digest-specific RSA/PSS implementations already fix the
+                    // digest, MGF digest, and salt length. Their KeyChain-backed SignatureSpi
+                    // deliberately rejects setParameter, so parameters must only be supplied
+                    // when using the generic RSASSA-PSS fallback.
+                    ConfiguredSignature(Signature.getInstance(algorithm), null)
+                }.getOrElse {
+                    val parameters = pssParameters(scheme)
+                    if (parameters != null) {
+                        ConfiguredSignature(Signature.getInstance("RSASSA-PSS"), parameters)
+                    } else {
+                        throw it
                     }
+                }
             }
+
+            private data class ConfiguredSignature(
+                val signature: Signature,
+                val parameters: PSSParameterSpec?,
+            )
 
             private fun pssParameters(scheme: TlsSignatureScheme): PSSParameterSpec? =
                 when (scheme) {

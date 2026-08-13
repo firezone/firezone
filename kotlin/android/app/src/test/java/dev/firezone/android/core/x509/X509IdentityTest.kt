@@ -8,7 +8,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import uniffi.connlib.TlsSignatureScheme
 import java.security.KeyPairGenerator
+import java.security.PrivateKey
+import java.security.Provider
+import java.security.PublicKey
+import java.security.Security
 import java.security.Signature
+import java.security.SignatureSpi
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.MGF1ParameterSpec
 import java.security.spec.PSSParameterSpec
@@ -32,6 +37,24 @@ class X509IdentityTest {
 
         assertTrue(X509Identity.supportedSignatureSchemes(keyPair.public).contains(scheme))
         assertTrue(verify(scheme, keyPair.public, message, signature))
+    }
+
+    @Test
+    fun `does not set parameters on digest-specific Android RSA-PSS implementation`() {
+        val provider = FixedRsaPssProvider()
+        Security.insertProviderAt(provider, 1)
+
+        try {
+            val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+            val message = ByteArray(96) { it.toByte() }
+            val scheme = TlsSignatureScheme.RSA_PSS_SHA256
+
+            val signature = X509Identity.sign(keyPair.private, scheme, message)
+
+            assertTrue(verify(scheme, keyPair.public, message, signature))
+        } finally {
+            Security.removeProvider(provider.name)
+        }
     }
 
     @Test
@@ -161,4 +184,52 @@ class X509IdentityTest {
                 update(message)
                 verify(signature)
             }
+}
+
+private class FixedRsaPssProvider : Provider(NAME, 1.0, "Android-style fixed RSA-PSS test provider") {
+    init {
+        put("Signature.SHA256withRSA/PSS", FixedRsaPssSignatureSpi::class.java.name)
+    }
+
+    companion object {
+        private const val NAME = "FixedRsaPss"
+    }
+}
+
+@Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+class FixedRsaPssSignatureSpi : SignatureSpi() {
+    private val delegate = Signature.getInstance("RSASSA-PSS")
+
+    override fun engineInitVerify(publicKey: PublicKey) {
+        configure()
+        delegate.initVerify(publicKey)
+    }
+
+    override fun engineInitSign(privateKey: PrivateKey) {
+        configure()
+        delegate.initSign(privateKey)
+    }
+
+    override fun engineUpdate(input: Byte) = delegate.update(input)
+
+    override fun engineUpdate(
+        input: ByteArray,
+        offset: Int,
+        len: Int,
+    ) = delegate.update(input, offset, len)
+
+    override fun engineSign(): ByteArray = delegate.sign()
+
+    override fun engineVerify(signature: ByteArray): Boolean = delegate.verify(signature)
+
+    override fun engineSetParameter(
+        param: String,
+        value: Any,
+    ) = throw UnsupportedOperationException()
+
+    override fun engineGetParameter(param: String): Any = throw UnsupportedOperationException()
+
+    private fun configure() {
+        delegate.setParameter(PSSParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA256, 32, 1))
+    }
 }
