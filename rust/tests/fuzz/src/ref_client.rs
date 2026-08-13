@@ -52,6 +52,9 @@ pub struct RefClient {
     /// Sampled malicious behaviours for this client.
     pub(crate) malicious_behaviour: MaliciousBehaviour,
 
+    /// The TCP give-up behaviour of the operating system this client simulates.
+    pub(crate) tcp_stack_profile: crate::tcp::TcpStackProfile,
+
     /// Tracks all resources in the order they have been added in.
     ///
     /// When reconnecting to the portal, we simulate them being re-added in the same order.
@@ -129,6 +132,7 @@ impl RefClient {
         system_dns_resolvers: Vec<IpAddr>,
         internet_resource_active: bool,
         malicious_behaviour: MaliciousBehaviour,
+        tcp_stack_profile: crate::tcp::TcpStackProfile,
     ) -> Self {
         Self {
             id,
@@ -138,6 +142,7 @@ impl RefClient {
             system_dns_resolvers,
             internet_resource_active,
             malicious_behaviour,
+            tcp_stack_profile,
             dns_records: Default::default(),
             connected_cidr_resources: Default::default(),
             connected_dns_resources: Default::default(),
@@ -187,7 +192,13 @@ impl RefClient {
         });
         client_state.update_system_resolvers(self.system_dns_resolvers);
 
-        SimClient::new(self.id, client_state, self.malicious_behaviour, now)
+        SimClient::new(
+            self.id,
+            client_state,
+            self.malicious_behaviour,
+            self.tcp_stack_profile,
+            now,
+        )
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {

@@ -28,6 +28,7 @@ use crate::resource::{
 };
 use crate::sim_net::{EdgeConfig, FilterMode, Host, Mapping, RoutingTable};
 use crate::stub_portal::StubPortal;
+use crate::tcp::TcpStackProfile;
 
 pub(super) fn generate(g: &mut Generator, start: Instant) -> ReferenceState {
     let portal = arb_stub_portal(g);
@@ -408,6 +409,7 @@ fn arb_client_host(
     let internet_resource_active = g.bool();
     let ignore_resource_filters = g.bool();
     let send_untracked_icmp_errors = g.bool();
+    let tcp_stack_profile = arb_tcp_stack_profile(g);
 
     let inner = RefClient::new(
         id,
@@ -420,6 +422,7 @@ fn arb_client_host(
             ignore_resource_filters,
             send_untracked_icmp_errors,
         },
+        tcp_stack_profile,
     );
 
     let (ip4, ip6) = arb_socket_ip_stack(g);
@@ -446,6 +449,14 @@ fn arb_gateways(
             (id, host)
         })
         .collect::<BTreeMap<_, _>>()
+}
+
+fn arb_tcp_stack_profile(g: &mut Generator) -> TcpStackProfile {
+    match g.choose_index(3) {
+        0 => TcpStackProfile::Linux,
+        1 => TcpStackProfile::Apple,
+        _ => TcpStackProfile::Windows,
+    }
 }
 
 fn arb_edge_config(g: &mut Generator) -> EdgeConfig {
