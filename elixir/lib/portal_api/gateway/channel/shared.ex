@@ -313,6 +313,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       socket.assigns.iceless_capable == true and initiator_iceless_capable == true and
         Account.iceless_enabled?(socket.assigns.account)
 
+    record_connection_authorized(socket, initiator_iceless_capable)
+
     ref =
       encode_ref(socket, {
         channel_pid,
@@ -387,6 +389,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
           client_ipv6: client_ipv6
         })
 
+        record_connection_authorized(socket, false)
+
         cache =
           socket.assigns.cache
           |> Cache.Gateway.put(
@@ -431,6 +435,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
           client: client,
           expires_at: DateTime.to_unix(authorization_expires_at, :second)
         })
+
+        record_connection_authorized(socket, false)
 
         cache =
           socket.assigns.cache
@@ -724,6 +730,17 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     Logger.error("Unknown gateway message", message: message, payload: payload)
 
     {:reply, {:error, %{reason: :unknown_message}}, socket}
+  end
+
+  # `initiator_iceless_capable` is always false on the deprecated 1.4 paths:
+  # those clients predate the capability handshake, so they can never go ICE-less.
+  defp record_connection_authorized(socket, initiator_iceless_capable) do
+    :telemetry.execute([:portal, :connection, :authorized], %{count: 1}, %{
+      receiver: :gateway,
+      iceless_feature_enabled: Account.iceless_enabled?(socket.assigns.account),
+      initiator_iceless_capable: initiator_iceless_capable == true,
+      receiver_iceless_capable: socket.assigns.iceless_capable == true
+    })
   end
 
   defp encode_ref(socket, tuple) do

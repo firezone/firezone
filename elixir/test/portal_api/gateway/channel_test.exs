@@ -3797,6 +3797,94 @@ defmodule PortalAPI.Gateway.ChannelTest do
       }
     end
 
+    test "create_authorization reports iceless inputs separately via telemetry", %{
+      client: client,
+      account: account,
+      actor: actor,
+      resource: resource,
+      gateway: gateway,
+      site: site,
+      token: token,
+      subject: subject,
+      group: group
+    } do
+      update_account(account, %{features: %{iceless: false}})
+
+      test_pid = self()
+      handler_id = "test-connection-authorized-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :connection, :authorized],
+        fn _event, _measurements, metadata, _config ->
+          send(test_pid, {:connection_authorized, self(), metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      # Both peers are iceless-capable, only the account flag holds them back.
+      push(socket, "set_snownet_capabilities", %{"iceless" => true})
+
+      policy_authorization =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          resource: resource,
+          group: group
+        )
+
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      preshared_key = "PSK"
+      public_key = Portal.DeviceFixtures.generate_public_key()
+
+      ice_credentials = %{
+        initiator: %{username: "A", password: "B"},
+        receiver: %{username: "C", password: "D"}
+      }
+
+      send(
+        socket.channel_pid,
+        {:create_authorization, {self(), make_ref()},
+         %{
+           client:
+             PortalAPI.Gateway.Views.Client.render(
+               client,
+               public_key,
+               preshared_key,
+               @test_user_agent
+             ),
+           subject: PortalAPI.Gateway.Views.Subject.render(subject),
+           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
+           resource_id: to_cache(resource).id,
+           policy_authorization_id: policy_authorization.id,
+           authorization_expires_at: expires_at,
+           ice_credentials: ice_credentials,
+           preshared_key: preshared_key,
+           initiator_iceless_capable: true
+         }}
+      )
+
+      assert_push "authorize_flow", %{use_iceless: false}
+
+      # The handler runs in the emitting channel, so match on its pid to ignore
+      # events from other tests sharing the globally attached handler.
+      gateway_channel_pid = socket.channel_pid
+      assert_receive {:connection_authorized, ^gateway_channel_pid, metadata}
+
+      assert metadata == %{
+               receiver: :gateway,
+               iceless_feature_enabled: false,
+               initiator_iceless_capable: true,
+               receiver_iceless_capable: true
+             }
+    end
+
     test "use_iceless picks up an account flag toggled on after join", %{
       client: client,
       account: account,
