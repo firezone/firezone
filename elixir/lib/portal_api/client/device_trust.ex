@@ -330,46 +330,24 @@ defmodule PortalAPI.Client.DeviceTrust do
   # validated against. An account holding both a root and its intermediate has
   # two anchors that can each validate the same leaf, so the anchor does not
   # reliably say who issued it, and a serial means nothing without that.
-  #
-  # Checked against cached rows rather than the network, so the connect stays
-  # indexed lookups and a reconnect storm never reaches the CA.
   defp ensure_not_revoked(%{revoked?: true}, issuer, serial), do: refuse(issuer, serial)
 
   # Nothing for a responder to add where the issuer publishes a list: absence
   # from that list already means not revoked.
   defp ensure_not_revoked(%{crl_published?: true}, _issuer, _serial), do: :ok
 
-  defp ensure_not_revoked(state, issuer, serial),
-    do: ensure_not_revoked_by_responder(state, issuer, serial)
-
   # Only consulted where the CA publishes no list, since a list covers every
   # device in one fetch and a responder is one request per certificate.
-  #
+  defp ensure_not_revoked(%{ocsp_status: "revoked"}, issuer, serial), do: refuse(issuer, serial)
+
   # An answer we do not hold is not a refusal. The device proved possession of a
   # certificate that chains to an uploaded anchor, and turning it away because a
   # background job has not run yet would make a responder outage an outage for
-  # the fleet. It is logged as an error because it means revocation is not
-  # actually being enforced for that CA.
-  defp ensure_not_revoked_by_responder(%{ocsp_status: "revoked"}, issuer, serial) do
-    refuse(issuer, serial)
-  end
-
-  defp ensure_not_revoked_by_responder(
-         %{ocsp_status: "good", ocsp_next_update: next_update},
-         issuer,
-         serial
-       ) do
-    if stale?(next_update) do
-      log_unenforced(issuer, serial, "cached OCSP answer has expired")
-    end
-
-    :ok
-  end
-
-  defp ensure_not_revoked_by_responder(_state, issuer, serial) do
-    log_unenforced(issuer, serial, "no cached OCSP answer")
-    :ok
-  end
+  # the fleet. Nor is it worth saying anything about here: a certificate nobody
+  # has asked about yet is what every first connect looks like, and whether a
+  # CA's revocation data is actually arriving is recorded on its endpoint row by
+  # the jobs that fetch it.
+  defp ensure_not_revoked(_state, _issuer, _serial), do: :ok
 
   defp refuse(issuer, serial) do
     Logger.info("Refusing device certificate: revoked by its CA",
@@ -378,13 +356,6 @@ defmodule PortalAPI.Client.DeviceTrust do
     )
 
     {:error, :certificate_revoked}
-  end
-
-  defp log_unenforced(issuer, serial, detail) do
-    Logger.error("Allowing device certificate without a revocation check: #{detail}",
-      issuer: X509.describe_name(issuer),
-      cert_serial: serial
-    )
   end
 
   defp stale?(nil), do: true
@@ -406,7 +377,7 @@ defmodule PortalAPI.Client.DeviceTrust do
   defp check_responder(%{crl_published?: true}, _issuer, _serial, _subject), do: :ok
 
   defp check_responder(%{ocsp_next_update: next_update}, issuer, serial, subject) do
-    if is_nil(next_update) or stale?(next_update) do
+    if stale?(next_update) do
       Portal.Ocsp.Sync.enqueue_check(subject.account.id, issuer, serial)
     end
 
