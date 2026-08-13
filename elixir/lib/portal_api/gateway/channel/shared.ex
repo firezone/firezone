@@ -12,7 +12,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     PubSub,
     Resource,
     Presence,
-    SchemaHelpers
+    SchemaHelpers,
+    Telemetry
   }
 
   require Logger
@@ -313,7 +314,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       socket.assigns.iceless_capable == true and initiator_iceless_capable == true and
         Account.iceless_enabled?(socket.assigns.account)
 
-    record_connection_authorized(socket, initiator_iceless_capable)
+    record_authorization_granted(socket, initiator_iceless_capable)
 
     ref =
       encode_ref(socket, {
@@ -389,7 +390,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
           client_ipv6: client_ipv6
         })
 
-        record_connection_authorized(socket, false)
+        record_authorization_granted(socket, false)
 
         cache =
           socket.assigns.cache
@@ -436,7 +437,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
           expires_at: DateTime.to_unix(authorization_expires_at, :second)
         })
 
-        record_connection_authorized(socket, false)
+        record_authorization_granted(socket, false)
 
         cache =
           socket.assigns.cache
@@ -734,13 +735,12 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   # `initiator_iceless_capable` is always false on the deprecated 1.4 paths:
   # those clients predate the capability handshake, so they can never go ICE-less.
-  defp record_connection_authorized(socket, initiator_iceless_capable) do
-    :telemetry.execute([:portal, :connection, :authorized], %{count: 1}, %{
-      receiver: :gateway,
+  defp record_authorization_granted(socket, initiator_iceless_capable) do
+    Telemetry.authorization_granted(:gateway,
       iceless_feature_enabled: Account.iceless_enabled?(socket.assigns.account),
-      initiator_iceless_capable: initiator_iceless_capable == true,
-      receiver_iceless_capable: socket.assigns.iceless_capable == true
-    })
+      initiator_iceless_capable: initiator_iceless_capable,
+      receiver_iceless_capable: socket.assigns.iceless_capable
+    )
   end
 
   defp encode_ref(socket, tuple) do

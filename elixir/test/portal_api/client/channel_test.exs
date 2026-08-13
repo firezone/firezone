@@ -5496,13 +5496,13 @@ defmodule PortalAPI.Client.ChannelTest do
       pool_resource: pool_resource
     } do
       test_pid = self()
-      handler_id = "test-connection-authorized-#{System.unique_integer([:positive])}"
+      handler_id = "test-authorization-granted-#{System.unique_integer([:positive])}"
 
       :telemetry.attach(
         handler_id,
-        [:portal, :connection, :authorized],
+        [:portal, :authorization, :granted],
         fn _event, _measurements, metadata, _config ->
-          send(test_pid, {:connection_authorized, self(), metadata})
+          send(test_pid, {:authorization_granted, self(), metadata})
         end,
         nil
       )
@@ -5535,7 +5535,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # The handler runs in the emitting channel, so match on the target's pid to
       # ignore events from other tests sharing the globally attached handler.
       target_channel_pid = target_socket.channel_pid
-      assert_receive {:connection_authorized, ^target_channel_pid, metadata}
+      assert_receive {:authorization_granted, ^target_channel_pid, metadata}
 
       assert metadata == %{
                receiver: :client,

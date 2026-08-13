@@ -455,12 +455,11 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     use_iceless = iceless_feature_enabled and initiator_capable and receiver_capable
 
-    :telemetry.execute([:portal, :connection, :authorized], %{count: 1}, %{
-      receiver: :client,
+    Portal.Telemetry.authorization_granted(:client,
       iceless_feature_enabled: iceless_feature_enabled,
       initiator_iceless_capable: initiator_capable,
       receiver_iceless_capable: receiver_capable
-    })
+    )
 
     payload = Map.put(payload, :use_iceless, use_iceless)
 

@@ -3811,13 +3811,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       update_account(account, %{features: %{iceless: false}})
 
       test_pid = self()
-      handler_id = "test-connection-authorized-#{System.unique_integer([:positive])}"
+      handler_id = "test-authorization-granted-#{System.unique_integer([:positive])}"
 
       :telemetry.attach(
         handler_id,
-        [:portal, :connection, :authorized],
+        [:portal, :authorization, :granted],
         fn _event, _measurements, metadata, _config ->
-          send(test_pid, {:connection_authorized, self(), metadata})
+          send(test_pid, {:authorization_granted, self(), metadata})
         end,
         nil
       )
@@ -3875,7 +3875,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       # The handler runs in the emitting channel, so match on its pid to ignore
       # events from other tests sharing the globally attached handler.
       gateway_channel_pid = socket.channel_pid
-      assert_receive {:connection_authorized, ^gateway_channel_pid, metadata}
+      assert_receive {:authorization_granted, ^gateway_channel_pid, metadata}
 
       assert metadata == %{
                receiver: :gateway,
