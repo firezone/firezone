@@ -19,6 +19,24 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
     )
   end
 
+  defp reverify(lv, tenant_id) do
+    if has_element?(lv, "button[phx-click=reset_verification]") do
+      lv |> element("button[phx-click=reset_verification]") |> render_click()
+    end
+
+    lv |> element("#intune-admin-consent-button") |> render_click()
+    assert_push_event(lv, "open_url", %{url: url})
+
+    state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+    {:ok, %{verification_ref: ref}} = PortalWeb.OIDC.verify_verification_state(state)
+    ack_ref = make_ref()
+
+    send(lv.pid, {:intune_device_integration_complete, tenant_id, ref, {self(), ack_ref}})
+    assert_receive {:verification_ack, ^ack_ref}
+
+    lv
+  end
+
   describe "device_posture feature gate" do
     test "hides the settings tab when the global flag is off", %{
       conn: conn,
@@ -301,6 +319,96 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       refute integration.errored_at
       assert integration.error_email_count == 0
     end
+  end
+
+  describe "reverifying after a sync error" do
+    setup %{conn: conn, account: account, actor: actor} do
+      integration =
+        intune_integration_fixture(
+          account: account,
+          is_disabled: true,
+          is_verified: false,
+          disabled_reason: "Sync error",
+          error_message: "403 - Forbidden",
+          errored_at: DateTime.utc_now(),
+          error_email_count: 2
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_integrations/intune/#{integration.id}/edit")
+
+      %{integration: integration, lv: lv}
+    end
+
+    test "enables the integration and clears the error state", %{
+      lv: lv,
+      integration: integration
+    } do
+      reverify(lv, "tenant-123")
+
+      lv
+      |> form("#device-integration-form", integration: %{name: integration.name})
+      |> render_submit()
+
+      integration = reload(integration)
+      assert integration.is_verified
+      refute integration.is_disabled
+      refute integration.disabled_reason
+      refute integration.error_message
+      refute integration.errored_at
+      assert integration.error_email_count == 0
+    end
+
+    test "queues a sync so the stale inventory is refreshed", %{
+      lv: lv,
+      integration: integration
+    } do
+      reverify(lv, integration.tenant_id)
+
+      lv
+      |> form("#device-integration-form", integration: %{name: integration.name})
+      |> render_submit()
+
+      assert_enqueued(
+        worker: Portal.Intune.Sync,
+        args: %{
+          "account_id" => integration.account_id,
+          "device_integration_id" => integration.id
+        }
+      )
+    end
+  end
+
+  test "reverifying does not re-enable an integration an admin disabled", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    integration =
+      intune_integration_fixture(
+        account: account,
+        is_disabled: true,
+        is_verified: false,
+        disabled_reason: "Disabled by admin"
+      )
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_integrations/intune/#{integration.id}/edit")
+
+    reverify(lv, "tenant-123")
+
+    lv
+    |> form("#device-integration-form", integration: %{name: integration.name})
+    |> render_submit()
+
+    integration = reload(integration)
+    assert integration.is_verified
+    assert integration.is_disabled
+    assert integration.disabled_reason == "Disabled by admin"
   end
 
   describe "editing an integration" do

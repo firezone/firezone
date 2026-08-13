@@ -218,15 +218,21 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
         %{"integration" => attrs},
         %{assigns: %{live_action: :edit}} = socket
       ) do
-    changeset = submitted_changeset(socket, attrs)
+    changeset =
+      socket
+      |> submitted_changeset(attrs)
+      |> clear_sync_error()
 
-    # Devices already stored belong to the old tenant, so leaving them until the
-    # next scheduled run would show one tenant's inventory under another's name.
-    tenant_changed? = Map.has_key?(changeset.changes, :tenant_id)
+    # Devices already stored belong to the old tenant, and one coming back from
+    # a sync error has been stale for as long as it was disabled, so either way
+    # waiting for the next scheduled run would show the wrong inventory.
+    resync? =
+      Map.has_key?(changeset.changes, :tenant_id) or
+        get_change(changeset, :is_disabled) == false
 
     changeset
     |> Database.update_integration(socket.assigns.subject)
-    |> handle_submit(socket, tenant_changed?)
+    |> handle_submit(socket, resync?)
   end
 
   def handle_event("toggle_integration_actions", %{"id" => id}, socket) do
@@ -883,6 +889,26 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
   end
 
   defp maybe_send_verification_ack(_), do: :ok
+
+  # A sync error disables and unverifies together, so proving consent again is
+  # what makes the integration usable and saving it should say so. An admin who
+  # turned it off by hand keeps it off until they turn it back on themselves.
+  defp clear_sync_error(changeset) do
+    integration = changeset.data
+
+    if get_field(changeset, :is_verified) and integration.is_disabled and
+         integration.disabled_reason == "Sync error" do
+      Ecto.Changeset.change(changeset, %{
+        is_disabled: false,
+        disabled_reason: nil,
+        error_email_count: 0,
+        error_message: nil,
+        errored_at: nil
+      })
+    else
+      changeset
+    end
+  end
 
   defp toggle_changeset(integration, true) do
     Ecto.Changeset.change(integration, %{
