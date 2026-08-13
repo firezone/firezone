@@ -14,6 +14,42 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
     der
   end
 
+  defp endpoint_fixture(account, issuer, attrs \\ []) do
+    Repo.insert!(%Portal.RevocationEndpoint{
+      account_id: account.id,
+      issuer: issuer,
+      distribution_point: "http://crl.test.invalid/ec-ca.crl",
+      crl_urls: Keyword.get(attrs, :crl_urls, ["http://crl.test.invalid/ec-ca.crl"]),
+      crl_number: Keyword.get(attrs, :crl_number),
+      crl_error: Keyword.get(attrs, :crl_error),
+      inserted_at: DateTime.utc_now(),
+      updated_at: DateTime.utc_now()
+    })
+  end
+
+  defp open_certificates_tab(lv) do
+    render_click(lv, "switch_anchor_tab", %{"tab" => "certificates"})
+  end
+
+  defp open_revocation_tab(lv) do
+    render_click(lv, "switch_anchor_tab", %{"tab" => "revocation"})
+  end
+
+  defp expand_first_endpoint(lv) do
+    lv |> element("tr[phx-click='toggle_revocation_endpoint']") |> render_click()
+  end
+
+  defp revocation_fixture(account, issuer, serial) do
+    Repo.insert!(%Portal.CrlRevocation{
+      account_id: account.id,
+      issuer: issuer,
+      distribution_point: "http://crl.test.invalid/ec-ca.crl",
+      serial: serial,
+      revoked_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      inserted_at: DateTime.utc_now()
+    })
+  end
+
   setup do
     account = account_fixture()
     actor = admin_actor_fixture(account: account)
@@ -104,6 +140,9 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
         |> render_click()
 
       assert_patch(lv, ~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+      refute html =~ "Company Issuing CA"
+
+      html = open_certificates_tab(lv)
       assert html =~ "Company Issuing CA"
       assert html =~ "Company Root CA"
       assert html =~ Base.encode16(:crypto.hash(:sha256, sample_cert_der()), case: :lower)
@@ -130,7 +169,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
 
-      html = render(lv)
+      html = open_certificates_tab(lv)
 
       assert html =~ "CN=EC Trust Anchor CA"
       assert html =~ "ecdsa-with-SHA256"
@@ -184,6 +223,231 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
 
       assert_patch(lv, ~p"/#{account}/settings/device_trust/#{trust_anchor.id}/edit")
       assert render(lv) =~ "Edit Trust Anchor"
+    end
+  end
+
+  describe "revocation section" do
+    setup %{account: account} do
+      trust_anchor =
+        trust_anchor_fixture(account: account, name: "EC Anchor", certs: [sample_ec_ca_der()])
+
+      %{trust_anchor: trust_anchor, issuer: X509.subject(sample_ec_ca_der())}
+    end
+
+    test "says nothing is known before a device has connected", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+
+      assert open_revocation_tab(lv) =~ "No revocation endpoint known yet"
+    end
+
+    test "shows the endpoint learned for the issuer", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer, crl_number: 42)
+      revocation_fixture(account, issuer, "AABBCC")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+
+      assert open_revocation_tab(lv) =~ "CN=EC Trust Anchor CA"
+
+      html = expand_first_endpoint(lv)
+      assert html =~ "http://crl.test.invalid/ec-ca.crl"
+      assert html =~ "Revoked certificates"
+      assert html =~ "CRL number"
+      assert html =~ "42"
+    end
+
+    test "surfaces the last failure", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer, crl_error: "unsupported_url_scheme")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+
+      open_revocation_tab(lv)
+      assert expand_first_endpoint(lv) =~ "unsupported_url_scheme"
+    end
+
+
+    test "shows OCSP state for a CA that publishes no fetchable list", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      # An ldap:// distribution point is a list we can never read, so the issuer
+      # is checked through its responder and the panel has to say so.
+      Repo.insert!(%Portal.RevocationEndpoint{
+        account_id: account.id,
+        issuer: issuer,
+        distribution_point: "http://ocsp.test.invalid",
+        crl_urls: ["ldap://dc.corp.test/CN=CA"],
+        ocsp_urls: ["http://ocsp.test.invalid"],
+        ocsp_checked_at: DateTime.utc_now(),
+        ocsp_error: "unreachable responder",
+        inserted_at: DateTime.utc_now(),
+        updated_at: DateTime.utc_now()
+      })
+
+      Repo.insert!(%Portal.OcspStatus{
+        account_id: account.id,
+        issuer: issuer,
+        serial: "AABBCC",
+        status: "revoked",
+        updated_at: DateTime.utc_now()
+      })
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+
+      assert open_revocation_tab(lv) =~ "OCSP"
+
+      html = expand_first_endpoint(lv)
+      assert html =~ "unreachable responder"
+      assert html =~ "Revoked certificates"
+      refute html =~ "CRL number"
+    end
+
+    test "an endpoint from another account is never shown", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account_fixture(), issuer)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+
+      assert open_revocation_tab(lv) =~ "No revocation endpoint known yet"
+    end
+  end
+
+  describe "revocation failures" do
+    setup %{account: account} do
+      trust_anchor =
+        trust_anchor_fixture(account: account, name: "EC Anchor", certs: [sample_ec_ca_der()])
+
+      %{trust_anchor: trust_anchor, issuer: X509.subject(sample_ec_ca_der())}
+    end
+
+    test "the list warns about an issuer that is still being retried", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer, crl_error: "connection refused")
+      |> Ecto.Changeset.change(errored_at: DateTime.utc_now())
+      |> Repo.update!()
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust")
+
+      assert html =~ "ri-error-warning-fill"
+      assert html =~ "having trouble reaching"
+    end
+
+    test "the list says when an issuer is no longer checked at all", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer, crl_error: "connection refused")
+      |> Ecto.Changeset.change(
+        errored_at: DateTime.utc_now(),
+        is_disabled: true,
+        disabled_reason: Portal.Revocation.Failure.disabled_reason()
+      )
+      |> Repo.update!()
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust")
+
+      assert html =~ "ri-error-warning-fill"
+      assert html =~ "not being checked"
+    end
+
+    test "the list says nothing about a healthy issuer", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust")
+
+      refute html =~ "ri-error-warning-fill"
+    end
+
+    test "saving the trust anchor starts the checking again", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      endpoint_fixture(account, issuer, crl_error: "connection refused")
+      |> Ecto.Changeset.change(
+        errored_at: DateTime.utc_now(),
+        is_disabled: true,
+        disabled_reason: Portal.Revocation.Failure.disabled_reason()
+      )
+      |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}/edit")
+
+      lv
+      |> form("#trust-anchor-edit-form",
+        trust_anchor: %{name: "EC Anchor", certs: [sample_ec_ca_pem()]}
+      )
+      |> render_submit()
+
+      endpoint = Repo.one!(Portal.RevocationEndpoint)
+      refute endpoint.is_disabled
+      assert is_nil(endpoint.disabled_reason)
+      assert is_nil(endpoint.errored_at)
+      assert is_nil(endpoint.crl_error)
     end
   end
 

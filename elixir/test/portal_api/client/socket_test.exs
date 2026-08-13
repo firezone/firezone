@@ -758,10 +758,13 @@ defmodule PortalAPI.Client.SocketTest do
         last_attested_cert_issuer: <<"issuer-der">>
       }
 
-      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
       assert client.last_attested_device_serial == "C02XK1ZGJGH5"
       assert client.last_attested_mdm_device_id == "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
       assert client.last_attested_cert_fingerprint == proof.last_attested_cert_fingerprint
+      # Recorded so a revocation learned after this connect can still find the
+      # row: a certificate serial only identifies a certificate with its issuer.
+      assert client.last_attested_cert_issuer == proof.last_attested_cert_issuer
     end
 
     test "a new MDM device id enrolls as a new row", %{
@@ -795,7 +798,7 @@ defmodule PortalAPI.Client.SocketTest do
         last_attested_cert_issuer: <<"issuer-der">>
       }
 
-      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
       refute client.id == existing.id
       assert client.last_attested_mdm_device_id == "mdm-new"
       assert client.last_attested_device_serial == "SN-REENROLL"
@@ -830,7 +833,7 @@ defmodule PortalAPI.Client.SocketTest do
         last_attested_cert_issuer: <<"issuer-der">>
       }
 
-      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
       assert client.id == existing.id
       assert client.last_attested_device_uuid == "uuid-learned"
       assert is_nil(client.firezone_id)
@@ -864,7 +867,7 @@ defmodule PortalAPI.Client.SocketTest do
         last_attested_cert_issuer: <<"issuer-der">>
       }
 
-      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
       assert client.id == existing.id
       assert is_nil(client.last_attested_mdm_device_id)
     end
@@ -895,7 +898,7 @@ defmodule PortalAPI.Client.SocketTest do
         last_attested_cert_issuer: <<"issuer-der">>
       }
 
-      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
       refute client.id == existing.id
     end
 
@@ -933,7 +936,7 @@ defmodule PortalAPI.Client.SocketTest do
         last_attested_cert_issuer: <<"issuer-der">>
       }
 
-      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
       assert client.id == by_mdm.id
       refute client.id == by_cert.id
     end
@@ -961,7 +964,7 @@ defmodule PortalAPI.Client.SocketTest do
         last_attested_cert_issuer: <<"issuer-der">>
       }
 
-      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
       refute client.id == existing.id
       assert client.last_attested_mdm_device_id == "mdm-only-new"
       assert is_nil(client.firezone_id)
@@ -991,7 +994,7 @@ defmodule PortalAPI.Client.SocketTest do
         last_attested_cert_issuer: <<"issuer-der">>
       }
 
-      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
       refute client.id == existing.id
       assert is_nil(client.last_attested_device_serial)
       assert is_nil(client.firezone_id)
@@ -1027,7 +1030,7 @@ defmodule PortalAPI.Client.SocketTest do
       }
 
       assert ExUnit.CaptureLog.capture_log(fn ->
-               assert Socket.Database.resolve_client(changeset, proof, subject) ==
+               assert resolve_with_proof(changeset, proof, subject) ==
                         {:error, :device_identity_conflict}
              end) =~ "contradicts the device row"
     end
@@ -1061,7 +1064,7 @@ defmodule PortalAPI.Client.SocketTest do
       }
 
       assert ExUnit.CaptureLog.capture_log(fn ->
-               assert Socket.Database.resolve_client(changeset, proof, subject) ==
+               assert resolve_with_proof(changeset, proof, subject) ==
                         {:error, :device_identity_conflict}
              end) =~ "contradicts the device row"
     end
@@ -1095,7 +1098,7 @@ defmodule PortalAPI.Client.SocketTest do
       }
 
       assert ExUnit.CaptureLog.capture_log(fn ->
-               assert Socket.Database.resolve_client(changeset, proof, subject) ==
+               assert resolve_with_proof(changeset, proof, subject) ==
                         {:error, :device_identity_conflict}
              end) =~ "contradicts the device row"
     end
@@ -1131,7 +1134,7 @@ defmodule PortalAPI.Client.SocketTest do
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
-          assert Socket.Database.resolve_client(changeset, proof, subject) ==
+          assert resolve_with_proof(changeset, proof, subject) ==
                    {:error, :device_identity_conflict}
         end)
 
@@ -1169,11 +1172,27 @@ defmodule PortalAPI.Client.SocketTest do
         last_attested_cert_issuer: <<"issuer-der">>
       }
 
-      assert {:ok, client, true} = Socket.Database.resolve_client(changeset, proof, subject)
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
       assert client.id == existing.id
       assert is_nil(client.last_attested_device_uuid)
       assert client.last_attested_device_serial == "SN-2"
     end
+  end
+
+  # The device row and how it was matched are resolved by the attestation read,
+  # so these tests run that read rather than feeding the answer in by hand.
+  defp resolve_with_proof(changeset, proof, subject) do
+    state =
+      PortalAPI.Client.DeviceTrust.Database.attestation_state(
+        proof.last_attested_cert_issuer,
+        proof.last_attested_cert_serial,
+        Map.get(proof.identifiers, :last_attested_mdm_device_id),
+        subject
+      )
+
+    proof = Map.merge(proof, %{device: state.device, matched_on: state.matched_on})
+
+    Socket.Database.resolve_client(changeset, proof, subject)
   end
 
   defp device_trust_changeset(account, actor, attrs) do

@@ -823,37 +823,6 @@ defmodule PortalWeb.Settings.LogSinks do
     """
   end
 
-  attr :id, :string, required: true
-  attr :label, :string, required: true
-  attr :color, :string, required: true
-  slot :inner_block, required: true
-
-  defp status_popover(assigns) do
-    ~H"""
-    <button
-      type="button"
-      id={"#{@id}-button"}
-      phx-hook="Popover"
-      data-popover-target-id={@id}
-      data-popover-trigger="click"
-      data-popover-placement="bottom"
-      class={[
-        "inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded cursor-pointer",
-        @color == "red" && "bg-red-100 text-red-700",
-        @color == "yellow" && "bg-yellow-100 text-yellow-700"
-      ]}
-    >
-      {@label} <.icon name="ri-information-line" class="w-3 h-3" />
-    </button>
-    <div
-      id={@id}
-      class="invisible opacity-0 fixed z-50 w-80 p-3 text-left bg-elevated rounded shadow-sm border border-border"
-    >
-      {render_slot(@inner_block)}
-    </div>
-    """
-  end
-
   attr :form, :any, required: true
   attr :type, :string, required: true
   attr :live_action, :atom, required: true

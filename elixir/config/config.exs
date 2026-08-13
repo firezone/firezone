@@ -300,6 +300,10 @@ config :portal, Portal.Billing,
   # Adhoc Device
   adhoc_device_product_id: "prod_TrPXF2LVHSJpMk"
 
+config :portal, Portal.Crl.Sync, req_opts: []
+
+config :portal, Portal.Ocsp.Sync, req_opts: []
+
 config :portal, Portal.ComponentVersions,
   firezone_releases_url: "https://www.firezone.dev/api/releases",
   fetch_from_url: true,

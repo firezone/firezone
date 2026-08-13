@@ -1,5 +1,6 @@
 defmodule PortalAPI.Client.DeviceTrustTest do
   use Portal.DataCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
   import Portal.SubjectFixtures
@@ -58,9 +59,43 @@ defmodule PortalAPI.Client.DeviceTrustTest do
     end
   end
 
+  describe "attest/2 when the device_trust feature is off" do
+    setup do
+      configure_attestation_host()
+      start_revocation_endpoint_queue()
+
+      account = account_fixture()
+      pki = pki()
+      trust_anchor_fixture(account: account, certs: [pki.ca_der])
+      subject = subject_fixture(account: account)
+
+      %{account: account, pki: pki, subject: subject}
+    end
+
+    test "the certificate is refused rather than trusted unchecked", %{
+      pki: pki,
+      subject: subject
+    } do
+      connect_info = connect_info(leaf(pki, :rsa))
+
+      assert DeviceTrust.attest(connect_info, subject) == {:error, :no_trust_anchors}
+    end
+
+    test "nothing is recorded about the certificate's CA", %{pki: pki, subject: subject} do
+      assert {:error, :no_trust_anchors} =
+               DeviceTrust.attest(connect_info(leaf(pki, :with_crl)), subject)
+
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      assert Repo.all(Portal.RevocationEndpoint) == []
+      assert all_enqueued(worker: Portal.Ocsp.Sync) == []
+    end
+  end
+
   describe "attest/2" do
     setup do
       configure_attestation_host()
+      start_revocation_endpoint_queue()
 
       account = account_fixture()
       enable_feature(:device_trust)
@@ -181,6 +216,295 @@ defmodule PortalAPI.Client.DeviceTrustTest do
 
       assert {:ok, verified} = DeviceTrust.attest(connect_info, subject)
       assert verified.identifiers == %{last_attested_device_serial: "C02XK1ZGJGH5"}
+    end
+
+    test "refuses a leaf whose serial appears on the anchor's cached CRL", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :rsa)
+      serial = leaf |> cert_serial_hex()
+
+      Repo.insert!(%Portal.CrlRevocation{
+        account_id: account.id,
+        issuer: Portal.Crypto.X509.issuer(leaf),
+        distribution_point: "http://crl.example.test/ca.crl",
+        serial: serial,
+        revoked_at: DateTime.utc_now() |> DateTime.truncate(:second),
+        inserted_at: DateTime.utc_now()
+      })
+
+      assert ExUnit.CaptureLog.capture_log(fn ->
+               assert DeviceTrust.attest(connect_info(leaf), subject) ==
+                        {:error, :certificate_revoked}
+             end) =~ "revoked by its CA"
+    end
+
+    test "the same serial revoked by a different issuer does not refuse", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :rsa)
+
+      Repo.insert!(%Portal.CrlRevocation{
+        account_id: account.id,
+        issuer: Portal.Crypto.X509.subject(pki.untrusted_ca_der),
+        distribution_point: "http://crl.example.test/ca.crl",
+        serial: cert_serial_hex(leaf),
+        revoked_at: DateTime.utc_now() |> DateTime.truncate(:second),
+        inserted_at: DateTime.utc_now()
+      })
+
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+    end
+
+    test "a leaf's issuer matches the name its CA signs a CRL under", %{pki: pki} do
+      leaf = leaf(pki, :rsa)
+
+      # Self-signed root, so its own subject is the name it signs under.
+      assert Portal.Crypto.X509.issuer(leaf) == Portal.Crypto.X509.subject(pki.ca_der)
+    end
+
+    test "refuses a leaf a responder reports as revoked", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :rsa)
+      ocsp_endpoint(account, pki)
+
+      Repo.insert!(%Portal.OcspStatus{
+        account_id: account.id,
+        issuer: Portal.Crypto.X509.issuer(leaf),
+        serial: cert_serial_hex(leaf),
+        status: "revoked",
+        revoked_at: DateTime.utc_now() |> DateTime.truncate(:second),
+        next_update: DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second),
+        updated_at: DateTime.utc_now()
+      })
+
+      assert ExUnit.CaptureLog.capture_log(fn ->
+               assert DeviceTrust.attest(connect_info(leaf), subject) ==
+                        {:error, :certificate_revoked}
+             end) =~ "revoked by its CA"
+    end
+
+    test "allows a leaf with no cached answer but says revocation is unenforced", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :rsa)
+      ocsp_endpoint(account, pki)
+
+      # A responder outage must not become an outage for the fleet, but it does
+      # mean nothing is being enforced, so it is not allowed to pass quietly.
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+        end)
+
+      assert log =~ "without a revocation check"
+      assert log =~ "no cached OCSP answer"
+    end
+
+    test "allows a leaf whose cached answer has expired and says so", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :rsa)
+      ocsp_endpoint(account, pki)
+
+      Repo.insert!(%Portal.OcspStatus{
+        account_id: account.id,
+        issuer: Portal.Crypto.X509.issuer(leaf),
+        serial: cert_serial_hex(leaf),
+        status: "good",
+        next_update: DateTime.utc_now() |> DateTime.add(-1, :day) |> DateTime.truncate(:second),
+        updated_at: DateTime.utc_now()
+      })
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+        end)
+
+      assert log =~ "has expired"
+    end
+
+    test "falls through to the responder when the only list is unfetchable", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :rsa)
+
+      Repo.insert!(%Portal.RevocationEndpoint{
+        account_id: account.id,
+        issuer: Portal.Crypto.X509.issuer(leaf),
+        distribution_point: "ldap://dc.corp.test/CN=CA",
+        crl_urls: ["ldap://dc.corp.test/CN=CA"],
+        ocsp_urls: ["http://ocsp.example.test"],
+        inserted_at: DateTime.utc_now(),
+        updated_at: DateTime.utc_now()
+      })
+
+      # Treating an ldap:// list as coverage would leave revocation unenforced
+      # while the responder sat unused, and say nothing about it either.
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+        end)
+
+      assert log =~ "without a revocation check"
+    end
+
+    test "says nothing when the CA publishes a list instead", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :rsa)
+
+      Repo.insert!(%Portal.RevocationEndpoint{
+        account_id: account.id,
+        issuer: Portal.Crypto.X509.issuer(leaf),
+        distribution_point: "http://crl.example.test/ca.crl",
+        crl_urls: ["http://crl.example.test/ca.crl"],
+        inserted_at: DateTime.utc_now(),
+        updated_at: DateTime.utc_now()
+      })
+
+      # A list is the whole truth for its issuer, so a serial missing from the
+      # cache is simply not revoked and there is nothing to warn about.
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+        end)
+
+      refute log =~ "without a revocation check"
+    end
+
+    test "the issuer learns its revocation endpoints from the first leaf", %{
+      pki: pki,
+      subject: subject
+    } do
+      assert Repo.all(Portal.RevocationEndpoint) == []
+
+      leaf = leaf(pki, :with_crl)
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      endpoint = Repo.one!(Portal.RevocationEndpoint)
+      assert endpoint.issuer == Portal.Crypto.X509.issuer(leaf)
+      assert endpoint.crl_urls == ["http://crl.example.test/ca.crl"]
+      assert endpoint.ocsp_urls == ["http://ocsp.example.test"]
+      assert endpoint.distribution_point == "http://crl.example.test/ca.crl"
+    end
+
+    test "a known endpoint is not enqueued again", %{pki: pki, subject: subject} do
+      leaf = leaf(pki, :with_crl)
+
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+      Portal.Queue.flush(:revocation_endpoint_queue)
+      assert [endpoint] = Repo.all(Portal.RevocationEndpoint)
+
+      # A later connect has nothing left to learn, so the queue stays empty and
+      # the flush has no rows to write.
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+      Repo.delete!(endpoint)
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      assert Repo.all(Portal.RevocationEndpoint) == []
+    end
+
+    test "a partition the CA adds later is still learned", %{pki: pki, subject: subject} do
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf(pki, :with_crl)), subject)
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      assert {:ok, _verified} =
+               DeviceTrust.attest(connect_info(leaf(pki, :two_partitions)), subject)
+
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      points =
+        Portal.RevocationEndpoint |> Repo.all() |> Enum.map(& &1.distribution_point) |> Enum.sort()
+
+      assert "http://crl.example.test/a.crl" in points
+      assert "http://crl.example.test/b.crl" in points
+    end
+
+    test "the endpoint is learned once and not rewritten by later connects", %{
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :with_crl)
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      Repo.update_all(Portal.RevocationEndpoint,
+        set: [crl_urls: ["http://mirror.example.test/a.crl"]]
+      )
+
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      assert Repo.one!(Portal.RevocationEndpoint).crl_urls == ["http://mirror.example.test/a.crl"]
+    end
+
+    test "a connect asks the responder about its own certificate", %{
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :ocsp_only)
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      # The endpoint is only learned once the batch lands, so the first connect
+      # has nowhere to send the question yet and the second is what asks.
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+
+      assert [job] = all_enqueued(worker: Portal.Ocsp.Sync)
+      assert job.args["serial"] == cert_serial_hex(leaf)
+      assert job.args["issuer"] == Base.encode64(X509.issuer(leaf))
+    end
+
+    test "a CA that publishes a list is not asked through its responder", %{
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :with_crl)
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+      Portal.Queue.flush(:revocation_endpoint_queue)
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+
+      assert all_enqueued(worker: Portal.Ocsp.Sync) == []
+    end
+
+    test "a certificate with a current answer is not asked about again", %{
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :ocsp_only)
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+      Portal.Queue.flush(:revocation_endpoint_queue)
+
+      Repo.insert!(%Portal.OcspStatus{
+        account_id: subject.account.id,
+        issuer: X509.issuer(leaf),
+        serial: cert_serial_hex(leaf),
+        status: "good",
+        next_update: DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second),
+        updated_at: DateTime.utc_now()
+      })
+
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+
+      assert all_enqueued(worker: Portal.Ocsp.Sync) == []
     end
 
     test "rejects a leaf whose serial number cannot be recorded", %{pki: pki, subject: subject} do
@@ -387,6 +711,18 @@ defmodule PortalAPI.Client.DeviceTrustTest do
     end
   end
 
+  defp ocsp_endpoint(account, pki) do
+    Repo.insert!(%Portal.RevocationEndpoint{
+      account_id: account.id,
+      issuer: Portal.Crypto.X509.subject(pki.ca_der),
+      distribution_point: "http://ocsp.example.test",
+      crl_urls: [],
+      ocsp_urls: ["http://ocsp.example.test"],
+      inserted_at: DateTime.utc_now(),
+      updated_at: DateTime.utc_now()
+    })
+  end
+
   defp configure_attestation_host do
     Portal.Config.put_env_override(:portal, :mtls_external_url, @attestation_url)
   end
@@ -405,5 +741,19 @@ defmodule PortalAPI.Client.DeviceTrustTest do
   defp otp(profile) do
     {:ok, otp} = pki() |> leaf(profile) |> X509.decode_der_certificate(:otp)
     otp
+  end
+
+  defp cert_serial_hex(der) do
+    {:ok, leaf} = Portal.Crypto.X509.decode_der_certificate(der, :otp)
+    leaf |> Portal.Crypto.X509.serial_number() |> Integer.to_string(16)
+  end
+  defp start_revocation_endpoint_queue do
+    start_supervised!(
+      {Portal.Queue,
+       Keyword.merge(DeviceTrust.revocation_endpoint_queue_opts(),
+         callers: [self()],
+         flush_on_terminate: false
+       )}
+    )
   end
 end

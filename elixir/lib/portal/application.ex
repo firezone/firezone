@@ -72,6 +72,7 @@ defmodule Portal.Application do
       client_session_queue() ++
       gateway_session_queue() ++
       policy_authorization_queue() ++
+      revocation_endpoint_queue() ++
       rate_limit() ++
       telemetry() ++ oban() ++ endpoint_children ++ replication() ++ [Portal.Cluster]
   end
@@ -121,6 +122,13 @@ defmodule Portal.Application do
     queue_child(
       :policy_authorization_queue,
       PortalAPI.Client.Channel.policy_authorization_queue_opts()
+    )
+  end
+
+  defp revocation_endpoint_queue do
+    queue_child(
+      :revocation_endpoint_queue,
+      PortalAPI.Client.DeviceTrust.revocation_endpoint_queue_opts()
     )
   end
 

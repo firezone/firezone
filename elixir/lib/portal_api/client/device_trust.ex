@@ -126,7 +126,9 @@ defmodule PortalAPI.Client.DeviceTrust do
           identifiers: identifiers(),
           last_attested_cert_serial: String.t(),
           last_attested_cert_fingerprint: String.t(),
-          last_attested_cert_issuer: binary()
+          last_attested_cert_issuer: binary(),
+          device: Portal.Device.t() | nil,
+          matched_on: :mdm_device_id | :cert_identity | nil
         }
 
   @type reason ::
@@ -141,6 +143,24 @@ defmodule PortalAPI.Client.DeviceTrust do
           | :malformed_cert_serial
           | :malformed_cert_issuer
           | :no_device_identifiers
+          | :certificate_revoked
+
+  @doc false
+  def revocation_endpoint_queue_opts do
+    [
+      name: :revocation_endpoint_queue,
+      flush_interval: :timer.seconds(30),
+      flush_threshold: 500,
+      label: "revocation endpoint",
+      on_flush: &flush_revocation_endpoints/1,
+      dedup_key: &{&1.account_id, &1.issuer, &1.distribution_point}
+    ]
+  end
+
+  @doc false
+  def flush_revocation_endpoints(entries) do
+    entries |> Enum.map(fn {attrs, _metadata} -> attrs end) |> Database.put_revocation_endpoints()
+  end
 
   @doc """
   Attests the connecting device from the certificate the load balancer passed
@@ -161,14 +181,32 @@ defmodule PortalAPI.Client.DeviceTrust do
          :ok <- validate_leaf(leaf, der, anchors),
          {:ok, serial} <- cert_serial(leaf),
          {:ok, issuer} <- cert_issuer(der),
+         state = Database.attestation_state(issuer, serial, mdm_device_id(leaf), subject),
+         :ok <- ensure_not_revoked(state, issuer, serial),
          {:ok, identifiers} <- device_identifiers(leaf) do
+      learn_revocation_endpoint(state, issuer, leaf, subject)
+      check_responder(state, issuer, serial, subject)
+
       {:ok,
        %{
          identifiers: identifiers,
          last_attested_cert_serial: serial,
          last_attested_cert_fingerprint: sha256_hex(der),
-         last_attested_cert_issuer: issuer
+         last_attested_cert_issuer: issuer,
+         device: state.device,
+         matched_on: state.matched_on
        }}
+    end
+  end
+
+  # Read ahead of the revocation check so both reach the database together, and
+  # separately from the identifiers the caller gets: a certificate carrying none
+  # is still worth checking for revocation, and refusing it belongs to that
+  # check rather than to this one.
+  defp mdm_device_id(leaf) do
+    case device_identifiers(leaf) do
+      {:ok, identifiers} -> Map.get(identifiers, :last_attested_mdm_device_id)
+      {:error, _reason} -> nil
     end
   end
 
@@ -253,11 +291,22 @@ defmodule PortalAPI.Client.DeviceTrust do
       not within_validity_window?(leaf) ->
         {:error, :outside_validity_window}
 
-      not chain_valid?(der, anchors) ->
-        {:error, :untrusted_chain}
-
       true ->
-        :ok
+        validate_chain(der, anchors)
+    end
+  end
+
+  # Which anchor the chain happens to validate against says nothing about who
+  # issued the leaf: an account holding both a root and its intermediate has two
+  # anchors that can each validate the same certificate. The issuer is read off
+  # the leaf itself instead, so only the outcome matters here.
+  defp validate_chain(leaf_der, anchors) do
+    anchor_ders = Enum.map(anchors, & &1.der)
+
+    if Enum.any?(anchors, &chains_to?(leaf_der, &1.der, anchor_ders)) do
+      :ok
+    else
+      {:error, :untrusted_chain}
     end
   end
 
@@ -266,17 +315,172 @@ defmodule PortalAPI.Client.DeviceTrust do
   # can emit one (Mosyle exposes only a serial number variable), so it is not
   # required. A certificate asserting no identifier at all still fails: it
   # proves possession without proving what.
-  defp cert_issuer(der) do
-    case X509.issuer(der) do
-      nil -> {:error, :malformed_cert_issuer}
-      issuer -> {:ok, issuer}
-    end
-  end
-
   defp device_identifiers(leaf) do
     case extract_identifiers(leaf) do
       empty when map_size(empty) == 0 -> {:error, :no_device_identifiers}
       identifiers -> {:ok, identifiers}
+    end
+  end
+
+  # Checked against the cached CRL rather than fetched live: the CRL fetch job
+  # owns the network call, so this stays a single indexed lookup. A CA that
+  # publishes no CRL simply has no rows, and nothing is revoked.
+  #
+  # Keyed on the certificate's own issuer rather than on the anchor the chain
+  # validated against. An account holding both a root and its intermediate has
+  # two anchors that can each validate the same leaf, so the anchor does not
+  # reliably say who issued it, and a serial means nothing without that.
+  #
+  # Checked against cached rows rather than the network, so the connect stays
+  # indexed lookups and a reconnect storm never reaches the CA.
+  defp ensure_not_revoked(%{revoked?: true}, issuer, serial), do: refuse(issuer, serial)
+
+  # Nothing for a responder to add where the issuer publishes a list: absence
+  # from that list already means not revoked.
+  defp ensure_not_revoked(%{crl_published?: true}, _issuer, _serial), do: :ok
+
+  defp ensure_not_revoked(state, issuer, serial),
+    do: ensure_not_revoked_by_responder(state, issuer, serial)
+
+  # Only consulted where the CA publishes no list, since a list covers every
+  # device in one fetch and a responder is one request per certificate.
+  #
+  # An answer we do not hold is not a refusal. The device proved possession of a
+  # certificate that chains to an uploaded anchor, and turning it away because a
+  # background job has not run yet would make a responder outage an outage for
+  # the fleet. It is logged as an error because it means revocation is not
+  # actually being enforced for that CA.
+  defp ensure_not_revoked_by_responder(%{ocsp_status: "revoked"}, issuer, serial) do
+    refuse(issuer, serial)
+  end
+
+  defp ensure_not_revoked_by_responder(
+         %{ocsp_status: "good", ocsp_next_update: next_update},
+         issuer,
+         serial
+       ) do
+    if stale?(next_update) do
+      log_unenforced(issuer, serial, "cached OCSP answer has expired")
+    end
+
+    :ok
+  end
+
+  defp ensure_not_revoked_by_responder(_state, issuer, serial) do
+    log_unenforced(issuer, serial, "no cached OCSP answer")
+    :ok
+  end
+
+  defp refuse(issuer, serial) do
+    Logger.info("Refusing device certificate: revoked by its CA",
+      issuer: X509.describe_name(issuer),
+      cert_serial: serial
+    )
+
+    {:error, :certificate_revoked}
+  end
+
+  defp log_unenforced(issuer, serial, detail) do
+    Logger.error("Allowing device certificate without a revocation check: #{detail}",
+      issuer: X509.describe_name(issuer),
+      cert_serial: serial
+    )
+  end
+
+  defp stale?(nil), do: true
+  defp stale?(next_update), do: DateTime.compare(next_update, DateTime.utc_now()) != :gt
+
+  # A CA advertises where its revocation lists live in the certificates it
+  # issues, not in its own certificate, so a CA certificate names the list that
+  # would revoke the CA. The list covering devices is named only by the leaves,
+  # which is why the endpoint is learned here rather than at anchor upload.
+  #
+  # Asked about after the connect is already decided, so the answer lands for the
+  # next one rather than holding this device at the door waiting on a responder.
+  #
+  # Skipped where the CA publishes a list, which covers the whole fleet in one
+  # fetch and already answers for this certificate, and skipped again where the
+  # cached answer is still current. What is left is the gap the scheduled run
+  # cannot close on its own: a certificate nobody has asked about yet, because
+  # it belongs to a device connecting for the first time.
+  defp check_responder(%{crl_published?: true}, _issuer, _serial, _subject), do: :ok
+
+  defp check_responder(%{ocsp_next_update: next_update}, issuer, serial, subject) do
+    if is_nil(next_update) or stale?(next_update) do
+      Portal.Ocsp.Sync.enqueue_check(subject.account.id, issuer, serial)
+    end
+
+    :ok
+  end
+
+  # Every address the certificate carries is kept, grouped as the certificate
+  # groups them. A CA that partitions its revocations gives one certificate
+  # several distribution points, and reading only one of them would miss every
+  # revocation recorded in the others.
+  defp learn_revocation_endpoint(state, issuer, leaf, subject) do
+    crl_groups = leaf |> X509.crl_distribution_points() |> Enum.map(&order_by_scheme/1)
+    ocsp_urls = leaf |> X509.authority_info_access() |> Map.fetch!(:ocsp) |> order_by_scheme()
+
+    crl_groups
+    |> endpoint_rows(ocsp_urls)
+    |> Enum.reject(fn {point, _crl_urls, _ocsp_urls} -> point in state.known_points end)
+    |> Enum.each(fn {point, crl_urls, row_ocsp_urls} ->
+      enqueue_endpoint(issuer, point, crl_urls, row_ocsp_urls, subject)
+    end)
+
+    :ok
+  end
+
+  # Off the connect path. A certificate that partitions its list writes a row
+  # per partition, and every connect rediscovers the same rows, so this is a
+  # write that repeats forever and changes nothing after the first one.
+  #
+  # Losing a batch costs a scheduling round rather than a fetch: the next
+  # connect on that certificate rediscovers the endpoint and enqueues it again.
+  defp enqueue_endpoint(issuer, distribution_point, crl_urls, ocsp_urls, subject) do
+    Portal.Queue.enqueue(:revocation_endpoint_queue, %{
+      account_id: subject.account.id,
+      issuer: issuer,
+      distribution_point: distribution_point,
+      crl_urls: crl_urls,
+      ocsp_urls: ocsp_urls
+    })
+
+    :ok
+  catch
+    :exit, _reason -> :ok
+  end
+
+  # A certificate names one list per distribution point, so each becomes its own
+  # row and syncs on its own. The addresses within one are alternates for the
+  # same bytes, which is what lets a fetch stop at the first that answers.
+  #
+  # OCSP rides the first row only. It answers for the certificate rather than
+  # for a partition, so repeating it would ask the same question once per list.
+  defp endpoint_rows([], []), do: []
+
+  defp endpoint_rows([], [first | _] = ocsp_urls), do: [{first, [], ocsp_urls}]
+
+  defp endpoint_rows(crl_groups, ocsp_urls) do
+    crl_groups
+    |> Enum.with_index()
+    |> Enum.map(fn
+      {urls, 0} -> {List.first(urls), urls, ocsp_urls}
+      {urls, _index} -> {List.first(urls), urls, []}
+    end)
+  end
+
+  # HTTP first, since that is all the fetcher speaks. Anything else is kept
+  # rather than dropped, so a CA publishing only over ldap is reported as a
+  # scheme we cannot follow instead of looking like one that publishes nothing.
+  defp order_by_scheme(urls) do
+    Enum.sort_by(urls, &(not String.starts_with?(&1, ["http://", "https://"])))
+  end
+
+  defp cert_issuer(der) do
+    case X509.issuer(der) do
+      nil -> {:error, :malformed_cert_issuer}
+      issuer -> {:ok, issuer}
     end
   end
 
@@ -324,18 +528,16 @@ defmodule PortalAPI.Client.DeviceTrust do
   # Only the leaf is presented, so every certificate between it and the anchor
   # has to come from the account's uploaded anchors: admins may upload issuing
   # intermediates alongside (or instead of) roots.
-  defp chain_valid?(leaf_der, anchor_ders) do
-    Enum.any?(anchor_ders, fn anchor_der ->
-      leaf_der
-      |> candidate_chains(
-        anchor_der,
-        List.delete(anchor_ders, anchor_der),
-        [leaf_der],
-        @max_chain_depth
-      )
-      |> Enum.any?(fn chain ->
-        match?({:ok, _result}, :public_key.pkix_path_validation(anchor_der, chain, []))
-      end)
+  defp chains_to?(leaf_der, anchor_der, anchor_ders) do
+    leaf_der
+    |> candidate_chains(
+      anchor_der,
+      List.delete(anchor_ders, anchor_der),
+      [leaf_der],
+      @max_chain_depth
+    )
+    |> Enum.any?(fn chain ->
+      match?({:ok, _result}, :public_key.pkix_path_validation(anchor_der, chain, []))
     end)
   rescue
     _error -> false
@@ -563,32 +765,192 @@ defmodule PortalAPI.Client.DeviceTrust do
     alias Portal.Crypto.X509
     alias Portal.Safe
 
+    # A refused read leaves the connect with no facts rather than with false
+    # ones, which the caller treats the same way it treats a certificate no
+    # table has heard of.
+    @empty_state %{
+      revoked?: false,
+      crl_published?: false,
+      known_points: [],
+      ocsp_status: nil,
+      ocsp_next_update: nil,
+      device: nil,
+      matched_on: nil
+    }
+
     # One round trip: the join on the global feature-flag row makes the query
     # return no anchors at all when the flag is off, so the caller's gate
     # check and verification material come from the same query.
+    # Compared against true rather than taken as truthy: a scoped `exists?`
+    # returns the permission error itself when a read is refused, and an error
+    # tuple reading as "revoked" would lock out every device over something
+    # that is not a revocation at all.
+    #
+    # Everything the connect needs to decide about this certificate, in one
+    # round trip: whether a list revoked it, whether its issuer publishes a
+    # list we can actually fetch, what its responder last said, and which
+    # device row it belongs to. Read apart they also raced each other, so an
+    # endpoint appearing between the coverage check and the responder read
+    # could make the connect ignore an answer it had just decided to trust.
+    #
+    # The account is the base because it is the one row guaranteed to exist,
+    # which keeps the outer joins from dropping the result when a certificate
+    # is unknown to every one of these tables.
+    def attestation_state(issuer, serial, mdm_device_id, subject) do
+      actor_id = subject.actor.id
+
+      from(a in Portal.Account,
+        left_join: r in Portal.CrlRevocation,
+        on: r.account_id == a.id and r.issuer == ^issuer and r.serial == ^serial,
+        left_join: s in Portal.OcspStatus,
+        on: s.account_id == a.id and s.issuer == ^issuer and s.serial == ^serial,
+        left_join: d in Portal.Device,
+        on:
+          d.account_id == a.id and d.actor_id == ^actor_id and d.type == :client and
+            (fragment("? = ?", d.last_attested_mdm_device_id, ^mdm_device_id) or
+               (d.last_attested_cert_issuer == ^issuer and
+                  d.last_attested_cert_serial == ^serial)),
+        order_by: [
+          asc:
+            fragment(
+              "CASE WHEN ? = ? THEN 0 ELSE 1 END",
+              d.last_attested_mdm_device_id,
+              ^mdm_device_id
+            )
+        ],
+        limit: 1,
+        select: %{
+          revoked?: not is_nil(r.serial),
+          crl_published?:
+            fragment(
+              """
+              EXISTS (
+                SELECT 1 FROM revocation_endpoints e
+                WHERE e.account_id = ? AND e.issuer = ?
+                AND EXISTS (
+                  SELECT 1 FROM unnest(e.crl_urls) AS u
+                  WHERE u LIKE 'http://%' OR u LIKE 'https://%'
+                )
+              )
+              """,
+              a.id,
+              ^issuer
+            ),
+          known_points:
+            fragment(
+              """
+              ARRAY(
+                SELECT distribution_point FROM revocation_endpoints e
+                WHERE e.account_id = ? AND e.issuer = ?
+              )
+              """,
+              a.id,
+              ^issuer
+            ),
+          ocsp_status: s.status,
+          ocsp_next_update: s.next_update,
+          device: d
+        }
+      )
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> normalize_state(mdm_device_id)
+    end
+
+    # Unscoped with the account pinned explicitly rather than scoped to the
+    # subject: this is bookkeeping the connect happens to discover, and a client
+    # has no business holding write rights on its account's revocation settings
+    # just to record it.
+    #
+    # Inserted once per issuer and left alone afterwards, so a later connect
+    # never overwrites what the fetch job has since recorded, nor an address an
+    # administrator corrected by hand.
+    def put_revocation_endpoints(attrs_list) do
+      rows =
+        attrs_list
+        |> Enum.uniq_by(&{&1.account_id, &1.issuer, &1.distribution_point})
+        |> Enum.flat_map(&build_row/1)
+
+      case rows do
+        [] ->
+          0
+
+        rows ->
+          {count, _returned} =
+            Safe.unscoped()
+            |> Safe.insert_all(Portal.RevocationEndpoint, rows, on_conflict: :nothing)
+
+          count
+      end
+    end
+
+    # Validated before insert rather than after, so a certificate advertising an
+    # address too long to record leaves the endpoint unlearned instead of taking
+    # the rest of the batch down with it.
+    defp build_row(attrs) do
+      now = DateTime.utc_now()
+
+      changeset =
+        %Portal.RevocationEndpoint{}
+        |> Ecto.Changeset.change(Map.merge(attrs, %{inserted_at: now, updated_at: now}))
+        |> Portal.RevocationEndpoint.changeset()
+
+      case Ecto.Changeset.apply_action(changeset, :insert) do
+        {:ok, endpoint} -> [Map.take(endpoint, Portal.RevocationEndpoint.__schema__(:fields))]
+        {:error, _changeset} -> []
+      end
+    end
+
     def fetch_enabled_anchors(subject) do
       from(c in Portal.TrustAnchorCertificate,
         # The features table is global per-deployment state with no account_id.
         # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
         join: f in Portal.Features,
         on: f.feature == :device_trust and f.enabled == true,
-        select: c.pem
+        select: %{id: c.id, pem: c.pem}
       )
       |> Safe.scoped(subject)
       |> Safe.all()
       |> Enum.flat_map(&decode_anchor_pem/1)
-      |> Enum.uniq()
+      |> Enum.uniq_by(& &1.der)
     end
 
-    defp decode_anchor_pem(pem) do
+    # One uploaded anchor may hold several certificates, so each DER carries the
+    # row it came from.
+    defp decode_anchor_pem(%{id: id, pem: pem}) do
       case X509.pem_decode(pem) do
         {:ok, entries} ->
           entries
           |> Enum.filter(&X509.certificate_entry?/1)
-          |> Enum.map(fn {_type, der, _info} -> der end)
+          |> Enum.map(fn {_type, der, _info} -> %{id: id, der: der} end)
 
         {:error, _reason} ->
           []
+      end
+    end
+
+    # An outer join that matched nothing still fills the struct, with every
+    # field nil, so the primary key is what says whether there was a row.
+    defp normalize_state(%{device: %Portal.Device{id: id} = device} = state, mdm_device_id)
+         when not is_nil(id) do
+      Map.put(state, :matched_on, matched_on(device, mdm_device_id))
+    end
+
+    defp normalize_state(%{} = state, _mdm_device_id) do
+      state |> Map.put(:device, nil) |> Map.put(:matched_on, nil)
+    end
+
+    defp normalize_state(_other, _mdm_device_id), do: @empty_state
+
+    # The MDM device id is assigned by the MDM service rather than reported by
+    # the device, so it is the only identifier a device cannot choose for
+    # itself and the row it names wins. A certificate carrying none resolves by
+    # the certificate itself, which lasts exactly as long as the certificate.
+    defp matched_on(device, mdm_device_id) do
+      if not is_nil(mdm_device_id) and device.last_attested_mdm_device_id == mdm_device_id do
+        :mdm_device_id
+      else
+        :cert_identity
       end
     end
   end

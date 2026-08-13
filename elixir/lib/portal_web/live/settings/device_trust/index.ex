@@ -49,6 +49,82 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
       |> Safe.scoped(subject)
       |> Safe.one!()
     end
+
+    # Keyed on the issuer rather than on the anchor, so an endpoint is shown
+    # against whichever uploaded certificate bears that name.
+    def list_revocation_endpoints(issuers, subject) do
+      from(e in Portal.RevocationEndpoint, where: e.issuer in ^issuers)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    # Distinct serials rather than rows: a CA that partitions its list can hold
+    # the same serial in more than one partition, and the connect check reads
+    # their union.
+    def count_revocations(issuers, subject) do
+      from(r in Portal.CrlRevocation,
+        where: r.issuer in ^issuers,
+        group_by: r.issuer,
+        select: {r.issuer, count(r.serial, :distinct)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Map.new()
+    end
+
+    # One row per issuer for the whole table, so the list does not read an
+    # endpoint per anchor.
+    def revocation_health(issuers, subject) do
+      from(e in Portal.RevocationEndpoint,
+        where: e.issuer in ^issuers,
+        group_by: e.issuer,
+        select: {
+          e.issuer,
+          %{
+            disabled: fragment("bool_or(?)", e.is_disabled),
+            errored: fragment("bool_or(? IS NOT NULL)", e.errored_at),
+            error_message: fragment("max(coalesce(?, ?))", e.crl_error, e.ocsp_error)
+          }
+        }
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Map.new()
+    end
+
+    # Editing the anchor is the only way back: a disabled endpoint never fetches,
+    # so it can never notice that the CA has recovered.
+    def clear_revocation_errors(issuers, subject) do
+      now = DateTime.utc_now()
+
+      from(e in Portal.RevocationEndpoint, where: e.issuer in ^issuers)
+      |> update(
+        set: [
+          errored_at: nil,
+          is_disabled: false,
+          disabled_reason: nil,
+          crl_error: nil,
+          delta_error: nil,
+          ocsp_error: nil,
+          updated_at: ^now
+        ]
+      )
+      |> Safe.scoped(subject)
+      |> Safe.update_all([])
+    end
+
+    def count_revoked_statuses(issuers, subject) do
+      from(s in Portal.OcspStatus,
+        where: s.issuer in ^issuers,
+        where: s.status == "revoked",
+        group_by: s.issuer,
+        select: {s.issuer, count(s.serial)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Map.new()
+    end
+
   end
 
   def mount(_params, _session, socket) do
@@ -61,9 +137,12 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
         socket
         |> assign(page_title: "Device Trust")
         |> assign(trust_anchors: trust_anchors)
+        |> assign_revocation_health(trust_anchors)
         |> assign(selected_trust_anchor: nil)
         |> assign(form: nil, input_mode: :paste)
         |> assign(confirm_delete?: false)
+        |> assign(revocation: [])
+        |> assign(panel_tab: :overview, expanded_endpoint: nil)
         |> assign(device_trust_enabled?: device_trust_enabled?)
         |> allow_upload(:cert_file,
           accept: ~w(.pem .crt .cer .der .txt),
@@ -105,11 +184,15 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
     trust_anchor = Database.get_trust_anchor!(id, socket.assigns.subject)
 
     socket =
-      assign(socket,
+      socket
+      |> assign(
         selected_trust_anchor: trust_anchor,
         form: nil,
-        confirm_delete?: false
+        confirm_delete?: false,
+        panel_tab: :overview,
+        expanded_endpoint: nil
       )
+      |> assign_revocation(trust_anchor)
 
     {:noreply, socket}
   end
@@ -191,6 +274,7 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
                 <.trust_anchor_row
                   :for={trust_anchor <- @trust_anchors}
                   trust_anchor={trust_anchor}
+                  health={@revocation_health[trust_anchor.id]}
                   selected?={
                     !!@selected_trust_anchor && @selected_trust_anchor.id == trust_anchor.id
                   }
@@ -217,6 +301,9 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
           account={@account}
           trust_anchor={@selected_trust_anchor}
           confirm_delete?={@confirm_delete?}
+          revocation={@revocation}
+          panel_tab={@panel_tab}
+          expanded_endpoint={@expanded_endpoint}
         />
       </div>
 
@@ -310,8 +397,35 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
     """
   end
 
+  attr :health, :any, required: true
+
+  # An icon rather than a status column: an anchor with no revocation endpoint
+  # yet is not unhealthy, so the common case should say nothing at all. The
+  # detail lives one click away, on the panel's Revocation tab.
+  defp revocation_warning_icon(%{health: nil} = assigns) do
+    ~H"""
+    """
+  end
+
+  defp revocation_warning_icon(%{health: %{state: :disabled}} = assigns) do
+    ~H"""
+    <span title="Revocation is not being checked for at least one of this CA's addresses.">
+      <.icon name="ri-error-warning-fill" class="w-4 h-4 text-red-600 dark:text-red-400" />
+    </span>
+    """
+  end
+
+  defp revocation_warning_icon(assigns) do
+    ~H"""
+    <span title="Firezone is having trouble reaching at least one of this CA's addresses.">
+      <.icon name="ri-error-warning-fill" class="w-4 h-4 text-amber-500 dark:text-amber-400" />
+    </span>
+    """
+  end
+
   attr :trust_anchor, :any, required: true
   attr :selected?, :boolean, required: true
+  attr :health, :any, required: true
 
   defp trust_anchor_row(assigns) do
     ~H"""
@@ -325,7 +439,10 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
       ]}
     >
       <td class="px-6 py-3">
-        <div class="text-sm font-medium text-heading truncate">{@trust_anchor.name}</div>
+        <div class="flex items-center gap-1.5 min-w-0">
+          <div class="text-sm font-medium text-heading truncate">{@trust_anchor.name}</div>
+          <.revocation_warning_icon health={@health} />
+        </div>
         <div class="font-mono text-[10px] text-subtle mt-0.5 truncate">
           {@trust_anchor.id}
         </div>
@@ -342,9 +459,107 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
     """
   end
 
+  attr :label, :string, required: true
+  attr :tab, :atom, required: true
+  attr :active, :atom, required: true
+  attr :warn, :boolean, default: false
+
+  defp panel_tab(assigns) do
+    ~H"""
+    <button
+      role="tab"
+      aria-selected={@active == @tab}
+      phx-click="switch_anchor_tab"
+      phx-value-tab={@tab}
+      class={[
+        "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
+        if(@active == @tab,
+          do: "border-brand text-brand",
+          else: "border-transparent text-body hover:text-heading"
+        )
+      ]}
+    >
+      {@label}
+      <.icon
+        :if={@warn}
+        name="ri-error-warning-fill"
+        class="w-3.5 h-3.5 text-amber-500 dark:text-amber-400"
+      />
+    </button>
+    """
+  end
+
+  attr :endpoint, :any, required: true
+
+  defp endpoint_status_badge(assigns) do
+    ~H"""
+    <%= cond do %>
+      <% @endpoint.is_disabled -> %>
+        <.status_badge style={:danger} dot={false}>Not checked</.status_badge>
+      <% @endpoint.errored_at -> %>
+        <.status_badge style={:warning} dot={false}>Failing</.status_badge>
+      <% checked_at(@endpoint) -> %>
+        <.status_badge style={:success} dot={false}>OK</.status_badge>
+      <% true -> %>
+        <.status_badge style={:neutral} dot={false}>Pending</.status_badge>
+    <% end %>
+    """
+  end
+
+  attr :entry, :any, required: true
+
+  defp endpoint_details(assigns) do
+    ~H"""
+    <div class="space-y-3">
+      <p
+        :if={@entry.endpoint.is_disabled}
+        class="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400"
+      >
+        <.icon name="ri-forbid-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <span>
+          Firezone has stopped checking this address, so certificates this CA has
+          revoked are still let on. Edit and Save this trust anchor to start
+          checking again.
+        </span>
+      </p>
+
+      <p
+        :if={!@entry.endpoint.is_disabled && @entry.endpoint.errored_at}
+        class="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400"
+      >
+        <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <span>
+          Firezone is retrying. Checking stops if this keeps failing for 24 hours.
+        </span>
+      </p>
+
+      <div :for={group <- endpoint_detail_groups(@entry)}>
+        <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-1.5">
+          {group.title}
+        </p>
+        <dl class="grid grid-cols-2 gap-x-6 gap-y-1.5">
+          <div :for={{label, value} <- group.rows} class="min-w-0">
+            <dt class="text-[10px] text-subtle">{label}</dt>
+            <dd class={[
+              "text-xs break-all",
+              label == "Error" && "text-danger",
+              label != "Error" && "text-heading"
+            ]}>
+              {value}
+            </dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+    """
+  end
+
   attr :account, :any, required: true
   attr :trust_anchor, :any, required: true
   attr :confirm_delete?, :boolean, required: true
+  attr :revocation, :list, required: true
+  attr :panel_tab, :atom, required: true
+  attr :expanded_endpoint, :string, default: nil
 
   defp trust_anchor_show_panel(assigns) do
     certificate_details = Enum.map(assigns.trust_anchor.certificates, &describe_certificate/1)
@@ -370,8 +585,26 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
         </div>
       </div>
 
+      <div
+        role="tablist"
+        class="flex items-end gap-0 px-5 border-b border-border bg-raised shrink-0"
+      >
+        <.panel_tab label="Overview" tab={:overview} active={@panel_tab} />
+        <.panel_tab
+          label={"Certificates (#{length(@certificate_details)})"}
+          tab={:certificates}
+          active={@panel_tab}
+        />
+        <.panel_tab
+          label={"Revocation (#{length(@revocation)})"}
+          tab={:revocation}
+          active={@panel_tab}
+          warn={Enum.any?(@revocation, &failing?(&1.endpoint))}
+        />
+      </div>
+
       <div class="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-        <section>
+        <section :if={@panel_tab == :overview}>
           <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
             Details
           </h3>
@@ -382,15 +615,75 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
                 {PortalWeb.Format.short_date(@trust_anchor.inserted_at)}
               </dd>
             </div>
+            <div>
+              <dt class="text-[10px] text-subtle mb-0.5">Certificates</dt>
+              <dd class="text-xs text-body">{cert_count_label(@trust_anchor.certificates)}</dd>
+            </div>
           </dl>
         </section>
 
-        <div class="border-t border-border"></div>
+        <section :if={@panel_tab == :revocation}>
+          <p :if={@revocation == []} class="text-xs text-subtle">
+            No revocation endpoint known yet. A CA publishes its address in the certificates it
+            issues, so this fills in the first time a device connects with one.
+          </p>
 
-        <section>
-          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
-            Certificates ({length(@certificate_details)})
-          </h3>
+          <table :if={@revocation != []} class="w-full text-xs">
+            <thead>
+              <tr class="border-b border-border text-subtle">
+                <th class="text-left px-2 py-2 font-medium">Certificate authority</th>
+                <th class="text-left px-2 py-2 font-medium w-20">Checked via</th>
+                <th class="text-left px-2 py-2 font-medium w-24">Status</th>
+                <th class="w-6"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for entry <- @revocation do %>
+                <tr
+                  phx-click="toggle_revocation_endpoint"
+                  phx-keydown="toggle_revocation_endpoint"
+                  phx-key="Enter"
+                  phx-value-id={endpoint_key(entry.endpoint)}
+                  tabindex="0"
+                  class="border-b border-border hover:bg-raised cursor-pointer focus:outline-none focus:bg-raised"
+                >
+                  <td class="px-2 py-2 text-heading">
+                    <span class="block truncate">
+                      {X509.describe_name(entry.endpoint.issuer) || "(unnamed issuer)"}
+                    </span>
+                    <span class="block font-mono text-[10px] text-subtle truncate">
+                      {entry.endpoint.distribution_point}
+                    </span>
+                  </td>
+                  <td class="px-2 py-2 text-body">{checked_via(entry.endpoint)}</td>
+                  <td class="px-2 py-2">
+                    <.endpoint_status_badge endpoint={entry.endpoint} />
+                  </td>
+                  <td class="px-2 py-2 text-subtle">
+                    <.icon
+                      name={
+                        if @expanded_endpoint == endpoint_key(entry.endpoint),
+                          do: "ri-arrow-up-s-line",
+                          else: "ri-arrow-down-s-line"
+                      }
+                      class="w-4 h-4"
+                    />
+                  </td>
+                </tr>
+                <tr
+                  :if={@expanded_endpoint == endpoint_key(entry.endpoint)}
+                  class="border-b border-border bg-raised"
+                >
+                  <td colspan="4" class="px-3 py-3">
+                    <.endpoint_details entry={entry} />
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </section>
+
+        <section :if={@panel_tab == :certificates}>
           <div class="space-y-3">
             <div
               :for={detail <- @certificate_details}
@@ -600,6 +893,16 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
     """
   end
 
+  def handle_event("switch_anchor_tab", %{"tab" => tab}, socket)
+      when tab in ~w[overview certificates revocation] do
+    {:noreply, assign(socket, panel_tab: String.to_existing_atom(tab))}
+  end
+
+  def handle_event("toggle_revocation_endpoint", %{"id" => id}, socket) do
+    expanded = if socket.assigns.expanded_endpoint == id, do: nil, else: id
+    {:noreply, assign(socket, expanded_endpoint: expanded)}
+  end
+
   def handle_event("close_panel", _params, socket) do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/device_trust")}
   end
@@ -680,10 +983,14 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
       build_edit_changeset(socket.assigns.selected_trust_anchor, attrs, socket.assigns.subject)
 
     case Safe.scoped(changeset, socket.assigns.subject) |> Safe.update() do
-      {:ok, _trust_anchor} ->
+      {:ok, trust_anchor} ->
+        clear_revocation_errors(trust_anchor, socket.assigns.subject)
+        trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
+
         socket =
           socket
-          |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
+          |> assign(trust_anchors: trust_anchors)
+          |> assign_revocation_health(trust_anchors)
           |> put_flash(:success, "Trust anchor updated successfully")
           |> push_patch(to: ~p"/#{socket.assigns.account}/settings/device_trust")
 
@@ -841,6 +1148,192 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
     "#{count} certificate#{if count == 1, do: "", else: "s"}"
   end
 
+  # A CA advertises where it publishes in the certificates it issues, not in its
+  # own, so nothing is known here until a device presents one. Until then the
+  # panel says so rather than implying the CA publishes nothing.
+  # Saving the anchor is what an admin is told to do to start checking again, so
+  # it clears the failure state whether or not the certificates changed.
+  defp clear_revocation_errors(trust_anchor, subject) do
+    trust_anchor = Safe.preload(trust_anchor, :certificates)
+
+    case anchor_issuers(trust_anchor) do
+      [] -> :ok
+      issuers -> Database.clear_revocation_errors(issuers, subject)
+    end
+  end
+
+  defp anchor_issuers(trust_anchor) do
+    trust_anchor.certificates
+    |> Enum.flat_map(fn certificate ->
+      case X509.pem_decode(certificate.pem) do
+        {:ok, [{_type, der, _headers} | _rest]} -> [X509.subject(der)]
+        _other -> []
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  # Every anchor's issuers in one lookup, keyed by anchor, so the table reads
+  # the endpoints once rather than once per row.
+  defp assign_revocation_health(socket, trust_anchors) do
+    issuers = Enum.flat_map(trust_anchors, &anchor_issuers/1) |> Enum.uniq()
+
+    by_issuer =
+      if issuers == [] do
+        %{}
+      else
+        Database.revocation_health(issuers, socket.assigns.subject)
+      end
+
+    health =
+      Map.new(trust_anchors, fn trust_anchor ->
+        {trust_anchor.id,
+         trust_anchor |> anchor_issuers() |> Enum.map(&Map.get(by_issuer, &1)) |> worst_health()}
+      end)
+
+    assign(socket, revocation_health: health)
+  end
+
+  # An anchor is only as healthy as its unhealthiest issuer: one CA that cannot
+  # be reached is one CA whose revocations are not being seen.
+  defp worst_health(entries) do
+    entries = Enum.reject(entries, &is_nil/1)
+
+    cond do
+      Enum.any?(entries, & &1.disabled) -> Enum.find(entries, & &1.disabled) |> Map.put(:state, :disabled)
+      Enum.any?(entries, & &1.errored) -> Enum.find(entries, & &1.errored) |> Map.put(:state, :errored)
+      true -> nil
+    end
+  end
+
+  defp assign_revocation(socket, trust_anchor) do
+    subject = socket.assigns.subject
+
+    issuers = anchor_issuers(trust_anchor)
+
+    endpoints =
+      if issuers == [] do
+        []
+      else
+        counts = %{
+          crl: Database.count_revocations(issuers, subject),
+          ocsp: Database.count_revoked_statuses(issuers, subject)
+        }
+
+        issuers
+        |> Database.list_revocation_endpoints(subject)
+        |> Enum.map(&with_revoked_count(&1, counts))
+        |> Enum.sort_by(&X509.describe_name(&1.endpoint.issuer))
+      end
+
+    assign(socket, revocation: endpoints)
+  end
+
+  defp with_revoked_count(endpoint, counts) do
+    by_issuer = if checks_via_list?(endpoint), do: counts.crl, else: counts.ocsp
+
+    %{endpoint: endpoint, revoked_count: Map.get(by_issuer, endpoint.issuer, 0)}
+  end
+
+  # A list that we cannot fetch, such as an ldap:// distribution point, is not
+  # coverage, so those issuers are checked through their responder instead.
+  defp checks_via_list?(endpoint) do
+    Enum.any?(endpoint.crl_urls, &String.starts_with?(&1, ["http://", "https://"]))
+  end
+
+  defp checked_via(endpoint) do
+    if checks_via_list?(endpoint), do: "CRL", else: "OCSP"
+  end
+
+  # The primary key is the issuer bytes and the address, and the issuer is DER
+  # rather than text, so it is hashed to something that survives a DOM id.
+  defp endpoint_key(endpoint) do
+    :crypto.hash(:sha256, endpoint.issuer <> endpoint.distribution_point)
+    |> Base.url_encode64(padding: false)
+  end
+
+  defp failing?(endpoint), do: endpoint.is_disabled or not is_nil(endpoint.errored_at)
+
+  defp checked_at(endpoint), do: endpoint.crl_fetched_at || endpoint.ocsp_checked_at
+
+  # Everything recorded about one endpoint, grouped the way the fetching works:
+  # the complete list, the delta published on top of it, and the responder. A
+  # CA using only one of the three leaves the other groups out rather than
+  # showing a column of blanks.
+  defp endpoint_detail_groups(%{endpoint: endpoint, revoked_count: revoked_count}) do
+    [
+      %{title: "Endpoint", rows: endpoint_rows(endpoint, revoked_count)},
+      %{title: "Revocation list", rows: crl_rows(endpoint)},
+      %{title: "Delta list", rows: delta_rows(endpoint)},
+      %{title: "Responder (OCSP)", rows: ocsp_rows(endpoint)}
+    ]
+    |> Enum.reject(&(&1.rows == []))
+  end
+
+  defp endpoint_rows(endpoint, revoked_count) do
+    [
+      {"Certificate authority", X509.describe_name(endpoint.issuer)},
+      {"Distribution point", endpoint.distribution_point},
+      {"Checked via", checked_via(endpoint)},
+      {"Revoked certificates", to_string(revoked_count)},
+      {"List addresses", format_urls(endpoint.crl_urls)},
+      {"Responder addresses", format_urls(endpoint.ocsp_urls)},
+      {"Failing since", format_datetime(endpoint.errored_at)},
+      {"Stopped because", endpoint.is_disabled && endpoint.disabled_reason},
+      {"First seen", format_datetime(endpoint.inserted_at)}
+    ]
+    |> drop_blanks()
+  end
+
+  defp crl_rows(endpoint) do
+    if endpoint.crl_urls == [] do
+      []
+    else
+      [
+        {"Last fetched", format_datetime(endpoint.crl_fetched_at) || "Never"},
+        {"Published", format_datetime(endpoint.crl_this_update)},
+        {"Expires", format_datetime(endpoint.crl_next_update)},
+        {"CRL number", endpoint.crl_number && to_string(endpoint.crl_number)},
+        {"Error", endpoint.crl_error}
+      ]
+      |> drop_blanks()
+    end
+  end
+
+  defp delta_rows(endpoint) do
+    [
+      {"Last fetched", format_datetime(endpoint.delta_fetched_at)},
+      {"Published", format_datetime(endpoint.delta_this_update)},
+      {"Expires", format_datetime(endpoint.delta_next_update)},
+      {"Delta number", endpoint.delta_number && to_string(endpoint.delta_number)},
+      {"Error", endpoint.delta_error}
+    ]
+    |> drop_blanks()
+  end
+
+  defp ocsp_rows(endpoint) do
+    if endpoint.ocsp_urls == [] do
+      []
+    else
+      [
+        {"Last checked", format_datetime(endpoint.ocsp_checked_at) || "Never"},
+        {"Error", endpoint.ocsp_error}
+      ]
+      |> drop_blanks()
+    end
+  end
+
+  defp format_urls([]), do: nil
+  defp format_urls(urls), do: Enum.join(urls, "\n")
+
+  defp format_datetime(nil), do: nil
+  defp format_datetime(datetime), do: PortalWeb.Format.short_datetime(datetime)
+
+  defp drop_blanks(rows) do
+    Enum.reject(rows, fn {_label, value} -> value in [nil, "", false] end)
+  end
+
   defp describe_certificate(certificate) do
     with {:ok, [{_type, der, _headers} | _rest]} <- X509.pem_decode(certificate.pem),
          {:ok, otp_cert} <- X509.decode_der_certificate(der) do
@@ -866,7 +1359,7 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
         subject_key_identifier: X509.subject_key_identifier(otp_cert),
         authority_key_identifier: X509.authority_key_identifier(otp_cert),
         subject_alt_names: X509.subject_alt_names(otp_cert),
-        crl_distribution_points: X509.crl_distribution_points(otp_cert),
+        crl_distribution_points: otp_cert |> X509.crl_distribution_points() |> List.flatten(),
         ocsp_urls: aia.ocsp,
         ca_issuer_urls: aia.ca_issuers
       }

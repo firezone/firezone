@@ -182,6 +182,7 @@ config :portal, Portal.ClockDriftAlarm, enabled: false
 config :portal, :client_session_queue, enabled: false
 config :portal, :gateway_session_queue, enabled: false
 config :portal, :policy_authorization_queue, enabled: false
+config :portal, :revocation_endpoint_queue, enabled: false
 
 config :portal, Portal.ComponentVersions,
   fetch_from_url: false,
@@ -201,6 +202,18 @@ config :portal, Portal.Google.APIClient,
   req_opts: [
     retry: false,
     plug: {Req.Test, Portal.Google.APIClient}
+  ]
+
+config :portal, Portal.Crl.Sync,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, Portal.Crl.Sync}
+  ]
+
+config :portal, Portal.Ocsp.Sync,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, Portal.Ocsp.Sync}
   ]
 
 config :portal, Portal.TokenCache, enabled: false
