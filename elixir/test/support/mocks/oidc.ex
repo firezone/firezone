@@ -155,11 +155,19 @@ defmodule PortalWeb.Mocks.OIDC do
   end
 
   @doc """
+  Overrides the JWKS returned by the mock provider for the current test.
+  """
+  def set_jwks_response(jwks) do
+    Process.put(:oidc_mock_jwks_response, jwks)
+  end
+
+  @doc """
   Clears any custom token or userinfo responses.
   """
   def clear_custom_responses do
     Process.delete(:oidc_mock_token_response)
     Process.delete(:oidc_mock_userinfo_response)
+    Process.delete(:oidc_mock_jwks_response)
   end
 
   defp handle_request(conn, test_pid, endpoint) do
@@ -172,7 +180,8 @@ defmodule PortalWeb.Mocks.OIDC do
         Req.Test.json(conn, discovery_document(endpoint))
 
       String.ends_with?(conn.request_path, "/.well-known/jwks.json") ->
-        Req.Test.json(conn, %{"keys" => [jwks()]})
+        jwks = get_from_test_process(test_pid, :oidc_mock_jwks_response) || jwks()
+        Req.Test.json(conn, %{"keys" => [jwks]})
 
       String.ends_with?(conn.request_path, "/oauth/token") ->
         handle_token_request(conn, test_pid, endpoint)
@@ -388,7 +397,10 @@ defmodule PortalWeb.Mocks.OIDC do
     {_alg, token} =
       jwks()
       |> JOSE.JWK.from()
-      |> JOSE.JWS.sign(JSON.encode!(claims), %{"alg" => "RS256"})
+      |> JOSE.JWS.sign(JSON.encode!(claims), %{
+        "alg" => "RS256",
+        "kid" => jwks()["kid"]
+      })
       |> JOSE.JWS.compact()
 
     token
@@ -406,6 +418,7 @@ defmodule PortalWeb.Mocks.OIDC do
       "e" => "AQAB",
       "kid" => "example@firezone.dev",
       "kty" => "RSA",
+      "issuer" => "https://login.microsoftonline.com/{tenantid}/v2.0",
       "n" =>
         "qlKll8no4lPYXNSuTTnacpFHiXwPOv_htCYvIXmiR7CWhiiOHQqj7KWXIW7TGxyoLVIyeRM4mwv" <>
           "kLI-UgsSMYdEKTT0j7Ydjrr0zCunPu5Gxr2yOmcRaszAzGxJL5DwpA0V40RqMlm5OuwdqS4To" <>

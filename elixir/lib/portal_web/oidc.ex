@@ -11,6 +11,16 @@ defmodule PortalWeb.OIDC do
   require Logger
 
   @client_assertion_type "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+  @entra_organizations_discovery_document_uri "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
+  @entra_organizations_admin_consent_endpoint "https://login.microsoftonline.com/organizations/v2.0/adminconsent"
+  @entra_issuer_prefix "https://login.microsoftonline.com/"
+  @entra_issuer_suffix "/v2.0"
+  @entra_setup_admin_role_template_ids MapSet.new([
+                                         # Global Administrator
+                                         "62e90394-69f5-4237-9190-012177145e10",
+                                         # Privileged Role Administrator
+                                         "e8611ab8-c189-46e8-94e1-60213ab1f814"
+                                       ])
 
   # Workaround for an OTP `ssl` bug: the TLS 1.3 client aborts the handshake
   # against servers that send their middlebox-compatibility ChangeCipherSpec
@@ -177,14 +187,18 @@ defmodule PortalWeb.OIDC do
   Returns {:ok, tokens} or {:error, reason}.
   """
   def exchange_code_with_config(config, code, verifier) do
-    params = %{
-      grant_type: "authorization_code",
-      code: code,
-      code_verifier: verifier,
-      redirect_uri: callback_url()
-    }
+    with {:ok, credential} <- verification_client_credential(config) do
+      params =
+        %{
+          grant_type: "authorization_code",
+          code: code,
+          code_verifier: verifier,
+          redirect_uri: callback_url()
+        }
+        |> Map.merge(credential)
 
-    OpenIDConnect.fetch_tokens(config, params)
+      OpenIDConnect.fetch_tokens(config, params)
+    end
   end
 
   @doc """
@@ -252,8 +266,8 @@ defmodule PortalWeb.OIDC do
 
   Provider types:
   - "google", "okta", "oidc" — OIDC authorization code + PKCE flow
-  - "entra" — Entra auth_provider admin consent flow
-  - "entra_directory_sync" — Entra directory_sync admin consent flow
+  - "entra" — Entra auth_provider admin consent + silent authorization code/PKCE proof
+  - "entra_directory_sync" — Entra directory_sync admin consent + user-bound PKCE proof
 
   Options:
   - :okta_domain - Required for Okta providers
@@ -261,8 +275,20 @@ defmodule PortalWeb.OIDC do
   - :client_secret - Required for Okta and generic OIDC providers
   - :discovery_document_uri - Required for generic OIDC providers
   """
+  def setup_verification("entra", opts) do
+    config =
+      Portal.Config.fetch_env!(:portal, Portal.Entra.AuthProvider)
+      |> Keyword.merge(opts)
+      |> entra_verification_config("openid email profile", "openid email profile")
+
+    {:ok, %{config: config}}
+  end
+
   def setup_verification("entra_directory_sync", _opts) do
-    config = Portal.Config.fetch_env!(:portal, Portal.Entra.APIClient) |> Enum.into(%{})
+    config =
+      Portal.Config.fetch_env!(:portal, Portal.Entra.APIClient)
+      |> entra_verification_config("openid profile", "https://graph.microsoft.com/.default")
+
     {:ok, %{config: config}}
   end
 
@@ -311,8 +337,10 @@ defmodule PortalWeb.OIDC do
   end
 
   @doc """
-  Builds the IdP URI for the verification flow. For OIDC types this is an
-  authorization URI with PKCE; for Entra types it is an admin consent URI.
+  Builds the IdP URI for the verification flow. Google, Okta, and generic OIDC
+  start an authorization code flow with PKCE. Entra starts with tenant-wide
+  admin consent. Both Entra flows follow it with a tenant-specific PKCE identity
+  proof that binds the setup to the signed-in user's immutable tenant and object IDs.
   The state_token (from sign_verification_state/2) is passed through the IdP unchanged.
   Accepts types: "google", "okta", "oidc", "entra", "entra_directory_sync".
   Returns {:ok, uri} or {:error, reason}.
@@ -335,22 +363,62 @@ defmodule PortalWeb.OIDC do
     end
   end
 
-  def build_verification_uri("entra", config, _verifier, state_token) do
-    build_entra_adminconsent_uri(config, state_token, "openid email profile")
-  end
+  def build_verification_uri(type, config, _verifier, state_token)
+      when type in ["entra", "entra_directory_sync"] do
+    params = %{
+      client_id: config[:client_id],
+      redirect_uri: callback_url(),
+      scope: config[:admin_consent_scope],
+      state: state_token
+    }
 
-  def build_verification_uri("entra_directory_sync", config, _verifier, state_token) do
-    build_entra_adminconsent_uri(
-      config,
-      state_token,
-      "https://graph.microsoft.com/.default"
-    )
+    {:ok, @entra_organizations_admin_consent_endpoint <> "?" <> URI.encode_query(params)}
   end
 
   def build_verification_uri(type, _config, _verifier, _state_token) do
     Logger.error("Unknown verification type", type: type)
     {:error, :unknown_verification_type}
   end
+
+  @doc """
+  Builds a tenant-specific Entra authorization-code request after admin consent.
+  The initial request is silent so the Microsoft session created by admin consent
+  can be reused without showing a second account picker. Set `prompt: nil` for the
+  interactive fallback when Entra reports that silent SSO is unavailable.
+  """
+  def build_entra_tenant_authorization_uri(
+        config,
+        tenant_id,
+        verifier,
+        state_token,
+        opts \\ []
+      ) do
+    with {:ok, tenant_id} <- Ecto.UUID.cast(tenant_id) do
+      challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
+
+      params = %{
+        client_id: config[:client_id],
+        redirect_uri: callback_url(),
+        response_type: "code",
+        response_mode: "query",
+        scope: config[:scope],
+        state: state_token,
+        nonce: entra_verification_nonce(verifier),
+        code_challenge_method: "S256",
+        code_challenge: challenge
+      }
+      |> maybe_put_prompt(Keyword.get(opts, :prompt, "none"))
+
+      {:ok,
+       @entra_issuer_prefix <>
+         tenant_id <> "/oauth2/v2.0/authorize?" <> URI.encode_query(params)}
+    else
+      _ -> {:error, :invalid_entra_tenant}
+    end
+  end
+
+  defp maybe_put_prompt(params, nil), do: params
+  defp maybe_put_prompt(params, prompt), do: Map.put(params, :prompt, prompt)
 
   @doc """
   Returns the OIDC callback URL. Public so controllers can use it without
@@ -366,6 +434,63 @@ defmodule PortalWeb.OIDC do
     with {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
          {:ok, claims} <- verify_token_with_config(config, tokens["id_token"]) do
       {:ok, claims, fetch_userinfo_with_config(config, tokens["access_token"])}
+    end
+  end
+
+  @doc """
+  Exchanges an Entra verification authorization code and returns the user identity
+  from the cryptographically verified ID token after requiring it to match the
+  tenant selected by the preceding admin-consent callback.
+  """
+  def verify_entra_callback(config, code, verifier, expected_tenant_id) do
+    with {:ok, expected_tenant_id} <- normalize_entra_tenant_id(expected_tenant_id),
+         {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
+         id_token when is_binary(id_token) <- tokens["id_token"],
+         {:ok, claims} <- verify_token_with_config(config, id_token),
+         {:ok, tenant_id, issuer} <- verify_entra_tenant_claims(claims),
+         {:ok, principal_id, role_ids} <- verify_entra_principal_claims(claims),
+         :ok <- verify_entra_tenant_match(tenant_id, expected_tenant_id),
+         :ok <- verify_entra_signing_key(config, id_token, issuer),
+         :ok <- verify_entra_nonce(claims, verifier) do
+      {:ok,
+       %{
+         tenant_id: tenant_id,
+         issuer: issuer,
+         principal_id: principal_id,
+         role_ids: role_ids
+       }}
+    else
+      nil -> {:error, {:invalid_entra_id_token, :missing_id_token}}
+      error -> error
+    end
+  end
+
+  @doc """
+  Validates and normalizes a Microsoft Entra tenant ID as a UUID.
+  """
+  def normalize_entra_tenant_id(tenant_id) do
+    case Ecto.UUID.cast(tenant_id) do
+      {:ok, tenant_id} -> {:ok, tenant_id}
+      :error -> {:error, :invalid_entra_tenant}
+    end
+  end
+
+  @doc """
+  Returns whether the verified Entra identity has a tenant-wide role authorized
+  to approve Firezone's setup. Role IDs must come from a signature-verified token.
+  """
+  def entra_setup_admin?(role_ids) when is_list(role_ids) do
+    Enum.any?(role_ids, &MapSet.member?(@entra_setup_admin_role_template_ids, &1))
+  end
+
+  def entra_setup_admin?(_role_ids), do: false
+
+  defp verify_entra_tenant_match(tenant_id, expected_tenant_id) do
+    if byte_size(tenant_id) == byte_size(expected_tenant_id) and
+         Plug.Crypto.secure_compare(tenant_id, expected_tenant_id) do
+      :ok
+    else
+      {:error, {:invalid_entra_id_token, :tenant_mismatch}}
     end
   end
 
@@ -399,7 +524,7 @@ defmodule PortalWeb.OIDC do
 
   defp callback_url(_provider), do: callback_url()
 
-  # TODO: This can be refactored to reduce duplication with config_for_provider/1
+  # This can be refactored to reduce duplication with config_for_provider/1.
 
   defp verification_config_for_type("google", opts) do
     Application.fetch_env!(:portal, Portal.Google.AuthProvider)
@@ -427,15 +552,119 @@ defmodule PortalWeb.OIDC do
     |> Enum.into(%{redirect_uri: callback_url()})
   end
 
-  defp build_entra_adminconsent_uri(config, state, scope) do
-    params = %{
-      client_id: config[:client_id] || config["client_id"],
-      state: state,
+  defp entra_verification_config(config, scope, admin_consent_scope) do
+    config
+    |> Keyword.put(:discovery_document_uri, @entra_organizations_discovery_document_uri)
+    |> Keyword.put(:response_type, "code")
+    |> Keyword.put(:scope, scope)
+    |> Keyword.put(:admin_consent_scope, admin_consent_scope)
+    |> Enum.into(%{
       redirect_uri: callback_url(),
-      scope: scope
-    }
-
-    {:ok,
-     "https://login.microsoftonline.com/organizations/v2.0/adminconsent?#{URI.encode_query(params)}"}
+      req_opts: @discovery_req_opts,
+      verification_client_auth: :entra
+    })
   end
+
+  defp verification_client_credential(%{verification_client_auth: :entra} = config) do
+    case config[:client_secret] do
+      secret when is_binary(secret) and secret != "" -> {:ok, %{}}
+      _ -> federated_credential()
+    end
+  end
+
+  defp verification_client_credential(_config), do: {:ok, %{}}
+
+  defp verify_entra_signing_key(config, id_token, issuer) do
+    req_opts = Map.get(config, :req_opts, [])
+
+    with {:ok, document} <-
+           OpenIDConnect.Document.fetch_document(config.discovery_document_uri, req_opts),
+         {:ok, algorithm, key_id} <- token_signing_key(id_token),
+         true <- algorithm in List.wrap(document.raw["id_token_signing_alg_values_supported"]),
+         {_modules, %{"keys" => signing_keys}} <- JOSE.JWK.to_map(document.jwks),
+         true <-
+           Enum.any?(signing_keys, fn signing_key ->
+             signing_key["kid"] == key_id and
+               entra_signing_key_issuer_matches?(signing_key["issuer"], issuer) and
+               valid_signature?(signing_key, algorithm, id_token)
+           end) do
+      :ok
+    else
+      _ -> {:error, {:invalid_entra_id_token, :invalid_signing_key}}
+    end
+  end
+
+  defp token_signing_key(id_token) do
+    with protected when is_binary(protected) <- JOSE.JWS.peek_protected(id_token),
+         {:ok, %{"alg" => algorithm, "kid" => key_id}} <- JSON.decode(protected),
+         true <- is_binary(algorithm) and is_binary(key_id) do
+      {:ok, algorithm, key_id}
+    else
+      _ -> {:error, :invalid_token_header}
+    end
+  rescue
+    _ -> {:error, :invalid_token_header}
+  end
+
+  defp entra_signing_key_issuer_matches?(key_issuer, issuer) when is_binary(key_issuer) do
+    key_issuer == issuer or
+      key_issuer == @entra_issuer_prefix <> "{tenantid}" <> @entra_issuer_suffix
+  end
+
+  defp entra_signing_key_issuer_matches?(_key_issuer, _issuer), do: false
+
+  defp valid_signature?(signing_key, algorithm, id_token) do
+    case signing_key |> JOSE.JWK.from() |> JOSE.JWS.verify_strict([algorithm], id_token) do
+      {true, _claims, _jws} -> true
+      _ -> false
+    end
+  rescue
+    _ -> false
+  end
+
+  defp verify_entra_nonce(%{"nonce" => nonce}, verifier) when is_binary(nonce) do
+    expected_nonce = entra_verification_nonce(verifier)
+
+    if byte_size(nonce) == byte_size(expected_nonce) and
+         Plug.Crypto.secure_compare(nonce, expected_nonce) do
+      :ok
+    else
+      {:error, {:invalid_entra_id_token, :invalid_nonce}}
+    end
+  end
+
+  defp verify_entra_nonce(_claims, _verifier),
+    do: {:error, {:invalid_entra_id_token, :missing_nonce}}
+
+  defp entra_verification_nonce(verifier) do
+    :crypto.hash(:sha256, "entra-verification-nonce:" <> verifier)
+    |> Base.url_encode64(padding: false)
+  end
+
+  defp verify_entra_tenant_claims(%{"tid" => tenant_id, "iss" => issuer})
+       when is_binary(tenant_id) and is_binary(issuer) do
+    with {:ok, normalized_tenant_id} <- Ecto.UUID.cast(tenant_id),
+         expected_issuer = @entra_issuer_prefix <> normalized_tenant_id <> @entra_issuer_suffix,
+         true <- issuer == expected_issuer do
+      {:ok, normalized_tenant_id, expected_issuer}
+    else
+      _ -> {:error, {:invalid_entra_id_token, :invalid_tenant}}
+    end
+  end
+
+  defp verify_entra_tenant_claims(_claims),
+    do: {:error, {:invalid_entra_id_token, :missing_tenant}}
+
+  defp verify_entra_principal_claims(%{"oid" => principal_id} = claims)
+       when is_binary(principal_id) do
+    with {:ok, principal_id} <- Ecto.UUID.cast(principal_id),
+         role_ids when is_list(role_ids) <- Map.get(claims, "wids", []) do
+      {:ok, principal_id, role_ids}
+    else
+      _ -> {:error, {:invalid_entra_id_token, :invalid_principal}}
+    end
+  end
+
+  defp verify_entra_principal_claims(_claims),
+    do: {:error, {:invalid_entra_id_token, :missing_principal}}
 end

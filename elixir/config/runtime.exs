@@ -124,6 +124,8 @@ if config_env() == :prod do
   # When ENTRA_OIDC_CLIENT_SECRET is unset, authorization-code redemption
   # authenticates with a token-exchange assertion from the portal's managed
   # identity. The optional secret supports dev and migration environments.
+  # The Entra app registration must set groupMembershipClaims to DirectoryRole
+  # so setup tokens include the signed `wids` claim used for the admin check.
   config :portal, Portal.Entra.AuthProvider,
     client_id: env_var_to_config!(:entra_oidc_client_id),
     client_secret: env_var_to_config!(:entra_oidc_client_secret)
@@ -132,6 +134,9 @@ if config_env() == :prod do
   # authenticates with workload identity federation, minting a token-exchange
   # assertion from the portal's managed identity (Portal.Azure.ManagedIdentity).
   # The optional secret still flows from config.exs for environments that set it.
+  # The app registration must also declare the delegated Microsoft Graph
+  # permissions `openid` and `profile` so the `.default` admin-consent grant
+  # covers the signed user identity proof without a second consent prompt.
   config :portal, Portal.Entra.APIClient,
     client_id: env_var_to_config!(:entra_sync_client_id),
     token_base_url: "https://login.microsoftonline.com",

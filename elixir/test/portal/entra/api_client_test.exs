@@ -166,6 +166,41 @@ defmodule Portal.Entra.APIClientTest do
     end
   end
 
+  describe "list_transitive_directory_roles/2" do
+    test "fetches the effective directory roles for a verified principal" do
+      test_pid = self()
+      principal_id = "87654321-4321-4321-4321-210987654321"
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.method == "GET"
+
+        assert conn.request_path ==
+                 "/v1.0/users/#{principal_id}/transitiveMemberOf/microsoft.graph.directoryRole"
+
+        conn = Plug.Conn.fetch_query_params(conn)
+        send(test_pid, {:directory_roles_request, conn.query_params})
+
+        Req.Test.json(conn, %{
+          "value" => [
+            %{
+              "id" => "tenant-role-id",
+              "roleTemplateId" => "62e90394-69f5-4237-9190-012177145e10"
+            }
+          ]
+        })
+      end)
+
+      assert {:ok, %Req.Response{status: 200, body: body}} =
+               APIClient.list_transitive_directory_roles(@test_access_token, principal_id)
+
+      assert [%{"roleTemplateId" => "62e90394-69f5-4237-9190-012177145e10"}] =
+               body["value"]
+
+      assert_receive {:directory_roles_request, query_params}
+      assert query_params["$select"] == "id,roleTemplateId"
+    end
+  end
+
   describe "stream_app_role_assignments/2" do
     test "streams a single page of app role assignments" do
       test_pid = self()

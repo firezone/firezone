@@ -358,6 +358,30 @@ defmodule PortalWeb.Settings.DirectorySync do
     start_verification(socket)
   end
 
+  # Used after Entra admin consent to build the PKCE request without consuming
+  # the verifier before the authorization-code callback.
+  def handle_info({:peek_pending_verification, from}, socket) do
+    send(from, {:pending_verification, socket.assigns[:pending_verification]})
+    {:noreply, socket}
+  end
+
+  # Sent by OIDCController to consume and activate the Entra verification session.
+  def handle_info({:get_pending_verification, from}, socket) do
+    pending_verification = socket.assigns[:pending_verification]
+    send(from, {:pending_verification, pending_verification})
+
+    socket =
+      case pending_verification do
+        nil ->
+          assign(socket, pending_verification: nil)
+
+        pending_verification ->
+          assign(socket, pending_verification: nil, active_verification: pending_verification)
+      end
+
+    {:noreply, socket}
+  end
+
   # Sent directly by the Entra directory_sync verification controller
   def handle_info({:entra_directory_sync_complete, tenant_id, verification_ref, ack_to}, socket) do
     if active_verification?(socket, verification_ref) do
@@ -434,7 +458,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp clear_verification_state(socket) do
-    assign(socket, active_verification: nil)
+    assign(socket, active_verification: nil, pending_verification: nil)
   end
 
   defp format_verification_error_reason(reason) when is_binary(reason), do: reason
@@ -1713,6 +1737,7 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   defp start_verification(%{assigns: %{type: "entra"}} = socket) do
     with {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification("entra_directory_sync", []),
+         verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
          verification_ref = Ecto.UUID.generate(),
          lv_pid_string = self() |> :erlang.pid_to_list() |> to_string(),
          state_token <-
@@ -1725,10 +1750,18 @@ defmodule PortalWeb.Settings.DirectorySync do
            PortalWeb.OIDC.build_verification_uri(
              "entra_directory_sync",
              config,
-             "",
+             verifier,
              state_token
            ) do
-      socket = assign(socket, active_verification: %{verification_ref: verification_ref})
+      verification = %{
+        config: config,
+        verifier: verifier,
+        verification_ref: verification_ref
+      }
+
+      socket =
+        assign(socket, active_verification: nil, pending_verification: verification)
+
       {:noreply, push_event(socket, "open_url", %{url: uri})}
     else
       {:error, reason} ->

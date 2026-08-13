@@ -42,6 +42,10 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
     assert {:ok, %{verification_ref: verification_ref}} =
              PortalWeb.OIDC.verify_verification_state(state)
 
+    send(lv.pid, {:get_pending_verification, self()})
+
+    assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
+
     verification_ref
   end
 

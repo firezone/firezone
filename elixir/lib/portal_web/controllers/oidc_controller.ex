@@ -28,19 +28,74 @@ defmodule PortalWeb.OIDCController do
       {:oidc_verification, lv_pid_string} ->
         handle_oidc_verification(conn, code, lv_pid_string)
 
+      {:entra_tenant_proof,
+       verification_type,
+       lv_pid_string,
+       verification_ref,
+       expected_tenant_id,
+       _silent?} ->
+        handle_entra_verification(
+          conn,
+          code,
+          lv_pid_string,
+          verification_ref,
+          verification_type,
+          expected_tenant_id
+        )
+
       _ ->
         handle_authentication_callback(conn, state, code)
     end
   end
 
-  # Handle Entra admin consent callback (returns admin_consent and may include tenant)
-  def callback(conn, %{"state" => state, "admin_consent" => _} = params) do
+  def callback(conn, %{"state" => state, "error" => _error} = params) do
     case parse_callback_state(state) do
-      {:entra_auth_provider, _lv_pid_string} ->
-        redirect(conn, to: ~p"/verification/entra?#{params}")
+      {:entra_auth_provider, lv_pid_string, verification_ref} ->
+        handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref)
 
-      {:entra_directory_sync, _lv_pid_string} ->
-        redirect(conn, to: ~p"/verification/entra?#{params}")
+      {:entra_directory_sync, lv_pid_string, verification_ref} ->
+        handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref)
+
+      {:entra_tenant_proof,
+       verification_type,
+       lv_pid_string,
+       verification_ref,
+       expected_tenant_id,
+       silent?} ->
+        handle_entra_tenant_proof_error(
+          conn,
+          params,
+          verification_type,
+          lv_pid_string,
+          verification_ref,
+          expected_tenant_id,
+          silent?
+        )
+
+      _ ->
+        handle_error(conn, {:error, :invalid_callback_params})
+    end
+  end
+
+  def callback(conn, %{"state" => state, "admin_consent" => "True"} = params) do
+    case parse_callback_state(state) do
+      {:entra_auth_provider, lv_pid_string, verification_ref} ->
+        handle_entra_admin_consent(
+          conn,
+          params,
+          "entra-auth-provider",
+          lv_pid_string,
+          verification_ref
+        )
+
+      {:entra_directory_sync, lv_pid_string, verification_ref} ->
+        handle_entra_admin_consent(
+          conn,
+          params,
+          "entra-directory-sync",
+          lv_pid_string,
+          verification_ref
+        )
 
       _ ->
         handle_error(conn, {:error, :invalid_callback_params})
@@ -880,6 +935,280 @@ defmodule PortalWeb.OIDCController do
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
   end
 
+  defp handle_entra_verification(
+         conn,
+         code,
+         lv_pid_string,
+         verification_ref,
+         verification_type,
+         expected_tenant_id
+       ) do
+    verification_result =
+      lv_pid_string
+      |> PortalWeb.OIDC.deserialize_pid()
+      |> request_pending_verification(verification_ref)
+      |> verify_entra_callback(
+        code,
+        expected_tenant_id
+      )
+
+    case verification_result do
+      {:ok, identity} ->
+        result = %{
+          ok: true,
+          type: verification_type,
+          tenant_id: identity.tenant_id,
+          issuer: identity.issuer,
+          principal_id: identity.principal_id,
+          role_ids: identity.role_ids,
+          lv_pid: lv_pid_string,
+          verification_ref: verification_ref
+        }
+
+        redirect_with_entra_verification_result(conn, result)
+
+      {:error, error} ->
+        result = entra_verification_failure(error, lv_pid_string, verification_ref)
+        redirect_with_entra_verification_result(conn, result)
+    end
+  end
+
+  defp verify_entra_callback(
+         {:ok, %{config: config, verifier: verifier}},
+         code,
+         expected_tenant_id
+       ) do
+    case PortalWeb.OIDC.verify_entra_callback(config, code, verifier, expected_tenant_id) do
+      {:ok, identity} ->
+        {:ok, identity}
+
+      {:error, reason} ->
+        maybe_log_verification_error(reason)
+        {:error, verification_error_message(reason)}
+    end
+  end
+
+  defp verify_entra_callback(
+         {:error, reason},
+         _code,
+         _expected_tenant_id
+       ) do
+    {:error, pending_verification_error_message(reason)}
+  end
+
+  defp handle_entra_admin_consent(
+         conn,
+         params,
+         verification_type,
+         lv_pid_string,
+         verification_ref
+       )
+       when verification_type in ["entra-auth-provider", "entra-directory-sync"] do
+    tenant_id = params["tenant"]
+
+    pending_result =
+      lv_pid_string
+      |> PortalWeb.OIDC.deserialize_pid()
+      |> peek_pending_verification(verification_ref)
+
+    case pending_result do
+      {:ok, %{config: config, verifier: verifier}} ->
+        redirect_to_entra_tenant_proof(
+          conn,
+          config,
+          verifier,
+          tenant_id,
+          lv_pid_string,
+          verification_ref,
+          verification_type,
+          true
+        )
+
+      {:error, reason} ->
+        handle_entra_verification_error(
+          conn,
+          pending_verification_error_message(reason),
+          lv_pid_string,
+          verification_ref
+        )
+    end
+  end
+
+  defp redirect_to_entra_tenant_proof(
+         conn,
+         config,
+         verifier,
+         tenant_id,
+         lv_pid_string,
+         verification_ref,
+         verification_type,
+         silent?
+       ) do
+    state_token =
+      PortalWeb.OIDC.sign_verification_state(
+        lv_pid_string,
+        entra_tenant_proof_state_type(verification_type),
+        %{
+          silent: silent?,
+          tenant_id: tenant_id,
+          verification_ref: verification_ref
+        }
+      )
+
+    prompt = if silent?, do: "none", else: nil
+
+    case PortalWeb.OIDC.build_entra_tenant_authorization_uri(
+           config,
+           tenant_id,
+           verifier,
+           state_token,
+           prompt: prompt
+         ) do
+      {:ok, uri} ->
+        redirect(conn, external: uri)
+
+      {:error, reason} ->
+        maybe_log_verification_error(reason)
+
+        handle_entra_verification_error(
+          conn,
+          verification_error_message(reason),
+          lv_pid_string,
+          verification_ref
+        )
+    end
+  end
+
+  defp entra_tenant_proof_state_type("entra-auth-provider"),
+    do: "entra-auth-provider-tenant-proof"
+
+  defp entra_tenant_proof_state_type("entra-directory-sync"),
+    do: "entra-directory-sync-tenant-proof"
+
+  defp handle_entra_tenant_proof_error(
+         conn,
+         params,
+         verification_type,
+         lv_pid_string,
+         verification_ref,
+         tenant_id,
+         true
+       ) do
+    if silent_sso_unavailable?(params) do
+      pending_result =
+        lv_pid_string
+        |> PortalWeb.OIDC.deserialize_pid()
+        |> peek_pending_verification(verification_ref)
+
+      case pending_result do
+        {:ok, %{config: config, verifier: verifier}} ->
+          redirect_to_entra_tenant_proof(
+            conn,
+            config,
+            verifier,
+            tenant_id,
+            lv_pid_string,
+            verification_ref,
+            verification_type,
+            false
+          )
+
+        {:error, reason} ->
+          handle_entra_verification_error(
+            conn,
+            pending_verification_error_message(reason),
+            lv_pid_string,
+            verification_ref
+          )
+      end
+    else
+      handle_entra_verification_error(
+        conn,
+        entra_authorization_error_message(params),
+        lv_pid_string,
+        verification_ref
+      )
+    end
+  end
+
+  defp handle_entra_tenant_proof_error(
+         conn,
+         params,
+         _verification_type,
+         lv_pid_string,
+         verification_ref,
+         _tenant_id,
+         false
+       ) do
+    handle_entra_verification_error(
+      conn,
+      entra_authorization_error_message(params),
+      lv_pid_string,
+      verification_ref
+    )
+  end
+
+  defp silent_sso_unavailable?(%{"error" => error}) do
+    error in ["consent_required", "interaction_required", "login_required"]
+  end
+
+  defp silent_sso_unavailable?(_params), do: false
+
+  defp handle_entra_verification_error(conn, error_message, lv_pid_string, verification_ref) do
+    result =
+      case lv_pid_string
+           |> PortalWeb.OIDC.deserialize_pid()
+           |> request_pending_verification(verification_ref) do
+        {:ok, _pending} ->
+          entra_verification_failure(error_message, lv_pid_string, verification_ref)
+
+        {:error, reason} ->
+          entra_verification_failure(
+            pending_verification_error_message(reason),
+            lv_pid_string,
+            verification_ref
+          )
+      end
+
+    redirect_with_entra_verification_result(conn, result)
+  end
+
+  defp handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref) do
+    handle_entra_verification_error(
+      conn,
+      entra_authorization_error_message(params),
+      lv_pid_string,
+      verification_ref
+    )
+  end
+
+  defp entra_authorization_error_message(params) do
+    case params do
+      %{"error_description" => description} when is_binary(description) and description != "" ->
+        description
+
+      %{"error" => error} when is_binary(error) and error != "" ->
+        error
+
+      _ ->
+        "Microsoft Entra authorization failed. Please try again."
+    end
+  end
+
+  defp entra_verification_failure(error, lv_pid_string, verification_ref) do
+    %{
+      ok: false,
+      error: error,
+      lv_pid: lv_pid_string,
+      verification_ref: verification_ref
+    }
+  end
+
+  defp redirect_with_entra_verification_result(conn, result) do
+    token = Phoenix.Token.sign(PortalWeb.Endpoint, "entra-verification-result", result)
+    redirect(conn, to: ~p"/verification/entra?result=#{token}")
+  end
+
   defp verify_oidc_callback(
          {:ok, %{config: config, verifier: verifier} = pending},
          code,
@@ -951,6 +1280,38 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
+  defp request_pending_verification(nil, _verification_ref), do: {:error, :no_pid}
+
+  defp request_pending_verification(lv_pid, verification_ref) do
+    send(lv_pid, {:get_pending_verification, self()})
+
+    receive do
+      {:pending_verification, %{verification_ref: ^verification_ref} = pending} ->
+        {:ok, pending}
+
+      {:pending_verification, _} ->
+        {:error, :not_found}
+    after
+      5_000 -> {:error, :timeout}
+    end
+  end
+
+  defp peek_pending_verification(nil, _verification_ref), do: {:error, :no_pid}
+
+  defp peek_pending_verification(lv_pid, verification_ref) do
+    send(lv_pid, {:peek_pending_verification, self()})
+
+    receive do
+      {:pending_verification, %{verification_ref: ^verification_ref} = pending} ->
+        {:ok, pending}
+
+      {:pending_verification, _} ->
+        {:error, :not_found}
+    after
+      5_000 -> {:error, :timeout}
+    end
+  end
+
   defp pending_verification_error_message(reason)
        when reason in [:no_pid, :not_found, :timeout] do
     "Verification session was not found or has expired. Please retry verification."
@@ -978,6 +1339,14 @@ defmodule PortalWeb.OIDCController do
     "Unable to verify your identity token. Please try again."
   end
 
+  defp verification_error_message({:invalid_entra_id_token, _reason}) do
+    "Unable to verify the Microsoft Entra tenant. Please try again."
+  end
+
+  defp verification_error_message(:invalid_entra_tenant) do
+    "Unable to verify the Microsoft Entra tenant. Please try again."
+  end
+
   defp verification_error_message(:email_not_verified) do
     @unverified_email_error
   end
@@ -989,9 +1358,43 @@ defmodule PortalWeb.OIDCController do
   defp parse_callback_state(state) do
     case PortalWeb.OIDC.verify_verification_state(state) do
       {:ok, %{type: "oidc-auth-provider", lv_pid: lv_pid}} -> {:oidc_verification, lv_pid}
-      {:ok, %{type: "entra-auth-provider", lv_pid: lv_pid}} -> {:entra_auth_provider, lv_pid}
-      {:ok, %{type: "entra-directory-sync", lv_pid: lv_pid}} -> {:entra_directory_sync, lv_pid}
+
+      {:ok,
+       %{type: "entra-auth-provider", lv_pid: lv_pid, verification_ref: verification_ref}}
+      when is_binary(verification_ref) ->
+        {:entra_auth_provider, lv_pid, verification_ref}
+
+      {:ok,
+       %{type: "entra-directory-sync", lv_pid: lv_pid, verification_ref: verification_ref}}
+      when is_binary(verification_ref) ->
+        {:entra_directory_sync, lv_pid, verification_ref}
+
+      {:ok,
+       %{
+         type: "entra-auth-provider-tenant-proof",
+         lv_pid: lv_pid,
+         verification_ref: verification_ref,
+         tenant_id: tenant_id,
+         silent: silent?
+       }}
+      when is_binary(verification_ref) and is_binary(tenant_id) and is_boolean(silent?) ->
+        {:entra_tenant_proof, "entra-auth-provider", lv_pid, verification_ref, tenant_id,
+         silent?}
+
+      {:ok,
+       %{
+         type: "entra-directory-sync-tenant-proof",
+         lv_pid: lv_pid,
+         verification_ref: verification_ref,
+         tenant_id: tenant_id,
+         silent: silent?
+       }}
+      when is_binary(verification_ref) and is_binary(tenant_id) and is_boolean(silent?) ->
+        {:entra_tenant_proof, "entra-directory-sync", lv_pid, verification_ref, tenant_id,
+         silent?}
+
       {:error, _} -> :authentication
+      _ -> :authentication
     end
   end
 

@@ -192,11 +192,7 @@ defmodule PortalWeb.Settings.Authentication do
       }
 
       socket =
-        if type == "entra" do
-          assign(socket, active_verification: verification, pending_verification: nil)
-        else
-          assign(socket, active_verification: nil, pending_verification: verification)
-        end
+        assign(socket, active_verification: nil, pending_verification: verification)
 
       {:noreply, push_event(socket, "open_url", %{url: uri})}
     else
@@ -373,6 +369,13 @@ defmodule PortalWeb.Settings.Authentication do
 
   def handle_info(%Portal.Changes.Change{old_struct: %Portal.PortalSession{}}, socket) do
     {:noreply, refresh_session_counts(socket)}
+  end
+
+  # Used after Entra admin consent to build the PKCE request without consuming
+  # the verifier before the authorization-code callback.
+  def handle_info({:peek_pending_verification, from}, socket) do
+    send(from, {:pending_verification, socket.assigns[:pending_verification]})
+    {:noreply, socket}
   end
 
   # Sent by VerificationController/OIDCController to fetch config+verifier for code exchange
