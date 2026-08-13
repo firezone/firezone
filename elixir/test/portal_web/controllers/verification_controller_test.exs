@@ -240,6 +240,45 @@ defmodule PortalWeb.VerificationControllerTest do
       refute_received {:entra_directory_sync_complete, _tenant_id, _verification_ref, _ack_to}
     end
 
+    test "looks up directory roles using the principal ID from the signed result", %{conn: conn} do
+      principal_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+      stub_directory_access()
+      lv_pid = verification_ack_process()
+
+      conn =
+        get(conn, ~p"/verification/entra", %{
+          "result" => directory_result_token(lv_pid, Ecto.UUID.generate(), principal_id)
+        })
+
+      assert conn.resp_body =~ "Verification Successful"
+
+      assert "/v1.0/users/#{principal_id}/transitiveMemberOf/microsoft.graph.directoryRole" in
+               drain_entra_api_request_paths()
+    end
+
+    test "probes required Graph endpoints after verifying the signed principal ID", %{conn: conn} do
+      stub_directory_access()
+      lv_pid = verification_ack_process()
+
+      conn = get(conn, ~p"/verification/entra", %{"result" => directory_result_token(lv_pid)})
+
+      assert conn.resp_body =~ "Verification Successful"
+      paths = drain_entra_api_request_paths()
+
+      role_path =
+        "/v1.0/users/#{@principal_id}/transitiveMemberOf/microsoft.graph.directoryRole"
+
+      role_index = Enum.find_index(paths, &(&1 == role_path))
+      users_index = Enum.find_index(paths, &(&1 == "/v1.0/users"))
+      groups_index = Enum.find_index(paths, &(&1 == "/v1.0/groups"))
+
+      assert is_integer(role_index)
+      assert is_integer(users_index)
+      assert is_integer(groups_index)
+      assert role_index < users_index
+      assert users_index < groups_index
+    end
+
     test "renders an Entra API 401 error", %{conn: conn} do
       Req.Test.stub(Portal.Entra.APIClient, fn req_conn ->
         req_conn
@@ -324,7 +363,11 @@ defmodule PortalWeb.VerificationControllerTest do
   defp stub_directory_access(
          directory_roles \\ [%{"roleTemplateId" => @global_administrator_role_id}]
        ) do
+    test_pid = self()
+
     Req.Test.stub(Portal.Entra.APIClient, fn req_conn ->
+      send(test_pid, {:entra_api_request, req_conn.request_path})
+
       cond do
         req_conn.method == "POST" ->
           Req.Test.json(req_conn, %{"access_token" => "test-token"})
@@ -350,16 +393,37 @@ defmodule PortalWeb.VerificationControllerTest do
     end)
   end
 
-  defp directory_result_token(lv_pid, verification_ref \\ Ecto.UUID.generate()) do
+  defp directory_result_token(
+         lv_pid,
+         verification_ref \\ Ecto.UUID.generate(),
+         principal_id \\ @principal_id
+       ) do
     sign_entra_result(%{
       ok: true,
       type: "entra-directory-sync",
       issuer: @issuer,
       tenant_id: @tenant_id,
-      principal_id: @principal_id,
+      principal_id: principal_id,
       lv_pid: serialize_pid(lv_pid),
       verification_ref: verification_ref
     })
+  end
+
+  defp verification_ack_process do
+    spawn(fn ->
+      receive do
+        {:entra_directory_sync_complete, _tenant_id, _verification_ref, {from, ref}} ->
+          send(from, {:verification_ack, ref})
+      end
+    end)
+  end
+
+  defp drain_entra_api_request_paths(paths \\ []) do
+    receive do
+      {:entra_api_request, path} -> drain_entra_api_request_paths([path | paths])
+    after
+      0 -> Enum.reverse(paths)
+    end
   end
 
   defp serialize_pid(pid), do: pid |> :erlang.pid_to_list() |> to_string()

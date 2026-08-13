@@ -1283,7 +1283,7 @@ defmodule PortalWeb.OIDCController do
   defp request_pending_verification(nil, _verification_ref), do: {:error, :no_pid}
 
   defp request_pending_verification(lv_pid, verification_ref) do
-    send(lv_pid, {:get_pending_verification, self()})
+    send(lv_pid, {:get_pending_verification, verification_ref, self()})
 
     receive do
       {:pending_verification, %{verification_ref: ^verification_ref} = pending} ->

@@ -382,6 +382,25 @@ defmodule PortalWeb.Settings.DirectorySync do
     {:noreply, socket}
   end
 
+  # Entra callbacks include their verification reference so a stale callback
+  # cannot consume a newer pending verifier.
+  def handle_info({:get_pending_verification, verification_ref, from}, socket) do
+    case socket.assigns[:pending_verification] do
+      %{verification_ref: ^verification_ref} = pending_verification ->
+        send(from, {:pending_verification, pending_verification})
+
+        {:noreply,
+         assign(socket,
+           pending_verification: nil,
+           active_verification: pending_verification
+         )}
+
+      _pending_verification ->
+        send(from, {:pending_verification, nil})
+        {:noreply, socket}
+    end
+  end
+
   # Sent directly by the Entra directory_sync verification controller
   def handle_info({:entra_directory_sync_complete, tenant_id, verification_ref, ack_to}, socket) do
     if active_verification?(socket, verification_ref) do

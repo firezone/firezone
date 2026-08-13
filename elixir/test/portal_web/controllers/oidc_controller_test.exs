@@ -382,6 +382,121 @@ defmodule PortalWeb.OIDCControllerTest do
       assert error =~ "Unable to verify the Microsoft Entra tenant"
     end
 
+    test "rejects an Entra identity proof whose ID token audience is missing", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+
+      "entra-client-id"
+      |> entra_claims()
+      |> Map.delete("aud")
+      |> set_entra_claims_response()
+
+      conn = complete_entra_tenant_proof(conn)
+
+      assert {:ok, %{ok: false, error: error}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify your identity token"
+    end
+
+    test "rejects an Entra identity proof whose ID token audience does not match", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+      set_entra_claims_response(entra_claims("other-client-id"))
+      conn = complete_entra_tenant_proof(conn)
+
+      assert {:ok, %{ok: false, error: error}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify your identity token"
+    end
+
+    test "rejects an Entra identity proof whose ID token signature is invalid", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+
+      id_token =
+        "entra-client-id"
+        |> entra_claims()
+        |> Mocks.OIDC.sign_openid_connect_token()
+        |> invalidate_jwt_signature()
+
+      set_entra_id_token_response(id_token)
+      conn = complete_entra_tenant_proof(conn)
+
+      assert {:ok, %{ok: false, error: error}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify your identity token"
+    end
+
+    test "does not exchange the authorization code when an Entra identity-proof callback is replayed",
+         %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      consent_conn = complete_entra_admin_consent(conn, state)
+      tenant_proof_state = callback_state_from_redirect(consent_conn)
+      set_entra_token_response("entra-client-id")
+
+      first_conn = complete_entra_tenant_proof(consent_conn)
+      assert {:ok, %{ok: true}} = entra_verification_result_from_redirect(redirected_to(first_conn))
+      flush_oidc_requests()
+
+      replayed_conn =
+        get(recycle(first_conn), ~p"/auth/oidc/callback", %{
+          "state" => tenant_proof_state,
+          "code" => "replayed-code"
+        })
+
+      assert {:ok, %{ok: false, error: error}} =
+               entra_verification_result_from_redirect(redirected_to(replayed_conn))
+
+      assert error =~ "Verification session was not found or has expired"
+      refute_received {:oidc_request, _path, _conn}
+    end
+
+    test "does not consume a newer pending verification when a stale Entra callback arrives", %{
+      conn: conn
+    } do
+      stale_ref = Ecto.UUID.generate()
+      current_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, current_ref)
+
+      state = entra_tenant_proof_state(lv_pid, "entra-auth-provider", stale_ref)
+      flush_oidc_requests()
+
+      conn =
+        get(recycle(conn), ~p"/auth/oidc/callback", %{
+          "state" => state,
+          "code" => "stale-code"
+        })
+
+      assert {:ok, %{ok: false, error: error, verification_ref: ^stale_ref}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Verification session was not found or has expired"
+      refute_received {:oidc_request, _path, _conn}
+
+      send(lv_pid, {:peek_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^current_ref}}
+    end
+
     test "returns a signed failure when the admin denies consent", %{conn: conn} do
       verification_ref = Ecto.UUID.generate()
       config = entra_verification_config("entra-client-id")
@@ -3374,6 +3489,17 @@ defmodule PortalWeb.OIDCControllerTest do
       {:get_pending_verification, from} ->
         send(from, {:pending_verification, pending})
         pending_verification_loop(nil)
+
+      {:get_pending_verification, verification_ref, from} ->
+        case pending do
+          %{verification_ref: ^verification_ref} ->
+            send(from, {:pending_verification, pending})
+            pending_verification_loop(nil)
+
+          _pending ->
+            send(from, {:pending_verification, nil})
+            pending_verification_loop(pending)
+        end
     end
   end
 
@@ -3385,24 +3511,62 @@ defmodule PortalWeb.OIDCControllerTest do
     })
   end
 
-  defp set_entra_token_response(client_id, claim_overrides \\ %{}) do
-    claims =
-      Mocks.OIDC.default_claims()
-      |> Map.merge(%{
-        "aud" => client_id,
-        "iss" => "https://login.microsoftonline.com/12345678-1234-1234-1234-123456789012/v2.0",
-        "nonce" => entra_nonce("test-verifier"),
-        "oid" => "87654321-4321-4321-4321-210987654321",
-        "wids" => ["62e90394-69f5-4237-9190-012177145e10"],
-        "tid" => "12345678-1234-1234-1234-123456789012"
-      })
-      |> Map.merge(claim_overrides)
+  defp entra_tenant_proof_state(lv_pid, type, verification_ref) do
+    lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
 
+    PortalWeb.OIDC.sign_verification_state(lv_pid_string, "#{type}-tenant-proof", %{
+      verification_ref: verification_ref,
+      tenant_id: @tenant_id,
+      silent: true
+    })
+  end
+
+  defp set_entra_token_response(client_id, claim_overrides \\ %{}) do
+    client_id
+    |> entra_claims()
+    |> Map.merge(claim_overrides)
+    |> set_entra_claims_response()
+  end
+
+  defp set_entra_claims_response(claims) do
+    claims
+    |> Mocks.OIDC.sign_openid_connect_token()
+    |> set_entra_id_token_response()
+  end
+
+  defp set_entra_id_token_response(id_token) do
     Mocks.OIDC.set_token_response(%{
       "access_token" => "test-access-token",
       "token_type" => "Bearer",
-      "id_token" => Mocks.OIDC.sign_openid_connect_token(claims)
+      "id_token" => id_token
     })
+  end
+
+  defp entra_claims(client_id) do
+    Mocks.OIDC.default_claims()
+    |> Map.merge(%{
+      "aud" => client_id,
+      "iss" => "https://login.microsoftonline.com/12345678-1234-1234-1234-123456789012/v2.0",
+      "nonce" => entra_nonce("test-verifier"),
+      "oid" => "87654321-4321-4321-4321-210987654321",
+      "wids" => ["62e90394-69f5-4237-9190-012177145e10"],
+      "tid" => "12345678-1234-1234-1234-123456789012"
+    })
+  end
+
+  defp invalidate_jwt_signature(id_token) do
+    [header, payload, signature] = String.split(id_token, ".")
+    replacement = if String.starts_with?(signature, "A"), do: "B", else: "A"
+    invalid_signature = replacement <> String.slice(signature, 1..-1//1)
+    Enum.join([header, payload, invalid_signature], ".")
+  end
+
+  defp flush_oidc_requests do
+    receive do
+      {:oidc_request, _path, _conn} -> flush_oidc_requests()
+    after
+      0 -> :ok
+    end
   end
 
   defp entra_nonce(verifier) do

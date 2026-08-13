@@ -373,6 +373,31 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert_patch(lv, ~p"/#{account}/settings/directory_sync")
     end
 
+    test "does not consume an Entra directory verifier for a stale callback reference", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/entra/new")
+
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+      assert {:ok, %{verification_ref: verification_ref}} =
+               PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:get_pending_verification, Ecto.UUID.generate(), self()})
+      assert_receive {:pending_verification, nil}
+
+      send(lv.pid, {:peek_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
+    end
+
     test "accepts only the active entra directory verification completion", %{
       conn: conn,
       account: account,

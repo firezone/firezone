@@ -395,6 +395,25 @@ defmodule PortalWeb.Settings.Authentication do
     {:noreply, socket}
   end
 
+  # Entra callbacks include their verification reference so a stale callback
+  # cannot consume a newer pending verifier.
+  def handle_info({:get_pending_verification, verification_ref, from}, socket) do
+    case socket.assigns[:pending_verification] do
+      %{verification_ref: ^verification_ref} = pending_verification ->
+        send(from, {:pending_verification, pending_verification})
+
+        {:noreply,
+         assign(socket,
+           pending_verification: nil,
+           active_verification: pending_verification
+         )}
+
+      _pending_verification ->
+        send(from, {:pending_verification, nil})
+        {:noreply, socket}
+    end
+  end
+
   # Sent directly by the OIDC verification controller after code exchange succeeds
   def handle_info({:oidc_verify_complete, issuer, verification_ref, ack_to}, socket) do
     if active_verification?(socket, verification_ref) do
