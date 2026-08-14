@@ -1568,47 +1568,53 @@ defmodule PortalWeb.Settings.DirectorySync do
     # Entra and Google open a new window for user-bound authorization.
     button_attrs =
       if assigns.type in ["entra", "google"] do
-        [icon: "ri-external-link-line", "phx-hook": "OpenURL"]
+        [icon: "ri-external-link-line"]
       else
         []
       end
 
-    assigns = assign(assigns, :button_attrs, button_attrs)
+    assigns =
+      assigns
+      |> assign(:button_attrs, button_attrs)
+      |> assign(:opens_url?, assigns.type in ["entra", "google"])
 
     ~H"""
-    <div
-      :if={verified?(@form)}
-      class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-sm"
-    >
-      <.icon name="ri-checkbox-circle-line" class="h-5 w-5 mr-2" />
-      <span class="font-medium">Verified</span>
+    <div id={@id <> "-open-url"} phx-hook={@opens_url? && "OpenURL"}>
+      <div
+        :if={verified?(@form)}
+        class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-sm"
+      >
+        <.icon name="ri-checkbox-circle-line" class="h-5 w-5 mr-2" />
+        <span class="font-medium">Verified</span>
+      </div>
+      <.button
+        :if={not verified?(@form) and ready_to_verify?(@form) and not @verifying}
+        type="button"
+        id={@id <> "-verify-button"}
+        style="primary"
+        phx-click="start_verification"
+        data-open-url-reserve={@type == "google"}
+        {@button_attrs}
+      >
+        Verify Now
+      </.button>
+      <.button
+        :if={not verified?(@form) and @verifying}
+        type="button"
+        style="primary"
+        disabled
+      >
+        Verifying...
+      </.button>
+      <.button
+        :if={not verified?(@form) and not ready_to_verify?(@form)}
+        type="button"
+        style="primary"
+        disabled
+      >
+        Verify Now
+      </.button>
     </div>
-    <.button
-      :if={not verified?(@form) and ready_to_verify?(@form) and not @verifying}
-      type="button"
-      id={@id <> "-verify-button"}
-      style="primary"
-      phx-click="start_verification"
-      {@button_attrs}
-    >
-      Verify Now
-    </.button>
-    <.button
-      :if={not verified?(@form) and @verifying}
-      type="button"
-      style="primary"
-      disabled
-    >
-      Verifying...
-    </.button>
-    <.button
-      :if={not verified?(@form) and not ready_to_verify?(@form)}
-      type="button"
-      style="primary"
-      disabled
-    >
-      Verify Now
-    </.button>
     """
   end
 
@@ -1836,7 +1842,13 @@ defmodule PortalWeb.Settings.DirectorySync do
 
       error ->
         msg = parse_google_verification_error(error)
-        {:noreply, assign(socket, verification_error: msg, verifying: false)}
+
+        socket =
+          socket
+          |> assign(verification_error: msg, verifying: false)
+          |> push_event("close_open_url", %{})
+
+        {:noreply, socket}
     end
   end
 
