@@ -73,7 +73,8 @@ defmodule PortalWeb.Settings.LogSinks do
         page_title: "Log Sinks",
         sentinel_setup_tab: "portal",
         s3_setup_tab: "console",
-        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?()
+        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?(),
+        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
     {:ok, init(socket, new: true)}
@@ -282,6 +283,7 @@ defmodule PortalWeb.Settings.LogSinks do
         account={@account}
         current_path={@current_path}
         device_trust_enabled?={@device_trust_enabled?}
+        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <%= if Portal.Account.log_sinks_enabled?(@account) do %>

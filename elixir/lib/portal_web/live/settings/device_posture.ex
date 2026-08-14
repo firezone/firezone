@@ -34,6 +34,7 @@ defmodule PortalWeb.Settings.DevicePosture do
      |> assign(
        page_title: "Device Posture",
        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?(),
+       device_posture_enabled?: true,
        verification_error: nil,
        active_verification: nil,
        pending_verification: nil,
@@ -394,6 +395,7 @@ defmodule PortalWeb.Settings.DevicePosture do
         account={@account}
         current_path={@current_path}
         device_trust_enabled?={@device_trust_enabled?}
+        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <%= if Portal.Account.device_posture_enabled?(@account) do %>

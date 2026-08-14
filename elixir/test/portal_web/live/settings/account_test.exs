@@ -105,6 +105,8 @@ defmodule PortalWeb.Settings.AccountTest do
         |> live(~p"/#{account}/settings/account")
 
       assert html =~ "Plan Features"
+      assert html =~ "Device Posture"
+      refute html =~ "ICE-less"
     end
 
     test "renders usage section", %{conn: conn, account: account, actor: actor} do

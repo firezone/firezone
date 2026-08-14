@@ -25,7 +25,8 @@ defmodule PortalWeb.Settings.Account do
         users_count: Database.count_users_for_account(subject),
         active_users_count: Database.count_1m_active_users_for_account(subject),
         sites_count: Database.count_groups_for_account(subject),
-        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?()
+        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?(),
+        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
     {:ok, socket}
@@ -38,6 +39,7 @@ defmodule PortalWeb.Settings.Account do
         account={@account}
         current_path={@current_path}
         device_trust_enabled?={@device_trust_enabled?}
+        device_posture_enabled?={@device_posture_enabled?}
       >
         <:actions>
           <.button phx-click="open_edit_account" size="xs">
@@ -127,6 +129,10 @@ defmodule PortalWeb.Settings.Account do
               enabled={feature_enabled?(@account, :policy_conditions)}
             />
             <.feature_row label="Log Sinks" enabled={feature_enabled?(@account, :log_sinks)} />
+            <.feature_row
+              label="Device Posture"
+              enabled={feature_enabled?(@account, :device_posture)}
+            />
           </div>
 
           <%!-- Actions (pending deletion, self-initiated, not locked) --%>

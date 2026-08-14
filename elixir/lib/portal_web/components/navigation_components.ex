@@ -3,30 +3,15 @@ defmodule PortalWeb.NavigationComponents do
   use PortalWeb, :verified_routes
   import PortalWeb.CoreComponents
 
-  defmodule Database do
-    import Ecto.Query, only: [from: 2]
-    alias Portal.{Features, Safe}
-
-    def device_trust_feature_enabled? do
-      query = from(f in Features, where: f.feature == :device_trust and f.enabled == true)
-      Safe.unscoped(query) |> Safe.exists?()
-    end
-  end
+  @doc """
+  Returns whether the global `device_trust` rollout flag is enabled.
+  """
+  def device_trust_enabled?, do: Portal.Features.enabled?(:device_trust)
 
   @doc """
-  Returns whether the global `device_trust` feature flag is enabled. Callers
-  should compute this once in `mount/3` and pass it to `settings_nav/1` as the
-  `device_trust_enabled?` assign, rather than calling this on every render.
+  Returns whether the global `device_posture` rollout flag is enabled.
   """
-  def device_trust_enabled?, do: Database.device_trust_feature_enabled?()
-
-  @doc """
-  Whether device posture is enabled globally.
-
-  Unlike `device_trust_enabled?/0` this reads application config rather than the
-  database, so it is cheap enough to call from a template.
-  """
-  def device_posture_enabled?, do: Portal.Config.global_feature_enabled?(:device_posture)
+  def device_posture_enabled?, do: Portal.Features.enabled?(:device_posture)
 
   @doc """
   Renders the top navigation bar.
@@ -419,6 +404,7 @@ defmodule PortalWeb.NavigationComponents do
   attr :account, :any, required: true
   attr :current_path, :string, required: true
   attr :device_trust_enabled?, :boolean, default: false
+  attr :device_posture_enabled?, :boolean, default: false
   slot :actions
 
   def settings_nav(assigns) do
@@ -505,7 +491,7 @@ defmodule PortalWeb.NavigationComponents do
           Directory Sync
         </.settings_tab>
         <.settings_tab
-          :if={device_posture_enabled?()}
+          :if={@device_posture_enabled?}
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/device_posture"}
           tab_path="settings/device_posture"

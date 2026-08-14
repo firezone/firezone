@@ -990,19 +990,6 @@ defmodule Portal.Config.Definitions do
   defconfig(:docker_registry, :string, default: "ghcr.io/firezone")
   defconfig(:api_url_override, :string, default: nil)
 
-  ##############################################
-  ## Feature Flags
-  ##
-  ## If feature is disabled globally it won't be available for any account,
-  ## even if account-specific override enables them.
-  ##
-  ##############################################
-
-  @doc """
-  Boolean flag to turn Sign-ups on/off for all accounts.
-  """
-  defconfig(:feature_sign_up_enabled, :boolean, default: true)
-
   @doc """
   List of email domains allowed to signup from. Leave empty to allow signing up from any domain.
   """
@@ -1015,23 +1002,4 @@ defmodule Portal.Config.Definitions do
     end
   )
 
-  @doc """
-  Boolean flag to turn IdP sync on/off for all accounts.
-  """
-  defconfig(:feature_idp_sync_enabled, :boolean, default: true)
-
-  @doc """
-  Boolean flag to turn Policy Conditions functionality on/off for all accounts.
-  """
-  defconfig(:feature_policy_conditions_enabled, :boolean, default: false)
-
-  @doc """
-  Boolean flag to turn API Client UI functionality on/off for all accounts.
-  """
-  defconfig(:feature_rest_api_enabled, :boolean, default: false)
-
-  @doc """
-  Boolean flag to turn Internet Resources functionality on/off for all accounts.
-  """
-  defconfig(:feature_internet_resource_enabled, :boolean, default: false)
 end

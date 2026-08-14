@@ -10,7 +10,7 @@ defmodule Portal.Accounts.Features do
     field :internet_resource, :boolean
     field :iceless, :boolean
     field :log_sinks, :boolean
-    field :device_posture, :boolean
+    field :device_posture, :boolean, default: nil
   end
 
   def changeset(features \\ %__MODULE__{}, attrs) do

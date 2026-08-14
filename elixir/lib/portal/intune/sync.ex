@@ -26,7 +26,7 @@ defmodule Portal.Intune.Sync do
   def perform(%Oban.Job{
         args: %{"account_id" => account_id, "device_integration_id" => integration_id}
       }) do
-    if Portal.Config.global_feature_enabled?(:device_posture) do
+    if Portal.Features.enabled?(:device_posture) do
       sync(account_id, integration_id)
     else
       :ok

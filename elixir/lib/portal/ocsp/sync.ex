@@ -30,7 +30,8 @@ defmodule Portal.Ocsp.Sync do
           "distribution_point" => distribution_point
         } = args
       }) do
-    with {:ok, issuer} <- Base.decode64(encoded_issuer),
+    with true <- Portal.Features.enabled?(:device_trust),
+         {:ok, issuer} <- Base.decode64(encoded_issuer),
          endpoint when not is_nil(endpoint) <-
            Database.fetch_endpoint(account_id, issuer, distribution_point) do
       refresh(endpoint, Map.get(args, "serial"))
@@ -54,17 +55,19 @@ defmodule Portal.Ocsp.Sync do
   """
   @spec enqueue_check(Ecto.UUID.t(), binary(), String.t()) :: :ok
   def enqueue_check(account_id, issuer, serial) do
-    Database.ocsp_distribution_points(account_id, issuer)
-    |> Enum.each(fn distribution_point ->
-      %{
-        account_id: account_id,
-        issuer: Base.encode64(issuer),
-        distribution_point: distribution_point,
-        serial: serial
-      }
-      |> new(unique: [period: {1, :hour}, states: Oban.Job.states() -- [:discarded]])
-      |> Oban.insert()
-    end)
+    if Portal.Features.enabled?(:device_trust) do
+      Database.ocsp_distribution_points(account_id, issuer)
+      |> Enum.each(fn distribution_point ->
+        %{
+          account_id: account_id,
+          issuer: Base.encode64(issuer),
+          distribution_point: distribution_point,
+          serial: serial
+        }
+        |> new(unique: [period: {1, :hour}, states: Oban.Job.states() -- [:discarded]])
+        |> Oban.insert()
+      end)
+    end
 
     :ok
   end
@@ -271,15 +274,8 @@ defmodule Portal.Ocsp.Sync do
     alias Portal.Revocation.Failure
     alias Portal.Safe
 
-    # Gated on the feature flag as well, so a job already queued when the flag is
-    # turned off does nothing rather than recording a failure against an
-    # endpoint whose anchors it can no longer see.
     def fetch_endpoint(account_id, issuer, distribution_point) do
       from(e in Portal.RevocationEndpoint,
-        # The features table is global per-deployment state with no account_id.
-        # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
-        join: f in Portal.Features,
-        on: f.feature == :device_trust and f.enabled == true,
         where: e.account_id == ^account_id,
         where: e.issuer == ^issuer,
         where: e.distribution_point == ^distribution_point
@@ -304,10 +300,6 @@ defmodule Portal.Ocsp.Sync do
     # so the CA's own certificate has to be on hand to ask about anything.
     def issuer_certificate(endpoint) do
       from(c in Portal.TrustAnchorCertificate,
-        # The features table is global per-deployment state with no account_id.
-        # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
-        join: f in Portal.Features,
-        on: f.feature == :device_trust and f.enabled == true,
         where: c.account_id == ^endpoint.account_id,
         select: c.pem
       )

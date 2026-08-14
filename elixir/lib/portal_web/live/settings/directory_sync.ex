@@ -47,7 +47,8 @@ defmodule PortalWeb.Settings.DirectorySync do
     socket =
       assign(socket,
         page_title: "Directory Sync",
-        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?()
+        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?(),
+        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
     if connected?(socket) do
@@ -566,6 +567,7 @@ defmodule PortalWeb.Settings.DirectorySync do
         account={@account}
         current_path={@current_path}
         device_trust_enabled?={@device_trust_enabled?}
+        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <%= if Portal.Account.idp_sync_enabled?(@account) do %>

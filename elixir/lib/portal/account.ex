@@ -1,7 +1,6 @@
 defmodule Portal.Account do
   use Ecto.Schema
   import Ecto.Changeset
-  alias Portal.Config
 
   @type t :: %__MODULE__{}
 
@@ -135,21 +134,18 @@ defmodule Portal.Account do
   def locked?(%__MODULE__{lock_enabled_at: nil}), do: false
   def locked?(%__MODULE__{}), do: true
 
+  # All plan entitlements except device posture are account-local. Device posture
+  # additionally has a deployment-wide rollout flag in the features table.
   # sobelow_skip ["DOS.BinToAtom"]
-  for feature <- Portal.Accounts.Features.__schema__(:fields), feature != :iceless do
+  for feature <- Portal.Accounts.Features.__schema__(:fields), feature != :device_posture do
     def unquote(:"#{feature}_enabled?")(account) do
-      Config.global_feature_enabled?(unquote(feature)) and
-        account_feature_enabled?(account, unquote(feature))
+      account_feature_enabled?(account, unquote(feature))
     end
   end
 
-  # Unlike the other features, ICE-less is gated per-account only and has no
-  # global `enabled_features` flag, so it can be rolled out to individual
-  # accounts without a release. Keeping the toggle in the portal (rather than a
-  # device-local flag) makes it the single source of truth, so client and
-  # gateway can never disagree on whether to use it.
-  def iceless_enabled?(account) do
-    account_feature_enabled?(account, :iceless)
+  def device_posture_enabled?(account) do
+    Portal.Features.enabled?(:device_posture) and
+      account_feature_enabled?(account, :device_posture)
   end
 
   defp account_feature_enabled?(account, feature) do

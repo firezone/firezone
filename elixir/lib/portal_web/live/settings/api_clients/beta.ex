@@ -24,7 +24,8 @@ defmodule PortalWeb.Settings.ApiClients.Beta do
           socket,
           page_title: "API Clients",
           requested: Portal.Account.rest_api_access_requested?(socket.assigns.account),
-          device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?()
+          device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?(),
+          device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
         )
 
       {:ok, socket}
@@ -38,6 +39,7 @@ defmodule PortalWeb.Settings.ApiClients.Beta do
         account={@account}
         current_path={@current_path}
         device_trust_enabled?={@device_trust_enabled?}
+        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">

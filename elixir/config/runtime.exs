@@ -186,13 +186,6 @@ if config_env() == :prod do
     secondary_adapter: env_var_to_config!(:erlang_cluster_adapter_secondary),
     secondary_adapter_config: env_var_to_config!(:erlang_cluster_adapter_secondary_config)
 
-  config :portal, :enabled_features,
-    idp_sync: env_var_to_config!(:feature_idp_sync_enabled),
-    sign_up: env_var_to_config!(:feature_sign_up_enabled),
-    policy_conditions: env_var_to_config!(:feature_policy_conditions_enabled),
-    rest_api: env_var_to_config!(:feature_rest_api_enabled),
-    internet_resource: env_var_to_config!(:feature_internet_resource_enabled)
-
   config :portal, sign_up_whitelisted_domains: env_var_to_config!(:sign_up_whitelisted_domains)
   config :portal, country_code_blocklist: env_var_to_config!(:country_code_blocklist)
 

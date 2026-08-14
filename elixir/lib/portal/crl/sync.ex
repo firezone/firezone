@@ -31,7 +31,8 @@ defmodule Portal.Crl.Sync do
           "distribution_point" => distribution_point
         }
       }) do
-    with {:ok, issuer} <- Base.decode64(encoded_issuer),
+    with true <- Portal.Features.enabled?(:device_trust),
+         {:ok, issuer} <- Base.decode64(encoded_issuer),
          endpoint when not is_nil(endpoint) <-
            Database.fetch_endpoint(account_id, issuer, distribution_point) do
       refresh(endpoint)
@@ -380,15 +381,8 @@ defmodule Portal.Crl.Sync do
 
     @remove_from_crl "removeFromCRL"
 
-    # Gated on the feature flag as well, so a job already queued when the flag is
-    # turned off does nothing rather than recording a failure against an
-    # endpoint whose anchors it can no longer see.
     def fetch_endpoint(account_id, issuer, distribution_point) do
       from(e in Portal.RevocationEndpoint,
-        # The features table is global per-deployment state with no account_id.
-        # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
-        join: f in Portal.Features,
-        on: f.feature == :device_trust and f.enabled == true,
         where: e.account_id == ^account_id,
         where: e.issuer == ^issuer,
         where: e.distribution_point == ^distribution_point
@@ -399,10 +393,6 @@ defmodule Portal.Crl.Sync do
 
     def anchor_ders(account_id) do
       from(c in Portal.TrustAnchorCertificate,
-        # The features table is global per-deployment state with no account_id.
-        # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
-        join: f in Portal.Features,
-        on: f.feature == :device_trust and f.enabled == true,
         where: c.account_id == ^account_id,
         select: c.pem
       )

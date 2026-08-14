@@ -1,6 +1,5 @@
 defmodule PortalWeb.SignUp do
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :auth}}
-  alias Portal.Config
   alias __MODULE__.Database
   require Logger
 
@@ -99,8 +98,6 @@ defmodule PortalWeb.SignUp do
          )}
 
       _ ->
-        sign_up_enabled? = Config.sign_up_enabled?()
-
         socket =
           assign(socket,
             page_title: "Sign Up",
@@ -113,8 +110,7 @@ defmodule PortalWeb.SignUp do
             provider: nil,
             actor: nil,
             user_agent: user_agent,
-            real_ip: real_ip,
-            sign_up_enabled?: sign_up_enabled?
+            real_ip: real_ip
           )
 
         {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -150,9 +146,8 @@ defmodule PortalWeb.SignUp do
     <.flash flash={@flash} kind={:error} />
     <.flash flash={@flash} kind={:info} />
 
-    <.sign_up_disabled :if={!@sign_up_enabled?} />
-    <.sign_up_form :if={@sign_up_enabled? && @step == :fill_form} form={@form} />
-    <.email_sent :if={@sign_up_enabled? && @step == :email_sent} />
+    <.sign_up_form :if={@step == :fill_form} form={@form} />
+    <.email_sent :if={@step == :email_sent} />
     """
   end
 
@@ -395,34 +390,6 @@ defmodule PortalWeb.SignUp do
     """
   end
 
-  defp sign_up_disabled(assigns) do
-    ~H"""
-    <div class="flex items-center gap-3 mb-8">
-      <div class="w-11 h-11 rounded bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 flex items-center justify-center shrink-0">
-        <.icon name="ri-prohibited-line" class="w-5 h-5 text-rose-500" />
-      </div>
-      <div>
-        <h1 class="text-xl font-bold text-heading tracking-tight">
-          Sign-ups are currently disabled
-        </h1>
-        <p class="text-xs text-subtle mt-0.5">
-          Contact us to get access.
-        </p>
-      </div>
-    </div>
-
-    <div class="pt-6 border-t border-border text-center">
-      <p class="text-xs text-subtle leading-relaxed">
-        Please contact
-        <a class={link_style()} href="mailto:sales@firezone.dev?subject=Firezone Sign Up Request">
-          sales@firezone.dev
-        </a>
-        for more information.
-      </p>
-    </div>
-    """
-  end
-
   defp verifying(assigns) do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
@@ -548,8 +515,7 @@ defmodule PortalWeb.SignUp do
     end
   end
 
-  defp apply_registration(socket, %{valid?: true} = changeset)
-       when socket.assigns.sign_up_enabled? do
+  defp apply_registration(socket, %{valid?: true} = changeset) do
     registration = Ecto.Changeset.apply_changes(changeset)
     existing_accounts = Database.find_accounts_by_owner_email(registration.email)
 

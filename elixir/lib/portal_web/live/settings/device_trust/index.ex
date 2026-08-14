@@ -144,6 +144,7 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
         |> assign(revocation: [])
         |> assign(panel_tab: :overview, expanded_endpoint: nil)
         |> assign(device_trust_enabled?: device_trust_enabled?)
+        |> assign(device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?())
         |> allow_upload(:cert_file,
           accept: ~w(.pem .crt .cer .der .txt),
           max_entries: @max_upload_entries,
@@ -214,6 +215,7 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
         account={@account}
         current_path={@current_path}
         device_trust_enabled?={@device_trust_enabled?}
+        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">

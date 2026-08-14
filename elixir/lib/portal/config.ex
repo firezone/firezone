@@ -80,17 +80,6 @@ defmodule Portal.Config do
     end
   end
 
-  ## Feature flag helpers
-
-  def global_feature_enabled?(feature) do
-    fetch_env!(:portal, :enabled_features)
-    |> Keyword.fetch!(feature)
-  end
-
-  def sign_up_enabled? do
-    global_feature_enabled?(:sign_up)
-  end
-
   ## Test helpers
 
   if Mix.env() != :test do
@@ -203,14 +192,6 @@ defmodule Portal.Config do
         :error ->
           application_env
       end
-    end
-
-    def feature_flag_override(feature, value) do
-      enabled_features =
-        fetch_env!(:portal, :enabled_features)
-        |> Keyword.put(feature, value)
-
-      put_env_override(:enabled_features, enabled_features)
     end
 
     defp pdict_key_function(app, key), do: {app, key}
