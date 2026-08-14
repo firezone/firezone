@@ -188,6 +188,57 @@ defmodule PortalAPI.PoolMemberControllerTest do
              ) == original_row_id
     end
 
+    # Regression: malformed entries used to be dropped silently. A body
+    # where every entry was malformed looked like an empty list, so a
+    # typo cleared the pool and returned 200.
+    test "rejects a malformed entry instead of dropping it", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      keep = client_fixture(account: account)
+      pool = static_device_pool_resource_fixture(account: account, clients: [keep])
+
+      for {label, body} <- [
+            {"entry with no device_id", [%{}]},
+            {"non-string device_id", [%{"device_id" => 123}]},
+            {"one good entry and one malformed", [%{"device_id" => keep.id}, %{}]}
+          ] do
+        request_conn =
+          conn
+          |> recycle()
+          |> authorize_conn(api_actor)
+          |> put_req_header("content-type", "application/json")
+          |> put("/resources/#{pool.id}/pool_members", pool_members: body)
+
+        assert resp = json_response(request_conn, 422), "#{label} was accepted"
+        assert Map.has_key?(resp["validation_errors"], "pool_members"), label
+      end
+
+      # The pool is untouched by every one of those.
+      assert member_ids(pool) == [keep.id]
+    end
+
+    # The legitimate way to clear a pool still works - the distinction is
+    # between "no members" and "members I could not read".
+    test "an explicitly empty list still clears the pool", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      client = client_fixture(account: account)
+      pool = static_device_pool_resource_fixture(account: account, clients: [client])
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{pool.id}/pool_members", pool_members: [])
+
+      assert %{"data" => %{"device_ids" => []}} = json_response(conn, 200)
+      assert member_ids(pool) == []
+    end
+
     test "rejects an unknown device id", %{conn: conn, account: account, actor: api_actor} do
       pool = static_device_pool_resource_fixture(account: account)
       unknown = Ecto.UUID.generate()
@@ -396,6 +447,32 @@ defmodule PortalAPI.PoolMemberControllerTest do
 
       assert %{"status" => 422} = json_response(conn, 422)
       assert member_ids(pool) == [member.id]
+    end
+
+    # Regression: only "add" was validated, so a non-binary in "remove"
+    # reached the delete query and raised Ecto.Query.CastError - a 500 for
+    # a malformed request.
+    for field <- ["add", "remove"] do
+      @field field
+
+      test "rejects a non-string id in #{field}", %{
+        conn: conn,
+        account: account,
+        actor: api_actor
+      } do
+        member = client_fixture(account: account)
+        pool = static_device_pool_resource_fixture(account: account, clients: [member])
+
+        conn =
+          conn
+          |> authorize_conn(api_actor)
+          |> put_req_header("content-type", "application/json")
+          |> patch("/resources/#{pool.id}/pool_members", pool_members: %{@field => [123]})
+
+        assert resp = json_response(conn, 422)
+        assert Map.has_key?(resp["validation_errors"], @field)
+        assert member_ids(pool) == [member.id]
+      end
     end
 
     test "returns bad request when pool_members is a list", %{

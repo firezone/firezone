@@ -91,10 +91,10 @@ defmodule PortalAPI.PoolMemberController do
   def update_put(conn, %{"resource_id" => resource_id, "pool_members" => members})
       when is_list(members) do
     subject = conn.assigns.subject
-    device_ids = extract_device_ids(members)
 
     with {:ok, resource} <- Database.fetch_resource(resource_id, subject),
          :ok <- validate_device_pool(resource),
+         {:ok, device_ids} <- extract_device_ids(members),
          :ok <- Database.validate_client_devices(device_ids, subject),
          {:ok, device_ids} <- Database.replace_members(resource, device_ids, subject) do
       render(conn, :members, device_ids: device_ids)
@@ -148,11 +148,11 @@ defmodule PortalAPI.PoolMemberController do
   def update_patch(conn, %{"resource_id" => resource_id, "pool_members" => params})
       when is_map(params) do
     subject = conn.assigns.subject
-    add = List.wrap(Map.get(params, "add", []))
-    remove = List.wrap(Map.get(params, "remove", []))
 
     with {:ok, resource} <- Database.fetch_resource(resource_id, subject),
          :ok <- validate_device_pool(resource),
+         {:ok, add} <- extract_id_list(params, "add"),
+         {:ok, remove} <- extract_id_list(params, "remove"),
          :ok <- Database.validate_client_devices(add, subject),
          {:ok, device_ids} <- Database.patch_members(resource, add, remove, subject) do
       render(conn, :members, device_ids: device_ids)
@@ -175,11 +175,56 @@ defmodule PortalAPI.PoolMemberController do
      reason: "Resource type #{type} has no pool members; only static_device_pool does"}
   end
 
+  # Both PATCH lists are plain arrays of Client IDs. Only "add" is checked
+  # against real Clients later, so a non-binary in "remove" would reach
+  # the delete query and raise an Ecto.Query.CastError - a 500 for what is
+  # just a malformed request.
+  defp extract_id_list(params, field) do
+    values = List.wrap(Map.get(params, field, []))
+
+    case Enum.reject(values, &is_binary/1) do
+      [] ->
+        {:ok, values}
+
+      _invalid ->
+        {:error, :unprocessable_entity,
+         validation_errors: %{field => ["must be a list of Client ID strings"]}}
+    end
+  end
+
+  # Rejects malformed entries rather than skipping them. Dropping one
+  # would be silent data loss on a replace: an entry missing device_id
+  # would shrink the list, and a body where every entry is malformed -
+  # {"pool_members": [{}]} - would look like an empty list and clear the
+  # pool while returning 200.
+  #
+  # An explicitly empty list is still how a caller clears a pool. The
+  # distinction is between "no members" and "members I could not read".
   defp extract_device_ids(members) do
-    Enum.flat_map(members, fn
-      %{"device_id" => device_id} when is_binary(device_id) -> [device_id]
-      _ -> []
-    end)
+    {device_ids, invalid_indexes} =
+      members
+      |> Enum.with_index()
+      |> Enum.reduce({[], []}, fn
+        {%{"device_id" => device_id}, _index}, {ids, invalid} when is_binary(device_id) ->
+          {[device_id | ids], invalid}
+
+        {_entry, index}, {ids, invalid} ->
+          {ids, [index | invalid]}
+      end)
+
+    case invalid_indexes do
+      [] ->
+        {:ok, Enum.reverse(device_ids)}
+
+      invalid ->
+        {:error, :unprocessable_entity,
+         validation_errors: %{
+           pool_members:
+             invalid
+             |> Enum.reverse()
+             |> Enum.map(&"entry #{&1} is missing a string device_id")
+         }}
+    end
   end
 
   defmodule Database do

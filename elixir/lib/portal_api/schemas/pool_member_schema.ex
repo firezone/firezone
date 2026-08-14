@@ -84,7 +84,8 @@ defmodule PortalAPI.Schemas.PoolMember do
             type: :object,
             properties: %{
               device_id: %Schema{type: :string, format: :uuid, description: "Client ID"}
-            }
+            },
+            required: [:device_id]
           }
         }
       },

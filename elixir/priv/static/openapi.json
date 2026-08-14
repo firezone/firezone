@@ -3213,6 +3213,9 @@
                   "type": "string"
                 }
               },
+              "required": [
+                "device_id"
+              ],
               "type": "object"
             },
             "type": "array"
