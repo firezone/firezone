@@ -90,6 +90,24 @@ defmodule Portal.Entra.APIClient do
   end
 
   @doc """
+  Lists the effective Entra directory roles for one immutable principal ID.
+  This is used during setup to prove that the user identified by the verified
+  ID token is authorized to grant the application's tenant-wide permissions.
+  """
+  def list_transitive_directory_roles(access_token, principal_id) do
+    query =
+      URI.encode_query(%{
+        "$select" => "id,roleTemplateId"
+      })
+
+    get(
+      "/v1.0/users/#{principal_id}/transitiveMemberOf/microsoft.graph.directoryRole",
+      query,
+      access_token
+    )
+  end
+
+  @doc """
   Streams assigned principals (users and groups) for the service principal.
   This respects group assignment settings in Entra.
   Returns a stream that yields pages of assignments.

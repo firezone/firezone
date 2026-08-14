@@ -192,11 +192,7 @@ defmodule PortalWeb.Settings.Authentication do
       }
 
       socket =
-        if type == "entra" do
-          assign(socket, active_verification: verification, pending_verification: nil)
-        else
-          assign(socket, active_verification: nil, pending_verification: verification)
-        end
+        assign(socket, active_verification: nil, pending_verification: verification)
 
       {:noreply, push_event(socket, "open_url", %{url: uri})}
     else
@@ -375,6 +371,13 @@ defmodule PortalWeb.Settings.Authentication do
     {:noreply, refresh_session_counts(socket)}
   end
 
+  # Used after Entra admin consent to build the PKCE request without consuming
+  # the verifier before the authorization-code callback.
+  def handle_info({:peek_pending_verification, from}, socket) do
+    send(from, {:pending_verification, socket.assigns[:pending_verification]})
+    {:noreply, socket}
+  end
+
   # Sent by VerificationController/OIDCController to fetch config+verifier for code exchange
   def handle_info({:get_pending_verification, from}, socket) do
     pending_verification = socket.assigns[:pending_verification]
@@ -390,6 +393,25 @@ defmodule PortalWeb.Settings.Authentication do
       end
 
     {:noreply, socket}
+  end
+
+  # Entra callbacks include their verification reference so a stale callback
+  # cannot consume a newer pending verifier.
+  def handle_info({:get_pending_verification, verification_ref, from}, socket) do
+    case socket.assigns[:pending_verification] do
+      %{verification_ref: ^verification_ref} = pending_verification ->
+        send(from, {:pending_verification, pending_verification})
+
+        {:noreply,
+         assign(socket,
+           pending_verification: nil,
+           active_verification: pending_verification
+         )}
+
+      _pending_verification ->
+        send(from, {:pending_verification, nil})
+        {:noreply, socket}
+    end
   end
 
   # Sent directly by the OIDC verification controller after code exchange succeeds

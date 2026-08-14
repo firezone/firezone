@@ -77,6 +77,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     assert {:ok, %{verification_ref: verification_ref}} =
              PortalWeb.OIDC.verify_verification_state(state)
 
+    send(lv.pid, {:get_pending_verification, self()})
+
+    assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
+
     verification_ref
   end
 
@@ -2699,6 +2703,64 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       html = render(lv)
       assert html =~ "Verified"
+    end
+
+    test "peeks at an Entra verifier without consuming it before the code callback", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/entra/new")
+
+      lv
+      |> form("#auth-provider-form", %{auth_provider: %{name: "Test Entra"}})
+      |> render_change()
+
+      lv |> element("#verify-button") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+      assert {:ok, %{verification_ref: verification_ref}} =
+               PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:peek_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
+
+      send(lv.pid, {:get_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
+    end
+
+    test "does not consume an Entra verifier for a stale callback reference", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/entra/new")
+
+      lv
+      |> form("#auth-provider-form", %{auth_provider: %{name: "Test Entra"}})
+      |> render_change()
+
+      lv |> element("#verify-button") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+      assert {:ok, %{verification_ref: verification_ref}} =
+               PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:get_pending_verification, Ecto.UUID.generate(), self()})
+      assert_receive {:pending_verification, nil}
+
+      send(lv.pid, {:peek_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
     end
 
     test "accepts only the active entra verification completion", %{

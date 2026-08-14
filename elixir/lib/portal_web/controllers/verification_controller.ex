@@ -6,6 +6,7 @@ defmodule PortalWeb.VerificationController do
   require Logger
   @verification_ack_timeout 5_000
   @verification_ack_error "Could not confirm verification in settings. Please try again."
+  @entra_admin_required_error "The Microsoft account completing setup must be a tenant-wide Global Administrator or Privileged Role Administrator."
 
   # Render standalone HTML pages with minimal layout (CSS only, no portal chrome)
   plug :put_root_layout, html: {PortalWeb.Layouts, :verification}
@@ -53,27 +54,19 @@ defmodule PortalWeb.VerificationController do
   end
 
   @doc """
-  Handles an Entra verification callback (both auth_provider and directory_sync flows).
-  Reads the LV PID and flow type from the signed state token passed through by OIDCController,
-  extracts tenant_id from params, sends result to LV PID, and renders success or failure.
+  Renders an Entra verification result. Auth-provider results contain a tenant
+  identity verified from an ID token; directory-sync results are accepted only
+  after this controller verifies the tenant's app-only Microsoft Graph grant.
   """
-  def entra(conn, %{"state" => state} = params) do
-    case PortalWeb.OIDC.verify_verification_state(state) do
-      {:ok,
-       %{type: "entra-auth-provider", lv_pid: lv_pid_string, verification_ref: verification_ref}}
-      when is_binary(verification_ref) ->
-        handle_entra_auth_provider(conn, params, lv_pid_string, verification_ref)
-
-      {:ok,
-       %{type: "entra-directory-sync", lv_pid: lv_pid_string, verification_ref: verification_ref}}
-      when is_binary(verification_ref) ->
-        handle_entra_directory_sync(conn, params, lv_pid_string, verification_ref)
-
-      {:ok, _state} ->
-        render(conn, :failure, error: "Invalid or expired verification state. Please try again.")
+  def entra(conn, %{"result" => result_token}) do
+    case Phoenix.Token.verify(PortalWeb.Endpoint, "entra-verification-result", result_token,
+           max_age: 60
+         ) do
+      {:ok, result} ->
+        render_entra_result(conn, result)
 
       {:error, _} ->
-        render(conn, :failure, error: "Invalid or expired verification state. Please try again.")
+        render_invalid_entra_result(conn)
     end
   end
 
@@ -81,57 +74,107 @@ defmodule PortalWeb.VerificationController do
     render(conn, :failure, error: "Invalid verification request. Please try again.")
   end
 
-  defp handle_entra_auth_provider(conn, params, lv_pid_string, verification_ref) do
+  defp render_entra_result(
+         conn,
+         %{
+           ok: true,
+           type: "entra-auth-provider",
+           issuer: issuer,
+           tenant_id: tenant_id,
+           role_ids: role_ids,
+           lv_pid: lv_pid_string,
+           verification_ref: verification_ref
+         }
+       )
+       when is_binary(issuer) and is_binary(tenant_id) and is_list(role_ids) and
+              is_binary(verification_ref) do
     lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid_string)
 
-    case run_entra_auth_provider_verification(params, lv_pid, verification_ref) do
-      :ok ->
-        render(conn, :success)
-
-      {:error, error_message, notify_lv?} ->
-        if notify_lv? and lv_pid,
-          do: send(lv_pid, {:verification_failed, error_message, verification_ref})
-
-        render(conn, :failure, error: error_message)
-    end
-  end
-
-  defp handle_entra_directory_sync(conn, params, lv_pid_string, verification_ref) do
-    lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid_string)
-
-    case run_entra_directory_sync_verification(params, lv_pid, verification_ref) do
-      :ok ->
-        render(conn, :success)
-
-      {:error, error_message, notify_lv?} ->
-        if notify_lv? and lv_pid,
-          do: send(lv_pid, {:verification_failed, error_message, verification_ref})
-
-        render(conn, :failure, error: error_message)
-    end
-  end
-
-  defp run_entra_auth_provider_verification(params, lv_pid, verification_ref) do
-    with {:ok, tenant_id} <- extract_tenant_id_for_verification(params),
-         issuer = "https://login.microsoftonline.com/#{tenant_id}/v2.0",
-         :ok <-
-           notify_and_await_ack(
+    if PortalWeb.OIDC.entra_setup_admin?(role_ids) do
+      case notify_and_await_ack(
              lv_pid,
              {:entra_verify_complete, issuer, tenant_id, verification_ref}
            ) do
-      :ok
+        :ok -> render(conn, :success)
+        {:error, _reason} -> render(conn, :failure, error: @verification_ack_error)
+      end
     else
-      {:error, reason} when reason in [:ack_timeout, :no_receiver] ->
-        ack_failure_result()
+      maybe_notify_verification_failure(
+        lv_pid,
+        verification_ref,
+        @entra_admin_required_error,
+        true
+      )
 
-      {:error, {:consent_error, reason}} ->
-        {:error, format_consent_error(reason, params), true}
+      render(conn, :failure, error: @entra_admin_required_error)
     end
   end
 
-  defp run_entra_directory_sync_verification(params, lv_pid, verification_ref) do
-    with {:ok, tenant_id} <- extract_tenant_id_for_verification(params),
-         {:ok, :verified} <- verify_directory_access_for_verification(tenant_id),
+  defp render_entra_result(
+         conn,
+         %{
+           ok: true,
+           type: "entra-directory-sync",
+           tenant_id: tenant_id,
+           principal_id: principal_id,
+           lv_pid: lv_pid_string,
+           verification_ref: verification_ref
+         }
+       )
+       when is_binary(tenant_id) and is_binary(principal_id) and is_binary(verification_ref) do
+    lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid_string)
+
+    case run_entra_directory_sync_verification(
+           tenant_id,
+           principal_id,
+           lv_pid,
+           verification_ref
+         ) do
+      :ok ->
+        render(conn, :success)
+
+      {:error, error_message, notify_lv?} ->
+        maybe_notify_verification_failure(lv_pid, verification_ref, error_message, notify_lv?)
+        render(conn, :failure, error: error_message)
+    end
+  end
+
+  defp render_entra_result(
+         conn,
+         %{
+           ok: false,
+           error: error,
+           lv_pid: lv_pid_string,
+           verification_ref: verification_ref
+         }
+       )
+       when is_binary(error) and is_binary(verification_ref) do
+    lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid_string)
+    maybe_notify_verification_failure(lv_pid, verification_ref, error, true)
+    render(conn, :failure, error: error)
+  end
+
+  defp render_entra_result(conn, _result), do: render_invalid_entra_result(conn)
+
+  defp render_invalid_entra_result(conn) do
+    render(conn, :failure, error: "Invalid or expired verification result. Please try again.")
+  end
+
+  defp maybe_notify_verification_failure(lv_pid, verification_ref, error, true)
+       when is_pid(lv_pid) do
+    send(lv_pid, {:verification_failed, error, verification_ref})
+  end
+
+  defp maybe_notify_verification_failure(_lv_pid, _verification_ref, _error, _notify_lv?),
+    do: :ok
+
+  defp run_entra_directory_sync_verification(
+         tenant_id,
+         principal_id,
+         lv_pid,
+         verification_ref
+       ) do
+    with {:ok, :verified} <- verify_directory_access_for_verification(tenant_id, principal_id),
          :ok <-
            notify_and_await_ack(
              lv_pid,
@@ -142,23 +185,13 @@ defmodule PortalWeb.VerificationController do
       {:error, reason} when reason in [:ack_timeout, :no_receiver] ->
         ack_failure_result()
 
-      {:error, {:consent_error, reason}} ->
-        {:error, format_consent_error(reason, params), true}
-
       {:error, {:directory_verification_error, reason}} ->
         {:error, format_entra_verification_error(reason), true}
     end
   end
 
-  defp extract_tenant_id_for_verification(params) do
-    case extract_tenant_id(params) do
-      {:ok, tenant_id} -> {:ok, tenant_id}
-      {:error, reason} -> {:error, {:consent_error, reason}}
-    end
-  end
-
-  defp verify_directory_access_for_verification(tenant_id) do
-    case verify_directory_access(tenant_id) do
+  defp verify_directory_access_for_verification(tenant_id, principal_id) do
+    case verify_directory_access(tenant_id, principal_id) do
       {:ok, :verified} = result -> result
       error -> {:error, {:directory_verification_error, error}}
     end
@@ -166,32 +199,7 @@ defmodule PortalWeb.VerificationController do
 
   defp ack_failure_result, do: {:error, @verification_ack_error, false}
 
-  defp extract_tenant_id(%{"admin_consent" => "True", "tenant" => tenant_id})
-       when is_binary(tenant_id) and tenant_id != "" do
-    {:ok, tenant_id}
-  end
-
-  defp extract_tenant_id(%{"error" => _error, "error_description" => desc})
-       when is_binary(desc) and desc != "" do
-    {:error, desc}
-  end
-
-  defp extract_tenant_id(%{"error" => error}) when is_binary(error) and error != "" do
-    {:error, error}
-  end
-
-  defp extract_tenant_id(%{"admin_consent" => admin_consent})
-       when admin_consent != "True" do
-    {:error, :consent_not_granted}
-  end
-
-  defp extract_tenant_id(_), do: {:error, :missing_tenant}
-
-  defp format_consent_error(:consent_not_granted, _params), do: "Admin consent was not granted"
-  defp format_consent_error(:missing_tenant, _params), do: "Missing tenant information"
-  defp format_consent_error(reason, _params) when is_binary(reason), do: reason
-
-  defp verify_directory_access(tenant_id) do
+  defp verify_directory_access(tenant_id, principal_id) do
     config = Portal.Config.fetch_env!(:portal, Entra.APIClient)
     client_id = config[:client_id]
 
@@ -201,10 +209,24 @@ defmodule PortalWeb.VerificationController do
            Entra.APIClient.get_service_principal(access_token, client_id),
          {:ok, %Req.Response{status: 200, body: %{"value" => _assignments}}} <-
            Entra.APIClient.list_app_role_assignments(access_token, service_principal["id"]),
+         {:ok, %Req.Response{status: 200, body: %{"value" => directory_roles}}} <-
+           Entra.APIClient.list_transitive_directory_roles(access_token, principal_id),
+         :ok <- verify_entra_setup_admin_role(directory_roles),
          :ok <- Entra.APIClient.test_connection(access_token) do
       {:ok, :verified}
     end
   end
+
+  defp verify_entra_setup_admin_role(directory_roles) when is_list(directory_roles) do
+    role_ids = Enum.map(directory_roles, & &1["roleTemplateId"])
+
+    if PortalWeb.OIDC.entra_setup_admin?(role_ids),
+      do: :ok,
+      else: {:error, :entra_setup_admin_required}
+  end
+
+  defp verify_entra_setup_admin_role(_directory_roles),
+    do: {:error, :entra_setup_admin_required}
 
   defp notify_and_await_ack(nil, _msg), do: {:error, :no_receiver}
 
@@ -256,6 +278,9 @@ defmodule PortalWeb.VerificationController do
   defp format_entra_verification_error({:error, %Req.TransportError{}}) do
     "Failed to verify directory access due to a network error."
   end
+
+  defp format_entra_verification_error({:error, :entra_setup_admin_required}),
+    do: @entra_admin_required_error
 
   defp format_entra_verification_error({:error, _reason}) do
     "Failed to verify directory access."

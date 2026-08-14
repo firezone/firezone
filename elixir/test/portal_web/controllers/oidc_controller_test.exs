@@ -214,65 +214,415 @@ defmodule PortalWeb.OIDCControllerTest do
     end
   end
 
-  describe "callback/2 with Entra admin consent params" do
-    test "redirects with error when state format is invalid", %{conn: conn} do
-      params = %{
-        "state" => "invalid-format",
-        "admin_consent" => "True",
-        "tenant" => "test-tenant-id"
-      }
+  describe "callback/2 with Entra verification state" do
+    @tenant_id "12345678-1234-1234-1234-123456789012"
+    @tenant_issuer "https://login.microsoftonline.com/#{@tenant_id}/v2.0"
+    @principal_id "87654321-4321-4321-4321-210987654321"
 
-      conn = get(conn, ~p"/auth/oidc/callback", params)
+    test "derives the auth-provider tenant from a verified ID token", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+      assert_tenant_proof_redirect(conn, "openid email profile", "none")
+
+      set_entra_token_response("entra-client-id")
+      conn = complete_entra_tenant_proof(conn)
+
+      assert {:ok,
+              %{
+                ok: true,
+                type: "entra-auth-provider",
+                tenant_id: @tenant_id,
+                issuer: @tenant_issuer,
+                verification_ref: ^verification_ref
+              }} = entra_verification_result_from_redirect(redirected_to(conn))
+    end
+
+    test "binds directory sync to a user identity from a verified ID token", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-sync-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-directory-sync", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+      assert_tenant_proof_redirect(conn, "openid profile", "none")
+
+      set_entra_token_response("entra-sync-client-id")
+      conn = complete_entra_tenant_proof(conn)
+
+      assert {:ok,
+              %{
+                ok: true,
+                type: "entra-directory-sync",
+                tenant_id: @tenant_id,
+                principal_id: @principal_id,
+                verification_ref: ^verification_ref
+              }} = entra_verification_result_from_redirect(redirected_to(conn))
+    end
+
+    test "rejects a malformed directory-sync callback tenant", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-sync-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-directory-sync", verification_ref)
+
+      conn =
+        complete_entra_admin_consent(conn, state, %{
+          "tenant" => "attacker-controlled-tenant"
+        })
+
+      assert {:ok, %{ok: false, error: error, verification_ref: ^verification_ref}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify the Microsoft Entra tenant"
+    end
+
+    test "rejects a token for a tenant other than the admin-consent callback tenant", %{
+      conn: conn
+    } do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      other_tenant_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+      conn = complete_entra_admin_consent(conn, state, %{"tenant" => other_tenant_id})
+      assert URI.parse(redirected_to(conn)).path =~ other_tenant_id
+
+      set_entra_token_response("entra-client-id")
+      conn = complete_entra_tenant_proof(conn)
+
+      assert {:ok, %{ok: false, error: error}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify the Microsoft Entra tenant"
+    end
+
+    test "rejects a malformed admin-consent callback tenant", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn =
+        complete_entra_admin_consent(conn, state, %{
+          "tenant" => "attacker-controlled-tenant"
+        })
+
+      assert {:ok, %{ok: false, error: error, verification_ref: ^verification_ref}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify the Microsoft Entra tenant"
+    end
+
+    test "rejects a signed ID token whose issuer does not match tid", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+
+      set_entra_token_response("entra-client-id", %{
+        "iss" => "https://login.microsoftonline.com/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/v2.0"
+      })
+
+      conn = complete_entra_tenant_proof(conn)
+
+      assert {:ok, %{ok: false, error: error}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify the Microsoft Entra tenant"
+    end
+
+    test "rejects a token signed by a key scoped to another tenant", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+
+      Mocks.OIDC.set_jwks_response(
+        Map.put(
+          Mocks.OIDC.jwks(),
+          "issuer",
+          "https://login.microsoftonline.com/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/v2.0"
+        )
+      )
+
+      set_entra_token_response("entra-client-id")
+
+      conn = complete_entra_tenant_proof(conn)
+
+      assert {:ok, %{ok: false, error: error}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify the Microsoft Entra tenant"
+    end
+
+    test "rejects a token whose nonce is not bound to the verification session", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+
+      set_entra_token_response("entra-client-id", %{"nonce" => "wrong-nonce"})
+
+      conn = complete_entra_tenant_proof(conn)
+
+      assert {:ok, %{ok: false, error: error}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify the Microsoft Entra tenant"
+    end
+
+    test "rejects an Entra identity proof whose ID token audience is missing", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+
+      "entra-client-id"
+      |> entra_claims()
+      |> Map.delete("aud")
+      |> set_entra_claims_response()
+
+      conn = complete_entra_tenant_proof(conn)
+
+      assert {:ok, %{ok: false, error: error}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify your identity token"
+    end
+
+    test "rejects an Entra identity proof whose ID token audience does not match", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+      set_entra_claims_response(entra_claims("other-client-id"))
+      conn = complete_entra_tenant_proof(conn)
+
+      assert {:ok, %{ok: false, error: error}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify your identity token"
+    end
+
+    test "rejects an Entra identity proof whose ID token signature is invalid", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+
+      id_token =
+        "entra-client-id"
+        |> entra_claims()
+        |> Mocks.OIDC.sign_openid_connect_token()
+        |> invalidate_jwt_signature()
+
+      set_entra_id_token_response(id_token)
+      conn = complete_entra_tenant_proof(conn)
+
+      assert {:ok, %{ok: false, error: error}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify your identity token"
+    end
+
+    test "does not exchange the authorization code when an Entra identity-proof callback is replayed",
+         %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      consent_conn = complete_entra_admin_consent(conn, state)
+      tenant_proof_state = callback_state_from_redirect(consent_conn)
+      set_entra_token_response("entra-client-id")
+
+      first_conn = complete_entra_tenant_proof(consent_conn)
+      assert {:ok, %{ok: true}} = entra_verification_result_from_redirect(redirected_to(first_conn))
+      flush_oidc_requests()
+
+      replayed_conn =
+        get(recycle(first_conn), ~p"/auth/oidc/callback", %{
+          "state" => tenant_proof_state,
+          "code" => "replayed-code"
+        })
+
+      assert {:ok, %{ok: false, error: error}} =
+               entra_verification_result_from_redirect(redirected_to(replayed_conn))
+
+      assert error =~ "Verification session was not found or has expired"
+      refute_received {:oidc_request, _path, _conn}
+    end
+
+    test "does not consume a newer pending verification when a stale Entra callback arrives", %{
+      conn: conn
+    } do
+      stale_ref = Ecto.UUID.generate()
+      current_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, current_ref)
+
+      state = entra_tenant_proof_state(lv_pid, "entra-auth-provider", stale_ref)
+      flush_oidc_requests()
+
+      conn =
+        get(recycle(conn), ~p"/auth/oidc/callback", %{
+          "state" => state,
+          "code" => "stale-code"
+        })
+
+      assert {:ok, %{ok: false, error: error, verification_ref: ^stale_ref}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Verification session was not found or has expired"
+      refute_received {:oidc_request, _path, _conn}
+
+      send(lv_pid, {:peek_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^current_ref}}
+    end
+
+    test "returns a signed failure when the admin denies consent", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{
+          "state" => state,
+          "error" => "access_denied",
+          "error_description" => "The user denied consent"
+        })
+
+      assert {:ok,
+              %{
+                ok: false,
+                error: "The user denied consent",
+                verification_ref: ^verification_ref
+              }} = entra_verification_result_from_redirect(redirected_to(conn))
+    end
+
+    test "falls back to an interactive tenant proof when silent SSO is unavailable", %{
+      conn: conn
+    } do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+      silent_state = callback_state_from_redirect(conn)
+
+      conn =
+        get(recycle(conn), ~p"/auth/oidc/callback", %{
+          "state" => silent_state,
+          "error" => "interaction_required",
+          "error_description" => "Silent SSO was unavailable"
+        })
+
+      assert_tenant_proof_redirect(conn, "openid email profile", nil)
+
+      set_entra_token_response("entra-client-id")
+      conn = complete_entra_tenant_proof(conn)
+
+      assert {:ok, %{ok: true, verification_ref: ^verification_ref}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+    end
+
+    test "directory sync falls back to an interactive identity proof when OIDC consent is required",
+         %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-sync-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-directory-sync", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+      silent_state = callback_state_from_redirect(conn)
+
+      conn =
+        get(recycle(conn), ~p"/auth/oidc/callback", %{
+          "state" => silent_state,
+          "error" => "consent_required",
+          "error_description" => "The user has not consented to sign in"
+        })
+
+      assert_tenant_proof_redirect(conn, "openid profile", nil)
+    end
+
+    test "rejects an Entra ID token without an immutable user object ID", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+      set_entra_token_response("entra-client-id", %{"oid" => nil})
+      conn = complete_entra_tenant_proof(conn)
+
+      assert {:ok, %{ok: false, error: error}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify the Microsoft Entra tenant"
+    end
+
+    test "returns a signed failure when the interactive tenant proof is denied", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn = complete_entra_admin_consent(conn, state)
+      silent_state = callback_state_from_redirect(conn)
+
+      conn =
+        get(recycle(conn), ~p"/auth/oidc/callback", %{
+          "state" => silent_state,
+          "error" => "interaction_required"
+        })
+
+      interactive_state = callback_state_from_redirect(conn)
+
+      conn =
+        get(recycle(conn), ~p"/auth/oidc/callback", %{
+          "state" => interactive_state,
+          "error" => "access_denied",
+          "error_description" => "The user denied sign in"
+        })
+
+      assert {:ok,
+              %{
+                ok: false,
+                error: "The user denied sign in",
+                verification_ref: ^verification_ref
+              }} = entra_verification_result_from_redirect(redirected_to(conn))
+    end
+
+    test "rejects an admin-consent response without signed state", %{conn: conn} do
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{
+          "state" => "attacker-controlled-state",
+          "admin_consent" => "True",
+          "tenant" => @tenant_id
+        })
 
       assert redirected_to(conn) == "/sign_in"
       assert flash(conn, :error) == "Invalid sign-in request. Please try again."
-    end
-
-    test "redirects to /verification/entra for entra-auth-provider state", %{conn: conn} do
-      lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-auth-provider")
-
-      params = %{
-        "state" => state,
-        "admin_consent" => "True",
-        "tenant" => "test-tenant-id"
-      }
-
-      conn = get(conn, ~p"/auth/oidc/callback", params)
-
-      assert redirected_to(conn) =~ "/verification/entra"
-    end
-
-    test "redirects to /verification/entra for entra-directory-sync state", %{conn: conn} do
-      lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-directory-sync")
-
-      params = %{
-        "state" => state,
-        "admin_consent" => "True",
-        "tenant" => "test-tenant-id"
-      }
-
-      conn = get(conn, ~p"/auth/oidc/callback", params)
-
-      assert redirected_to(conn) =~ "/verification/entra"
-    end
-
-    test "redirects to /verification/entra when admin_consent callback omits tenant", %{
-      conn: conn
-    } do
-      lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-auth-provider")
-
-      params = %{
-        "state" => state,
-        "admin_consent" => "False",
-        "error" => "access_denied"
-      }
-
-      conn = get(conn, ~p"/auth/oidc/callback", params)
-
-      assert redirected_to(conn) =~ "/verification/entra"
     end
   end
 
@@ -3038,6 +3388,190 @@ defmodule PortalWeb.OIDCControllerTest do
     Phoenix.Token.verify(PortalWeb.Endpoint, "oidc-verification-result", result_token,
       max_age: 60
     )
+  end
+
+  defp entra_verification_result_from_redirect(redirect_url) do
+    result_token =
+      redirect_url
+      |> URI.parse()
+      |> Map.fetch!(:query)
+      |> URI.decode_query()
+      |> Map.fetch!("result")
+
+    Phoenix.Token.verify(PortalWeb.Endpoint, "entra-verification-result", result_token,
+      max_age: 60
+    )
+  end
+
+  defp assert_tenant_proof_redirect(conn, expected_scope, expected_prompt) do
+    uri = conn |> redirected_to() |> URI.parse()
+    params = URI.decode_query(uri.query)
+
+    assert uri.host == "login.microsoftonline.com"
+    assert uri.path == "/#{@tenant_id}/oauth2/v2.0/authorize"
+    assert params["scope"] == expected_scope
+    assert params["response_type"] == "code"
+    assert params["code_challenge_method"] == "S256"
+    assert params["prompt"] == expected_prompt
+    assert is_binary(params["state"])
+    refute params["state"] == ""
+  end
+
+  defp complete_entra_admin_consent(conn, state, extra_params \\ %{}) do
+    params =
+      %{
+        "state" => state,
+        "admin_consent" => "True",
+        "tenant" => @tenant_id
+      }
+      |> Map.merge(extra_params)
+
+    get(recycle(conn), ~p"/auth/oidc/callback", params)
+  end
+
+  defp complete_entra_tenant_proof(conn, extra_params \\ %{}) do
+    params =
+      %{
+        "state" => callback_state_from_redirect(conn),
+        "code" => "test-code"
+      }
+      |> Map.merge(extra_params)
+
+    get(recycle(conn), ~p"/auth/oidc/callback", params)
+  end
+
+  defp callback_state_from_redirect(conn) do
+    conn
+    |> redirected_to()
+    |> URI.parse()
+    |> Map.fetch!(:query)
+    |> URI.decode_query()
+    |> Map.fetch!("state")
+  end
+
+  defp entra_verification_config(client_id) do
+    {scope, admin_consent_scope} =
+      if client_id == "entra-sync-client-id" do
+        {"openid profile", "https://graph.microsoft.com/.default"}
+      else
+        {"openid email profile", "openid email profile"}
+      end
+
+    %{
+      admin_consent_scope: admin_consent_scope,
+      client_id: client_id,
+      client_secret: "test-secret",
+      discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+      redirect_uri: PortalWeb.OIDC.callback_url(),
+      response_type: "code",
+      scope: scope,
+      verification_client_auth: :entra,
+      req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
+    }
+  end
+
+  defp pending_verification_process(config, verification_ref) do
+    pending = %{
+      config: config,
+      verifier: "test-verifier",
+      verification_ref: verification_ref
+    }
+
+    spawn(fn -> pending_verification_loop(pending) end)
+  end
+
+  defp pending_verification_loop(pending) do
+    receive do
+      {:peek_pending_verification, from} ->
+        send(from, {:pending_verification, pending})
+        pending_verification_loop(pending)
+
+      {:get_pending_verification, from} ->
+        send(from, {:pending_verification, pending})
+        pending_verification_loop(nil)
+
+      {:get_pending_verification, verification_ref, from} ->
+        case pending do
+          %{verification_ref: ^verification_ref} ->
+            send(from, {:pending_verification, pending})
+            pending_verification_loop(nil)
+
+          _pending ->
+            send(from, {:pending_verification, nil})
+            pending_verification_loop(pending)
+        end
+    end
+  end
+
+  defp entra_verification_state(lv_pid, type, verification_ref) do
+    lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+
+    PortalWeb.OIDC.sign_verification_state(lv_pid_string, type, %{
+      verification_ref: verification_ref
+    })
+  end
+
+  defp entra_tenant_proof_state(lv_pid, type, verification_ref) do
+    lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+
+    PortalWeb.OIDC.sign_verification_state(lv_pid_string, "#{type}-tenant-proof", %{
+      verification_ref: verification_ref,
+      tenant_id: @tenant_id,
+      silent: true
+    })
+  end
+
+  defp set_entra_token_response(client_id, claim_overrides \\ %{}) do
+    client_id
+    |> entra_claims()
+    |> Map.merge(claim_overrides)
+    |> set_entra_claims_response()
+  end
+
+  defp set_entra_claims_response(claims) do
+    claims
+    |> Mocks.OIDC.sign_openid_connect_token()
+    |> set_entra_id_token_response()
+  end
+
+  defp set_entra_id_token_response(id_token) do
+    Mocks.OIDC.set_token_response(%{
+      "access_token" => "test-access-token",
+      "token_type" => "Bearer",
+      "id_token" => id_token
+    })
+  end
+
+  defp entra_claims(client_id) do
+    Mocks.OIDC.default_claims()
+    |> Map.merge(%{
+      "aud" => client_id,
+      "iss" => "https://login.microsoftonline.com/12345678-1234-1234-1234-123456789012/v2.0",
+      "nonce" => entra_nonce("test-verifier"),
+      "oid" => "87654321-4321-4321-4321-210987654321",
+      "wids" => ["62e90394-69f5-4237-9190-012177145e10"],
+      "tid" => "12345678-1234-1234-1234-123456789012"
+    })
+  end
+
+  defp invalidate_jwt_signature(id_token) do
+    [header, payload, signature] = String.split(id_token, ".")
+    replacement = if String.starts_with?(signature, "A"), do: "B", else: "A"
+    invalid_signature = replacement <> String.slice(signature, 1..-1//1)
+    Enum.join([header, payload, invalid_signature], ".")
+  end
+
+  defp flush_oidc_requests do
+    receive do
+      {:oidc_request, _path, _conn} -> flush_oidc_requests()
+    after
+      0 -> :ok
+    end
+  end
+
+  defp entra_nonce(verifier) do
+    :crypto.hash(:sha256, "entra-verification-nonce:" <> verifier)
+    |> Base.url_encode64(padding: false)
   end
 
   # Sets up mocks for a successful authentication flow.
