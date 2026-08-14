@@ -57,11 +57,12 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       refute html =~ "settings/device_integrations"
     end
 
-    test "shows the settings tab when the global flag is on", %{
-      conn: conn,
-      account: account,
-      actor: actor
+    test "shows the settings tab when the global flag is on even without the account feature", %{
+      conn: conn
     } do
+      account = Portal.AccountFixtures.account_fixture(features: %{device_posture: false})
+      actor = Portal.ActorFixtures.admin_actor_fixture(account: account)
+
       {:ok, _lv, html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/directory_sync")
 
@@ -91,6 +92,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
 
       assert html =~ "Upgrade to Unlock"
       assert html =~ "Inventory Your Managed Devices"
+      assert html =~ "settings/device_integrations"
       refute html =~ "Add Device Integration"
 
       # The slide-over cannot be opened from the splash.
@@ -130,6 +132,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
     assert html =~ "No device integrations configured."
     assert html =~ "Add a device integration"
     refute html =~ "Devices synced"
+    refute html =~ "Upgrade to Unlock"
   end
 
   test "summarises synced devices by compliance state", %{
