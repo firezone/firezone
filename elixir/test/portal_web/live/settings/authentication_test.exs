@@ -74,8 +74,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       |> Map.fetch!(:query)
       |> URI.decode_query()
 
-    assert {:ok, %{verification_ref: verification_ref}} =
+    assert {:ok, %{verification_ref: verification_ref, lv_pid: serialized_pid}} =
              PortalWeb.OIDC.verify_verification_state(state)
+
+    assert PortalWeb.OIDC.deserialize_pid(serialized_pid) == lv.pid
 
     send(lv.pid, {:get_pending_verification, self()})
 

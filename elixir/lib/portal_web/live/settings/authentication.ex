@@ -175,7 +175,7 @@ defmodule PortalWeb.Settings.Authentication do
     with {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification(type, opts),
          verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
          verification_ref = Ecto.UUID.generate(),
-         lv_pid_string = self() |> :erlang.pid_to_list() |> to_string(),
+         lv_pid_string = PortalWeb.OIDC.serialize_pid(self()),
          state_token <-
            PortalWeb.OIDC.sign_verification_state(
              lv_pid_string,

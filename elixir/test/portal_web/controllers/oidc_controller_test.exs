@@ -3680,7 +3680,7 @@ defmodule PortalWeb.OIDCControllerTest do
   end
 
   defp google_directory_verification_state(lv_pid, verification_ref) do
-    lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+    lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
 
     PortalWeb.OIDC.sign_verification_state(lv_pid_string, "google-directory-sync", %{
       verification_ref: verification_ref
@@ -3711,7 +3711,7 @@ defmodule PortalWeb.OIDCControllerTest do
   end
 
   defp entra_verification_state(lv_pid, type, verification_ref) do
-    lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+    lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
 
     PortalWeb.OIDC.sign_verification_state(lv_pid_string, type, %{
       verification_ref: verification_ref
@@ -3719,7 +3719,7 @@ defmodule PortalWeb.OIDCControllerTest do
   end
 
   defp entra_tenant_proof_state(lv_pid, type, verification_ref) do
-    lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+    lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
 
     PortalWeb.OIDC.sign_verification_state(lv_pid_string, "#{type}-tenant-proof", %{
       verification_ref: verification_ref,

@@ -358,8 +358,40 @@ defmodule PortalWeb.OIDC do
   def verification_state_type(type) when type in ["google", "okta", "oidc"],
     do: "oidc-auth-provider"
 
+  @serialized_pid_prefix "pid:"
+  # Key-derivation salt; Phoenix.Token derives the actual encryption key from
+  # the endpoint secret_key_base shared by the portal cluster.
+  @serialized_pid_salt "oidc-verification-pid"
+  @serialized_pid_max_age 15 * 60
+
+  @doc """
+  Serializes a PID without losing its originating Erlang node.
+
+  The value is carried only inside signed verification state and result tokens.
+  """
+  def serialize_pid(pid) when is_pid(pid) do
+    encrypted_pid =
+      Phoenix.Token.encrypt(PortalWeb.Endpoint, @serialized_pid_salt, pid)
+
+    @serialized_pid_prefix <> encrypted_pid
+  end
+
   def deserialize_pid(nil), do: nil
 
+  def deserialize_pid(@serialized_pid_prefix <> encrypted_pid) do
+    case Phoenix.Token.decrypt(
+           PortalWeb.Endpoint,
+           @serialized_pid_salt,
+           encrypted_pid,
+           max_age: @serialized_pid_max_age
+         ) do
+      {:ok, pid} when is_pid(pid) -> pid
+      _ -> nil
+    end
+  end
+
+  # Accept verification callbacks created shortly before a deployment. This
+  # legacy representation identifies a PID only on the current Erlang node.
   def deserialize_pid(pid_string) when is_binary(pid_string) do
     pid_string |> String.to_charlist() |> :erlang.list_to_pid()
   rescue
