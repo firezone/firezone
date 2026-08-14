@@ -638,6 +638,36 @@ defmodule OpenIDConnectTest do
                 {:invalid_jwt, "invalid iss claim: token was issued by another provider"}}
     end
 
+    test "rejects a literal Microsoft tenant issuer template" do
+      {config, jwk} = verification_fixture("azure")
+
+      claims =
+        config
+        |> valid_claims("https://login.microsoftonline.com/{tenantid}/v2.0")
+        |> Map.put("tid", "12345678-1234-1234-1234-123456789012")
+
+      token = sign_token(jwk, claims)
+
+      assert verify(config, token) ==
+               {:error,
+                {:invalid_jwt, "invalid iss claim: token was issued by another provider"}}
+    end
+
+    test "accepts an exact concrete issuer when the token also contains tid" do
+      tenant_id = "12345678-1234-1234-1234-123456789012"
+      issuer = "https://login.microsoftonline.com/#{tenant_id}/v2.0"
+      {config, jwk} = verification_fixture("azure", %{"issuer" => issuer})
+
+      claims =
+        config
+        |> valid_claims(issuer)
+        |> Map.put("tid", tenant_id)
+
+      token = sign_token(jwk, claims)
+
+      assert verify(config, token) == {:ok, claims}
+    end
+
     test "validates a nonce when one is expected" do
       {config, jwk} = verification_fixture("vault")
       claims = valid_claims(config) |> Map.put("nonce", "expected-nonce")
@@ -1272,11 +1302,14 @@ defmodule OpenIDConnectTest do
     OpenIDConnect.Fixtures.send_response(conn, status, %{"keys" => [pubkey]}, headers)
   end
 
-  defp verification_fixture(provider) do
+  defp verification_fixture(provider, overrides \\ %{}) do
     {raw_jwk, []} = Code.eval_file("test/fixtures/jwks/jwk.exs")
     jwk = JOSE.JWK.from(raw_jwk)
     {_, public_jwk} = JOSE.JWK.to_public_map(jwk)
-    {test_name, uri} = start_fixture(provider, %{"jwks" => public_jwk})
+
+    {test_name, uri} =
+      start_fixture(provider, Map.put(overrides, "jwks", public_jwk))
+
     config = %{@config | discovery_document_uri: uri, req_opts: req_test_options(test_name)}
     {config, jwk}
   end

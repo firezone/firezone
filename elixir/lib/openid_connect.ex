@@ -435,21 +435,29 @@ defmodule OpenIDConnect do
     end
   end
 
-  defp issuer_matches?(issuer, issuer, _claims), do: true
+  defp issuer_matches?(issuer, expected_issuer, claims) do
+    cond do
+      is_binary(expected_issuer) and String.contains?(expected_issuer, "{tenantid}") ->
+        tenant_issuer_matches?(issuer, expected_issuer, claims)
 
-  # Google documents this legacy issuer as equivalent to the issuer in its
-  # discovery document.
-  defp issuer_matches?("accounts.google.com", "https://accounts.google.com", _claims), do: true
+      # Google documents this legacy issuer as equivalent to the issuer in its
+      # discovery document.
+      issuer == "accounts.google.com" and expected_issuer == "https://accounts.google.com" ->
+        true
+
+      true ->
+        issuer === expected_issuer
+    end
+  end
 
   # Microsoft Entra's tenant-independent discovery documents publish an issuer
   # template. The signed `tid` claim must fill that template exactly.
-  defp issuer_matches?(issuer, expected_issuer, %{"tid" => tenant_id})
-       when is_binary(expected_issuer) and is_binary(tenant_id) do
-    String.contains?(expected_issuer, "{tenantid}") and
-      issuer == String.replace(expected_issuer, "{tenantid}", tenant_id)
+  defp tenant_issuer_matches?(issuer, expected_issuer, %{"tid" => tenant_id})
+       when is_binary(tenant_id) do
+    issuer == String.replace(expected_issuer, "{tenantid}", tenant_id)
   end
 
-  defp issuer_matches?(_issuer, _expected_issuer, _claims), do: false
+  defp tenant_issuer_matches?(_issuer, _expected_issuer, _claims), do: false
 
   defp verify_nonce_claim(_claims, nil), do: :ok
 
