@@ -978,7 +978,11 @@ defmodule PortalWeb.OIDCController do
          verification_ref
        ) do
     with {:ok, tokens} <- PortalWeb.OIDC.exchange_code_with_config(config, code, verifier),
-         access_token when is_binary(access_token) <- tokens["access_token"],
+         {:ok, id_token} <- google_id_token(tokens),
+         {:ok, claims} <-
+           PortalWeb.OIDC.verify_token_with_config(config, id_token, verifier),
+         {:ok, identity} <- google_workspace_identity(claims),
+         {:ok, access_token} <- Google.APIClient.get_customer_access_token(identity.email),
          {:ok, %Req.Response{status: 200, body: customer}} <-
            Google.APIClient.get_customer(access_token),
          {:ok, customer_id, domain} <- google_customer_identity(customer),
@@ -991,13 +995,6 @@ defmodule PortalWeb.OIDCController do
         verification_ref: verification_ref
       }
     else
-      nil ->
-        google_directory_sync_failure(
-          :missing_access_token,
-          lv_pid_string,
-          verification_ref
-        )
-
       error ->
         maybe_log_verification_error(error)
         google_directory_sync_failure(error, lv_pid_string, verification_ref)
@@ -1015,6 +1012,39 @@ defmodule PortalWeb.OIDCController do
       lv_pid_string,
       verification_ref
     )
+  end
+
+  defp google_id_token(%{"id_token" => id_token})
+       when is_binary(id_token) and id_token != "",
+       do: {:ok, id_token}
+
+  defp google_id_token(_tokens), do: {:error, :missing_google_id_token}
+
+  defp google_workspace_identity(claims) when is_map(claims) do
+    with true <- claims["email_verified"] == true,
+         {:ok, subject_id} <- google_identity_claim(claims, "sub"),
+         {:ok, email} <- google_identity_claim(claims, "email"),
+         {:ok, hosted_domain} <- google_identity_claim(claims, "hd") do
+      {:ok,
+       %{
+         subject_id: subject_id,
+         email: email,
+         hosted_domain: hosted_domain
+       }}
+    else
+      false -> {:error, :google_email_not_verified}
+      {:error, "hd"} -> {:error, :not_google_workspace_account}
+      {:error, _claim} -> {:error, :invalid_google_identity}
+    end
+  end
+
+  defp google_workspace_identity(_claims), do: {:error, :invalid_google_identity}
+
+  defp google_identity_claim(claims, claim) do
+    case claims[claim] do
+      value when is_binary(value) and value != "" -> {:ok, value}
+      _value -> {:error, claim}
+    end
   end
 
   defp google_customer_identity(%{"id" => customer_id, "customerDomain" => domain})
@@ -1102,8 +1132,17 @@ defmodule PortalWeb.OIDCController do
     "The Google account completing verification belongs to a different Workspace than the configured impersonation account."
   end
 
-  defp google_directory_sync_error_message(:missing_access_token),
-    do: "Google did not return an access token. Please try verification again."
+  defp google_directory_sync_error_message(:missing_google_id_token),
+    do: "Google did not return an identity token. Please try verification again."
+
+  defp google_directory_sync_error_message(:google_email_not_verified),
+    do: "Google did not confirm that the signed-in account's email is verified."
+
+  defp google_directory_sync_error_message(:not_google_workspace_account),
+    do: "Please sign in with a managed Google Workspace account."
+
+  defp google_directory_sync_error_message(:invalid_google_identity),
+    do: "Google returned incomplete account identity information. Please try verification again."
 
   defp google_directory_sync_error_message(:invalid_google_customer),
     do: "Google returned invalid Workspace customer information. Please try verification again."

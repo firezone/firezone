@@ -8,11 +8,12 @@ defmodule Portal.Google.APIClient do
   @access_token_type "urn:ietf:params:oauth:token-type:access_token"
   @jwt_token_type "urn:ietf:params:oauth:token-type:jwt"
   @cloud_platform_scope "https://www.googleapis.com/auth/cloud-platform"
-  @workspace_scope ~w[
-    https://www.googleapis.com/auth/admin.directory.customer.readonly
-    https://www.googleapis.com/auth/admin.directory.orgunit.readonly
-    https://www.googleapis.com/auth/admin.directory.group.readonly
-    https://www.googleapis.com/auth/admin.directory.user.readonly
+  @customer_readonly_scope "https://www.googleapis.com/auth/admin.directory.customer.readonly"
+  @workspace_scope [
+    @customer_readonly_scope,
+    "https://www.googleapis.com/auth/admin.directory.orgunit.readonly",
+    "https://www.googleapis.com/auth/admin.directory.group.readonly",
+    "https://www.googleapis.com/auth/admin.directory.user.readonly"
   ]
                    |> Enum.join(" ")
 
@@ -32,16 +33,31 @@ defmodule Portal.Google.APIClient do
   temporary fallback for federation-stage failures until the key is removed.
   """
   def get_access_token(impersonation_email) do
+    get_delegated_access_token(impersonation_email, @workspace_scope)
+  end
+
+  @doc """
+  Gets a delegated access token limited to reading Workspace customer information.
+
+  This is used to verify that an interactively authenticated Google user can read
+  the customer record without granting Admin SDK scopes to the interactive OAuth
+  client.
+  """
+  def get_customer_access_token(impersonation_email) do
+    get_delegated_access_token(impersonation_email, @customer_readonly_scope)
+  end
+
+  defp get_delegated_access_token(impersonation_email, scope) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
 
     case workload_identity_config(config) do
       {:ok, workload_identity_config} ->
         impersonation_email
-        |> get_federated_access_token(config, workload_identity_config)
-        |> maybe_fallback_to_service_account_key(impersonation_email, config)
+        |> get_federated_access_token(scope, config, workload_identity_config)
+        |> maybe_fallback_to_service_account_key(impersonation_email, scope, config)
 
       :not_configured ->
-        get_access_token_with_configured_key(impersonation_email, config)
+        get_access_token_with_configured_key(impersonation_email, scope, config)
 
       {:error, _reason} = error ->
         error
@@ -55,14 +71,24 @@ defmodule Portal.Google.APIClient do
   """
   def get_access_token(impersonation_email, key) when is_map(key) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    cache_key = workspace_cache_key(impersonation_email, {:service_account_key, key})
+
+    get_access_token_with_key(impersonation_email, key, @workspace_scope, config)
+  end
+
+  defp get_access_token_with_key(impersonation_email, key, scope, config) do
+    cache_key = workspace_cache_key(impersonation_email, scope, {:service_account_key, key})
 
     TokenCache.fetch(token_cache(config), cache_key, fn ->
-      fetch_key_access_token(impersonation_email, key, config)
+      fetch_key_access_token(impersonation_email, key, scope, config)
     end)
   end
 
-  defp get_federated_access_token(impersonation_email, config, workload_identity_config) do
+  defp get_federated_access_token(
+         impersonation_email,
+         scope,
+         config,
+         workload_identity_config
+       ) do
     federated_cache_key =
       {:federated_access_token, workload_identity_config.provider,
        workload_identity_config.audience}
@@ -74,6 +100,7 @@ defmodule Portal.Google.APIClient do
       cache_key =
         workspace_cache_key(
           impersonation_email,
+          scope,
           {:federated, workload_identity_config}
         )
 
@@ -82,6 +109,7 @@ defmodule Portal.Google.APIClient do
           impersonation_email,
           workload_identity_config.service_account_email,
           federated_token,
+          scope,
           config
         )
       end)
@@ -105,9 +133,10 @@ defmodule Portal.Google.APIClient do
          impersonation_email,
          service_account_email,
          federated_token,
+         scope,
          config
        ) do
-    claims = claim_set(impersonation_email, service_account_email, config[:token_endpoint])
+    claims = claim_set(impersonation_email, service_account_email, scope, config[:token_endpoint])
 
     with {:ok, signed_jwt} <-
            sign_jwt(claims, service_account_email, federated_token, config) do
@@ -117,13 +146,13 @@ defmodule Portal.Google.APIClient do
     end
   end
 
-  defp fetch_key_access_token(impersonation_email, key, config) do
+  defp fetch_key_access_token(impersonation_email, key, scope, config) do
     jws = %{"alg" => "RS256", "typ" => "JWT"}
     jwk = JOSE.JWK.from_pem(key["private_key"])
 
     claim_set =
       impersonation_email
-      |> claim_set(key["client_email"], config[:token_endpoint])
+      |> claim_set(key["client_email"], scope, config[:token_endpoint])
       |> JSON.encode!()
 
     jwt =
@@ -178,6 +207,7 @@ defmodule Portal.Google.APIClient do
   defp maybe_fallback_to_service_account_key(
          {:error, {stage, _reason}} = error,
          impersonation_email,
+         scope,
          config
        )
        when stage in @federation_failure_stages do
@@ -187,19 +217,25 @@ defmodule Portal.Google.APIClient do
           stage: stage
         )
 
-        get_access_token(impersonation_email, JSON.decode!(key))
+        get_access_token_with_key(impersonation_email, JSON.decode!(key), scope, config)
 
       _ ->
         error
     end
   end
 
-  defp maybe_fallback_to_service_account_key(result, _impersonation_email, _config), do: result
+  defp maybe_fallback_to_service_account_key(
+         result,
+         _impersonation_email,
+         _scope,
+         _config
+       ),
+       do: result
 
-  defp get_access_token_with_configured_key(impersonation_email, config) do
+  defp get_access_token_with_configured_key(impersonation_email, scope, config) do
     case config[:service_account_key] do
       key when is_binary(key) and key != "" ->
-        get_access_token(impersonation_email, JSON.decode!(key))
+        get_access_token_with_key(impersonation_email, JSON.decode!(key), scope, config)
 
       _ ->
         {:error, :service_account_not_configured}
@@ -256,12 +292,12 @@ defmodule Portal.Google.APIClient do
     end
   end
 
-  defp claim_set(impersonation_email, service_account_email, token_endpoint) do
+  defp claim_set(impersonation_email, service_account_email, scope, token_endpoint) do
     unix_timestamp = :os.system_time(:seconds)
 
     %{
       "iss" => service_account_email,
-      "scope" => @workspace_scope,
+      "scope" => scope,
       "aud" => token_endpoint,
       "sub" => impersonation_email,
       "exp" => unix_timestamp + 3600,
@@ -300,18 +336,19 @@ defmodule Portal.Google.APIClient do
   defp access_token_response({:ok, %Req.Response{} = response}), do: {:error, response}
   defp access_token_response({:error, _reason} = error), do: error
 
-  defp workspace_cache_key(impersonation_email, {:federated, config}) do
+  defp workspace_cache_key(impersonation_email, scope, {:federated, config}) do
     {
       :workspace_access_token,
       :federated,
       config.provider,
       config.audience,
       config.service_account_email,
-      impersonation_email
+      impersonation_email,
+      scope
     }
   end
 
-  defp workspace_cache_key(impersonation_email, {:service_account_key, key}) do
+  defp workspace_cache_key(impersonation_email, scope, {:service_account_key, key}) do
     key_id =
       key["private_key_id"] ||
         (:sha256
@@ -319,7 +356,7 @@ defmodule Portal.Google.APIClient do
          |> Base.encode16(case: :lower))
 
     {:workspace_access_token, :service_account_key, key["client_email"], key_id,
-     impersonation_email}
+     impersonation_email, scope}
   end
 
   def get_customer(access_token) do

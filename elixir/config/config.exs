@@ -240,7 +240,7 @@ config :portal, Portal.Google.SyncAuthorization,
   client_id: System.get_env("GOOGLE_SYNC_AUTHZ_CLIENT_ID"),
   client_secret: System.get_env("GOOGLE_SYNC_AUTHZ_CLIENT_SECRET"),
   response_type: "code",
-  scope: "https://www.googleapis.com/auth/admin.directory.customer.readonly",
+  scope: "openid email",
   discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
 
 config :portal, Portal.Okta.AuthProvider,

@@ -11,7 +11,7 @@ defmodule PortalWeb.OIDC do
   require Logger
 
   @client_assertion_type "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
-  @google_directory_customer_scope "https://www.googleapis.com/auth/admin.directory.customer.readonly"
+  @google_directory_identity_scope "openid email"
   @entra_organizations_discovery_document_uri "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
   @entra_organizations_admin_consent_endpoint "https://login.microsoftonline.com/organizations/v2.0/adminconsent"
   @entra_issuer_prefix "https://login.microsoftonline.com/"
@@ -284,7 +284,7 @@ defmodule PortalWeb.OIDC do
 
   Provider types:
   - "google", "okta", "oidc" — OIDC authorization code + PKCE flow
-  - "google_directory_sync" — OAuth authorization code + PKCE Workspace admin proof
+  - "google_directory_sync" — OIDC code + PKCE identity proof for a Workspace admin probe
   - "entra" — Entra auth_provider admin consent + silent authorization code/PKCE proof
   - "entra_directory_sync" — Entra directory_sync admin consent + user-bound PKCE proof
 
@@ -315,7 +315,7 @@ defmodule PortalWeb.OIDC do
     config =
       Portal.Config.fetch_env!(:portal, Portal.Google.SyncAuthorization)
       |> Keyword.put(:response_type, "code")
-      |> Keyword.put(:scope, @google_directory_customer_scope)
+      |> Keyword.put(:scope, @google_directory_identity_scope)
       |> verification_config([])
 
     {:ok, %{config: config}}
@@ -431,6 +431,7 @@ defmodule PortalWeb.OIDC do
 
     oauth_params = %{
       state: state_token,
+      nonce: nonce(verifier),
       code_challenge_method: :S256,
       code_challenge: challenge,
       prompt: "select_account"
