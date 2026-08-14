@@ -341,7 +341,7 @@ defmodule PortalWeb.VerificationControllerTest do
     end
 
     test "renders an Entra API 401 error", %{conn: conn} do
-      Req.Test.stub(Portal.Entra.APIClient, fn req_conn ->
+      Req.Test.stub(Portal.Microsoft.Graph.APIClient, fn req_conn ->
         req_conn
         |> Plug.Conn.put_resp_content_type("application/json")
         |> Plug.Conn.send_resp(
@@ -359,7 +359,7 @@ defmodule PortalWeb.VerificationControllerTest do
     test "renders an Entra API 403 error", %{conn: conn} do
       verification_ref = Ecto.UUID.generate()
 
-      Req.Test.stub(Portal.Entra.APIClient, fn req_conn ->
+      Req.Test.stub(Portal.Microsoft.Graph.APIClient, fn req_conn ->
         req_conn
         |> Plug.Conn.put_resp_content_type("application/json")
         |> Plug.Conn.send_resp(403, JSON.encode!(%{"error" => "Access to resource forbidden"}))
@@ -377,7 +377,7 @@ defmodule PortalWeb.VerificationControllerTest do
     end
 
     test "renders an Entra API error with an empty body", %{conn: conn} do
-      Req.Test.stub(Portal.Entra.APIClient, fn req_conn ->
+      Req.Test.stub(Portal.Microsoft.Graph.APIClient, fn req_conn ->
         req_conn
         |> Plug.Conn.put_resp_content_type("application/json")
         |> Plug.Conn.send_resp(404, JSON.encode!(%{}))
@@ -389,13 +389,95 @@ defmodule PortalWeb.VerificationControllerTest do
     end
 
     test "renders an Entra API transport error", %{conn: conn} do
-      Req.Test.stub(Portal.Entra.APIClient, fn req_conn ->
+      Req.Test.stub(Portal.Microsoft.Graph.APIClient, fn req_conn ->
         Req.Test.transport_error(req_conn, :econnrefused)
       end)
 
       conn = get(conn, ~p"/verification/entra", %{"result" => directory_result_token(self())})
 
       assert conn.resp_body =~ "Failed to verify directory access"
+    end
+  end
+
+  describe "entra/2 for Intune device integrations" do
+    test "accepts a tenant-wide administrator", %{conn: conn} do
+      parent = self()
+
+      lv_pid =
+        spawn(fn ->
+          receive do
+            {:intune_device_integration_complete, tenant_id, verification_ref, {from, ref}} ->
+              send(parent, {:intune_device_integration_complete_received, tenant_id,
+                            verification_ref})
+
+              send(from, {:verification_ack, ref})
+          end
+        end)
+
+      verification_ref = Ecto.UUID.generate()
+
+      token =
+        sign_entra_result(%{
+          ok: true,
+          type: "intune-device-integration",
+          tenant_id: @tenant_id,
+          role_ids: [@global_administrator_role_id],
+          lv_pid: serialize_pid(lv_pid),
+          verification_ref: verification_ref
+        })
+
+      conn = get(conn, ~p"/verification/entra", %{"result" => token})
+
+      assert conn.status == 200
+      assert conn.resp_body =~ "Verification Successful"
+
+      assert_received {:intune_device_integration_complete_received, @tenant_id,
+                       ^verification_ref}
+    end
+
+    # The Intune app registration has no directory read, so wids is the only
+    # proof of role available. A tenant user without one must not be able to
+    # attach their tenant to a Firezone account.
+    test "rejects a tenant user who holds no authorized directory role", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+
+      token =
+        sign_entra_result(%{
+          ok: true,
+          type: "intune-device-integration",
+          tenant_id: @tenant_id,
+          role_ids: [],
+          lv_pid: serialize_pid(self()),
+          verification_ref: verification_ref
+        })
+
+      conn = get(conn, ~p"/verification/entra", %{"result" => token})
+
+      assert conn.resp_body =~ "Global Administrator or Privileged Role Administrator"
+      assert_received {:verification_failed, message, ^verification_ref}
+      assert message =~ "Global Administrator or Privileged Role Administrator"
+      refute_received {:intune_device_integration_complete, _tenant_id, _ref, _ack_to}
+    end
+
+    test "rejects an unrelated directory role", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+
+      token =
+        sign_entra_result(%{
+          ok: true,
+          type: "intune-device-integration",
+          tenant_id: @tenant_id,
+          # Intune Administrator: manages Intune, but cannot grant the tenant-wide
+          # Graph consent this setup depends on.
+          role_ids: ["3a2c62db-5318-420d-8d74-23affee5d9d5"],
+          lv_pid: serialize_pid(self()),
+          verification_ref: verification_ref
+        })
+
+      conn = get(conn, ~p"/verification/entra", %{"result" => token})
+
+      assert conn.resp_body =~ "Global Administrator or Privileged Role Administrator"
+      refute_received {:intune_device_integration_complete, _tenant_id, _ref, _ack_to}
     end
   end
 
@@ -426,7 +508,7 @@ defmodule PortalWeb.VerificationControllerTest do
        ) do
     test_pid = self()
 
-    Req.Test.stub(Portal.Entra.APIClient, fn req_conn ->
+    Req.Test.stub(Portal.Microsoft.Graph.APIClient, fn req_conn ->
       send(test_pid, {:entra_api_request, req_conn.request_path})
 
       cond do

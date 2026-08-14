@@ -29,6 +29,12 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
 
     state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
     {:ok, %{verification_ref: ref}} = PortalWeb.OIDC.verify_verification_state(state)
+
+    # The OIDC controller consumes the pending verifier before the callback
+    # completes, which is what promotes it to the active verification.
+    send(lv.pid, {:get_pending_verification, self()})
+    assert_receive {:pending_verification, %{verification_ref: ^ref}}
+
     ack_ref = make_ref()
 
     send(lv.pid, {:intune_device_integration_complete, tenant_id, ref, {self(), ack_ref}})
@@ -178,6 +184,9 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
               type: "intune-device-integration",
               verification_ref: verification_ref
             }} = PortalWeb.OIDC.verify_verification_state(state)
+
+    send(lv.pid, {:get_pending_verification, self()})
+    assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
 
     ack_ref = make_ref()
 
@@ -430,6 +439,10 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
 
       state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
       {:ok, %{verification_ref: ref}} = PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:get_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^ref}}
+
       ack_ref = make_ref()
 
       send(lv.pid, {:intune_device_integration_complete, "new-tenant", ref, {self(), ack_ref}})
@@ -486,6 +499,10 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
 
     state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
     {:ok, %{verification_ref: verification_ref}} = PortalWeb.OIDC.verify_verification_state(state)
+
+    send(lv.pid, {:get_pending_verification, self()})
+    assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
+
     ack_ref = make_ref()
 
     send(

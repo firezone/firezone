@@ -1,7 +1,7 @@
 defmodule PortalWeb.VerificationController do
   use PortalWeb, :controller
 
-  alias Portal.Entra
+  alias Portal.Microsoft.Graph
 
   require Logger
   @verification_ack_timeout 5_000
@@ -286,19 +286,18 @@ defmodule PortalWeb.VerificationController do
   defp ack_failure_result, do: {:error, @verification_ack_error, false}
 
   defp verify_directory_access(tenant_id, principal_id) do
-    config = Portal.Config.fetch_env!(:portal, Entra.APIClient)
-    client_id = config[:client_id]
+    client_id = Graph.APIClient.client_id(:entra)
 
     with {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
-           Entra.APIClient.get_access_token(tenant_id),
+           Graph.APIClient.get_access_token(:entra, tenant_id),
          {:ok, %Req.Response{status: 200, body: %{"value" => [service_principal | _]}}} <-
-           Entra.APIClient.get_service_principal(access_token, client_id),
+           Graph.APIClient.get_service_principal(access_token, client_id),
          {:ok, %Req.Response{status: 200, body: %{"value" => _assignments}}} <-
-           Entra.APIClient.list_app_role_assignments(access_token, service_principal["id"]),
+           Graph.APIClient.list_app_role_assignments(access_token, service_principal["id"]),
          {:ok, %Req.Response{status: 200, body: %{"value" => directory_roles}}} <-
-           Entra.APIClient.list_transitive_directory_roles(access_token, principal_id),
+           Graph.APIClient.list_transitive_directory_roles(access_token, principal_id),
          :ok <- verify_entra_setup_admin_role(directory_roles),
-         :ok <- Entra.APIClient.test_connection(access_token) do
+         :ok <- Graph.APIClient.test_directory_connection(access_token) do
       {:ok, :verified}
     end
   end
