@@ -642,13 +642,13 @@ defmodule PortalWeb.Settings.DeviceTrust.Index do
             issues, so this fills in the first time a device connects with one.
           </p>
 
-          <table :if={@revocation != []} class="w-full text-xs">
+          <table :if={@revocation != []} class="w-full table-fixed text-xs">
             <thead>
               <tr class="border-b border-border text-subtle">
                 <th class="text-left px-2 py-2 font-medium">Certificate authority</th>
                 <th class="text-left px-2 py-2 font-medium w-20">Checked via</th>
                 <th class="text-left px-2 py-2 font-medium w-24">Status</th>
-                <th class="w-6"></th>
+                <th class="w-10"></th>
               </tr>
             </thead>
             <tbody>
