@@ -330,6 +330,58 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
     end
   end
 
+  describe "stale socket state" do
+    test "refuses writes after the account is downgraded mid-session", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      integration = intune_integration_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+
+      # The socket keeps the account it mounted with, so the downgrade is only
+      # visible to a write path that re-reads it.
+      account
+      |> Ecto.Changeset.change(features: %Portal.Accounts.Features{device_posture: false})
+      |> Portal.Repo.update!()
+
+      render_click(lv, "toggle", %{"id" => integration.id})
+
+      refute reload(integration).is_disabled
+    end
+
+    test "survives a verification that lands after the panel closed", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_integrations/intune/new")
+
+      lv |> element("#intune-admin-consent-button") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+      {:ok, %{verification_ref: ref}} = PortalWeb.OIDC.verify_verification_state(state)
+
+      render_patch(lv, ~p"/#{account}/settings/device_integrations")
+
+      # The callback consumes the pending verifier only if it outlived the panel.
+      send(lv.pid, {:get_pending_verification, self()})
+      assert_receive {:pending_verification, nil}
+
+      ack_ref = make_ref()
+      send(lv.pid, {:intune_device_integration_complete, "tenant-123", ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+
+      assert render(lv) =~ "Device Integrations"
+    end
+  end
+
   describe "reverifying after a sync error" do
     setup %{conn: conn, account: account, actor: actor} do
       integration =

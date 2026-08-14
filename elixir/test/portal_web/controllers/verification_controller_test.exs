@@ -21,7 +21,7 @@ defmodule PortalWeb.VerificationControllerTest do
           end
         end)
 
-      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
       verification_ref = Ecto.UUID.generate()
 
       token =
@@ -105,7 +105,7 @@ defmodule PortalWeb.VerificationControllerTest do
     test "with failure result token, sends failure message to LV and renders failure", %{
       conn: conn
     } do
-      lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
+      lv_pid_string = PortalWeb.OIDC.serialize_pid(self())
       token = sign_oidc_result(%{ok: false, error: "invalid_grant", lv_pid: lv_pid_string})
 
       conn = get(conn, ~p"/verification/oidc", %{"result" => token})
@@ -134,7 +134,7 @@ defmodule PortalWeb.VerificationControllerTest do
     end
 
     test "with success result token missing verification_ref, renders failure", %{conn: conn} do
-      lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
+      lv_pid_string = PortalWeb.OIDC.serialize_pid(self())
       token = sign_oidc_result(%{ok: true, issuer: "https://example.com", lv_pid: lv_pid_string})
 
       conn = get(conn, ~p"/verification/oidc", %{"result" => token})

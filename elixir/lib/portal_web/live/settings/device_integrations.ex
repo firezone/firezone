@@ -88,6 +88,9 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
     end
   end
 
+  # Leaving the panel abandons any verification started from it, so the pending
+  # verifier goes with it rather than staying live for a callback that no longer
+  # has a form to land in.
   def handle_params(_params, _url, socket) do
     {:noreply,
      assign(socket,
@@ -95,6 +98,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
        form: nil,
        verification_error: nil,
        active_verification: nil,
+       pending_verification: nil,
        verifying: false
      )}
   end
@@ -138,7 +142,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
            PortalWeb.OIDC.setup_verification("intune_device_integration", []),
          verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
          verification_ref = Ecto.UUID.generate(),
-         lv_pid_string = self() |> :erlang.pid_to_list() |> to_string(),
+         lv_pid_string = PortalWeb.OIDC.serialize_pid(self()),
          state_token <-
            PortalWeb.OIDC.sign_verification_state(
              lv_pid_string,
@@ -344,7 +348,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
         {:intune_device_integration_complete, tenant_id, verification_ref, ack_to},
         socket
       ) do
-    if active_verification?(socket, verification_ref) do
+    if active_verification?(socket, verification_ref) and socket.assigns.form do
       changeset = socket.assigns.form.source
 
       attrs =
@@ -1021,9 +1025,16 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
 
     # The last line of defence: the page is unreachable and its buttons are gone
     # when the feature is off, but an already-open socket must not be able to
-    # write either.
+    # write either. The account is re-read rather than taken from the subject,
+    # which holds whatever the features were when the socket mounted and would
+    # keep answering yes for the life of a session opened before a downgrade.
     defp ensure_enabled(subject) do
-      if Portal.Account.device_posture_enabled?(subject.account),
+      account =
+        from(a in Portal.Account, where: a.id == ^subject.account.id)
+        |> Safe.unscoped()
+        |> Safe.one()
+
+      if account && Portal.Account.device_posture_enabled?(account),
         do: :ok,
         else: {:error, :feature_disabled}
     end
