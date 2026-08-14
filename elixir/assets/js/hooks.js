@@ -59,6 +59,37 @@ Hooks.Modal = {
   },
 };
 
+Hooks.Countdown = {
+  mounted() {
+    const expiresAt = new Date(this.el.dataset.expiresAt).getTime();
+
+    const render = () => {
+      const remainingMs = expiresAt - Date.now();
+
+      if (remainingMs <= 0) {
+        this.el.textContent = "expired";
+        clearInterval(this.interval);
+        window.location.reload();
+        return;
+      }
+
+      const totalSeconds = Math.floor(remainingMs / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      const pad = (n) => String(n).padStart(2, "0");
+      this.el.textContent = `${hours}h ${pad(minutes)}m ${pad(seconds)}s`;
+    };
+
+    render();
+    this.interval = setInterval(render, 1000);
+  },
+
+  destroyed() {
+    clearInterval(this.interval);
+  },
+};
+
 Hooks.ConfirmDialog = {
   mounted() {
     this.el.addEventListener("click", (ev) => {

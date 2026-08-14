@@ -96,6 +96,58 @@ defmodule Portal.AuthProviderFixtures do
   end
 
   @doc """
+  Generate a Firezone Support auth provider.
+
+  This creates both the base AuthProvider and the FirezoneSupport.AuthProvider
+  records. Pass a past `expires_at` to create an already-expired provider.
+  """
+  def firezone_support_provider_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    account = Map.get(attrs, :account) || account_fixture()
+
+    auth_provider =
+      Map.get_lazy(attrs, :auth_provider, fn ->
+        auth_provider_fixture(type: :firezone_support, account: account)
+      end)
+
+    requested_expires_at =
+      Map.get_lazy(attrs, :expires_at, fn ->
+        DateTime.add(DateTime.utc_now(), 86_400, :second)
+      end)
+
+    insert_expires_at =
+      if DateTime.after?(requested_expires_at, DateTime.utc_now()) do
+        requested_expires_at
+      else
+        DateTime.add(DateTime.utc_now(), 86_400, :second)
+      end
+
+    support_attrs =
+      attrs
+      |> Map.delete(:account)
+      |> Map.delete(:auth_provider)
+      |> Map.put(:expires_at, insert_expires_at)
+
+    {:ok, provider} =
+      %Portal.FirezoneSupport.AuthProvider{}
+      |> Ecto.Changeset.cast(support_attrs, [:expires_at])
+      |> Ecto.Changeset.put_change(:id, auth_provider.id)
+      |> Ecto.Changeset.put_assoc(:account, account)
+      |> Ecto.Changeset.put_assoc(:auth_provider, auth_provider)
+      |> Portal.FirezoneSupport.AuthProvider.changeset()
+      |> Portal.Repo.insert()
+
+    if DateTime.compare(requested_expires_at, insert_expires_at) == :eq do
+      provider
+    else
+      provider
+      |> Ecto.Changeset.change(expires_at: requested_expires_at)
+      |> Portal.Repo.update!()
+    end
+  end
+
+  @doc """
   Generate a userpass auth provider.
 
   This creates both the base AuthProvider and the Userpass.AuthProvider records.

@@ -91,7 +91,8 @@ defmodule PortalWeb.Actors do
 
   # Edit Actor Panel
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
+    with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject),
+         :ok <- ensure_not_support(actor) do
       socket = handle_live_tables_params(socket, params, uri)
       changeset = changeset(actor, %{})
 
@@ -123,6 +124,12 @@ defmodule PortalWeb.Actors do
         {:noreply,
          socket
          |> put_flash(:error, "You are not authorized to view this actor")
+         |> push_navigate(to: ~p"/#{socket.assigns.account}/actors")}
+
+      {:error, :support_actor} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Firezone Support actors cannot be edited")
          |> push_navigate(to: ~p"/#{socket.assigns.account}/actors")}
     end
   end
@@ -472,6 +479,7 @@ defmodule PortalWeb.Actors do
   def handle_event("delete", %{"id" => id}, socket) do
     with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject),
          :ok <- ensure_not_self(actor, socket.assigns.subject),
+         :ok <- ensure_not_support(actor),
          {:ok, _actor} <- Database.delete(actor, socket.assigns.subject) do
       {:noreply,
        socket
@@ -488,6 +496,14 @@ defmodule PortalWeb.Actors do
       {:error, :self_operation} ->
         {:noreply, put_flash(socket, :error, "You cannot delete yourself")}
 
+      {:error, :support_actor} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Firezone Support actors are removed by ending the support session"
+         )}
+
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to delete actor")}
     end
@@ -496,6 +512,7 @@ defmodule PortalWeb.Actors do
   def handle_event("disable", %{"id" => id}, socket) do
     with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject),
          :ok <- ensure_not_self(actor, socket.assigns.subject),
+         :ok <- ensure_not_support(actor),
          {:ok, updated_actor} <-
            actor
            |> change()
@@ -518,6 +535,14 @@ defmodule PortalWeb.Actors do
       {:error, :self_operation} ->
         {:noreply, put_flash(socket, :error, "You cannot disable yourself")}
 
+      {:error, :support_actor} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Firezone Support actors are removed by ending the support session"
+         )}
+
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to disable actor")}
     end
@@ -525,6 +550,7 @@ defmodule PortalWeb.Actors do
 
   def handle_event("enable", %{"id" => id}, socket) do
     with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject),
+         :ok <- ensure_not_support(actor),
          :ok <- Portal.Billing.check_actor_enable_limits(socket.assigns.account, actor) do
       case actor
            |> change()
@@ -553,6 +579,14 @@ defmodule PortalWeb.Actors do
 
       {:error, :admin_users_limit_reached} ->
         {:noreply, put_flash(socket, :error, "Admin user limit reached for your account")}
+
+      {:error, :support_actor} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Firezone Support actors are removed by ending the support session"
+         )}
     end
   end
 
@@ -766,7 +800,7 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_info(%Change{op: :insert, struct: %Actor{type: type}}, socket)
-      when type in [:account_user, :account_admin_user] do
+      when type in [:account_user, :account_admin_user, :firezone_support] do
     {:noreply,
      update(socket, :actors_count, fn
        %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
@@ -775,7 +809,7 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_info(%Change{op: :delete, old_struct: %Actor{type: type}}, socket)
-      when type in [:account_user, :account_admin_user] do
+      when type in [:account_user, :account_admin_user, :firezone_support] do
     {:noreply,
      update(socket, :actors_count, fn
        %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
@@ -1212,6 +1246,10 @@ defmodule PortalWeb.Actors do
     if actor.id == subject.actor.id, do: {:error, :self_operation}, else: :ok
   end
 
+  defp ensure_not_support(actor) do
+    if actor.type == :firezone_support, do: {:error, :support_actor}, else: :ok
+  end
+
   # Changesets
   defp changeset(actor, attrs) do
     actor
@@ -1324,14 +1362,17 @@ defmodule PortalWeb.Actors do
 
     def count_actors(subject) do
       from(a in Actor, as: :actors)
-      |> where([actors: a], a.type in [:account_user, :account_admin_user])
+      |> where([actors: a], a.type in [:account_user, :account_admin_user, :firezone_support])
       |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
 
     defp index_query do
       from(actors in Actor, as: :actors)
-      |> where([actors: actors], actors.type in [:account_user, :account_admin_user])
+      |> where(
+        [actors: actors],
+        actors.type in [:account_user, :account_admin_user, :firezone_support]
+      )
     end
 
     def cursor_fields do

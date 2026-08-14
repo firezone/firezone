@@ -1,0 +1,9 @@
+Firezone Support sign-in code
+
+Your one-time code for signing in to account "<%= @account.name %>" (<%= @account.id %>):
+
+<%= @code %>
+
+This code is valid for 15 minutes.
+
+If you did not request this code, you can safely ignore this email.

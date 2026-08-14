@@ -93,6 +93,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     oidc_auth_providers
     email_otp_auth_providers
     userpass_auth_providers
+    firezone_support_auth_providers
     entra_directories
     okta_directories
     google_directories

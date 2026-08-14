@@ -12,13 +12,14 @@ defmodule Portal.AuthProvider do
     "entra" => Portal.Entra.AuthProvider,
     "oidc" => Portal.OIDC.AuthProvider,
     "email_otp" => Portal.EmailOTP.AuthProvider,
-    "userpass" => Portal.Userpass.AuthProvider
+    "userpass" => Portal.Userpass.AuthProvider,
+    "firezone_support" => Portal.FirezoneSupport.AuthProvider
   }
 
   schema "auth_providers" do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true
-    field :type, Ecto.Enum, values: ~w[google okta entra oidc email_otp userpass]a
+    field :type, Ecto.Enum, values: ~w[google okta entra oidc email_otp userpass firezone_support]a
 
     has_one :email_otp_auth_provider, Portal.EmailOTP.AuthProvider,
       references: :id,
@@ -49,6 +50,11 @@ defmodule Portal.AuthProvider do
       references: :id,
       foreign_key: :id,
       where: [type: :oidc]
+
+    has_one :firezone_support_auth_provider, Portal.FirezoneSupport.AuthProvider,
+      references: :id,
+      foreign_key: :id,
+      where: [type: :firezone_support]
   end
 
   def module!(type) do

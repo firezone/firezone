@@ -423,6 +423,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
       {"Entra directories", "entra_directories"},
       {"Email OTP auth providers", "email_otp_auth_providers"},
       {"External identities", "external_identities"},
+      {"Firezone Support auth providers", "firezone_support_auth_providers"},
       {"Gateway tokens", "gateway_tokens"},
       {"Google auth providers", "google_auth_providers"},
       {"Google directories", "google_directories"},

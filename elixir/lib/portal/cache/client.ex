@@ -959,7 +959,8 @@ defmodule Portal.Cache.Client do
 
     def all_policies_for_actor_id!(actor_id, subject) do
       # Service accounts don't get access to the "Everyone" group - they must have explicit memberships
-      include_everyone_group = subject.actor.type in [:account_user, :account_admin_user]
+      include_everyone_group =
+        subject.actor.type in [:account_user, :account_admin_user, :firezone_support]
 
       from(p in Portal.Policy, as: :policies)
       |> where([policies: p], p.is_disabled == false)
@@ -999,7 +1000,7 @@ defmodule Portal.Cache.Client do
         end
 
       # Service accounts don't get access to the "Everyone" group - they must have explicit memberships
-      if subject.actor.type in [:account_user, :account_admin_user] do
+      if subject.actor.type in [:account_user, :account_admin_user, :firezone_support] do
         # Get the Everyone group for this account (if it exists)
         everyone_group =
           from(g in Portal.Group,

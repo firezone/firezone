@@ -848,6 +848,43 @@ defmodule Portal.Safe do
     permit(action, schema, subject.actor.type)
   end
 
+  # Firezone Support actors get account admin READ access everywhere, but may
+  # never write to anything that could mint credentials or auth config that
+  # outlives the 24h support window (actors, identities, tokens, auth
+  # providers, directories, trust anchors, the account itself).
+  @firezone_support_write_denied [
+    Portal.Account,
+    Portal.Actor,
+    Portal.ExternalIdentity,
+    Portal.APIToken,
+    Portal.ClientToken,
+    Portal.GatewayToken,
+    Portal.AuthProvider,
+    Portal.Google.AuthProvider,
+    Portal.Okta.AuthProvider,
+    Portal.Entra.AuthProvider,
+    Portal.OIDC.AuthProvider,
+    Portal.EmailOTP.AuthProvider,
+    Portal.Userpass.AuthProvider,
+    Portal.FirezoneSupport.AuthProvider,
+    Portal.Entra.Directory,
+    Portal.Google.Directory,
+    Portal.Okta.Directory,
+    Portal.TrustAnchor
+  ]
+
+  def permit(:read, schema, :firezone_support) do
+    permit(:read, schema, :account_admin_user)
+  end
+
+  def permit(_action, schema, :firezone_support) when schema in @firezone_support_write_denied do
+    {:error, :unauthorized}
+  end
+
+  def permit(action, schema, :firezone_support) do
+    permit(action, schema, :account_admin_user)
+  end
+
   # Account permissions
   def permit(_action, Portal.Account, :account_admin_user), do: :ok
   def permit(:read, Portal.Account, :api_client), do: :ok
@@ -880,6 +917,9 @@ defmodule Portal.Safe do
   def permit(:read, Portal.EmailOTP.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Userpass.AuthProvider, :account_admin_user), do: :ok
   def permit(:read, Portal.Userpass.AuthProvider, :api_client), do: :ok
+  def permit(:read, Portal.FirezoneSupport.AuthProvider, :account_admin_user), do: :ok
+  def permit(:insert, Portal.FirezoneSupport.AuthProvider, :account_admin_user), do: :ok
+  def permit(:delete, Portal.FirezoneSupport.AuthProvider, :account_admin_user), do: :ok
   def permit(_action, Portal.Entra.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Entra.Directory, :api_client), do: :ok
   def permit(_action, Portal.DeviceIntegration, :account_admin_user), do: :ok

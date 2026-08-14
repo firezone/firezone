@@ -27,6 +27,7 @@ defmodule Portal.ChangeLogs.Consumer do
     "entra_auth_providers" => Portal.Entra.AuthProvider,
     "entra_directories" => Portal.Entra.Directory,
     "external_identities" => Portal.ExternalIdentity,
+    "firezone_support_auth_providers" => Portal.FirezoneSupport.AuthProvider,
     "gateway_tokens" => Portal.GatewayToken,
     "google_auth_providers" => Portal.Google.AuthProvider,
     "google_directories" => Portal.Google.Directory,

@@ -115,7 +115,8 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.Workers.DeleteExpiredOneTimePasscodes},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions},
        {worker_dev_schedule, Portal.Workers.PartitionFlowLogs},
-       {worker_dev_schedule, Portal.Workers.SweepAccountDeletions}
+       {worker_dev_schedule, Portal.Workers.SweepAccountDeletions},
+       {worker_dev_schedule, Portal.Workers.SweepExpiredSupportAccess}
      ]}
   ],
   queues: [

@@ -198,6 +198,7 @@ defmodule PortalAPI.ActorController do
     account = subject.account
 
     with {:ok, actor} <- Database.fetch_actor(id, subject),
+         :ok <- ensure_not_firezone_support(actor),
          changeset <- actor_changeset(actor, params),
          :ok <- check_role_promotion_limits(account, actor, changeset),
          {:ok, actor} <- Database.update_actor(changeset, subject) do
@@ -233,12 +234,19 @@ defmodule PortalAPI.ActorController do
     subject = conn.assigns.subject
 
     with {:ok, actor} <- Database.fetch_actor(id, subject),
+         :ok <- ensure_not_firezone_support(actor),
          {:ok, actor} <- Database.delete_actor(actor, subject) do
       render(conn, :show, actor: actor)
     else
       error -> Error.handle(conn, error)
     end
   end
+
+  defp ensure_not_firezone_support(%Portal.Actor{type: :firezone_support}) do
+    {:error, :forbidden, reason: "Firezone Support actors cannot be modified"}
+  end
+
+  defp ensure_not_firezone_support(_actor), do: :ok
 
   defp create_actor_changeset(account, attrs) do
     %Portal.Actor{account_id: account.id}

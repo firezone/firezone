@@ -17,12 +17,15 @@ import {
   PageSizePreference,
   getPageSizePreference,
 } from "./hooks/page_size_preference";
+import { WebAuthnRegister, WebAuthnAuthenticate } from "./hooks/webauthn";
 import "./event_listeners";
 
 Hooks.ThemeToggle = ThemeToggle;
 Hooks.SidebarCollapse = SidebarCollapse;
 Hooks.DatetimeRangeFilter = DatetimeRangeFilter;
 Hooks.PageSizePreference = PageSizePreference;
+Hooks.WebAuthnRegister = WebAuthnRegister;
+Hooks.WebAuthnAuthenticate = WebAuthnAuthenticate;
 
 // Read CSRF token from the meta tag and use it in the LiveSocket params
 let csrfToken = document

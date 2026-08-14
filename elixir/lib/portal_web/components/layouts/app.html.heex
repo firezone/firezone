@@ -2,7 +2,13 @@
   <.sidebar account={@account} current_path={@current_path} subject={@subject} />
 
   <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
-    <.topbar subject={@subject} />
+    <% support_provider = Database.fetch_support_provider(@account.id) %>
+    <.topbar
+      subject={@subject}
+      account={@account}
+      support_provider={support_provider}
+      current_path={@current_path}
+    />
 
     <main class="flex-1 flex flex-col overflow-hidden bg-surface">
       <.flash id="success-toast" kind={:success} title="Success!" style="toast" flash={@flash} />
@@ -35,6 +41,111 @@
             </p>
           </div>
         </div>
+      <% end %>
+      <%= if support_provider do %>
+        <%= if Portal.Actor.support?(@subject.actor) do %>
+          <div
+            id="support-signed-in-banner"
+            class="border-b px-4 py-2.5 bg-red-600 border-red-700"
+          >
+            <div class="flex items-center justify-center gap-2.5">
+              <.icon name="ri-alarm-warning-fill" class="w-4 h-4 shrink-0 text-white" />
+              <p class="text-sm font-bold uppercase tracking-wide text-white">
+                You are signed into customer {@account.slug}'s account
+              </p>
+              <.icon name="ri-alarm-warning-fill" class="w-4 h-4 shrink-0 text-white" />
+              <button
+                id="end-support"
+                type="button"
+                phx-hook="ConfirmDialog"
+                class="text-sm font-semibold text-white underline hover:opacity-80"
+              >
+                End support session now
+              </button>
+            </div>
+          </div>
+        <% else %>
+          <div
+            id="support-banner"
+            class="border-b px-4 py-2.5 bg-amber-50 border-amber-200 dark:bg-amber-900/30 dark:border-amber-700"
+          >
+            <div class="flex items-center justify-center gap-2.5">
+              <.icon
+                name="ri-lifebuoy-line"
+                class="w-4 h-4 shrink-0 text-amber-500 dark:text-amber-400"
+              />
+              <p class="text-sm font-medium text-amber-900 dark:text-amber-200">
+                Firezone Support is currently active and expires in <span
+                  id="support-countdown"
+                  phx-hook="Countdown"
+                  phx-update="ignore"
+                  data-expires-at={DateTime.to_iso8601(support_provider.expires_at)}
+                >
+                </span>.
+                <button
+                  id="end-support"
+                  type="button"
+                  phx-hook="ConfirmDialog"
+                  class="underline font-semibold hover:opacity-80"
+                >
+                  End support session now
+                </button>
+              </p>
+            </div>
+          </div>
+        <% end %>
+        <dialog
+          id="end-support_dialog"
+          class="backdrop:bg-gray-800/75 bg-transparent w-full md:inset-0 max-h-full overflow-y-auto overflow-x-hidden"
+        >
+          <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="relative bg-elevated border border-border rounded-md shadow-sm w-full max-w-lg">
+              <div class="flex items-center justify-between p-4 md:p-5 border-b border-border rounded-t">
+                <h3 class="text-xl font-semibold text-heading">End support session</h3>
+                <form method="dialog">
+                  <button
+                    class="text-subtle bg-transparent hover:text-heading ml-2"
+                    type="submit"
+                    value="cancel"
+                  >
+                    <.icon name="ri-close-line" class="h-4 w-4" />
+                    <span class="sr-only">Close modal</span>
+                  </button>
+                </form>
+              </div>
+              <div class="p-4 md:p-5 text-body text-sm">
+                This immediately removes Firezone Support's access to your account and
+                signs out any active support sessions.
+              </div>
+              <div class="flex items-center justify-end p-4 md:p-5 border-t border-border rounded-b gap-3">
+                <form method="dialog">
+                  <button
+                    data-dialog-action="cancel"
+                    type="submit"
+                    value="cancel"
+                    class="px-5 py-2.5 rounded text-sm font-medium border border-border-strong bg-surface hover:bg-raised transition-colors text-heading"
+                  >
+                    Cancel
+                  </button>
+                </form>
+                <form action={~p"/#{@account}/support_request/end"} method="post">
+                  <input
+                    type="hidden"
+                    name="_csrf_token"
+                    value={Plug.CSRFProtection.get_csrf_token()}
+                  />
+                  <input type="hidden" name="redirect_to" value={@current_path} />
+                  <button
+                    type="submit"
+                    class="px-5 py-2.5 rounded text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
+                  >
+                    End support session
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </dialog>
       <% end %>
       <.flash :if={Portal.Billing.any_limit_exceeded?(@account)} kind={:warning} class="m-1">
         {Portal.Billing.build_limits_exceeded_message(@account)}.

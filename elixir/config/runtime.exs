@@ -324,7 +324,10 @@ if config_env() == :prod do
     {"*/5 * * * *", Portal.Workers.DeleteOldAPIRequestLogs},
 
     # Sweep accounts due for deletion every minute
-    {"* * * * *", Portal.Workers.SweepAccountDeletions}
+    {"* * * * *", Portal.Workers.SweepAccountDeletions},
+
+    # Sweep expired Firezone Support access every 5 minutes
+    {"*/5 * * * *", Portal.Workers.SweepExpiredSupportAccess}
   ]
 
   config :portal, Oban,

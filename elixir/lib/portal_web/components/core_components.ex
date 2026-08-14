@@ -546,9 +546,21 @@ defmodule PortalWeb.CoreComponents do
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
 
   def avatar(assigns) do
-    ~H"""
-    <img src={build_gravatar_url(@actor, @size)} {@rest} />
-    """
+    if Portal.Actor.support?(assigns.actor) do
+      ~H"""
+      <span
+        style={"width: #{@size}px; height: #{@size}px"}
+        class="inline-flex items-center justify-center rounded-full bg-brand text-white shrink-0"
+        {@rest}
+      >
+        <.icon name="ri-first-aid-kit-fill" class="w-3/5 h-3/5" />
+      </span>
+      """
+    else
+      ~H"""
+      <img src={build_gravatar_url(@actor, @size)} {@rest} />
+      """
+    end
   end
 
   defp build_gravatar_url(actor, size) do

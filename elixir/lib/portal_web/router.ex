@@ -99,6 +99,18 @@ defmodule PortalWeb.Router do
     get "/entra", VerificationController, :entra
   end
 
+  scope "/support_admin", PortalWeb do
+    pipe_through :public
+
+    live_session :support_admin_registration,
+      on_mount: [
+        PortalWeb.LiveHooks.PutDynamicRepo,
+        PortalWeb.LiveHooks.AllowEctoSandbox
+      ] do
+      live "/register/:token", SupportAdminRegistration
+    end
+  end
+
   # Legacy OIDC callback - must be outside RedirectIfAuthenticated scope
   # because IdP redirects don't include as=client param
   scope "/:account_id_or_slug", PortalWeb do
@@ -133,6 +145,11 @@ defmodule PortalWeb.Router do
     # Userpass auth entry point
     post "/sign_in/userpass/:auth_provider_id", UserpassController, :sign_in
 
+    # Firezone Support auth entry point
+    post "/support", SupportController, :sign_in
+    post "/support/verify", SupportController, :verify_otp
+    post "/support/complete", SupportController, :complete
+
     live_session :redirect_if_user_is_authenticated,
       on_mount: [
         PortalWeb.LiveHooks.PutDynamicRepo,
@@ -166,6 +183,20 @@ defmodule PortalWeb.Router do
         PortalWeb.LiveHooks.RedirectIfAuthenticated
       ] do
       live "/sign_in/oidc/:auth_provider_id/verify_identity", SignIn.Email, :pending_identity
+    end
+
+    live_session :support_sign_in,
+      session: {PortalWeb.Cookie.Support, :fetch_state, []},
+      on_mount: [
+        PortalWeb.LiveHooks.PutDynamicRepo,
+        PortalWeb.LiveHooks.AllowEctoSandbox,
+        PortalWeb.LiveHooks.FetchAccount,
+        PortalWeb.LiveHooks.FetchSubject,
+        PortalWeb.LiveHooks.RedirectIfAuthenticated
+      ] do
+      live "/support", SignIn.Support, :email
+      live "/support/verify", SignIn.Support, :verify_otp
+      live "/support/passkey", SignIn.Support, :passkey
     end
 
     # OIDC auth entry point (placed after LiveView routes to avoid conflicts)
@@ -204,6 +235,9 @@ defmodule PortalWeb.Router do
       PortalWeb.Plugs.EnsureAuthenticated,
       PortalWeb.Plugs.EnsureAdmin
     ]
+
+    post "/support_request", SupportRequestController, :create
+    post "/support_request/end", SupportRequestController, :end_support
 
     live_session :ensure_authenticated,
       on_mount: [

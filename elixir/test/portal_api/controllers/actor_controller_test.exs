@@ -790,6 +790,41 @@ defmodule PortalAPI.ActorControllerTest do
     end
   end
 
+  describe "firezone_support protection" do
+    test "rejects updating a Firezone Support actor", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      support_actor = support_actor_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{support_actor.id}", actor: %{"name" => "Renamed"})
+
+      assert %{"status" => 403} = json_response(conn, 403)
+      assert Portal.Repo.get_by!(Actor, id: support_actor.id).name == "Firezone Support"
+    end
+
+    test "rejects deleting a Firezone Support actor", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      support_actor = support_actor_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> delete("/actors/#{support_actor.id}")
+
+      assert %{"status" => 403} = json_response(conn, 403)
+      assert Portal.Repo.get_by(Actor, id: support_actor.id)
+    end
+  end
+
   defp iso8601(%DateTime{} = dt) do
     DateTime.to_iso8601(dt)
   end

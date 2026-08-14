@@ -104,6 +104,14 @@ defmodule PortalWeb.Settings.Authentication do
      )}
   end
 
+  def handle_params(%{"type" => _type}, _url, %{assigns: %{live_action: :new}} = _socket) do
+    raise PortalWeb.LiveErrors.NotFoundError
+  end
+
+  def handle_params(%{"type" => _type}, _url, %{assigns: %{live_action: :edit}} = _socket) do
+    raise PortalWeb.LiveErrors.NotFoundError
+  end
+
   # Default handler
   def handle_params(_params, _url, socket) do
     {:noreply, clear_verification_state(socket)}
