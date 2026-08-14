@@ -96,9 +96,10 @@ defmodule PortalAPI.GatewayController do
     it via `POST /sites/{site_id}/gateways/{gateway_id}/token/rotate` once \
     the Gateway has connected, or delete and re-provision it.
 
-    `name` is optional; a random name is generated when omitted. The \
-    Gateway's IP addresses are assigned on first connect, so `ipv4` and \
-    `ipv6` are null in the response until then.
+    `name` is optional; a random name is generated when omitted. `ipv4` \
+    and `ipv6` are the Gateway's tunnel addresses, allocated from the \
+    account's pool when the Gateway row is created - they are always \
+    present in this response, before the Gateway has ever connected.
     """,
     parameters: [
       site_id: [

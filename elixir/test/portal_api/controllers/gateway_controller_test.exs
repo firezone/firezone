@@ -89,6 +89,28 @@ defmodule PortalAPI.GatewayControllerTest do
              ) == 0
     end
 
+    # The OpenAPI schema lists ipv4/ipv6 as required and non-nullable, and
+    # this is what keeps that honest: a devices BEFORE INSERT trigger
+    # allocates both from the account's pool, and the columns are NOT
+    # NULL, so they are populated before a Gateway has ever connected.
+    # If provisioning ever starts returning nulls here, the schema has to
+    # gain nullable: true or generated clients will reject the response.
+    test "provisions a gateway with tunnel addresses already assigned", %{
+      conn: conn,
+      actor: actor,
+      site: site
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways", gateway: %{name: "fresh-gw"})
+
+      assert %{"data" => data} = json_response(conn, 201)
+      refute is_nil(data["ipv4"]), "a never-connected Gateway must still have an ipv4"
+      refute is_nil(data["ipv6"]), "a never-connected Gateway must still have an ipv6"
+    end
+
     test "provisions a gateway with an auto-generated name when omitted", %{
       conn: conn,
       actor: actor,
