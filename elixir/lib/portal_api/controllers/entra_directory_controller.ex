@@ -2,6 +2,8 @@ defmodule PortalAPI.EntraDirectoryController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Error
+  alias PortalAPI.Filters
+  alias PortalAPI.Pagination
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
@@ -10,6 +12,20 @@ defmodule PortalAPI.EntraDirectoryController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Entra Directories",
+    parameters: [
+      limit: [
+        in: :query,
+        description: "Limit Entra Directories returned",
+        type: :integer,
+        example: 10
+      ],
+      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
+      name: [
+        in: :query,
+        description: "Filter to Entra Directories with this exact name",
+        type: :string
+      ]
+    ],
     responses:
       [
         ok:
@@ -21,9 +37,19 @@ defmodule PortalAPI.EntraDirectoryController do
   # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def index(conn, _params) do
-    directories = Database.list_directories(conn.assigns.subject)
-    render(conn, :index, directories: directories)
+  def index(conn, params) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
+         {:ok, directories, metadata} <-
+           Database.list_directories(conn.assigns.subject, list_opts) do
+      render(conn, :index, directories: directories, metadata: metadata)
+    else
+      error -> Error.handle(conn, error)
+    end
+  end
+
+  defp coerce_filters(params) do
+    Filters.maybe_append([], :name, params["name"])
   end
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
@@ -65,10 +91,33 @@ defmodule PortalAPI.EntraDirectoryController do
     import Ecto.Query
     alias Portal.{Entra, Safe}
 
-    def list_directories(subject) do
-      from(d in Entra.Directory, as: :directories, order_by: [desc: d.inserted_at])
+    def list_directories(subject, opts \\ []) do
+      from(d in Entra.Directory, as: :directories)
       |> Safe.scoped(subject)
-      |> Safe.all()
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def filters do
+      [
+        %Portal.Repo.Filter{
+          name: :name,
+          title: "Name",
+          type: :string,
+          fun: &filter_by_name/2
+        }
+      ]
+    end
+
+    defp filter_by_name(queryable, name) do
+      dynamic = dynamic([directories: d], d.name == ^name)
+      {queryable, dynamic}
+    end
+
+    def cursor_fields do
+      [
+        {:directories, :desc, :inserted_at},
+        {:directories, :desc, :id}
+      ]
     end
 
     def fetch_directory(id, subject) do

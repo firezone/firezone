@@ -59,6 +59,9 @@
               "$ref": "#/components/schemas/GoogleAuthProvider"
             },
             "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
         "title": "GoogleAuthProviderListResponse",
@@ -302,7 +305,7 @@
         "type": "object"
       },
       "ResourceCreateRequest": {
-        "description": "POST body for creating a Resource. `site_id` is required unless `type` is `static_device_pool`.",
+        "description": "POST body for creating a Resource. `site_id` is required.\n\nDevice pools (`static_device_pool`) cannot currently be created through this API - create them in the admin portal. Existing pools can be read, updated, deleted, and have their members managed here as normal.",
         "example": {
           "resource": {
             "address": "10.0.0.10",
@@ -324,7 +327,7 @@
           "resource": {
             "properties": {
               "address": {
-                "description": "Resource address. Not applicable to `static_device_pool`.",
+                "description": "Resource address.",
                 "nullable": true,
                 "type": "string"
               },
@@ -355,19 +358,18 @@
                 "type": "string"
               },
               "site_id": {
-                "description": "Site to connect the Resource to. Required for all types except `static_device_pool`. The Internet Site is reserved for the Internet Resource and cannot be used.",
+                "description": "Site to connect the Resource to. Required. The Internet Site is reserved for the Internet Resource and cannot be used.",
                 "format": "uuid",
                 "nullable": true,
                 "title": "SiteID",
                 "type": "string"
               },
               "type": {
-                "description": "Resource type. For `static_device_pool`, `address` is not applicable.",
+                "description": "Resource type.",
                 "enum": [
                   "cidr",
                   "ip",
-                  "dns",
-                  "static_device_pool"
+                  "dns"
                 ],
                 "type": "string"
               }
@@ -403,6 +405,21 @@
           }
         },
         "title": "ClientTokenCreateResponse",
+        "type": "object"
+      },
+      "GatewayCreateRequest": {
+        "description": "Request body for provisioning a Gateway",
+        "example": {
+          "gateway": {
+            "name": "vpc-us-east"
+          }
+        },
+        "properties": {
+          "gateway": {
+            "$ref": "#/components/schemas/GatewayCreate"
+          }
+        },
+        "title": "GatewayCreateRequest",
         "type": "object"
       },
       "ClientToken": {
@@ -721,6 +738,24 @@
           }
         },
         "title": "GatewayTokenResponse",
+        "type": "object"
+      },
+      "GatewayUpdateRequest": {
+        "description": "Request body for updating a Gateway",
+        "example": {
+          "gateway": {
+            "name": "vpc-us-east"
+          }
+        },
+        "properties": {
+          "gateway": {
+            "$ref": "#/components/schemas/GatewayUpdate"
+          }
+        },
+        "required": [
+          "gateway"
+        ],
+        "title": "GatewayUpdateRequest",
         "type": "object"
       },
       "GroupCreateRequest": {
@@ -1296,6 +1331,7 @@
             "flow_log_uploads_enabled": true,
             "group_id": "88eae9ce-9179-48c6-8430-770e38dd4775",
             "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "is_disabled": false,
             "resource_id": "a9f60587-793c-46ae-8525-597f43ab2fb1"
           }
         },
@@ -1397,6 +1433,9 @@
               "$ref": "#/components/schemas/OktaAuthProvider"
             },
             "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
         "title": "OktaAuthProviderListResponse",
@@ -1444,6 +1483,9 @@
               "$ref": "#/components/schemas/EntraAuthProvider"
             },
             "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
         "title": "EntraAuthProviderListResponse",
@@ -1722,6 +1764,9 @@
               "$ref": "#/components/schemas/GoogleDirectory"
             },
             "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
         "title": "GoogleDirectoryListResponse",
@@ -1922,6 +1967,20 @@
         "title": "OktaDirectory",
         "type": "object"
       },
+      "GatewayCreate": {
+        "description": "Create schema for a single Gateway",
+        "example": {
+          "name": "vpc-us-east"
+        },
+        "properties": {
+          "name": {
+            "description": "Gateway Name. Randomly generated when omitted.",
+            "type": "string"
+          }
+        },
+        "title": "GatewayCreate",
+        "type": "object"
+      },
       "OktaDirectoryListResponse": {
         "description": "Response schema for multiple Okta Directories",
         "example": {
@@ -1939,6 +1998,9 @@
               "$ref": "#/components/schemas/OktaDirectory"
             },
             "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
         "title": "OktaDirectoryListResponse",
@@ -2078,6 +2140,42 @@
         "title": "Subject",
         "type": "object"
       },
+      "GatewayProvisionResponse": {
+        "description": "Response schema for a newly provisioned Gateway. Includes the one-time token secret - it is not shown again.\n",
+        "example": {
+          "data": {
+            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "ipv4": null,
+            "ipv6": null,
+            "name": "vpc-us-east",
+            "online": false,
+            "token": "eyJhbGc..."
+          }
+        },
+        "properties": {
+          "data": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Gateway"
+              },
+              {
+                "properties": {
+                  "token": {
+                    "description": "One-time Gateway token secret",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "title": "GatewayProvisionResponse",
+        "type": "object"
+      },
       "ActorsResponse": {
         "description": "Response schema for multiple Actors",
         "example": {
@@ -2151,6 +2249,7 @@
           "actor": {
             "allow_email_otp_sign_in": false,
             "email": "joe.user@example.com",
+            "is_disabled": false,
             "name": "Joe User",
             "type": "account_admin_user"
           }
@@ -2167,6 +2266,11 @@
                 "description": "Actor Email. Optional for service accounts.",
                 "nullable": true,
                 "type": "string"
+              },
+              "is_disabled": {
+                "default": false,
+                "description": "Whether the Actor is disabled. Setting this to `true` immediately revokes the Actor's active Client tokens and portal sessions. An Actor cannot disable itself.",
+                "type": "boolean"
               },
               "name": {
                 "description": "Actor Name",
@@ -2370,7 +2474,8 @@
               ]
             }
           ],
-          "description": "Updated description"
+          "description": "Updated description",
+          "is_disabled": false
         },
         "properties": {
           "conditions": {
@@ -2393,6 +2498,11 @@
             "description": "Group ID",
             "format": "uuid",
             "type": "string"
+          },
+          "is_disabled": {
+            "default": false,
+            "description": "Whether the Policy is disabled. A disabled Policy grants no access but is otherwise retained.",
+            "type": "boolean"
           },
           "resource_id": {
             "description": "Resource ID",
@@ -2629,6 +2739,36 @@
           }
         },
         "title": "LogsResponse",
+        "type": "object"
+      },
+      "PoolMemberResponse": {
+        "description": "Response schema for Pool Member updates",
+        "example": {
+          "data": {
+            "device_ids": [
+              "4ddfa557-7dfc-484f-894c-2024ec3fe9f7",
+              "89d22f71-939d-442d-b148-897b730adfb4"
+            ]
+          }
+        },
+        "properties": {
+          "data": {
+            "description": "Pool members",
+            "properties": {
+              "device_ids": {
+                "description": "Client IDs currently in the pool",
+                "items": {
+                  "description": "Client ID",
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "title": "PoolMemberResponse",
         "type": "object"
       },
       "Client": {
@@ -2912,6 +3052,9 @@
               "$ref": "#/components/schemas/EntraDirectory"
             },
             "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
         "title": "EntraDirectoryListResponse",
@@ -2962,6 +3105,9 @@
               "$ref": "#/components/schemas/OIDCAuthProvider"
             },
             "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
         "title": "OIDCAuthProviderListResponse",
@@ -2970,6 +3116,7 @@
       "Gateway": {
         "description": "Gateway",
         "example": {
+          "gateway_token_id": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
           "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "ipv4": "100.64.0.1",
           "ipv6": "fd00:2021:1111::1",
@@ -2983,20 +3130,27 @@
           "last_seen_version": "1.5.0",
           "name": "vpc-us-east",
           "online": true,
-          "public_key": "WdKAyoA45xJllRUYnFhI5+Y4EjSTs50MzYYHfrIhVAc="
+          "public_key": "WdKAyoA45xJllRUYnFhI5+Y4EjSTs50MzYYHfrIhVAc=",
+          "rotated_at": null
         },
         "properties": {
+          "gateway_token_id": {
+            "description": "ID of the token this Gateway last connected with. Null until the Gateway connects for the first time.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
           "id": {
             "description": "Gateway ID",
             "format": "uuid",
             "type": "string"
           },
           "ipv4": {
-            "description": "IPv4 Address of Gateway",
+            "description": "Tunnel IPv4 address (see last_seen_remote_ip for the public IP)",
             "type": "string"
           },
           "ipv6": {
-            "description": "IPv6 Address of Gateway",
+            "description": "Tunnel IPv6 address (see last_seen_remote_ip for the public IP)",
             "type": "string"
           },
           "last_seen_at": {
@@ -3052,6 +3206,12 @@
             "description": "WireGuard public key from the latest session",
             "nullable": true,
             "type": "string"
+          },
+          "rotated_at": {
+            "description": "When the token identified by `gateway_token_id` was rotated out. Null in the normal case. When set, a replacement token has been minted and this one stays valid only until the Gateway connects with the replacement or 4 hours elapse from this timestamp, whichever comes first - so a non-null value means a rotation is pending and the Gateway has not picked it up yet.",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
           }
         },
         "required": [
@@ -3062,6 +3222,42 @@
           "online"
         ],
         "title": "Gateway",
+        "type": "object"
+      },
+      "PoolMemberPutRequest": {
+        "description": "PUT body replacing the pool's entire membership. Any Client not named\nhere is removed from the pool.\n",
+        "example": {
+          "pool_members": [
+            {
+              "device_id": "7cb89288-1fb3-433e-a522-2d087e45988d"
+            },
+            {
+              "device_id": "cc9f561a-444d-4083-ab38-0abc6cf2314c"
+            }
+          ]
+        },
+        "properties": {
+          "pool_members": {
+            "items": {
+              "properties": {
+                "device_id": {
+                  "description": "Client ID",
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "device_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "pool_members"
+        ],
+        "title": "PoolMemberPutRequest",
         "type": "object"
       },
       "GatewayToken": {
@@ -3089,7 +3285,7 @@
         "type": "object"
       },
       "SiteID": {
-        "description": "Site to connect the Resource to. Required for all types except `static_device_pool`. The Internet Site is reserved for the Internet Resource and cannot be used.",
+        "description": "Site to connect the Resource to. Required. The Internet Site is reserved for the Internet Resource and cannot be used.",
         "format": "uuid",
         "nullable": true,
         "title": "SiteID",
@@ -3230,7 +3426,7 @@
           "resource": {
             "properties": {
               "address": {
-                "description": "Resource address. Not applicable to `static_device_pool`.",
+                "description": "Resource address.",
                 "nullable": true,
                 "type": "string"
               },
@@ -3261,19 +3457,18 @@
                 "type": "string"
               },
               "site_id": {
-                "description": "Site to connect the Resource to. Required for all types except `static_device_pool`. The Internet Site is reserved for the Internet Resource and cannot be used.",
+                "description": "Site to connect the Resource to. Required. The Internet Site is reserved for the Internet Resource and cannot be used.",
                 "format": "uuid",
                 "nullable": true,
                 "title": "SiteID",
                 "type": "string"
               },
               "type": {
-                "description": "Resource type. For `static_device_pool`, `address` is not applicable.",
+                "description": "Resource type.",
                 "enum": [
                   "cidr",
                   "ip",
-                  "dns",
-                  "static_device_pool"
+                  "dns"
                 ],
                 "type": "string"
               }
@@ -3372,6 +3567,23 @@
         "title": "ActorCreateRequest",
         "type": "object"
       },
+      "GatewayUpdate": {
+        "description": "Update schema for a single Gateway",
+        "example": {
+          "name": "vpc-us-east"
+        },
+        "properties": {
+          "name": {
+            "description": "Gateway Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "GatewayUpdate",
+        "type": "object"
+      },
       "MembershipPatchRequest": {
         "description": "PATCH body for updating Memberships",
         "example": {
@@ -3460,6 +3672,33 @@
         "title": "ClientResponse",
         "type": "object"
       },
+      "PoolMember": {
+        "description": "A Client belonging to a static device pool Resource",
+        "example": {
+          "id": "7cb89288-1fb3-433e-a522-2d087e45988d",
+          "last_seen_at": "2024-01-15T10:30:00Z",
+          "name": "jane-laptop"
+        },
+        "properties": {
+          "id": {
+            "description": "Client ID",
+            "format": "uuid",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "description": "Last time the Client was seen",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "description": "Client Name",
+            "type": "string"
+          }
+        },
+        "title": "PoolMember",
+        "type": "object"
+      },
       "Policy": {
         "description": "Policy",
         "example": {
@@ -3477,6 +3716,7 @@
           "flow_log_uploads_enabled": true,
           "group_id": "88eae9ce-9179-48c6-8430-770e38dd4775",
           "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "is_disabled": false,
           "resource_id": "a9f60587-793c-46ae-8525-597f43ab2fb1"
         },
         "properties": {
@@ -3507,6 +3747,10 @@
             "format": "uuid",
             "type": "string"
           },
+          "is_disabled": {
+            "description": "Whether the Policy is disabled. A disabled Policy grants no access but is otherwise retained.",
+            "type": "boolean"
+          },
           "resource_id": {
             "description": "Resource ID",
             "format": "uuid",
@@ -3519,6 +3763,7 @@
           "resource_id",
           "description",
           "flow_log_uploads_enabled",
+          "is_disabled",
           "conditions"
         ],
         "title": "Policy",
@@ -4025,6 +4270,43 @@
         "title": "IntuneIntegration",
         "type": "object"
       },
+      "PoolMemberListResponse": {
+        "description": "Response schema for Pool Members",
+        "example": {
+          "data": [
+            {
+              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+              "last_seen_at": "2024-01-15T10:30:00Z",
+              "name": "jane-laptop"
+            },
+            {
+              "id": "cc9f561a-444d-4083-ab38-0abc6cf2314c",
+              "last_seen_at": null,
+              "name": "field-tablet-02"
+            }
+          ],
+          "metadata": {
+            "limit": 10,
+            "next_page": "98776234123",
+            "prev_page": "123123425",
+            "total": 100
+          }
+        },
+        "properties": {
+          "data": {
+            "description": "Pool member details",
+            "items": {
+              "$ref": "#/components/schemas/PoolMember"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "title": "PoolMemberListResponse",
+        "type": "object"
+      },
       "SiteUpdateRequest": {
         "description": "PATCH/PUT body for updating a Site. All fields are optional; omitted fields keep their current value.",
         "example": {
@@ -4047,6 +4329,49 @@
           "site"
         ],
         "title": "SiteUpdateRequest",
+        "type": "object"
+      },
+      "PoolMemberPatchRequest": {
+        "description": "PATCH body for adding and removing individual pool members. Both\noperations are idempotent, and `remove` is applied before `add`, so a\nClient named in both ends up in the pool.\n",
+        "example": {
+          "pool_members": {
+            "add": [
+              "7cb89288-1fb3-433e-a522-2d087e45988d"
+            ],
+            "remove": [
+              "cc9f561a-444d-4083-ab38-0abc6cf2314c"
+            ]
+          }
+        },
+        "properties": {
+          "pool_members": {
+            "properties": {
+              "add": {
+                "description": "Client IDs to add to the pool",
+                "items": {
+                  "description": "Client ID",
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "remove": {
+                "description": "Client IDs to remove from the pool",
+                "items": {
+                  "description": "Client ID",
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "pool_members"
+        ],
+        "title": "PoolMemberPatchRequest",
         "type": "object"
       },
       "FlowLog": {
@@ -4391,6 +4716,7 @@
               "flow_log_uploads_enabled": true,
               "group_id": "88eae9ce-9179-48c6-8430-770e38dd4775",
               "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+              "is_disabled": false,
               "resource_id": "a9f60587-793c-46ae-8525-597f43ab2fb1"
             },
             {
@@ -4399,6 +4725,7 @@
               "flow_log_uploads_enabled": false,
               "group_id": "343385a2-5437-4c66-8744-1332421ff736",
               "id": "6301d7d2-4938-4123-87de-282c01cca656",
+              "is_disabled": true,
               "resource_id": "9876bd25-0f6c-48fb-a9fd-196ba9be86e5"
             }
           ],
@@ -4441,6 +4768,9 @@
               "$ref": "#/components/schemas/EmailOTPAuthProvider"
             },
             "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
         "title": "EmailOTPAuthProviderListResponse",
@@ -4996,8 +5326,9 @@
     }
   },
   "info": {
+    "description": "A REST API for configuring your Firezone account.\n",
     "title": "Firezone API",
-    "version": "1.0"
+    "version": "1.0.0"
   },
   "openapi": "3.0.0",
   "paths": {
@@ -5020,6 +5351,34 @@
             "description": "Next/Prev page cursor",
             "in": "query",
             "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Groups with this exact name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Groups synced from this Directory. Pass an empty string to filter to unsynced (native) Groups only.",
+            "in": "query",
+            "name": "directory_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Groups of this entity type",
+            "example": "group",
+            "in": "query",
+            "name": "entity_type",
             "required": false,
             "schema": {
               "type": "string"
@@ -5304,7 +5663,7 @@
         },
         "summary": "List External Identities for an Actor",
         "tags": [
-          "ExternalIdentities"
+          "External Identities"
         ]
       }
     },
@@ -5970,13 +6329,320 @@
         "tags": [
           "Gateways"
         ]
+      },
+      "patch": {
+        "callbacks": {},
+        "description": "Renames a Gateway. Gateways otherwise self-register their configuration (name, IP addresses) on first connect and can only be renamed, not fully edited, via this endpoint.\n",
+        "operationId": "PortalAPI.GatewayController.update (2)",
+        "parameters": [
+          {
+            "description": "Site ID",
+            "example": "00000000-0000-0000-0000-000000000000",
+            "in": "path",
+            "name": "site_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Gateway ID",
+            "example": "00000000-0000-0000-0000-000000000000",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatewayUpdateRequest"
+              }
+            }
+          },
+          "description": "Gateway attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayResponse"
+                }
+              }
+            },
+            "description": "Gateway Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a Gateway (rename)",
+        "tags": [
+          "Gateways"
+        ]
+      },
+      "put": {
+        "callbacks": {},
+        "description": "Renames a Gateway. Gateways otherwise self-register their configuration (name, IP addresses) on first connect and can only be renamed, not fully edited, via this endpoint.\n",
+        "operationId": "PortalAPI.GatewayController.update",
+        "parameters": [
+          {
+            "description": "Site ID",
+            "example": "00000000-0000-0000-0000-000000000000",
+            "in": "path",
+            "name": "site_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Gateway ID",
+            "example": "00000000-0000-0000-0000-000000000000",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatewayUpdateRequest"
+              }
+            }
+          },
+          "description": "Gateway attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayResponse"
+                }
+              }
+            },
+            "description": "Gateway Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a Gateway (rename)",
+        "tags": [
+          "Gateways"
+        ]
       }
     },
     "/oidc_auth_providers": {
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.OIDCAuthProviderController.index",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Limit OIDC Auth Providers returned",
+            "example": 10,
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/Prev page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to OIDC Auth Providers with this exact name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6346,7 +7012,7 @@
       },
       "patch": {
         "callbacks": {},
-        "description": "Updates an Actor.\n\n**Warning: changing an Actor's email signs them out and unlinks their identity providers.**\n\nIf the `email` field is changed to a different address, Firezone will:\n\n- Unlink every identity provider (Google, Okta, Entra, etc.) connected to this Actor.\n- End all active sessions for this Actor, both in the admin portal and on\n  connected Client devices. The user will be signed out immediately.\n\nThe Actor will need to sign in again through their identity provider, which\nre-links it under the new email.\n\nEmail comparison ignores case and surrounding whitespace, so changes like\n`User@Example.com` → `user@example.com` are not treated as a real change\nand will not unlink identities.\n",
+        "description": "Updates an Actor.\n\n**Warning: changing an Actor's email signs them out and unlinks their identity providers.**\n\nIf the `email` field is changed to a different address, Firezone will:\n\n- Unlink every identity provider (Google, Okta, Entra, etc.) connected to this Actor.\n- End all active sessions for this Actor, both in the admin portal and on\n  connected Client devices. The user will be signed out immediately.\n\nThe Actor will need to sign in again through their identity provider, which\nre-links it under the new email.\n\nEmail comparison ignores case and surrounding whitespace, so changes like\n`User@Example.com` → `user@example.com` are not treated as a real change\nand will not unlink identities.\n\n**Setting `is_disabled` to `true` immediately revokes all of the Actor's\nactive Client tokens and portal sessions.** An Actor cannot disable itself.\n",
         "operationId": "PortalAPI.ActorController.update (2)",
         "parameters": [
           {
@@ -6491,7 +7157,7 @@
       },
       "put": {
         "callbacks": {},
-        "description": "Updates an Actor.\n\n**Warning: changing an Actor's email signs them out and unlinks their identity providers.**\n\nIf the `email` field is changed to a different address, Firezone will:\n\n- Unlink every identity provider (Google, Okta, Entra, etc.) connected to this Actor.\n- End all active sessions for this Actor, both in the admin portal and on\n  connected Client devices. The user will be signed out immediately.\n\nThe Actor will need to sign in again through their identity provider, which\nre-links it under the new email.\n\nEmail comparison ignores case and surrounding whitespace, so changes like\n`User@Example.com` → `user@example.com` are not treated as a real change\nand will not unlink identities.\n",
+        "description": "Updates an Actor.\n\n**Warning: changing an Actor's email signs them out and unlinks their identity providers.**\n\nIf the `email` field is changed to a different address, Firezone will:\n\n- Unlink every identity provider (Google, Okta, Entra, etc.) connected to this Actor.\n- End all active sessions for this Actor, both in the admin portal and on\n  connected Client devices. The user will be signed out immediately.\n\nThe Actor will need to sign in again through their identity provider, which\nre-links it under the new email.\n\nEmail comparison ignores case and surrounding whitespace, so changes like\n`User@Example.com` → `user@example.com` are not treated as a real change\nand will not unlink identities.\n\n**Setting `is_disabled` to `true` immediately revokes all of the Actor's\nactive Client tokens and portal sessions.** An Actor cannot disable itself.\n",
         "operationId": "PortalAPI.ActorController.update",
         "parameters": [
           {
@@ -7291,7 +7957,36 @@
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.EmailOTPAuthProviderController.index",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Limit Email OTP Auth Providers returned",
+            "example": 10,
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/Prev page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Email OTP Auth Providers with this exact name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -7362,7 +8057,36 @@
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.EntraAuthProviderController.index",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Limit Entra Auth Providers returned",
+            "example": 10,
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/Prev page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Entra Auth Providers with this exact name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -7448,6 +8172,15 @@
             "description": "Next/Prev page cursor",
             "in": "query",
             "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to the Site with this exact name",
+            "in": "query",
+            "name": "name",
             "required": false,
             "schema": {
               "type": "string"
@@ -8139,7 +8872,36 @@
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.GoogleAuthProviderController.index",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Limit Google Auth Providers returned",
+            "example": 10,
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/Prev page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Google Auth Providers with this exact name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -8401,6 +9163,7 @@
       },
       "patch": {
         "callbacks": {},
+        "description": "Updates a Policy.\n\nA Policy is enabled or disabled through the `is_disabled` field. Disabling a Policy stops it granting access without deleting it.\n",
         "operationId": "PortalAPI.PolicyController.update (2)",
         "parameters": [
           {
@@ -8545,6 +9308,7 @@
       },
       "put": {
         "callbacks": {},
+        "description": "Updates a Policy.\n\nA Policy is enabled or disabled through the `is_disabled` field. Disabling a Policy stops it granting access without deleting it.\n",
         "operationId": "PortalAPI.PolicyController.update",
         "parameters": [
           {
@@ -8811,6 +9575,53 @@
             "description": "Next/Prev page cursor",
             "in": "query",
             "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Resources with this exact name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Resources of this type: cidr, ip, dns, or static_device_pool.",
+            "example": "dns",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Resources connected to this Site",
+            "in": "query",
+            "name": "site_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Resources with this exact address",
+            "in": "query",
+            "name": "address",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Resources with this exact ip_stack",
+            "example": "dual",
+            "in": "query",
+            "name": "ip_stack",
             "required": false,
             "schema": {
               "type": "string"
@@ -9088,7 +9899,7 @@
         },
         "summary": "Delete an External Identity",
         "tags": [
-          "ExternalIdentities"
+          "External Identities"
         ]
       },
       "get": {
@@ -9194,7 +10005,7 @@
         },
         "summary": "Show External Identity",
         "tags": [
-          "ExternalIdentities"
+          "External Identities"
         ]
       }
     },
@@ -9202,7 +10013,36 @@
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.OktaAuthProviderController.index",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Limit Okta Auth Providers returned",
+            "example": 10,
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/Prev page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Okta Auth Providers with this exact name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -9791,7 +10631,36 @@
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.GoogleDirectoryController.index",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Limit Google Directories returned",
+            "example": 10,
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/Prev page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Google Directories with this exact name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -10556,7 +11425,36 @@
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.EntraDirectoryController.index",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Limit Entra Directories returned",
+            "example": 10,
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/Prev page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Entra Directories with this exact name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -10740,6 +11638,24 @@
             "description": "Next/Prev page cursor",
             "in": "query",
             "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Clients with this exact name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to the Client with this exact Firezone ID",
+            "in": "query",
+            "name": "firezone_id",
             "required": false,
             "schema": {
               "type": "string"
@@ -11134,6 +12050,382 @@
         "summary": "List synced Intune devices",
         "tags": [
           "Intune Devices"
+        ]
+      }
+    },
+    "/resources/{resource_id}/pool_members": {
+      "get": {
+        "callbacks": {},
+        "description": "Lists the Clients belonging to a `static_device_pool` Resource.\n\nReturns 400 for any other Resource type - only device pools have members.\n",
+        "operationId": "PortalAPI.PoolMemberController.index",
+        "parameters": [
+          {
+            "description": "Resource ID",
+            "example": "00000000-0000-0000-0000-000000000000",
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Limit Pool Members returned",
+            "example": 10,
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/Prev page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolMemberListResponse"
+                }
+              }
+            },
+            "description": "Pool Member Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List Pool Members",
+        "tags": [
+          "Pool Members"
+        ]
+      },
+      "patch": {
+        "callbacks": {},
+        "description": "Adds and/or removes individual Clients, leaving every other member of the\npool untouched.\n\nBoth operations are idempotent: adding a Client already in the pool and\nremoving one that isn't are both no-ops. `remove` is applied before `add`,\nso a Client named in both ends up in the pool.\n",
+        "operationId": "PortalAPI.PoolMemberController.update_patch",
+        "parameters": [
+          {
+            "description": "Resource ID",
+            "example": "00000000-0000-0000-0000-000000000000",
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolMemberPatchRequest"
+              }
+            }
+          },
+          "description": "Pool Member Attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolMemberResponse"
+                }
+              }
+            },
+            "description": "Pool Member Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Add or Remove Pool Members",
+        "tags": [
+          "Pool Members"
+        ]
+      },
+      "put": {
+        "callbacks": {},
+        "description": "Replaces the Resource's entire membership list with the given Clients.\n\nAny Client not named in the request is removed from the pool. To add or\nremove individual Clients without disturbing the rest, use `PATCH`.\n",
+        "operationId": "PortalAPI.PoolMemberController.update_put",
+        "parameters": [
+          {
+            "description": "Resource ID",
+            "example": "00000000-0000-0000-0000-000000000000",
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolMemberPutRequest"
+              }
+            }
+          },
+          "description": "Pool Member Attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolMemberResponse"
+                }
+              }
+            },
+            "description": "Pool Member Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Replace Pool Members",
+        "tags": [
+          "Pool Members"
         ]
       }
     },
@@ -12143,6 +13435,33 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Filter to the Gateway with this exact name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to the Gateway with this exact tunnel IPv4 address",
+            "in": "query",
+            "name": "ipv4",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to the Gateway with this exact tunnel IPv6 address",
+            "in": "query",
+            "name": "ipv6",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -12225,6 +13544,135 @@
         "tags": [
           "Gateways"
         ]
+      },
+      "post": {
+        "callbacks": {},
+        "description": "Creates a Gateway and mints its single-owner token in one call. The token is returned once here - store it securely. If it's lost, rotate it via `POST /sites/{site_id}/gateways/{gateway_id}/token/rotate` once the Gateway has connected, or delete and re-provision it.\n\n`name` is optional; a random name is generated when omitted. `ipv4` and `ipv6` are the Gateway's tunnel addresses, allocated from the account's pool when the Gateway row is created - they are always present in this response, before the Gateway has ever connected.\n",
+        "operationId": "PortalAPI.GatewayController.create",
+        "parameters": [
+          {
+            "description": "Site ID",
+            "example": "00000000-0000-0000-0000-000000000000",
+            "in": "path",
+            "name": "site_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatewayCreateRequest"
+              }
+            }
+          },
+          "description": "Gateway attributes",
+          "required": false
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayProvisionResponse"
+                }
+              }
+            },
+            "description": "Provisioned Gateway Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Provision a Gateway",
+        "tags": [
+          "Gateways"
+        ]
       }
     },
     "/policies": {
@@ -12246,6 +13694,24 @@
             "description": "Next/Prev page cursor",
             "in": "query",
             "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Policies granting this Group",
+            "in": "query",
+            "name": "group_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Policies granting access to this Resource",
+            "in": "query",
+            "name": "resource_id",
             "required": false,
             "schema": {
               "type": "string"
@@ -12600,6 +14066,34 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Filter to Actors with this exact name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Actors with this exact email",
+            "in": "query",
+            "name": "email",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Actors of this type: account_user, account_admin_user, service_account, or api_client.",
+            "example": "service_account",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -12789,7 +14283,36 @@
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.OktaDirectoryController.index",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Limit Okta Directories returned",
+            "example": 10,
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/Prev page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Okta Directories with this exact name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {

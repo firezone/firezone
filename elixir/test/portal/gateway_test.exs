@@ -13,9 +13,12 @@ defmodule Portal.GatewayTest do
   end
 
   describe "changeset/1 basic validations" do
-    test "requires firezone_id" do
+    test "does not require firezone_id" do
+      # Gateways are pre-created via the API/dashboard and only get a
+      # firezone_id once they first connect and report one - unlike
+      # clients, which always have one from creation.
       changeset = build_changeset(%{name: "Gateway"})
-      assert %{firezone_id: ["can't be blank"]} = errors_on(changeset)
+      refute Map.has_key?(errors_on(changeset), :firezone_id)
     end
 
     test "inserts name at maximum length" do

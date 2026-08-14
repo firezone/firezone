@@ -8,6 +8,10 @@ defmodule PortalAPI.GatewayTokenController do
 
   tags ["Gateway Tokens"]
 
+  # Single-owner tokens replace multi-owner Site tokens; this endpoint is
+  # deprecated ahead of its own removal, independent of any API versioning.
+  @multi_owner_token_sunset_at ~D[2026-10-01]
+
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
     summary: "Create a Gateway Token",
@@ -40,6 +44,7 @@ defmodule PortalAPI.GatewayTokenController do
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"site_id" => site_id}) do
     subject = conn.assigns.subject
+    conn = deprecate(conn, @multi_owner_token_sunset_at)
 
     with {:ok, site} <- Database.fetch_site(site_id, subject),
          {:ok, token} <- Authentication.create_gateway_token(site, subject) do
@@ -49,6 +54,20 @@ defmodule PortalAPI.GatewayTokenController do
     else
       error -> Error.handle(conn, error)
     end
+  end
+
+  # Marks a response as deprecated per RFC 8594 - just this one endpoint,
+  # independent of any API versioning. If a second endpoint ever needs this,
+  # promote it back to a shared plug rather than copy-pasting it.
+  defp deprecate(conn, %Date{} = sunset) do
+    http_date =
+      sunset
+      |> DateTime.new!(~T[00:00:00], "Etc/UTC")
+      |> Calendar.strftime("%a, %d %b %Y %H:%M:%S GMT")
+
+    conn
+    |> put_resp_header("deprecation", "true")
+    |> put_resp_header("sunset", http_date)
   end
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
@@ -205,10 +224,10 @@ defmodule PortalAPI.GatewayTokenController do
   # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def delete(conn, %{"site_id" => _site_id, "id" => token_id}) do
+  def delete(conn, %{"site_id" => site_id, "id" => token_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, token} <- Database.fetch_token(token_id, subject),
+    with {:ok, token} <- Database.fetch_token(token_id, site_id, subject),
          {:ok, deleted_token} <- Database.delete_token(token, subject) do
       render(conn, :deleted, token: deleted_token)
     else
@@ -287,9 +306,17 @@ defmodule PortalAPI.GatewayTokenController do
       end
     end
 
-    def fetch_token(id, subject) do
+    def fetch_token(id, site_id, subject) do
+      # A token belongs to the given site either directly (multi-owner
+      # tokens, which have site_id set) or via its owning device
+      # (single-owner tokens, which have device_id set and site_id nil).
       result =
-        from(t in GatewayToken, where: t.id == ^id)
+        from(t in GatewayToken, as: :tokens, where: t.id == ^id)
+        |> join(:left, [tokens: t], d in Device,
+          on: d.id == t.device_id and d.account_id == t.account_id,
+          as: :device
+        )
+        |> where([tokens: t, device: d], t.site_id == ^site_id or d.site_id == ^site_id)
         |> Safe.scoped(subject)
         |> Safe.one()
 

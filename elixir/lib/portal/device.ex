@@ -144,6 +144,13 @@ defmodule Portal.Device do
     # the session being evaluated and never the device's past.
     field :attested?, :boolean, virtual: true, default: false
 
+    # rotated_at of the gateway_token this device last connected with,
+    # populated by queries that select_merge it (see
+    # PortalAPI.GatewayController). Non-nil means a replacement token has
+    # been minted and this one is inside its grace period - the signal an
+    # operator needs to tell "rotation pending" from "rotation complete".
+    field :gateway_token_rotated_at, :utc_datetime_usec, virtual: true
+
     # Set when this connect adopted a new firezone_id (attested-first merge).
     # The session flush persists firezone_id only for merged connects, so the
     # steady state adds no conflict-probe query to the flush.
@@ -221,7 +228,7 @@ defmodule Portal.Device do
 
       :gateway ->
         changeset
-        |> validate_required([:site_id, :firezone_id])
+        |> validate_required([:site_id])
         |> validate_gateway_verification()
 
       _ ->

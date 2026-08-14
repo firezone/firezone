@@ -32,6 +32,55 @@ defmodule PortalAPI.OktaDirectoryControllerTest do
       assert Enum.any?(data, fn d -> d["id"] == directory.id end)
     end
 
+    test "filters by name", %{conn: conn, account: account, actor: actor} do
+      match = okta_directory_fixture(account: account, name: "Corp Directory")
+      _other = okta_directory_fixture(account: account, name: "Other Directory")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/okta_directories", name: "Corp Directory")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == match.id
+      assert data["name"] == "Corp Directory"
+    end
+
+    test "returns an empty list when the name matches nothing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _directory = okta_directory_fixture(account: account, name: "Corp Directory")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/okta_directories", name: "Nonexistent")
+
+      assert %{"data" => []} = json_response(conn, 200)
+    end
+
+    test "does not match a directory in another account by name", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _local = okta_directory_fixture(account: account, name: "Shared Name")
+      other = okta_directory_fixture(name: "Shared Name")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/okta_directories", name: "Shared Name")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      refute data["id"] == other.id
+    end
+
     test "only lists directories from the authorized account", %{
       conn: conn,
       account: account,
@@ -48,6 +97,41 @@ defmodule PortalAPI.OktaDirectoryControllerTest do
       assert %{"data" => data} = json_response(conn, 200)
       refute Enum.any?(data, fn d -> d["id"] == other_directory.id end)
       assert other_directory.account_id != account.id
+    end
+
+    test "returns paginated metadata and respects limit", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      for _ <- 1..3, do: okta_directory_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/okta_directories", limit: "2")
+
+      assert %{
+               "data" => data,
+               "metadata" => %{"count" => count, "limit" => limit, "next_page" => next_page}
+             } = json_response(conn, 200)
+
+      assert limit == 2
+      assert count == 3
+      assert length(data) == 2
+      refute is_nil(next_page)
+    end
+
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/okta_directories", page_cursor: "not-a-valid-cursor")
+
+      assert %{"type" => "about:blank", "status" => 400, "detail" => "Invalid page cursor"} =
+               json_response(conn, 400)
     end
   end
 

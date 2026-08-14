@@ -1,11 +1,14 @@
 defmodule PortalAPI.GatewayControllerTest do
   use PortalAPI.ConnCase, async: true
+
+  import Ecto.Query
   alias Portal.Device
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.SiteFixtures
   import Portal.DeviceFixtures
+  import Portal.TokenFixtures
 
   setup do
     account = account_fixture()
@@ -17,6 +20,147 @@ defmodule PortalAPI.GatewayControllerTest do
       actor: actor,
       site: site
     }
+  end
+
+  describe "create/2" do
+    test "returns error when not authorized", %{conn: conn, site: site} do
+      conn = post(conn, "/sites/#{site.id}/gateways")
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "provisions a gateway with an explicit name", %{
+      conn: conn,
+      actor: actor,
+      site: site
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways", gateway: %{name: "edge-nyc-1"})
+
+      assert %{
+               "data" => %{
+                 "id" => id,
+                 "name" => "edge-nyc-1",
+                 "online" => false,
+                 "token" => token
+               }
+             } = json_response(conn, 201)
+
+      refute is_nil(id)
+      refute is_nil(token)
+
+      assert [{"location", location}] =
+               Enum.filter(conn.resp_headers, fn {k, _} -> k == "location" end)
+
+      assert location == "/sites/#{site.id}/gateways/#{id}"
+    end
+
+    # Regression: provisioning built a bare %Device{} struct, and
+    # Safe.insert/1 only applies Device.changeset/1 to changesets - so
+    # these names were persisted rather than refused. Each of them is
+    # rejected by Device.changeset/1's trim + length validation.
+    test "rejects names Device.changeset/1 refuses", %{
+      conn: conn,
+      actor: actor,
+      site: site
+    } do
+      for {label, name} <- [
+            {"empty", ""},
+            {"whitespace-only", "   "},
+            {"overlong", String.duplicate("a", 256)}
+          ] do
+        request_conn =
+          conn
+          |> recycle()
+          |> authorize_conn(actor)
+          |> put_req_header("content-type", "application/json")
+          |> post("/sites/#{site.id}/gateways", gateway: %{name: name})
+
+        assert resp = json_response(request_conn, 422), "#{label} name was accepted"
+        assert Map.has_key?(resp["validation_errors"], "name"), "#{label} name: #{inspect(resp)}"
+      end
+
+      assert Repo.aggregate(
+               from(d in Portal.Device, where: d.site_id == ^site.id and d.type == :gateway),
+               :count
+             ) == 0
+    end
+
+    # The OpenAPI schema lists ipv4/ipv6 as required and non-nullable, and
+    # this is what keeps that honest: a devices BEFORE INSERT trigger
+    # allocates both from the account's pool, and the columns are NOT
+    # NULL, so they are populated before a Gateway has ever connected.
+    # If provisioning ever starts returning nulls here, the schema has to
+    # gain nullable: true or generated clients will reject the response.
+    test "provisions a gateway with tunnel addresses already assigned", %{
+      conn: conn,
+      actor: actor,
+      site: site
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways", gateway: %{name: "fresh-gw"})
+
+      assert %{"data" => data} = json_response(conn, 201)
+      refute is_nil(data["ipv4"]), "a never-connected Gateway must still have an ipv4"
+      refute is_nil(data["ipv6"]), "a never-connected Gateway must still have an ipv6"
+    end
+
+    test "provisions a gateway with an auto-generated name when omitted", %{
+      conn: conn,
+      actor: actor,
+      site: site
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways")
+
+      assert %{"data" => %{"name" => name}} = json_response(conn, 201)
+      refute is_nil(name)
+      refute name == ""
+    end
+
+    test "a provisioned gateway can subsequently be fetched and shows offline", %{
+      conn: conn,
+      actor: actor,
+      site: site
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways", gateway: %{name: "edge-nyc-1"})
+
+      assert %{"data" => %{"id" => id}} = json_response(conn, 201)
+
+      show_conn =
+        conn
+        |> recycle()
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways/#{id}")
+
+      assert %{"data" => %{"id" => ^id, "name" => "edge-nyc-1", "online" => false}} =
+               json_response(show_conn, 200)
+    end
+
+    test "returns not found for a non-existent site", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{Ecto.UUID.generate()}/gateways")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
   end
 
   describe "index/2" do
@@ -124,6 +268,72 @@ defmodule PortalAPI.GatewayControllerTest do
       assert %{"type" => "about:blank", "status" => 400, "detail" => "Invalid page cursor"} =
                json_response(conn, 400)
     end
+
+    test "filters by exact name match", %{conn: conn, account: account, actor: actor, site: site} do
+      gateway = gateway_fixture(account: account, site: site, name: "gw-us-east-1")
+      _other = gateway_fixture(account: account, site: site, name: "gw-us-east-2")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways", name: "gw-us-east-1")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == gateway.id
+    end
+
+    test "filters by exact ipv4 match", %{conn: conn, account: account, actor: actor, site: site} do
+      gateway = gateway_fixture(account: account, site: site)
+      _other = gateway_fixture(account: account, site: site)
+
+      ipv4 = Portal.Types.IP.to_string(gateway.ipv4)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways", ipv4: ipv4)
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == gateway.id
+    end
+
+    test "filters by exact ipv6 match", %{conn: conn, account: account, actor: actor, site: site} do
+      gateway = gateway_fixture(account: account, site: site)
+      _other = gateway_fixture(account: account, site: site)
+
+      ipv6 = Portal.Types.IP.to_string(gateway.ipv6)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways", ipv6: ipv6)
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == gateway.id
+    end
+
+    test "rejects a malformed ipv4 filter value", %{conn: conn, actor: actor, site: site} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways", ipv4: "not-an-ip")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
+
+    test "rejects a malformed ipv6 filter value", %{conn: conn, actor: actor, site: site} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways", ipv6: "not-an-ip")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
   end
 
   describe "show/2" do
@@ -159,6 +369,8 @@ defmodule PortalAPI.GatewayControllerTest do
                  "ipv4" => Portal.Types.IP.to_string(gateway.ipv4),
                  "ipv6" => Portal.Types.IP.to_string(gateway.ipv6),
                  "online" => false,
+                 "gateway_token_id" => gateway.gateway_token_id,
+                 "rotated_at" => nil,
                  "public_key" => gateway.public_key,
                  "last_seen_at" => DateTime.to_iso8601(gateway.last_seen_at),
                  "last_seen_version" => gateway.last_seen_version,
@@ -180,6 +392,214 @@ defmodule PortalAPI.GatewayControllerTest do
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
         |> get("/sites/#{site.id}/gateways/#{Ecto.UUID.generate()}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
+
+    test "returns not found when the gateway belongs to a different site", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: other_site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways/#{gateway.id}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
+  end
+
+  describe "token rotation state" do
+    setup %{account: account, site: site} do
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(account: account, gateway: gateway)
+
+      # A gateway only reports a token once it has connected with one.
+      gateway =
+        gateway
+        |> Ecto.Changeset.change(gateway_token_id: token.id)
+        |> Repo.update!()
+
+      %{gateway: gateway, token: token}
+    end
+
+    test "reports the connected token and a null rotated_at when no rotation is pending", %{
+      conn: conn,
+      actor: actor,
+      site: site,
+      gateway: gateway,
+      token: token
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways/#{gateway.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data["gateway_token_id"] == token.id
+      assert data["rotated_at"] == nil
+    end
+
+    test "reports rotated_at once the connected token has been rotated out", %{
+      conn: conn,
+      actor: actor,
+      site: site,
+      gateway: gateway,
+      token: token
+    } do
+      rotated_at = ~U[2026-01-01 00:00:00.000000Z]
+
+      token
+      |> Ecto.Changeset.change(rotated_at: rotated_at)
+      |> Repo.update!()
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways/#{gateway.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data["gateway_token_id"] == token.id
+      # Non-null is the whole signal: a replacement exists and this
+      # gateway has not picked it up yet.
+      assert data["rotated_at"] == DateTime.to_iso8601(rotated_at)
+    end
+
+    test "index reports rotation state too", %{
+      conn: conn,
+      actor: actor,
+      site: site,
+      token: token
+    } do
+      rotated_at = ~U[2026-01-01 00:00:00.000000Z]
+
+      token
+      |> Ecto.Changeset.change(rotated_at: rotated_at)
+      |> Repo.update!()
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["gateway_token_id"] == token.id
+      assert data["rotated_at"] == DateTime.to_iso8601(rotated_at)
+    end
+
+    test "a gateway that has never connected reports nulls", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      # gateway_fixture always records a session, since gateways always
+      # have one in practice. Clear the column to get the genuine
+      # never-connected state a freshly provisioned Gateway has.
+      fresh =
+        gateway_fixture(account: account, site: site)
+        |> Ecto.Changeset.change(gateway_token_id: nil)
+        |> Repo.update!()
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways/#{fresh.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data["gateway_token_id"] == nil
+      assert data["rotated_at"] == nil
+    end
+  end
+
+  describe "update/2" do
+    test "returns error when not authorized", %{conn: conn, account: account, site: site} do
+      gateway = gateway_fixture(account: account, site: site)
+      conn = put(conn, "/sites/#{site.id}/gateways/#{gateway.id}", %{})
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "renames a gateway", %{conn: conn, account: account, actor: actor, site: site} do
+      gateway = gateway_fixture(account: account, site: site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/sites/#{site.id}/gateways/#{gateway.id}", gateway: %{name: "renamed-gateway"})
+
+      assert %{"data" => %{"id" => id, "name" => "renamed-gateway"}} = json_response(conn, 200)
+      assert id == gateway.id
+    end
+
+    test "renames a never-connected gateway (firezone_id: nil)", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      # Regression test: Portal.Safe.update/1 re-applies Device.changeset/1
+      # centrally to every changeset it's given, so this previously 422'd
+      # on "firezone_id can't be blank" even though rename only touches
+      # :name - Device.changeset/1 only requires :firezone_id for :client
+      # devices now, since a gateway legitimately has none until it first
+      # connects (see Portal.Device's @type doc).
+      gateway = gateway_fixture(account: account, site: site, firezone_id: nil)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/sites/#{site.id}/gateways/#{gateway.id}", gateway: %{name: "renamed-gateway"})
+
+      assert %{"data" => %{"id" => id, "name" => "renamed-gateway"}} = json_response(conn, 200)
+      assert id == gateway.id
+    end
+
+    test "returns validation error for a blank name", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      gateway = gateway_fixture(account: account, site: site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/sites/#{site.id}/gateways/#{gateway.id}", gateway: %{name: ""})
+
+      assert %{"status" => 422, "validation_errors" => %{"name" => _}} = json_response(conn, 422)
+    end
+
+    test "returns not found when the gateway belongs to a different site", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: other_site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/sites/#{site.id}/gateways/#{gateway.id}", gateway: %{name: "renamed-gateway"})
 
       assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
                json_response(conn, 404)
@@ -247,6 +667,27 @@ defmodule PortalAPI.GatewayControllerTest do
 
       assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
                json_response(conn, 404)
+    end
+
+    test "returns not found when the gateway belongs to a different site", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: other_site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/sites/#{site.id}/gateways/#{gateway.id}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+
+      assert Repo.get_by(Device, id: gateway.id, account_id: gateway.account_id)
     end
   end
 end

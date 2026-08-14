@@ -32,6 +32,90 @@ defmodule PortalAPI.OIDCAuthProviderControllerTest do
                item["id"] == provider.id and item["email_verification_method"] == "none"
              end)
     end
+
+    test "returns paginated metadata and respects limit", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      for _ <- 1..3, do: oidc_provider_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/oidc_auth_providers", limit: "2")
+
+      assert %{
+               "data" => data,
+               "metadata" => %{"count" => count, "limit" => limit, "next_page" => next_page}
+             } = json_response(conn, 200)
+
+      assert limit == 2
+      assert count == 3
+      assert length(data) == 2
+      refute is_nil(next_page)
+    end
+
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/oidc_auth_providers", page_cursor: "not-a-valid-cursor")
+
+      assert %{"type" => "about:blank", "status" => 400, "detail" => "Invalid page cursor"} =
+               json_response(conn, 400)
+    end
+
+    test "filters by name", %{conn: conn, account: account, actor: actor} do
+      match = oidc_provider_fixture(account: account, name: "Corp SSO")
+      _other = oidc_provider_fixture(account: account, name: "Contractor SSO")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/oidc_auth_providers", name: "Corp SSO")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == match.id
+      assert data["name"] == "Corp SSO"
+    end
+
+    test "returns an empty list when the name matches nothing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _provider = oidc_provider_fixture(account: account, name: "Corp SSO")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/oidc_auth_providers", name: "Nonexistent")
+
+      assert %{"data" => []} = json_response(conn, 200)
+    end
+
+    test "does not match a provider in another account by name", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _local = oidc_provider_fixture(account: account, name: "Shared Name")
+      other = oidc_provider_fixture(name: "Shared Name")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/oidc_auth_providers", name: "Shared Name")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      refute data["id"] == other.id
+    end
   end
 
   describe "show/2" do

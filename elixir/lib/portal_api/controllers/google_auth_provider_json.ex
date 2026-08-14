@@ -1,8 +1,9 @@
 defmodule PortalAPI.GoogleAuthProviderJSON do
   alias Portal.Google
+  alias PortalAPI.Pagination
 
-  def index(%{providers: providers}) do
-    %{data: Enum.map(providers, &data/1)}
+  def index(%{providers: providers, metadata: metadata}) do
+    %{data: Enum.map(providers, &data/1), metadata: Pagination.metadata(metadata)}
   end
 
   def show(%{provider: provider}) do

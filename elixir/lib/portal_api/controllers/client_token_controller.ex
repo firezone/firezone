@@ -40,9 +40,9 @@ defmodule PortalAPI.ClientTokenController do
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, %{"actor_id" => actor_id} = params) do
     subject = conn.assigns.subject
-    list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, tokens, metadata} <- Database.list_tokens(actor_id, subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, tokens, metadata} <- Database.list_tokens(actor_id, subject, list_opts) do
       render(conn, :index, tokens: tokens, metadata: metadata)
     else
       error -> Error.handle(conn, error)

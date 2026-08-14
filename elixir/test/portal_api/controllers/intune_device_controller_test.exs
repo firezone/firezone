@@ -36,6 +36,21 @@ defmodule PortalAPI.IntuneDeviceControllerTest do
     refute id == other.intune_id
   end
 
+  # Pagination.params_to_list_opts/1 returns {:ok, opts} | {:error, ...}
+  # so a bad limit is a 400 rather than reaching the query. This endpoint
+  # arrived while that contract was changing and briefly used the older
+  # bare-keyword-list shape, which passed the tuple straight into
+  # Safe.list/3 and raised.
+  test "returns bad request for a non-integer limit", %{conn: conn, actor: actor} do
+    response =
+      conn
+      |> authorize_conn(actor)
+      |> get("/intune_devices", limit: "not-a-number")
+      |> json_response(400)
+
+    assert response["status"] == 400
+  end
+
   test "show returns the provider fields", %{conn: conn, actor: actor, device: device} do
     data =
       conn
