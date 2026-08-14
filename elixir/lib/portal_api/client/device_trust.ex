@@ -3,17 +3,9 @@ defmodule PortalAPI.Client.DeviceTrust do
   Device attestation from the client certificate presented at connect.
 
   Clients holding an MDM-provisioned certificate connect over mutual TLS to
-  the dedicated `mtls_external_url` host. The load balancer
-  terminates the handshake, so TLS has already proven the client holds the
-  certificate's private key, and passes the leaf up as base64-encoded DER in
-  the `x-client-cert` header.
-
-  The header is honored only when the request host matches that URL, so a
-  forged `x-client-cert` on the plain API host is ignored. That holds as long
-  as the load balancer overwrites the header on the mutual-TLS host from the
-  real handshake rather than passing through whatever the client sent, and
-  does not forward a client-supplied `x-forwarded-host`, which is where
-  `Plug.RewriteOn` takes the request host from.
+  the dedicated `mtls_external_url` host. Phoenix terminates the handshake, so
+  TLS has already proven the client holds the certificate's private key. Bandit
+  exposes the leaf certificate as part of the connection's peer data.
 
   A certificate is trusted when it allows TLS client authentication, permits
   digital signatures (Key Usage absent or including `digitalSignature`), is
@@ -40,13 +32,10 @@ defmodule PortalAPI.Client.DeviceTrust do
   alias __MODULE__.Database
   require Logger
 
-  # Mirrors the trust anchor upload bound. Bandit rejects any header over
-  # 10_000 bytes on the wire first, so a certificate large enough to reach
-  # this bound never gets here.
+  # Mirrors the trust anchor upload bound and caps synthetic peer data before
+  # certificate decoding.
   @max_cert_bytes 16_384
   @max_chain_depth 4
-  @certificate_header "x-client-cert"
-
   # Matches the varchar(255) device columns: the bulk session flush bypasses
   # changeset validation, so an oversized value would abort the whole batch.
   # This bound only protects the columns; garbage screening is the
@@ -163,8 +152,7 @@ defmodule PortalAPI.Client.DeviceTrust do
   end
 
   @doc """
-  Attests the connecting device from the certificate the load balancer passed
-  up.
+  Attests the connecting device from the TLS peer certificate.
 
   `{:error, :not_attestation_host}` means the connect did not arrive on the
   mutual-TLS host, or no such host is configured, so there was nothing to
@@ -230,11 +218,14 @@ defmodule PortalAPI.Client.DeviceTrust do
     end
   end
 
-  defp presented_certificate(connect_info) do
-    with {:ok, encoded} <- fetch_certificate_header(connect_info) do
-      decode_certificate(encoded)
-    end
-  end
+  defp presented_certificate(%{peer_data: %{ssl_cert: der}})
+       when is_binary(der) and byte_size(der) > 0 and byte_size(der) <= @max_cert_bytes,
+       do: {:ok, der}
+
+  defp presented_certificate(%{peer_data: %{ssl_cert: der}}) when is_binary(der),
+    do: {:error, :invalid_certificate}
+
+  defp presented_certificate(_connect_info), do: {:error, :no_certificate_presented}
 
   defp attestation_host do
     with url when is_binary(url) <- Portal.Config.get_env(:portal, :mtls_external_url),
@@ -254,24 +245,6 @@ defmodule PortalAPI.Client.DeviceTrust do
   end
 
   defp validate_host(_connect_info, _attestation_host), do: {:error, :not_attestation_host}
-
-  # The load balancer sets the header to an empty value when the handshake
-  # carried no client certificate.
-  defp fetch_certificate_header(%{x_headers: x_headers}) when is_list(x_headers) do
-    case List.keyfind(x_headers, @certificate_header, 0) do
-      {@certificate_header, encoded} when is_binary(encoded) and encoded != "" -> {:ok, encoded}
-      _other -> {:error, :no_certificate_presented}
-    end
-  end
-
-  defp fetch_certificate_header(_connect_info), do: {:error, :no_certificate_presented}
-
-  defp decode_certificate(encoded) do
-    case decode_base64(encoded, @max_cert_bytes) do
-      {:ok, der} -> {:ok, der}
-      :error -> {:error, :invalid_certificate}
-    end
-  end
 
   defp decode_leaf(der) do
     case X509.decode_der_certificate(der, :otp) do
@@ -472,20 +445,6 @@ defmodule PortalAPI.Client.DeviceTrust do
       {:error, :malformed_cert_serial}
     end
   end
-
-  # Bound the encoded input before decoding: base64 is 4 characters per 3 bytes.
-  defp decode_base64(value, max_decoded_bytes)
-       when is_binary(value) and byte_size(value) <= div(max_decoded_bytes + 2, 3) * 4 do
-    case Base.decode64(value) do
-      {:ok, decoded} when decoded != "" and byte_size(decoded) <= max_decoded_bytes ->
-        {:ok, decoded}
-
-      _other ->
-        :error
-    end
-  end
-
-  defp decode_base64(_value, _max_decoded_bytes), do: :error
 
   defp within_validity_window?(leaf) do
     now = DateTime.utc_now()

@@ -377,6 +377,25 @@ config :portal, PortalWeb.Endpoint,
     signing_salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX"
   ]
 
+###############################
+##### Public Endpoint #########
+###############################
+
+config :portal, Portal.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
+  url: [
+    scheme: "https",
+    host: "localhost",
+    port: 443,
+    path: nil
+  ],
+  render_errors: [
+    formats: [json: PortalAPI.ErrorView],
+    layout: false
+  ],
+  pubsub_server: Portal.PubSub,
+  secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD"
+
 config :portal,
   api_external_url: "http://localhost:13001"
 

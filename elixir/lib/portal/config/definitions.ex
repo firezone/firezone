@@ -143,14 +143,12 @@ defmodule Portal.Config.Definitions do
   The external URL clients use to connect with a device certificate, for
   example `https://mtls.firezone.dev/`.
 
-  The load balancer terminates mutual TLS on this host and passes the client
-  certificate up as base64-encoded DER in the `x-client-cert` header. It must
-  strip any inbound `x-client-cert` on this host before setting it, so that a
-  client cannot supply its own, and it must not forward a client-supplied
-  `x-forwarded-host`, which is what the request host is derived from.
+  The public Phoenix endpoint requests a client certificate during the TLS
+  handshake on this host. The application validates the presented certificate
+  against the account's configured trust anchors.
 
   When this is not set, certificate-based device trust is disabled and the
-  header is ignored.
+  peer certificate is ignored.
   """
 
   defconfig(:mtls_external_url, :string,
@@ -253,6 +251,50 @@ defmodule Portal.Config.Definitions do
   defconfig(:phoenix_secure_cookies, :boolean, default: true)
 
   defconfig(:phoenix_listen_address, Types.IP, default: "0.0.0.0")
+
+  @doc """
+  Internal HTTP port for the public endpoint. Requests other than readiness
+  checks are redirected to HTTPS. Leave unset to disable the listener.
+  """
+  defconfig(:phoenix_http_public_port, :integer,
+    default: nil,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+  )
+
+  @doc """
+  Internal HTTPS port for the public endpoint. Leave unset to disable the listener.
+  """
+  defconfig(:phoenix_https_public_port, :integer,
+    default: nil,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+  )
+
+  @doc """
+  JSON object mapping public hostnames to their TLS certificate and key files.
+
+  Each value must contain `certfile` and `keyfile` paths. The hostname from
+  `MTLS_EXTERNAL_URL` additionally requires a client certificate during the
+  TLS handshake.
+  """
+  defconfig(:phoenix_https_sni_hosts, :map, default: %{})
+
+  @doc """
+  Whether the separate web and API HTTP listeners are enabled.
+
+  Keep this enabled while deploying behind a reverse proxy. It can be disabled
+  once the public Phoenix endpoint receives traffic directly.
+  """
+  defconfig(:phoenix_legacy_listeners_enabled, :boolean, default: true)
 
   @doc """
   Internal port to listen on for the Phoenix server for the `web` application.

@@ -43,7 +43,7 @@ defmodule PortalAPI.ChannelCase do
     * `:user_agent` - User agent string (default: "iOS/12.7 connlib/1.3.0")
     * `:x_headers` - Custom x_headers that REPLACE the default geo headers
     * `:host` - Request host, as `connect_info.uri` carries it
-    * `:client_cert` - Base64 DER for the `x-client-cert` header
+    * `:client_cert` - DER-encoded TLS peer certificate
   """
   def build_connect_info(opts \\ []) do
     ip = Keyword.get(opts, :ip, unique_ip())
@@ -61,16 +61,13 @@ defmodule PortalAPI.ChannelCase do
         @geo_headers
       end
 
-    base_headers = [{"x-forwarded-for", :inet.ntoa(ip) |> to_string()} | geo_headers]
-
     x_headers =
-      base_headers
+      [{"x-forwarded-for", :inet.ntoa(ip) |> to_string()} | geo_headers]
       |> prepend_header(token && {"x-authorization", "Bearer #{token}"})
-      |> prepend_header(client_cert && {"x-client-cert", client_cert})
 
     %{
       user_agent: user_agent,
-      peer_data: %{address: ip},
+      peer_data: %{address: ip, ssl_cert: client_cert},
       x_headers: x_headers,
       uri: %URI{scheme: "https", host: host, port: 443, path: "/"},
       trace_context_headers: []

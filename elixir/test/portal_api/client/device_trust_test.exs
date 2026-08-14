@@ -496,30 +496,18 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert DeviceTrust.attest(connect_info, subject) == {:error, :not_attestation_host}
     end
 
-    test "rejects a connect without the header", %{subject: subject} do
-      assert DeviceTrust.attest(connect_info_with_header(nil), subject) ==
+    test "rejects a connect without a peer certificate", %{subject: subject} do
+      assert DeviceTrust.attest(connect_info_with_cert(nil), subject) ==
                {:error, :no_certificate_presented}
     end
 
-    test "rejects an empty header", %{subject: subject} do
-      assert DeviceTrust.attest(connect_info_with_header(""), subject) ==
-               {:error, :no_certificate_presented}
-    end
-
-    test "rejects a header that is not a certificate", %{subject: subject} do
-      assert DeviceTrust.attest(connect_info_with_header("not base64!"), subject) ==
-               {:error, :invalid_certificate}
-
-      encoded = Base.encode64("not a certificate")
-
-      assert DeviceTrust.attest(connect_info_with_header(encoded), subject) ==
+    test "rejects peer data that is not a certificate", %{subject: subject} do
+      assert DeviceTrust.attest(connect_info_with_cert("not a certificate"), subject) ==
                {:error, :invalid_certificate}
     end
 
-    test "rejects an oversized certificate without decoding it", %{subject: subject} do
-      encoded = Base.encode64(:crypto.strong_rand_bytes(64_000))
-
-      assert DeviceTrust.attest(connect_info_with_header(encoded), subject) ==
+    test "rejects an oversized peer certificate", %{subject: subject} do
+      assert DeviceTrust.attest(connect_info_with_cert(:crypto.strong_rand_bytes(64_000)), subject) ==
                {:error, :invalid_certificate}
     end
   end
@@ -691,14 +679,16 @@ defmodule PortalAPI.Client.DeviceTrustTest do
   end
 
   defp connect_info(der, opts \\ []) do
-    connect_info_with_header(Base.encode64(der), opts)
+    connect_info_with_cert(der, opts)
   end
 
-  defp connect_info_with_header(value, opts \\ []) do
+  defp connect_info_with_cert(value, opts \\ []) do
     host = Keyword.get(opts, :host, @attestation_host)
-    headers = if is_nil(value), do: [], else: [{"x-client-cert", value}]
 
-    %{uri: %URI{scheme: "https", host: host, port: 443, path: "/"}, x_headers: headers}
+    %{
+      uri: %URI{scheme: "https", host: host, port: 443, path: "/"},
+      peer_data: %{ssl_cert: value}
+    }
   end
 
   defp otp(profile) do

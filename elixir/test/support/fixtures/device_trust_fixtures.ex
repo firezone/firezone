@@ -165,12 +165,9 @@ defmodule Portal.DeviceTrustFixtures do
   end
 
   @doc """
-  Returns the `x-client-cert` header value the load balancer sends for the
-  named leaf profile.
+  Returns the DER-encoded client certificate for the named leaf profile.
   """
-  def client_cert_header(pki, name) do
-    pki |> leaf(name) |> Base.encode64()
-  end
+  def client_cert(pki, name), do: leaf(pki, name)
 
   @doc """
   Mints a standalone CA certificate under the given common name, for tests that
