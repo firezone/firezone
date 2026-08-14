@@ -1038,8 +1038,6 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
-  defp google_workspace_identity(_claims), do: {:error, :invalid_google_identity}
-
   defp google_identity_claim(claims, claim) do
     case claims[claim] do
       value when is_binary(value) and value != "" -> {:ok, value}
