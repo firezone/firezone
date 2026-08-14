@@ -92,6 +92,9 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
       assert html =~ "Upgrade to Unlock"
       assert html =~ "Inventory Your Managed Devices"
+      assert html =~
+               "Integrate with MDM and EDR solutions to provide device telemetry to use in policy conditions"
+
       assert html =~ "settings/device_posture"
       refute html =~ "Add Microsoft Intune"
 
@@ -174,11 +177,21 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
     assert has_element?(
              lv,
-             "#intune-admin-consent-button[phx-click=start_verification][phx-hook=OpenURL]"
+             "#intune-verification.p-4.border.border-border.bg-raised.rounded"
            )
+    assert has_element?(lv, "#intune-admin-consent-open-url[phx-hook=OpenURL]")
+
+    assert has_element?(
+             lv,
+             "#intune-admin-consent-button[phx-click=start_verification]",
+             "Verify Now"
+           )
+
+    assert has_element?(lv, "#intune-tenant-id", "Awaiting verification...")
 
     lv |> element("#intune-admin-consent-button") |> render_click()
     assert_push_event(lv, "open_url", %{url: url})
+    assert has_element?(lv, "#intune-admin-consent-open-url button[disabled]", "Verifying...")
 
     state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
 
@@ -200,6 +213,9 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
     assert_receive {:verification_ack, ^ack_ref}
     assert render(lv) =~ "tenant-123"
+    assert has_element?(lv, "#intune-verification-status", "Verified")
+    assert has_element?(lv, "#intune-tenant-id", "tenant-123")
+    assert has_element?(lv, "button[phx-click=reset_verification]", "Reset verification")
 
     lv
     |> form("#device-posture-form", integration: %{name: "Corporate Intune"})
