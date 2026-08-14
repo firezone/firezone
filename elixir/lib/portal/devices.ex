@@ -24,13 +24,23 @@ defmodule Portal.Devices do
   defmodule Database do
     alias Portal.Safe
 
+    # Builds a changeset rather than a bare struct on purpose: Safe.insert/1
+    # only applies the schema's own changeset/1 to changesets, not to structs
+    # (see its two Scoped clauses). Inserting a struct here would skip
+    # Device.changeset/1 entirely and persist names it rejects - blank,
+    # whitespace-only, or longer than 255 - instead of returning the 422 the
+    # provisioning endpoint documents.
+    #
+    # Only a nil name gets a generated one. An explicitly supplied blank
+    # string is invalid input, not an omitted value, so it is validated and
+    # refused rather than silently replaced.
     def insert_gateway(site, name, subject) do
-      %Device{
-        account_id: site.account_id,
-        site_id: site.id,
-        type: :gateway,
-        name: name || Portal.Crypto.random_token(5, encoder: :user_friendly)
-      }
+      name = name || Portal.Crypto.random_token(5, encoder: :user_friendly)
+
+      %Device{}
+      |> Ecto.Changeset.cast(%{name: name}, [:name])
+      |> Ecto.Changeset.put_change(:type, :gateway)
+      |> Ecto.Changeset.put_change(:site_id, site.id)
       |> Safe.scoped(subject)
       |> Safe.insert()
     end

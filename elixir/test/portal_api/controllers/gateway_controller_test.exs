@@ -1,5 +1,7 @@
 defmodule PortalAPI.GatewayControllerTest do
   use PortalAPI.ConnCase, async: true
+
+  import Ecto.Query
   alias Portal.Device
 
   import Portal.AccountFixtures
@@ -54,6 +56,37 @@ defmodule PortalAPI.GatewayControllerTest do
                Enum.filter(conn.resp_headers, fn {k, _} -> k == "location" end)
 
       assert location == "/sites/#{site.id}/gateways/#{id}"
+    end
+
+    # Regression: provisioning built a bare %Device{} struct, and
+    # Safe.insert/1 only applies Device.changeset/1 to changesets - so
+    # these names were persisted rather than refused. Each of them is
+    # rejected by Device.changeset/1's trim + length validation.
+    test "rejects names Device.changeset/1 refuses", %{
+      conn: conn,
+      actor: actor,
+      site: site
+    } do
+      for {label, name} <- [
+            {"empty", ""},
+            {"whitespace-only", "   "},
+            {"overlong", String.duplicate("a", 256)}
+          ] do
+        request_conn =
+          conn
+          |> recycle()
+          |> authorize_conn(actor)
+          |> put_req_header("content-type", "application/json")
+          |> post("/sites/#{site.id}/gateways", gateway: %{name: name})
+
+        assert resp = json_response(request_conn, 422), "#{label} name was accepted"
+        assert Map.has_key?(resp["validation_errors"], "name"), "#{label} name: #{inspect(resp)}"
+      end
+
+      assert Repo.aggregate(
+               from(d in Portal.Device, where: d.site_id == ^site.id and d.type == :gateway),
+               :count
+             ) == 0
     end
 
     test "provisions a gateway with an auto-generated name when omitted", %{
