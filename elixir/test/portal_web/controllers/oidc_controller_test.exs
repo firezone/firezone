@@ -976,6 +976,177 @@ defmodule PortalWeb.OIDCControllerTest do
     end
   end
 
+  describe "callback/2 with Google directory verification state" do
+    test "binds the authorized Workspace customer to the delegated service-account customer", %{
+      conn: conn
+    } do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
+      state = google_directory_verification_state(lv_pid, verification_ref)
+
+      Mocks.OIDC.set_token_response(%{"access_token" => "interactive-google-token"})
+
+      Req.Test.expect(Portal.Google.APIClient, fn req_conn ->
+        assert req_conn.request_path == "/admin/directory/v1/customers/my_customer"
+
+        assert Plug.Conn.get_req_header(req_conn, "authorization") == [
+                 "Bearer interactive-google-token"
+               ]
+
+        Req.Test.json(req_conn, %{
+          "id" => "C0123",
+          "customerDomain" => "verified.example.com"
+        })
+      end)
+
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert {:ok,
+              %{
+                ok: true,
+                type: "google-directory-sync",
+                domain: "verified.example.com",
+                verification_ref: ^verification_ref
+              } = result} = oidc_verification_result_from_redirect(redirected_to(conn))
+
+      refute Map.has_key?(result, :access_token)
+      refute Map.has_key?(result, :customer_id)
+    end
+
+    test "rejects authorization from a different Workspace", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = google_directory_pending_verification_process(verification_ref, "C-victim")
+      state = google_directory_verification_state(lv_pid, verification_ref)
+
+      Mocks.OIDC.set_token_response(%{"access_token" => "attacker-google-token"})
+
+      Req.Test.expect(Portal.Google.APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{
+          "id" => "C-attacker",
+          "customerDomain" => "attacker.example.com"
+        })
+      end)
+
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert {:ok,
+              %{
+                ok: false,
+                type: "google-directory-sync",
+                error: error,
+                verification_ref: ^verification_ref
+              }} = oidc_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "different Workspace"
+    end
+
+    test "requires the authorizing user to have customer-read administrator permission", %{
+      conn: conn
+    } do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
+      state = google_directory_verification_state(lv_pid, verification_ref)
+
+      Mocks.OIDC.set_token_response(%{"access_token" => "non-admin-google-token"})
+
+      Req.Test.expect(Portal.Google.APIClient, fn req_conn ->
+        req_conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{"error" => %{"message" => "Not Authorized to access this resource/api"}})
+      end)
+
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert {:ok, %{ok: false, error: error}} =
+               oidc_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "must be a Workspace administrator"
+      assert error =~ "permission to view customer information"
+    end
+
+    test "does not exchange the authorization code when a Google verification callback is replayed",
+         %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
+      state = google_directory_verification_state(lv_pid, verification_ref)
+
+      Mocks.OIDC.set_token_response(%{"access_token" => "interactive-google-token"})
+
+      Req.Test.expect(Portal.Google.APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{
+          "id" => "C0123",
+          "customerDomain" => "verified.example.com"
+        })
+      end)
+
+      first_conn =
+        get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert {:ok, %{ok: true}} = oidc_verification_result_from_redirect(redirected_to(first_conn))
+      flush_oidc_requests()
+
+      replayed_conn =
+        get(recycle(first_conn), ~p"/auth/oidc/callback", %{
+          "state" => state,
+          "code" => "replayed-code"
+        })
+
+      assert {:ok, %{ok: false, error: error}} =
+               oidc_verification_result_from_redirect(redirected_to(replayed_conn))
+
+      assert error =~ "Verification session was not found or has expired"
+      refute_received {:oidc_request, _path, _conn}
+    end
+
+    test "does not consume a newer pending verification when a stale Google callback arrives", %{
+      conn: conn
+    } do
+      stale_ref = Ecto.UUID.generate()
+      current_ref = Ecto.UUID.generate()
+      lv_pid = google_directory_pending_verification_process(current_ref, "C0123")
+      state = google_directory_verification_state(lv_pid, stale_ref)
+      flush_oidc_requests()
+
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{
+          "state" => state,
+          "code" => "stale-code"
+        })
+
+      assert {:ok, %{ok: false, error: error, verification_ref: ^stale_ref}} =
+               oidc_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Verification session was not found or has expired"
+      refute_received {:oidc_request, _path, _conn}
+
+      send(lv_pid, {:peek_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^current_ref}}
+    end
+
+    test "returns a signed failure when Google authorization is denied", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
+      state = google_directory_verification_state(lv_pid, verification_ref)
+
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{
+          "state" => state,
+          "error" => "access_denied",
+          "error_description" => "The administrator denied access"
+        })
+
+      assert {:ok,
+              %{
+                ok: false,
+                error: "The administrator denied access",
+                verification_ref: ^verification_ref
+              }} = oidc_verification_result_from_redirect(redirected_to(conn))
+    end
+  end
+
   describe "callback/2 (fallback with no recognized params)" do
     test "redirects with invalid callback params error when params don't match any pattern", %{
       conn: conn
@@ -3495,6 +3666,25 @@ defmodule PortalWeb.OIDCControllerTest do
     }
 
     spawn(fn -> pending_verification_loop(pending) end)
+  end
+
+  defp google_directory_pending_verification_process(verification_ref, workspace_customer_id) do
+    pending = %{
+      config: oidc_config(),
+      verifier: "test-verifier",
+      verification_ref: verification_ref,
+      workspace_customer_id: workspace_customer_id
+    }
+
+    spawn(fn -> pending_verification_loop(pending) end)
+  end
+
+  defp google_directory_verification_state(lv_pid, verification_ref) do
+    lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+
+    PortalWeb.OIDC.sign_verification_state(lv_pid_string, "google-directory-sync", %{
+      verification_ref: verification_ref
+    })
   end
 
   defp pending_verification_loop(pending) do

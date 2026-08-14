@@ -41,6 +41,67 @@ defmodule PortalWeb.VerificationControllerTest do
       assert_received {:oidc_verify_complete_received, "https://example.com", ^verification_ref}
     end
 
+    test "with a Google directory result, sends the verified domain to the active LiveView", %{
+      conn: conn
+    } do
+      parent = self()
+
+      lv_pid =
+        spawn(fn ->
+          receive do
+            {:google_directory_sync_complete, domain, verification_ref, {from, ref}} ->
+              send(
+                parent,
+                {:google_directory_sync_complete_received, domain, verification_ref}
+              )
+
+              send(from, {:verification_ack, ref})
+          end
+        end)
+
+      verification_ref = Ecto.UUID.generate()
+
+      token =
+        sign_oidc_result(%{
+          ok: true,
+          type: "google-directory-sync",
+          domain: "verified.example.com",
+          lv_pid: serialize_pid(lv_pid),
+          verification_ref: verification_ref
+        })
+
+      conn = get(conn, ~p"/verification/oidc", %{"result" => token})
+
+      assert conn.status == 200
+      assert conn.resp_body =~ "Verification Successful"
+
+      assert_received {:google_directory_sync_complete_received, "verified.example.com",
+                       ^verification_ref}
+    end
+
+    test "with a Google directory failure, notifies only that verification session", %{
+      conn: conn
+    } do
+      verification_ref = Ecto.UUID.generate()
+
+      token =
+        sign_oidc_result(%{
+          ok: false,
+          type: "google-directory-sync",
+          error: "The Google account is not an administrator",
+          lv_pid: serialize_pid(self()),
+          verification_ref: verification_ref
+        })
+
+      conn = get(conn, ~p"/verification/oidc", %{"result" => token})
+
+      assert conn.resp_body =~ "Verification Failed"
+      assert conn.resp_body =~ "not an administrator"
+
+      assert_received {:verification_failed, "The Google account is not an administrator",
+                       ^verification_ref}
+    end
+
     test "with failure result token, sends failure message to LV and renders failure", %{
       conn: conn
     } do

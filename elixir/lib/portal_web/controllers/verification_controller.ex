@@ -22,35 +22,82 @@ defmodule PortalWeb.VerificationController do
     case Phoenix.Token.verify(PortalWeb.Endpoint, "oidc-verification-result", result_token,
            max_age: 60
          ) do
-      {:ok,
-       %{ok: true, issuer: issuer, lv_pid: lv_pid, verification_ref: verification_ref}}
-      when is_binary(verification_ref) ->
-        lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid)
-
-        case notify_and_await_ack(lv_pid, {:oidc_verify_complete, issuer, verification_ref}) do
-          :ok ->
-            render(conn, :success)
-
-          {:error, _reason} ->
-            render(conn, :failure, error: @verification_ack_error)
-        end
-
-      {:ok, %{ok: true}} ->
-        render(conn, :failure, error: "Invalid or expired verification result. Please try again.")
-
-      {:ok, %{ok: false, error: error, lv_pid: lv_pid}} ->
-        if pid = PortalWeb.OIDC.deserialize_pid(lv_pid),
-          do: send(pid, {:oidc_verify_failed, error})
-
-        render(conn, :failure, error: error)
+      {:ok, result} ->
+        render_oidc_result(conn, result)
 
       {:error, _} ->
-        render(conn, :failure, error: "Invalid or expired verification result. Please try again.")
+        render_invalid_oidc_result(conn)
     end
   end
 
   def oidc(conn, _params) do
     render(conn, :failure, error: "Invalid verification request. Please try again.")
+  end
+
+  defp render_oidc_result(
+         conn,
+         %{
+           ok: true,
+           type: "google-directory-sync",
+           domain: domain,
+           lv_pid: lv_pid,
+           verification_ref: verification_ref
+         }
+       )
+       when is_binary(domain) and is_binary(verification_ref) do
+    lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid)
+
+    case notify_and_await_ack(
+           lv_pid,
+           {:google_directory_sync_complete, domain, verification_ref}
+         ) do
+      :ok -> render(conn, :success)
+      {:error, _reason} -> render(conn, :failure, error: @verification_ack_error)
+    end
+  end
+
+  defp render_oidc_result(
+         conn,
+         %{
+           ok: false,
+           type: "google-directory-sync",
+           error: error,
+           lv_pid: lv_pid,
+           verification_ref: verification_ref
+         }
+       )
+       when is_binary(error) and is_binary(verification_ref) do
+    lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid)
+    maybe_notify_verification_failure(lv_pid, verification_ref, error, true)
+    render(conn, :failure, error: error)
+  end
+
+  defp render_oidc_result(
+         conn,
+         %{ok: true, issuer: issuer, lv_pid: lv_pid, verification_ref: verification_ref}
+       )
+       when is_binary(verification_ref) do
+    lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid)
+
+    case notify_and_await_ack(lv_pid, {:oidc_verify_complete, issuer, verification_ref}) do
+      :ok -> render(conn, :success)
+      {:error, _reason} -> render(conn, :failure, error: @verification_ack_error)
+    end
+  end
+
+  defp render_oidc_result(conn, %{ok: true}), do: render_invalid_oidc_result(conn)
+
+  defp render_oidc_result(conn, %{ok: false, error: error, lv_pid: lv_pid}) do
+    if pid = PortalWeb.OIDC.deserialize_pid(lv_pid),
+      do: send(pid, {:oidc_verify_failed, error})
+
+    render(conn, :failure, error: error)
+  end
+
+  defp render_oidc_result(conn, _result), do: render_invalid_oidc_result(conn)
+
+  defp render_invalid_oidc_result(conn) do
+    render(conn, :failure, error: "Invalid or expired verification result. Please try again.")
   end
 
   @doc """

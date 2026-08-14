@@ -11,6 +11,7 @@ defmodule PortalWeb.OIDC do
   require Logger
 
   @client_assertion_type "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+  @google_directory_customer_scope "https://www.googleapis.com/auth/admin.directory.customer.readonly"
   @entra_organizations_discovery_document_uri "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
   @entra_organizations_admin_consent_endpoint "https://login.microsoftonline.com/organizations/v2.0/adminconsent"
   @entra_issuer_prefix "https://login.microsoftonline.com/"
@@ -283,6 +284,7 @@ defmodule PortalWeb.OIDC do
 
   Provider types:
   - "google", "okta", "oidc" — OIDC authorization code + PKCE flow
+  - "google_directory_sync" — OAuth authorization code + PKCE Workspace admin proof
   - "entra" — Entra auth_provider admin consent + silent authorization code/PKCE proof
   - "entra_directory_sync" — Entra directory_sync admin consent + user-bound PKCE proof
 
@@ -305,6 +307,16 @@ defmodule PortalWeb.OIDC do
     config =
       Portal.Config.fetch_env!(:portal, Portal.Entra.APIClient)
       |> entra_verification_config("openid profile", "https://graph.microsoft.com/.default")
+
+    {:ok, %{config: config}}
+  end
+
+  def setup_verification("google_directory_sync", _opts) do
+    config =
+      Portal.Config.fetch_env!(:portal, Portal.Google.SyncAuthorization)
+      |> Keyword.put(:response_type, "code")
+      |> Keyword.put(:scope, @google_directory_customer_scope)
+      |> verification_config([])
 
     {:ok, %{config: config}}
   end
@@ -341,6 +353,7 @@ defmodule PortalWeb.OIDC do
   """
   def verification_state_type("entra"), do: "entra-auth-provider"
   def verification_state_type("entra_directory_sync"), do: "entra-directory-sync"
+  def verification_state_type("google_directory_sync"), do: "google-directory-sync"
 
   def verification_state_type(type) when type in ["google", "okta", "oidc"],
     do: "oidc-auth-provider"
@@ -378,6 +391,23 @@ defmodule PortalWeb.OIDC do
 
     with :ok <- validate_public_host(discovery_document_uri) do
       OpenIDConnect.authorization_uri(config, callback_url(), oidc_params)
+    end
+  end
+
+  def build_verification_uri("google_directory_sync", config, verifier, state_token) do
+    challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
+
+    oauth_params = %{
+      state: state_token,
+      code_challenge_method: :S256,
+      code_challenge: challenge,
+      prompt: "select_account"
+    }
+
+    discovery_document_uri = config[:discovery_document_uri] || config["discovery_document_uri"]
+
+    with :ok <- validate_public_host(discovery_document_uri) do
+      OpenIDConnect.authorization_uri(config, callback_url(), oauth_params)
     end
   end
 
