@@ -977,6 +977,23 @@ defmodule PortalWeb.OIDCControllerTest do
   end
 
   describe "callback/2 with Google directory verification state" do
+    setup do
+      configure_google_directory_workload_identity()
+      test_pid = self()
+
+      Req.Test.stub(Portal.Azure.ManagedIdentity, fn conn ->
+        send(test_pid, {:unexpected_google_managed_identity_request, conn.request_path})
+        Req.Test.json(conn, %{"error" => "not mocked"})
+      end)
+
+      Req.Test.stub(Portal.Google.APIClient, fn conn ->
+        send(test_pid, {:unexpected_google_api_request, conn.request_path})
+        Req.Test.json(conn, %{"error" => "not mocked"})
+      end)
+
+      :ok
+    end
+
     test "binds the authorized Workspace customer to the delegated service-account customer", %{
       conn: conn
     } do
@@ -984,20 +1001,19 @@ defmodule PortalWeb.OIDCControllerTest do
       lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
       state = google_directory_verification_state(lv_pid, verification_ref)
 
-      Mocks.OIDC.set_token_response(%{"access_token" => "interactive-google-token"})
+      set_google_directory_id_token(%{
+        "email" => "workspace-admin@verified.example.com",
+        "hd" => "verified.example.com"
+      })
 
-      Req.Test.expect(Portal.Google.APIClient, fn req_conn ->
-        assert req_conn.request_path == "/admin/directory/v1/customers/my_customer"
-
-        assert Plug.Conn.get_req_header(req_conn, "authorization") == [
-                 "Bearer interactive-google-token"
-               ]
-
-        Req.Test.json(req_conn, %{
+      expect_google_directory_admin_check(
+        "workspace-admin@verified.example.com",
+        {:ok,
+         %{
           "id" => "C0123",
           "customerDomain" => "verified.example.com"
-        })
-      end)
+         }}
+      )
 
       conn =
         get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
@@ -1019,14 +1035,19 @@ defmodule PortalWeb.OIDCControllerTest do
       lv_pid = google_directory_pending_verification_process(verification_ref, "C-victim")
       state = google_directory_verification_state(lv_pid, verification_ref)
 
-      Mocks.OIDC.set_token_response(%{"access_token" => "attacker-google-token"})
+      set_google_directory_id_token(%{
+        "email" => "attacker@attacker.example.com",
+        "hd" => "attacker.example.com"
+      })
 
-      Req.Test.expect(Portal.Google.APIClient, fn req_conn ->
-        Req.Test.json(req_conn, %{
+      expect_google_directory_admin_check(
+        "attacker@attacker.example.com",
+        {:ok,
+         %{
           "id" => "C-attacker",
           "customerDomain" => "attacker.example.com"
-        })
-      end)
+         }}
+      )
 
       conn =
         get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
@@ -1049,13 +1070,16 @@ defmodule PortalWeb.OIDCControllerTest do
       lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
       state = google_directory_verification_state(lv_pid, verification_ref)
 
-      Mocks.OIDC.set_token_response(%{"access_token" => "non-admin-google-token"})
+      set_google_directory_id_token(%{
+        "email" => "member@verified.example.com",
+        "hd" => "verified.example.com"
+      })
 
-      Req.Test.expect(Portal.Google.APIClient, fn req_conn ->
-        req_conn
-        |> Plug.Conn.put_status(403)
-        |> Req.Test.json(%{"error" => %{"message" => "Not Authorized to access this resource/api"}})
-      end)
+      expect_google_directory_admin_check(
+        "member@verified.example.com",
+        {:error, 403,
+         %{"error" => %{"message" => "Not Authorized to access this resource/api"}}}
+      )
 
       conn =
         get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
@@ -1067,20 +1091,134 @@ defmodule PortalWeb.OIDCControllerTest do
       assert error =~ "permission to view customer information"
     end
 
+    test "rejects a missing Google ID token before requesting delegated access", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
+      state = google_directory_verification_state(lv_pid, verification_ref)
+
+      Mocks.OIDC.set_token_response(%{"access_token" => "unused-interactive-token"})
+
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert {:ok, %{ok: false, error: error}} =
+               oidc_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "did not return an identity token"
+      refute_received {:unexpected_google_managed_identity_request, _path}
+      refute_received {:unexpected_google_api_request, _path}
+    end
+
+    test "rejects a Google ID token with an invalid signature before requesting delegated access", %{
+      conn: conn
+    } do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
+      state = google_directory_verification_state(lv_pid, verification_ref)
+
+      Mocks.OIDC.set_token_response(%{"id_token" => "not-a-signed-token"})
+
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert {:ok, %{ok: false, error: error}} =
+               oidc_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify your identity token"
+      refute_received {:unexpected_google_managed_identity_request, _path}
+      refute_received {:unexpected_google_api_request, _path}
+    end
+
+    test "rejects a Google ID token for another OAuth client", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
+      state = google_directory_verification_state(lv_pid, verification_ref)
+
+      set_google_directory_id_token(%{
+        "aud" => "another-google-client",
+        "hd" => "verified.example.com"
+      })
+
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert {:ok, %{ok: false, error: error}} =
+               oidc_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify your identity token"
+      refute_received {:unexpected_google_managed_identity_request, _path}
+      refute_received {:unexpected_google_api_request, _path}
+    end
+
+    test "rejects a Google ID token whose nonce is not bound to the verification", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
+      state = google_directory_verification_state(lv_pid, verification_ref)
+
+      set_google_directory_id_token(%{
+        "nonce" => "nonce-from-another-verification",
+        "hd" => "verified.example.com"
+      })
+
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert {:ok, %{ok: false, error: error}} =
+               oidc_verification_result_from_redirect(redirected_to(conn))
+
+      assert error =~ "Unable to verify your identity token"
+      refute_received {:unexpected_google_managed_identity_request, _path}
+      refute_received {:unexpected_google_api_request, _path}
+    end
+
+    test "requires a verified email from a managed Google Workspace account", %{conn: conn} do
+      for {claims, expected_error} <- [
+            {%{"email_verified" => false, "hd" => "verified.example.com"},
+             "email is verified"},
+            {%{"hd" => nil}, "managed Google Workspace account"},
+            {%{"sub" => nil, "hd" => "verified.example.com"},
+             "incomplete account identity information"}
+          ] do
+        verification_ref = Ecto.UUID.generate()
+        lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
+        state = google_directory_verification_state(lv_pid, verification_ref)
+        set_google_directory_id_token(claims)
+
+        callback_conn =
+          get(recycle(conn), ~p"/auth/oidc/callback", %{
+            "state" => state,
+            "code" => "test-code"
+          })
+
+        assert {:ok, %{ok: false, error: error}} =
+                 oidc_verification_result_from_redirect(redirected_to(callback_conn))
+
+        assert error =~ expected_error
+      end
+
+      refute_received {:unexpected_google_managed_identity_request, _path}
+      refute_received {:unexpected_google_api_request, _path}
+    end
+
     test "does not exchange the authorization code when a Google verification callback is replayed",
          %{conn: conn} do
       verification_ref = Ecto.UUID.generate()
       lv_pid = google_directory_pending_verification_process(verification_ref, "C0123")
       state = google_directory_verification_state(lv_pid, verification_ref)
 
-      Mocks.OIDC.set_token_response(%{"access_token" => "interactive-google-token"})
+      set_google_directory_id_token(%{
+        "email" => "workspace-admin@verified.example.com",
+        "hd" => "verified.example.com"
+      })
 
-      Req.Test.expect(Portal.Google.APIClient, fn req_conn ->
-        Req.Test.json(req_conn, %{
+      expect_google_directory_admin_check(
+        "workspace-admin@verified.example.com",
+        {:ok,
+         %{
           "id" => "C0123",
           "customerDomain" => "verified.example.com"
-        })
-      end)
+         }}
+      )
 
       first_conn =
         get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
@@ -3666,6 +3804,92 @@ defmodule PortalWeb.OIDCControllerTest do
     }
 
     spawn(fn -> pending_verification_loop(pending) end)
+  end
+
+  defp configure_google_directory_workload_identity do
+    Portal.Config.put_env_override(
+      :portal,
+      Portal.Google.APIClient,
+      workload_identity_provider: "google-workload-identity-provider",
+      workload_identity_audience: "google-workload-identity-audience",
+      service_account_email: "directory-sync@example.iam.gserviceaccount.com",
+      service_account_key: nil
+    )
+  end
+
+  defp set_google_directory_id_token(overrides) do
+    claims =
+      Mocks.OIDC.default_claims()
+      |> Map.put("hd", "example.com")
+      |> Map.merge(overrides)
+
+    Mocks.OIDC.set_token_response(%{
+      "id_token" => Mocks.OIDC.sign_openid_connect_token(claims)
+    })
+  end
+
+  defp expect_google_directory_admin_check(email, customer_response) do
+    Req.Test.expect(Portal.Azure.ManagedIdentity, fn conn ->
+      Req.Test.json(conn, %{
+        "access_token" => "azure-managed-identity-token",
+        "expires_on" => Integer.to_string(System.system_time(:second) + 3600)
+      })
+    end)
+
+    Req.Test.expect(Portal.Google.APIClient, 4, fn conn ->
+      case conn.request_path do
+        "/v1/token" ->
+          Req.Test.json(conn, %{
+            "access_token" => "federated-google-token",
+            "expires_in" => 3600
+          })
+
+        "/v1/projects/-/serviceAccounts/" <>
+            "directory-sync@example.iam.gserviceaccount.com:signJwt" ->
+          assert Plug.Conn.get_req_header(conn, "authorization") == [
+                   "Bearer federated-google-token"
+                 ]
+
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          %{"payload" => payload} = JSON.decode!(body)
+          claims = JSON.decode!(payload)
+
+          assert claims["sub"] == email
+
+          assert claims["scope"] ==
+                   "https://www.googleapis.com/auth/admin.directory.customer.readonly"
+
+          Req.Test.json(conn, %{"signedJwt" => "customer-read-signed-jwt"})
+
+        "/oauth2.googleapis.com/token" ->
+          flunk("Google token exchange used an unexpected endpoint")
+
+        "/token" ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          params = URI.decode_query(body)
+          assert params["assertion"] == "customer-read-signed-jwt"
+
+          Req.Test.json(conn, %{
+            "access_token" => "delegated-customer-read-token",
+            "expires_in" => 3600
+          })
+
+        "/admin/directory/v1/customers/my_customer" ->
+          assert Plug.Conn.get_req_header(conn, "authorization") == [
+                   "Bearer delegated-customer-read-token"
+                 ]
+
+          google_customer_test_response(conn, customer_response)
+      end
+    end)
+  end
+
+  defp google_customer_test_response(conn, {:ok, body}), do: Req.Test.json(conn, body)
+
+  defp google_customer_test_response(conn, {:error, status, body}) do
+    conn
+    |> Plug.Conn.put_status(status)
+    |> Req.Test.json(body)
   end
 
   defp google_directory_pending_verification_process(verification_ref, workspace_customer_id) do

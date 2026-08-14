@@ -70,7 +70,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       client_id: "google-sync-authz-client-id",
       client_secret: "google-sync-authz-client-secret",
       response_type: "code",
-      scope: "https://www.googleapis.com/auth/admin.directory.customer.readonly",
+      scope: "openid email",
       discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
       req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
     )
@@ -387,12 +387,10 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert users_index < groups_index
       assert groups_index < orgunits_index
 
-      assert params["scope"] ==
-               "https://www.googleapis.com/auth/admin.directory.customer.readonly"
+      assert params["scope"] == "openid email"
 
       assert params["prompt"] == "select_account"
       assert params["code_challenge_method"] == "S256"
-      refute Map.has_key?(params, "nonce")
 
       assert {:ok, %{verification_ref: verification_ref}} =
                PortalWeb.OIDC.verify_verification_state(params["state"])
@@ -402,10 +400,13 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert_receive {:pending_verification,
                       %{
                         type: "google_directory_sync",
+                        verifier: verifier,
                         verification_ref: ^verification_ref,
                         workspace_customer_id: "C0123",
                         impersonation_email: "sync-admin@verified.example.com"
                       }}
+
+      assert params["nonce"] == PortalWeb.OIDC.nonce(verifier)
 
       ack_ref = make_ref()
 
