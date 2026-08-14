@@ -23,6 +23,30 @@ defmodule PortalWeb.OIDCTest do
     %{config: config, provider: provider}
   end
 
+  describe "verification process serialization" do
+    test "round trips the PID with its Erlang node identity" do
+      serialized_pid = OIDC.serialize_pid(self())
+
+      assert String.starts_with?(serialized_pid, "pid:")
+      assert OIDC.deserialize_pid(serialized_pid) == self()
+    end
+
+    test "accepts legacy local PID strings for callbacks already in flight" do
+      legacy_pid = self() |> :erlang.pid_to_list() |> to_string()
+
+      assert OIDC.deserialize_pid(legacy_pid) == self()
+    end
+
+    test "rejects malformed values" do
+      encrypted_term =
+        Phoenix.Token.encrypt(PortalWeb.Endpoint, "oidc-verification-pid", "not-a-pid")
+
+      assert OIDC.deserialize_pid("pid:" <> encrypted_term) == nil
+      assert OIDC.deserialize_pid("pid:not-base64!") == nil
+      assert OIDC.deserialize_pid("not-a-pid") == nil
+    end
+  end
+
   describe "Entra admin-consent URI" do
     test "starts auth-provider verification with organization-wide admin consent" do
       verifier = "auth-provider-verifier"

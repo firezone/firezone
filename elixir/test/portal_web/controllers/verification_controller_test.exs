@@ -487,7 +487,7 @@ defmodule PortalWeb.VerificationControllerTest do
     end
   end
 
-  defp serialize_pid(pid), do: pid |> :erlang.pid_to_list() |> to_string()
+  defp serialize_pid(pid), do: PortalWeb.OIDC.serialize_pid(pid)
 
   defp sign_oidc_result(result) do
     Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
