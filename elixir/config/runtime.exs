@@ -364,6 +364,66 @@ if config_env() == :prod do
     repo: Portal.Repo
 
   ###############################
+  ##### Public Endpoint #########
+  ###############################
+
+  public_http =
+    case env_var_to_config(:phoenix_http_public_port) do
+      nil ->
+        []
+
+      port ->
+        [
+          http: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: port,
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
+          ]
+        ]
+    end
+
+  public_https =
+    case env_var_to_config(:phoenix_https_public_port) do
+      nil ->
+        []
+
+      port ->
+        sni_hosts = env_var_to_config!(:phoenix_https_sni_hosts)
+
+        if sni_hosts == %{} do
+          raise "PHOENIX_HTTPS_SNI_HOSTS must be set when PHOENIX_HTTPS_PUBLIC_PORT is set"
+        end
+
+        [
+          https: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: port,
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options),
+            thousand_island_options: [
+              transport_options: [
+                sni_fun:
+                  Portal.TLS.sni_fun(
+                    sni_hosts,
+                    env_var_to_config(:mtls_external_url)
+                  )
+              ]
+            ]
+          ]
+        ]
+    end
+
+  web_external_url = env_var_to_config!(:web_external_url)
+  web_external_url_host = URI.parse(web_external_url).host
+
+  config :portal,
+         Portal.Endpoint,
+         public_http ++ public_https ++
+           [
+             url: [scheme: "https", host: web_external_url_host, port: 443],
+             secret_key_base: env_var_to_config!(:secret_key_base)
+           ]
+
+  ###############################
   ##### PortalWeb Endpoint ######
   ###############################
 
@@ -375,29 +435,41 @@ if config_env() == :prod do
       path: web_external_url_path
     } = URI.parse(web_external_url)
 
-    config :portal, PortalWeb.Endpoint,
-      http: [
-        ip: env_var_to_config!(:phoenix_listen_address).address,
-        port: env_var_to_config!(:phoenix_http_web_port),
-        http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
-      ],
-      url: [
-        scheme: web_external_url_scheme,
-        host: web_external_url_host,
-        port: web_external_url_port,
-        path: web_external_url_path
-      ],
-      secret_key_base: env_var_to_config!(:secret_key_base),
-      check_origin:
+    web_listener =
+      if env_var_to_config!(:phoenix_legacy_listeners_enabled) do
         [
-          "#{web_external_url_scheme}://#{web_external_url_host}:#{web_external_url_port}",
-          "#{web_external_url_scheme}://*.#{web_external_url_host}:#{web_external_url_port}",
-          "#{web_external_url_scheme}://#{web_external_url_host}",
-          "#{web_external_url_scheme}://*.#{web_external_url_host}"
-        ] ++ env_var_to_config!(:websocket_additional_origins),
-      live_view: [
-        signing_salt: env_var_to_config!(:live_view_signing_salt)
-      ]
+          http: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: env_var_to_config!(:phoenix_http_web_port),
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
+          ]
+        ]
+      else
+        []
+      end
+
+    config :portal,
+           PortalWeb.Endpoint,
+           web_listener ++
+             [
+               url: [
+                 scheme: web_external_url_scheme,
+                 host: web_external_url_host,
+                 port: web_external_url_port,
+                 path: web_external_url_path
+               ],
+               secret_key_base: env_var_to_config!(:secret_key_base),
+               check_origin:
+                 [
+                   "#{web_external_url_scheme}://#{web_external_url_host}:#{web_external_url_port}",
+                   "#{web_external_url_scheme}://*.#{web_external_url_host}:#{web_external_url_port}",
+                   "#{web_external_url_scheme}://#{web_external_url_host}",
+                   "#{web_external_url_scheme}://*.#{web_external_url_host}"
+                 ] ++ env_var_to_config!(:websocket_additional_origins),
+               live_view: [
+                 signing_salt: env_var_to_config!(:live_view_signing_salt)
+               ]
+             ]
 
     config :portal, PortalWeb.RateLimit,
       refill_rate: env_var_to_config!(:web_refill_rate),
@@ -418,19 +490,31 @@ if config_env() == :prod do
       path: api_external_url_path
     } = URI.parse(api_external_url)
 
-    config :portal, PortalAPI.Endpoint,
-      http: [
-        ip: env_var_to_config!(:phoenix_listen_address).address,
-        port: env_var_to_config!(:phoenix_http_api_port),
-        http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
-      ],
-      url: [
-        scheme: api_external_url_scheme,
-        host: api_external_url_host,
-        port: api_external_url_port,
-        path: api_external_url_path
-      ],
-      secret_key_base: env_var_to_config!(:secret_key_base)
+    api_listener =
+      if env_var_to_config!(:phoenix_legacy_listeners_enabled) do
+        [
+          http: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: env_var_to_config!(:phoenix_http_api_port),
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
+          ]
+        ]
+      else
+        []
+      end
+
+    config :portal,
+           PortalAPI.Endpoint,
+           api_listener ++
+             [
+               url: [
+                 scheme: api_external_url_scheme,
+                 host: api_external_url_host,
+                 port: api_external_url_port,
+                 path: api_external_url_path
+               ],
+               secret_key_base: env_var_to_config!(:secret_key_base)
+             ]
 
     config :portal, PortalAPI.RateLimit,
       refill_rate: env_var_to_config!(:api_refill_rate),

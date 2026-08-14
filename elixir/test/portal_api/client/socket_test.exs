@@ -533,7 +533,7 @@ defmodule PortalAPI.Client.SocketTest do
         build_connect_info(
           token: token,
           host: "mtls.firezone.test",
-          client_cert: client_cert_header(pki, :untrusted)
+          client_cert: client_cert(pki, :untrusted)
         )
 
       assert capture_log(fn ->
@@ -561,7 +561,7 @@ defmodule PortalAPI.Client.SocketTest do
         build_connect_info(
           token: token,
           host: "api.firezone.test",
-          client_cert: client_cert_header(pki, :rsa)
+          client_cert: client_cert(pki, :rsa)
         )
 
       assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
@@ -1223,7 +1223,7 @@ defmodule PortalAPI.Client.SocketTest do
     build_connect_info(
       token: token,
       host: "mtls.firezone.test",
-      client_cert: client_cert_header(pki, :rsa)
+      client_cert: client_cert(pki, :rsa)
     )
   end
 end
