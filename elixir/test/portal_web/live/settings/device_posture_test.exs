@@ -92,6 +92,9 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
       assert html =~ "Upgrade to Unlock"
       assert html =~ "Inventory Your Managed Devices"
+      assert html =~
+               "Integrate with MDM and EDR solutions to provide device telemetry to use in policy conditions"
+
       assert html =~ "settings/device_posture"
       refute html =~ "Add Microsoft Intune"
 

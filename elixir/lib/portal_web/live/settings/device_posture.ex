@@ -613,7 +613,7 @@ defmodule PortalWeb.Settings.DevicePosture do
                 Inventory Your Managed Devices
               </p>
               <p class="text-xs">
-                Sync devices from Microsoft Intune to see what your organization manages.
+                Integrate with MDM and EDR solutions to provide device telemetry to use in policy conditions
               </p>
             </div>
             <.button
