@@ -224,27 +224,34 @@ defmodule OpenIDConnect do
   @doc """
   Verifies the validity of the JSON Web Token (JWT)
 
-  This verification will assert the token's encryption against the provider's
-  JSON Web Key (JWK)
+  This verification validates the token signature and claims against the
+  provider's discovery document and JSON Web Key (JWK).
   """
-  @spec verify(config(), jwt :: String.t()) ::
+  @spec verify(config(), jwt :: String.t(), opts :: keyword()) ::
           {:ok, claims :: map()} | {:error, term()}
-  def verify(config, jwt) do
+  def verify(config, jwt, opts \\ []) do
     discovery_document_uri = config.discovery_document_uri
     req_opts = Map.get(config, :req_opts, [])
 
     with {:ok, token_alg, token_kid} <- peek_token_header(jwt) do
-      verify_with_retry(config, jwt, token_alg, token_kid, discovery_document_uri, req_opts)
+      verify_with_retry(
+        config,
+        jwt,
+        {token_alg, token_kid},
+        discovery_document_uri,
+        req_opts,
+        opts
+      )
     end
   end
 
-  defp verify_with_retry(config, jwt, token_alg, token_kid, uri, req_opts) do
+  defp verify_with_retry(config, jwt, {token_alg, _token_kid} = token_header, uri, req_opts, opts) do
     # Snapshot pre-call so we only retry when JWKS was cached (cold cache = already fresh).
     pre_cached = Cache.peek(uri)
 
-    case do_verify(config, jwt, token_alg, uri, req_opts) do
+    case do_verify(config, jwt, token_alg, uri, req_opts, opts) do
       {:error, {:invalid_jwt, "verification failed"}} = error ->
-        retry_verify(config, jwt, token_alg, token_kid, uri, req_opts, pre_cached, error)
+        retry_verify(config, jwt, token_header, uri, req_opts, opts, pre_cached, error)
 
       result ->
         result
@@ -254,11 +261,20 @@ defmodule OpenIDConnect do
   # Refresh out-of-band so a failed refetch (provider unreachable) leaves the old
   # cached JWKS intact for legitimate cached-key-signed tokens. `allow_refresh?`
   # enforces a per-URI cooldown to throttle DoS via unknown-kid spam.
-  defp retry_verify(config, jwt, token_alg, token_kid, uri, req_opts, pre_cached, error) do
+  defp retry_verify(
+         config,
+         jwt,
+         {token_alg, token_kid},
+         uri,
+         req_opts,
+         opts,
+         pre_cached,
+         error
+       ) do
     with true <- should_refresh_jwks?(token_kid, pre_cached),
          true <- Cache.allow_refresh?(uri),
          {:ok, _fresh} <- Document.refresh_document(uri, req_opts) do
-      do_verify(config, jwt, token_alg, uri, req_opts)
+      do_verify(config, jwt, token_alg, uri, req_opts, opts)
     else
       _ -> error
     end
@@ -308,11 +324,11 @@ defmodule OpenIDConnect do
     end
   end
 
-  defp do_verify(config, jwt, token_alg, discovery_document_uri, req_opts) do
+  defp do_verify(config, jwt, token_alg, discovery_document_uri, req_opts, opts) do
     with {:ok, document} <- Document.fetch_document(discovery_document_uri, req_opts),
          {true, claims, _jwk} <- verify_signature(document.jwks, token_alg, jwt),
          {:ok, unverified_claims} <- JSON.decode(claims),
-         {:ok, verified_claims} <- verify_claims(unverified_claims, config) do
+         {:ok, verified_claims} <- verify_claims(unverified_claims, config, document, opts) do
       {:ok, verified_claims}
     else
       {:error, {:unexpected_end, _position}} ->
@@ -360,12 +376,14 @@ defmodule OpenIDConnect do
   defp verify_signature(%JOSE.JWK{} = jwk, token_alg, jwt),
     do: JOSE.JWS.verify_strict(jwk, [token_alg], jwt)
 
-  defp verify_claims(claims, config) do
+  defp verify_claims(claims, config, document, opts) do
     leeway = Map.get(config, :leeway, 30)
     client_id = Map.fetch!(config, :client_id)
 
     with :ok <- verify_exp_claim(claims, leeway),
-         :ok <- verify_aud_claim(claims, client_id) do
+         :ok <- verify_aud_claim(claims, client_id),
+         :ok <- verify_iss_claim(claims, document.issuer),
+         :ok <- verify_nonce_claim(claims, Keyword.get(opts, :nonce)) do
       {:ok, claims}
     end
   end
@@ -401,6 +419,66 @@ defmodule OpenIDConnect do
 
   defp audience_matches?(aud, expected_aud) when is_list(aud), do: Enum.member?(aud, expected_aud)
   defp audience_matches?(aud, expected_aud), do: aud === expected_aud
+
+  defp verify_iss_claim(claims, expected_issuer) do
+    case Map.fetch(claims, "iss") do
+      {:ok, issuer} when is_binary(issuer) ->
+        if issuer_matches?(issuer, expected_issuer, claims),
+          do: :ok,
+          else: {:error, "iss", "token was issued by another provider"}
+
+      {:ok, _issuer} ->
+        {:error, "iss", "is invalid"}
+
+      :error ->
+        {:error, "iss", "missing"}
+    end
+  end
+
+  defp issuer_matches?(issuer, expected_issuer, claims) do
+    cond do
+      is_binary(expected_issuer) and String.contains?(expected_issuer, "{tenantid}") ->
+        tenant_issuer_matches?(issuer, expected_issuer, claims)
+
+      # Google documents this legacy issuer as equivalent to the issuer in its
+      # discovery document.
+      issuer == "accounts.google.com" and expected_issuer == "https://accounts.google.com" ->
+        true
+
+      true ->
+        issuer === expected_issuer
+    end
+  end
+
+  # Microsoft Entra's tenant-independent discovery documents publish an issuer
+  # template. The signed `tid` claim must fill that template exactly.
+  defp tenant_issuer_matches?(issuer, expected_issuer, %{"tid" => tenant_id})
+       when is_binary(tenant_id) do
+    issuer == String.replace(expected_issuer, "{tenantid}", tenant_id)
+  end
+
+  defp tenant_issuer_matches?(_issuer, _expected_issuer, _claims), do: false
+
+  defp verify_nonce_claim(_claims, nil), do: :ok
+
+  defp verify_nonce_claim(claims, expected_nonce) when is_binary(expected_nonce) do
+    case Map.fetch(claims, "nonce") do
+      {:ok, nonce} when is_binary(nonce) ->
+        if secure_match?(nonce, expected_nonce),
+          do: :ok,
+          else: {:error, "nonce", "does not match the authorization request"}
+
+      {:ok, _nonce} ->
+        {:error, "nonce", "is invalid"}
+
+      :error ->
+        {:error, "nonce", "missing"}
+    end
+  end
+
+  defp secure_match?(left, right) do
+    byte_size(left) == byte_size(right) and Plug.Crypto.secure_compare(left, right)
+  end
 
   @doc "Fetches the userinfo claims for `access_token` from the provider's userinfo endpoint."
   def fetch_userinfo(config, access_token) do

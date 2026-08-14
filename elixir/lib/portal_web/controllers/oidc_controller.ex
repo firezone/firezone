@@ -182,7 +182,7 @@ defmodule PortalWeb.OIDCController do
     with :ok <- validate_context(provider, context_type),
          :ok <- ensure_client_sign_in_allowed(account, context_type),
          {:ok, tokens} <- PortalWeb.OIDC.exchange_code(provider, code, verifier),
-         {:ok, claims} <- PortalWeb.OIDC.verify_token(provider, tokens["id_token"]),
+         {:ok, claims} <- PortalWeb.OIDC.verify_token(provider, tokens["id_token"], verifier),
          userinfo = fetch_userinfo(provider, tokens["access_token"]),
          {:ok, identity_result} <- resolve_identity(account, provider, claims, userinfo) do
       finish_resolved_identity(auth_context, identity_result, tokens)
