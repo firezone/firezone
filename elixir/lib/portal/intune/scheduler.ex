@@ -3,7 +3,7 @@ defmodule Portal.Intune.Scheduler do
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
-    if Portal.Config.global_feature_enabled?(:device_posture) do
+    if Portal.Features.enabled?(:device_posture) do
       __MODULE__.Database.queue_sync_jobs()
     else
       {:ok, :skipped}

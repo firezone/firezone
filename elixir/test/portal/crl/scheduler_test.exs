@@ -21,7 +21,7 @@ defmodule Portal.Crl.SchedulerTest do
       endpoint_fixture(account, pki.ca_der)
       Portal.Repo.delete_all(Portal.Features)
 
-      assert Scheduler.perform(%Oban.Job{}) == {:ok, :scheduled}
+      assert Scheduler.perform(%Oban.Job{}) == {:ok, :skipped}
 
       assert all_sync_jobs() == []
     end

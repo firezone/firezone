@@ -299,10 +299,10 @@ defmodule PortalWeb.Router do
           live "/:type/:id/edit", DirectorySync, :edit
         end
 
-        scope "/device_integrations" do
-          live "/", DeviceIntegrations
-          live "/intune/new", DeviceIntegrations, :new
-          live "/intune/:id/edit", DeviceIntegrations, :edit
+        scope "/device_posture" do
+          live "/", DevicePosture
+          live "/intune/new", DevicePosture, :new
+          live "/intune/:id/edit", DevicePosture, :edit
         end
 
         # Log Sinks

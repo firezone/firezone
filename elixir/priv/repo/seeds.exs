@@ -947,7 +947,11 @@ defmodule Portal.Repo.Seeds do
     :rand.seed(:exsss, {1, 2, 3})
 
     Repo.query!(
-      "INSERT INTO features (feature, enabled) VALUES ('device_trust', true) ON CONFLICT (feature) DO UPDATE SET enabled = true"
+      """
+      INSERT INTO features (feature, enabled)
+      VALUES ('device_trust', true), ('device_posture', true)
+      ON CONFLICT (feature) DO UPDATE SET enabled = true
+      """
     )
 
     account =

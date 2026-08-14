@@ -337,15 +337,6 @@ config :portal, Portal.Cluster,
   adapter: nil,
   adapter_config: []
 
-config :portal, :enabled_features,
-  idp_sync: true,
-  sign_up: true,
-  policy_conditions: true,
-  rest_api: true,
-  internet_resource: true,
-  log_sinks: true,
-  device_posture: false
-
 config :portal, sign_up_whitelisted_domains: []
 
 config :portal, docker_registry: "ghcr.io/firezone"

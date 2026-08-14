@@ -224,7 +224,12 @@ defmodule PortalAPI.Client.DeviceTrust do
   end
 
   defp fetch_anchors(subject) do
-    case Database.fetch_enabled_anchors(subject) do
+    anchors =
+      if Portal.Features.enabled?(:device_trust),
+        do: Database.fetch_anchors(subject),
+        else: []
+
+    case anchors do
       [] -> {:error, :no_trust_anchors}
       anchors -> {:ok, anchors}
     end
@@ -749,14 +754,6 @@ defmodule PortalAPI.Client.DeviceTrust do
       matched_on: nil
     }
 
-    # One round trip: the join on the global feature-flag row makes the query
-    # return no anchors at all when the flag is off, so the caller's gate
-    # check and verification material come from the same query.
-    # Compared against true rather than taken as truthy: a scoped `exists?`
-    # returns the permission error itself when a read is refused, and an error
-    # tuple reading as "revoked" would lock out every device over something
-    # that is not a revocation at all.
-    #
     # Everything the connect needs to decide about this certificate, in one
     # round trip: whether a list revoked it, whether its issuer publishes a
     # list we can actually fetch, what its responder last said, and which
@@ -872,12 +869,8 @@ defmodule PortalAPI.Client.DeviceTrust do
       end
     end
 
-    def fetch_enabled_anchors(subject) do
+    def fetch_anchors(subject) do
       from(c in Portal.TrustAnchorCertificate,
-        # The features table is global per-deployment state with no account_id.
-        # credo:disable-for-next-line Credo.Check.Warning.MissingAccountIdInJoin
-        join: f in Portal.Features,
-        on: f.feature == :device_trust and f.enabled == true,
         select: %{id: c.id, pem: c.pem}
       )
       |> Safe.scoped(subject)

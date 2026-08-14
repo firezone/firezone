@@ -1,4 +1,4 @@
-defmodule PortalWeb.Settings.DeviceIntegrationsTest do
+defmodule PortalWeb.Settings.DevicePostureTest do
   use PortalWeb.ConnCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
@@ -54,18 +54,19 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       {:ok, _lv, html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/directory_sync")
 
-      refute html =~ "settings/device_integrations"
+      refute html =~ "settings/device_posture"
     end
 
-    test "shows the settings tab when the global flag is on", %{
-      conn: conn,
-      account: account,
-      actor: actor
+    test "shows the settings tab when the global flag is on even without the account feature", %{
+      conn: conn
     } do
+      account = Portal.AccountFixtures.account_fixture(features: %{device_posture: false})
+      actor = Portal.ActorFixtures.admin_actor_fixture(account: account)
+
       {:ok, _lv, html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/directory_sync")
 
-      assert html =~ "settings/device_integrations"
+      assert html =~ "settings/device_posture"
       assert html =~ "Device Posture"
     end
 
@@ -77,7 +78,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       enable_device_posture(false)
 
       assert {:error, {:live_redirect, %{to: to}}} =
-               conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+               conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
       assert to =~ "/settings/account"
     end
@@ -87,15 +88,16 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       actor = Portal.ActorFixtures.admin_actor_fixture(account: account)
 
       {:ok, lv, html} =
-        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
       assert html =~ "Upgrade to Unlock"
       assert html =~ "Inventory Your Managed Devices"
-      refute html =~ "Add Device Integration"
+      assert html =~ "settings/device_posture"
+      refute html =~ "Add Microsoft Intune"
 
       # The slide-over cannot be opened from the splash.
       assert lv
-             |> render_patch(~p"/#{account}/settings/device_integrations/intune/new")
+             |> render_patch(~p"/#{account}/settings/device_posture/intune/new")
              |> Kernel.=~("Upgrade to Unlock")
     end
 
@@ -107,7 +109,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       integration = intune_integration_fixture(account: account)
 
       {:ok, lv, _html} =
-        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
       enable_device_posture(false)
 
@@ -124,12 +126,13 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/device_integrations")
+      |> live(~p"/#{account}/settings/device_posture")
 
-    assert html =~ "Device Integrations"
-    assert html =~ "No device integrations configured."
-    assert html =~ "Add a device integration"
+    assert html =~ "Device Posture"
+    assert html =~ "No device posture provider configured."
+    assert html =~ "Add Microsoft Intune"
     refute html =~ "Devices synced"
+    refute html =~ "Upgrade to Unlock"
   end
 
   test "summarises synced devices by compliance state", %{
@@ -148,9 +151,9 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/device_integrations")
+      |> live(~p"/#{account}/settings/device_posture")
 
-    summary = lv |> element("#device-integration-summary") |> render()
+    summary = lv |> element("#device-posture-summary") |> render()
 
     assert summary =~ "Devices synced"
     assert summary =~ ~r/5.*Devices synced/s
@@ -167,7 +170,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/device_integrations/intune/new")
+      |> live(~p"/#{account}/settings/device_posture/intune/new")
 
     assert has_element?(
              lv,
@@ -199,10 +202,10 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
     assert render(lv) =~ "tenant-123"
 
     lv
-    |> form("#device-integration-form", integration: %{name: "Corporate Intune"})
+    |> form("#device-posture-form", integration: %{name: "Corporate Intune"})
     |> render_submit()
 
-    assert_patch(lv, ~p"/#{account}/settings/device_integrations")
+    assert_patch(lv, ~p"/#{account}/settings/device_posture")
 
     integration = Portal.Repo.get_by!(Portal.Intune.Integration, account_id: account.id)
     assert integration.name == "Corporate Intune"
@@ -219,7 +222,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       integration = intune_integration_fixture(account: account)
 
       {:ok, lv, _html} =
-        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
       render_click(lv, "sync", %{"id" => integration.id})
 
@@ -239,7 +242,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       other_integration = intune_integration_fixture(account: other_account)
 
       {:ok, lv, _html} =
-        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
       render_click(lv, "sync", %{"id" => other_integration.id})
 
@@ -262,7 +265,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       integration = intune_integration_fixture(account: account)
 
       {:ok, lv, _html} =
-        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
       enable_device_posture(false)
 
@@ -298,7 +301,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       integration: integration
     } do
       {:ok, lv, _html} =
-        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
       assert render_click(lv, "toggle", %{"id" => integration.id}) =~
                "must be verified before enabling"
@@ -317,7 +320,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       |> Portal.Repo.update!()
 
       {:ok, lv, _html} =
-        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
       render_click(lv, "toggle", %{"id" => integration.id})
 
@@ -339,7 +342,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       integration = intune_integration_fixture(account: account)
 
       {:ok, lv, _html} =
-        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_integrations")
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
       # The socket keeps the account it mounted with, so the downgrade is only
       # visible to a write path that re-reads it.
@@ -360,7 +363,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_integrations/intune/new")
+        |> live(~p"/#{account}/settings/device_posture/intune/new")
 
       lv |> element("#intune-admin-consent-button") |> render_click()
       assert_push_event(lv, "open_url", %{url: url})
@@ -368,7 +371,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
       {:ok, %{verification_ref: ref}} = PortalWeb.OIDC.verify_verification_state(state)
 
-      render_patch(lv, ~p"/#{account}/settings/device_integrations")
+      render_patch(lv, ~p"/#{account}/settings/device_posture")
 
       # The callback consumes the pending verifier only if it outlived the panel.
       send(lv.pid, {:get_pending_verification, self()})
@@ -378,7 +381,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       send(lv.pid, {:intune_device_integration_complete, "tenant-123", ref, {self(), ack_ref}})
       assert_receive {:verification_ack, ^ack_ref}
 
-      assert render(lv) =~ "Device Integrations"
+      assert render(lv) =~ "Device Posture"
     end
   end
 
@@ -398,7 +401,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_integrations/intune/#{integration.id}/edit")
+        |> live(~p"/#{account}/settings/device_posture/intune/#{integration.id}/edit")
 
       %{integration: integration, lv: lv}
     end
@@ -410,7 +413,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       reverify(lv, "tenant-123")
 
       lv
-      |> form("#device-integration-form", integration: %{name: integration.name})
+      |> form("#device-posture-form", integration: %{name: integration.name})
       |> render_submit()
 
       integration = reload(integration)
@@ -429,7 +432,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       reverify(lv, integration.tenant_id)
 
       lv
-      |> form("#device-integration-form", integration: %{name: integration.name})
+      |> form("#device-posture-form", integration: %{name: integration.name})
       |> render_submit()
 
       assert_enqueued(
@@ -458,12 +461,12 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/device_integrations/intune/#{integration.id}/edit")
+      |> live(~p"/#{account}/settings/device_posture/intune/#{integration.id}/edit")
 
     reverify(lv, "tenant-123")
 
     lv
-    |> form("#device-integration-form", integration: %{name: integration.name})
+    |> form("#device-posture-form", integration: %{name: integration.name})
     |> render_submit()
 
     integration = reload(integration)
@@ -483,7 +486,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_integrations/intune/#{integration.id}/edit")
+        |> live(~p"/#{account}/settings/device_posture/intune/#{integration.id}/edit")
 
       lv |> element("button[phx-click=reset_verification]") |> render_click()
       lv |> element("#intune-admin-consent-button") |> render_click()
@@ -501,7 +504,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       assert_receive {:verification_ack, ^ack_ref}
 
       lv
-      |> form("#device-integration-form", integration: %{name: integration.name})
+      |> form("#device-posture-form", integration: %{name: integration.name})
       |> render_submit()
 
       assert reload(integration).tenant_id == "new-tenant"
@@ -525,10 +528,10 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_integrations/intune/#{integration.id}/edit")
+        |> live(~p"/#{account}/settings/device_posture/intune/#{integration.id}/edit")
 
       lv
-      |> form("#device-integration-form", integration: %{name: "Renamed"})
+      |> form("#device-posture-form", integration: %{name: "Renamed"})
       |> render_submit()
 
       assert reload(integration).name == "Renamed"
@@ -544,7 +547,7 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/device_integrations/intune/new")
+      |> live(~p"/#{account}/settings/device_posture/intune/new")
 
     lv |> element("#intune-admin-consent-button") |> render_click()
     assert_push_event(lv, "open_url", %{url: url})
@@ -569,10 +572,10 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
 
     html =
       lv
-      |> form("#device-integration-form", integration: %{name: "Corporate Intune"})
+      |> form("#device-posture-form", integration: %{name: "Corporate Intune"})
       |> render_submit()
 
-    assert html =~ "device-integration-form"
+    assert html =~ "device-posture-form"
     assert Portal.Repo.aggregate(Portal.DeviceIntegration, :count) == 1
   end
 
@@ -587,8 +590,8 @@ defmodule PortalWeb.Settings.DeviceIntegrationsTest do
              }}} =
              conn
              |> authorize_conn(actor)
-             |> live(~p"/#{account}/settings/device_integrations/intune/new")
+             |> live(~p"/#{account}/settings/device_posture/intune/new")
 
-    assert path == ~p"/#{account}/settings/device_integrations"
+    assert path == ~p"/#{account}/settings/device_posture"
   end
 end

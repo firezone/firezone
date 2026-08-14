@@ -7,7 +7,8 @@ defmodule PortalWeb.Settings.Notifications do
       assign(socket,
         page_title: "Notifications",
         form: to_form(build_changeset(socket.assigns.account)),
-        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?()
+        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?(),
+        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
     {:ok, socket}
@@ -20,6 +21,7 @@ defmodule PortalWeb.Settings.Notifications do
         account={@account}
         current_path={@current_path}
         device_trust_enabled?={@device_trust_enabled?}
+        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <div class="flex-1 overflow-y-auto p-6">

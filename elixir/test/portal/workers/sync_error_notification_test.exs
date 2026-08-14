@@ -249,7 +249,7 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
       assert email.subject == "Device Integration Error - #{integration.name}"
       assert {"", admin.email} in email.bcc
       assert email.text_body =~ "device integration has encountered an unrecoverable error"
-      assert email.text_body =~ "settings/device_integrations"
+      assert email.text_body =~ "settings/device_posture"
       assert email.text_body =~ integration.tenant_id
       assert email.text_body =~ "DeviceManagementManagedDevices.Read.All"
     end
