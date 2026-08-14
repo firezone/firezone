@@ -752,60 +752,101 @@ defmodule PortalWeb.Settings.DevicePosture do
     >
       <.input field={@form[:name]} type="text" label="Name" autocomplete="off" />
 
-      <div class="rounded border border-border bg-surface p-4 space-y-3">
-        <div class="flex items-start justify-between gap-4">
-          <div>
-            <p class="text-xs font-medium text-heading">Microsoft admin consent</p>
-            <p class="mt-1 text-xs text-subtle">
-              Grants read-only access to Intune managed devices using the Firezone app registration.
+      <div id="intune-verification" class="p-4 border border-border bg-raised rounded">
+        <.flash :if={@verification_error} kind={:error}>
+          {@verification_error}
+        </.flash>
+        <div class="flex items-center justify-between">
+          <div class="flex-1">
+            <h3 class="text-sm font-semibold text-heading">Integration Verification</h3>
+            <p class="mt-1 text-xs text-body">
+              {integration_verification_help_text(@form)}
             </p>
           </div>
-          <.integration_verification_status form={@form} />
-        </div>
-
-        <div :if={get_field(@form.source, :is_verified)} class="flex items-center justify-between border-t border-border pt-3">
-          <div>
-            <p class="text-[10px] uppercase tracking-widest text-subtle">Tenant ID</p>
-            <p class="mt-0.5 font-mono text-xs text-heading">{get_field(@form.source, :tenant_id)}</p>
+          <div class="ml-4">
+            <.integration_verification_status form={@form} verifying={@verifying} />
           </div>
-          <button type="button" phx-click="reset_verification" class="text-xs text-body underline hover:text-heading">
-            Reverify
-          </button>
         </div>
 
-        <.button
-          :if={not get_field(@form.source, :is_verified)}
-          id="intune-admin-consent-button"
-          type="button"
-          style="primary"
-          icon="ri-external-link-line"
-          phx-click="start_verification"
-          phx-hook="OpenURL"
-          disabled={@verifying}
-        >
-          {if @verifying, do: "Waiting for Microsoft…", else: "Grant admin consent"}
-        </.button>
-
-        <p :if={@verification_error} class="text-xs text-danger">{@verification_error}</p>
+        <div class="mt-4 pt-4 border-t border-border space-y-3">
+          <div class="flex justify-between items-center">
+            <label class="text-xs font-medium text-body">Tenant ID</label>
+            <div class="text-right">
+              <p id="intune-tenant-id" class="text-xs font-semibold text-heading">
+                {integration_verification_tenant_id(@form)}
+              </p>
+            </div>
+          </div>
+          <.reset_integration_verification_button form={@form} />
+        </div>
       </div>
-
     </.form>
     """
   end
 
   attr :form, :map, required: true
+  attr :verifying, :boolean, required: true
 
   defp integration_verification_status(assigns) do
     assigns = assign(assigns, :verified?, get_field(assigns.form.source, :is_verified) == true)
 
     ~H"""
-    <span class={[
-      "inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium",
-      @verified? && "bg-success-light text-success",
-      not @verified? && "bg-warning-light text-warning"
-    ]}>
-      {if @verified?, do: "Verified", else: "Consent required"}
-    </span>
+    <div id="intune-admin-consent-open-url" phx-hook="OpenURL">
+      <div
+        :if={@verified?}
+        id="intune-verification-status"
+        class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-sm"
+      >
+        <.icon name="ri-checkbox-circle-line" class="h-5 w-5 mr-2" />
+        <span class="font-medium">Verified</span>
+      </div>
+      <.button
+        :if={not @verified? and not @verifying}
+        id="intune-admin-consent-button"
+        type="button"
+        style="primary"
+        icon="ri-external-link-line"
+        phx-click="start_verification"
+      >
+        Verify Now
+      </.button>
+      <.button :if={not @verified? and @verifying} type="button" style="primary" disabled>
+        Verifying...
+      </.button>
+    </div>
+    """
+  end
+
+  defp integration_verification_help_text(form) do
+    if get_field(form.source, :is_verified) do
+      "This integration has been successfully verified."
+    else
+      "Grant Microsoft admin consent to verify the Intune integration."
+    end
+  end
+
+  defp integration_verification_tenant_id(form) do
+    if get_field(form.source, :is_verified) do
+      get_field(form.source, :tenant_id)
+    else
+      "Awaiting verification..."
+    end
+  end
+
+  attr :form, :map, required: true
+
+  defp reset_integration_verification_button(assigns) do
+    ~H"""
+    <div :if={get_field(@form.source, :is_verified)} class="text-right">
+      <button
+        type="button"
+        phx-click="reset_verification"
+        class="text-xs text-body hover:text-heading underline"
+        title="Reset verification to grant admin consent again"
+      >
+        Reset verification
+      </button>
+    </div>
     """
   end
 
