@@ -27,7 +27,7 @@ defmodule Portal.Mailer.SyncEmail do
   def device_integration_error_email(integration, recipients) do
     error_email(integration, recipients,
       subject: "Device Integration Error - #{integration.name}",
-      settings_url: url(~p"/#{integration.account}/settings/device_integrations"),
+      settings_url: url(~p"/#{integration.account}/settings/device_posture"),
       noun: "device integration",
       record_label: "Integration",
       details_heading: "Device Integration Details",

@@ -1,4 +1,4 @@
-defmodule PortalWeb.Settings.DeviceIntegrations do
+defmodule PortalWeb.Settings.DevicePosture do
   use PortalWeb, :live_view
 
   import Ecto.Changeset
@@ -400,21 +400,21 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
         <div class="flex-1 flex flex-col overflow-hidden">
           <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
             <div class="flex items-center gap-2">
-              <h2 class="text-xs font-semibold text-heading">Device Integrations</h2>
+              <h2 class="text-xs font-semibold text-heading">Device Posture</h2>
               <span class="text-xs text-subtle tabular-nums">{length(@integrations)}</span>
             </div>
             <.link
               :if={Enum.empty?(@integrations)}
-              patch={~p"/#{@account}/settings/device_integrations/intune/new"}
+              patch={~p"/#{@account}/settings/device_posture/intune/new"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
             >
-              <.icon name="ri-add-line" class="w-3 h-3" /> Add Device Integration
+              <.icon name="ri-add-line" class="w-3 h-3" /> Add Microsoft Intune
             </.link>
           </div>
 
           <div
             :if={not Enum.empty?(@integrations)}
-            id="device-integration-summary"
+            id="device-posture-summary"
             class="flex flex-wrap items-center gap-2 px-6 py-2.5 border-b border-border shrink-0"
           >
             <.dual_badge type="primary">
@@ -438,12 +438,12 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
           <div class="flex-1 overflow-auto">
             <%= if Enum.empty?(@integrations) do %>
               <div class="flex flex-col items-center justify-center h-full gap-3 text-subtle">
-                <p class="text-sm">No device integrations configured.</p>
+                <p class="text-sm">No device posture provider configured.</p>
                 <.link
-                  patch={~p"/#{@account}/settings/device_integrations/intune/new"}
+                  patch={~p"/#{@account}/settings/device_posture/intune/new"}
                   class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
                 >
-                  <.icon name="ri-add-line" class="w-3 h-3" /> Add a device integration
+                  <.icon name="ri-add-line" class="w-3 h-3" /> Add Microsoft Intune
                 </.link>
               </div>
             <% else %>
@@ -485,7 +485,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
       <% end %>
 
       <div
-        id="device-integration-panel"
+        id="device-posture-panel"
         class={[
           "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
           "bg-elevated border-l border-border-strong shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
@@ -527,7 +527,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
             </.button>
             <div class="ml-auto flex items-center gap-2">
               <.button type="button" phx-click="close_panel">Cancel</.button>
-              <.button form="device-integration-form" type="submit" style="primary" disabled={not @form.source.valid?}>
+              <.button form="device-posture-form" type="submit" style="primary" disabled={not @form.source.valid?}>
                 {if @live_action == :new, do: "Create", else: "Save"}
               </.button>
             </div>
@@ -547,7 +547,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
     <div class="flex-1 flex flex-col overflow-hidden">
       <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
         <div class="flex items-center gap-2">
-          <h2 class="text-xs font-semibold text-heading">Device Integrations</h2>
+          <h2 class="text-xs font-semibold text-heading">Device Posture</h2>
         </div>
       </div>
 
@@ -672,7 +672,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
             phx-value-id={@integration.id}
           >
             <.link
-              patch={~p"/#{@account}/settings/device_integrations/intune/#{@integration.id}/edit"}
+              patch={~p"/#{@account}/settings/device_posture/intune/#{@integration.id}/edit"}
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
             >
               <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
@@ -742,7 +742,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
     ~H"""
     <.form
       for={@form}
-      id="device-integration-form"
+      id="device-posture-form"
       as={:integration}
       phx-change="validate"
       phx-submit="submit"
@@ -966,7 +966,7 @@ defmodule PortalWeb.Settings.DeviceIntegrations do
   defp account_feature_enabled?(socket),
     do: Portal.Account.device_posture_enabled?(socket.assigns.subject.account)
 
-  defp index_path(socket), do: ~p"/#{socket.assigns.account}/settings/device_integrations"
+  defp index_path(socket), do: ~p"/#{socket.assigns.account}/settings/device_posture"
 
   defmodule Database do
     import Ecto.Query

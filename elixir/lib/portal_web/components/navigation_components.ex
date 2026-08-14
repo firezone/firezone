@@ -507,8 +507,8 @@ defmodule PortalWeb.NavigationComponents do
         <.settings_tab
           :if={device_posture_enabled?()}
           current_path={@current_path}
-          navigate={~p"/#{@account}/settings/device_integrations"}
-          tab_path="settings/device_integrations"
+          navigate={~p"/#{@account}/settings/device_posture"}
+          tab_path="settings/device_posture"
           icon="ri-shield-star-fill"
         >
           Device Posture

@@ -95,8 +95,8 @@ defmodule Portal.Mailer.SyncErrorEmailTest do
 
       assert email_body.text_body =~ "403 - Forbidden"
       assert email_body.text_body =~ ~r/Tenant ID:\s*#{integration.tenant_id}/
-      assert email_body.text_body =~ "/#{account.slug}/settings/device_integrations"
-      refute email_body.text_body =~ "/#{account.id}/settings/device_integrations"
+      assert email_body.text_body =~ "/#{account.slug}/settings/device_posture"
+      refute email_body.text_body =~ "/#{account.id}/settings/device_posture"
     end
 
     test "email subject includes the integration name", %{integration: integration} do
