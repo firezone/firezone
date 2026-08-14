@@ -657,7 +657,7 @@ defmodule PortalWeb.OIDCControllerTest do
           end
         end)
 
-      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
       state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
 
       conn =
@@ -687,7 +687,7 @@ defmodule PortalWeb.OIDCControllerTest do
           end
         end)
 
-      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
       state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
 
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "bad-code"})
@@ -739,7 +739,7 @@ defmodule PortalWeb.OIDCControllerTest do
           end
         end)
 
-      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
       state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
 
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
@@ -793,7 +793,7 @@ defmodule PortalWeb.OIDCControllerTest do
           end
         end)
 
-      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
       state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
 
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
@@ -844,7 +844,7 @@ defmodule PortalWeb.OIDCControllerTest do
           end
         end)
 
-      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
       state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
 
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
@@ -892,7 +892,7 @@ defmodule PortalWeb.OIDCControllerTest do
           end
         end)
 
-      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
       state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
 
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
@@ -941,7 +941,7 @@ defmodule PortalWeb.OIDCControllerTest do
           end
         end)
 
-      lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
+      lv_pid_string = PortalWeb.OIDC.serialize_pid(lv_pid)
       state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
 
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
@@ -961,7 +961,7 @@ defmodule PortalWeb.OIDCControllerTest do
     } do
       # Use a dead PID — no process listening, so request_pending_verification times out
       dead_pid = spawn(fn -> :ok end)
-      lv_pid_string = dead_pid |> :erlang.pid_to_list() |> to_string()
+      lv_pid_string = PortalWeb.OIDC.serialize_pid(dead_pid)
       state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "oidc-auth-provider")
 
       conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "any-code"})

@@ -21,6 +21,14 @@ defmodule PortalWeb.NavigationComponents do
   def device_trust_enabled?, do: Database.device_trust_feature_enabled?()
 
   @doc """
+  Whether device posture is enabled globally.
+
+  Unlike `device_trust_enabled?/0` this reads application config rather than the
+  database, so it is cheap enough to call from a template.
+  """
+  def device_posture_enabled?, do: Portal.Config.global_feature_enabled?(:device_posture)
+
+  @doc """
   Renders the top navigation bar.
   """
   attr :subject, :any, required: true
@@ -497,6 +505,15 @@ defmodule PortalWeb.NavigationComponents do
           Directory Sync
         </.settings_tab>
         <.settings_tab
+          :if={device_posture_enabled?()}
+          current_path={@current_path}
+          navigate={~p"/#{@account}/settings/device_integrations"}
+          tab_path="settings/device_integrations"
+          icon="ri-shield-star-fill"
+        >
+          Device Posture
+        </.settings_tab>
+        <.settings_tab
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/log_sinks"}
           tab_path="settings/log_sinks"
@@ -525,7 +542,7 @@ defmodule PortalWeb.NavigationComponents do
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/device_trust"}
           tab_path="settings/device_trust"
-          icon="ri-shield-check-fill"
+          icon="ri-fingerprint-fill"
         >
           Device Trust
         </.settings_tab>

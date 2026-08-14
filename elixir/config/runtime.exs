@@ -134,17 +134,23 @@ if config_env() == :prod do
     client_id: env_var_to_config!(:entra_oidc_client_id),
     client_secret: env_var_to_config!(:entra_oidc_client_secret)
 
-  # No client secret required: when ENTRA_SYNC_CLIENT_SECRET is unset the app
-  # authenticates with workload identity federation, minting a token-exchange
-  # assertion from the portal's managed identity (Portal.Azure.ManagedIdentity).
-  # The optional secret still flows from config.exs for environments that set it.
-  # The app registration must also declare the delegated Microsoft Graph
-  # permissions `openid` and `profile` so the `.default` admin-consent grant
-  # covers the signed user identity proof without a second consent prompt.
-  config :portal, Portal.Entra.APIClient,
-    client_id: env_var_to_config!(:entra_sync_client_id),
+  # Entra directory sync and Intune device inventory use separate Microsoft Graph
+  # app registrations. Production authenticates both through workload identity
+  # federation using the portal's managed identity, minting a token-exchange
+  # assertion (Portal.Azure.ManagedIdentity). The optional secrets still flow
+  # from config.exs for environments that set them.
+  #
+  # Both app registrations must also declare the delegated Microsoft Graph
+  # permissions `openid` and `profile`, and set groupMembershipClaims to
+  # DirectoryRole, so the `.default` admin-consent grant covers the signed user
+  # identity proof without a second consent prompt.
+  config :portal, Portal.Microsoft.Graph.APIClient,
     token_base_url: "https://login.microsoftonline.com",
-    endpoint: "https://graph.microsoft.com"
+    endpoint: "https://graph.microsoft.com",
+    applications: [
+      entra: [client_id: env_var_to_config!(:entra_sync_client_id), client_secret: nil],
+      intune: [client_id: env_var_to_config!(:intune_sync_client_id), client_secret: nil]
+    ]
 
   # No client secret: production authenticates the app with workload identity
   # federation, minting a token-exchange assertion from the portal's managed
@@ -232,6 +238,9 @@ if config_env() == :prod do
     # Schedule Entra directory sync every 2 hours
     {"0 */2 * * *", Portal.Entra.Scheduler},
 
+    # Schedule Intune device inventory sync every 2 hours
+    {"10 */2 * * *", Portal.Intune.Scheduler},
+
     # Schedule Google directory sync every 2 hours
     {"20 */2 * * *", Portal.Google.Scheduler},
 
@@ -255,6 +264,8 @@ if config_env() == :prod do
      args: %{provider: "google", frequency: "daily"}},
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "okta", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "intune", frequency: "daily"}},
 
     # Directory sync error notifications - every 3 days for medium error count
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
@@ -263,6 +274,8 @@ if config_env() == :prod do
      args: %{provider: "google", frequency: "three_days"}},
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "okta", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "intune", frequency: "three_days"}},
 
     # Directory sync error notifications - weekly for high error count
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
@@ -271,6 +284,8 @@ if config_env() == :prod do
      args: %{provider: "google", frequency: "weekly"}},
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
      args: %{provider: "okta", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "intune", frequency: "weekly"}},
 
     # Log sink delivery error notifications
     {"0 9 * * *", Portal.Workers.LogSinkErrorNotification},
@@ -327,6 +342,8 @@ if config_env() == :prod do
       ocsp_sync: 5,
       entra_scheduler: 1,
       entra_sync: 5,
+      intune_scheduler: 1,
+      intune_sync: 5,
       google_scheduler: 1,
       google_sync: 5,
       okta_scheduler: 1,

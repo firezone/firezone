@@ -159,13 +159,15 @@ config :portal, Portal.Azure.ManagedIdentity,
     retry: false
   ]
 
-config :portal, Portal.Entra.APIClient,
-  client_id: "test_client_id",
-  client_secret: "test_client_secret",
+config :portal, Portal.Microsoft.Graph.APIClient,
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",
+  applications: [
+    entra: [client_id: "test_client_id", client_secret: "test_client_secret"],
+    intune: [client_id: "test_intune_client_id", client_secret: "test_intune_client_secret"]
+  ],
   req_opts: [
-    plug: {Req.Test, Portal.Entra.APIClient},
+    plug: {Req.Test, Portal.Microsoft.Graph.APIClient},
     retry: false
   ]
 

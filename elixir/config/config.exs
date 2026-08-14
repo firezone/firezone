@@ -197,11 +197,19 @@ config :portal, Portal.Azure.ManagedIdentity,
     retry: :transient
   ]
 
-config :portal, Portal.Entra.APIClient,
-  client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),
-  client_secret: System.get_env("ENTRA_SYNC_CLIENT_SECRET"),
+config :portal, Portal.Microsoft.Graph.APIClient,
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",
+  applications: [
+    entra: [
+      client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),
+      client_secret: System.get_env("ENTRA_SYNC_CLIENT_SECRET")
+    ],
+    intune: [
+      client_id: System.get_env("INTUNE_SYNC_CLIENT_ID"),
+      client_secret: System.get_env("INTUNE_SYNC_CLIENT_SECRET")
+    ]
+  ],
   req_opts: [
     # 15 minutes
     receive_timeout: 900_000,
@@ -335,7 +343,8 @@ config :portal, :enabled_features,
   policy_conditions: true,
   rest_api: true,
   internet_resource: true,
-  log_sinks: true
+  log_sinks: true,
+  device_posture: false
 
 config :portal, sign_up_whitelisted_domains: []
 

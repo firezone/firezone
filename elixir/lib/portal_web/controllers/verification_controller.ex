@@ -1,7 +1,7 @@
 defmodule PortalWeb.VerificationController do
   use PortalWeb, :controller
 
-  alias Portal.Entra
+  alias Portal.Microsoft.Graph
 
   require Logger
   @verification_ack_timeout 5_000
@@ -157,6 +157,45 @@ defmodule PortalWeb.VerificationController do
     end
   end
 
+  # The Intune app registration is granted DeviceManagementManagedDevices.Read.All
+  # and nothing else, so it cannot look the caller's directory roles up through
+  # Graph the way directory sync does. The signed wids claim is the only proof of
+  # tenant-wide role available here, which is why the app registration has to set
+  # groupMembershipClaims to DirectoryRole.
+  defp render_entra_result(
+         conn,
+         %{
+           ok: true,
+           type: "intune-device-integration",
+           tenant_id: tenant_id,
+           role_ids: role_ids,
+           lv_pid: lv_pid_string,
+           verification_ref: verification_ref
+         }
+       )
+       when is_binary(tenant_id) and is_list(role_ids) and is_binary(verification_ref) do
+    lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid_string)
+
+    if PortalWeb.OIDC.entra_setup_admin?(role_ids) do
+      case notify_and_await_ack(
+             lv_pid,
+             {:intune_device_integration_complete, tenant_id, verification_ref}
+           ) do
+        :ok -> render(conn, :success)
+        {:error, _reason} -> render(conn, :failure, error: @verification_ack_error)
+      end
+    else
+      maybe_notify_verification_failure(
+        lv_pid,
+        verification_ref,
+        @entra_admin_required_error,
+        true
+      )
+
+      render(conn, :failure, error: @entra_admin_required_error)
+    end
+  end
+
   defp render_entra_result(
          conn,
          %{
@@ -247,19 +286,18 @@ defmodule PortalWeb.VerificationController do
   defp ack_failure_result, do: {:error, @verification_ack_error, false}
 
   defp verify_directory_access(tenant_id, principal_id) do
-    config = Portal.Config.fetch_env!(:portal, Entra.APIClient)
-    client_id = config[:client_id]
+    client_id = Graph.APIClient.client_id(:entra)
 
     with {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
-           Entra.APIClient.get_access_token(tenant_id),
+           Graph.APIClient.get_access_token(:entra, tenant_id),
          {:ok, %Req.Response{status: 200, body: %{"value" => [service_principal | _]}}} <-
-           Entra.APIClient.get_service_principal(access_token, client_id),
+           Graph.APIClient.get_service_principal(access_token, client_id),
          {:ok, %Req.Response{status: 200, body: %{"value" => _assignments}}} <-
-           Entra.APIClient.list_app_role_assignments(access_token, service_principal["id"]),
+           Graph.APIClient.list_app_role_assignments(access_token, service_principal["id"]),
          {:ok, %Req.Response{status: 200, body: %{"value" => directory_roles}}} <-
-           Entra.APIClient.list_transitive_directory_roles(access_token, principal_id),
+           Graph.APIClient.list_transitive_directory_roles(access_token, principal_id),
          :ok <- verify_entra_setup_admin_role(directory_roles),
-         :ok <- Entra.APIClient.test_connection(access_token) do
+         :ok <- Graph.APIClient.test_directory_connection(access_token) do
       {:ok, :verified}
     end
   end
