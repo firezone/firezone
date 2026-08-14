@@ -435,12 +435,15 @@ if config_env() == :prod do
       path: web_external_url_path
     } = URI.parse(web_external_url)
 
+    # Plain HTTP URLs are used by the local Docker Compose environment. HTTPS
+    # deployments are served exclusively through Portal.Endpoint, which owns
+    # TLS and dispatches requests by hostname.
     web_listener =
-      if env_var_to_config!(:phoenix_legacy_listeners_enabled) do
+      if web_external_url_scheme == "http" do
         [
           http: [
             ip: env_var_to_config!(:phoenix_listen_address).address,
-            port: env_var_to_config!(:phoenix_http_web_port),
+            port: web_external_url_port,
             http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
           ]
         ]
@@ -452,6 +455,7 @@ if config_env() == :prod do
            PortalWeb.Endpoint,
            web_listener ++
              [
+               server: web_external_url_scheme == "http",
                url: [
                  scheme: web_external_url_scheme,
                  host: web_external_url_host,
@@ -491,11 +495,11 @@ if config_env() == :prod do
     } = URI.parse(api_external_url)
 
     api_listener =
-      if env_var_to_config!(:phoenix_legacy_listeners_enabled) do
+      if api_external_url_scheme == "http" do
         [
           http: [
             ip: env_var_to_config!(:phoenix_listen_address).address,
-            port: env_var_to_config!(:phoenix_http_api_port),
+            port: api_external_url_port,
             http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
           ]
         ]
@@ -507,6 +511,7 @@ if config_env() == :prod do
            PortalAPI.Endpoint,
            api_listener ++
              [
+               server: api_external_url_scheme == "http",
                url: [
                  scheme: api_external_url_scheme,
                  host: api_external_url_host,

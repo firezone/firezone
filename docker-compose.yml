@@ -12,11 +12,6 @@ x-portal-urls: &portal-urls
   WEB_EXTERNAL_URL: http://localhost:8080/
   API_EXTERNAL_URL: http://localhost:8081/
 
-x-phoenix-config: &phoenix-config
-  PHOENIX_HTTP_WEB_PORT: "8080"
-  PHOENIX_HTTP_API_PORT: "8081"
-  PHOENIX_SECURE_COOKIES: "false"
-
 x-health-check: &health-check
   interval: 1s
   retries: 15
@@ -40,7 +35,8 @@ services:
       - 8080:8080/tcp
       - 8081:8081/tcp
     environment:
-      <<: [*portal-urls, *erlang-cluster, *phoenix-config]
+      <<: [*portal-urls, *erlang-cluster]
+      PHOENIX_SECURE_COOKIES: "false"
       RELEASE_HOSTNAME: "portal.cluster.local"
       RELEASE_NAME: "portal"
       LOG_LEVEL: "debug"

@@ -172,7 +172,8 @@ defmodule Portal.ConfigTest do
 
       The external URL the UI will be accessible at.
 
-      If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.
+      Plain HTTP URLs are served directly by the Web endpoint for local development.
+      HTTPS URLs are served by the public endpoint and dispatched by hostname.
 
       """
 
