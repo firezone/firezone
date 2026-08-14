@@ -42,9 +42,8 @@ defmodule PortalAPI.IntuneDeviceController do
   # coveralls-ignore-stop
 
   def index(conn, params) do
-    opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, devices, metadata} <- Database.list_devices(conn.assigns.subject, opts) do
+    with {:ok, opts} <- Pagination.params_to_list_opts(params),
+         {:ok, devices, metadata} <- Database.list_devices(conn.assigns.subject, opts) do
       render(conn, :index, devices: devices, metadata: metadata)
     else
       error -> Error.handle(conn, error)
