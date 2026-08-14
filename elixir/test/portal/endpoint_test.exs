@@ -30,6 +30,20 @@ defmodule Portal.EndpointTest do
            ]
   end
 
+  test "does not trust forwarded headers from the public listener" do
+    conn =
+      :get
+      |> conn("http://api.firezone.test/client")
+      |> put_req_header("x-forwarded-host", "mtls.firezone.test")
+      |> put_req_header("x-forwarded-proto", "https")
+      |> Endpoint.call([])
+
+    assert conn.status == 301
+    assert get_resp_header(conn, "location") == ["https://api.firezone.test/client"]
+    assert get_req_header(conn, "x-forwarded-host") == []
+    assert get_req_header(conn, "x-forwarded-proto") == []
+  end
+
   test "serves readiness checks without redirecting" do
     conn = Endpoint.call(conn(:get, "http://api.firezone.test/readyz"), [])
 

@@ -6,8 +6,17 @@ defmodule Portal.Endpoint do
   use Phoenix.Endpoint, otp_app: :portal
 
   plug Portal.Health
+  plug :drop_forwarded_headers
   plug Plug.SSL
   plug :dispatch
+
+  def drop_forwarded_headers(%Plug.Conn{} = conn, _opts) do
+    Enum.reduce(
+      ~w(x-forwarded-for x-forwarded-host x-forwarded-port x-forwarded-proto),
+      conn,
+      &Plug.Conn.delete_req_header(&2, &1)
+    )
+  end
 
   def dispatch(%Plug.Conn{} = conn, _opts) do
     host = String.downcase(conn.host)
