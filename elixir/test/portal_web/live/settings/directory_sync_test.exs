@@ -670,6 +670,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       assert html =~ "Google denied the federated token exchange."
       refute html =~ ":workload_identity_token_exchange"
+      assert_push_event(lv, "close_open_url", %{})
     end
 
     test "generates an okta keypair and closes the panel", %{
@@ -835,6 +836,59 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       html = render_click(lv, "reset_verification")
       assert html =~ "Verify Now"
       refute html =~ "Verification complete"
+    end
+
+    test "keeps the Google authorization hook mounted while edit verification starts", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      configure_google_directory_workload_identity()
+      configure_google_sync_authorization()
+
+      directory =
+        google_directory_fixture(%{
+          account: account,
+          name: "Unverified Google",
+          domain: "example.com",
+          impersonation_email: "sync-admin@example.com",
+          is_verified: false
+        })
+
+      Req.Test.stub(ManagedIdentity, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      Req.Test.stub(APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/#{directory.id}/edit")
+
+      Req.Test.allow(ManagedIdentity, self(), lv.pid)
+      Req.Test.allow(APIClient, self(), lv.pid)
+      Req.Test.allow(PortalWeb.OIDC, self(), lv.pid)
+
+      expect_google_directory_service_access("C0123", "example.com")
+
+      assert has_element?(lv, "#verify-button-open-url[phx-hook='OpenURL']")
+
+      assert has_element?(
+               lv,
+               "button[phx-click='start_verification'][data-open-url-reserve]"
+             )
+
+      lv
+      |> element("button[phx-click='start_verification']")
+      |> render_click()
+
+      assert_push_event(lv, "open_url", %{url: url})
+      assert URI.parse(url).host == "mock.oidc.test"
+      assert has_element?(lv, "#verify-button-open-url[phx-hook='OpenURL']")
+      assert has_element?(lv, "#verify-button-open-url button[disabled]", "Verifying...")
     end
 
     test "requires reverification after regenerating an okta keypair", %{

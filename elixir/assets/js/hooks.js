@@ -184,9 +184,49 @@ Hooks.CopyClipboard = {
 
 Hooks.OpenURL = {
   mounted() {
+    this.pendingWindow = null;
+
+    // Google directory verification performs an API preflight before the URL is
+    // available. Reserve the window during the user gesture so browsers do not
+    // treat the eventual navigation as an unsolicited popup.
+    this.clickHandler = (event) => {
+      if (!event.target.closest?.("[data-open-url-reserve]")) return;
+
+      this.pendingWindow = window.open("about:blank", "_blank");
+
+      if (this.pendingWindow) {
+        this.pendingWindow.opener = null;
+      }
+    };
+
+    this.el.addEventListener("click", this.clickHandler, { capture: true });
+
     this.handleEvent("open_url", ({ url }) => {
-      window.open(url, "_blank", "noopener,noreferrer");
+      const pendingWindow = this.pendingWindow;
+      this.pendingWindow = null;
+
+      if (pendingWindow && !pendingWindow.closed) {
+        pendingWindow.location.replace(url);
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
     });
+
+    this.handleEvent("close_open_url", () => {
+      if (this.pendingWindow && !this.pendingWindow.closed) {
+        this.pendingWindow.close();
+      }
+
+      this.pendingWindow = null;
+    });
+  },
+
+  destroyed() {
+    this.el.removeEventListener("click", this.clickHandler, { capture: true });
+
+    if (this.pendingWindow && !this.pendingWindow.closed) {
+      this.pendingWindow.close();
+    }
   },
 };
 
