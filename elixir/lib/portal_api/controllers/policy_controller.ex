@@ -3,6 +3,7 @@ defmodule PortalAPI.PolicyController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
@@ -13,7 +14,13 @@ defmodule PortalAPI.PolicyController do
     summary: "List Policies",
     parameters: [
       limit: [in: :query, description: "Limit Policies returned", type: :integer, example: 10],
-      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
+      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
+      group_id: [in: :query, description: "Filter to Policies granting this Group", type: :string],
+      resource_id: [
+        in: :query,
+        description: "Filter to Policies granting access to this Resource",
+        type: :string
+      ]
     ],
     responses:
       [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.ListResponse}] ++
@@ -23,13 +30,19 @@ defmodule PortalAPI.PolicyController do
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
-    list_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, policies, metadata} <- Database.list_policies(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
+         {:ok, policies, metadata} <- Database.list_policies(conn.assigns.subject, list_opts) do
       render(conn, :index, policies: policies, metadata: metadata)
     else
       error -> Error.handle(conn, error)
     end
+  end
+
+  defp coerce_filters(params) do
+    []
+    |> Filters.maybe_append(:group_id, params["group_id"])
+    |> Filters.maybe_append(:resource_id, params["resource_id"])
   end
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
@@ -99,6 +112,12 @@ defmodule PortalAPI.PolicyController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update,
     summary: "Update a Policy",
+    description: """
+    Updates a Policy.
+
+    A Policy is enabled or disabled through the `is_disabled` field. Disabling \
+    a Policy stops it granting access without deleting it.
+    """,
     parameters: [
       id: [
         in: :path,
@@ -178,6 +197,33 @@ defmodule PortalAPI.PolicyController do
       from(p in Policy, as: :policies)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
+    end
+
+    def filters do
+      [
+        %Portal.Repo.Filter{
+          name: :group_id,
+          title: "Group",
+          type: {:string, :uuid},
+          fun: &filter_by_group_id/2
+        },
+        %Portal.Repo.Filter{
+          name: :resource_id,
+          title: "Resource",
+          type: {:string, :uuid},
+          fun: &filter_by_resource_id/2
+        }
+      ]
+    end
+
+    defp filter_by_group_id(queryable, group_id) do
+      dynamic = dynamic([policies: p], p.group_id == ^group_id)
+      {queryable, dynamic}
+    end
+
+    defp filter_by_resource_id(queryable, resource_id) do
+      dynamic = dynamic([policies: p], p.resource_id == ^resource_id)
+      {queryable, dynamic}
     end
 
     def fetch_policy(id, subject) do
@@ -276,7 +322,7 @@ defmodule PortalAPI.PolicyController do
 
     defp changeset(%Policy{} = policy, attrs) do
       policy
-      |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
+      |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled is_disabled]a)
       |> validate_required(~w[group_id resource_id]a)
       |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     end

@@ -23,6 +23,7 @@ defmodule PortalWeb.Clients do
       |> assign(stale: false)
       |> assign_async(:clients_count, fn -> {:ok, %{clients_count: Database.count_clients(subject)}} end)
       |> assign(
+        client_device_pools: [],
         policy_authorizations: [],
         policy_authorizations_page: 1,
         policy_authorizations_has_next: false,
@@ -63,6 +64,7 @@ defmodule PortalWeb.Clients do
          |> assign(selected_client: client)
          |> assign(show_client_assigns(tab))
          |> assign(
+           client_device_pools: Database.list_device_pools_for_client(client, socket.assigns.subject),
            policy_authorizations: policy_authorizations,
            policy_authorizations_page: page,
            policy_authorizations_has_next: has_next,
@@ -93,7 +95,7 @@ defmodule PortalWeb.Clients do
 
     {:noreply,
      socket
-     |> assign(selected_client: nil)
+     |> assign(selected_client: nil, client_device_pools: [])
      |> assign(base_client_assigns())}
   end
 
@@ -179,20 +181,8 @@ defmodule PortalWeb.Clients do
               latest={ComponentVersions.client_version(client)}
             />
           </:col>
-          <:col :let={client} label="Verified" class="w-28">
-            <span
-              :if={not is_nil(client.verified_at)}
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light"
-              title="Device attributes of this client are manually verified"
-            >
-              <.icon name="ri-shield-check-line" class="w-2.5 h-2.5" /> Verified
-            </span>
-            <span
-              :if={is_nil(client.verified_at)}
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-raised"
-            >
-              Unverified
-            </span>
+          <:col :let={client} label="Trust" class="w-28">
+            <.client_verified_status client={client} />
           </:col>
           <:col :let={client} label="Status" class="w-28">
             <.client_status_badge online?={client.online?} />
@@ -239,6 +229,7 @@ defmodule PortalWeb.Clients do
         panel={client_panel_state(assigns)}
         confirm_state={client_confirm_state(assigns)}
         query_params={@query_params}
+        device_pools={@client_device_pools}
         policy_authorizations={@policy_authorizations}
         policy_authorizations_page={@policy_authorizations_page}
         policy_authorizations_has_next={@policy_authorizations_has_next}
@@ -564,6 +555,7 @@ defmodule PortalWeb.Clients do
     alias Portal.PolicyAuthorization
     alias Portal.Group
     alias Portal.Resource
+    alias Portal.StaticDevicePoolMember
     alias Portal.Repo.Filter
     alias Portal.Repo.OffsetPaginator
 
@@ -727,6 +719,27 @@ defmodule PortalWeb.Clients do
 
         _ ->
           nil
+      end
+    end
+
+    @spec list_device_pools_for_client(Portal.Device.t(), Portal.Authentication.Subject.t()) ::
+            [Resource.t()]
+    def list_device_pools_for_client(%Device{} = client, subject) do
+      from(r in Resource, as: :resources)
+      |> join(:inner, [resources: r], m in StaticDevicePoolMember,
+        on: m.resource_id == r.id and m.account_id == r.account_id,
+        as: :members
+      )
+      |> where([members: m], m.device_id == ^client.id)
+      # The REST API can retype a pool without clearing its members, so filter on
+      # the resource rather than trusting the membership rows alone.
+      |> where([resources: r], r.type == :static_device_pool)
+      |> order_by([resources: r], asc: r.name)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> []
+        resources -> resources
       end
     end
 

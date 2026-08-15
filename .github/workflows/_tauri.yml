@@ -13,6 +13,7 @@ env:
 permissions:
   contents: "read"
   id-token: "write" # OIDC auth
+  security-events: "write" # trivy SARIF upload from setup-mise
 
 jobs:
   update-release-draft:
@@ -23,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       # mark:next-gui-version
-      RELEASE_NAME: gui-client-1.5.16
+      RELEASE_NAME: gui-client-1.5.17
     steps:
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
@@ -76,15 +77,15 @@ jobs:
         timeout-minutes: 15
         with:
           runtime: true
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: "--cd rust github:mozilla/dump_syms"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm install
       - run: pnpm vite build
       - name: Build client
         run: cargo build -p firezone-gui-client --all-targets
-      - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: dump_syms
       - name: Run smoke test
         working-directory: ./rust
         run: cargo run -p gui-smoke-test
@@ -115,16 +116,16 @@ jobs:
             pkg-extension: msi
     env:
       # mark:next-gui-version
-      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.16_${{ matrix.arch }}
+      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.17_${{ matrix.arch }}
       # mark:next-gui-version
-      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.5.16_${{ matrix.arch }}
+      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.5.17_${{ matrix.arch }}
       AZURE_KEY_VAULT_URI: ${{ vars.AZURE_CODESIGNING_KEY_VAULT_URI }}
       AZURE_CERT_NAME: ${{ vars.AZURE_CODESIGNING_CERTIFICATE_NAME }}
       # mark:next-gui-version
-      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.5.16_${{ matrix.arch }}
+      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.5.17_${{ matrix.arch }}
       # Seems like there's no way to de-dupe env vars that depend on each other
       # mark:next-gui-version
-      FIREZONE_GUI_VERSION: 1.5.16
+      FIREZONE_GUI_VERSION: 1.5.17
       RENAME_SCRIPT: ../../scripts/build/tauri-rename-${{ matrix.os }}.sh
       SYMBOLS_SCRIPT: ../../scripts/build/tauri-symbols-${{ matrix.os }}.sh
       TEST_INSTALL_SCRIPT: ../../scripts/tests/gui-client-install-${{ matrix.os }}-${{ matrix.pkg-extension }}
@@ -244,7 +245,7 @@ jobs:
 
       - name: Azure login (OIDC)
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Linux' }}
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
         with:
           client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
@@ -281,7 +282,7 @@ jobs:
 
       - name: Azure login (OIDC) for QA artifacts
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
         with:
           client-id: ${{ secrets.AZURE_QA_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_QA_TENANT_ID }}

@@ -193,6 +193,30 @@ url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/ca
 url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/395392416"
 provenance = "github-attestations"
 
+[[tools."github:mozilla/dump_syms"]]
+version = "2.3.7"
+backend = "github:mozilla/dump_syms"
+
+[tools."github:mozilla/dump_syms"."platforms.linux-x64"]
+checksum = "sha256:928f9902244f63be4b3b0acf56963ecad97b7227ecfd9ee645d73683f75a9285"
+url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-unknown-linux-gnu.tar.xz"
+
+[tools."github:mozilla/dump_syms"."platforms.linux-x64-musl"]
+checksum = "sha256:928f9902244f63be4b3b0acf56963ecad97b7227ecfd9ee645d73683f75a9285"
+url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-unknown-linux-gnu.tar.xz"
+
+[tools."github:mozilla/dump_syms"."platforms.macos-arm64"]
+checksum = "sha256:a96949068ccc62d5dfe9f642e15ecc62910217c661e256eb91e2d0e6266895e7"
+url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-aarch64-apple-darwin.tar.xz"
+
+[tools."github:mozilla/dump_syms"."platforms.macos-x64"]
+checksum = "sha256:4aded3cddac80aed06db65bab1c3d8228c0608296d7fa4168ab0eb12f2022683"
+url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-apple-darwin.tar.xz"
+
+[tools."github:mozilla/dump_syms"."platforms.windows-x64"]
+checksum = "sha256:bd42a87409c39be18709b788f793fcdbfe1fde79511404112358b18511bb24f8"
+url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-pc-windows-msvc.zip"
+
 [[tools."github:taiki-e/cargo-llvm-cov"]]
 version = "0.6.21"
 backend = "github:taiki-e/cargo-llvm-cov"

@@ -3,6 +3,7 @@ use super::{
     dns_server_resource::{TcpDnsServerResource, UdpDnsServerResource},
     echo::echo_reply,
     icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
+    probe::{ProbeId, ProbeObservation, ReceivedRequest, Remote},
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
 };
@@ -23,11 +24,7 @@ pub(crate) struct SimGateway {
     id: GatewayId,
     pub(crate) sut: GatewayState,
 
-    /// The received ICMP packets, indexed by our custom ICMP payload.
-    pub(crate) received_icmp_requests: BTreeMap<u64, (Instant, IpPacket)>,
-
-    /// The received UDP packets, indexed by our custom UDP payload.
-    pub(crate) received_udp_requests: BTreeMap<u64, (Instant, IpPacket)>,
+    pub(crate) probe_observations: Vec<ProbeObservation>,
 
     /// The times we resolved DNS records for a domain.
     pub(crate) dns_query_timestamps: BTreeMap<DomainName, Vec<Instant>>,
@@ -45,19 +42,20 @@ pub(crate) struct SimGateway {
 impl SimGateway {
     pub(crate) fn new(
         id: GatewayId,
-        sut: GatewayState,
+        mut sut: GatewayState,
         tcp_resources: BTreeSet<SocketAddr>,
         site_specific_dns_records: DnsRecords,
         now: Instant,
     ) -> Self {
+        sut.set_flow_logs_enabled(true);
+
         Self {
             id,
             sut,
             site_specific_dns_records,
-            received_icmp_requests: Default::default(),
+            probe_observations: Default::default(),
             udp_dns_server_resources: Default::default(),
             tcp_dns_server_resources: Default::default(),
-            received_udp_requests: Default::default(),
             dns_query_timestamps: Default::default(),
             tcp_resources: tcp_resources
                 .into_iter()
@@ -173,6 +171,7 @@ impl SimGateway {
     pub(crate) fn deploy_new_dns_servers(
         &mut self,
         dns_servers: impl IntoIterator<Item = SocketAddr>,
+        icmp_error_hosts: &IcmpErrorHosts,
     ) {
         self.udp_dns_server_resources.clear();
         self.tcp_dns_server_resources.clear();
@@ -194,6 +193,12 @@ impl SimGateway {
                 tun_dns_server_port,
             ))))
         {
+            // A resolver that answers with ICMP errors is unreachable from the
+            // Gateway's network; nothing listens on its sockets.
+            if icmp_error_hosts.icmp_error_for_ip(server.ip()).is_some() {
+                continue;
+            }
+
             self.udp_dns_server_resources
                 .insert(server, UdpDnsServerResource::default());
             self.tcp_dns_server_resources
@@ -229,20 +234,14 @@ impl SimGateway {
         if let Some(icmp) = packet.as_icmpv4()
             && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
         {
-            let packet_id = u64::from_be_bytes(*icmp.payload().first_chunk().unwrap());
-            tracing::debug!(%packet_id, "Received ICMP request");
-            self.received_icmp_requests
-                .insert(packet_id, (now, packet.clone()));
+            self.record_received_request(icmp.payload(), packet.clone(), now);
             return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
         }
 
         if let Some(icmp) = packet.as_icmpv6()
             && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
         {
-            let packet_id = u64::from_be_bytes(*icmp.payload().first_chunk().unwrap());
-            tracing::debug!(%packet_id, "Received ICMP request");
-            self.received_icmp_requests
-                .insert(packet_id, (now, packet.clone()));
+            self.record_received_request(icmp.payload(), packet.clone(), now);
             return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
         }
 
@@ -253,6 +252,17 @@ impl SimGateway {
             if let Some(server) = self.udp_dns_server_resources.get_mut(&socket) {
                 server.handle_input(packet);
                 return None;
+            }
+
+            // Port 53 is excluded from generated packets, so this is a recursive
+            // query to a resolver without a deployed DNS server, i.e. one that
+            // answers with ICMP errors. connlib consumes the error internally,
+            // so the reference does not track this exchange as a request.
+            if udp.destination_port() == 53 {
+                let reply = icmp_error?;
+                let transmit = self.handle_tun_input(reply, now).unwrap()?;
+
+                return Some(transmit);
             }
         }
 
@@ -297,17 +307,27 @@ impl SimGateway {
 
     fn request_received(&mut self, packet: &IpPacket, now: Instant) {
         if let Some(udp) = packet.as_udp() {
-            let packet_id = u64::from_be_bytes(*udp.payload().first_chunk().unwrap());
-            tracing::debug!(%packet_id, "Received UDP request");
-            self.received_udp_requests
-                .insert(packet_id, (now, packet.clone()));
+            self.record_received_request(udp.payload(), packet.clone(), now);
         }
     }
 
     pub(crate) fn clear_packets(&mut self) {
-        self.received_icmp_requests.clear();
-        self.received_udp_requests.clear();
         self.tcp_resources.clear();
+    }
+
+    fn record_received_request(&mut self, payload: &[u8], packet: IpPacket, at: Instant) {
+        let Some(id) = ProbeId::from_payload(payload) else {
+            tracing::error!("Probe payload does not contain a probe ID");
+            return;
+        };
+
+        self.probe_observations
+            .push(ProbeObservation::RequestReceived(ReceivedRequest {
+                id,
+                at,
+                remote: Remote::Gateway(self.id),
+                packet,
+            }));
     }
 
     fn handle_icmp_request(

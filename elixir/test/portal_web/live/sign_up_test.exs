@@ -19,15 +19,6 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "Create Account"
     end
 
-    test "shows disabled message when sign-up is disabled", %{conn: conn} do
-      Portal.Config.put_env_override(:portal, :enabled_features, sign_up: false)
-
-      {:ok, _lv, html} = live(conn, ~p"/sign_up")
-
-      assert html =~ "Sign-ups are currently disabled"
-      assert html =~ "sales@firezone.dev"
-      refute html =~ "Create Account"
-    end
   end
 
   describe "fill_form edge cases" do
@@ -171,15 +162,6 @@ defmodule PortalWeb.SignUpTest do
       refute_email_sent()
     end
 
-    test "does not proceed when sign-up is disabled", %{conn: conn} do
-      Portal.Config.put_env_override(:portal, :enabled_features, sign_up: false)
-
-      {:ok, lv, _html} = live(conn, ~p"/sign_up")
-
-      html = render(lv)
-      assert html =~ "Sign-ups are currently disabled"
-      refute html =~ "Check your email"
-    end
   end
 
   describe "verify action — mount" do

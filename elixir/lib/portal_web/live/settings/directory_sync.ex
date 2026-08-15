@@ -47,7 +47,8 @@ defmodule PortalWeb.Settings.DirectorySync do
     socket =
       assign(socket,
         page_title: "Directory Sync",
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
+        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?(),
+        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
     if connected?(socket) do
@@ -290,27 +291,31 @@ defmodule PortalWeb.Settings.DirectorySync do
     end
   end
 
-  def handle_event("sync_directory", %{"id" => id, "type" => type}, socket) do
-    sync_module =
-      case type do
-        "entra" -> Portal.Entra.Sync
-        "google" -> Portal.Google.Sync
-        "okta" -> Portal.Okta.Sync
-        _ -> raise "Unsupported directory type for sync: #{type}"
+  def handle_event("sync_directory", %{"id" => id}, socket) do
+    directory = socket.assigns.directories |> Enum.find(fn d -> d.id == id end)
+
+    if is_nil(directory) do
+      {:noreply, put_flash(socket, :error, "Failed to queue directory sync.")}
+    else
+      args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
+
+      case Oban.insert(sync_module(directory).new(args)) do
+        {:ok, _job} ->
+          socket =
+            socket
+            |> init()
+            |> put_flash(:success, "Directory sync has been queued successfully.")
+
+          {:noreply, socket}
+
+        {:error, reason} ->
+          Logger.info("Failed to enqueue directory sync job",
+            id: directory.id,
+            reason: inspect(reason)
+          )
+
+          {:noreply, put_flash(socket, :error, "Failed to queue directory sync.")}
       end
-
-    case Oban.insert(sync_module.new(%{"directory_id" => id})) do
-      {:ok, _job} ->
-        socket =
-          socket
-          |> init()
-          |> put_flash(:success, "Directory sync has been queued successfully.")
-
-        {:noreply, socket}
-
-      {:error, reason} ->
-        Logger.info("Failed to enqueue #{type} sync job", id: id, reason: inspect(reason))
-        {:noreply, put_flash(socket, :error, "Failed to queue directory sync.")}
     end
   end
 
@@ -354,6 +359,49 @@ defmodule PortalWeb.Settings.DirectorySync do
     start_verification(socket)
   end
 
+  # Used after Entra admin consent to build the PKCE request without consuming
+  # the verifier before the authorization-code callback.
+  def handle_info({:peek_pending_verification, from}, socket) do
+    send(from, {:pending_verification, socket.assigns[:pending_verification]})
+    {:noreply, socket}
+  end
+
+  # Sent by OIDCController to consume and activate the Entra verification session.
+  def handle_info({:get_pending_verification, from}, socket) do
+    pending_verification = socket.assigns[:pending_verification]
+    send(from, {:pending_verification, pending_verification})
+
+    socket =
+      case pending_verification do
+        nil ->
+          assign(socket, pending_verification: nil)
+
+        pending_verification ->
+          assign(socket, pending_verification: nil, active_verification: pending_verification)
+      end
+
+    {:noreply, socket}
+  end
+
+  # Entra callbacks include their verification reference so a stale callback
+  # cannot consume a newer pending verifier.
+  def handle_info({:get_pending_verification, verification_ref, from}, socket) do
+    case socket.assigns[:pending_verification] do
+      %{verification_ref: ^verification_ref} = pending_verification ->
+        send(from, {:pending_verification, pending_verification})
+
+        {:noreply,
+         assign(socket,
+           pending_verification: nil,
+           active_verification: pending_verification
+         )}
+
+      _pending_verification ->
+        send(from, {:pending_verification, nil})
+        {:noreply, socket}
+    end
+  end
+
   # Sent directly by the Entra directory_sync verification controller
   def handle_info({:entra_directory_sync_complete, tenant_id, verification_ref, ack_to}, socket) do
     if active_verification?(socket, verification_ref) do
@@ -389,13 +437,59 @@ defmodule PortalWeb.Settings.DirectorySync do
     handle_info({:entra_directory_sync_complete, tenant_id, nil, nil}, socket)
   end
 
+  # Sent by the verification controller after the interactive administrator's
+  # Workspace customer ID matches the service-account impersonation customer ID.
+  def handle_info(
+        {:google_directory_sync_complete, domain, verification_ref, ack_to},
+        socket
+      ) do
+    if active_google_verification?(socket, verification_ref) do
+      changeset = socket.assigns.form.source
+
+      attrs =
+        changeset.changes
+        |> Map.put(:domain, domain)
+        |> Map.put(:is_verified, true)
+        |> Map.new(fn {key, value} -> {to_string(key), value} end)
+
+      changeset =
+        changeset
+        |> apply_changes()
+        |> changeset(attrs)
+
+      maybe_send_verification_ack(ack_to)
+
+      {:noreply,
+       assign(socket,
+         active_verification: nil,
+         form: to_form(changeset),
+         verification_error: nil,
+         verifying: false
+       )}
+    else
+      maybe_send_verification_ack(ack_to)
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(
+        {:google_directory_sync_complete, domain, verification_ref},
+        socket
+      ) do
+    handle_info(
+      {:google_directory_sync_complete, domain, verification_ref, nil},
+      socket
+    )
+  end
+
   # Sent directly by the verification controller on any failure
   def handle_info({:verification_failed, reason, verification_ref}, socket) do
     if active_verification?(socket, verification_ref) do
       {:noreply,
        assign(socket,
          active_verification: nil,
-         verification_error: format_verification_error_reason(reason)
+         verification_error: format_verification_error_reason(reason),
+         verifying: false
        )}
     else
       {:noreply, socket}
@@ -429,8 +523,27 @@ defmodule PortalWeb.Settings.DirectorySync do
     end
   end
 
+  defp active_google_verification?(socket, verification_ref) do
+    current_impersonation_email =
+      socket.assigns.form.source
+      |> get_field(:impersonation_email)
+
+    case socket.assigns[:active_verification] do
+      %{
+        type: "google_directory_sync",
+        verification_ref: ^verification_ref,
+        impersonation_email: ^current_impersonation_email
+      }
+      when is_binary(verification_ref) ->
+        true
+
+      _ ->
+        false
+    end
+  end
+
   defp clear_verification_state(socket) do
-    assign(socket, active_verification: nil)
+    assign(socket, active_verification: nil, pending_verification: nil)
   end
 
   defp format_verification_error_reason(reason) when is_binary(reason), do: reason
@@ -453,7 +566,8 @@ defmodule PortalWeb.Settings.DirectorySync do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
+        device_trust_enabled?={@device_trust_enabled?}
+        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <%= if Portal.Account.idp_sync_enabled?(@account) do %>
@@ -632,14 +746,19 @@ defmodule PortalWeb.Settings.DirectorySync do
                 public_jwk={assigns[:public_jwk]}
               />
             </div>
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <.button phx-click="close_panel">
+            <.panel_footer>
+              <.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button form="directory-form" type="submit" style="primary" disabled={not @form.source.valid?}>
+              </.panel_footer_button>
+              <.panel_footer_button
+                form="directory-form"
+                type="submit"
+                style="primary"
+                disabled={not @form.source.valid?}
+              >
                 Create
-              </.button>
-            </div>
+              </.panel_footer_button>
+            </.panel_footer>
           </div>
         </div>
 
@@ -681,11 +800,11 @@ defmodule PortalWeb.Settings.DirectorySync do
                 public_jwk={assigns[:public_jwk]}
               />
             </div>
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <.button phx-click="close_panel">
+            <.panel_footer>
+              <.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button
+              </.panel_footer_button>
+              <.panel_footer_button
                 form="directory-form"
                 type="submit"
                 style="primary"
@@ -694,8 +813,8 @@ defmodule PortalWeb.Settings.DirectorySync do
                 }
               >
                 Save
-              </.button>
-            </div>
+              </.panel_footer_button>
+            </.panel_footer>
           </div>
         </div>
       <% else %>
@@ -923,7 +1042,6 @@ defmodule PortalWeb.Settings.DirectorySync do
               type="button"
               phx-click="sync_directory"
               phx-value-id={@directory.id}
-              phx-value-type={@type}
               disabled={@directory.is_disabled or @directory.has_active_job}
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -1449,51 +1567,56 @@ defmodule PortalWeb.Settings.DirectorySync do
   attr :type, :string, required: true
 
   defp verification_status_badge(assigns) do
-    # Entra opens a new window, so show the arrow icon and use OpenURL hook
-    # Google/Okta are server-side only, no icon or hook needed
+    # Entra and Google open a new window for user-bound authorization.
     button_attrs =
-      if assigns.type == "entra" do
-        [icon: "ri-external-link-line", "phx-hook": "OpenURL"]
+      if assigns.type in ["entra", "google"] do
+        [icon: "ri-external-link-line"]
       else
         []
       end
 
-    assigns = assign(assigns, :button_attrs, button_attrs)
+    assigns =
+      assigns
+      |> assign(:button_attrs, button_attrs)
+      |> assign(:opens_url?, assigns.type in ["entra", "google"])
 
     ~H"""
-    <div
-      :if={verified?(@form)}
-      class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-sm"
-    >
-      <.icon name="ri-checkbox-circle-line" class="h-5 w-5 mr-2" />
-      <span class="font-medium">Verified</span>
+    <div id={@id <> "-open-url"} phx-hook={@opens_url? && "OpenURL"}>
+      <div
+        :if={verified?(@form)}
+        class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-sm"
+      >
+        <.icon name="ri-checkbox-circle-line" class="h-5 w-5 mr-2" />
+        <span class="font-medium">Verified</span>
+      </div>
+      <.button
+        :if={not verified?(@form) and ready_to_verify?(@form) and not @verifying}
+        type="button"
+        id={@id <> "-verify-button"}
+        style="primary"
+        phx-click="start_verification"
+        data-open-url-reserve={@type == "google"}
+        {@button_attrs}
+      >
+        Verify Now
+      </.button>
+      <.button
+        :if={not verified?(@form) and @verifying}
+        type="button"
+        style="primary"
+        disabled
+      >
+        Verifying...
+      </.button>
+      <.button
+        :if={not verified?(@form) and not ready_to_verify?(@form)}
+        type="button"
+        style="primary"
+        disabled
+      >
+        Verify Now
+      </.button>
     </div>
-    <.button
-      :if={not verified?(@form) and ready_to_verify?(@form) and not @verifying}
-      type="button"
-      id={@id <> "-verify-button"}
-      style="primary"
-      phx-click="start_verification"
-      {@button_attrs}
-    >
-      Verify Now
-    </.button>
-    <.button
-      :if={not verified?(@form) and @verifying}
-      type="button"
-      style="primary"
-      disabled
-    >
-      Verifying...
-    </.button>
-    <.button
-      :if={not verified?(@form) and not ready_to_verify?(@form)}
-      type="button"
-      style="primary"
-      disabled
-    >
-      Verify Now
-    </.button>
     """
   end
 
@@ -1619,7 +1742,8 @@ defmodule PortalWeb.Settings.DirectorySync do
          %{assigns: %{live_action: :edit, form: %{source: changeset}, directory: directory}} =
            socket
        ) do
-    # If directory was disabled due to sync error and is now verified, clear error state and enable it
+    # Re-enable directories disabled by a sync error once the administrator
+    # completes verification.
     changeset =
       if directory.disabled_reason == "Sync error" and get_field(changeset, :is_verified) == true do
         changeset
@@ -1673,40 +1797,68 @@ defmodule PortalWeb.Settings.DirectorySync do
     result =
       with {:ok, access_token} <-
              Google.APIClient.get_access_token(impersonation_email),
-           {:ok, %Req.Response{status: 200, body: body}} <-
+           {:ok, %Req.Response{status: 200, body: customer}} <-
              Google.APIClient.get_customer(access_token),
-           :ok <- Google.APIClient.test_connection(access_token, body["customerDomain"]) do
-        {:ok, body["customerDomain"]}
+           {:ok, workspace_customer_id, domain} <- google_customer_identity(customer),
+           :ok <- Google.APIClient.test_connection(access_token, domain),
+           {:ok, %{config: config}} <-
+             PortalWeb.OIDC.setup_verification("google_directory_sync", []),
+           verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
+           verification_ref = Ecto.UUID.generate(),
+           lv_pid_string = PortalWeb.OIDC.serialize_pid(self()),
+           state_token <-
+             PortalWeb.OIDC.sign_verification_state(
+               lv_pid_string,
+               PortalWeb.OIDC.verification_state_type("google_directory_sync"),
+               %{verification_ref: verification_ref}
+             ),
+           {:ok, uri} <-
+             PortalWeb.OIDC.build_verification_uri(
+               "google_directory_sync",
+               config,
+               verifier,
+               state_token
+             ) do
+        verification = %{
+          type: "google_directory_sync",
+          config: config,
+          verifier: verifier,
+          verification_ref: verification_ref,
+          workspace_customer_id: workspace_customer_id,
+          impersonation_email: impersonation_email
+        }
+
+        {:ok, verification, uri}
       end
 
     case result do
-      {:ok, domain} when is_binary(domain) ->
-        # Merge existing changes with new verification data and re-run validation
-        # This preserves form changes (like name, impersonation_email) while adding domain
-        attrs =
-          changeset.changes
-          |> Map.put(:domain, domain)
-          |> Map.put(:is_verified, true)
-          |> Map.new(fn {k, v} -> {to_string(k), v} end)
+      {:ok, verification, uri} ->
+        socket =
+          assign(socket,
+            active_verification: nil,
+            pending_verification: verification,
+            verification_error: nil
+          )
 
-        changeset =
-          changeset
-          |> apply_changes()
-          |> changeset(attrs)
-
-        {:noreply,
-         assign(socket, form: to_form(changeset), verification_error: nil, verifying: false)}
+        {:noreply, push_event(socket, "open_url", %{url: uri})}
 
       error ->
         msg = parse_google_verification_error(error)
-        {:noreply, assign(socket, verification_error: msg, verifying: false)}
+
+        socket =
+          socket
+          |> assign(verification_error: msg, verifying: false)
+          |> push_event("close_open_url", %{})
+
+        {:noreply, socket}
     end
   end
 
   defp start_verification(%{assigns: %{type: "entra"}} = socket) do
     with {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification("entra_directory_sync", []),
+         verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
          verification_ref = Ecto.UUID.generate(),
-         lv_pid_string = self() |> :erlang.pid_to_list() |> to_string(),
+         lv_pid_string = PortalWeb.OIDC.serialize_pid(self()),
          state_token <-
            PortalWeb.OIDC.sign_verification_state(
              lv_pid_string,
@@ -1717,10 +1869,18 @@ defmodule PortalWeb.Settings.DirectorySync do
            PortalWeb.OIDC.build_verification_uri(
              "entra_directory_sync",
              config,
-             "",
+             verifier,
              state_token
            ) do
-      socket = assign(socket, active_verification: %{verification_ref: verification_ref})
+      verification = %{
+        config: config,
+        verifier: verifier,
+        verification_ref: verification_ref
+      }
+
+      socket =
+        assign(socket, active_verification: nil, pending_verification: verification)
+
       {:noreply, push_event(socket, "open_url", %{url: uri})}
     else
       {:error, reason} ->
@@ -1756,6 +1916,13 @@ defmodule PortalWeb.Settings.DirectorySync do
     end
   end
 
+  defp google_customer_identity(%{"id" => customer_id, "customerDomain" => domain})
+       when is_binary(customer_id) and customer_id != "" and is_binary(domain) and domain != "" do
+    {:ok, customer_id, domain}
+  end
+
+  defp google_customer_identity(_customer), do: {:error, :invalid_google_customer}
+
   defp clear_verification_if_trigger_fields_changed(changeset) do
     fields = [:impersonation_email, :okta_domain, :client_id, :private_key_jwk, :kid, :tenant_id]
 
@@ -1774,6 +1941,8 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp preserve_programmatic_fields(changeset, attrs) do
+    attrs = Map.drop(attrs, Enum.map(@programmatic_fields, &to_string/1))
+
     Enum.reduce(@programmatic_fields, attrs, fn field, acc ->
       case Map.fetch(changeset.changes, field) do
         {:ok, value} -> Map.put(acc, to_string(field), value)
@@ -1849,6 +2018,10 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   defp parse_google_verification_error({:error, :service_account_not_configured}) do
     "No Google Workspace credentials are configured for this deployment. Please contact your administrator."
+  end
+
+  defp parse_google_verification_error({:error, :invalid_google_customer}) do
+    "Google returned invalid Workspace customer information. Please verify the impersonation account and try again."
   end
 
   defp parse_google_verification_error({:error, reason}) when is_exception(reason) do
@@ -1967,6 +2140,10 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     {String.trim(key), clean_value}
   end
+
+  defp sync_module(%Entra.Directory{}), do: Entra.Sync
+  defp sync_module(%Google.Directory{}), do: Google.Sync
+  defp sync_module(%Okta.Directory{}), do: Okta.Sync
 
   defmodule Database do
     alias Portal.{Entra, Google, Okta, Safe}

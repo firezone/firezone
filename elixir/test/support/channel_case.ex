@@ -42,11 +42,15 @@ defmodule PortalAPI.ChannelCase do
     * `:token` - Authorization token to include in headers
     * `:user_agent` - User agent string (default: "iOS/12.7 connlib/1.3.0")
     * `:x_headers` - Custom x_headers that REPLACE the default geo headers
+    * `:host` - Request host, as `connect_info.uri` carries it
+    * `:client_cert` - DER-encoded TLS peer certificate
   """
   def build_connect_info(opts \\ []) do
     ip = Keyword.get(opts, :ip, unique_ip())
     token = Keyword.get(opts, :token)
     user_agent = Keyword.get(opts, :user_agent, "iOS/12.7 connlib/1.3.0")
+    host = Keyword.get(opts, :host, "api.firezone.test")
+    client_cert = Keyword.get(opts, :client_cert)
     custom_headers = Keyword.get(opts, :x_headers)
 
     # If custom headers are provided, use those; otherwise use default geo headers
@@ -57,19 +61,15 @@ defmodule PortalAPI.ChannelCase do
         @geo_headers
       end
 
-    base_headers = [{"x-forwarded-for", :inet.ntoa(ip) |> to_string()} | geo_headers]
-
     x_headers =
-      if token do
-        [{"x-authorization", "Bearer #{token}"} | base_headers]
-      else
-        base_headers
-      end
+      [{"x-forwarded-for", :inet.ntoa(ip) |> to_string()} | geo_headers]
+      |> prepend_header(token && {"x-authorization", "Bearer #{token}"})
 
     %{
       user_agent: user_agent,
-      peer_data: %{address: ip},
+      peer_data: %{address: ip, ssl_cert: client_cert},
       x_headers: x_headers,
+      uri: %URI{scheme: "https", host: host, port: 443, path: "/"},
       trace_context_headers: []
     }
   end
@@ -105,4 +105,7 @@ defmodule PortalAPI.ChannelCase do
 
     Map.put(tags, :pg_scope, scope)
   end
+
+  defp prepend_header(headers, nil), do: headers
+  defp prepend_header(headers, header), do: [header | headers]
 end

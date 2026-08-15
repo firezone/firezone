@@ -32,13 +32,6 @@ services:
       DATABASE_NAME: ${DATABASE_NAME:-firezone_dev}
       DATABASE_USER: ${DATABASE_USER:-postgres}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-postgres}
-      # Feature flags
-      FEATURE_POLICY_CONDITIONS_ENABLED: "true"
-      FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
-      FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"
-      FEATURE_IDP_SYNC_ENABLED: "true"
-      FEATURE_REST_API_ENABLED: "true"
-      FEATURE_INTERNET_RESOURCE_ENABLED: "true"
       ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
       ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
       OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'

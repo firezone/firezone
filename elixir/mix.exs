@@ -16,7 +16,7 @@ defmodule Portal.MixProject do
     [
       app: :portal,
       version: version(),
-      elixir: "~> 1.14",
+      elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
@@ -102,7 +102,7 @@ defmodule Portal.MixProject do
 
       # Email
       {:gen_smtp, "~> 1.0"},
-      {:swoosh, "~> 1.26.0"},
+      {:swoosh, "~> 1.27.0"},
       {:phoenix_swoosh, "~> 1.0"},
 
       # IP Geolocation
@@ -148,7 +148,7 @@ defmodule Portal.MixProject do
       {:opentelemetry_semantic_conventions, "~> 1.27", override: true},
       {:sentry, "~> 13.1"},
       {:logger_json, "~> 7.0"},
-      {:req, "~> 0.6.2"},
+      {:req, "~> 0.7.2"},
 
       # Asset pipeline
       {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},
@@ -199,7 +199,10 @@ defmodule Portal.MixProject do
       "assets.build": ["tailwind portal", "esbuild portal"],
       "assets.deploy": ["tailwind portal --minify", "esbuild portal --minify", "phx.digest"],
       "phx.server": ["ecto.create --quiet", "ecto.migrate", "phx.server"],
-      test: ["ecto.create --quiet", "ecto.migrate", "test"],
+      "openapi.generate": [
+        "openapi.spec.json --spec PortalAPI.ApiSpec --pretty=true --vendor-extensions=false --filename priv/static/openapi.json"
+      ],
+      test: ["ecto.create --quiet", "ecto.migrate", "openapi.generate", "test"],
       start: ["compile --no-validate-compile-env", "phx.server", "run --no-halt"]
     ]
   end

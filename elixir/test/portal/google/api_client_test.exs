@@ -1,5 +1,5 @@
 defmodule Portal.Google.APIClientTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   import ExUnit.CaptureLog
 
   alias Portal.Google.APIClient
@@ -57,7 +57,7 @@ defmodule Portal.Google.APIClientTest do
         Req.Test.json(conn, %{"error" => "not mocked"})
       end)
 
-      server = start_supervised!({TokenCache, name: Portal.Google.TokenCache})
+      server = start_token_cache()
       Req.Test.allow(APIClient, self(), server)
       Req.Test.allow(Portal.Azure.ManagedIdentity, self(), server)
 
@@ -144,8 +144,96 @@ defmodule Portal.Google.APIClientTest do
       refute_receive {:sts_request, _sts_params}
     end
 
+    test "uses and caches a customer-read-only token separately from the sync token" do
+      configure_workload_identity()
+      test_pid = self()
+
+      Req.Test.stub(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{"error" => "not mocked"})
+      end)
+
+      server = start_token_cache()
+      Req.Test.allow(APIClient, self(), server)
+      Req.Test.allow(Portal.Azure.ManagedIdentity, self(), server)
+
+      Req.Test.expect(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{
+          "access_token" => "azure-managed-identity-token",
+          "expires_on" => Integer.to_string(System.system_time(:second) + 3600)
+        })
+      end)
+
+      Req.Test.expect(APIClient, 5, fn conn ->
+        case conn.request_path do
+          "/v1/token" ->
+            Req.Test.json(conn, %{
+              "access_token" => "federated-google-token",
+              "expires_in" => 3600
+            })
+
+          "/v1/projects/-/serviceAccounts/" <>
+              @service_account_email <> ":signJwt" ->
+            {:ok, body, conn} = Plug.Conn.read_body(conn)
+            %{"payload" => payload} = JSON.decode!(body)
+            claims = JSON.decode!(payload)
+            send(test_pid, {:delegated_claims, claims})
+
+            signed_jwt =
+              if claims["scope"] ==
+                   "https://www.googleapis.com/auth/admin.directory.customer.readonly" do
+                "customer-signed-jwt"
+              else
+                "sync-signed-jwt"
+              end
+
+            Req.Test.json(conn, %{"signedJwt" => signed_jwt})
+
+          "/token" ->
+            {:ok, body, conn} = Plug.Conn.read_body(conn)
+            params = URI.decode_query(body)
+
+            token =
+              case params["assertion"] do
+                "customer-signed-jwt" -> "customer-access-token"
+                "sync-signed-jwt" -> "sync-access-token"
+              end
+
+            Req.Test.json(conn, %{"access_token" => token, "expires_in" => 3600})
+        end
+      end)
+
+      assert {:ok, "sync-access-token"} = APIClient.get_access_token("admin@example.com")
+
+      assert {:ok, "customer-access-token"} =
+               APIClient.get_customer_access_token("admin@example.com")
+
+      assert {:ok, "sync-access-token"} = APIClient.get_access_token("admin@example.com")
+
+      assert {:ok, "customer-access-token"} =
+               APIClient.get_customer_access_token("admin@example.com")
+
+      assert_receive {:delegated_claims, sync_claims}
+      assert sync_claims["sub"] == "admin@example.com"
+
+      assert MapSet.new(String.split(sync_claims["scope"])) ==
+               MapSet.new([
+                 "https://www.googleapis.com/auth/admin.directory.customer.readonly",
+                 "https://www.googleapis.com/auth/admin.directory.orgunit.readonly",
+                 "https://www.googleapis.com/auth/admin.directory.group.readonly",
+                 "https://www.googleapis.com/auth/admin.directory.user.readonly"
+               ])
+
+      assert_receive {:delegated_claims, customer_claims}
+      assert customer_claims["sub"] == "admin@example.com"
+
+      assert customer_claims["scope"] ==
+               "https://www.googleapis.com/auth/admin.directory.customer.readonly"
+
+      refute_receive {:delegated_claims, _claims}
+    end
+
     test "caches a service-account-key access token" do
-      server = start_supervised!({TokenCache, name: Portal.Google.TokenCache})
+      server = start_token_cache()
       Req.Test.allow(APIClient, self(), server)
 
       Req.Test.expect(APIClient, fn conn ->
@@ -193,7 +281,7 @@ defmodule Portal.Google.APIClientTest do
         Req.Test.json(conn, %{"error" => "not mocked"})
       end)
 
-      server = start_supervised!({TokenCache, name: Portal.Google.TokenCache})
+      server = start_token_cache()
       Req.Test.allow(APIClient, self(), server)
       Req.Test.allow(Portal.Azure.ManagedIdentity, self(), server)
 
@@ -1472,6 +1560,13 @@ defmodule Portal.Google.APIClientTest do
       workload_identity_audience: @workload_identity_audience,
       service_account_email: @service_account_email
     )
+  end
+
+  defp start_token_cache do
+    name = :"google_token_cache_#{System.unique_integer([:positive])}"
+    server = start_supervised!({TokenCache, name: name})
+    Portal.Config.merge_env_override(:portal, APIClient, token_cache: server)
+    server
   end
 
   defp assert_authorization_header(conn, expected_token) do

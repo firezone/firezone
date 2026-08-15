@@ -155,11 +155,27 @@ defmodule PortalWeb.Mocks.OIDC do
   end
 
   @doc """
+  Overrides the JWKS returned by the mock provider for the current test.
+  """
+  def set_jwks_response(jwks) do
+    Process.put(:oidc_mock_jwks_response, jwks)
+  end
+
+  @doc """
+  Overrides fields in the discovery document returned by the mock provider.
+  """
+  def set_discovery_document_overrides(overrides) do
+    Process.put(:oidc_mock_discovery_document_overrides, overrides)
+  end
+
+  @doc """
   Clears any custom token or userinfo responses.
   """
   def clear_custom_responses do
     Process.delete(:oidc_mock_token_response)
     Process.delete(:oidc_mock_userinfo_response)
+    Process.delete(:oidc_mock_jwks_response)
+    Process.delete(:oidc_mock_discovery_document_overrides)
   end
 
   defp handle_request(conn, test_pid, endpoint) do
@@ -169,10 +185,16 @@ defmodule PortalWeb.Mocks.OIDC do
     # Match paths by suffix to support per-test unique endpoints (e.g., /024530/.well-known/openid-configuration)
     cond do
       String.ends_with?(conn.request_path, "/.well-known/openid-configuration") ->
-        Req.Test.json(conn, discovery_document(endpoint))
+        overrides = get_from_test_process(test_pid, :oidc_mock_discovery_document_overrides) || %{}
+
+        endpoint
+        |> discovery_document()
+        |> Map.merge(overrides)
+        |> then(&Req.Test.json(conn, &1))
 
       String.ends_with?(conn.request_path, "/.well-known/jwks.json") ->
-        Req.Test.json(conn, %{"keys" => [jwks()]})
+        jwks = get_from_test_process(test_pid, :oidc_mock_jwks_response) || jwks()
+        Req.Test.json(conn, %{"keys" => [jwks]})
 
       String.ends_with?(conn.request_path, "/oauth/token") ->
         handle_token_request(conn, test_pid, endpoint)
@@ -214,11 +236,18 @@ defmodule PortalWeb.Mocks.OIDC do
 
           nil ->
             # Default response
+            verifier = conn.body_params["code_verifier"]
+
+            claims =
+              endpoint
+              |> default_claims()
+              |> Map.put("nonce", PortalWeb.OIDC.nonce(verifier))
+
             Req.Test.json(conn, %{
               "access_token" => "test_access_token",
               "token_type" => "Bearer",
               "expires_in" => 3600,
-              "id_token" => sign_openid_connect_token(default_claims(endpoint))
+              "id_token" => sign_openid_connect_token(claims)
             })
         end
     end
@@ -352,8 +381,11 @@ defmodule PortalWeb.Mocks.OIDC do
     }
   end
 
-  # Use static base endpoint for tests that create their own stubs
-  def default_claims, do: default_claims(@mock_endpoint_base)
+  def default_claims do
+    mock_endpoint()
+    |> default_claims()
+    |> Map.put("nonce", PortalWeb.OIDC.nonce("test-verifier"))
+  end
 
   def default_claims(port) when is_integer(port), do: default_claims("http://localhost:#{port}")
 
@@ -388,7 +420,10 @@ defmodule PortalWeb.Mocks.OIDC do
     {_alg, token} =
       jwks()
       |> JOSE.JWK.from()
-      |> JOSE.JWS.sign(JSON.encode!(claims), %{"alg" => "RS256"})
+      |> JOSE.JWS.sign(JSON.encode!(claims), %{
+        "alg" => "RS256",
+        "kid" => jwks()["kid"]
+      })
       |> JOSE.JWS.compact()
 
     token
@@ -406,6 +441,7 @@ defmodule PortalWeb.Mocks.OIDC do
       "e" => "AQAB",
       "kid" => "example@firezone.dev",
       "kty" => "RSA",
+      "issuer" => "https://login.microsoftonline.com/{tenantid}/v2.0",
       "n" =>
         "qlKll8no4lPYXNSuTTnacpFHiXwPOv_htCYvIXmiR7CWhiiOHQqj7KWXIW7TGxyoLVIyeRM4mwv" <>
           "kLI-UgsSMYdEKTT0j7Ydjrr0zCunPu5Gxr2yOmcRaszAzGxJL5DwpA0V40RqMlm5OuwdqS4To" <>

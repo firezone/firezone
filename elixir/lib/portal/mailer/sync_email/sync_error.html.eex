@@ -65,11 +65,11 @@
 								<tr>
 									<td class="sm-px-6 content-box" style="border-radius: 4px; background-color: #ffffff; padding: 48px; font-size: 16px; color: #4f4f4f; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05)">
 										<h1 class="sm-leading-8" style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #000000">
-											<%= @directory.name %> Sync Error!
+											<%= @record.name %> Sync Error!
 										</h1>
 										<p style="margin: 0; line-height: 24px">
-											The <%= @directory.name %> directory has encountered an unrecoverable error and sync has been disabled.
-											Please visit your <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: underline;">directory sync settings</a> to re-verify the directory and enable sync.
+											The <%= @record.name %> <%= @noun %> has encountered an unrecoverable error and sync has been disabled.
+											Please visit your <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: underline;"><%= @settings_link_text %></a> <%= @settings_action %>
 										</p>
 										<div role="separator" style="line-height: 16px">&zwj;</div>
 										<p style="margin: 0; line-height: 24px;">
@@ -77,11 +77,11 @@
 										</p>
 										<div role="separator" style="line-height: 8px">&zwj;</div>
 										<div>
-											<pre style="margin: 0; white-space: pre; border-radius: 4px; background-color: #f3f4f6; padding: 8px 12px; line-height: 24px; color: #1f2937"><code><%= @directory.error_message %></code></pre>
+											<pre style="margin: 0; white-space: pre; border-radius: 4px; background-color: #f3f4f6; padding: 8px 12px; line-height: 24px; color: #1f2937"><code><%= @record.error_message %></code></pre>
 										</div>
 										<div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
 										<p style="margin: 0; line-height: 24px;">
-											<span style="font-weight: 500; text-decoration-line: underline; text-underline-offset: 2px">Directory Details</span>
+											<span style="font-weight: 500; text-decoration-line: underline; text-underline-offset: 2px"><%= @details_heading %></span>
 										</p>
 										<table class="rtl-text-right" style="width: 100%; text-align: left; font-size: 14px; color: #6d6d6d" cellpadding="0" cellspacing="0" role="none">
 											<tr style="border-bottom-width: 1px; background-color: #ffffff">
@@ -93,22 +93,28 @@
 												<td style="padding: 4px 24px;"><%= @account.id %></td>
 											</tr>
 											<tr style="border-bottom-width: 1px; background-color: #ffffff;">
-												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;">Directory Name</th>
-												<td style="padding: 4px 24px;"><%= @directory.name %></td>
+												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;"><%= @record_label %> Name</th>
+												<td style="padding: 4px 24px;"><%= @record.name %></td>
 											</tr>
 											<tr style="border-bottom-width: 1px; background-color: #ffffff;">
-												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;">Directory ID</th>
-												<td style="padding: 4px 24px;"><%= @directory.id %></td>
+												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;"><%= @record_label %> ID</th>
+												<td style="padding: 4px 24px;"><%= @record.id %></td>
 											</tr>
 											<tr style="border-bottom-width: 1px; background-color: #ffffff;">
 												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;">Error Occurred At</th>
-												<td style="padding: 4px 24px;"><%= @directory.errored_at || "Unknown" %></td>
+												<td style="padding: 4px 24px;"><%= @record.errored_at || "Unknown" %></td>
 											</tr>
+<%= for {label, value} <- @details_rows do %>
+											<tr style="border-bottom-width: 1px; background-color: #ffffff;">
+												<th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d;"><%= label %></th>
+												<td style="padding: 4px 24px;"><%= value %></td>
+											</tr>
+<% end %>
 										</table>
 										<p></p>
 										<div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0;">&zwj;</div>
 										<p style="margin: 0; line-height: 24px;">
-											Please verify that all directory information entered into Firezone is correct. If the problem persists, please reach out to Firezone support via Slack or email.
+											<%= @remediation %> If the problem persists, please reach out to Firezone support via Slack or email.
 											<br>
 											<br>
 											Thanks, <br>The Firezone Team

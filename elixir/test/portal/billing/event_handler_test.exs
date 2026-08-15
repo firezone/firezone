@@ -342,6 +342,53 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:error, :no_plan_product} = EventHandler.handle_event(event)
     end
 
+    test "sets the monthly active users limit from Enterprise seats", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 42, %{
+          "monthly_active_users_count" => "7"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.monthly_active_users_count == 42
+    end
+
+    test "clears the monthly active users limit for Team seats", %{
+      account: account,
+      customer: customer
+    } do
+      update_account(account, %{limits: %{monthly_active_users_count: 99}})
+
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 42, %{
+          "monthly_active_users_count" => "7"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.monthly_active_users_count == nil
+      assert updated.limits.users_count == 42
+    end
+
     test "clears account limit flags when subscription update increases limits", %{
       account: account,
       customer: customer
@@ -663,7 +710,7 @@ defmodule Portal.Billing.EventHandlerTest do
           name: "Team",
           metadata: %{
             "policy_conditions" => "true",
-            "traffic_filters" => "false",
+            "rest_api" => "false",
             "sites_count" => 100
           }
         )
@@ -684,7 +731,7 @@ defmodule Portal.Billing.EventHandlerTest do
 
       updated = Portal.Repo.get!(Portal.Account, account.id)
       assert updated.features.policy_conditions == true
-      assert updated.features.traffic_filters == false
+      assert updated.features.rest_api == false
     end
 
     test "parses numeric string limits in metadata", %{account: account, customer: customer} do

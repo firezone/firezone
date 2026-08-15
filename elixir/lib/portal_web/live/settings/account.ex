@@ -25,7 +25,8 @@ defmodule PortalWeb.Settings.Account do
         users_count: Database.count_users_for_account(subject),
         active_users_count: Database.count_1m_active_users_for_account(subject),
         sites_count: Database.count_groups_for_account(subject),
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
+        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?(),
+        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
     {:ok, socket}
@@ -37,7 +38,8 @@ defmodule PortalWeb.Settings.Account do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
+        device_trust_enabled?={@device_trust_enabled?}
+        device_posture_enabled?={@device_posture_enabled?}
       >
         <:actions>
           <.button phx-click="open_edit_account" size="xs">
@@ -119,14 +121,6 @@ defmodule PortalWeb.Settings.Account do
             />
             <.feature_row label="REST API" enabled={feature_enabled?(@account, :rest_api)} />
             <.feature_row
-              label="Traffic Filters"
-              enabled={feature_enabled?(@account, :traffic_filters)}
-            />
-            <.feature_row
-              label="Client-to-Client"
-              enabled={feature_enabled?(@account, :client_to_client)}
-            />
-            <.feature_row
               label="Internet Resource"
               enabled={feature_enabled?(@account, :internet_resource)}
             />
@@ -135,6 +129,10 @@ defmodule PortalWeb.Settings.Account do
               enabled={feature_enabled?(@account, :policy_conditions)}
             />
             <.feature_row label="Log Sinks" enabled={feature_enabled?(@account, :log_sinks)} />
+            <.feature_row
+              label="Device Posture"
+              enabled={feature_enabled?(@account, :device_posture)}
+            />
           </div>
 
           <%!-- Actions (pending deletion, self-initiated, not locked) --%>
@@ -416,14 +414,14 @@ defmodule PortalWeb.Settings.Account do
           />
         </div>
 
-        <div class="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-          <.button type="button" phx-click="close_edit_account" size="xs">
+        <.panel_footer>
+          <.panel_footer_button type="button" phx-click="close_edit_account">
             Cancel
-          </.button>
-          <.button type="submit" style="primary" disabled={not @form.source.valid?} size="xs">
+          </.panel_footer_button>
+          <.panel_footer_button type="submit" style="primary" disabled={not @form.source.valid?}>
             Save
-          </.button>
-        </div>
+          </.panel_footer_button>
+        </.panel_footer>
       </.form>
     </div>
     """

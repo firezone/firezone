@@ -73,7 +73,8 @@ defmodule PortalWeb.Settings.LogSinks do
         page_title: "Log Sinks",
         sentinel_setup_tab: "portal",
         s3_setup_tab: "console",
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
+        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?(),
+        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
     {:ok, init(socket, new: true)}
@@ -244,7 +245,9 @@ defmodule PortalWeb.Settings.LogSinks do
          )}
 
       true ->
-        case Oban.insert(sync_module(sink).new(%{"log_sink_id" => sink.id})) do
+        args = %{"account_id" => sink.account_id, "log_sink_id" => sink.id}
+
+        case Oban.insert(sync_module(sink).new(args)) do
           {:ok, _job} ->
             {:noreply,
              socket
@@ -279,7 +282,8 @@ defmodule PortalWeb.Settings.LogSinks do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
+        device_trust_enabled?={@device_trust_enabled?}
+        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <%= if Portal.Account.log_sinks_enabled?(@account) do %>
@@ -519,19 +523,19 @@ defmodule PortalWeb.Settings.LogSinks do
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} s3_setup_tab={@s3_setup_tab} />
             </div>
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <.button phx-click="close_panel">
+            <.panel_footer>
+              <.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button
+              </.panel_footer_button>
+              <.panel_footer_button
                 form="log-sink-form"
                 type="submit"
                 style="primary"
                 disabled={not @form.source.valid?}
               >
                 Create
-              </.button>
-            </div>
+              </.panel_footer_button>
+            </.panel_footer>
           </div>
         </div>
 
@@ -562,19 +566,19 @@ defmodule PortalWeb.Settings.LogSinks do
               </.flash>
               <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} s3_setup_tab={@s3_setup_tab} />
             </div>
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <.button phx-click="close_panel">
+            <.panel_footer>
+              <.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button
+              </.panel_footer_button>
+              <.panel_footer_button
                 form="log-sink-form"
                 type="submit"
                 style="primary"
                 disabled={not @form.source.valid?}
               >
                 Save
-              </.button>
-            </div>
+              </.panel_footer_button>
+            </.panel_footer>
           </div>
         </div>
       <% else %>
@@ -818,37 +822,6 @@ defmodule PortalWeb.Settings.LogSinks do
           Active
         </span>
     <% end %>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :label, :string, required: true
-  attr :color, :string, required: true
-  slot :inner_block, required: true
-
-  defp status_popover(assigns) do
-    ~H"""
-    <button
-      type="button"
-      id={"#{@id}-button"}
-      phx-hook="Popover"
-      data-popover-target-id={@id}
-      data-popover-trigger="click"
-      data-popover-placement="bottom"
-      class={[
-        "inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded cursor-pointer",
-        @color == "red" && "bg-red-100 text-red-700",
-        @color == "yellow" && "bg-yellow-100 text-yellow-700"
-      ]}
-    >
-      {@label} <.icon name="ri-information-line" class="w-3 h-3" />
-    </button>
-    <div
-      id={@id}
-      class="invisible opacity-0 fixed z-50 w-80 p-3 text-left bg-elevated rounded shadow-sm border border-border"
-    >
-      {render_slot(@inner_block)}
-    </div>
     """
   end
 

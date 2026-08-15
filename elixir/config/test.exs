@@ -159,13 +159,15 @@ config :portal, Portal.Azure.ManagedIdentity,
     retry: false
   ]
 
-config :portal, Portal.Entra.APIClient,
-  client_id: "test_client_id",
-  client_secret: "test_client_secret",
+config :portal, Portal.Microsoft.Graph.APIClient,
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",
+  applications: [
+    entra: [client_id: "test_client_id", client_secret: "test_client_secret"],
+    intune: [client_id: "test_intune_client_id", client_secret: "test_intune_client_secret"]
+  ],
   req_opts: [
-    plug: {Req.Test, Portal.Entra.APIClient},
+    plug: {Req.Test, Portal.Microsoft.Graph.APIClient},
     retry: false
   ]
 
@@ -182,6 +184,7 @@ config :portal, Portal.ClockDriftAlarm, enabled: false
 config :portal, :client_session_queue, enabled: false
 config :portal, :gateway_session_queue, enabled: false
 config :portal, :policy_authorization_queue, enabled: false
+config :portal, :revocation_endpoint_queue, enabled: false
 
 config :portal, Portal.ComponentVersions,
   fetch_from_url: false,
@@ -203,10 +206,30 @@ config :portal, Portal.Google.APIClient,
     plug: {Req.Test, Portal.Google.APIClient}
   ]
 
+config :portal, Portal.Crl.Sync,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, Portal.Crl.Sync}
+  ]
+
+config :portal, Portal.Ocsp.Sync,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, Portal.Ocsp.Sync}
+  ]
+
 config :portal, Portal.TokenCache, enabled: false
 
 # Auth provider configs with Req.Test for OIDC mocking
 config :portal, Portal.Google.AuthProvider,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, PortalWeb.OIDC}
+  ]
+
+config :portal, Portal.Google.SyncAuthorization,
+  client_id: "test_google_sync_authz_client_id",
+  client_secret: "test_google_sync_authz_client_secret",
   req_opts: [
     retry: false,
     plug: {Req.Test, PortalWeb.OIDC}

@@ -60,7 +60,10 @@ defmodule Portal.Application do
       # before transports are force-terminated.
       {PortalWeb.Endpoint, shutdown: 40_000},
       {PortalAPI.Endpoint, shutdown: 40_000},
-      {PortalOps.Endpoint, shutdown: 40_000}
+      {PortalOps.Endpoint, shutdown: 40_000},
+      # The public listener stops first during reverse-order shutdown, before
+      # the endpoints it dispatches into begin draining.
+      {Portal.Endpoint, shutdown: 40_000}
     ]
 
     # Child order is chosen to make reverse-order shutdown graceful:
@@ -72,6 +75,7 @@ defmodule Portal.Application do
       client_session_queue() ++
       gateway_session_queue() ++
       policy_authorization_queue() ++
+      revocation_endpoint_queue() ++
       rate_limit() ++
       telemetry() ++ oban() ++ endpoint_children ++ replication() ++ [Portal.Cluster]
   end
@@ -121,6 +125,13 @@ defmodule Portal.Application do
     queue_child(
       :policy_authorization_queue,
       PortalAPI.Client.Channel.policy_authorization_queue_opts()
+    )
+  end
+
+  defp revocation_endpoint_queue do
+    queue_child(
+      :revocation_endpoint_queue,
+      PortalAPI.Client.DeviceTrust.revocation_endpoint_queue_opts()
     )
   end
 

@@ -19,6 +19,65 @@ defmodule Portal.QueueTest do
 
   defp unique_name(prefix), do: :"#{prefix}_#{inspect(make_ref())}"
 
+  describe "dedup_key" do
+    setup do
+      test_pid = self()
+
+      name = unique_name(:dedup_queue)
+
+      start_supervised!(
+        {Portal.Queue,
+         [
+           name: name,
+           flush_interval: :timer.hours(1),
+           flush_threshold: 3,
+           label: "dedup",
+           flush_on_terminate: false,
+           dedup_key: & &1.key,
+           on_flush: fn entries ->
+             send(test_pid, {:flushed, Enum.map(entries, fn {attrs, _meta} -> attrs.key end)})
+             length(entries)
+           end
+         ]}
+      )
+
+      %{name: name}
+    end
+
+    test "a repeated key never reaches the threshold", %{name: name} do
+      for _ <- 1..50, do: Portal.Queue.enqueue(name, %{key: "same"})
+
+      refute_receive {:flushed, _keys}
+
+      Portal.Queue.flush(name)
+      assert_receive {:flushed, ["same"]}
+    end
+
+    test "the threshold counts distinct entries", %{name: name} do
+      Portal.Queue.enqueue(name, %{key: "a"})
+      Portal.Queue.enqueue(name, %{key: "a"})
+      Portal.Queue.enqueue(name, %{key: "b"})
+
+      refute_receive {:flushed, _keys}
+
+      Portal.Queue.enqueue(name, %{key: "c"})
+
+      assert_receive {:flushed, keys}
+      assert Enum.sort(keys) == ["a", "b", "c"]
+    end
+
+    test "a key seen again after a flush is buffered afresh", %{name: name} do
+      Portal.Queue.enqueue(name, %{key: "a"})
+      Portal.Queue.flush(name)
+      assert_receive {:flushed, ["a"]}
+
+      Portal.Queue.enqueue(name, %{key: "a"})
+      Portal.Queue.flush(name)
+      assert_receive {:flushed, ["a"]}
+    end
+  end
+
+
   defp client_session_opts(extra) do
     {cb_opts, queue_opts} = Keyword.split(extra, [:on_failed, :on_confirmed])
 

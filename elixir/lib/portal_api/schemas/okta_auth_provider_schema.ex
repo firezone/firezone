@@ -72,6 +72,7 @@ defmodule PortalAPI.Schemas.OktaAuthProvider do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.OktaAuthProvider
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "OktaAuthProviderListResponse",
@@ -82,7 +83,8 @@ defmodule PortalAPI.Schemas.OktaAuthProvider do
           description: "Okta Auth Provider details",
           type: :array,
           items: OktaAuthProvider.Schema
-        }
+        },
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

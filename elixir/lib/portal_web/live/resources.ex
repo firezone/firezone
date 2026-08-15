@@ -10,7 +10,7 @@ defmodule PortalWeb.Resources do
 
   import PortalWeb.Resources.Components,
     only: [
-      map_filters_form_attrs: 2,
+      map_filters_form_attrs: 1,
       nil_site_label: 1,
       panel_shell: 1,
       resource_details_panel: 1,
@@ -41,7 +41,6 @@ defmodule PortalWeb.Resources do
       |> assign(stale: false)
       |> assign(presence_tick: 0)
       |> assign(page_title: "Resources")
-      |> assign(flow_logs_feature_enabled?: Database.flow_logs_feature_enabled?())
       |> assign_async(:resources_count, fn -> {:ok, %{resources_count: Database.count_resources(subject)}} end)
       |> assign(
         selected_resource: nil,
@@ -65,7 +64,6 @@ defmodule PortalWeb.Resources do
         ],
         callback: &handle_resources_update!/2
       )
-      |> maybe_hide_static_device_pool_filter_value()
 
     {:ok, socket}
   end
@@ -202,8 +200,7 @@ defmodule PortalWeb.Resources do
       %{
         view: :list,
         tab: :groups,
-        timezone: Map.get(connect_params, "timezone", "UTC"),
-        client_to_client_enabled?: Database.client_to_client_enabled?(socket.assigns.account)
+        timezone: Map.get(connect_params, "timezone", "UTC")
       }
     )
   end
@@ -596,7 +593,6 @@ defmodule PortalWeb.Resources do
           <.resource_details_panel
             account={@account}
             resource={@selected_resource}
-            flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
             pool_member_ids={@selected_resource_pool_member_ids}
             pool_clients={@selected_resource_pool_clients}
             clients_expanded_id={@clients_expanded_id}
@@ -708,7 +704,7 @@ defmodule PortalWeb.Resources do
       socket.assigns.resource_form.address_description_changed? ||
         payload["_target"] == ["resource", "address_description"]
 
-    attrs = map_filters_form_attrs(attrs, socket.assigns.account)
+    attrs = map_filters_form_attrs(attrs)
 
     changeset =
       if socket.assigns.resource_panel.view == :new_form do
@@ -727,7 +723,7 @@ defmodule PortalWeb.Resources do
   end
 
   def handle_event("submit_resource_form", %{"resource" => attrs}, socket) do
-    attrs = map_filters_form_attrs(attrs, socket.assigns.account)
+    attrs = map_filters_form_attrs(attrs)
 
     if socket.assigns.resource_panel.view == :new_form do
       case Database.create_resource(
@@ -1324,7 +1320,6 @@ defmodule PortalWeb.Resources do
       resource_form_selected_clients: assigns.resource_form.selected_clients,
       resource_form_client_search: assigns.resource_form.client_search,
       resource_form_client_search_results: assigns.resource_form.client_search_results,
-      client_to_client_enabled: assigns.resource_panel.client_to_client_enabled?,
       filter_ports: resource_filter_ports(assigns.resource_form.form),
       filter_errors: resource_filter_errors(assigns.resource_form.form)
     }
@@ -1337,32 +1332,6 @@ defmodule PortalWeb.Resources do
   defp resource_panel_ui_state(assigns) do
     assigns.resource_ui
   end
-
-  defp maybe_hide_static_device_pool_filter_value(socket) do
-    if socket.assigns.resource_panel.client_to_client_enabled? do
-      socket
-    else
-      filters =
-        Enum.map(socket.assigns.filters_by_table_id["resources"], &drop_static_device_pool/1)
-
-      assign(socket,
-        filters_by_table_id:
-          Map.put(socket.assigns.filters_by_table_id, "resources", filters)
-      )
-    end
-  end
-
-  defp drop_static_device_pool(%Portal.Repo.Filter{name: :type} = filter) do
-    values =
-      Enum.reject(filter.values, fn
-        {_label, "static_device_pool"} -> true
-        _ -> false
-      end)
-
-    %{filter | values: values}
-  end
-
-  defp drop_static_device_pool(filter), do: filter
 
   defp mark_stale_if_unreflected(socket, change) do
     if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.resources, change),
@@ -1434,15 +1403,8 @@ defmodule PortalWeb.Resources do
     alias Portal.Directory
     alias PortalWeb.Resources.Components
 
-    defdelegate client_to_client_enabled?(account), to: Components.Database
     defdelegate get_client(client_id, subject), to: Components.Database
     defdelegate search_clients(search_term, subject, selected_clients), to: Components.Database
-
-    def flow_logs_feature_enabled? do
-      from(f in Portal.Features, where: f.feature == :flow_logs and f.enabled == true)
-      |> Safe.unscoped()
-      |> Safe.exists?()
-    end
 
     def all_sites(subject) do
       from(s in Site, as: :sites)
@@ -1470,7 +1432,6 @@ defmodule PortalWeb.Resources do
       changeset =
         new_resource(subject, attrs)
         |> maybe_validate_required_fields()
-        |> Components.Database.validate_static_device_pool_feature_enabled(subject.account)
 
       with {:ok, validated_clients} <-
              Components.Database.validate_selected_clients(selected_clients, subject),
@@ -1515,9 +1476,7 @@ defmodule PortalWeb.Resources do
     end
 
     def update_resource(resource, attrs, selected_clients, subject) do
-      changeset =
-        change_resource(resource, subject, attrs)
-        |> Components.Database.validate_static_device_pool_feature_enabled(subject.account)
+      changeset = change_resource(resource, subject, attrs)
 
       with {:ok, validated_clients} <-
              Components.Database.validate_selected_clients(selected_clients, subject),

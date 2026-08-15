@@ -35,11 +35,11 @@ impl Request<SetTunFlagsPayload> {
 
         Self {
             name,
+            // Deliberately not `IFF_MULTI_QUEUE`: we only ever open a single queue,
+            // and attaching to a device that another process still holds must fail
+            // instead of splitting traffic between two processes.
             payload: SetTunFlagsPayload {
-                flags: (libc::IFF_TUN
-                    | libc::IFF_NO_PI
-                    | libc::IFF_MULTI_QUEUE
-                    | libc::IFF_VNET_HDR) as _,
+                flags: (libc::IFF_TUN | libc::IFF_NO_PI | libc::IFF_VNET_HDR) as _,
             },
         }
     }

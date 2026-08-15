@@ -10,7 +10,8 @@ defmodule PortalWeb.Settings.DNS do
       socket
       |> assign(page_title: "DNS")
       |> assign(dns_account: account)
-      |> assign(trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?())
+      |> assign(device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?())
+      |> assign(device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?())
 
     {:ok, socket}
   end
@@ -38,7 +39,8 @@ defmodule PortalWeb.Settings.DNS do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
+        device_trust_enabled?={@device_trust_enabled?}
+        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">
@@ -98,14 +100,14 @@ defmodule PortalWeb.Settings.DNS do
           <div class="flex-1 overflow-y-auto px-5 py-4">
             <.dns_form form={@form} />
           </div>
-          <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-            <.button phx-click="close_panel" size="sm">
+          <.panel_footer>
+            <.panel_footer_button phx-click="close_panel">
               Cancel
-            </.button>
-            <.button form="dns-form" type="submit" size="sm" style="primary">
+            </.panel_footer_button>
+            <.panel_footer_button form="dns-form" type="submit" style="primary">
               Save
-            </.button>
-          </div>
+            </.panel_footer_button>
+          </.panel_footer>
         </div>
       </div>
     </div>

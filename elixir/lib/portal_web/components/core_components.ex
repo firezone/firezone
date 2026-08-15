@@ -1575,12 +1575,6 @@ defmodule PortalWeb.CoreComponents do
     """
   end
 
-  def feature_name(%{feature: :traffic_filters} = assigns) do
-    ~H"""
-    Restrict access based on port and protocol rules
-    """
-  end
-
   def feature_name(%{feature: :rest_api} = assigns) do
     ~H"""
     REST API
@@ -1718,6 +1712,49 @@ defmodule PortalWeb.CoreComponents do
       <span :if={@dot} class={["w-1.5 h-1.5 rounded-full shrink-0", badge_dot_class(@style)]}></span>
       {render_slot(@inner_block)}
     </span>
+    """
+  end
+
+  @doc """
+  A status chip that opens a popover explaining itself.
+
+  For statuses that need a reason as well as a colour, such as a background job
+  that has stopped and the error that stopped it.
+
+  ## Examples
+
+      <.status_popover id="sink-status-1" label="Error" color="red">
+        <p class="text-xs text-body">Connection refused</p>
+      </.status_popover>
+  """
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :color, :string, required: true, values: ["red", "yellow"]
+  slot :inner_block, required: true
+
+  def status_popover(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id={"#{@id}-button"}
+      phx-hook="Popover"
+      data-popover-target-id={@id}
+      data-popover-trigger="click"
+      data-popover-placement="bottom"
+      class={[
+        "inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded cursor-pointer",
+        @color == "red" && "bg-red-100 text-red-700",
+        @color == "yellow" && "bg-yellow-100 text-yellow-700"
+      ]}
+    >
+      {@label} <.icon name="ri-information-line" class="w-3 h-3" />
+    </button>
+    <div
+      id={@id}
+      class="invisible opacity-0 fixed z-50 w-80 p-3 text-left bg-elevated rounded shadow-sm border border-border"
+    >
+      {render_slot(@inner_block)}
+    </div>
     """
   end
 

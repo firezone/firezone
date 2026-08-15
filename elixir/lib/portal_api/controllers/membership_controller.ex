@@ -34,11 +34,9 @@ defmodule PortalAPI.MembershipController do
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, %{"group_id" => group_id} = params) do
-    list_opts =
-      Pagination.params_to_list_opts(params)
-      |> Keyword.put(:filter, group_id: group_id)
-
-    with {:ok, actors, metadata} <- Database.list_actors(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         list_opts = Keyword.put(list_opts, :filter, group_id: group_id),
+         {:ok, actors, metadata} <- Database.list_actors(conn.assigns.subject, list_opts) do
       render(conn, :index, actors: actors, metadata: metadata)
     else
       error -> Error.handle(conn, error)

@@ -59,7 +59,11 @@ mise run //rust/tests/fuzz:coverage-check ip-packet
 Coverage growth passes without requiring a baseline update.
 An increase in uncovered regions fails.
 
-When it does, `grow` runs the whole recovery locally: it fuzzes for new coverage, minimizes and repacks the corpus, then refreshes the baseline from what the grown corpus actually reaches.
+The ceiling spans every workspace crate the target links, not just the one sharing its name.
+A fuzz build instruments the dependencies too, so a target that drives `tunnel-proto` reports what it reached in `snownet`, `dns-types` and the rest as one number.
+Which lines a crate contributes is visible in the HTML coverage report.
+
+When the ceiling is genuinely exceeded, `grow` runs the whole recovery locally: it fuzzes for new coverage, minimizes and repacks the corpus, then refreshes the baseline from what the grown corpus actually reaches.
 
 ```console
 mise run //rust/tests/fuzz:grow tunnel-proto

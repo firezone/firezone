@@ -16,7 +16,7 @@ use resource::{InternetResource, Resource, StaticDevicePoolResource};
 use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
 use crate::client::dns_config::DnsConfig;
-use crate::client::pending_authorizations::{DnsQueryForSite, PendingAuthorizations, Trigger};
+use crate::client::pending_authorizations::{DnsQueryForSite, PendingAuthorizations};
 use crate::client::routing::{Route, RoutingTables};
 use crate::client::tracked_state::TrackedState;
 use crate::conn_track::Originator;
@@ -44,7 +44,7 @@ use connlib_model::{
 };
 use connlib_model::{Site, SiteId};
 use dns_resource_nat::DnsResourceNat;
-use dns_types::{DomainName, ResponseCode};
+use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
@@ -58,7 +58,6 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
-use telemetry::{analytics, feature_flags};
 
 pub const IPV4_RESOURCES: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
     Ok(n) => n,
@@ -528,7 +527,7 @@ impl ClientState {
                 domain.clone(),
                 *gid,
                 *rid,
-                proxy_ips,
+                &proxy_ips,
                 packets_for_domain,
                 now,
             ) {
@@ -541,7 +540,7 @@ impl ClientState {
 
             if let Some(peer) = self.gateways.peer_by_id_mut(gid) {
                 for ip in proxy_ips {
-                    peer.allow_ip_for_resource(*ip, *rid);
+                    peer.allow_ip_for_resource(ip, *rid);
                 }
             }
         }
@@ -884,19 +883,27 @@ impl ClientState {
                 // borrow is free for the `&mut self` calls below.
                 drop(_guard);
 
-                if feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
+                #[cfg(feature = "telemetry")]
+                if telemetry::feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
                     && let Ok(Some((failed_packet, error))) = packet.icmp_error()
                     && error.is_unreachable_prohibited()
+                    && let internet_resource = self.active_internet_resource().map(|r| r.id)
                     && let Some(resource) = self
-                        .get_resource_by_destination(failed_packet.dst(), failed_packet.dst_proto())
+                        .routing_tables
+                        .resolve_resource(
+                            failed_packet.dst(),
+                            failed_packet.dst_proto(),
+                            internet_resource,
+                        )
+                        .map(|route| route.resource_id())
                 {
-                    analytics::feature_flag_called(
+                    telemetry::analytics::feature_flag_called(
                         "icmp-error-unreachable-prohibited-create-new-flow",
                     );
 
                     self.pending_authorizations.on_not_authorized_resource(
                         resource,
-                        Trigger::IcmpDestinationUnreachableProhibited,
+                        pending_authorizations::Trigger::IcmpDestinationUnreachableProhibited,
                         &self.resources_by_id,
                         now,
                     );
@@ -1347,7 +1354,11 @@ impl ClientState {
         }
 
         let Some(upstream) = self.dns_config.mapping().upstream_by_sentinel(dst) else {
-            return ControlFlow::Continue(packet); // Not for our DNS resolver.
+            if is_dns_sentinel(dst) {
+                return ControlFlow::Break(());
+            }
+
+            return ControlFlow::Continue(packet);
         };
 
         if self.tcp_dns_server.accepts(&packet) {
@@ -1526,18 +1537,6 @@ impl ClientState {
             )
     }
 
-    fn get_resource_by_destination(
-        &mut self,
-        destination: IpAddr,
-        protocol: Protocol,
-    ) -> Option<ResourceId> {
-        let internet_resource = self.active_internet_resource().map(|resource| resource.id);
-
-        self.routing_tables
-            .resolve_resource(destination, protocol, internet_resource)
-            .map(|route| route.resource_id())
-    }
-
     fn active_internet_resource(&self) -> Option<&InternetResource> {
         if !self.is_internet_resource_active {
             return None;
@@ -1657,6 +1656,16 @@ impl ClientState {
                     .filter_map(|peer| peer.poll_timeout())
                     .min()
                     .map(|instant| (instant, "Client peer authorization expiry")),
+            )
+            .chain(
+                self.sites_status
+                    .values()
+                    .filter_map(|(status, set_at)| match status {
+                        ResourceStatus::Offline => Some(*set_at + OFFLINE_SITE_STATUS_TIMEOUT),
+                        ResourceStatus::Unknown | ResourceStatus::Online => None,
+                    })
+                    .min()
+                    .map(|instant| (instant, "Offline site status expiry")),
             )
             .chain(self.node.poll_timeout())
             .min_by_key(|(instant, _)| *instant)
@@ -1895,13 +1904,15 @@ impl ClientState {
         };
 
         match self.resource_stub_resolver.handle_query(&message) {
-            resource_stub_resolver::ResolveStrategy::LocalResponse(response) => {
-                if response.response_code() == ResponseCode::NXDOMAIN
+            resource_stub_resolver::ResolveStrategy::LocalResponse { response, routes } => {
+                #[cfg(feature = "telemetry")]
+                if response.response_code() == dns_types::ResponseCode::NXDOMAIN
                     && telemetry::feature_flags::drop_llmnr_nxdomain_responses()
                 {
                     return;
                 }
 
+                self.update_dns_resource_routes(routes);
                 self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
 
@@ -1961,7 +1972,8 @@ impl ClientState {
         }
 
         match self.resource_stub_resolver.handle_query(&message) {
-            resource_stub_resolver::ResolveStrategy::LocalResponse(response) => {
+            resource_stub_resolver::ResolveStrategy::LocalResponse { response, routes } => {
+                self.update_dns_resource_routes(routes);
                 self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
                 self.drain_resource_stub_resolver_events();
@@ -2191,28 +2203,31 @@ impl ClientState {
         }
     }
 
+    fn update_dns_resource_routes(
+        &mut self,
+        routes: Vec<resource_stub_resolver::DnsResourceRoute>,
+    ) {
+        for route in routes {
+            let Some(Resource::Dns(dns)) = self.resources_by_id.get(&route.resource_id) else {
+                continue;
+            };
+
+            for ip in route.proxy_ips {
+                self.routing_tables.upsert_dns(
+                    ip.into(),
+                    route.resource_id,
+                    route.domain.clone(),
+                    route.pattern.clone(),
+                    FilterEngine::new(&dns.filters),
+                );
+            }
+        }
+    }
+
     fn drain_resource_stub_resolver_events(&mut self) {
         while let Some(resource_stub_resolver::Event::RecordsChanged(records)) =
             self.resource_stub_resolver.poll_event()
         {
-            for record in &records {
-                for (pattern, rid) in &record.resources {
-                    let Some(Resource::Dns(dns)) = self.resources_by_id.get(rid) else {
-                        continue; // This may happen when a resource gets removed that we have already assigned IPs for.
-                    };
-
-                    for ip in &record.ips {
-                        self.routing_tables.upsert_dns(
-                            (*ip).into(),
-                            *rid,
-                            record.domain.clone(),
-                            pattern.clone(),
-                            FilterEngine::new(&dns.filters),
-                        );
-                    }
-                }
-            }
-
             self.buffered_events
                 .push_back(ClientEvent::DnsRecordsChanged { records });
         }
@@ -2441,8 +2456,15 @@ impl ClientState {
 
         let activated = match &new_resource {
             Resource::Dns(dns) => {
-                self.resource_stub_resolver
-                    .add_resource(dns.id, dns.address.clone(), dns.ip_stack)
+                let result = self.resource_stub_resolver.add_resource(
+                    dns.id,
+                    dns.address.clone(),
+                    dns.ip_stack,
+                );
+
+                self.update_dns_resource_routes(result.routes);
+
+                result.is_new
             }
             Resource::Cidr(cidr) => self.routing_tables.upsert_cidr(
                 cidr.address,
@@ -2709,6 +2731,13 @@ fn is_llmnr(dst: IpAddr) -> bool {
     match dst {
         IpAddr::V4(ip) => ip == LLMNR_IPV4,
         IpAddr::V6(ip) => ip == LLMNR_IPV6,
+    }
+}
+
+fn is_dns_sentinel(dst: IpAddr) -> bool {
+    match dst {
+        IpAddr::V4(ip) => DNS_SENTINELS_V4.contains(ip),
+        IpAddr::V6(ip) => DNS_SENTINELS_V6.contains(ip),
     }
 }
 
@@ -3012,7 +3041,7 @@ mod tests {
 
     #[test]
     fn offline_site_status_resets_after_5_minutes() {
-        let mut now = Instant::now();
+        let now = Instant::now();
         let mut state = ClientState::for_test();
         let site = SiteId::from_u128(1);
 
@@ -3020,13 +3049,18 @@ mod tests {
             .sites_status
             .insert(site, (ResourceStatus::Offline, now));
 
-        now += Duration::from_secs(5 * 60);
+        let expires_at = now + OFFLINE_SITE_STATUS_TIMEOUT;
 
-        state.handle_timeout(now);
+        assert_eq!(
+            state.poll_timeout(),
+            Some((expires_at, "Offline site status expiry"))
+        );
+
+        state.handle_timeout(expires_at);
 
         assert_eq!(
             state.sites_status.get(&site).unwrap(),
-            &(ResourceStatus::Unknown, now)
+            &(ResourceStatus::Unknown, expires_at)
         );
         assert!(matches!(
             state.poll_event().unwrap(),

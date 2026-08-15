@@ -10,7 +10,7 @@ defmodule Portal.GatewayTokenTest do
   describe "changeset/1" do
     test "returns error when account_id does not match site's account" do
       site = site_fixture()
-      attrs = attrs(%{account_id: Ecto.UUID.generate(), site_id: site.id})
+      attrs = attrs(%{account_id: account_fixture().id, site_id: site.id})
 
       changeset =
         %GatewayToken{}

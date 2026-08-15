@@ -70,10 +70,12 @@ jobs:
         with:
           determinate: false
           diagnostic-endpoint: ""
-          # Substitute from the first-party cache (kept warm by main and
-          # release builds) instead of rebuilding.
+          # Substitute from the first-party caches (kept warm by main and
+          # release builds) instead of rebuilding. `nix-ci` holds the compiled
+          # Cargo dependency snapshots and is only ever read here, never by
+          # anyone installing Firezone from the flake.
           extra-conf: |
-            extra-substituters = https://artifacts.firezone.dev/nix
+            extra-substituters = https://artifacts.firezone.dev/nix https://artifacts.firezone.dev/nix-ci
             extra-trusted-public-keys = artifacts.firezone.dev/nix-1:T4LHdL1HeA6LE9qgu0Po0j3RIlelKZz8pzqnzEAIRfI=
       - name: Check flake
         run: nix flake check --no-build
@@ -84,9 +86,18 @@ jobs:
           set -o pipefail
 
           build() {
+            # The dependency-only closure is a build-time input, so it is not
+            # part of ./result's runtime closure and the cache upload below
+            # would never see it. Realising it under its own out-link is what
+            # lets later builds substitute the compiled dependency graph
+            # instead of recompiling it.
             nix build \
-              .#${{ matrix.package }} \
-              --print-build-logs 2>&1 | tee build.log
+              --out-link result-cargo-artifacts \
+              .#${{ matrix.package }}.cargoArtifacts \
+              --print-build-logs 2>&1 | tee build.log &&
+              nix build \
+                .#${{ matrix.package }} \
+                --print-build-logs 2>&1 | tee -a build.log
           }
 
           if build; then
@@ -154,7 +165,7 @@ jobs:
           fi
       - name: Azure login (OIDC)
         if: ${{ inputs.push_to_cache }}
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
         with:
           client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}

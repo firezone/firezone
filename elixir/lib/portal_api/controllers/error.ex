@@ -33,6 +33,22 @@ defmodule PortalAPI.Error do
     ProblemDetails.send(conn, 400, "Invalid page cursor")
   end
 
+  def handle(conn, {:error, {:unknown_filter, name: name}}) do
+    ProblemDetails.send(conn, 400, "Unknown filter: #{name}")
+  end
+
+  def handle(conn, {:error, {:invalid_type, type: type, value: value}}) do
+    ProblemDetails.send(
+      conn,
+      400,
+      "Invalid value #{inspect(value)} for filter of type #{inspect(type)}"
+    )
+  end
+
+  def handle(conn, {:error, {:invalid_value, values: _values, value: value}}) do
+    ProblemDetails.send(conn, 400, "Invalid filter value: #{inspect(value)}")
+  end
+
   def handle(conn, {:error, :forbidden}) do
     ProblemDetails.send(conn, 403, "You do not have permission to perform this action.")
   end
@@ -48,6 +64,17 @@ defmodule PortalAPI.Error do
   def handle(conn, {:error, %Ecto.Changeset{} = changeset}) do
     ProblemDetails.send(conn, 422, "The request body failed validation.", %{
       validation_errors: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
+    })
+  end
+
+  # For validation failures that aren't backed by a changeset. The
+  # documented 422 schema requires validation_errors (see
+  # ProblemDetails.ValidationError), so callers pass the same
+  # field => [message] shape traverse_errors/2 produces rather than a
+  # bare detail string.
+  def handle(conn, {:error, :unprocessable_entity, validation_errors: validation_errors}) do
+    ProblemDetails.send(conn, 422, "The request body failed validation.", %{
+      validation_errors: validation_errors
     })
   end
 

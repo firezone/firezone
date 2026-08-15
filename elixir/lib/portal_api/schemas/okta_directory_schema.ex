@@ -71,6 +71,7 @@ defmodule PortalAPI.Schemas.OktaDirectory do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.OktaDirectory
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "OktaDirectoryListResponse",
@@ -81,7 +82,8 @@ defmodule PortalAPI.Schemas.OktaDirectory do
           description: "Okta Directory details",
           type: :array,
           items: OktaDirectory.Schema
-        }
+        },
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

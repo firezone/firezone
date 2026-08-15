@@ -32,6 +32,7 @@ members = [
     "libs/connlib/tun",
     "libs/connlib/tunnel",
     "libs/connlib/tunnel-proto",
+    "libs/desktop-notifications",
     "libs/eventloop-budget",
     "libs/flow-log-spool",
     "libs/flow-log-upload",
@@ -46,6 +47,7 @@ members = [
     "libs/windows-security",
     "relay/ebpf-shared",
     "relay/ebpf-turn-router",
+    "relay/proto",
     "relay/server",
     "tests/fuzz",
     "tests/gui-smoke-test",
@@ -95,6 +97,7 @@ crossbeam-queue = "0.3.12"
 dashmap = "6.2.1"
 dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
 derive_more = { version = "2.1.1", default-features = false }
+desktop-notifications = { path = "libs/desktop-notifications" }
 difference = "2.0.0"
 dirs = "6.0.0"
 divan = "0.1.21"
@@ -106,7 +109,6 @@ etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 eventloop-budget = { path = "libs/eventloop-budget" }
 fd-lock = "4.0.4"
 filetime = "0.2.29"
-firezone-relay = { path = "relay/server", default-features = false }
 flow-log-spool = { path = "libs/flow-log-spool" }
 flow-log-upload = { path = "libs/flow-log-upload" }
 flow-log-writer = { path = "libs/flow-log-writer" }
@@ -133,6 +135,7 @@ ip_network_table = { version = "0.2.0", default-features = false }
 is = "0.10.0"
 itertools = "0.15.0"
 jni = "0.22.4"
+jsonschema = { version = "0.49.5", default-features = false }
 keyring-core = "1.0.0"
 known-dirs = { path = "libs/known-dirs" }
 known-folders = "1.4.2"
@@ -151,10 +154,9 @@ mio = "1.2.1"
 moka = "0.12.15"
 native-dialog = "0.9.0"
 netlink-packet-core = "0.8.1"
-netlink-packet-route = "0.29.0"
+netlink-packet-route = "0.31.0"
 network-types = { version = "0.2.0", default-features = false }
 nix = "0.31.3"
-notify-rust = "4.17.0"
 nu-ansi-term = "0.50.3"
 once_cell = "1.21.4"
 opentelemetry = "0.32.0"
@@ -176,12 +178,13 @@ quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
 rand = "0.10.1"
 rangemap = "1.7.1"
+relay-proto = { path = "relay/proto" }
 reqwest = { version = "0.13.4", default-features = false }
 resolv-conf = "0.7.6"
 ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
 rpassword = "7.5.3"
-rtnetlink = { version = "0.20.0", default-features = false, features = ["tokio_socket"] }
+rtnetlink = { version = "0.21.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.40", default-features = false, features = ["ring"] }
 rustls-pki-types = "1.14.1"
 rustls-platform-verifier = "0.7.0"
@@ -247,7 +250,7 @@ uniffi = "0.31.1"
 url = "2.5.2"
 uuid = "1.23.2"
 webpki-roots = "1.0.7"
-which = "7.0.3"
+which = "8.0.5"
 windows = "0.61.3"
 windows-core = "0.61.1"
 windows-implement = "0.60.0"

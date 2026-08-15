@@ -74,11 +74,11 @@ defmodule Portal.S3.SyncTest do
           key_prefix: "firezone/logs"
         )
 
-      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(S3.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       log = session_log_fixture(account: account)
 
-      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(S3.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:sts, _probe_conn, probe_params}
       assert probe_params["RoleArn"] == sink.role_arn
@@ -127,7 +127,7 @@ defmodule Portal.S3.SyncTest do
 
     test "redelivery after a transient failure reuses the same object key", %{account: account} do
       sink = s3_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(S3.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       test_pid = self()
@@ -146,7 +146,7 @@ defmodule Portal.S3.SyncTest do
         end
       end)
 
-      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(S3.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       assert_receive {:put_object_key, first_key}
 
       sink_after_failure = reload_sink(sink)
@@ -164,7 +164,7 @@ defmodule Portal.S3.SyncTest do
         end
       end)
 
-      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(S3.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       assert_receive {:put_object_key, second_key}
 
       assert first_key == second_key
@@ -173,7 +173,7 @@ defmodule Portal.S3.SyncTest do
 
     test "a role that ignores the external id disables the sink", %{account: account} do
       sink = s3_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(S3.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(S3.APIClient, fn conn ->
@@ -181,7 +181,7 @@ defmodule Portal.S3.SyncTest do
         Plug.Conn.resp(conn, 200, @sts_response)
       end)
 
-      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(S3.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       assert sink.is_disabled
@@ -191,14 +191,14 @@ defmodule Portal.S3.SyncTest do
 
     test "an STS AccessDenied disables the sink with an actionable message", %{account: account} do
       sink = s3_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(S3.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(S3.APIClient, fn conn ->
         Plug.Conn.resp(conn, 403, @sts_access_denied)
       end)
 
-      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(S3.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       assert sink.is_disabled
@@ -212,7 +212,7 @@ defmodule Portal.S3.SyncTest do
       account: account
     } do
       sink = s3_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(S3.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(S3.APIClient, fn conn ->
@@ -230,7 +230,7 @@ defmodule Portal.S3.SyncTest do
         end
       end)
 
-      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(S3.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       assert sink.is_disabled
@@ -240,7 +240,7 @@ defmodule Portal.S3.SyncTest do
 
     test "a 403 from S3 disables the sink immediately", %{account: account} do
       sink = s3_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(S3.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(S3.APIClient, fn conn ->
@@ -257,12 +257,23 @@ defmodule Portal.S3.SyncTest do
         end
       end)
 
-      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(S3.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       assert sink.is_disabled
       assert sink.disabled_reason == "Sync error"
       assert sink.error_message == "Amazon S3 returned HTTP 403 (AccessDenied): Access Denied"
+    end
+
+    test "skips sink belonging to another account", %{account: account} do
+      sink = s3_log_sink_fixture(account: account, enabled_streams: [:session])
+      session_log_fixture(account: account)
+      other_account = account_fixture(features: %{log_sinks: true})
+
+      assert :ok = perform_job(S3.Sync, %{account_id: other_account.id, log_sink_id: sink.id})
+
+      refute_receive {:put_object, _conn, _body}
+      assert Repo.all(LogSinkCursor) == []
     end
   end
 
@@ -275,7 +286,7 @@ defmodule Portal.S3.SyncTest do
 
       assert {:ok, :scheduled} = perform_job(S3.Scheduler, %{})
 
-      assert_enqueued(worker: S3.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: S3.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_enqueued(worker: S3.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: S3.Sync, args: %{log_sink_id: feature_off_sink.id})
     end

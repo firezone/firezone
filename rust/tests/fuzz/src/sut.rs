@@ -20,11 +20,10 @@ use rand::SeedableRng;
 use rand::distr::SampleString;
 use sha2::Digest;
 use snownet::{NoTurnServers, Transmit};
-use std::collections::BTreeSet;
 use std::iter;
 use std::net::SocketAddr;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     net::IpAddr,
     time::{Duration, Instant},
 };
@@ -132,7 +131,9 @@ impl TunnelTest {
         for gateway in gateways.values_mut() {
             let upstream_do53_servers = upstream_do53_servers.clone();
 
-            gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
+            gateway.exec_mut(|g| {
+                g.deploy_new_dns_servers(upstream_do53_servers, &ref_state.icmp_error_hosts)
+            })
         }
 
         let mut this = Self {
@@ -314,11 +315,9 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
-                expected_route: _,
                 seq,
                 identifier,
-                payload,
-                ..
+                probe_id,
             } => {
                 let dst = address_from_destination(&dst, &state, &src, client_id);
 
@@ -327,12 +326,12 @@ impl TunnelTest {
                     dst,
                     seq.0,
                     identifier.0,
-                    &payload.to_be_bytes(),
+                    &probe_id.to_be_bytes(),
                 )
                 .unwrap();
 
                 let client = state.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| sim.encapsulate(packet, now));
+                let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
 
                 buffered_transmits.push_from(transmit, client, now);
             }
@@ -340,19 +339,23 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
-                expected_route: _,
                 sport,
                 dport,
-                payload,
+                probe_id,
             } => {
                 let dst = address_from_destination(&dst, &state, &src, client_id);
 
-                let packet =
-                    ip_packet::make::udp_packet(src, dst, sport.0, dport.0, &payload.to_be_bytes())
-                        .unwrap();
+                let packet = ip_packet::make::udp_packet(
+                    src,
+                    dst,
+                    sport.0,
+                    dport.0,
+                    &probe_id.to_be_bytes(),
+                )
+                .unwrap();
 
                 let client = state.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| sim.encapsulate(packet, now));
+                let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
 
                 buffered_transmits.push_from(transmit, client, now);
             }
@@ -360,7 +363,6 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
-                expected_route: _,
                 sport,
                 dport,
             } => {
@@ -386,6 +388,30 @@ impl TunnelTest {
                 let client = state.clients.get_mut(&client_id).unwrap();
                 let transmit = client.exec_mut(|sim| {
                     sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
+                });
+
+                buffered_transmits.push_from(transmit, client, now);
+            }
+            Transition::SendDnsResourcePtrQuery {
+                client_id,
+                record_domain,
+                family,
+                address_index,
+                query_id,
+                dns_server,
+                transport,
+            } => {
+                let client = state.clients.get_mut(&client_id).unwrap();
+                let transmit = client.exec_mut(|sim| {
+                    sim.send_dns_resource_ptr_query_for(
+                        record_domain,
+                        family,
+                        address_index,
+                        query_id,
+                        dns_server,
+                        transport,
+                        now,
+                    )
                 });
 
                 buffered_transmits.push_from(transmit, client, now);
@@ -417,7 +443,9 @@ impl TunnelTest {
                 for gateway in state.gateways.values_mut() {
                     let upstream_do53_servers = upstream_do53_servers.clone();
 
-                    gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
+                    gateway.exec_mut(|g| {
+                        g.deploy_new_dns_servers(upstream_do53_servers, &ref_state.icmp_error_hosts)
+                    })
                 }
             }
             Transition::UpdateUpstreamDoHServers(upstream_doh) => {
@@ -528,10 +556,7 @@ impl TunnelTest {
                 });
             }
             Transition::DeployNewRelays(new_relays) => {
-                // If we are connected to the portal, we will learn, which ones went down, i.e. `relays_presence`.
-                let to_remove = state.relays.keys().copied().collect();
-
-                state.deploy_new_relays(new_relays, now, to_remove);
+                state.deploy_new_relays(new_relays, now);
             }
             Transition::Idle => {
                 const IDLE_DURATION: Duration = Duration::from_secs(6 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
@@ -570,37 +595,33 @@ impl TunnelTest {
             }
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 // If we are partitioned from the portal, we will only learn which relays to use, potentially replacing existing ones.
-                let to_remove = Vec::default();
-
-                state.deploy_new_relays(new_relays, now, to_remove);
+                state.reboot_relays_while_partitioned(new_relays, now);
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(rid) => {
-                for (client_id, client) in &mut state.clients {
-                    let ref_client = ref_state.clients.get(client_id).unwrap();
-                    let new_authorized_resources = {
-                        let mut all_resources =
-                            BTreeSet::from_iter(ref_client.inner().all_resource_ids());
-                        all_resources.remove(&rid);
+                let authorizations = state
+                    .clients
+                    .iter_mut()
+                    .map(|(client_id, client)| {
+                        let ref_client = ref_state.clients.get(client_id).unwrap();
+                        let resources = ref_client
+                            .inner()
+                            .all_resource_ids()
+                            .into_iter()
+                            .filter(|resource| *resource != rid)
+                            .collect();
 
-                        all_resources
-                    };
+                        client.exec_mut(|c| c.sut.remove_resource(rid, now));
 
-                    client.exec_mut(|c| c.sut.remove_resource(rid, now));
+                        (*client_id, resources)
+                    })
+                    .collect();
 
-                    if let Some(gid) = ref_state.portal.gateway_for_resource(rid)
-                        && let Some(g) = state.gateways.get_mut(gid)
-                    {
-                        g.exec_mut(|g| {
-                            // This is partly an `init` message.
-                            // The relays don't change so we don't bother setting them.
-                            g.sut.retain_authorizations(BTreeMap::from([(
-                                *client_id,
-                                new_authorized_resources,
-                            )]))
-                        });
-                    } else {
-                        tracing::error!(%rid, "No gateway for resource");
-                    }
+                if let Some(gid) = ref_state.portal.gateway_for_resource(rid)
+                    && let Some(gateway) = state.gateways.get_mut(gid)
+                {
+                    gateway.exec_mut(|gateway| gateway.sut.retain_authorizations(authorizations));
+                } else {
+                    tracing::error!(%rid, "No gateway for resource");
                 }
             }
             Transition::RestartClient { client_id, key } => {
@@ -663,26 +684,13 @@ impl TunnelTest {
             .iter()
             .map(|(id, g)| (*id, g.inner()))
             .collect();
-        let ref_gateways = ref_state
-            .gateways
-            .iter()
-            .map(|(id, g)| (*id, g.inner()))
-            .collect();
-
-        // System-wide packet assertions
-        assert_icmp_packets_properties(
+        assert_probes(
+            &ref_state.expected_probes,
             &all_ref_clients,
-            &ref_gateways,
             &all_sim_clients,
             &sim_gateways,
             &ref_state.global_dns_records,
-        );
-        assert_udp_packets_properties(
-            &all_ref_clients,
-            &ref_gateways,
-            &all_sim_clients,
-            &sim_gateways,
-            &ref_state.global_dns_records,
+            &ref_state.icmp_error_hosts,
         );
 
         // Per-client assertions for client-specific state
@@ -696,7 +704,7 @@ impl TunnelTest {
             assert_dns_servers_are_valid(ref_client, sut_client, &ref_state.portal);
             assert_search_domain_is_valid(&ref_state.portal, sut_client);
             assert_routes_are_valid(ref_client, sut_client);
-            assert_resource_status(ref_client, sut_client);
+            assert_resource_list(ref_client, sut_client);
         }
     }
 
@@ -839,7 +847,7 @@ impl TunnelTest {
                 };
 
                 match message {
-                    firezone_relay::Command::SendMessage { payload, recipient } => {
+                    relay_proto::Command::SendMessage { payload, recipient } => {
                         let dst = recipient.into_socket();
                         let src = relay
                             .sending_socket_for(dst.ip())
@@ -857,16 +865,16 @@ impl TunnelTest {
                         );
                     }
 
-                    firezone_relay::Command::CreateAllocation { port, family } => {
+                    relay_proto::Command::CreateAllocation { port, family } => {
                         relay.allocate_port(port.value(), family);
                         relay.exec_mut(|r| r.allocations.insert((family, port)));
                     }
-                    firezone_relay::Command::FreeAllocation { port, family } => {
+                    relay_proto::Command::FreeAllocation { port, family } => {
                         relay.deallocate_port(port.value(), family);
                         relay.exec_mut(|r| r.allocations.remove(&(family, port)));
                     }
-                    firezone_relay::Command::CreateChannelBinding { .. }
-                    | firezone_relay::Command::DeleteChannelBinding { .. } => {}
+                    relay_proto::Command::CreateChannelBinding { .. }
+                    | relay_proto::Command::DeleteChannelBinding { .. } => {}
                 }
 
                 continue 'outer;
@@ -1348,11 +1356,7 @@ impl TunnelTest {
             ClientEvent::ResourcesChanged { resources } => {
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| {
-                    c.resource_status = resources
-                        .resources
-                        .into_iter()
-                        .map(|r| (r.id(), r.status()))
-                        .collect();
+                    c.observed_resource_list = resources;
                 });
 
                 Ok(())
@@ -1441,11 +1445,51 @@ impl TunnelTest {
         response
     }
 
-    fn deploy_new_relays(
+    fn deploy_new_relays(&mut self, new_relays: BTreeMap<RelayId, Host<u64>>, now: Instant) {
+        let disconnected = self
+            .relays
+            .keys()
+            .filter(|relay_id| !new_relays.contains_key(relay_id))
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let connected = new_relays
+            .into_iter()
+            .filter(|(relay_id, _)| !self.relays.contains_key(relay_id))
+            .map(|(relay_id, relay)| {
+                (
+                    relay_id,
+                    relay.map(SimRelay::new, debug_span!("relay", %relay_id)),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        for relay_id in &disconnected {
+            let relay = self.relays.remove(relay_id).unwrap();
+            self.network.remove_host(&relay);
+        }
+
+        for (relay_id, relay) in &connected {
+            let added = self.network.add_host(*relay_id, relay);
+            debug_assert!(added);
+        }
+
+        for client in self.clients.values_mut() {
+            client.exec_mut(|c| {
+                c.update_relays(disconnected.iter().copied(), connected.iter(), now);
+            });
+        }
+        for gateway in self.gateways.values_mut() {
+            gateway
+                .exec_mut(|g| g.update_relays(disconnected.iter().copied(), connected.iter(), now));
+        }
+
+        self.relays.extend(connected);
+    }
+
+    fn reboot_relays_while_partitioned(
         &mut self,
         new_relays: BTreeMap<RelayId, Host<u64>>,
         now: Instant,
-        to_remove: Vec<RelayId>,
     ) {
         for relay in self.relays.values() {
             self.network.remove_host(relay);
@@ -1462,14 +1506,12 @@ impl TunnelTest {
         }
 
         for client in self.clients.values_mut() {
-            client.exec_mut(|c| {
-                c.update_relays(to_remove.iter().copied(), online.iter(), now);
-            });
+            client.exec_mut(|c| c.update_relays(iter::empty(), online.iter(), now));
         }
         for gateway in self.gateways.values_mut() {
-            gateway.exec_mut(|g| g.update_relays(to_remove.iter().copied(), online.iter(), now));
+            gateway.exec_mut(|g| g.update_relays(iter::empty(), online.iter(), now));
         }
-        self.relays = online; // Override all relays.
+        self.relays = online;
     }
 }
 

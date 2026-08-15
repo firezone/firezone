@@ -1,0 +1,454 @@
+defmodule Portal.Microsoft.Graph.APIClient do
+  @moduledoc """
+  Client for Microsoft Graph APIs used by Entra directory sync and device inventory.
+
+  HTTP transport is shared, while each integration uses its own app registration.
+  """
+
+  require Logger
+
+  @entra_user_select_fields "id,displayName,mail,userPrincipalName,givenName,surname,accountEnabled"
+  @advanced_query_headers [{"ConsistencyLevel", "eventual"}]
+  @applications [:entra, :intune]
+  @page_size "999"
+
+  @doc """
+  Gets an access token using the OAuth2 client credentials flow.
+  """
+  def get_access_token(application, tenant_id) when application in @applications do
+    config = config()
+    application_config = application_config(application)
+    token_endpoint = "#{config[:token_base_url]}/#{tenant_id}/oauth2/v2.0/token"
+
+    with {:ok, credential} <- client_credential(application_config) do
+      # Request access token to read what our app is set up to do (.default scope)
+      payload =
+        %{
+          "client_id" => application_config[:client_id],
+          "scope" => "https://graph.microsoft.com/.default",
+          "grant_type" => "client_credentials"
+        }
+        |> Map.merge(credential)
+        |> URI.encode_query()
+
+      Req.post(
+        token_endpoint,
+        [
+          headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
+          body: payload
+        ] ++ req_opts()
+      )
+    end
+  end
+
+  def client_id(application) when application in @applications do
+    application_config(application)[:client_id]
+  end
+
+  @doc """
+  Credentials for one application, shaped for the OIDC verification flow.
+  """
+  def verification_config(application) when application in @applications do
+    config()
+    |> Keyword.fetch!(:applications)
+    |> Keyword.fetch!(application)
+  end
+
+  # Production authenticates the app with workload identity federation: the
+  # portal's managed identity mints a token-exchange assertion, so no secret is
+  # stored. A configured client secret (dev and test, which have no managed
+  # identity) uses the secret directly.
+  defp client_credential(config) do
+    case config[:client_secret] do
+      secret when is_binary(secret) and secret != "" ->
+        {:ok, %{"client_secret" => secret}}
+
+      _ ->
+        federated_credential()
+    end
+  end
+
+  defp federated_credential do
+    assertion = Portal.Azure.ManagedIdentity.access_token!("api://AzureADTokenExchange")
+
+    {:ok,
+     %{
+       "client_assertion_type" => "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+       "client_assertion" => assertion
+     }}
+  rescue
+    exception -> {:error, exception}
+  end
+
+  @doc """
+  Gets the service principal for this application.
+  This is needed to query appRoleAssignedTo for group assignment.
+  """
+  def get_service_principal(access_token, client_id) do
+    query = URI.encode_query(%{"$filter" => "appId eq '#{client_id}'", "$select" => "id,appId"})
+
+    get("/v1.0/servicePrincipals", query, access_token)
+  end
+
+  @doc """
+  Lists assigned principals (users and groups) for the service principal.
+  This respects group assignment settings in Entra.
+  Returns a single page with limit of 1 for verification purposes.
+  """
+  def list_app_role_assignments(access_token, service_principal_id) do
+    query =
+      URI.encode_query(%{
+        "$top" => "1",
+        "$select" => "id,principalId,principalType,principalDisplayName"
+      })
+
+    get("/v1.0/servicePrincipals/#{service_principal_id}/appRoleAssignedTo", query, access_token)
+  end
+
+  @doc """
+  Lists the effective Entra directory roles for one immutable principal ID.
+  This is used during setup to prove that the user identified by the verified
+  ID token is authorized to grant the application's tenant-wide permissions.
+  """
+  def list_transitive_directory_roles(access_token, principal_id) do
+    query =
+      URI.encode_query(%{
+        "$select" => "id,roleTemplateId"
+      })
+
+    get(
+      "/v1.0/users/#{principal_id}/transitiveMemberOf/microsoft.graph.directoryRole",
+      query,
+      access_token
+    )
+  end
+
+  @doc """
+  Streams assigned principals (users and groups) for the service principal.
+  This respects group assignment settings in Entra.
+  Returns a stream that yields pages of assignments.
+  """
+  def stream_app_role_assignments(access_token, service_principal_id) do
+    query =
+      URI.encode_query(%{
+        "$top" => @page_size,
+        "$select" => "id,principalId,principalType,principalDisplayName"
+      })
+
+    path = "/v1.0/servicePrincipals/#{service_principal_id}/appRoleAssignedTo"
+    stream_pages(path, query, access_token)
+  end
+
+  @doc """
+  Streams all groups from the directory.
+  Returns a stream that yields pages of groups.
+  """
+  def stream_groups(access_token) do
+    query = URI.encode_query(%{"$top" => @page_size, "$select" => "id,displayName"})
+
+    path = "/v1.0/groups"
+    stream_pages(path, query, access_token)
+  end
+
+  @doc """
+  Streams transitive members of a group.
+  Returns a stream that yields pages of members (users, groups, service principals).
+  Fetches user profile fields that map to our identity schema.
+  """
+  def stream_group_transitive_members(access_token, group_id) do
+    # Use the user cast plus an accountEnabled filter so Graph excludes disabled
+    # users server-side before we build identities or memberships.
+    query =
+      URI.encode_query(%{
+        "$top" => @page_size,
+        "$count" => "true",
+        "$filter" => "accountEnabled eq true",
+        "$select" => @entra_user_select_fields
+      })
+
+    path = "/v1.0/groups/#{group_id}/transitiveMembers/microsoft.graph.user"
+
+    stream_pages(path, query, access_token, @advanced_query_headers)
+    |> Stream.map(&filter_active_entra_users_result/1)
+  end
+
+  @doc """
+  Fetches multiple users by their IDs using JSON batching.
+  Uses the $batch endpoint to get up to 20 users in a single HTTP request.
+  Returns {:ok, users} where users is a list of user objects.
+  """
+  def batch_get_users(access_token, user_ids) when is_list(user_ids) do
+    # Build batch request with individual GET requests for each user
+    requests =
+      user_ids
+      |> Enum.with_index(1)
+      |> Enum.map(fn {user_id, index} ->
+        %{
+          id: Integer.to_string(index),
+          method: "GET",
+          url: "/users/#{user_id}?$select=#{@entra_user_select_fields}"
+        }
+      end)
+
+    batch_body = %{requests: requests}
+
+    url = "#{endpoint()}/v1.0/$batch"
+
+    case Req.post(
+           url,
+           [
+             headers: [
+               {"Authorization", "Bearer #{access_token}"},
+               {"Content-Type", "application/json"}
+             ],
+             json: batch_body
+           ] ++ req_opts()
+         ) do
+      {:ok, %Req.Response{status: 200, body: %{"responses" => responses}}} ->
+        Logger.debug("Batch API response",
+          response_count: length(responses),
+          responses: inspect(responses, pretty: true, limit: :infinity)
+        )
+
+        # Separate successful and failed responses
+        {successful, failed} =
+          Enum.split_with(responses, fn response -> response["status"] == 200 end)
+
+        # If all requests failed, return an error
+        if Enum.empty?(successful) and not Enum.empty?(failed) do
+          # Get the first error for context
+          first_error = List.first(failed)
+          error_body = first_error["body"]
+          error_status = first_error["status"]
+
+          Logger.error("All batch user requests failed",
+            status: error_status,
+            error: inspect(error_body)
+          )
+
+          {:error, {:batch_all_failed, error_status, error_body}}
+        else
+          handle_batch_results(successful, failed)
+        end
+
+      {:ok, %Req.Response{} = response} ->
+        Logger.error("Batch API request failed",
+          status: response.status,
+          body: inspect(response.body)
+        )
+
+        {:error, {:batch_request_failed, response.status, response.body}}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp handle_batch_results(successful, failed) do
+    if not Enum.empty?(failed) do
+      Logger.warning("Some batch user requests failed",
+        failed_count: length(failed),
+        successful_count: length(successful)
+      )
+    end
+
+    users =
+      successful
+      |> Enum.map(fn response -> response["body"] end)
+      |> Enum.filter(&active_entra_user?/1)
+
+    Logger.debug("Filtered users", count: length(users))
+
+    {:ok, users}
+  end
+
+  defp filter_active_entra_users_result(users) when is_list(users) do
+    Enum.filter(users, &active_entra_user?/1)
+  end
+
+  defp filter_active_entra_users_result(other), do: other
+
+  defp active_entra_user?(user) do
+    case Map.fetch(user, "accountEnabled") do
+      {:ok, enabled} ->
+        enabled != false
+
+      :error ->
+        Logger.error("Skipping Entra user with missing accountEnabled field",
+          entra_user_id: Map.get(user, "id", "unknown"),
+          entra_user_email: Map.get(user, "mail", Map.get(user, "userPrincipalName", "unknown"))
+        )
+
+        false
+    end
+  end
+
+  @doc """
+  Fetches users from Microsoft Graph API with a limit of 1.
+  This is used to verify the Directory.Read.All permission is granted and working.
+  """
+  def list_users(access_token) do
+    query = URI.encode_query(%{"$top" => "1", "$select" => "id,displayName"})
+
+    get("/v1.0/users", query, access_token)
+  end
+
+  @doc """
+  Fetches groups from Microsoft Graph API with a limit of 1.
+  This is used to verify the Group.Read.All permission is granted and working.
+  """
+  def list_groups(access_token) do
+    query = URI.encode_query(%{"$top" => "1", "$select" => "id,displayName"})
+
+    get("/v1.0/groups", query, access_token)
+  end
+
+  @doc """
+  Tests connection by verifying access to all required Microsoft Graph endpoints.
+
+  Makes minimal API calls ($top=1) to verify the application has
+  proper permissions for users and groups endpoints.
+  """
+  @spec test_directory_connection(String.t()) :: :ok | {:error, term()}
+  def test_directory_connection(access_token) do
+    with :ok <- test_users(access_token),
+         :ok <- test_groups(access_token) do
+      :ok
+    end
+  end
+
+  defp test_users(access_token) do
+    case list_users(access_token) do
+      {:ok, %Req.Response{status: 200}} -> :ok
+      other -> other
+    end
+  end
+
+  defp test_groups(access_token) do
+    case list_groups(access_token) do
+      {:ok, %Req.Response{status: 200}} -> :ok
+      other -> other
+    end
+  end
+
+  @doc """
+  Fetches subscribed SKUs (licenses) for the organization.
+  """
+  def get_subscribed_skus(access_token) do
+    get("/v1.0/subscribedSkus", "", access_token)
+  end
+
+  @doc """
+  Fetches Intune managed devices with a limit of one.
+  """
+  def list_managed_devices(access_token) do
+    query = URI.encode_query(%{"$top" => "1"})
+    get("/v1.0/deviceManagement/managedDevices", query, access_token)
+  end
+
+  @doc """
+  Streams every page of Intune managed devices.
+  """
+  def stream_managed_devices(access_token) do
+    query = URI.encode_query(%{"$top" => @page_size})
+    stream_pages("/v1.0/deviceManagement/managedDevices", query, access_token)
+  end
+
+  @doc """
+  Tests access to the Intune managed-devices endpoint.
+  """
+  def test_managed_devices_connection(access_token) do
+    case list_managed_devices(access_token) do
+      {:ok, %Req.Response{status: 200, body: %{"value" => value}}} when is_list(value) -> :ok
+      other -> other
+    end
+  end
+
+  defp get(path, query, access_token, headers \\ []) do
+    suffix = if query in [nil, ""], do: "", else: "?#{query}"
+    url = "#{endpoint()}#{path}#{suffix}"
+
+    Req.get(
+      url,
+      [headers: [{"Authorization", "Bearer #{access_token}"} | headers]] ++ req_opts()
+    )
+  end
+
+  defp stream_pages(path, query, access_token, headers \\ []) do
+    Stream.resource(
+      fn -> {path, query, headers} end,
+      fn
+        nil ->
+          {:halt, nil}
+
+        {:error, _reason} = error ->
+          # Halt stream on error
+          {[error], nil}
+
+        {current_path, current_query, current_headers} ->
+          fetch_page(current_path, current_query, access_token, current_headers)
+      end,
+      fn _ -> :ok end
+    )
+  end
+
+  defp fetch_page(current_path, current_query, access_token, headers) do
+    case get(current_path, current_query, access_token, headers) do
+      {:ok, %Req.Response{status: 200, body: body}} ->
+        parse_page_response(body, headers)
+
+      {:ok, %Req.Response{} = response} ->
+        # Non-200 response
+        {[{:error, response}], nil}
+
+      {:error, _reason} = error ->
+        # Network or other error
+        {[error], nil}
+    end
+  end
+
+  defp parse_page_response(body, headers) do
+    case Map.fetch(body, "value") do
+      {:ok, list} when is_list(list) ->
+        # Empty list is valid - it means no results for this page
+        # But the key must be present!
+        next_state =
+          case Map.get(body, "@odata.nextLink") do
+            nil ->
+              nil
+
+            next_link ->
+              uri = URI.parse(next_link)
+              next_path = uri.path
+              next_query = uri.query || ""
+              {next_path, next_query, headers}
+          end
+
+        {[list], next_state}
+
+      {:ok, _non_list} ->
+        # Key exists but value is not a list - malformed response
+        error = {:error, {:invalid_response, "value is not a list", body}}
+        {[error], nil}
+
+      :error ->
+        # Key is missing - this is an error! We must fail loudly to prevent false positives
+        # that could delete groups/users if the API response format changes
+        error =
+          {:error, {:missing_key, "Expected key 'value' not found in response", body}}
+
+        {[error], nil}
+    end
+  end
+
+  defp config, do: Portal.Config.fetch_env!(:portal, __MODULE__)
+  defp endpoint, do: config()[:endpoint] || "https://graph.microsoft.com"
+  defp req_opts, do: config()[:req_opts] || []
+
+  defp application_config(application) do
+    config()
+    |> Keyword.fetch!(:applications)
+    |> Keyword.fetch!(application)
+    |> Enum.into(%{})
+  end
+end

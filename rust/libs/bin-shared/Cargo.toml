@@ -21,7 +21,7 @@ hex-literal = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true, features = ["serde"] }
 known-dirs = { workspace = true }
-logging = { workspace = true }
+logging = { workspace = true, features = ["telemetry"] }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

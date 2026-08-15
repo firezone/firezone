@@ -51,10 +51,12 @@ defmodule PortalAPI.Endpoint do
     longpoll: false,
     drainer: []
 
+  # Client sockets take `:uri` so device trust can tell a connect on the
+  # mutual-TLS host from one on the plain API host.
   socket "/client", PortalAPI.Client.Socket,
     websocket: [
       check_origin: :conn,
-      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(37)
     ],
@@ -64,17 +66,7 @@ defmodule PortalAPI.Endpoint do
   socket "/client/v2", PortalAPI.Client.V2.Socket,
     websocket: [
       check_origin: :conn,
-      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
-      error_handler: {PortalAPI.Sockets, :handle_error, []},
-      timeout: :timer.seconds(37)
-    ],
-    longpoll: false,
-    drainer: []
-
-  socket "/client/v3", PortalAPI.Client.V3.Socket,
-    websocket: [
-      check_origin: :conn,
-      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(37)
     ],
@@ -93,6 +85,13 @@ defmodule PortalAPI.Endpoint do
 
   plug :fetch_user_agent
   plug :redirect_to_rest_api_url
+
+  plug Plug.Static,
+    at: "/",
+    from: :portal,
+    gzip: true,
+    only: ["openapi.json"]
+
   plug PortalAPI.Router
 
   plug Sentry.PlugContext

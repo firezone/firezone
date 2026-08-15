@@ -5,25 +5,23 @@ defmodule Portal.Accounts.Features do
   @primary_key false
   embedded_schema do
     field :policy_conditions, :boolean
-    field :traffic_filters, :boolean
     field :idp_sync, :boolean
     field :rest_api, :boolean
     field :internet_resource, :boolean
-    field :client_to_client, :boolean
     field :iceless, :boolean
     field :log_sinks, :boolean
+    field :device_posture, :boolean
   end
 
   def changeset(features \\ %__MODULE__{}, attrs) do
     fields = ~w[
       policy_conditions
-      traffic_filters
       idp_sync
       rest_api
       internet_resource
-      client_to_client
       iceless
       log_sinks
+      device_posture
     ]a
 
     features

@@ -18,20 +18,16 @@ defmodule PortalAPI.Router do
     plug :accepts, ["html", "xml", "json"]
   end
 
-  pipeline :openapi do
-    plug OpenApiSpex.Plug.PutApiSpec, module: PortalAPI.ApiSpec
-  end
-
   scope "/openapi" do
-    pipe_through :openapi
+    pipe_through :public
 
-    get "/", OpenApiSpex.Plug.RenderSpec, []
+    get "/", PortalAPI.OpenAPIController, :index
   end
 
   scope "/swaggerui" do
     pipe_through :public
 
-    get "/", OpenApiSpex.Plug.SwaggerUI, path: "/openapi"
+    get "/", OpenApiSpex.Plug.SwaggerUI, path: "/openapi.json"
   end
 
   pipeline :ingestion do
@@ -54,6 +50,10 @@ defmodule PortalAPI.Router do
     post "/flow_logs", FlowLogController, :create
   end
 
+  # URL versioning was tried (a /v1 prefix scope duplicating every route
+  # below) and rolled back before ever shipping as the documented surface -
+  # see git history if reviving it. Versioning strategy is deliberately
+  # undecided until an actual breaking change forces the question.
   scope "/", PortalAPI do
     pipe_through :api
 
@@ -66,14 +66,18 @@ defmodule PortalAPI.Router do
     get "/logs", LogController, :index
     get "/logs/:log_id", LogController, :show
 
-    resources "/resources", ResourceController, except: [:new, :edit]
+    resources "/resources", ResourceController, except: [:new, :edit] do
+      get "/pool_members", PoolMemberController, :index
+      put "/pool_members", PoolMemberController, :update_put
+      patch "/pool_members", PoolMemberController, :update_patch
+    end
     resources "/policies", PolicyController, except: [:new, :edit]
 
     resources "/sites", SiteController, except: [:new, :edit] do
       post "/gateway_tokens", GatewayTokenController, :create
       delete "/gateway_tokens", GatewayTokenController, :delete_all
       delete "/gateway_tokens/:id", GatewayTokenController, :delete
-      resources "/gateways", GatewayController, except: [:new, :edit, :create, :update] do
+      resources "/gateways", GatewayController, except: [:new, :edit] do
         post "/token", GatewayTokenController, :create_for_gateway
         post "/token/rotate", GatewayTokenController, :rotate
       end
@@ -102,6 +106,8 @@ defmodule PortalAPI.Router do
     resources "/google_directories", GoogleDirectoryController, only: [:index, :show]
     resources "/entra_directories", EntraDirectoryController, only: [:index, :show]
     resources "/okta_directories", OktaDirectoryController, only: [:index, :show]
+    resources "/intune_integration", IntuneIntegrationController, only: [:show], singleton: true
+    resources "/intune_devices", IntuneDeviceController, only: [:index, :show]
   end
 
   scope "/integrations", PortalAPI.Integrations do

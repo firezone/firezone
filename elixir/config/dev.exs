@@ -49,6 +49,12 @@ config :portal, Portal.ComponentVersions,
   firezone_releases_url: "http://localhost:3000/api/releases",
   req_opts: [allow_private_ips: true]
 
+# A test CA run locally publishes to localhost, which SSRF protection rejects
+# everywhere else for good reason: these addresses come out of a certificate.
+config :portal, Portal.Crl.Sync, req_opts: [allow_private_ips: true]
+
+config :portal, Portal.Ocsp.Sync, req_opts: [allow_private_ips: true]
+
 config :portal, Portal.Billing,
   enabled: System.get_env("BILLING_ENABLED", "false") == "true",
   secret_key: System.get_env("STRIPE_SECRET_KEY", "sk_dev_1111"),
@@ -73,7 +79,10 @@ config :portal, Oban,
     # Periodic jobs
     {Oban.Plugins.Cron,
      crontab: [
+       {worker_dev_schedule, Portal.Crl.Scheduler},
+       {worker_dev_schedule, Portal.Ocsp.Scheduler},
        {worker_dev_schedule, Portal.Entra.Scheduler},
+       {worker_dev_schedule, Portal.Intune.Scheduler},
        {worker_dev_schedule, Portal.Google.Scheduler},
        {worker_dev_schedule, Portal.Okta.Scheduler},
        {worker_dev_schedule, Portal.Splunk.Scheduler},
@@ -111,8 +120,14 @@ config :portal, Oban,
   ],
   queues: [
     default: 10,
+    crl_scheduler: 1,
+    crl_sync: 5,
+    ocsp_scheduler: 1,
+    ocsp_sync: 5,
     entra_scheduler: 1,
     entra_sync: 5,
+    intune_scheduler: 1,
+    intune_sync: 5,
     google_scheduler: 1,
     google_sync: 5,
     okta_scheduler: 1,

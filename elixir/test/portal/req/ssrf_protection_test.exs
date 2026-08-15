@@ -140,6 +140,61 @@ defmodule Portal.Req.SSRFProtectionTest do
     assert pinned_request.options[:connect_options][:hostname] == "logs.example.com"
   end
 
+  # The other pinning tests stub the adapter, so they never reach the tagged
+  # Finch pool. No loopback address passes the public-address check, so this
+  # routes Req's real Finch adapter over a UNIX socket instead.
+  test "pins through Req's own Finch adapter and sends the original Host header" do
+    socket_path =
+      Path.join(System.tmp_dir!(), "ssrf-#{System.unique_integer([:positive])}.sock")
+
+    on_exit(fn -> File.rm(socket_path) end)
+
+    {:ok, listen_socket} =
+      :gen_tcp.listen(0, [
+        :binary,
+        active: false,
+        packet: :raw,
+        reuseaddr: true,
+        ifaddr: {:local, socket_path}
+      ])
+
+    test_pid = self()
+
+    server =
+      Task.async(fn ->
+        {:ok, socket} = :gen_tcp.accept(listen_socket)
+        {:ok, request} = :gen_tcp.recv(socket, 0, 5_000)
+        send(test_pid, {:raw_request, request})
+
+        :ok =
+          :gen_tcp.send(
+            socket,
+            "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+          )
+
+        :gen_tcp.close(socket)
+      end)
+
+    resolver = fn
+      ~c"logs.example.com", :inet -> {:ok, [{8, 8, 8, 8}]}
+      ~c"logs.example.com", :inet6 -> {:error, :nxdomain}
+    end
+
+    request =
+      Req.new(url: "http://logs.example.com/events", unix_socket: socket_path, retry: false)
+      |> SSRFProtection.attach(resolver: resolver)
+
+    assert request.adapter == SSRFProtection
+    assert {:ok, %Req.Response{status: 204}} = Req.get(request)
+
+    assert_receive {:raw_request, raw_request}
+    assert raw_request =~ "host: logs.example.com\r\n"
+    refute raw_request =~ "8.8.8.8"
+
+    Task.await(server)
+    :gen_tcp.close(listen_socket)
+  end
+
   test "checks the destination of every redirect" do
     test_pid = self()
 

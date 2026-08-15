@@ -79,6 +79,7 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.GoogleDirectory
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "GoogleDirectoryListResponse",
@@ -89,7 +90,8 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
           description: "Google Directory details",
           type: :array,
           items: GoogleDirectory.Schema
-        }
+        },
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

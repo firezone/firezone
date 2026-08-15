@@ -121,21 +121,36 @@ if config_env() == :prod do
     client_id: env_var_to_config!(:google_oidc_client_id),
     client_secret: env_var_to_config!(:google_oidc_client_secret)
 
+  config :portal, Portal.Google.SyncAuthorization,
+    client_id: env_var_to_config!(:google_sync_authz_client_id),
+    client_secret: env_var_to_config!(:google_sync_authz_client_secret)
+
   # When ENTRA_OIDC_CLIENT_SECRET is unset, authorization-code redemption
   # authenticates with a token-exchange assertion from the portal's managed
   # identity. The optional secret supports dev and migration environments.
+  # The Entra app registration must set groupMembershipClaims to DirectoryRole
+  # so setup tokens include the signed `wids` claim used for the admin check.
   config :portal, Portal.Entra.AuthProvider,
     client_id: env_var_to_config!(:entra_oidc_client_id),
     client_secret: env_var_to_config!(:entra_oidc_client_secret)
 
-  # No client secret required: when ENTRA_SYNC_CLIENT_SECRET is unset the app
-  # authenticates with workload identity federation, minting a token-exchange
-  # assertion from the portal's managed identity (Portal.Azure.ManagedIdentity).
-  # The optional secret still flows from config.exs for environments that set it.
-  config :portal, Portal.Entra.APIClient,
-    client_id: env_var_to_config!(:entra_sync_client_id),
+  # Entra directory sync and Intune device inventory use separate Microsoft Graph
+  # app registrations. Production authenticates both through workload identity
+  # federation using the portal's managed identity, minting a token-exchange
+  # assertion (Portal.Azure.ManagedIdentity). The optional secrets still flow
+  # from config.exs for environments that set them.
+  #
+  # Both app registrations must also declare the delegated Microsoft Graph
+  # permissions `openid` and `profile`, and set groupMembershipClaims to
+  # DirectoryRole, so the `.default` admin-consent grant covers the signed user
+  # identity proof without a second consent prompt.
+  config :portal, Portal.Microsoft.Graph.APIClient,
     token_base_url: "https://login.microsoftonline.com",
-    endpoint: "https://graph.microsoft.com"
+    endpoint: "https://graph.microsoft.com",
+    applications: [
+      entra: [client_id: env_var_to_config!(:entra_sync_client_id), client_secret: nil],
+      intune: [client_id: env_var_to_config!(:intune_sync_client_id), client_secret: nil]
+    ]
 
   # No client secret: production authenticates the app with workload identity
   # federation, minting a token-exchange assertion from the portal's managed
@@ -170,13 +185,6 @@ if config_env() == :prod do
     adapter_config: env_var_to_config!(:erlang_cluster_adapter_config),
     secondary_adapter: env_var_to_config!(:erlang_cluster_adapter_secondary),
     secondary_adapter_config: env_var_to_config!(:erlang_cluster_adapter_secondary_config)
-
-  config :portal, :enabled_features,
-    idp_sync: env_var_to_config!(:feature_idp_sync_enabled),
-    sign_up: env_var_to_config!(:feature_sign_up_enabled),
-    policy_conditions: env_var_to_config!(:feature_policy_conditions_enabled),
-    rest_api: env_var_to_config!(:feature_rest_api_enabled),
-    internet_resource: env_var_to_config!(:feature_internet_resource_enabled)
 
   config :portal, sign_up_whitelisted_domains: env_var_to_config!(:sign_up_whitelisted_domains)
   config :portal, country_code_blocklist: env_var_to_config!(:country_code_blocklist)
@@ -214,8 +222,17 @@ if config_env() == :prod do
     # Delete expired policy_authorizations every minute
     {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations},
 
+    # Refresh cached certificate revocation lists hourly
+    {"15 */2 * * *", Portal.Crl.Scheduler},
+
+    # Refresh cached OCSP statuses hourly, for CAs that publish no list
+    {"45 3 * * *", Portal.Ocsp.Scheduler},
+
     # Schedule Entra directory sync every 2 hours
     {"0 */2 * * *", Portal.Entra.Scheduler},
+
+    # Schedule Intune device inventory sync every 2 hours
+    {"10 */2 * * *", Portal.Intune.Scheduler},
 
     # Schedule Google directory sync every 2 hours
     {"20 */2 * * *", Portal.Google.Scheduler},
@@ -240,6 +257,8 @@ if config_env() == :prod do
      args: %{provider: "google", frequency: "daily"}},
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "okta", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "intune", frequency: "daily"}},
 
     # Directory sync error notifications - every 3 days for medium error count
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
@@ -248,6 +267,8 @@ if config_env() == :prod do
      args: %{provider: "google", frequency: "three_days"}},
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "okta", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "intune", frequency: "three_days"}},
 
     # Directory sync error notifications - weekly for high error count
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
@@ -256,6 +277,8 @@ if config_env() == :prod do
      args: %{provider: "google", frequency: "weekly"}},
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
      args: %{provider: "okta", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "intune", frequency: "weekly"}},
 
     # Log sink delivery error notifications
     {"0 9 * * *", Portal.Workers.LogSinkErrorNotification},
@@ -306,8 +329,14 @@ if config_env() == :prod do
     ],
     queues: [
       default: 10,
+      crl_scheduler: 1,
+      crl_sync: 5,
+      ocsp_scheduler: 1,
+      ocsp_sync: 5,
       entra_scheduler: 1,
       entra_sync: 5,
+      intune_scheduler: 1,
+      intune_sync: 5,
       google_scheduler: 1,
       google_sync: 5,
       okta_scheduler: 1,
@@ -335,6 +364,66 @@ if config_env() == :prod do
     repo: Portal.Repo
 
   ###############################
+  ##### Public Endpoint #########
+  ###############################
+
+  public_http =
+    case env_var_to_config(:phoenix_http_public_port) do
+      nil ->
+        []
+
+      port ->
+        [
+          http: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: port,
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
+          ]
+        ]
+    end
+
+  public_https =
+    case env_var_to_config(:phoenix_https_public_port) do
+      nil ->
+        []
+
+      port ->
+        sni_hosts = env_var_to_config!(:phoenix_https_sni_hosts)
+
+        if sni_hosts == %{} do
+          raise "PHOENIX_HTTPS_SNI_HOSTS must be set when PHOENIX_HTTPS_PUBLIC_PORT is set"
+        end
+
+        [
+          https: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: port,
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options),
+            thousand_island_options: [
+              transport_options: [
+                sni_fun:
+                  Portal.TLS.sni_fun(
+                    sni_hosts,
+                    env_var_to_config(:mtls_external_url)
+                  )
+              ]
+            ]
+          ]
+        ]
+    end
+
+  web_external_url = env_var_to_config!(:web_external_url)
+  web_external_url_host = URI.parse(web_external_url).host
+
+  config :portal,
+         Portal.Endpoint,
+         public_http ++ public_https ++
+           [
+             url: [scheme: "https", host: web_external_url_host, port: 443],
+             secret_key_base: env_var_to_config!(:secret_key_base)
+           ]
+
+  ###############################
   ##### PortalWeb Endpoint ######
   ###############################
 
@@ -346,29 +435,41 @@ if config_env() == :prod do
       path: web_external_url_path
     } = URI.parse(web_external_url)
 
-    config :portal, PortalWeb.Endpoint,
-      http: [
-        ip: env_var_to_config!(:phoenix_listen_address).address,
-        port: env_var_to_config!(:phoenix_http_web_port),
-        http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
-      ],
-      url: [
-        scheme: web_external_url_scheme,
-        host: web_external_url_host,
-        port: web_external_url_port,
-        path: web_external_url_path
-      ],
-      secret_key_base: env_var_to_config!(:secret_key_base),
-      check_origin:
+    web_listener =
+      if env_var_to_config!(:phoenix_legacy_listeners_enabled) do
         [
-          "#{web_external_url_scheme}://#{web_external_url_host}:#{web_external_url_port}",
-          "#{web_external_url_scheme}://*.#{web_external_url_host}:#{web_external_url_port}",
-          "#{web_external_url_scheme}://#{web_external_url_host}",
-          "#{web_external_url_scheme}://*.#{web_external_url_host}"
-        ] ++ env_var_to_config!(:websocket_additional_origins),
-      live_view: [
-        signing_salt: env_var_to_config!(:live_view_signing_salt)
-      ]
+          http: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: env_var_to_config!(:phoenix_http_web_port),
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
+          ]
+        ]
+      else
+        []
+      end
+
+    config :portal,
+           PortalWeb.Endpoint,
+           web_listener ++
+             [
+               url: [
+                 scheme: web_external_url_scheme,
+                 host: web_external_url_host,
+                 port: web_external_url_port,
+                 path: web_external_url_path
+               ],
+               secret_key_base: env_var_to_config!(:secret_key_base),
+               check_origin:
+                 [
+                   "#{web_external_url_scheme}://#{web_external_url_host}:#{web_external_url_port}",
+                   "#{web_external_url_scheme}://*.#{web_external_url_host}:#{web_external_url_port}",
+                   "#{web_external_url_scheme}://#{web_external_url_host}",
+                   "#{web_external_url_scheme}://*.#{web_external_url_host}"
+                 ] ++ env_var_to_config!(:websocket_additional_origins),
+               live_view: [
+                 signing_salt: env_var_to_config!(:live_view_signing_salt)
+               ]
+             ]
 
     config :portal, PortalWeb.RateLimit,
       refill_rate: env_var_to_config!(:web_refill_rate),
@@ -389,19 +490,31 @@ if config_env() == :prod do
       path: api_external_url_path
     } = URI.parse(api_external_url)
 
-    config :portal, PortalAPI.Endpoint,
-      http: [
-        ip: env_var_to_config!(:phoenix_listen_address).address,
-        port: env_var_to_config!(:phoenix_http_api_port),
-        http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
-      ],
-      url: [
-        scheme: api_external_url_scheme,
-        host: api_external_url_host,
-        port: api_external_url_port,
-        path: api_external_url_path
-      ],
-      secret_key_base: env_var_to_config!(:secret_key_base)
+    api_listener =
+      if env_var_to_config!(:phoenix_legacy_listeners_enabled) do
+        [
+          http: [
+            ip: env_var_to_config!(:phoenix_listen_address).address,
+            port: env_var_to_config!(:phoenix_http_api_port),
+            http_1_options: env_var_to_config!(:phoenix_http_protocol_options)
+          ]
+        ]
+      else
+        []
+      end
+
+    config :portal,
+           PortalAPI.Endpoint,
+           api_listener ++
+             [
+               url: [
+                 scheme: api_external_url_scheme,
+                 host: api_external_url_host,
+                 port: api_external_url_port,
+                 path: api_external_url_path
+               ],
+               secret_key_base: env_var_to_config!(:secret_key_base)
+             ]
 
     config :portal, PortalAPI.RateLimit,
       refill_rate: env_var_to_config!(:api_refill_rate),
@@ -417,7 +530,8 @@ if config_env() == :prod do
 
     config :portal,
       api_external_url: api_external_url,
-      rest_api_url: env_var_to_config!(:rest_api_url) || api_external_url
+      rest_api_url: env_var_to_config!(:rest_api_url) || api_external_url,
+      mtls_external_url: env_var_to_config!(:mtls_external_url)
   end
 
   ###############################

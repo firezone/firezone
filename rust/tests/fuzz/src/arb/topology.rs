@@ -9,7 +9,7 @@ use dns_types::{DomainName, OwnedRecordData};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use smallvec::SmallVec;
 use tunnel_proto::MaliciousBehaviour;
-use tunnel_proto::messages::{Filter, PortRange, client::DevicePoolMember};
+use tunnel_proto::messages::{Filter, PortRange, UpstreamDo53, client::DevicePoolMember};
 
 use super::context::Generator;
 use super::values::{
@@ -35,7 +35,13 @@ pub(super) fn generate(g: &mut Generator, start: Instant) -> ReferenceState {
     let gateways = arb_gateways(g, &portal, start);
     let relays = arb_relays(g);
     let dns_resource_records = arb_dns_resource_records(g, &portal, start);
-    let icmp_error_hosts = arb_icmp_error_hosts(g, &clients, &dns_resource_records, start);
+    let icmp_error_hosts = arb_icmp_error_hosts(
+        g,
+        &clients,
+        &dns_resource_records,
+        portal.upstream_do53(),
+        start,
+    );
     let tcp_resources = arb_tcp_resources(g, &dns_resource_records, &icmp_error_hosts, start);
 
     let global_dns_records =
@@ -87,7 +93,7 @@ pub(super) fn arb_relays(g: &mut Generator) -> BTreeMap<RelayId, Host<u64>> {
             let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
             (id, host)
         })
-        .collect::<BTreeMap<_, _>>()
+        .collect()
 }
 
 pub(super) fn with_interface<T>(
@@ -548,6 +554,7 @@ fn arb_icmp_error_hosts(
     g: &mut Generator,
     clients: &BTreeMap<ClientId, Host<RefClient>>,
     records: &DnsRecords,
+    upstream_do53: &[UpstreamDo53],
     now: Instant,
 ) -> IcmpErrorHosts {
     let mut ips = records
@@ -571,6 +578,14 @@ fn arb_icmp_error_hosts(
         .into_iter()
         .map(|ip| (ip, arb_icmp_error(g)))
         .collect::<BTreeMap<_, _>>();
+
+    // An upstream DNS resolver may be unreachable from the Gateways' networks;
+    // recursive queries tunnelled to it fail with an ICMP error instead of a response.
+    for server in upstream_do53 {
+        if g.flip(25) {
+            entries.insert(server.ip, arb_icmp_error(g));
+        }
+    }
 
     // Traffic to a Client terminates at its TUN IP; nothing is routed beyond it.
     // A port that nothing listens on is therefore the only error it can originate.

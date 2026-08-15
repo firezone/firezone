@@ -7,7 +7,6 @@ defmodule PortalWeb.PoliciesTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
-  import Portal.FeaturesFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
   import Portal.PolicyAuthorizationFixtures
@@ -124,10 +123,8 @@ defmodule PortalWeb.PoliciesTest do
           features: %{
             internet_resource: false,
             policy_conditions: false,
-            traffic_filters: true,
             idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            rest_api: true
           }
         )
 
@@ -154,10 +151,8 @@ defmodule PortalWeb.PoliciesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
             idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            rest_api: true
           }
         )
 
@@ -180,10 +175,8 @@ defmodule PortalWeb.PoliciesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
             idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            rest_api: true
           }
         )
 
@@ -221,7 +214,6 @@ defmodule PortalWeb.PoliciesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:flow_logs)
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
 
@@ -255,7 +247,6 @@ defmodule PortalWeb.PoliciesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:flow_logs)
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
 
@@ -274,21 +265,7 @@ defmodule PortalWeb.PoliciesTest do
       assert policy.flow_log_uploads_enabled == true
     end
 
-    test "does not render the flow log reporting checkbox when the feature is disabled", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/policies/new")
-
-      refute html =~ "Flow log reporting"
-    end
-
     test "defaults flow log reporting off for Internet Resource policies", %{conn: conn} do
-      enable_feature(:flow_logs)
       account = account_fixture(features: %{internet_resource: true})
       actor = admin_actor_fixture(account: account)
       group = group_fixture(account: account)
@@ -326,7 +303,6 @@ defmodule PortalWeb.PoliciesTest do
 
     test "allows flow log reporting for Internet Resource policies and shows a volume warning",
          %{conn: conn} do
-      enable_feature(:flow_logs)
       account = account_fixture(features: %{internet_resource: true})
       actor = admin_actor_fixture(account: account)
       group = group_fixture(account: account)
@@ -526,10 +502,8 @@ defmodule PortalWeb.PoliciesTest do
         starter_account_fixture(
           features: %{
             policy_conditions: false,
-            traffic_filters: true,
             idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            rest_api: true
           }
         )
 
@@ -562,7 +536,6 @@ defmodule PortalWeb.PoliciesTest do
     test "shows flow log reporting checkbox when editing an Internet Resource policy", %{
       conn: conn
     } do
-      enable_feature(:flow_logs)
       account = account_fixture(features: %{internet_resource: true})
       actor = admin_actor_fixture(account: account)
       group = group_fixture(account: account)
@@ -585,7 +558,6 @@ defmodule PortalWeb.PoliciesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:flow_logs)
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
       policy = policy_fixture(group: group, resource: resource)
@@ -657,10 +629,8 @@ defmodule PortalWeb.PoliciesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
             idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            rest_api: true
           }
         )
 
@@ -685,10 +655,8 @@ defmodule PortalWeb.PoliciesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
             idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            rest_api: true
           }
         )
 
@@ -726,10 +694,8 @@ defmodule PortalWeb.PoliciesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
             idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            rest_api: true
           }
         )
 

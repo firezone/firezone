@@ -1,7 +1,6 @@
 defmodule PortalAPI.Client.ChannelTest do
-  # Grouped with PortalAPI.Client.V3.ChannelTest: both register the globally
-  # named client session/policy-authorization queues, so the modules must
-  # not run concurrently with each other.
+  # Registers the globally named client session/policy-authorization queues,
+  # so it must not run concurrently with other modules that do the same.
   use PortalAPI.ChannelCase, async: true, group: :client_queues
   import Ecto.Query, only: [from: 2]
   import ExUnit.CaptureLog
@@ -21,7 +20,6 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.SiteFixtures
   import Portal.SubjectFixtures
   import Portal.TokenFixtures
-  import Portal.FeaturesFixtures
 
   defp join_channel(client, subject, opts \\ []) do
     channel = Keyword.get(opts, :channel, PortalAPI.Client.Channel)
@@ -63,7 +61,8 @@ defmodule PortalAPI.Client.ChannelTest do
         client: device,
         session_ref: session_ref,
         subject: subject,
-        client_version: client_version
+        client_version: client_version,
+        attestation: Keyword.get(opts, :attestation)
       })
       |> subscribe_and_join(channel, "client")
 
@@ -162,7 +161,6 @@ defmodule PortalAPI.Client.ChannelTest do
         },
         features: %{
           internet_resource: true,
-          client_to_client: true,
           iceless: true
         }
       )
@@ -1046,6 +1044,69 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "cuts the session when its own certificate is revoked", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+      attestation = %{issuer: <<"issuer-der">>, serial: "AABBCC"}
+
+      authorization =
+        Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
+          account: account,
+          client: client
+        )
+
+      socket = join_channel(client, subject, attestation: attestation)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, {:certificate_revoked, attestation.issuer, attestation.serial})
+
+      # Distinct from "token_expired": the token is fine, and a client that
+      # knows the difference can say so rather than report a sign-in problem.
+      assert_push "disconnect", %{reason: "certificate_revoked"}
+
+      # Stopping the channel alone leaves the transport up, and the client could
+      # rejoin on it without ever running Socket.connect/3, which is where the
+      # revoked certificate is refused.
+      assert_receive :socket_drain
+
+      refute Repo.get_by(Portal.PolicyAuthorization,
+               account_id: account.id,
+               id: authorization.id
+             )
+    end
+
+    test "ignores a revocation of a certificate this session is not using", %{
+      client: client,
+      subject: subject
+    } do
+      # The device attested at some point, so its row carries a certificate, but
+      # this connection presented none. Revoking that certificate says nothing
+      # about a session that is not riding on it.
+      socket = join_channel(client, subject, attestation: nil)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, {:certificate_revoked, <<"issuer-der">>, "AABBCC"})
+
+      refute_push "disconnect", %{}
+      assert Process.alive?(socket.channel_pid)
+    end
+
+    test "ignores a revocation of a superseded certificate", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject, attestation: %{issuer: <<"i">>, serial: "NEW"})
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, {:certificate_revoked, <<"i">>, "OLD"})
+
+      refute_push "disconnect", %{}
+      assert Process.alive?(socket.channel_pid)
     end
 
     test "duplicate connection evicts the first client", %{
@@ -2876,13 +2937,11 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   describe "handle_in/3 new_client_ice_candidates" do
-    test "forwards ice candidates to target client when c2c is enabled", %{
+    test "forwards ice candidates to target client", %{
       account: account,
       client: client,
       subject: subject
     } do
-      enable_feature(:client_to_client)
-
       socket = join_channel(client, subject)
       assert_push "init", _
       candidates = ["cand1", "cand2"]
@@ -2901,31 +2960,11 @@ defmodule PortalAPI.Client.ChannelTest do
       assert sending_client_id == client.id
     end
 
-    test "does nothing when c2c is globally disabled", %{
-      client: client,
-      subject: subject
-    } do
-      # Global feature off (no enable_feature call) — account already has client_to_client: true
-      socket = join_channel(client, subject)
-      assert_push "init", _
-      candidates = ["cand1"]
-      target_client_id = Ecto.UUID.generate()
-
-      push(socket, "new_client_ice_candidates", %{
-        "candidates" => candidates,
-        "client_id" => target_client_id
-      })
-
-      refute_receive {:client_ice_candidates, _, _}
-    end
-
     test "does nothing when target client is offline", %{
       account: account,
       client: client,
       subject: subject
     } do
-      enable_feature(:client_to_client)
-
       socket = join_channel(client, subject)
       assert_push "init", _
 
@@ -2948,8 +2987,6 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      enable_feature(:client_to_client)
-
       socket = join_channel(client, subject)
       assert_push "init", _
       candidates = ["cand1", "cand2"]
@@ -2967,32 +3004,11 @@ defmodule PortalAPI.Client.ChannelTest do
       assert sending_client_id == client.id
     end
 
-    test "pushes client_ice_candidate_error :disabled when c2c is globally disabled", %{
-      client: client,
-      subject: subject
-    } do
-      socket = join_channel(client, subject)
-      assert_push "init", _
-      target_client_id = Ecto.UUID.generate()
-
-      push(socket, "invalidate_client_ice_candidates", %{
-        "candidates" => ["cand1"],
-        "client_id" => target_client_id
-      })
-
-      assert_push "client_ice_candidate_error", %{
-        client_id: ^target_client_id,
-        reason: :disabled
-      }
-    end
-
     test "pushes client_ice_candidate_error :offline when target client is not in PG", %{
       account: account,
       client: client,
       subject: subject
     } do
-      enable_feature(:client_to_client)
-
       socket = join_channel(client, subject)
       assert_push "init", _
 
@@ -3498,7 +3514,6 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject,
       global_relay: global_relay
     } do
-      enable_feature(:flow_logs)
       resource = resource_fixture(account: account, site: site)
 
       policy_fixture(
@@ -3554,7 +3569,6 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject,
       global_relay: global_relay
     } do
-      enable_feature(:flow_logs)
       resource = resource_fixture(account: account, site: site)
 
       policy_fixture(
@@ -3595,34 +3609,6 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert {:ok, initiator_claims} = Portal.FlowLogToken.verify(initiator_token)
       assert initiator_claims["uploads_enabled"] == false
-    end
-
-    test "ingest tokens carry uploads_enabled=false when the feature is disabled", %{
-      dns_resource: resource,
-      client: client,
-      gateway_token: gateway_token,
-      gateway: gateway,
-      subject: subject,
-      global_relay: global_relay
-    } do
-      # No enable_feature(:flow_logs) — the policy defaults to enabled, but the
-      # global flag is off so the claim must be false.
-      socket = join_channel(client, subject)
-      assert_push "init", _init_payload
-      :ok = Portal.Presence.Relays.connect(global_relay)
-      :ok = PG.register(gateway.id)
-      :ok = connect_gateway_presence(gateway, gateway_token.id)
-
-      push(socket, "create_flow", %{
-        "resource_id" => resource.id,
-        "connected_gateway_ids" => []
-      })
-
-      assert_receive {:create_authorization, _refs, payload}
-      assert is_binary(payload.flow_logs_ingest_token)
-
-      assert {:ok, claims} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
-      assert claims["uploads_enabled"] == false
     end
 
     test "flow_created sends site_id to clients that support renamed site payloads", %{
@@ -5394,8 +5380,6 @@ defmodule PortalAPI.Client.ChannelTest do
 
   describe "handle_in/3 create_flow for static_device_pool" do
     setup %{account: account, group: group, actor: actor, subject: subject} do
-      enable_feature(:client_to_client)
-
       # Override the default subject's user_agent so static_device_pool resources
       # are eligible for the connectable list (apple >= 1.5.16).
       subject = %{
@@ -5617,29 +5601,6 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "flow_creation_failed", %{reason: :not_found}
     end
 
-    test "sends denied with :disabled when account feature is off", %{
-      account: account,
-      client: client,
-      subject: subject,
-      target_client: target_client,
-      pool_resource: pool_resource
-    } do
-      account = update_account(account, %{features: %{client_to_client: false}})
-      subject = %{subject | account: account}
-
-      initiating_socket = join_channel(client, subject)
-      assert_push "init", _
-
-      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
-
-      push(initiating_socket, "create_flow", %{
-        "resource_id" => pool_resource.id,
-        "ipv4" => target_ip
-      })
-
-      assert_push "client_device_access_denied", %{ipv4: ^target_ip, reason: :disabled}
-    end
-
     test "sends denied with :ambiguous_address when both ipv4 and ipv6 are provided",
          %{client: client, subject: subject, pool_resource: pool_resource} do
       socket = join_channel(client, subject)
@@ -5850,8 +5811,6 @@ defmodule PortalAPI.Client.ChannelTest do
 
   describe "handle_in/3 create_flow for dynamic_device_pool" do
     setup %{account: account, group: group, subject: subject} do
-      enable_feature(:client_to_client)
-
       subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
 
       target_actor = actor_fixture(account: account)
@@ -7001,8 +6960,6 @@ defmodule PortalAPI.Client.ChannelTest do
 
   describe "authorizations cache (inbound client-to-client)" do
     setup %{account: account, group: group, subject: subject} do
-      enable_feature(:client_to_client)
-
       subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
 
       target_actor = actor_fixture(account: account)

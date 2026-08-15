@@ -83,7 +83,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
         |> assign(selected_actor: nil)
         |> assign(form: nil, encoded_token: nil)
         |> assign(pending_confirm: nil, open_actor_actions_id: nil)
-        |> assign(trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?())
+        |> assign(device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?())
+        |> assign(device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?())
 
       {:ok, socket}
     else
@@ -145,7 +146,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
+        device_trust_enabled?={@device_trust_enabled?}
+        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">
@@ -265,20 +267,20 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             </div>
 
     <!-- Panel footer -->
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
+            <.panel_footer>
               <%= if is_nil(@encoded_token) do %>
-                <.button type="button" phx-click="close_panel" size="sm">
+                <.panel_footer_button type="button" phx-click="close_panel">
                   Cancel
-                </.button>
-                <.button type="submit" style="primary" size="sm">
+                </.panel_footer_button>
+                <.panel_footer_button type="submit" style="primary">
                   Create Token
-                </.button>
+                </.panel_footer_button>
               <% else %>
-                <.button type="button" phx-click="close_reveal" size="sm">
+                <.panel_footer_button type="button" phx-click="close_reveal">
                   Done
-                </.button>
+                </.panel_footer_button>
               <% end %>
-            </div>
+            </.panel_footer>
           </.form>
         </div>
       </div>
@@ -319,14 +321,14 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             </div>
 
     <!-- Panel footer -->
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-              <.button type="button" phx-click="close_panel" size="sm">
+            <.panel_footer>
+              <.panel_footer_button type="button" phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button type="submit" style="primary" size="sm">
+              </.panel_footer_button>
+              <.panel_footer_button type="submit" style="primary">
                 Save
-              </.button>
-            </div>
+              </.panel_footer_button>
+            </.panel_footer>
           </.form>
         </div>
       </div>

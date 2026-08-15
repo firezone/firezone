@@ -9,6 +9,7 @@ defmodule Portal.Repo.OffsetList do
     {order_by, opts} = Keyword.pop(opts, :order_by, [])
     {paginator_opts, opts} = Keyword.pop(opts, :page, [])
     {limit, opts} = Keyword.pop(opts, :limit)
+    {order_by_nulls, opts} = Keyword.pop(opts, :order_by_nulls, :last)
 
     paginator_opts =
       if limit do
@@ -16,6 +17,8 @@ defmodule Portal.Repo.OffsetList do
       else
         paginator_opts
       end
+
+    paginator_opts = Keyword.put(paginator_opts, :order_by_nulls, order_by_nulls)
 
     with {:ok, paginator_opts} <- OffsetPaginator.init(query_module, order_by, paginator_opts),
          {:ok, queryable} <- Filter.filter(queryable, query_module, filter) do

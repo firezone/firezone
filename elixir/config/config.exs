@@ -197,11 +197,19 @@ config :portal, Portal.Azure.ManagedIdentity,
     retry: :transient
   ]
 
-config :portal, Portal.Entra.APIClient,
-  client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),
-  client_secret: System.get_env("ENTRA_SYNC_CLIENT_SECRET"),
+config :portal, Portal.Microsoft.Graph.APIClient,
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",
+  applications: [
+    entra: [
+      client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),
+      client_secret: System.get_env("ENTRA_SYNC_CLIENT_SECRET")
+    ],
+    intune: [
+      client_id: System.get_env("INTUNE_SYNC_CLIENT_ID"),
+      client_secret: System.get_env("INTUNE_SYNC_CLIENT_SECRET")
+    ]
+  ],
   req_opts: [
     # 15 minutes
     receive_timeout: 900_000,
@@ -233,6 +241,14 @@ config :portal, Portal.Google.AuthProvider,
   client_secret: System.get_env("GOOGLE_OIDC_CLIENT_SECRET"),
   response_type: "code",
   scope: "openid email profile",
+  discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
+
+config :portal, Portal.Google.SyncAuthorization,
+  # Dedicated OAuth client used only to authorize Google Workspace directory setup
+  client_id: System.get_env("GOOGLE_SYNC_AUTHZ_CLIENT_ID"),
+  client_secret: System.get_env("GOOGLE_SYNC_AUTHZ_CLIENT_SECRET"),
+  response_type: "code",
+  scope: "openid email",
   discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
 
 config :portal, Portal.Okta.AuthProvider,
@@ -300,6 +316,10 @@ config :portal, Portal.Billing,
   # Adhoc Device
   adhoc_device_product_id: "prod_TrPXF2LVHSJpMk"
 
+config :portal, Portal.Crl.Sync, req_opts: []
+
+config :portal, Portal.Ocsp.Sync, req_opts: []
+
 config :portal, Portal.ComponentVersions,
   firezone_releases_url: "https://www.firezone.dev/api/releases",
   fetch_from_url: true,
@@ -316,15 +336,6 @@ config :portal, Portal.ClockDriftAlarm, enabled: true
 config :portal, Portal.Cluster,
   adapter: nil,
   adapter_config: []
-
-config :portal, :enabled_features,
-  idp_sync: true,
-  traffic_filters: true,
-  sign_up: true,
-  policy_conditions: true,
-  rest_api: true,
-  internet_resource: true,
-  log_sinks: true
 
 config :portal, sign_up_whitelisted_domains: []
 
@@ -365,6 +376,25 @@ config :portal, PortalWeb.Endpoint,
   live_view: [
     signing_salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX"
   ]
+
+###############################
+##### Public Endpoint #########
+###############################
+
+config :portal, Portal.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
+  url: [
+    scheme: "https",
+    host: "localhost",
+    port: 443,
+    path: nil
+  ],
+  render_errors: [
+    formats: [json: PortalAPI.ErrorView],
+    layout: false
+  ],
+  pubsub_server: Portal.PubSub,
+  secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD"
 
 config :portal,
   api_external_url: "http://localhost:13001"

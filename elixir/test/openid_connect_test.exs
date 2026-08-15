@@ -4,6 +4,7 @@ defmodule OpenIDConnectTest do
   import OpenIDConnect
 
   @redirect_uri "https://localhost/redirect_uri"
+  @vault_issuer "http://0.0.0.0:8200/v1/identity/oidc/provider/default"
 
   @config %{
     discovery_document_uri: nil,
@@ -568,7 +569,8 @@ defmodule OpenIDConnectTest do
       claims = %{
         "email" => "brian@example.com",
         "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix(),
-        "aud" => config.client_id
+        "aud" => config.client_id,
+        "iss" => @vault_issuer
       }
 
       {_alg, token} =
@@ -577,6 +579,118 @@ defmodule OpenIDConnectTest do
         |> JOSE.JWS.compact()
 
       assert verify(config, token) == {:ok, claims}
+    end
+
+    test "rejects a token without an issuer" do
+      {config, jwk} = verification_fixture("vault")
+      claims = valid_claims(config) |> Map.delete("iss")
+      token = sign_token(jwk, claims)
+
+      assert verify(config, token) == {:error, {:invalid_jwt, "invalid iss claim: missing"}}
+    end
+
+    test "rejects a token issued by a different provider" do
+      {config, jwk} = verification_fixture("vault")
+      claims = valid_claims(config, "https://attacker.example.com")
+      token = sign_token(jwk, claims)
+
+      assert verify(config, token) ==
+               {:error,
+                {:invalid_jwt, "invalid iss claim: token was issued by another provider"}}
+    end
+
+    test "accepts Google's documented legacy issuer" do
+      {config, jwk} = verification_fixture("google")
+      claims = valid_claims(config, "accounts.google.com")
+      token = sign_token(jwk, claims)
+
+      assert verify(config, token) == {:ok, claims}
+    end
+
+    test "accepts a Microsoft tenant issuer matching the discovery document template" do
+      {config, jwk} = verification_fixture("azure")
+      tenant_id = "12345678-1234-1234-1234-123456789012"
+
+      claims =
+        config
+        |> valid_claims("https://login.microsoftonline.com/#{tenant_id}/v2.0")
+        |> Map.put("tid", tenant_id)
+
+      token = sign_token(jwk, claims)
+
+      assert verify(config, token) == {:ok, claims}
+    end
+
+    test "rejects a Microsoft issuer that does not match its signed tenant ID" do
+      {config, jwk} = verification_fixture("azure")
+
+      claims =
+        config
+        |> valid_claims(
+          "https://login.microsoftonline.com/12345678-1234-1234-1234-123456789012/v2.0"
+        )
+        |> Map.put("tid", "87654321-4321-4321-4321-210987654321")
+
+      token = sign_token(jwk, claims)
+
+      assert verify(config, token) ==
+               {:error,
+                {:invalid_jwt, "invalid iss claim: token was issued by another provider"}}
+    end
+
+    test "rejects a literal Microsoft tenant issuer template" do
+      {config, jwk} = verification_fixture("azure")
+
+      claims =
+        config
+        |> valid_claims("https://login.microsoftonline.com/{tenantid}/v2.0")
+        |> Map.put("tid", "12345678-1234-1234-1234-123456789012")
+
+      token = sign_token(jwk, claims)
+
+      assert verify(config, token) ==
+               {:error,
+                {:invalid_jwt, "invalid iss claim: token was issued by another provider"}}
+    end
+
+    test "accepts an exact concrete issuer when the token also contains tid" do
+      tenant_id = "12345678-1234-1234-1234-123456789012"
+      issuer = "https://login.microsoftonline.com/#{tenant_id}/v2.0"
+      {config, jwk} = verification_fixture("azure", %{"issuer" => issuer})
+
+      claims =
+        config
+        |> valid_claims(issuer)
+        |> Map.put("tid", tenant_id)
+
+      token = sign_token(jwk, claims)
+
+      assert verify(config, token) == {:ok, claims}
+    end
+
+    test "validates a nonce when one is expected" do
+      {config, jwk} = verification_fixture("vault")
+      claims = valid_claims(config) |> Map.put("nonce", "expected-nonce")
+      token = sign_token(jwk, claims)
+
+      assert verify(config, token, nonce: "expected-nonce") == {:ok, claims}
+    end
+
+    test "rejects a missing or mismatched nonce when one is expected" do
+      {config, jwk} = verification_fixture("vault")
+
+      missing_nonce_token = sign_token(jwk, valid_claims(config))
+
+      assert verify(config, missing_nonce_token, nonce: "expected-nonce") ==
+               {:error, {:invalid_jwt, "invalid nonce claim: missing"}}
+
+      mismatched_claims = valid_claims(config) |> Map.put("nonce", "attacker-nonce")
+      mismatched_nonce_token = sign_token(jwk, mismatched_claims)
+
+      assert verify(config, mismatched_nonce_token, nonce: "expected-nonce") ==
+               {:error,
+                {:invalid_jwt,
+                 "invalid nonce claim: does not match the authorization request"}}
     end
 
     test "returns claims when aud claim is a list containing client_id" do
@@ -590,7 +704,8 @@ defmodule OpenIDConnectTest do
       claims = %{
         "email" => "brian@example.com",
         "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix(),
-        "aud" => ["other-app", config.client_id, "another-app"]
+        "aud" => ["other-app", config.client_id, "another-app"],
+        "iss" => @vault_issuer
       }
 
       {_alg, token} =
@@ -618,7 +733,8 @@ defmodule OpenIDConnectTest do
       claims = %{
         "email" => "brian@example.com",
         "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix(),
-        "aud" => config.client_id
+        "aud" => config.client_id,
+        "iss" => @vault_issuer
       }
 
       {_alg, token} =
@@ -631,7 +747,8 @@ defmodule OpenIDConnectTest do
       claims = %{
         "email" => "brian@example.com",
         "exp" => DateTime.utc_now() |> DateTime.add(-10, :second) |> DateTime.to_unix(),
-        "aud" => config.client_id
+        "aud" => config.client_id,
+        "iss" => @vault_issuer
       }
 
       {_alg, token} =
@@ -660,7 +777,8 @@ defmodule OpenIDConnectTest do
       claims = %{
         "email" => "brian@example.com",
         "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix(),
-        "aud" => config.client_id
+        "aud" => config.client_id,
+        "iss" => @vault_issuer
       }
 
       {_alg, token} =
@@ -820,7 +938,8 @@ defmodule OpenIDConnectTest do
       claims = %{
         "email" => "brian@example.com",
         "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix(),
-        "aud" => config.client_id
+        "aud" => config.client_id,
+        "iss" => @vault_issuer
       }
 
       {_alg, token} =
@@ -938,7 +1057,8 @@ defmodule OpenIDConnectTest do
       legit_claims = %{
         "email" => "brian@example.com",
         "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix(),
-        "aud" => config.client_id
+        "aud" => config.client_id,
+        "iss" => @vault_issuer
       }
 
       {_alg, legit_token} =
@@ -1180,5 +1300,35 @@ defmodule OpenIDConnectTest do
     pubkey = if :counters.get(calls, 1) == 1, do: first, else: subsequent
     # Wrap in `keys` so JOSE.JWK.from/1 produces a jwk_set, matching real JWKS endpoints.
     OpenIDConnect.Fixtures.send_response(conn, status, %{"keys" => [pubkey]}, headers)
+  end
+
+  defp verification_fixture(provider, overrides \\ %{}) do
+    {raw_jwk, []} = Code.eval_file("test/fixtures/jwks/jwk.exs")
+    jwk = JOSE.JWK.from(raw_jwk)
+    {_, public_jwk} = JOSE.JWK.to_public_map(jwk)
+
+    {test_name, uri} =
+      start_fixture(provider, Map.put(overrides, "jwks", public_jwk))
+
+    config = %{@config | discovery_document_uri: uri, req_opts: req_test_options(test_name)}
+    {config, jwk}
+  end
+
+  defp valid_claims(config, issuer \\ @vault_issuer) do
+    %{
+      "aud" => config.client_id,
+      "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix(),
+      "iss" => issuer,
+      "sub" => "test-subject"
+    }
+  end
+
+  defp sign_token(jwk, claims) do
+    {_alg, token} =
+      jwk
+      |> JOSE.JWS.sign(JSON.encode!(claims), %{"alg" => "RS256"})
+      |> JOSE.JWS.compact()
+
+    token
   end
 end

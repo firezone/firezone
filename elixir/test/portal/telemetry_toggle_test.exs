@@ -1,8 +1,7 @@
 defmodule Portal.Telemetry.ToggleTest do
-  # Separated from telemetry_test.exs because enable_metrics/1 and disable_metrics/1
-  # call :telemetry.attach_many/:telemetry.detach, which mutate a global ETS table.
-  # Running these tests alongside async: true tests causes races on handler state.
-  use ExUnit.Case, async: false
+  # Keep the global handler mutations sequential within this module. Telemetry is
+  # disabled in the test environment, and no other test module toggles these IDs.
+  use ExUnit.Case, async: true
 
   setup do
     Portal.Telemetry.disable_metrics(:liveview_events)

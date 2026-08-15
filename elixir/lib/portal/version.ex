@@ -74,7 +74,7 @@ defmodule Portal.Version do
   #   apple    >= 1.5.16
   #   gui      >= 1.5.13 (windows / linux gui)
   #   headless >= 1.5.9  (windows / linux headless)
-  #   android  -- not yet supported
+  #   android  >= 1.5.11
   def client_supports_static_device_pools?(%Device{type: :client, last_seen_version: nil}),
     do: false
 
@@ -95,7 +95,7 @@ defmodule Portal.Version do
       case ComponentVersions.get_component_type_from_user_agent(client.last_seen_user_agent) do
         :apple -> Version.compare(client.last_seen_version, "1.5.16") != :lt
         :gui -> Version.compare(client.last_seen_version, "1.5.13") != :lt
-        :android -> false
+        :android -> Version.compare(client.last_seen_version, "1.5.11") != :lt
       end
     end
   end

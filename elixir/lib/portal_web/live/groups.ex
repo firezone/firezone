@@ -29,7 +29,6 @@ defmodule PortalWeb.Groups do
     socket =
       socket
       |> assign(page_title: "Groups", selected_group: nil)
-      |> assign(flow_logs_feature_enabled?: Database.flow_logs_feature_enabled?())
       |> assign_async(:groups_count, fn -> {:ok, %{groups_count: Database.count_groups(subject)}} end)
       |> assign(base_group_assigns(socket))
       |> assign_live_table("groups",
@@ -917,7 +916,6 @@ defmodule PortalWeb.Groups do
         group={@selected_group}
         query_params={@query_params}
         flash={@flash}
-        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         panel={@group_panel}
         form_state={@group_form}
         members_state={@group_members}
@@ -1334,12 +1332,6 @@ defmodule PortalWeb.Groups do
     def all do
       index_query()
       |> hydrate_group_query()
-    end
-
-    def flow_logs_feature_enabled? do
-      from(f in Portal.Features, where: f.feature == :flow_logs and f.enabled == true)
-      |> Safe.unscoped()
-      |> Safe.exists?()
     end
 
     defp base_group_query do

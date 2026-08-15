@@ -73,14 +73,7 @@ defmodule PortalWeb.Resources.Components do
   def nil_site_label(%{type: :static_device_pool}), do: "No Site Needed"
   def nil_site_label(_resource), do: "No Site Associated"
 
-  def map_filters_form_attrs(attrs, account) do
-    attrs =
-      if Portal.Account.traffic_filters_enabled?(account) do
-        attrs
-      else
-        Map.put(attrs, "filters", %{})
-      end
-
+  def map_filters_form_attrs(attrs) do
     Map.update(attrs, "filters", [], fn filters ->
       filters =
         for {id, filter_attrs} <- filters,
@@ -106,7 +99,6 @@ defmodule PortalWeb.Resources.Components do
   end
 
   attr :form, :any, required: true
-  attr :account, :any, required: true
 
   def filters_form(assigns) do
     # Code is taken from https://github.com/phoenixframework/phoenix_live_view/blob/v0.19.5/lib/phoenix_component.ex#L2356
@@ -125,26 +117,12 @@ defmodule PortalWeb.Resources.Components do
         {id, new_form}
       end
 
-    assigns =
-      assigns
-      |> Map.put(:forms_by_protocol, forms_by_protocol)
-      |> Map.put(
-        :traffic_filters_enabled?,
-        Portal.Account.traffic_filters_enabled?(assigns.account)
-      )
+    assigns = Map.put(assigns, :forms_by_protocol, forms_by_protocol)
 
     ~H"""
     <fieldset class="flex flex-col gap-2">
       <div class="mb-1 flex items-center justify-between">
         <legend class="text-xl">Traffic Restriction</legend>
-
-        <%= if @traffic_filters_enabled? == false do %>
-          <.link navigate={~p"/#{@account}/settings/account"} class="text-sm text-primary-500">
-            <.badge type="primary" title="Feature available on a higher pricing plan">
-              <.icon name="ri-lock-line" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
-            </.badge>
-          </.link>
-        <% end %>
       </div>
 
       <p class="text-sm text-neutral-500">
@@ -152,10 +130,7 @@ defmodule PortalWeb.Resources.Components do
         protocols and ports are accessible.
       </p>
 
-      <div class={[
-        @traffic_filters_enabled? == false && "opacity-50",
-        "mt-4"
-      ]}>
+      <div class="mt-4">
         <div class="flex items-top mb-4">
           <.input type="hidden" name={"#{@form.name}[tcp][protocol]"} value="tcp" />
           <div class="mt-2.5 w-24" phx-update="ignore" id="tcp-filter-checkbox">
@@ -165,7 +140,6 @@ defmodule PortalWeb.Resources.Components do
               name={"#{@form.name}[tcp][enabled]"}
               value="true"
               checked={Map.has_key?(@forms_by_protocol, :tcp)}
-              disabled={!@traffic_filters_enabled?}
               label="TCP"
             />
           </div>
@@ -178,7 +152,7 @@ defmodule PortalWeb.Resources.Components do
               field={ports}
               name={"#{@form.name}[tcp][ports]"}
               value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
-              disabled={!@traffic_filters_enabled? || !Map.has_key?(@forms_by_protocol, :tcp)}
+              disabled={!Map.has_key?(@forms_by_protocol, :tcp)}
               placeholder="E.g. 80, 443, 8080-8090"
               class="w-96"
             />
@@ -196,7 +170,6 @@ defmodule PortalWeb.Resources.Components do
               name={"#{@form.name}[udp][enabled]"}
               value="true"
               checked={Map.has_key?(@forms_by_protocol, :udp)}
-              disabled={!@traffic_filters_enabled?}
               label="UDP"
             />
           </div>
@@ -209,7 +182,7 @@ defmodule PortalWeb.Resources.Components do
               field={ports}
               name={"#{@form.name}[udp][ports]"}
               value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
-              disabled={!@traffic_filters_enabled? || !Map.has_key?(@forms_by_protocol, :udp)}
+              disabled={!Map.has_key?(@forms_by_protocol, :udp)}
               placeholder="E.g. 53, 60000-61000"
               class="w-96"
             />
@@ -229,7 +202,6 @@ defmodule PortalWeb.Resources.Components do
               name={"#{@form.name}[icmp][enabled]"}
               value="true"
               checked={Map.has_key?(@forms_by_protocol, :icmp)}
-              disabled={!@traffic_filters_enabled?}
               label="ICMP echo"
             />
           </div>
@@ -354,7 +326,6 @@ defmodule PortalWeb.Resources.Components do
 
   attr :form, :any, required: true
   attr :resource, :any, default: nil
-  attr :client_to_client_enabled, :boolean, default: false
 
   def resource_type_picker(assigns) do
     ~H"""
@@ -362,7 +333,7 @@ defmodule PortalWeb.Resources.Components do
       <span class="block text-xs font-medium text-body mb-1.5">
         Type <span class="text-error">*</span>
       </span>
-      <ul class={"grid w-full gap-3 #{if @client_to_client_enabled, do: "grid-cols-4", else: "grid-cols-3"}"}>
+      <ul class="grid w-full gap-3 grid-cols-4">
         <li>
           <.input
             id="resource-form-type--dns"
@@ -432,7 +403,7 @@ defmodule PortalWeb.Resources.Components do
             </div>
           </label>
         </li>
-        <li :if={@client_to_client_enabled}>
+        <li>
           <.input
             id="resource-form-type--static-device-pool"
             type="radio_button_group"
@@ -446,11 +417,14 @@ defmodule PortalWeb.Resources.Components do
             class="inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
           >
             <div class="block">
-              <div class="w-full font-semibold mb-1 text-xs">
+              <div class="w-full font-semibold mb-1 text-xs flex items-center">
                 <.icon name="ri-computer-line" class="w-4 h-4 mr-1" /> Device Pool
+                <span class="ml-1.5 px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand">
+                  NEW
+                </span>
               </div>
               <div class="w-full text-[10px]">
-                Direct client access
+                Peer-to-peer, no Site
               </div>
             </div>
           </label>
@@ -644,7 +618,6 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
-  attr :account, :any, required: true
   attr :resource, :any, default: nil
   attr :form, :any, required: true
   attr :active_protocols, :list, default: []
@@ -653,20 +626,13 @@ defmodule PortalWeb.Resources.Components do
   attr :filter_errors, :map, default: %{}
 
   def resource_traffic_restrictions_section(assigns) do
-    assigns =
-      assign(
-        assigns,
-        :traffic_filters_enabled?,
-        Portal.Account.traffic_filters_enabled?(assigns.account)
-      )
-
     ~H"""
     <div :if={is_nil(@resource) || @resource.type != :internet}>
       <div class="flex items-center justify-between mb-2">
         <span class="block text-xs font-medium text-body">
           Traffic Restrictions <span class="font-normal text-subtle">(optional)</span>
         </span>
-        <div :if={@traffic_filters_enabled?} class="relative">
+        <div class="relative">
           <.button
             type="button"
             phx-click="toggle_resource_filters_dropdown"
@@ -720,78 +686,65 @@ defmodule PortalWeb.Resources.Components do
         </div>
       </div>
 
-      <%= if @traffic_filters_enabled? == false do %>
-        <.upgrade_locked_section
-          id="resource-traffic-filters-locked-container"
-          account={@account}
-          message="Upgrade your plan to unlock traffic restrictions."
-          description="Restrict access to specific protocols and ports."
-        >
-          <p class="flex items-center justify-center rounded border border-dashed border-border-strong px-4 py-5 text-xs text-subtle">
-            No restrictions — All protocols/ports permitted
-          </p>
-        </.upgrade_locked_section>
-      <% else %>
-        <div
-          :if={@active_protocols == []}
-          class="flex items-center justify-center rounded border border-dashed border-border-strong px-4 py-5 text-xs text-subtle"
-        >
-          No restrictions — All protocols/ports permitted
-        </div>
+      <div
+        :if={@active_protocols == []}
+        class="flex items-center justify-center rounded border border-dashed border-border-strong px-4 py-5 text-xs text-subtle"
+      >
+        No restrictions — All protocols/ports permitted
+      </div>
 
-        <div :if={@active_protocols != []} class="flex flex-col gap-2">
-          <div
-            :for={protocol <- @active_protocols}
-            class="flex items-center gap-2 rounded border border-border bg-surface px-3 py-2"
-          >
-            <input type="hidden" name={"resource[filters][#{protocol}][enabled]"} value="true" />
+      <div :if={@active_protocols != []} class="flex flex-col gap-2">
+        <div
+          :for={protocol <- @active_protocols}
+          class="flex items-center gap-2 rounded border border-border bg-surface px-3 py-2"
+        >
+          <input type="hidden" name={"resource[filters][#{protocol}][enabled]"} value="true" />
+          <input
+            type="hidden"
+            name={"resource[filters][#{protocol}][protocol]"}
+            value={"#{protocol}"}
+          />
+          <span class="w-10 shrink-0 text-xs font-medium text-heading uppercase">
+            {protocol}
+          </span>
+          <div :if={protocol != :icmp} class="flex-1">
             <input
-              type="hidden"
-              name={"resource[filters][#{protocol}][protocol]"}
-              value={"#{protocol}"}
+              type="text"
+              name={"resource[filters][#{protocol}][ports]"}
+              value={Map.get(@filter_ports, protocol, "")}
+              placeholder="All ports"
+              class={[
+                "w-full px-3 py-2 text-sm rounded-md border font-mono bg-input text-heading placeholder:text-muted outline-none transition-colors focus:ring-1 focus:ring-border-focus/30",
+                if(Map.has_key?(@filter_errors, protocol),
+                  do: "border-error focus:border-error",
+                  else: "border-input-border focus:border-border-focus"
+                )
+              ]}
             />
-            <span class="w-10 shrink-0 text-xs font-medium text-heading uppercase">
-              {protocol}
-            </span>
-            <div :if={protocol != :icmp} class="flex-1">
-              <input
-                type="text"
-                name={"resource[filters][#{protocol}][ports]"}
-                value={Map.get(@filter_ports, protocol, "")}
-                placeholder="All ports"
-                class={[
-                  "w-full px-3 py-2 text-sm rounded-md border font-mono bg-input text-heading placeholder:text-muted outline-none transition-colors focus:ring-1 focus:ring-border-focus/30",
-                  if(Map.has_key?(@filter_errors, protocol),
-                    do: "border-error focus:border-error",
-                    else: "border-input-border focus:border-border-focus"
-                  )
-                ]}
-              />
-              <p
-                :if={Map.has_key?(@filter_errors, protocol)}
-                class="mt-1 text-xs text-error"
-              >
-                {Map.get(@filter_errors, protocol)}
-              </p>
-            </div>
-            <span
-              :if={protocol == :icmp}
-              class="flex-1 text-xs text-subtle italic"
+            <p
+              :if={Map.has_key?(@filter_errors, protocol)}
+              class="mt-1 text-xs text-error"
             >
-              echo request/reply
-            </span>
-            <button
-              type="button"
-              phx-click="remove_resource_filter"
-              phx-value-protocol={"#{protocol}"}
-              class="shrink-0 text-subtle hover:text-heading transition-colors"
-              aria-label={"Remove #{protocol} filter"}
-            >
-              <.icon name="ri-close-line" class="w-3.5 h-3.5" />
-            </button>
+              {Map.get(@filter_errors, protocol)}
+            </p>
           </div>
+          <span
+            :if={protocol == :icmp}
+            class="flex-1 text-xs text-subtle italic"
+          >
+            echo request/reply
+          </span>
+          <button
+            type="button"
+            phx-click="remove_resource_filter"
+            phx-value-protocol={"#{protocol}"}
+            class="shrink-0 text-subtle hover:text-heading transition-colors"
+            aria-label={"Remove #{protocol} filter"}
+          >
+            <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+          </button>
         </div>
-      <% end %>
+      </div>
     </div>
     """
   end
@@ -981,11 +934,7 @@ defmodule PortalWeb.Resources.Components do
         class="flex flex-col flex-1 min-h-0 overflow-hidden"
       >
         <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          <.resource_type_picker
-            form={@resource_form}
-            resource={@resource}
-            client_to_client_enabled={@client_to_client_enabled}
-          />
+          <.resource_type_picker form={@resource_form} resource={@resource} />
 
           <.resource_core_fields form={@resource_form} resource={@resource} />
 
@@ -1002,7 +951,6 @@ defmodule PortalWeb.Resources.Components do
           />
 
           <.resource_traffic_restrictions_section
-            account={@account}
             resource={@resource}
             form={@resource_form}
             active_protocols={@resource_form_active_protocols}
@@ -1014,14 +962,14 @@ defmodule PortalWeb.Resources.Components do
           <.resource_site_selector form={@resource_form} sites={@resource_form_sites} />
         </div>
 
-        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-          <.button type="button" phx-click="cancel_resource_form" size="sm">
+        <.panel_footer>
+          <.panel_footer_button type="button" phx-click="cancel_resource_form">
             Cancel
-          </.button>
-          <.button type="submit" style="primary" size="sm">
+          </.panel_footer_button>
+          <.panel_footer_button type="submit" style="primary">
             {if @panel_view == :new_form, do: "Create Resource", else: "Save Changes"}
-          </.button>
-        </div>
+          </.panel_footer_button>
+        </.panel_footer>
       </.form>
     </div>
     """
@@ -1029,7 +977,6 @@ defmodule PortalWeb.Resources.Components do
 
   attr :account, :any, required: true
   attr :resource, :any, required: true
-  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :pool_member_ids, :list, default: []
   attr :pool_clients, :list, default: []
   attr :clients_expanded_id, :string, default: nil
@@ -1113,7 +1060,6 @@ defmodule PortalWeb.Resources.Components do
             :if={@tab == :groups && @panel_view == :grant_form}
             account={@account}
             resource={@resource}
-            flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
             grant_state={@grant_state}
           />
           <.resource_policy_authorizations_tab
@@ -1233,10 +1179,14 @@ defmodule PortalWeb.Resources.Components do
     <div class="flex-1 flex flex-col overflow-hidden">
       <div
         :if={@clients == []}
-        class="flex flex-col items-center justify-center h-full gap-2 text-subtle"
+        class="flex flex-col items-center justify-center h-full gap-2 px-6 text-center"
       >
-        <.icon name="ri-computer-line" class="w-8 h-8" />
-        <p class="text-sm">No clients in this pool</p>
+        <.icon name="ri-error-warning-line" class="w-8 h-8 text-warning" />
+        <p class="text-sm font-medium text-heading">No devices in this pool</p>
+        <p class="text-xs text-subtle max-w-sm">
+          An empty pool has nothing to connect to, so any Policy granting access to it has no
+          effect. Edit this Resource to add devices.
+        </p>
       </div>
       <div :if={@clients != []} class="flex-1 overflow-y-auto">
         <table class="w-full text-xs">
@@ -1269,7 +1219,12 @@ defmodule PortalWeb.Resources.Components do
                   {if client.actor, do: client.actor.name, else: "—"}
                 </td>
                 <td class="px-4 py-2 text-subtle font-mono">
-                  {client.ipv4}
+                  <.copy
+                    id={"pool-member-#{client.id}-ipv4"}
+                    class="flex items-center gap-1.5"
+                  >
+                    {client.ipv4}
+                  </.copy>
                 </td>
                 <td class="px-4 py-2">
                   <.client_status_badge online?={MapSet.member?(@online_client_ids, client.id)} />
@@ -1306,11 +1261,21 @@ defmodule PortalWeb.Resources.Components do
                     </div>
                     <div>
                       <p class="text-subtle font-medium mb-1">Tunnel IPv4</p>
-                      <p class="text-heading font-mono">{client.ipv4}</p>
+                      <.copy
+                        id={"pool-member-#{client.id}-detail-ipv4"}
+                        class="flex items-center gap-1.5 text-heading font-mono"
+                      >
+                        {client.ipv4}
+                      </.copy>
                     </div>
                     <div>
                       <p class="text-subtle font-medium mb-1">Tunnel IPv6</p>
-                      <p class="text-heading font-mono break-all">{client.ipv6}</p>
+                      <.copy
+                        id={"pool-member-#{client.id}-detail-ipv6"}
+                        class="flex items-start gap-1.5 text-heading font-mono break-all"
+                      >
+                        {client.ipv6}
+                      </.copy>
                     </div>
                     <div :if={client.last_seen_at}>
                       <p class="text-subtle font-medium mb-1">Last Seen</p>
@@ -1469,7 +1434,6 @@ defmodule PortalWeb.Resources.Components do
 
   attr :account, :any, required: true
   attr :resource, :any, required: true
-  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :grant_state, :map, required: true
 
   def resource_grant_form(assigns) do
@@ -1700,10 +1664,7 @@ defmodule PortalWeb.Resources.Components do
               </div>
             <% end %>
           </div>
-          <div
-            :if={@flow_logs_feature_enabled?}
-            class="border-t border-border pt-4"
-          >
+          <div class="border-t border-border pt-4">
             <.flow_log_uploads_toggle
               form={@grant_form}
               internet_resource?={@resource.type == :internet}
@@ -1717,14 +1678,18 @@ defmodule PortalWeb.Resources.Components do
       >
         <p :for={{_field, {msg, _}} <- @grant_form.errors}>{msg}</p>
       </div>
-      <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-        <.button type="button" phx-click="close_grant_form" size="xs">
+      <.panel_footer>
+        <.panel_footer_button type="button" phx-click="close_grant_form">
           Cancel
-        </.button>
-        <.button type="submit" style="primary" disabled={@grant_selected_group_ids == []} size="xs">
+        </.panel_footer_button>
+        <.panel_footer_button
+          type="submit"
+          style="primary"
+          disabled={@grant_selected_group_ids == []}
+        >
           Grant access
-        </.button>
-      </div>
+        </.panel_footer_button>
+      </.panel_footer>
     </.form>
     """
   end
@@ -2070,7 +2035,10 @@ defmodule PortalWeb.Resources.Components do
     assigns = assign(assigns, online: online, total: length(assigns.pool_member_ids))
 
     ~H"""
-    <.status_badge style={if @online > 0, do: :success, else: :neutral}>
+    <.status_badge :if={@total == 0} style={:warning}>
+      No devices
+    </.status_badge>
+    <.status_badge :if={@total > 0} style={if @online > 0, do: :success, else: :neutral}>
       {@online} / {@total} online
     </.status_badge>
     """
@@ -2121,7 +2089,18 @@ defmodule PortalWeb.Resources.Components do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Device, Features, Resource, Safe, StaticDevicePoolMember}
+    alias Portal.{Device, Resource, Safe, StaticDevicePoolMember}
+
+    @device_identifier_fields ~w[
+      firezone_id
+      device_serial
+      device_uuid
+      identifier_for_vendor
+      firebase_installation_id
+      last_attested_device_serial
+      last_attested_device_uuid
+      last_attested_mdm_device_id
+    ]a
 
     def get_resource!(id, subject) do
       from(r in Resource, as: :resources)
@@ -2134,14 +2113,6 @@ defmodule PortalWeb.Resources.Components do
       from(r in Resource, as: :resources)
       |> Safe.scoped(subject)
       |> Safe.list(Database.ListQuery, opts)
-    end
-
-    def client_to_client_enabled?(account) do
-      query = from(f in Features, where: f.feature == :client_to_client and f.enabled == true)
-
-      account_feature_enabled? = account.features.client_to_client == true
-
-      Safe.unscoped(query) |> Safe.exists?() and account_feature_enabled?
     end
 
     def all_sites(subject) do
@@ -2195,14 +2166,16 @@ defmodule PortalWeb.Resources.Components do
           ilike(a.name, ^pattern) or
           ilike(coalesce(a.email, ""), ^pattern) or
           ilike(type(c.id, :string), ^pattern) or
-          ilike(coalesce(c.firezone_id, ""), ^pattern) or
-          ilike(coalesce(c.device_serial, ""), ^pattern) or
-          ilike(coalesce(c.device_uuid, ""), ^pattern) or
-          ilike(coalesce(c.identifier_for_vendor, ""), ^pattern) or
-          ilike(coalesce(c.firebase_installation_id, ""), ^pattern) or
           ilike(type(c.ipv4, :string), ^pattern) or
-          ilike(type(c.ipv6, :string), ^pattern)
+          ilike(type(c.ipv6, :string), ^pattern) or
+          ^device_identifier_filter(pattern)
       )
+    end
+
+    defp device_identifier_filter(pattern) do
+      Enum.reduce(@device_identifier_fields, dynamic(false), fn field, dyn ->
+        dynamic([clients: c], ^dyn or ilike(coalesce(field(c, ^field), ""), ^pattern))
+      end)
     end
 
     def validate_selected_clients([], _subject), do: {:ok, []}
@@ -2227,19 +2200,6 @@ defmodule PortalWeb.Resources.Components do
 
         _ ->
           {:error, :invalid_clients}
-      end
-    end
-
-    def validate_static_device_pool_feature_enabled(changeset, account) do
-      if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool and
-           not client_to_client_enabled?(account) do
-        Ecto.Changeset.add_error(
-          changeset,
-          :type,
-          "device pools are not enabled for this account"
-        )
-      else
-        changeset
       end
     end
 

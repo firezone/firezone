@@ -57,5 +57,52 @@ defmodule Portal.Mailer.SyncErrorEmailTest do
       assert email_body.subject =~ "Directory Sync Error"
       assert email_body.subject =~ directory.name
     end
+
+    test "plain text body opens with the error headline", %{directory: directory} do
+      directory = Repo.preload(directory, :account)
+      email_body = sync_error_email(directory, "admin@example.com")
+
+      assert String.starts_with?(email_body.text_body, "#{directory.name} Sync Error!")
+    end
+  end
+
+  describe "device_integration_error_email/2" do
+    setup %{account: account} do
+      integration =
+        [account: account]
+        |> Portal.IntuneFixtures.intune_integration_fixture()
+        |> Ecto.Changeset.change(
+          error_message: "403 - Forbidden",
+          errored_at: DateTime.utc_now()
+        )
+        |> Repo.update!()
+        |> Repo.preload(:account)
+
+      %{integration: integration}
+    end
+
+    test "plain text body opens with the error headline", %{integration: integration} do
+      email_body = device_integration_error_email(integration, "admin@example.com")
+
+      assert String.starts_with?(email_body.text_body, "#{integration.name} Sync Error!")
+    end
+
+    test "body contains the sync error, tenant and settings link", %{
+      account: account,
+      integration: integration
+    } do
+      email_body = device_integration_error_email(integration, "admin@example.com")
+
+      assert email_body.text_body =~ "403 - Forbidden"
+      assert email_body.text_body =~ ~r/Tenant ID:\s*#{integration.tenant_id}/
+      assert email_body.text_body =~ "/#{account.slug}/settings/device_posture"
+      refute email_body.text_body =~ "/#{account.id}/settings/device_posture"
+    end
+
+    test "email subject includes the integration name", %{integration: integration} do
+      email_body = device_integration_error_email(integration, "admin@example.com")
+
+      assert email_body.subject =~ integration.name
+    end
   end
 end

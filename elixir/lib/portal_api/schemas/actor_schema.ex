@@ -148,6 +148,14 @@ defmodule PortalAPI.Schemas.Actor do
               type: :boolean,
               description: "Allow Email OTP Sign In",
               default: false
+            },
+            is_disabled: %Schema{
+              type: :boolean,
+              description:
+                "Whether the Actor is disabled. Setting this to `true` immediately revokes " <>
+                  "the Actor's active Client tokens and portal sessions. An Actor cannot " <>
+                  "disable itself.",
+              default: false
             }
           }
         }
@@ -158,7 +166,8 @@ defmodule PortalAPI.Schemas.Actor do
           "name" => "Joe User",
           "type" => "account_admin_user",
           "email" => "joe.user@example.com",
-          "allow_email_otp_sign_in" => false
+          "allow_email_otp_sign_in" => false,
+          "is_disabled" => false
         }
       }
     })

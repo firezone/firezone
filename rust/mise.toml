@@ -9,6 +9,7 @@ auto_install = false
 "github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
+"github:mozilla/dump_syms" = "2.3.7"
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
 
 # The eBPF program is compiled with this exact nightly toolchain: `aya_build`
@@ -23,6 +24,17 @@ run = "rustup toolchain install nightly-2025-05-30 --profile minimal --component
 # =============================================================================
 # Individual checks (matching CI)
 # =============================================================================
+
+[tasks.workspace-crates]
+description = "List the name and directory of every crate in the workspace, as JSON"
+shell = "bash -c"
+hide = true
+run = '''
+set -euo pipefail
+
+cargo metadata --format-version=1 --no-deps |
+  jq -ce '[.packages[] | {name, dir: (.manifest_path | sub("/Cargo.toml$"; "") + "/")}]'
+'''
 
 [tasks.fmt]
 description = "Format Rust code"

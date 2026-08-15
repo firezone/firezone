@@ -375,6 +375,10 @@ defmodule Portal.Safe do
   Inserts multiple entries for the given schema.
   The queryable field in Scoped/Unscoped is ignored for this operation.
 
+  Scoped inserts stamp the subject's `account_id` on every entry and refuse an
+  entry that names another account. Entries that span accounts, and the query
+  form of `entries`, require `unscoped/0`.
+
   ## Examples
       Safe.unscoped() |> Safe.insert_all(Actor, entries, on_conflict: :nothing)
       Safe.scoped(subject) |> Safe.insert_all(Actor, entries)
@@ -391,19 +395,16 @@ defmodule Portal.Safe do
   def insert_all(%Scoped{subject: subject}, schema_or_source, entries, opts) do
     schema = if is_atom(schema_or_source), do: schema_or_source, else: schema_or_source.__struct__
 
-    case permit(:insert_all, schema, subject) do
-      :ok ->
-        {:ok, result} =
-          Repo.transact(fn ->
-            emit_subject_message(subject)
+    with :ok <- permit(:insert_all, schema, subject),
+         {:ok, entries} <- scope_entries(entries, subject.account.id) do
+      {:ok, result} =
+        Repo.transact(fn ->
+          emit_subject_message(subject)
 
-            {:ok, Repo.insert_all(schema_or_source, entries, opts)}
-          end)
+          {:ok, Repo.insert_all(schema_or_source, entries, opts)}
+        end)
 
-        result
-
-      {:error, :unauthorized} ->
-        {:error, :unauthorized}
+      result
     end
   end
 
@@ -526,7 +527,13 @@ defmodule Portal.Safe do
 
   @spec update_all(Scoped.t(), Keyword.t()) ::
           {non_neg_integer(), nil | [term()]} | {:error, :unauthorized}
-  def update_all(%Scoped{subject: subject, queryable: queryable}, updates) do
+  def update_all(
+        %Scoped{
+          subject: %Subject{account: %{id: account_id}} = subject,
+          queryable: queryable
+        },
+        updates
+      ) do
     schema = get_schema_module(queryable)
 
     case permit(:update_all, schema, subject) do
@@ -535,7 +542,9 @@ defmodule Portal.Safe do
           Repo.transact(fn ->
             emit_subject_message(subject)
 
-            {:ok, Repo.update_all(queryable, updates)}
+            filtered_query = apply_account_filter(queryable, schema, account_id)
+
+            {:ok, Repo.update_all(filtered_query, updates)}
           end)
 
         result
@@ -547,12 +556,6 @@ defmodule Portal.Safe do
 
   @spec update_all(Unscoped.t(), Keyword.t()) :: {non_neg_integer(), nil | [term()]}
   def update_all(%Unscoped{queryable: queryable}, updates) do
-    Repo.update_all(queryable, updates)
-  end
-
-  @spec update_all(Portal.Repo, Ecto.Queryable.t(), Keyword.t()) ::
-          {non_neg_integer(), nil | [term()]}
-  def update_all(repo, queryable, updates) when repo == Repo do
     Repo.update_all(queryable, updates)
   end
 
@@ -707,6 +710,40 @@ defmodule Portal.Safe do
     where(queryable, account_id: ^account_id)
   end
 
+  # Bulk inserts get the same treatment `insert/1` gives a changeset: the
+  # subject's account is stamped on, and an entry naming another account is
+  # refused. Cross-account inserts must say so with `unscoped/0`.
+  defp scope_entries(entries, account_id) when is_list(entries) do
+    Enum.reduce_while(entries, {:ok, []}, fn entry, {:ok, scoped} ->
+      case scope_entry(entry, account_id) do
+        {:ok, entry} -> {:cont, {:ok, [entry | scoped]}}
+        {:error, :unauthorized} -> {:halt, {:error, :unauthorized}}
+      end
+    end)
+    |> case do
+      {:ok, scoped} -> {:ok, Enum.reverse(scoped)}
+      {:error, :unauthorized} -> {:error, :unauthorized}
+    end
+  end
+
+  defp scope_entries(_query, _account_id), do: {:error, :unauthorized}
+
+  defp scope_entry(entry, account_id) when is_map(entry) do
+    case Map.fetch(entry, :account_id) do
+      {:ok, ^account_id} -> {:ok, entry}
+      {:ok, _other} -> {:error, :unauthorized}
+      :error -> {:ok, Map.put(entry, :account_id, account_id)}
+    end
+  end
+
+  defp scope_entry(entry, account_id) when is_list(entry) do
+    case Keyword.fetch(entry, :account_id) do
+      {:ok, ^account_id} -> {:ok, entry}
+      {:ok, _other} -> {:error, :unauthorized}
+      :error -> {:ok, Keyword.put(entry, :account_id, account_id)}
+    end
+  end
+
   defp apply_schema_changeset(changeset, schema) do
     changeset =
       if function_exported?(schema, :changeset, 1) do
@@ -839,6 +876,12 @@ defmodule Portal.Safe do
   def permit(:read, Portal.Userpass.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Entra.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Entra.Directory, :api_client), do: :ok
+  def permit(_action, Portal.DeviceIntegration, :account_admin_user), do: :ok
+  def permit(:read, Portal.DeviceIntegration, :api_client), do: :ok
+  def permit(_action, Portal.Intune.Integration, :account_admin_user), do: :ok
+  def permit(:read, Portal.Intune.Integration, :api_client), do: :ok
+  def permit(:read, Portal.Intune.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.Intune.Device, :api_client), do: :ok
   def permit(_action, Portal.Google.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Google.Directory, :api_client), do: :ok
   def permit(_action, Portal.Okta.Directory, :account_admin_user), do: :ok
@@ -914,6 +957,24 @@ defmodule Portal.Safe do
   def permit(_action, Portal.TrustAnchor, :account_admin_user), do: :ok
   def permit(:read, Portal.TrustAnchor, :api_client), do: :ok
   def permit(:read, Portal.TrustAnchorCertificate, _), do: :ok
+
+  # Every attested connect checks the cached CRL for the anchor that issued its
+  # certificate, so any actor type that can attest must be able to read it.
+  def permit(:read, Portal.CrlRevocation, _), do: :ok
+
+  # Readable by any actor type that can attest, since the connect path consults
+  # it to tell an issuer that publishes a list from one that only answers a
+  # responder. The rows are otherwise written by the connect that discovers them
+  # and by the fetch jobs, both of which pin the account themselves.
+  def permit(:read, Portal.RevocationEndpoint, _), do: :ok
+
+  # An endpoint that keeps failing stops being fetched from, and saving the
+  # trust anchor its issuer belongs to is the only way to start again.
+  def permit(:update_all, Portal.RevocationEndpoint, :account_admin_user), do: :ok
+
+  # Every attested connect checks the cached status of its own certificate when
+  # its CA publishes no list, so any actor type that can attest must read it.
+  def permit(:read, Portal.OcspStatus, _), do: :ok
 
   # SessionLog permissions
   def permit(:read, Portal.SessionLog, :account_admin_user), do: :ok

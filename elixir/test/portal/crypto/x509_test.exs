@@ -171,8 +171,8 @@ defmodule Portal.Crypto.X509Test do
       assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
 
       assert X509.crl_distribution_points(cert) == [
-               "http://primary-cdn.test.invalid/device-trust-anchor/current.crl",
-               "http://secondary.test.invalid/device-trust-anchor/current.crl"
+               ["http://primary-cdn.test.invalid/device-trust-anchor/current.crl"],
+               ["http://secondary.test.invalid/device-trust-anchor/current.crl"]
              ]
     end
 
@@ -225,7 +225,7 @@ defmodule Portal.Crypto.X509Test do
 
     test "reads CRL Distribution Points and Authority Information Access together" do
       assert {:ok, cert} = X509.decode_der_certificate(sample_ec_ca_der())
-      assert X509.crl_distribution_points(cert) == ["http://crl.test.invalid/ec-ca.crl"]
+      assert X509.crl_distribution_points(cert) == [["http://crl.test.invalid/ec-ca.crl"]]
 
       assert X509.authority_info_access(cert) == %{
                ocsp: ["http://ocsp.test.invalid"],

@@ -1,6 +1,9 @@
 defmodule PortalOps.Endpoint do
   use Phoenix.Endpoint, otp_app: :portal
 
+  # Health checks - early in pipeline for fast, unauthenticated responses
+  plug Portal.Health
+
   # The ops endpoint is always served over plain HTTP, so this must be false.
   # NOTE: Plug.Session does not resolve MFA tuples for the `secure` option —
   # it passes the value directly to put_resp_cookie/4, where any non-false/nil

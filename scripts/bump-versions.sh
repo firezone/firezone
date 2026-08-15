@@ -18,14 +18,14 @@ fi
 # the bump (`version`).
 current_apple_client_version="1.5.19"
 next_apple_client_version="1.5.20"
-current_android_client_version="1.5.12"
-next_android_client_version="1.5.13"
-current_gui_client_version="1.5.15"
-next_gui_client_version="1.5.16"
-current_headless_client_version="1.5.10"
-next_headless_client_version="1.5.11"
-current_gateway_version="1.5.2"
-next_gateway_version="1.6.0"
+current_android_client_version="1.5.13"
+next_android_client_version="1.5.14"
+current_gui_client_version="1.5.16"
+next_gui_client_version="1.5.17"
+current_headless_client_version="1.5.11"
+next_headless_client_version="1.5.12"
+current_gateway_version="1.6.0"
+next_gateway_version="1.6.1"
 
 function cargo_update_workspace() {
     pushd rust >/dev/null

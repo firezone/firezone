@@ -1,6 +1,9 @@
 //! Virtual network interface
 
-use crate::{FIREZONE_MARK, tun_device_manager::TunIpStack};
+use crate::{
+    FIREZONE_MARK,
+    tun_device_manager::{TunIpStack, TunWorkers},
+};
 use anyhow::{Context as _, Result};
 use futures::{
     StreamExt, TryStreamExt,
@@ -24,7 +27,7 @@ use std::sync::Arc;
 use std::{collections::BTreeSet, path::Path};
 use std::{
     collections::HashMap,
-    os::fd::{FromRawFd as _, OwnedFd},
+    os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd},
 };
 use std::{
     collections::HashSet,
@@ -712,61 +715,35 @@ async fn link_states(handle: &Handle, link_scope_routes: &[RouteMessage]) -> Has
 }
 
 pub struct Tun {
-    outbound_tx: tun::OutboundTx,
-    inbound_rx: tun::InboundRx,
+    workers: TunWorkers,
 }
 
 impl Tun {
     pub fn new() -> Result<Self> {
         create_tun_device()?;
 
-        let (inbound_tx, inbound_rx) = tun::inbound_channel();
-        let (outbound_tx, outbound_rx) = tun::outbound_channel();
-
-        tokio::spawn(otel_instruments::periodic_queue_length(
-            outbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_transmit(),
-            ],
-        ));
-        tokio::spawn(otel_instruments::periodic_queue_length(
-            inbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_receive(),
-            ],
-        ));
-
         let fd = open_tun()?;
 
-        std::thread::Builder::new()
-            .name("TUN send".to_owned())
-            .spawn({
+        let workers = TunWorkers::spawn(
+            {
                 let fd = fd.clone();
 
-                move || {
+                move |outbound_rx| {
                     logging::unwrap_or_warn!(
                         tun::linux::tun_send(fd, outbound_rx),
                         "Failed to send to TUN device: {}"
                     )
                 }
-            })
-            .map_err(io::Error::other)?;
-        std::thread::Builder::new()
-            .name("TUN recv".to_owned())
-            .spawn(move || {
+            },
+            move |inbound_tx| {
                 logging::unwrap_or_warn!(
                     tun::linux::tun_recv(fd, inbound_tx),
                     "Failed to recv from TUN device: {}"
                 )
-            })
-            .map_err(io::Error::other)?;
+            },
+        )?;
 
-        Ok(Self {
-            outbound_tx,
-            inbound_rx,
-        })
+        Ok(Self { workers })
     }
 }
 
@@ -778,12 +755,15 @@ fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
             return Err(anyhow::Error::new(get_last_error()))
                 .with_context(|| format!("Failed to open '{file}'"));
         }
-        fd => fd,
+        fd => {
+            // Safety: We just opened the FD.
+            unsafe { OwnedFd::from_raw_fd(fd) }
+        }
     };
 
     unsafe {
         ioctl::exec(
-            fd,
+            fd.as_raw_fd(),
             TUNSETIFF,
             &mut ioctl::Request::<ioctl::SetTunFlagsPayload>::new(TunDeviceManager::IFACE_NAME),
         )
@@ -794,7 +774,7 @@ fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
     // read (GRO) and write (GSO) side, so we use it directly as the capability probe rather than
     // gating on a kernel version. It fails on kernels without UDP segmentation offload (added in
     // Linux 6.2), where we run without offloads and exchange plain packets.
-    let offloads = try_enable_offloads(fd);
+    let offloads = try_enable_offloads(fd.as_raw_fd());
 
     if !offloads {
         tracing::info!(
@@ -802,10 +782,7 @@ fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
         );
     }
 
-    set_non_blocking(fd).context("Failed to make TUN device non-blocking")?;
-
-    // Safety: We are not closing the FD.
-    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+    set_non_blocking(fd.as_raw_fd()).context("Failed to make TUN device non-blocking")?;
 
     Ok(tun::linux::TunFd::new(Arc::new(fd), offloads))
 }
@@ -825,11 +802,11 @@ fn try_enable_offloads(fd: RawFd) -> bool {
 
 impl tun::Tun for Tun {
     fn sender(&self) -> &tun::OutboundTx {
-        &self.outbound_tx
+        self.workers.sender()
     }
 
     fn receiver(&mut self) -> &mut tun::InboundRx {
-        &mut self.inbound_rx
+        self.workers.receiver()
     }
 
     fn name(&self) -> &str {

@@ -13,7 +13,6 @@ defmodule PortalWeb.Groups.Components do
   attr :group, :any, default: nil
   attr :flash, :map, required: true
   attr :query_params, :map, default: %{}
-  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :panel, :map, required: true
   attr :form_state, :map, required: true
   attr :members_state, :map, required: true
@@ -59,7 +58,6 @@ defmodule PortalWeb.Groups.Components do
         account={@account}
         group={@group}
         flash={@flash}
-        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         panel={@panel}
         members_state={@members_state}
         resources_state={@resources_state}
@@ -205,18 +203,17 @@ defmodule PortalWeb.Groups.Components do
             </div>
           </div>
         </div>
-        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-          <.link
+        <.panel_footer>
+          <.panel_footer_button
             patch={
               if @panel_view == :edit_form && @group,
                 do: ~p"/#{@account}/groups/#{@group.id}",
                 else: ~p"/#{@account}/groups"
             }
-            class="px-3 py-1.5 text-xs rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
           >
             Cancel
-          </.link>
-          <.button
+          </.panel_footer_button>
+          <.panel_footer_button
             type="submit"
             style="primary"
             disabled={
@@ -224,12 +221,11 @@ defmodule PortalWeb.Groups.Components do
                 do: not @form.source.valid?,
                 else: edit_form_unchanged?(@form, @members_to_add, @members_to_remove)
             }
-            size="sm"
             class="font-medium"
           >
             {if @panel_view == :new_form, do: "Create Group", else: "Save Changes"}
-          </.button>
-        </div>
+          </.panel_footer_button>
+        </.panel_footer>
       </.form>
     </div>
     """
@@ -238,7 +234,6 @@ defmodule PortalWeb.Groups.Components do
   attr :account, :any, required: true
   attr :group, :any, required: true
   attr :flash, :map, required: true
-  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :panel, :map, required: true
   attr :members_state, :map, required: true
   attr :resources_state, :map, required: true
@@ -280,7 +275,6 @@ defmodule PortalWeb.Groups.Components do
           <.group_resources_tab
             :if={@tab == :resources}
             account={@account}
-            flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
             resources_state={@resources_state}
             conditions_state={@conditions_state}
           />
@@ -497,7 +491,6 @@ defmodule PortalWeb.Groups.Components do
   end
 
   attr :account, :any, required: true
-  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :resources_state, :map, required: true
   attr :conditions_state, :map, required: true
 
@@ -511,7 +504,6 @@ defmodule PortalWeb.Groups.Components do
     <div class="flex-1 flex flex-col overflow-hidden">
       <.group_grant_resource_form
         :if={@tab_view == :grant_form}
-        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         resources_state={@resources_state}
         conditions_state={@conditions_state}
       />
@@ -527,7 +519,6 @@ defmodule PortalWeb.Groups.Components do
     """
   end
 
-  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :resources_state, :map, required: true
   attr :conditions_state, :map, required: true
 
@@ -761,7 +752,7 @@ defmodule PortalWeb.Groups.Components do
               />
             </div>
           </div>
-          <div :if={@flow_logs_feature_enabled?} class="border-t border-border pt-4">
+          <div class="border-t border-border pt-4">
             <.flow_log_uploads_toggle
               form={@grant_resource_form}
               internet_resource?={Enum.any?(selected_resources, &(&1.type == :internet))}
@@ -775,14 +766,18 @@ defmodule PortalWeb.Groups.Components do
       >
         <p :for={{_field, {msg, _}} <- @grant_resource_form.errors}>{msg}</p>
       </div>
-      <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-        <.button type="button" phx-click="close_grant_resource_form" size="xs">
+      <.panel_footer>
+        <.panel_footer_button type="button" phx-click="close_grant_resource_form">
           Cancel
-        </.button>
-        <.button type="submit" style="primary" disabled={@grant_selected_resource_ids == []} size="xs">
+        </.panel_footer_button>
+        <.panel_footer_button
+          type="submit"
+          style="primary"
+          disabled={@grant_selected_resource_ids == []}
+        >
           Grant access
-        </.button>
-      </div>
+        </.panel_footer_button>
+      </.panel_footer>
     </.form>
     """
   end

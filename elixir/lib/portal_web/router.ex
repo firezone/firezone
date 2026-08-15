@@ -299,6 +299,12 @@ defmodule PortalWeb.Router do
           live "/:type/:id/edit", DirectorySync, :edit
         end
 
+        scope "/device_posture" do
+          live "/", DevicePosture
+          live "/intune/new", DevicePosture, :new
+          live "/intune/:id/edit", DevicePosture, :edit
+        end
+
         # Log Sinks
         scope "/log_sinks" do
           live "/", LogSinks
@@ -312,7 +318,7 @@ defmodule PortalWeb.Router do
           live "/edit", DNS, :edit
         end
 
-        scope "/trust_anchors", TrustAnchors do
+        scope "/device_trust", DeviceTrust do
           live "/", Index
           live "/new", Index, :new
           live "/:id/edit", Index, :edit

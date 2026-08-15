@@ -1,4 +1,4 @@
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site};
+use connlib_model::{ClientId, RelayId, ResourceId, Site};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use ip_network::IpNetwork;
 use tunnel_proto::{
@@ -7,6 +7,7 @@ use tunnel_proto::{
 };
 
 use super::{
+    probe::ProbeId,
     reference::PrivateKey,
     resource::{CidrResource, Resource},
     sim_net::Host,
@@ -50,31 +51,37 @@ pub enum Transition {
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
-        expected_route: PacketRoute,
         seq: Seq,
         identifier: Identifier,
-        payload: u64,
+        probe_id: ProbeId,
     },
     SendUdpPacket {
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
-        expected_route: PacketRoute,
         sport: SPort,
         dport: DPort,
-        payload: u64,
+        probe_id: ProbeId,
     },
     ConnectTcp {
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
-        expected_route: PacketRoute,
         sport: SPort,
         dport: DPort,
     },
     SendDnsQuery {
         client_id: ClientId,
         query: DnsQuery,
+    },
+    SendDnsResourcePtrQuery {
+        client_id: ClientId,
+        record_domain: DomainName,
+        family: IpFamily,
+        address_index: u32,
+        query_id: u16,
+        dns_server: dns::Upstream,
+        transport: DnsTransport,
     },
     UpdateSystemDnsServers {
         servers: Vec<IpAddr>,
@@ -124,6 +131,7 @@ impl Transition {
             Transition::SendUdpPacket { .. } => false,
             Transition::ConnectTcp { .. } => false,
             Transition::SendDnsQuery { .. } => false,
+            Transition::SendDnsResourcePtrQuery { .. } => false,
             Transition::UpdateSystemDnsServers { .. } => false,
             Transition::UpdateUpstreamDo53Servers(_) => false,
             Transition::UpdateUpstreamDoHServers(_) => false,
@@ -150,6 +158,12 @@ pub(crate) struct DnsQuery {
     pub(crate) transport: DnsTransport,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum IpFamily {
+    Ipv4,
+    Ipv6,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum DnsTransport {
     Udp { local_port: u16 },
@@ -167,27 +181,6 @@ pub(crate) struct SPort(pub u16);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct DPort(pub u16);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PacketRoute {
-    Drop,
-    Resource {
-        resource: ResourceId,
-        gateway: GatewayId,
-    },
-    RejectedByClient,
-    ResourceRejectedByGateway {
-        resource: ResourceId,
-        gateway: GatewayId,
-    },
-    ResourceUnreachableByGateway {
-        resource: ResourceId,
-        gateway: GatewayId,
-    },
-    Gateway(GatewayId),
-    Peer(ClientId),
-    PeerRejectedByPeer(ClientId),
-}
 
 #[derive(Clone, derive_more::Debug)]
 pub(crate) enum Destination {
@@ -244,21 +237,5 @@ impl PartialEq for Destination {
             (Self::IpAddr(l0), Self::IpAddr(r0)) => l0 == r0,
             _ => false,
         }
-    }
-}
-
-pub(crate) trait ReplyTo {
-    fn reply_to(self) -> Self;
-}
-
-impl ReplyTo for (SPort, DPort) {
-    fn reply_to(self) -> Self {
-        (SPort(self.1.0), DPort(self.0.0))
-    }
-}
-
-impl ReplyTo for (Seq, Identifier) {
-    fn reply_to(self) -> Self {
-        self
     }
 }

@@ -3,6 +3,7 @@ defmodule Portal.AccountTest do
 
   import Ecto.Changeset
   import Portal.AccountFixtures
+  import Portal.FeaturesFixtures
 
   alias Portal.Account
 
@@ -78,6 +79,31 @@ defmodule Portal.AccountTest do
     test "returns false when the account has no features" do
       account = %Account{features: nil}
       refute Account.iceless_enabled?(account)
+    end
+  end
+
+  describe "account-local features" do
+    test "log sinks does not require a global rollout flag" do
+      account = %Account{features: %Portal.Accounts.Features{log_sinks: true}}
+      assert Account.log_sinks_enabled?(account)
+    end
+
+    test "device posture requires both the global rollout and account entitlement" do
+      account = %Account{features: %Portal.Accounts.Features{device_posture: true}}
+
+      disable_feature(:device_posture)
+      refute Account.device_posture_enabled?(account)
+
+      enable_feature(:device_posture)
+      assert Account.device_posture_enabled?(account)
+    end
+
+    test "device posture defaults to an unset account entitlement" do
+      enable_feature(:device_posture)
+      account = %Account{features: %Portal.Accounts.Features{}}
+
+      assert account.features.device_posture == nil
+      refute Account.device_posture_enabled?(account)
     end
   end
 

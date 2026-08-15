@@ -24,13 +24,14 @@ defmodule Portal.Google.Scheduler do
           join: a in Portal.Account,
           on: a.id == d.account_id,
           where: d.is_disabled == false,
+          where: d.is_verified == true,
           where: a.is_disabled == false,
           where: fragment("(?)->>'idp_sync' = 'true'", a.features)
         )
         |> Safe.unscoped()
         |> Safe.stream()
         |> Stream.each(fn directory ->
-          args = %{directory_id: directory.id}
+          args = %{account_id: directory.account_id, directory_id: directory.id}
           {:ok, _job} = Portal.Google.Sync.new(args) |> Oban.insert()
         end)
         |> Stream.run()

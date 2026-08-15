@@ -325,8 +325,8 @@ defmodule Portal.Queue.CallbacksTest do
       base = %{
         account_id: account.id,
         actor_id: actor.id,
-        # A cloned certificate: both entries prove the same serial.
-        last_attested_device_serial: "SN-CLONED",
+        # A reused MDM record: both entries prove the same MDM device id.
+        last_attested_mdm_device_id: "mdm-cloned",
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",
         remote_ip: {100, 64, 0, 1},
@@ -365,12 +365,72 @@ defmodule Portal.Queue.CallbacksTest do
 
       # The freshest proof wins the identifier; the loser keeps its session
       # but skips the attested update.
-      assert device_b.last_attested_device_serial == "SN-CLONED"
-      assert is_nil(device_a.last_attested_device_serial)
+      assert device_b.last_attested_mdm_device_id == "mdm-cloned"
+      assert is_nil(device_a.last_attested_mdm_device_id)
       assert is_nil(device_a.last_attested_at)
       assert device_a.client_token_id == token_a.id
       assert_receive {:confirm_session_durability, ^ref_a}
       assert_receive {:confirm_session_durability, ^ref_b}
+    end
+
+    test "a same-batch certificate collision needs both the issuer and the serial" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client_a = client_fixture(account: account, actor: actor)
+      client_b = client_fixture(account: account, actor: actor)
+      client_c = client_fixture(account: account, actor: actor)
+
+      :ok = PG.register(client_a.id)
+      :ok = PG.register(client_b.id)
+      :ok = PG.register(client_c.id)
+
+      older = DateTime.add(DateTime.utc_now(), -60, :second)
+      newer = DateTime.utc_now()
+
+      entry = fn client, serial, fingerprint, attested_at ->
+        token = client_token_fixture(account: account, actor: actor)
+
+        {%{
+           session_ref: make_ref(),
+           account_id: account.id,
+           device_id: client.id,
+           actor_id: actor.id,
+           last_attested_cert_issuer: <<"issuer-der">>,
+           last_attested_cert_serial: serial,
+           last_attested_cert_fingerprint: fingerprint,
+           last_attested_at: attested_at,
+           client_token_id: token.id,
+           public_key: generate_public_key(),
+           user_agent: "test-client/1.0",
+           remote_ip: {100, 64, 0, 1},
+           version: "1.3.0",
+           inserted_at: attested_at
+         }, %{subject: %{"actor_id" => actor.id}, timestamp: attested_at}}
+      end
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+
+      # A and B name the same certificate under one issuer, so only the
+      # freshest keeps its snapshot. C shares the issuer but not the serial,
+      # which names a different certificate and collides with neither.
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert 3 =
+                   on_flush.([
+                     entry.(client_a, "S1", "fp-a", older),
+                     entry.(client_b, "S1", "fp-b", newer),
+                     entry.(client_c, "S2", "fp-c", newer)
+                   ])
+        end)
+
+      assert log =~ "another device in the same batch claims this identifier"
+
+      assert is_nil(Repo.get_by!(Device, id: client_a.id, account_id: account.id).last_attested_at)
+      assert Repo.get_by!(Device, id: client_b.id, account_id: account.id).last_attested_cert_serial ==
+               "S1"
+
+      assert Repo.get_by!(Device, id: client_c.id, account_id: account.id).last_attested_cert_serial ==
+               "S2"
     end
 
     test "skips an attested identity another device row already holds" do
@@ -380,7 +440,7 @@ defmodule Portal.Queue.CallbacksTest do
 
       _other =
         client_fixture(account: account, actor: actor)
-        |> Ecto.Changeset.change(last_attested_device_serial: "SN-TAKEN")
+        |> Ecto.Changeset.change(last_attested_mdm_device_id: "mdm-taken")
         |> Repo.update!()
 
       token = client_token_fixture(account: account, actor: actor)
@@ -393,7 +453,7 @@ defmodule Portal.Queue.CallbacksTest do
         account_id: account.id,
         device_id: client.id,
         actor_id: actor.id,
-        last_attested_device_serial: "SN-TAKEN",
+        last_attested_mdm_device_id: "mdm-taken",
         last_attested_at: DateTime.utc_now(),
         client_token_id: token.id,
         public_key: generate_public_key(),
@@ -414,7 +474,7 @@ defmodule Portal.Queue.CallbacksTest do
       assert log =~ "another device row already holds this identifier"
 
       device = Repo.get_by!(Device, id: client.id, account_id: account.id)
-      assert is_nil(device.last_attested_device_serial)
+      assert is_nil(device.last_attested_mdm_device_id)
       assert is_nil(device.last_attested_at)
       assert device.client_token_id == token.id
       assert_receive {:confirm_session_durability, ^session_ref}

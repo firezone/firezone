@@ -51,7 +51,8 @@ defmodule PortalWeb.Settings.Authentication do
     socket =
       assign(socket,
         page_title: "Authentication",
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
+        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?(),
+        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
     if connected?(socket) do
@@ -175,7 +176,7 @@ defmodule PortalWeb.Settings.Authentication do
     with {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification(type, opts),
          verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
          verification_ref = Ecto.UUID.generate(),
-         lv_pid_string = self() |> :erlang.pid_to_list() |> to_string(),
+         lv_pid_string = PortalWeb.OIDC.serialize_pid(self()),
          state_token <-
            PortalWeb.OIDC.sign_verification_state(
              lv_pid_string,
@@ -192,11 +193,7 @@ defmodule PortalWeb.Settings.Authentication do
       }
 
       socket =
-        if type == "entra" do
-          assign(socket, active_verification: verification, pending_verification: nil)
-        else
-          assign(socket, active_verification: nil, pending_verification: verification)
-        end
+        assign(socket, active_verification: nil, pending_verification: verification)
 
       {:noreply, push_event(socket, "open_url", %{url: uri})}
     else
@@ -375,6 +372,13 @@ defmodule PortalWeb.Settings.Authentication do
     {:noreply, refresh_session_counts(socket)}
   end
 
+  # Used after Entra admin consent to build the PKCE request without consuming
+  # the verifier before the authorization-code callback.
+  def handle_info({:peek_pending_verification, from}, socket) do
+    send(from, {:pending_verification, socket.assigns[:pending_verification]})
+    {:noreply, socket}
+  end
+
   # Sent by VerificationController/OIDCController to fetch config+verifier for code exchange
   def handle_info({:get_pending_verification, from}, socket) do
     pending_verification = socket.assigns[:pending_verification]
@@ -390,6 +394,25 @@ defmodule PortalWeb.Settings.Authentication do
       end
 
     {:noreply, socket}
+  end
+
+  # Entra callbacks include their verification reference so a stale callback
+  # cannot consume a newer pending verifier.
+  def handle_info({:get_pending_verification, verification_ref, from}, socket) do
+    case socket.assigns[:pending_verification] do
+      %{verification_ref: ^verification_ref} = pending_verification ->
+        send(from, {:pending_verification, pending_verification})
+
+        {:noreply,
+         assign(socket,
+           pending_verification: nil,
+           active_verification: pending_verification
+         )}
+
+      _pending_verification ->
+        send(from, {:pending_verification, nil})
+        {:noreply, socket}
+    end
   end
 
   # Sent directly by the OIDC verification controller after code exchange succeeds
@@ -598,7 +621,8 @@ defmodule PortalWeb.Settings.Authentication do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
+        device_trust_enabled?={@device_trust_enabled?}
+        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">
@@ -607,12 +631,15 @@ defmodule PortalWeb.Settings.Authentication do
             <h2 class="text-xs font-semibold text-heading">Identity Providers</h2>
             <span class="text-xs text-subtle tabular-nums">{length(@providers)}</span>
           </div>
-          <.link
-            patch={~p"/#{@account}/settings/authentication/new"}
-            class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-          >
-            <.icon name="ri-add-line" class="w-3 h-3" /> Add
-          </.link>
+          <div class="flex items-center gap-2">
+            <.docs_action path="/authenticate" />
+            <.link
+              patch={~p"/#{@account}/settings/authentication/new"}
+              class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+            >
+              <.icon name="ri-add-line" class="w-3 h-3" /> Add
+            </.link>
+          </div>
         </div>
 
         <div class="flex-1 overflow-auto">
@@ -770,14 +797,19 @@ defmodule PortalWeb.Settings.Authentication do
                 submit_event="submit_provider"
               />
             </div>
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <.button phx-click="close_panel">
+            <.panel_footer>
+              <.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button form="auth-provider-form" type="submit" style="primary" disabled={not @form.source.valid?}>
+              </.panel_footer_button>
+              <.panel_footer_button
+                form="auth-provider-form"
+                type="submit"
+                style="primary"
+                disabled={not @form.source.valid?}
+              >
                 Create
-              </.button>
-            </div>
+              </.panel_footer_button>
+            </.panel_footer>
           </div>
         </div>
       </div>
@@ -817,22 +849,21 @@ defmodule PortalWeb.Settings.Authentication do
               is_legacy={assigns[:is_legacy]}
             />
           </div>
-          <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-            <.button phx-click="close_panel" size="sm">
+          <.panel_footer>
+            <.panel_footer_button phx-click="close_panel">
               Cancel
-            </.button>
-            <.button
+            </.panel_footer_button>
+            <.panel_footer_button
               form="auth-provider-form"
               type="submit"
               style="primary"
-              size="sm"
               disabled={
                 not @form.source.valid? or Enum.empty?(@form.source.changes) or not verified?(@form)
               }
             >
               Save
-            </.button>
-          </div>
+            </.panel_footer_button>
+          </.panel_footer>
         </div>
       </div>
     </div>

@@ -1,9 +1,9 @@
 use crate::buffered_transmits::BufferedTransmits;
 use anyhow::{Context as _, Result, bail};
 use connlib_model::{ClientId, GatewayId, RelayId};
-use firezone_relay::AddressFamily;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
+use relay_proto::AddressFamily;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},

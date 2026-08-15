@@ -4,6 +4,11 @@ This directory contains custom Credo checks specific to the Firezone codebase.
 
 ## Available Checks
 
+### Warning.AsyncFalseInTest
+
+Prevents test case modules from using `async: false`. Tests must isolate mutable
+state and run asynchronously.
+
 ### Warning.MissingChangesetFunction
 
 Ensures that Ecto schema modules define a `changeset/1` function that accepts an `Ecto.Changeset`.

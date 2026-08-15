@@ -9,6 +9,10 @@ use std::task::{Context, Poll, Waker};
 use tun::{PacketBatch, Tun};
 
 pub struct Device {
+    // The flush future holds a clone of the TUN device's sender and must be dropped
+    // before `tun`: `Tun`'s drop can wait for its worker threads, which only exit
+    // once all sender clones are gone. Fields drop in declaration order.
+    flush_future: Option<BoxFuture<'static, Result<()>>>,
     tun: Option<Box<dyn Tun>>,
     waker: Option<Waker>,
 
@@ -16,7 +20,6 @@ pub struct Device {
     current_batch: PacketBatch,
     /// Completed batches that did not fit into the channel yet.
     pending_batches: VecDeque<PacketBatch>,
-    flush_future: Option<BoxFuture<'static, Result<()>>>,
 }
 
 impl Device {
@@ -33,6 +36,9 @@ impl Device {
     pub(crate) fn set_tun(&mut self, tun: Box<dyn Tun>) {
         tracing::debug!(name = %tun.name(), "Initializing TUN device");
 
+        // A pending flush still holds a sender clone of the previous TUN device;
+        // drop it so the previous device's worker threads can exit.
+        self.flush_future = None;
         self.tun = Some(tun);
 
         if let Some(waker) = self.waker.take() {

@@ -344,7 +344,7 @@ defmodule PortalWeb.Logs.SessionLogs do
     def list_session_logs(subject, opts \\ []) do
       from(sl in SessionLog, as: :session_logs)
       |> Safe.scoped(subject)
-      |> Safe.list_offset(__MODULE__, opts)
+      |> Safe.list_offset(__MODULE__, Keyword.put(opts, :order_by_nulls, :natural))
     end
 
     def fetch_log(log_id, subject) do

@@ -55,11 +55,11 @@ defmodule Portal.Elastic.SyncTest do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
 
       # An idle run has nothing to deliver and makes no destination calls.
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_receive {:put, _path, _body}
 
       session_log_fixture(account: account)
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:put, "/_index_template/firezone-logs-firezone-default", template}
       assert template["index_patterns"] == ["logs-firezone-default"]
@@ -91,11 +91,11 @@ defmodule Portal.Elastic.SyncTest do
 
     test "bulk-creates documents with log_id as _id", %{account: account} do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       log = session_log_fixture(account: account)
 
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:bulk, conn, [action, document]}
       assert conn.request_path == "/_bulk"
@@ -114,7 +114,7 @@ defmodule Portal.Elastic.SyncTest do
 
     test "flow start and end events get distinct document ids", %{account: account} do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:flow])
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       flow =
         flow_log_fixture(
@@ -127,7 +127,7 @@ defmodule Portal.Elastic.SyncTest do
           tx_bytes: nil
         )
 
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       assert_receive {:bulk, _conn, [start_action, _start_doc]}
       assert start_action["create"]["_id"] == flow.log_id <> "-s"
 
@@ -141,6 +141,14 @@ defmodule Portal.Elastic.SyncTest do
             seq: fragment("nextval('flow_logs_seq_seq')"),
             flow_end: ^flow_end,
             last_packet: ^flow_end,
+            outers: ^[
+              %FlowLog.Outer{
+                src_ip: "203.0.113.10",
+                src_port: 51_820,
+                dst_ip: "198.51.100.5",
+                dst_port: 51_820
+              }
+            ],
             rx_packets: 1,
             tx_packets: 1,
             rx_bytes: 1,
@@ -150,7 +158,7 @@ defmodule Portal.Elastic.SyncTest do
       )
       |> Repo.update_all([])
 
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       assert_receive {:bulk, _conn, [end_action, end_doc]}
       assert end_action["create"]["_id"] == flow.log_id <> "-e"
       assert end_doc["firezone"]["log_id"] == flow.log_id <> "-e"
@@ -158,7 +166,7 @@ defmodule Portal.Elastic.SyncTest do
 
     test "version conflicts count as delivered", %{account: account} do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       log = session_log_fixture(account: account)
 
       Req.Test.stub(Elastic.APIClient, fn conn ->
@@ -176,7 +184,7 @@ defmodule Portal.Elastic.SyncTest do
         })
       end)
 
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       cursor = get_cursor(sink, :session, :live)
       assert cursor.cursor == log.seq
@@ -188,7 +196,7 @@ defmodule Portal.Elastic.SyncTest do
       account: account
     } do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(Elastic.APIClient, fn conn ->
@@ -206,7 +214,7 @@ defmodule Portal.Elastic.SyncTest do
         })
       end)
 
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       cursor = get_cursor(sink, :session, :live)
       assert cursor.synced_count == 0
@@ -220,7 +228,7 @@ defmodule Portal.Elastic.SyncTest do
       account: account
     } do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       fine = session_log_fixture(account: account, actor_email: "fine@example.com")
       poison = session_log_fixture(account: account, actor_email: "poison@example.com")
@@ -229,7 +237,7 @@ defmodule Portal.Elastic.SyncTest do
 
       log_output =
         ExUnit.CaptureLog.capture_log([level: :error], fn ->
-          assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+          assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
       assert log_output =~ "Log sink event cannot be delivered, halting stream"
@@ -260,13 +268,13 @@ defmodule Portal.Elastic.SyncTest do
           last_rollover_at: DateTime.utc_now()
         )
 
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account, actor_email: "poison@example.com")
 
       stub_with_poison(self(), "document_parsing_exception")
 
       ExUnit.CaptureLog.capture_log(fn ->
-        assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+        assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       end)
 
       refute_receive {:rollover, _path}
@@ -274,14 +282,14 @@ defmodule Portal.Elastic.SyncTest do
 
     test "a non-mapping rejection is a customer-facing transient error", %{account: account} do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       poison = session_log_fixture(account: account, actor_email: "poison@example.com")
 
       stub_with_poison(self(), "cluster_block_exception")
 
       log_output =
         ExUnit.CaptureLog.capture_log([level: :error], fn ->
-          assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+          assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
       refute log_output =~ "cannot be delivered"
@@ -303,7 +311,7 @@ defmodule Portal.Elastic.SyncTest do
       account: account
     } do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session, :flow])
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       session_log_fixture(account: account)
       flow_log_fixture(account: account, domain: "example.com")
@@ -337,7 +345,7 @@ defmodule Portal.Elastic.SyncTest do
       end)
 
       ExUnit.CaptureLog.capture_log(fn ->
-        assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+        assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       end)
 
       assert_receive {:rollover, _path}
@@ -346,7 +354,7 @@ defmodule Portal.Elastic.SyncTest do
 
     test "a 401 disables the sink immediately", %{account: account} do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(Elastic.APIClient, fn conn ->
@@ -355,7 +363,7 @@ defmodule Portal.Elastic.SyncTest do
         |> Req.Test.json(%{"error" => %{"reason" => "unable to authenticate user"}})
       end)
 
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       assert sink.is_disabled
@@ -363,6 +371,17 @@ defmodule Portal.Elastic.SyncTest do
 
       assert sink.error_message ==
                "Elasticsearch returned HTTP 401: unable to authenticate user"
+    end
+
+    test "skips sink belonging to another account", %{account: account} do
+      sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
+      session_log_fixture(account: account)
+      other_account = account_fixture(features: %{log_sinks: true})
+
+      assert :ok = perform_job(Elastic.Sync, %{account_id: other_account.id, log_sink_id: sink.id})
+
+      refute_receive {:bulk, _conn, _lines}
+      assert Repo.all(LogSinkCursor) == []
     end
   end
 
@@ -375,7 +394,7 @@ defmodule Portal.Elastic.SyncTest do
 
       assert {:ok, :scheduled} = perform_job(Elastic.Scheduler, %{})
 
-      assert_enqueued(worker: Elastic.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: Elastic.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_enqueued(worker: Elastic.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: Elastic.Sync, args: %{log_sink_id: feature_off_sink.id})
     end

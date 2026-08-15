@@ -947,15 +947,11 @@ defmodule Portal.Repo.Seeds do
     :rand.seed(:exsss, {1, 2, 3})
 
     Repo.query!(
-      "INSERT INTO features (feature, enabled) VALUES ('client_to_client', true) ON CONFLICT (feature) DO UPDATE SET enabled = true"
-    )
-
-    Repo.query!(
-      "INSERT INTO features (feature, enabled) VALUES ('trust_anchors', true) ON CONFLICT (feature) DO UPDATE SET enabled = true"
-    )
-
-    Repo.query!(
-      "INSERT INTO features (feature, enabled) VALUES ('flow_logs', true) ON CONFLICT (feature) DO UPDATE SET enabled = true"
+      """
+      INSERT INTO features (feature, enabled)
+      VALUES ('device_trust', true), ('device_posture', true)
+      ON CONFLICT (feature) DO UPDATE SET enabled = true
+      """
     )
 
     account =
@@ -976,11 +972,9 @@ defmodule Portal.Repo.Seeds do
       |> put_change(:id, "c89bcc8c-9392-4dae-a40d-888aef6d28e0")
       |> put_change(:features, %{
         policy_conditions: true,
-        traffic_filters: true,
         idp_sync: true,
         rest_api: true,
         internet_resource: true,
-        client_to_client: true,
         iceless: System.get_env("FEATURE_ICELESS_ENABLED") == "true",
         log_sinks: true
       })

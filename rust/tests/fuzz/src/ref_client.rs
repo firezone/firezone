@@ -1,6 +1,8 @@
 use super::{
     QueryId,
     dns_records::DnsRecords,
+    icmp_error_hosts::IcmpErrorHosts,
+    probe::{ExpectedOutcome, PacketRoute, RejectionRemote, RejectionResponse, Remote},
     reference::PrivateKey,
     resource::{
         CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
@@ -8,7 +10,7 @@ use super::{
     },
     sim_client::SimClient,
     sim_net::ExecMutScope,
-    transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, PacketRoute, SPort, Seq},
+    transition::{DPort, Destination, DnsQuery, DnsTransport, SPort},
 };
 use tunnel_proto::{
     ClientState, MaliciousBehaviour, dns,
@@ -16,7 +18,7 @@ use tunnel_proto::{
 };
 
 use chrono::{DateTime, Utc};
-use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, Site, SiteId};
+use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceView, Site, SiteId};
 use dns_types::{DomainName, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
@@ -77,37 +79,13 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) connected_dns_resources: BTreeSet<ResourceId>,
 
+    /// The last time a connected gateway resolved each DNS resource domain.
+    #[debug(skip)]
+    dns_resource_resolutions: BTreeMap<(ResourceId, DomainName), Instant>,
+
     /// The [`ResourceStatus`] of each site.
     #[debug(skip)]
     site_status: BTreeMap<SiteId, ResourceStatus>,
-
-    /// The expected ICMP handshakes with Gateways.
-    #[debug(skip)]
-    pub(crate) expected_gateway_icmp_handshakes:
-        BTreeMap<GatewayId, BTreeMap<u64, (Destination, Seq, Identifier)>>,
-
-    /// The expected ICMP handshakes with Clients.
-    #[debug(skip)]
-    pub(crate) expected_client_icmp_handshakes:
-        BTreeMap<ClientId, BTreeMap<u64, (Destination, Seq, Identifier)>>,
-
-    /// Tracks ICMP packets expected to receive an error response.
-    #[debug(skip)]
-    pub(crate) expected_icmp_rejections: BTreeMap<(Seq, Identifier), ExpectedRejection>,
-
-    /// The expected UDP handshakes with Gateways.
-    #[debug(skip)]
-    pub(crate) expected_gateway_udp_handshakes:
-        BTreeMap<GatewayId, BTreeMap<u64, (Destination, SPort, DPort)>>,
-
-    /// The expected UDP handshakes with Clients.
-    #[debug(skip)]
-    pub(crate) expected_client_udp_handshakes:
-        BTreeMap<ClientId, BTreeMap<u64, (Destination, SPort, DPort)>>,
-
-    /// Tracks UDP packets expected to receive an ICMP error response.
-    #[debug(skip)]
-    pub(crate) expected_udp_rejections: BTreeMap<(SPort, DPort), ExpectedRejection>,
 
     /// The expected TCP connections.
     #[debug(skip)]
@@ -163,13 +141,8 @@ impl RefClient {
             dns_records: Default::default(),
             connected_cidr_resources: Default::default(),
             connected_dns_resources: Default::default(),
+            dns_resource_resolutions: Default::default(),
             connected_internet_resource: Default::default(),
-            expected_gateway_icmp_handshakes: Default::default(),
-            expected_client_icmp_handshakes: Default::default(),
-            expected_icmp_rejections: Default::default(),
-            expected_gateway_udp_handshakes: Default::default(),
-            expected_client_udp_handshakes: Default::default(),
-            expected_udp_rejections: Default::default(),
             expected_tcp_connections: Default::default(),
             expected_tcp_rejections: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
@@ -222,6 +195,8 @@ impl RefClient {
 
         self.connected_cidr_resources.remove(resource);
         self.connected_dns_resources.remove(resource);
+        self.dns_resource_resolutions
+            .retain(|(candidate, _), _| candidate != resource);
 
         if self.internet_resource().is_some_and(|r| r == *resource) {
             self.connected_internet_resource = false;
@@ -344,6 +319,8 @@ impl RefClient {
         for resource in affected {
             self.connected_cidr_resources.remove(&resource);
             self.connected_dns_resources.remove(&resource);
+            self.dns_resource_resolutions
+                .retain(|(candidate, _), _| *candidate != resource);
 
             if self.internet_resource().is_some_and(|r| r == resource) {
                 self.connected_internet_resource = false;
@@ -368,6 +345,7 @@ impl RefClient {
 
         self.connected_cidr_resources.clear();
         self.connected_dns_resources.clear();
+        self.dns_resource_resolutions.clear();
         self.connected_internet_resource = false;
 
         for status in self.site_status.values_mut() {
@@ -470,19 +448,43 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn expected_resource_status(&self) -> BTreeMap<ResourceId, ResourceStatus> {
+    pub(crate) fn expected_resources(&self) -> Vec<ResourceView> {
         self.resources
             .iter()
-            .filter_map(|r| {
-                let status = self
-                    .site_status
-                    .get(&r.site().ok()?.id)
-                    .copied()
-                    .unwrap_or(ResourceStatus::Unknown);
+            .cloned()
+            .filter_map(|resource| {
+                let status = self.expected_resource_status(&resource);
 
-                Some((r.id(), status))
+                resource.into_view(status)
             })
+            .sorted()
             .collect()
+    }
+
+    fn expected_resource_status(&self, resource: &Resource) -> ResourceStatus {
+        let sites = resource.sites();
+
+        if sites.is_empty() {
+            return ResourceStatus::Unknown;
+        }
+
+        if sites.iter().any(|site| {
+            self.site_status
+                .get(&site.id)
+                .is_some_and(|status| *status == ResourceStatus::Online)
+        }) {
+            return ResourceStatus::Online;
+        }
+
+        if sites.iter().all(|site| {
+            self.site_status
+                .get(&site.id)
+                .is_some_and(|status| *status == ResourceStatus::Offline)
+        }) {
+            return ResourceStatus::Offline;
+        }
+
+        ResourceStatus::Unknown
     }
 
     /// Returns the list of resources where we are not "sure" whether they are online or unknown.
@@ -516,76 +518,26 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn on_icmp_packet(
-        &mut self,
-        dst: Destination,
-        expected_route: PacketRoute,
-        seq: Seq,
-        identifier: Identifier,
-        payload: u64,
-        now: Instant,
-    ) {
-        self.on_packet(
-            dst.clone(),
-            expected_route,
-            (dst, seq, identifier),
-            |ref_client| &mut ref_client.expected_gateway_icmp_handshakes,
-            |ref_client| &mut ref_client.expected_client_icmp_handshakes,
-            |ref_client| &mut ref_client.expected_icmp_rejections,
-            (seq, identifier),
-            payload,
-            now,
-        );
-    }
-
-    pub(crate) fn on_udp_packet(
-        &mut self,
-        dst: Destination,
-        expected_route: PacketRoute,
-        sport: SPort,
-        dport: DPort,
-        payload: u64,
-        now: Instant,
-    ) {
-        self.on_packet(
-            dst.clone(),
-            expected_route,
-            (dst, sport, dport),
-            |ref_client| &mut ref_client.expected_gateway_udp_handshakes,
-            |ref_client| &mut ref_client.expected_client_udp_handshakes,
-            |ref_client| &mut ref_client.expected_udp_rejections,
-            (sport, dport),
-            payload,
-            now,
-        );
-    }
-
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource, gateway, peer))]
-    fn on_packet<E, K: Ord>(
+    pub(crate) fn on_packet(
         &mut self,
         dst: Destination,
-        expected_route: PacketRoute,
-        packet_id: E,
-        gateway_map: impl FnOnce(&mut Self) -> &mut BTreeMap<GatewayId, BTreeMap<u64, E>>,
-        client_map: impl FnOnce(&mut Self) -> &mut BTreeMap<ClientId, BTreeMap<u64, E>>,
-        rejection_map: impl FnOnce(&mut Self) -> &mut BTreeMap<K, ExpectedRejection>,
-        rejection_id: K,
-        payload: u64,
+        route: PacketRoute,
         now: Instant,
-    ) {
-        let gateway = match expected_route {
-            PacketRoute::Drop => return,
+    ) -> ExpectedOutcome {
+        match route {
+            PacketRoute::Drop => ExpectedOutcome::Dropped,
             PacketRoute::Peer(remote_id) => {
                 tracing::Span::current().record("peer", tracing::field::display(remote_id));
-                client_map(self)
-                    .entry(remote_id)
-                    .or_default()
-                    .insert(payload, packet_id);
                 self.client_send_times
                     .entry(remote_id)
                     .or_default()
                     .insert(now);
-                return;
+
+                ExpectedOutcome::RoundTripCompleted {
+                    remote: Remote::Client(remote_id),
+                    resource: None,
+                }
             }
             PacketRoute::PeerRejectedByPeer(remote_id) => {
                 tracing::Span::current().record("peer", tracing::field::display(remote_id));
@@ -593,31 +545,42 @@ impl RefClient {
                     .entry(remote_id)
                     .or_default()
                     .insert(now);
-                rejection_map(self).insert(
-                    rejection_id,
-                    ExpectedRejection {
-                        response: RejectionResponse::Prohibited,
-                        remote: RejectionRemote::Client(remote_id),
-                    },
-                );
-                return;
+
+                ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Client(remote_id),
+                    response: RejectionResponse::Prohibited,
+                }
             }
-            PacketRoute::RejectedByClient => {
-                rejection_map(self).insert(
-                    rejection_id,
-                    ExpectedRejection {
-                        response: RejectionResponse::Prohibited,
-                        remote: RejectionRemote::Local,
-                    },
-                );
-                return;
+            PacketRoute::RejectedByClient => ExpectedOutcome::Rejected {
+                by: RejectionRemote::Local,
+                response: RejectionResponse::Prohibited,
+            },
+            PacketRoute::Gateway(gateway) => {
+                tracing::Span::current().record("gateway", tracing::field::display(gateway));
+                self.gateway_send_times
+                    .entry(gateway)
+                    .or_default()
+                    .insert(now);
+
+                ExpectedOutcome::RoundTripCompleted {
+                    remote: Remote::Gateway(gateway),
+                    resource: None,
+                }
             }
-            PacketRoute::Gateway(gateway) => gateway,
             PacketRoute::Resource { resource, gateway } => {
                 tracing::Span::current().record("resource", tracing::field::display(resource));
+                tracing::Span::current().record("gateway", tracing::field::display(gateway));
                 self.connect_to_resource(resource, dst);
                 self.set_resource_online(resource);
-                gateway
+                self.gateway_send_times
+                    .entry(gateway)
+                    .or_default()
+                    .insert(now);
+
+                ExpectedOutcome::RoundTripCompleted {
+                    remote: Remote::Gateway(gateway),
+                    resource: Some(resource),
+                }
             }
             PacketRoute::ResourceRejectedByGateway { resource, gateway } => {
                 tracing::Span::current().record("resource", tracing::field::display(resource));
@@ -628,14 +591,11 @@ impl RefClient {
                     .entry(gateway)
                     .or_default()
                     .insert(now);
-                rejection_map(self).insert(
-                    rejection_id,
-                    ExpectedRejection {
-                        response: RejectionResponse::Prohibited,
-                        remote: RejectionRemote::Gateway(gateway),
-                    },
-                );
-                return;
+
+                ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Gateway(gateway),
+                    response: RejectionResponse::Prohibited,
+                }
             }
             PacketRoute::ResourceUnreachableByGateway { resource, gateway } => {
                 tracing::Span::current().record("resource", tracing::field::display(resource));
@@ -646,40 +606,24 @@ impl RefClient {
                     .entry(gateway)
                     .or_default()
                     .insert(now);
-                rejection_map(self).insert(
-                    rejection_id,
-                    ExpectedRejection {
-                        response: RejectionResponse::Unreachable,
-                        remote: RejectionRemote::Gateway(gateway),
-                    },
-                );
-                return;
+
+                ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Gateway(gateway),
+                    response: RejectionResponse::Unreachable,
+                }
             }
-        };
-
-        tracing::Span::current().record("gateway", tracing::field::display(gateway));
-        tracing::debug!(%payload, "Sending packet");
-
-        gateway_map(self)
-            .entry(gateway)
-            .or_default()
-            .insert(payload, packet_id);
-
-        self.gateway_send_times
-            .entry(gateway)
-            .or_default()
-            .insert(now);
+        }
     }
 
     pub(crate) fn on_connect_tcp(
         &mut self,
         src: IpAddr,
         dst: Destination,
-        expected_route: PacketRoute,
+        route: PacketRoute,
         sport: SPort,
         dport: DPort,
     ) {
-        match expected_route {
+        match route {
             PacketRoute::Drop => {}
             PacketRoute::Gateway(_) => {}
             PacketRoute::Peer(_) => {}
@@ -724,6 +668,7 @@ impl RefClient {
 
     pub(crate) fn route_for_packet(
         &self,
+        src: IpAddr,
         dst: &Destination,
         protocol: Protocol,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
@@ -763,7 +708,7 @@ impl RefClient {
         // Resource selection is the one deliberate classifier in the oracle.
         // `resource_by_dst` has small, independently tested precedence rules for
         // overlapping resources; applying a transition does not classify again.
-        let Some(resource) = self.resource_by_dst(dst, protocol) else {
+        let Some(resource) = self.resource_by_dst(src, dst, protocol) else {
             return PacketRoute::Drop;
         };
         let strictly_allowed = self.strict_resource_filter_allows(resource, protocol);
@@ -839,13 +784,20 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn on_dns_query(&mut self, query: &DnsQuery, upstream_do53: &[UpstreamDo53]) {
+    pub(crate) fn on_dns_query(
+        &mut self,
+        query: &DnsQuery,
+        upstream_do53: &[UpstreamDo53],
+        icmp_error_hosts: &IcmpErrorHosts,
+        now: Instant,
+    ) {
         if self.is_dynamic_device_pool_dns_query(query) {
             self.expect_dns_response(query);
             return;
         }
 
         if let Some(resource) = self.is_site_specific_dns_query(query) {
+            self.prepare_dns_resource_connection(resource, now);
             self.set_resource_online(resource);
             self.connected_dns_resources.insert(resource);
             self.expect_dns_response(query);
@@ -853,14 +805,27 @@ impl RefClient {
             return;
         }
 
-        if self.is_local_dns_resource_query(query) {
+        if self.is_local_dns_resource_query(query)
+            && !self.local_dns_resource_query_has_records(query)
+        {
+            self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
+            return;
+        }
+
+        if let Some(resource) = self.local_dns_resource(query) {
             self.expect_dns_response(query);
+
+            if self.connected_dns_resources.contains(&resource)
+                && matches!(query.r_type, RecordType::A | RecordType::AAAA)
+            {
+                self.dns_resource_resolutions
+                    .insert((resource, query.domain.clone()), now);
+            }
+
             return;
         }
 
         if let Some(resource) = self.dns_query_via_resource(query, upstream_do53) {
-            self.expect_dns_response(query); // We always generate a response, even if we don't connect to the upstream server.
-
             let proto = match query.transport {
                 DnsTransport::Udp { .. } => Protocol::Udp(53),
                 DnsTransport::Tcp => Protocol::Tcp(53),
@@ -868,7 +833,16 @@ impl RefClient {
 
             if !self.resource_filter_allows(resource, proto) {
                 tracing::debug!("Resource filter does not allow protocol, dropping");
+                self.expect_dns_response(query); // We always generate a response, even if we don't connect to the upstream server.
                 return;
+            }
+
+            if self.resolver_is_unreachable(query, icmp_error_hosts) {
+                // The resolver answers with an ICMP error; connlib fails the query
+                // and responds with SERVFAIL, so no records are learned.
+                self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
+            } else {
+                self.expect_dns_response(query);
             }
 
             self.connect_to_internet_or_cidr_resource(resource);
@@ -880,30 +854,67 @@ impl RefClient {
         self.expect_dns_response(query);
     }
 
+    pub(crate) fn on_dns_resource_ptr_query(
+        &mut self,
+        dns_server: &dns::Upstream,
+        query_id: u16,
+        transport: DnsTransport,
+    ) {
+        self.expect_dns_handshake(dns_server, query_id, transport);
+    }
+
+    /// Returns whether the query's resolver answers tunnelled traffic with ICMP errors.
+    fn resolver_is_unreachable(&self, query: &DnsQuery, icmp_error_hosts: &IcmpErrorHosts) -> bool {
+        match &query.dns_server {
+            dns::Upstream::Do53 { server } => {
+                icmp_error_hosts.icmp_error_for_ip(server.ip()).is_some()
+            }
+            dns::Upstream::DoH { .. } => false,
+        }
+    }
+
     fn expect_dns_response(&mut self, query: &DnsQuery) {
         self.dns_records
             .entry(query.domain.clone())
             .or_default()
             .insert(query.r_type);
 
-        match query.transport {
+        self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
+    }
+
+    /// Expects a response for the query without learning any records from it, e.g. a SERVFAIL.
+    fn expect_dns_handshake(
+        &mut self,
+        dns_server: &dns::Upstream,
+        query_id: u16,
+        transport: DnsTransport,
+    ) {
+        match transport {
             DnsTransport::Udp { local_port } => {
                 self.expected_udp_dns_handshakes.push_back((
-                    query.dns_server.clone(),
-                    query.query_id,
+                    dns_server.clone(),
+                    query_id,
                     local_port,
                 ));
             }
             DnsTransport::Tcp => {
                 self.expected_tcp_dns_handshakes
-                    .push_back((query.dns_server.clone(), query.query_id));
+                    .push_back((dns_server.clone(), query_id));
             }
         }
     }
 
-    fn is_dynamic_device_pool_dns_query(&mut self, query: &DnsQuery) -> bool {
+    fn is_dynamic_device_pool_dns_query(&self, query: &DnsQuery) -> bool {
+        self.is_device_pool_domain(&query.domain)
+    }
+
+    /// Returns whether a dynamic device pool claims the domain.
+    ///
+    /// Device pools resolve ahead of DNS resources, so a domain matching both is
+    /// answered from the pool and never resolves to a resource's proxy IPs.
+    fn is_device_pool_domain(&self, domain: &DomainName) -> bool {
         self.resources.iter().any(|resource| match resource {
-            Resource::DynamicDevicePool(pool) => dns::is_subdomain(&query.domain, &pool.address),
+            Resource::DynamicDevicePool(pool) => dns::is_subdomain(domain, &pool.address),
             Resource::Dns(_) => false,
             Resource::Cidr(_) => false,
             Resource::Internet(_) => false,
@@ -956,10 +967,15 @@ impl RefClient {
             .flatten()
     }
 
-    fn resource_by_dst(&self, destination: &Destination, proto: Protocol) -> Option<ResourceId> {
+    fn resource_by_dst(
+        &self,
+        src: IpAddr,
+        destination: &Destination,
+        proto: Protocol,
+    ) -> Option<ResourceId> {
         match destination {
             Destination::DomainName { name, .. } => {
-                if let Some(r) = self.dns_resource_by_domain_and_proto(name, proto) {
+                if let Some(r) = self.dns_resource_by_domain_and_proto(name, src, proto) {
                     return Some(r.id);
                 }
             }
@@ -1031,23 +1047,30 @@ impl RefClient {
     pub(crate) fn dns_resource_by_domain_and_proto(
         &self,
         domain: &DomainName,
+        src: IpAddr,
         proto: Protocol,
     ) -> Option<DnsResource> {
-        self.dns_resource_by_domain(domain, |r| protocol_filter_allows(&r.filters, proto))
+        self.dns_resource_by_domain(
+            domain,
+            |resource| resource.ip_stack.supports_ip(src),
+            |resource| protocol_filter_allows(&resource.filters, proto),
+        )
     }
 
     pub(crate) fn dns_resource_by_domain(
         &self,
         domain: &DomainName,
-        predicate: impl Fn(&DnsResource) -> bool,
+        eligible: impl Fn(&DnsResource) -> bool,
+        preferred: impl Fn(&DnsResource) -> bool,
     ) -> Option<DnsResource> {
         self.resources
             .iter()
             .cloned()
             .filter_map(|r| r.into_dns())
             .filter(|r| dns::is_subdomain(domain, &r.address))
+            .filter(|r| eligible(r))
             .max_by(|r1, r2| {
-                let by_predicate = match (predicate(r1), predicate(r2)) {
+                let by_preference = match (preferred(r1), preferred(r2)) {
                     (true, true) => Ordering::Equal,
                     (false, false) => Ordering::Equal,
                     (true, false) => Ordering::Greater,
@@ -1059,14 +1082,35 @@ impl RefClient {
                     .reverse();
                 let by_id = r1.id.cmp(&r2.id);
 
-                by_predicate.then(by_pattern).then(by_id)
+                by_preference.then(by_pattern).then(by_id)
             })
+    }
+
+    fn dns_resource_by_domain_for_records(
+        &self,
+        domain: &DomainName,
+        has_a_record: bool,
+        has_aaaa_record: bool,
+    ) -> Option<ResourceId> {
+        self.dns_resource_by_domain(
+            domain,
+            |resource| {
+                (has_a_record && resource.ip_stack.supports_ipv4())
+                    || (has_aaaa_record && resource.ip_stack.supports_ipv6())
+            },
+            |_| true,
+        )
+        .map(|resource| resource.id)
     }
 
     fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, BTreeSet<RecordType>)> + '_ {
         self.dns_records
             .iter()
-            .filter(|(domain, _)| self.dns_resource_by_domain(domain, |_| true).is_some())
+            .filter(|(domain, _)| {
+                self.dns_resource_by_domain(domain, |_| true, |_| true)
+                    .is_some()
+            })
+            .filter(|(domain, _)| !self.is_device_pool_domain(domain))
             .map(|(domain, ips)| (domain.clone(), ips.clone()))
     }
 
@@ -1076,11 +1120,13 @@ impl RefClient {
                 if !records.iter().any(|r| matches!(r, &RecordType::A)) {
                     return None;
                 }
-                let resource = self.dns_resource_by_domain(&domain, |_| true)?;
-                resource
-                    .ip_stack
-                    .supports_ipv4()
-                    .then(|| (domain, resource.filters.clone()))
+                let resource = self.dns_resource_by_domain(
+                    &domain,
+                    |resource| resource.ip_stack.supports_ipv4(),
+                    |_| true,
+                )?;
+
+                Some((domain, resource.filters))
             })
             .collect()
     }
@@ -1091,11 +1137,13 @@ impl RefClient {
                 if !records.iter().any(|r| matches!(r, &RecordType::AAAA)) {
                     return None;
                 }
-                let resource = self.dns_resource_by_domain(&domain, |_| true)?;
-                resource
-                    .ip_stack
-                    .supports_ipv6()
-                    .then(|| (domain, resource.filters.clone()))
+                let resource = self.dns_resource_by_domain(
+                    &domain,
+                    |resource| resource.ip_stack.supports_ipv6(),
+                    |_| true,
+                )?;
+
+                Some((domain, resource.filters))
             })
             .collect()
     }
@@ -1216,7 +1264,7 @@ impl RefClient {
         self.dns_records
             .keys()
             .filter_map(move |domain| {
-                self.dns_resource_by_domain(domain, |_| true)
+                self.dns_resource_by_domain(domain, |_| true, |_| true)
                     .is_none()
                     .then_some(global_dns_records.domain_ips_iter(domain, at))
             })
@@ -1246,8 +1294,74 @@ impl RefClient {
 
         is_local_record
             && self
-                .dns_resource_by_domain(&query.domain, |_| true)
+                .dns_resource_by_domain(&query.domain, |_| true, |_| true)
                 .is_some()
+    }
+
+    fn local_dns_resource(&self, query: &DnsQuery) -> Option<ResourceId> {
+        let is_local_record = query.r_type == RecordType::A
+            || query.r_type == RecordType::AAAA
+            || query.r_type == RecordType::PTR;
+
+        is_local_record
+            .then(|| {
+                self.dns_resource_by_domain_for_records(
+                    &query.domain,
+                    query.r_type != RecordType::AAAA,
+                    query.r_type != RecordType::A,
+                )
+            })
+            .flatten()
+    }
+
+    pub(crate) fn prepare_dns_resource_connection(&mut self, resource: ResourceId, now: Instant) {
+        if self.connected_dns_resources.contains(&resource) {
+            return;
+        }
+
+        let domains = self
+            .resolved_domains()
+            .filter_map(|(domain, records)| {
+                self.dns_resource_by_domain_for_records(
+                    &domain,
+                    records.contains(&RecordType::A),
+                    records.contains(&RecordType::AAAA),
+                )
+                .filter(|candidate| *candidate == resource)
+                .map(|_| domain)
+            })
+            .collect_vec();
+
+        for domain in domains {
+            self.dns_resource_resolutions
+                .insert((resource, domain), now);
+        }
+    }
+
+    pub(crate) fn dns_resource_resolution(
+        &self,
+        resource: ResourceId,
+        domain: &DomainName,
+    ) -> Option<Instant> {
+        self.dns_resource_resolutions
+            .get(&(resource, domain.clone()))
+            .copied()
+    }
+
+    fn local_dns_resource_query_has_records(&self, query: &DnsQuery) -> bool {
+        self.resources
+            .iter()
+            .filter_map(|resource| {
+                let Resource::Dns(resource) = resource else {
+                    return None;
+                };
+
+                dns::is_subdomain(&query.domain, &resource.address).then_some(resource)
+            })
+            .any(|resource| {
+                (query.r_type != RecordType::A || resource.ip_stack.supports_ipv4())
+                    && (query.r_type != RecordType::AAAA || resource.ip_stack.supports_ipv6())
+            })
     }
 
     pub(crate) fn upstream_dns_server_via_resource(
@@ -1277,7 +1391,10 @@ impl RefClient {
             return None;
         }
 
-        Some(self.dns_resource_by_domain(&query.domain, |_| true)?.id)
+        Some(
+            self.dns_resource_by_domain(&query.domain, |_| true, |_| true)?
+                .id,
+        )
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
@@ -1364,12 +1481,6 @@ impl RefClient {
     }
 
     pub(crate) fn clear_packets(&mut self) {
-        self.expected_gateway_icmp_handshakes.clear();
-        self.expected_client_icmp_handshakes.clear();
-        self.expected_icmp_rejections.clear();
-        self.expected_gateway_udp_handshakes.clear();
-        self.expected_client_udp_handshakes.clear();
-        self.expected_udp_rejections.clear();
         self.expected_udp_dns_handshakes.clear();
         self.expected_tcp_dns_handshakes.clear();
         self.expected_tcp_connections.clear();
@@ -1450,25 +1561,6 @@ fn is_resource_proxy(addr: IpAddr) -> bool {
         IpAddr::V4(addr) => tunnel_proto::IPV4_RESOURCES.contains(addr),
         IpAddr::V6(addr) => tunnel_proto::IPV6_RESOURCES.contains(addr),
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExpectedRejection {
-    pub(crate) response: RejectionResponse,
-    pub(crate) remote: RejectionRemote,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RejectionRemote {
-    Local,
-    Gateway(GatewayId),
-    Client(ClientId),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RejectionResponse {
-    Prohibited,
-    Unreachable,
 }
 
 fn default_routes_v4() -> Vec<IpNetwork> {
@@ -1557,6 +1649,7 @@ mod tests {
         let dst = Destination::IpAddr("10.0.0.1".parse().unwrap());
         let route = |client: &RefClient, protocol| {
             client.route_for_packet(
+                "100.96.0.1".parse().unwrap(),
                 &dst,
                 protocol,
                 |resource| match resource {

@@ -17,6 +17,7 @@ config :portal, PortalWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json",
   server: true
 
+config :portal, Portal.Endpoint, server: true
 config :portal, PortalAPI.Endpoint, server: true
 config :portal, PortalOps.Endpoint, server: true
 

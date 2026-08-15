@@ -30,7 +30,6 @@ defmodule PortalWeb.Policies do
       socket
       |> assign(stale: false)
       |> assign(page_title: "Policies")
-      |> assign(flow_logs_feature_enabled?: Database.flow_logs_feature_enabled?())
       |> assign_async(:policies_count, fn -> {:ok, %{policies_count: Database.count_policies(subject)}} end)
       |> assign(selected_policy: nil, policy_providers: [])
       |> assign(
@@ -348,7 +347,6 @@ defmodule PortalWeb.Policies do
         policy={@selected_policy}
         providers={@policy_providers}
         subject={@subject}
-        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         panel={policy_panel_state(assigns)}
         conditions_state={policy_conditions_state(assigns)}
         confirm_state={policy_confirm_state(assigns)}
@@ -1102,12 +1100,6 @@ defmodule PortalWeb.Policies do
     alias Portal.Actor
     alias Portal.Device
     alias Portal.Authentication
-
-    def flow_logs_feature_enabled? do
-      from(f in Portal.Features, where: f.feature == :flow_logs and f.enabled == true)
-      |> Safe.unscoped()
-      |> Safe.exists?()
-    end
 
     def get_site(id, subject) do
       from(s in Site, as: :sites)

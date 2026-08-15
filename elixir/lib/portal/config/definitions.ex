@@ -32,6 +32,7 @@ defmodule Portal.Config.Definitions do
   alias Portal.Types
 
   @entra_sync_client_id ""
+  @intune_sync_client_id ""
   @sentinel_sync_client_id ""
   @google_oidc_client_id "689429116054-72vkp65pqrntsq3bksj9bt4pft15if4v.apps.googleusercontent.com"
   @entra_oidc_client_id "d0b74799-63b8-4c10-8255-1c03c48a3029"
@@ -140,6 +141,27 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  The external URL clients use to connect with a device certificate, for
+  example `https://mtls.firezone.dev/`.
+
+  The public Phoenix endpoint requests a client certificate during the TLS
+  handshake on this host. The application validates the presented certificate
+  against the account's configured trust anchors.
+
+  When this is not set, certificate-based device trust is disabled and the
+  peer certificate is ignored.
+  """
+
+  defconfig(:mtls_external_url, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Portal.Changeset.normalize_url(key)
+    end
+  )
+
+  @doc """
   The API rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
   """
   defconfig(:api_refill_rate, :integer, default: 10)
@@ -230,6 +252,50 @@ defmodule Portal.Config.Definitions do
   defconfig(:phoenix_secure_cookies, :boolean, default: true)
 
   defconfig(:phoenix_listen_address, Types.IP, default: "0.0.0.0")
+
+  @doc """
+  Internal HTTP port for the public endpoint. Requests other than readiness
+  checks are redirected to HTTPS. Leave unset to disable the listener.
+  """
+  defconfig(:phoenix_http_public_port, :integer,
+    default: nil,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+  )
+
+  @doc """
+  Internal HTTPS port for the public endpoint. Leave unset to disable the listener.
+  """
+  defconfig(:phoenix_https_public_port, :integer,
+    default: nil,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+  )
+
+  @doc """
+  JSON object mapping public hostnames to their TLS certificate and key files.
+
+  Each value must contain `certfile` and `keyfile` paths. The hostname from
+  `MTLS_EXTERNAL_URL` additionally requires a client certificate during the
+  TLS handshake.
+  """
+  defconfig(:phoenix_https_sni_hosts, :map, default: %{})
+
+  @doc """
+  Whether the separate web and API HTTP listeners are enabled.
+
+  Keep this enabled while deploying behind a reverse proxy. It can be disabled
+  once the public Phoenix endpoint receives traffic directly.
+  """
+  defconfig(:phoenix_legacy_listeners_enabled, :boolean, default: true)
 
   @doc """
   Internal port to listen on for the Phoenix server for the `web` application.
@@ -701,6 +767,8 @@ defmodule Portal.Config.Definitions do
   defconfig(:google_workload_identity_provider, :string, default: nil)
   defconfig(:google_workload_identity_audience, :string, default: nil)
   defconfig(:google_service_account_email, :string, default: nil)
+  defconfig(:google_sync_authz_client_id, :string, default: nil)
+  defconfig(:google_sync_authz_client_secret, :string, default: nil, sensitive: true)
 
   ##############################################
   ## Google / Entra / Okta authentication
@@ -710,6 +778,7 @@ defmodule Portal.Config.Definitions do
   defconfig(:google_oidc_client_secret, :string, default: nil, sensitive: true)
 
   defconfig(:entra_sync_client_id, :string, default: @entra_sync_client_id)
+  defconfig(:intune_sync_client_id, :string, default: @intune_sync_client_id)
 
   defconfig(:entra_oidc_client_id, :string, default: @entra_oidc_client_id)
   defconfig(:entra_oidc_client_secret, :string, default: nil, sensitive: true)
@@ -963,19 +1032,6 @@ defmodule Portal.Config.Definitions do
   defconfig(:docker_registry, :string, default: "ghcr.io/firezone")
   defconfig(:api_url_override, :string, default: nil)
 
-  ##############################################
-  ## Feature Flags
-  ##
-  ## If feature is disabled globally it won't be available for any account,
-  ## even if account-specific override enables them.
-  ##
-  ##############################################
-
-  @doc """
-  Boolean flag to turn Sign-ups on/off for all accounts.
-  """
-  defconfig(:feature_sign_up_enabled, :boolean, default: true)
-
   @doc """
   List of email domains allowed to signup from. Leave empty to allow signing up from any domain.
   """
@@ -988,23 +1044,4 @@ defmodule Portal.Config.Definitions do
     end
   )
 
-  @doc """
-  Boolean flag to turn IdP sync on/off for all accounts.
-  """
-  defconfig(:feature_idp_sync_enabled, :boolean, default: true)
-
-  @doc """
-  Boolean flag to turn Policy Conditions functionality on/off for all accounts.
-  """
-  defconfig(:feature_policy_conditions_enabled, :boolean, default: false)
-
-  @doc """
-  Boolean flag to turn API Client UI functionality on/off for all accounts.
-  """
-  defconfig(:feature_rest_api_enabled, :boolean, default: false)
-
-  @doc """
-  Boolean flag to turn Internet Resources functionality on/off for all accounts.
-  """
-  defconfig(:feature_internet_resource_enabled, :boolean, default: false)
 end

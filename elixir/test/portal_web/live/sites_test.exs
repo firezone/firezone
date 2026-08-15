@@ -118,10 +118,8 @@ defmodule PortalWeb.SitesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
             idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            rest_api: true
           }
         )
 
@@ -1060,6 +1058,32 @@ defmodule PortalWeb.SitesTest do
       assert html =~ "Gateway renamed."
       assert html =~ "edge-nyc-1"
       refute has_element?(lv, "#rename-gateway-#{gateway.id}")
+
+      assert Repo.get_by!(Device, account_id: account.id, id: gateway.id).name == "edge-nyc-1"
+    end
+
+    test "renames a never-connected gateway (firezone_id: nil)", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      # Regression test for the same Device.changeset/1 firezone_id bug
+      # covered in PortalAPI.GatewayControllerTest - this LiveView path
+      # shares the underlying Portal.Devices.Database.rename_gateway/3-style
+      # logic and was affected identically.
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site, firezone_id: nil)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "show_all_gateways")
+      render_click(lv, "rename_gateway", %{"id" => gateway.id})
+
+      html = render_submit(lv, "save_gateway_name", %{"name" => "edge-nyc-1"})
+      assert html =~ "Gateway renamed."
 
       assert Repo.get_by!(Device, account_id: account.id, id: gateway.id).name == "edge-nyc-1"
     end

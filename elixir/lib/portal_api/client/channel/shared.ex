@@ -8,7 +8,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     FlowLogToken,
     PG,
     Changes.Change,
-    Features,
     PubSub,
     Presence,
     SchemaHelpers,
@@ -576,6 +575,41 @@ defmodule PortalAPI.Client.Channel.Shared do
     handle_info(:disconnect, socket)
   end
 
+  # A CA revoked a certificate. The session is only cut if it is the one this
+  # connection actually presented: the device columns the sync job matched on
+  # record the last certificate a device ever showed, so a device that attested
+  # once and has since been connecting without a certificate would otherwise be
+  # dropped over a certificate it is not using.
+  #
+  # Its authorizations go too. The tunnel is being torn down either way, so the
+  # client has to re-authorize on its next connect regardless, and nothing else
+  # clears them when a channel stops.
+  #
+  # A reason of its own rather than "token_expired": the token is fine, and a
+  # client that knows the difference can say so instead of reporting a sign-in
+  # problem. A client that does not recognize the reason ignores the payload and
+  # still sees the socket close, so it is cut either way.
+  def handle_info({:certificate_revoked, issuer, serial}, socket) do
+    if socket.assigns[:attestation] == %{issuer: issuer, serial: serial} do
+      Logger.info("Disconnecting device: its certificate was revoked",
+        account_id: socket.assigns.client.account_id,
+        device_id: socket.assigns.client.id,
+        cert_serial: serial
+      )
+
+      Database.delete_policy_authorizations(socket.assigns.client)
+      push(socket, "disconnect", %{reason: "certificate_revoked"})
+
+      # Stopping the channel alone leaves the transport up, and a client may
+      # rejoin on it without running Socket.connect/3 again, which is where the
+      # revoked certificate would be refused. Draining forces a new connect.
+      send(socket.transport_pid, :socket_drain)
+      {:stop, :shutdown, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
   # A monitored process crashed — determine which subsystem it belongs to and recover.
   def handle_info({:DOWN, _ref, :process, pid, _reason}, socket) do
     cond do
@@ -1043,26 +1077,12 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    with true <- client_to_client_enabled?(socket.assigns.subject.account),
-         :ok <-
-           PG.deliver(
-             target_client_id,
-             {:client_ice_candidates, socket.assigns.client.id, candidates}
-           ) do
-      {:noreply, socket}
-    else
-      false ->
-        Logger.warning("Client-to-client communication is disabled, cannot send ICE candidates",
-          client_id: socket.assigns.client.id,
-          account_id: socket.assigns.client.account_id,
-          account_slug: socket.assigns.subject.account.slug,
-          target_client_id: target_client_id
-        )
-
-        {:noreply, socket}
-
-      {:error, :not_found} ->
-        {:noreply, socket}
+    case PG.deliver(
+           target_client_id,
+           {:client_ice_candidates, socket.assigns.client.id, candidates}
+         ) do
+      :ok -> {:noreply, socket}
+      {:error, :not_found} -> {:noreply, socket}
     end
   end
 
@@ -1071,20 +1091,11 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    with true <- client_to_client_enabled?(socket.assigns.subject.account),
-         :ok <-
-           PG.deliver(
-             target_client_id,
-             {:invalidate_client_ice_candidates, socket.assigns.client.id, candidates}
-           ) do
-      {:noreply, socket}
-    else
-      false ->
-        push(socket, "client_ice_candidate_error", %{
-          client_id: target_client_id,
-          reason: :disabled
-        })
-
+    case PG.deliver(
+           target_client_id,
+           {:invalidate_client_ice_candidates, socket.assigns.client.id, candidates}
+         ) do
+      :ok ->
         {:noreply, socket}
 
       {:error, :not_found} ->
@@ -1172,8 +1183,6 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     {:reply, {:error, %{reason: :unknown_message}}, socket}
   end
-
-  defp client_to_client_enabled?(account), do: Database.client_to_client_enabled?(account)
 
   # Reject peer connections when:
   #   - the target client predates `client_device_access_authorized` / `_denied`
@@ -1398,8 +1407,7 @@ defmodule PortalAPI.Client.Channel.Shared do
        ) do
     account_id = socket.assigns.client.account_id
 
-    with true <- client_to_client_enabled?(socket.assigns.subject.account),
-         {:ok, target} <- parse_target_address(payload),
+    with {:ok, target} <- parse_target_address(payload),
          {:ok, target_device_id} <-
            authorize_pool_target(
              resource,
@@ -1434,15 +1442,6 @@ defmodule PortalAPI.Client.Channel.Shared do
           {:noreply, socket}
       end
     else
-      false ->
-        push(socket, "client_device_access_denied", %{
-          ipv4: payload["ipv4"],
-          ipv6: payload["ipv6"],
-          reason: :disabled
-        })
-
-        {:noreply, socket}
-
       {:error, :ambiguous_address} ->
         Logger.warning("request_authorization for pool included both ipv4 and ipv6",
           client_id: socket.assigns.client.id,
@@ -2360,19 +2359,15 @@ defmodule PortalAPI.Client.Channel.Shared do
     }
   end
 
-  # Whether flow logs may be uploaded for a flow this policy authorizes: the
-  # global flow_logs feature flag must be on and the policy must not have opted
-  # out. Stamped into the ingest token so devices know whether to upload and
-  # the ingest endpoint can enforce it. A policy missing from the cache fails
-  # closed to false.
+  # Whether flow logs may be uploaded for a flow this policy authorizes, which
+  # is to say whether the policy has opted out. Stamped into the ingest token
+  # so devices know whether to upload and the ingest endpoint can enforce it. A
+  # policy missing from the cache fails closed to false.
   defp flow_log_uploads_enabled?(cache, policy_id) do
-    case Map.get(cache.policies, Ecto.UUID.dump!(policy_id)) do
-      %Cache.Cacheable.Policy{flow_log_uploads_enabled: true} ->
-        Database.flow_logs_feature_enabled?()
-
-      _ ->
-        false
-    end
+    match?(
+      %Cache.Cacheable.Policy{flow_log_uploads_enabled: true},
+      Map.get(cache.policies, Ecto.UUID.dump!(policy_id))
+    )
   end
 
   # Mints the pair of per-flow ingest tokens for an authorization: one for the
@@ -2531,7 +2526,7 @@ defmodule PortalAPI.Client.Channel.Shared do
             session_attrs(
               socket.assigns.client,
               socket.assigns.session_ref,
-              socket.assigns[:attested?] || false
+              socket.assigns.client.attested?
             ),
             metadata: %{
               subject: Authentication.Subject.to_map(socket.assigns.subject),
@@ -2565,9 +2560,9 @@ defmodule PortalAPI.Client.Channel.Shared do
           remote_ip: socket.assigns.client.last_seen_remote_ip,
           version: socket.assigns.client.last_seen_version,
           user_agent: socket.assigns.client.last_seen_user_agent,
-          # Whether THIS session proved possession of an MDM-provisioned
-          # certificate (v3 challenge). v1/v2 sessions never set the assign.
-          attested?: socket.assigns[:attested?] || false
+          # Whether THIS session presented a trusted MDM-provisioned
+          # certificate at connect and the device row adopted its identity.
+          attested?: socket.assigns.client.attested?
         }
 
         :ok =
@@ -2592,10 +2587,10 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defp session_attrs(%Portal.Device{} = client, session_ref, attested?) do
     # The attested snapshot is carried only when THIS session proved
-    # possession (the v3 challenge sets the assign). Copying it off the row
-    # for every session would re-assert a stale snapshot and race a fresher
-    # proof flushing from another session; the flush's recency guard keeps
-    # the row's values when the entry carries none.
+    # possession. Copying it off the row for every session would re-assert a
+    # stale snapshot and race a fresher proof flushing from another session;
+    # the flush's recency guard keeps the row's values when the entry carries
+    # none.
     attested_attrs =
       if attested? do
         %{
@@ -2604,6 +2599,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           last_attested_mdm_device_id: client.last_attested_mdm_device_id,
           last_attested_cert_serial: client.last_attested_cert_serial,
           last_attested_cert_fingerprint: client.last_attested_cert_fingerprint,
+          last_attested_cert_issuer: client.last_attested_cert_issuer,
           last_attested_at: client.last_attested_at
         }
       else
@@ -2619,6 +2615,10 @@ defmodule PortalAPI.Client.Channel.Shared do
       # the flush's coalesce keeps the row's current value on nil, and the
       # conflict probe then runs only for real merges instead of every flush.
       firezone_id: if(client.firezone_id_merged?, do: client.firezone_id),
+      device_serial: client.device_serial,
+      device_uuid: client.device_uuid,
+      identifier_for_vendor: client.identifier_for_vendor,
+      firebase_installation_id: client.firebase_installation_id,
       client_token_id: client.client_token_id,
       public_key: client.public_key,
       user_agent: client.last_seen_user_agent,
@@ -2640,20 +2640,15 @@ defmodule PortalAPI.Client.Channel.Shared do
   defmodule Database do
     import Ecto.Query, only: [from: 2]
 
-    alias Portal.Features
-
-    def client_to_client_enabled?(account) do
-      query = from(f in Features, where: f.feature == :client_to_client and f.enabled == true)
-
-      account_feature_enabled? = account.features.client_to_client == true
-
-      Portal.Safe.unscoped(query) |> Portal.Safe.exists?() and account_feature_enabled?
-    end
-
-    def flow_logs_feature_enabled? do
-      query = from(f in Features, where: f.feature == :flow_logs and f.enabled == true)
-
-      Portal.Safe.unscoped(query) |> Portal.Safe.exists?()
+    # Nothing else clears these when a channel stops, so a cut session would
+    # otherwise leave its grants behind.
+    def delete_policy_authorizations(client) do
+      from(a in Portal.PolicyAuthorization,
+        where: a.account_id == ^client.account_id,
+        where: a.initiating_device_id == ^client.id
+      )
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.delete_all()
     end
 
     def all_compatible_gateways_for_client_and_resource(

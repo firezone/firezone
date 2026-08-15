@@ -10,6 +10,15 @@ defmodule PortalOps.EndpointTest do
     put_req_header(conn, "authorization", "Basic #{encoded}")
   end
 
+  test "GET /readyz returns 200 without credentials" do
+    conn =
+      conn(:get, "/readyz")
+      |> PortalOps.Endpoint.call([])
+
+    assert conn.status == 200
+    assert JSON.decode!(conn.resp_body)["status"] == "ready"
+  end
+
   describe "LiveDashboard routes" do
     test "GET /dashboard returns 401 without credentials" do
       conn =

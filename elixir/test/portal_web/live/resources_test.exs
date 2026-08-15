@@ -9,7 +9,6 @@ defmodule PortalWeb.ResourcesTest do
   import Portal.ActorFixtures
   import Portal.ClientSessionFixtures
   import Portal.DeviceFixtures
-  import Portal.FeaturesFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
   import Portal.PolicyAuthorizationFixtures
@@ -126,22 +125,8 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "0 / 2 online"
     end
 
-    test "hides device pool option from the type filter when client_to_client is disabled",
+    test "shows device pool option in the type filter",
          %{conn: conn, account: account, actor: actor} do
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/resources")
-
-      refute has_element?(lv, "#resources-type-static_device_pool")
-      assert has_element?(lv, "#resources-type-dns")
-    end
-
-    test "shows device pool option in the type filter when client_to_client is enabled",
-         %{conn: conn, account: account, actor: actor} do
-      enable_feature(:client_to_client)
-      account = update_account(account, features: %{client_to_client: true})
-
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
@@ -151,16 +136,25 @@ defmodule PortalWeb.ResourcesTest do
       assert has_element?(lv, "#resources-type-dns")
     end
 
+    test "offers the device pool type when creating a resource",
+         %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      assert has_element?(lv, "#resource-form-type--static-device-pool")
+      assert has_element?(lv, "#resource-form-type--dns")
+    end
+
     test "hides Internet Resource row for starter accounts without the feature", %{conn: conn} do
       account =
         starter_account_fixture(
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
             idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            rest_api: true
           }
         )
 
@@ -272,9 +266,6 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:client_to_client)
-      account = update_account(account, features: %{client_to_client: true})
-
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
@@ -362,11 +353,13 @@ defmodule PortalWeb.ResourcesTest do
       assert Repo.aggregate(Resource, :count) == 0
     end
 
-    test "manages DNS traffic restriction controls", %{
+    test "manages DNS traffic restriction controls for Starter accounts", %{
       conn: conn,
       account: account,
       actor: actor
     } do
+      account = update_account(account, metadata: %{stripe: %{product_name: "Starter"}})
+
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
@@ -399,12 +392,9 @@ defmodule PortalWeb.ResourcesTest do
            account: account,
            actor: actor
          } do
-      enable_feature(:client_to_client)
-
       features =
         account.features
         |> Map.from_struct()
-        |> Map.put(:client_to_client, true)
 
       account = update_account(account, features: features)
 
@@ -457,8 +447,6 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:client_to_client)
-      account = update_account(account, features: %{client_to_client: true})
       client = client_fixture(account: account, actor: actor, name: "Workstation Alpha")
 
       {:ok, lv, _html} =
@@ -608,7 +596,6 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:flow_logs)
       resource = resource_fixture(account: account)
       group = group_fixture(account: account)
 
@@ -631,7 +618,6 @@ defmodule PortalWeb.ResourcesTest do
     end
 
     test "defaults Internet Resource flow logs off and allows enabling them", %{conn: conn} do
-      enable_feature(:flow_logs)
       account = account_fixture(features: %{internet_resource: true})
       actor = admin_actor_fixture(account: account)
       resource = internet_resource_fixture(account: account)
@@ -679,10 +665,8 @@ defmodule PortalWeb.ResourcesTest do
         starter_account_fixture(
           features: %{
             policy_conditions: false,
-            traffic_filters: true,
             idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            rest_api: true
           }
         )
 
@@ -1416,7 +1400,7 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "1 / 1 online"
     end
 
-    test "shows an empty state when the pool has no clients", %{
+    test "warns when the pool has no devices", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1428,7 +1412,24 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}")
 
-      assert html =~ "No clients in this pool"
+      assert html =~ "No devices in this pool"
+      assert html =~ "An empty pool has nothing to connect to"
+    end
+
+    test "warns in the resources list when the pool has no clients", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      static_device_pool_resource_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      assert html =~ "No devices"
+      refute html =~ "0 / 0 online"
     end
 
     test "expands and collapses a client row to reveal details", %{
