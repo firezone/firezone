@@ -1,4 +1,4 @@
-tag-prefix: "macos-client-"
+tag-prefix: "apple-client-"
 template: >
   README: HAVE YOU SENT THE CLIENTS FOR REVIEW AND HAVE THEY BEEN ACCEPTED?
   DO NOT PUBLISH THIS RELEASE UNTIL THAT IS DONE.

@@ -6,6 +6,11 @@ inputs:
     description: "The component to create a release for"
     required: true
     # e.g. "gateway", "gui-client", "headless-client", ...
+  tag_prefix:
+    description: "The release name prefix that precedes the version"
+    required: false
+    # Defaults to `component`. Set it when one release ships several
+    # components, e.g. `apple-client-*` ships `macos-client` and `ios-client`.
   projects:
     description: "The Sentry projects to create a release for"
     required: true
@@ -19,9 +24,11 @@ runs:
   steps:
     - name: Extract semantic version from release name
       id: version
+      env:
+        release_name: ${{ github.event.release.name }}
+        tag_prefix: ${{ inputs.tag_prefix || inputs.component }}
       run: |
-        version=${{ github.event.release.name }}
-        version=${version#${{ inputs.component }}-}
+        version=${release_name#"$tag_prefix-"}
         echo "version=$version" >> $GITHUB_OUTPUT
       shell: bash
 
