@@ -17,20 +17,29 @@ defmodule Portal.LoggerFiltersTest do
     end
 
     test "relevels peer-aborted Thousand Island connections to info" do
-      for reason <- [:econnaborted, :econnreset] do
+      for reason <- [:closed, :econnaborted, :econnreset, :einval, :enotconn, :epipe, :etimedout] do
         event = thousand_island_termination_event(reason)
 
         assert %{level: :info} = LoggerFilters.relevel_expected_client_errors(event, nil)
       end
     end
 
-    test "relevels a client-canceled TLS connection to info" do
-      event =
-        thousand_island_termination_event(
-          {:tls_alert, {:user_canceled, ~c"TLS server: client canceled"}}
-        )
+    test "relevels client TLS alerts to info" do
+      for alert <- [
+            :bad_record_mac,
+            :close_notify,
+            :decode_error,
+            :decrypt_error,
+            :illegal_parameter,
+            :record_overflow,
+            :unexpected_message,
+            :user_canceled
+          ] do
+        event =
+          thousand_island_termination_event({:tls_alert, {alert, ~c"TLS server: #{alert}"}})
 
-      assert %{level: :info} = LoggerFilters.relevel_expected_client_errors(event, nil)
+        assert %{level: :info} = LoggerFilters.relevel_expected_client_errors(event, nil)
+      end
     end
 
     test "relevels Bandit HTTP 4xx errors to info" do
@@ -42,7 +51,16 @@ defmodule Portal.LoggerFiltersTest do
     end
 
     test "relevels Bandit client closures to info" do
-      event = bandit_event(%Bandit.TransportError{message: "closed", error: :closed})
+      for error <- [:closed, :econnaborted, :econnreset, :einval, :enotconn, :epipe, :etimedout] do
+        event = bandit_event(%Bandit.TransportError{message: "socket gone", error: error})
+
+        assert %{level: :info} = LoggerFilters.relevel_expected_client_errors(event, nil)
+      end
+    end
+
+    test "relevels a closed socket lookup reported by Bandit to info" do
+      event =
+        bandit_event(%Bandit.TransportError{message: "Unable to obtain conn_data", error: :einval})
 
       assert %{level: :info} = LoggerFilters.relevel_expected_client_errors(event, nil)
     end
@@ -56,12 +74,23 @@ defmodule Portal.LoggerFiltersTest do
     end
 
     test "leaves other TLS alerts at error" do
-      event =
+      for alert <- [:handshake_failure, :internal_error, :unrecognized_name] do
+        event = thousand_island_termination_event({:tls_alert, {alert, ~c"TLS server: #{alert}"}})
+
+        assert LoggerFilters.relevel_expected_client_errors(event, nil) == :ignore
+      end
+    end
+
+    test "leaves application crashes inside a connection at error" do
+      call_timeout =
         thousand_island_termination_event(
-          {:tls_alert, {:handshake_failure, ~c"TLS server: handshake failure"}}
+          {:timeout, {GenServer, :call, [Portal.Repo, :checkout, 5000]}}
         )
 
-      assert LoggerFilters.relevel_expected_client_errors(event, nil) == :ignore
+      badmatch = thousand_island_termination_event({{:badmatch, [:oops]}, []})
+
+      assert LoggerFilters.relevel_expected_client_errors(call_timeout, nil) == :ignore
+      assert LoggerFilters.relevel_expected_client_errors(badmatch, nil) == :ignore
     end
 
     test "leaves telemetry handler failures at error" do
