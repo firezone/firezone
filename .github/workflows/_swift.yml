@@ -11,7 +11,7 @@ jobs:
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
-      RELEASE_NAME: macos-client-1.5.19
+      RELEASE_NAME: macos-client-1.5.20
     steps:
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
@@ -105,11 +105,11 @@ jobs:
             build-script: scripts/build/macos-standalone.sh
             upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
-            artifact-file: "firezone-macos-client-1.5.19.dmg"
+            artifact-file: "firezone-macos-client-1.5.20.dmg"
             # mark:next-apple-version
-            pkg-artifact-file: "firezone-macos-client-1.5.19.pkg"
+            pkg-artifact-file: "firezone-macos-client-1.5.20.pkg"
             # mark:next-apple-version
-            release-name: macos-client-1.5.19
+            release-name: macos-client-1.5.20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
