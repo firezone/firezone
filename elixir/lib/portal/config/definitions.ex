@@ -97,7 +97,8 @@ defmodule Portal.Config.Definitions do
   @doc """
   The external URL the UI will be accessible at.
 
-  If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.
+  Plain HTTP URLs are served directly by the Web endpoint for local development.
+  HTTPS URLs are served by the public endpoint and dispatched by hostname.
   """
   defconfig(:web_external_url, :string,
     default: nil,
@@ -111,7 +112,8 @@ defmodule Portal.Config.Definitions do
   @doc """
   The external URL the API will be accessible at.
 
-  If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.
+  Plain HTTP URLs are served directly by the API endpoint for local development.
+  HTTPS URLs are served by the public endpoint and dispatched by hostname.
   """
 
   defconfig(:api_external_url, :string,
@@ -288,40 +290,6 @@ defmodule Portal.Config.Definitions do
   TLS handshake.
   """
   defconfig(:phoenix_https_sni_hosts, :map, default: %{})
-
-  @doc """
-  Whether the separate web and API HTTP listeners are enabled.
-
-  Keep this enabled while deploying behind a reverse proxy. It can be disabled
-  once the public Phoenix endpoint receives traffic directly.
-  """
-  defconfig(:phoenix_legacy_listeners_enabled, :boolean, default: true)
-
-  @doc """
-  Internal port to listen on for the Phoenix server for the `web` application.
-  """
-  defconfig(:phoenix_http_web_port, :integer,
-    default: 13_000,
-    changeset: fn changeset, key ->
-      Ecto.Changeset.validate_number(changeset, key,
-        greater_than: 0,
-        less_than_or_equal_to: 65_535
-      )
-    end
-  )
-
-  @doc """
-  Internal port to listen on for the Phoenix server for the `api` application.
-  """
-  defconfig(:phoenix_http_api_port, :integer,
-    default: 13_001,
-    changeset: fn changeset, key ->
-      Ecto.Changeset.validate_number(changeset, key,
-        greater_than: 0,
-        less_than_or_equal_to: 65_535
-      )
-    end
-  )
 
   @doc """
   Internal port to listen on for the Phoenix server for the `ops` application.
