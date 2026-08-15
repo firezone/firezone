@@ -3,6 +3,8 @@ defmodule Portal.Application do
 
   require Logger
 
+  @expected_client_error_filter :portal_relevel_expected_client_errors
+
   @impl true
   def start(_type, _args) do
     configure_logger()
@@ -28,6 +30,7 @@ defmodule Portal.Application do
     # Remove the Sentry logger handler before Sentry.Supervisor terminates
     # to avoid noproc errors during shutdown
     _ = :logger.remove_handler(:sentry)
+    _ = :logger.remove_primary_filter(@expected_client_error_filter)
     :ok
   end
 
@@ -81,6 +84,17 @@ defmodule Portal.Application do
   end
 
   defp configure_logger do
+    # Bandit and Thousand Island report some routine client disconnects, timeouts,
+    # and malformed requests as errors. Relevel those known client-side events to
+    # info before they reach stdout (and Azure) or the Sentry handler.
+    case :logger.add_primary_filter(
+           @expected_client_error_filter,
+           {&Portal.LoggerFilters.relevel_expected_client_errors/2, nil}
+         ) do
+      :ok -> :ok
+      {:error, {:already_exist, @expected_client_error_filter}} -> :ok
+    end
+
     # Attach Oban to the logger
     Oban.Telemetry.attach_default_logger(encode: false, level: log_level())
 
