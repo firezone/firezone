@@ -420,7 +420,12 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
     "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
     "style-src 'self'",
-    "script-src 'self' 'nonce-${nonce}'"
+    "script-src 'self' 'nonce-${nonce}'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    # Client deep link: some browsers check form-action across post-submit redirects.
+    "form-action 'self' firezone-fd0020211111:",
+    "frame-ancestors 'none'"
   ]
 
 config :portal, api_url_override: "ws://localhost:13001/"
