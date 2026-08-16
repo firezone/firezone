@@ -165,7 +165,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
       refute conn.halted
     end
 
-    test "forwards only sign-in params to the provider", %{conn: conn, account: account} do
+    test "forwards sign-in and campaign params to the provider", %{conn: conn, account: account} do
       provider = oidc_provider_fixture(account: account, is_default: true)
 
       conn =
@@ -174,7 +174,8 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
           "as" => "client",
           "account_id_or_slug" => account.slug,
           "state" => "test-state",
-          "utm_source" => "email"
+          "utm_source" => "email",
+          "gclid" => "should-not-survive"
         })
         |> Map.put(:path_info, [account.slug, "sign_in"])
         |> AutoRedirectDefaultProvider.call([])
@@ -185,7 +186,8 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
       assert location =~ "/sign_in/oidc/#{provider.id}"
       assert location =~ "as=client"
       assert location =~ "state=test-state"
-      refute location =~ "utm_source"
+      assert location =~ "utm_source=email"
+      refute location =~ "should-not-survive"
     end
 
     test "escapes sign-in params sent by a scanner", %{conn: conn, account: account} do

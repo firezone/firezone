@@ -25,10 +25,27 @@ defmodule PortalWeb.AccountLandingControllerTest do
       end
     end
 
-    test "drops query params that are not part of the sign-in flow", %{conn: conn} do
-      conn = get(conn, ~p"/some-account?#{%{"as" => "client", "utm_source" => "email"}}")
+    test "preserves campaign params", %{conn: conn} do
+      params = %{
+        "utm_source" => "email",
+        "utm_medium" => "newsletter",
+        "utm_campaign" => "spring",
+        "utm_term" => "vpn",
+        "utm_content" => "cta"
+      }
 
-      assert redirected_to(conn) == ~p"/some-account/sign_in?#{%{"as" => "client"}}"
+      conn = get(conn, ~p"/some-account?#{params}")
+
+      assert redirected_to(conn) == ~p"/some-account/sign_in?#{params}"
+    end
+
+    test "drops query params that are neither sign-in nor campaign params", %{conn: conn} do
+      params = %{"as" => "client", "utm_source" => "email", "gclid" => "abc123"}
+
+      conn = get(conn, ~p"/some-account?#{params}")
+
+      assert redirected_to(conn) ==
+               ~p"/some-account/sign_in?#{%{"as" => "client", "utm_source" => "email"}}"
     end
 
     test "redirects without raising when a scanner sends an unsafe query string", %{conn: conn} do

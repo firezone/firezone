@@ -32,10 +32,10 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
       when as in ["client", "gui-client", "headless-client"] do
     with %Account{} = account <- Database.get_account_by_id_or_slug(account_id_or_slug),
          provider when is_struct(provider) <- Database.get_default_provider_for_account(account) do
-      sign_in_params = PortalWeb.Authentication.take_sign_in_params(conn.params)
+      redirect_params = PortalWeb.Authentication.take_sign_in_redirect_params(conn.params)
 
       conn
-      |> redirect(to: redirect_path(account, provider, sign_in_params))
+      |> redirect(to: redirect_path(account, provider, redirect_params))
       |> halt()
     else
       _ -> conn
