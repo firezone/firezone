@@ -32,18 +32,10 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
       when as in ["client", "gui-client", "headless-client"] do
     with %Account{} = account <- Database.get_account_by_id_or_slug(account_id_or_slug),
          provider when is_struct(provider) <- Database.get_default_provider_for_account(account) do
-      redirect_path = redirect_path(account, provider)
-
-      # Append original query params
-      full_redirect_path =
-        if conn.query_string != "" do
-          redirect_path <> "?" <> conn.query_string
-        else
-          redirect_path
-        end
+      sign_in_params = PortalWeb.Authentication.take_sign_in_params(conn.params)
 
       conn
-      |> redirect(to: full_redirect_path)
+      |> redirect(to: redirect_path(account, provider, sign_in_params))
       |> halt()
     else
       _ -> conn
@@ -54,20 +46,20 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
     conn
   end
 
-  defp redirect_path(account, %OIDC.AuthProvider{} = provider) do
-    ~p"/#{account}/sign_in/oidc/#{provider}"
+  defp redirect_path(account, %OIDC.AuthProvider{} = provider, params) do
+    ~p"/#{account}/sign_in/oidc/#{provider}?#{params}"
   end
 
-  defp redirect_path(account, %Google.AuthProvider{} = provider) do
-    ~p"/#{account}/sign_in/google/#{provider}"
+  defp redirect_path(account, %Google.AuthProvider{} = provider, params) do
+    ~p"/#{account}/sign_in/google/#{provider}?#{params}"
   end
 
-  defp redirect_path(account, %Entra.AuthProvider{} = provider) do
-    ~p"/#{account}/sign_in/entra/#{provider}"
+  defp redirect_path(account, %Entra.AuthProvider{} = provider, params) do
+    ~p"/#{account}/sign_in/entra/#{provider}?#{params}"
   end
 
-  defp redirect_path(account, %Okta.AuthProvider{} = provider) do
-    ~p"/#{account}/sign_in/okta/#{provider}"
+  defp redirect_path(account, %Okta.AuthProvider{} = provider, params) do
+    ~p"/#{account}/sign_in/okta/#{provider}?#{params}"
   end
 
   defmodule Database do

@@ -22,9 +22,12 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
 
         conn =
           conn
-          |> Map.put(:params, %{"as" => as_value, "account_id_or_slug" => account.slug})
+          |> Map.put(:params, %{
+            "as" => as_value,
+            "account_id_or_slug" => account.slug,
+            "state" => "test-state"
+          })
           |> Map.put(:path_info, [account.slug, "sign_in"])
-          |> Map.put(:query_string, "as=#{as_value}&state=test-state")
           |> AutoRedirectDefaultProvider.call([])
 
         assert conn.halted
@@ -45,7 +48,6 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
           conn
           |> Map.put(:params, %{"as" => as_value, "account_id_or_slug" => account.slug})
           |> Map.put(:path_info, [account.slug, "sign_in"])
-          |> Map.put(:query_string, "as=#{as_value}")
           |> AutoRedirectDefaultProvider.call([])
 
         assert conn.halted
@@ -64,7 +66,6 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
           conn
           |> Map.put(:params, %{"as" => as_value, "account_id_or_slug" => account.slug})
           |> Map.put(:path_info, [account.slug, "sign_in"])
-          |> Map.put(:query_string, "as=#{as_value}")
           |> AutoRedirectDefaultProvider.call([])
 
         assert conn.halted
@@ -83,7 +84,6 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
           conn
           |> Map.put(:params, %{"as" => as_value, "account_id_or_slug" => account.slug})
           |> Map.put(:path_info, [account.slug, "sign_in"])
-          |> Map.put(:query_string, "as=#{as_value}")
           |> AutoRedirectDefaultProvider.call([])
 
         assert conn.halted
@@ -165,23 +165,48 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
       refute conn.halted
     end
 
-    test "redirects without query string when query_string is empty", %{
-      conn: conn,
-      account: account
-    } do
+    test "forwards only sign-in params to the provider", %{conn: conn, account: account} do
       provider = oidc_provider_fixture(account: account, is_default: true)
 
       conn =
         conn
-        |> Map.put(:params, %{"as" => "client", "account_id_or_slug" => account.slug})
+        |> Map.put(:params, %{
+          "as" => "client",
+          "account_id_or_slug" => account.slug,
+          "state" => "test-state",
+          "utm_source" => "email"
+        })
         |> Map.put(:path_info, [account.slug, "sign_in"])
-        |> Map.put(:query_string, "")
         |> AutoRedirectDefaultProvider.call([])
 
       assert conn.halted
       location = redirected_to(conn)
+
       assert location =~ "/sign_in/oidc/#{provider.id}"
-      refute location =~ "?"
+      assert location =~ "as=client"
+      assert location =~ "state=test-state"
+      refute location =~ "utm_source"
+    end
+
+    test "escapes sign-in params sent by a scanner", %{conn: conn, account: account} do
+      provider = oidc_provider_fixture(account: account, is_default: true)
+
+      conn =
+        conn
+        |> Map.put(:params, %{
+          "as" => "client",
+          "account_id_or_slug" => account.slug,
+          "redirect_to" => "/sites\\\"><svg/onload=alert(1)>"
+        })
+        |> Map.put(:path_info, [account.slug, "sign_in"])
+        |> Map.put(:query_string, "as=client&redirect_to=/sites\\\"><svg/onload=alert(1)>")
+        |> AutoRedirectDefaultProvider.call([])
+
+      assert conn.halted
+      location = redirected_to(conn)
+
+      assert location =~ "/sign_in/oidc/#{provider.id}"
+      refute location =~ "<svg"
     end
 
     test "looks up account by ID when account_id_or_slug is a UUID", %{

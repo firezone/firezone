@@ -12,12 +12,38 @@ defmodule PortalWeb.AccountLandingControllerTest do
     test "redirects client sign-in with slug to /:account/sign_in and preserves all sign-in params",
          %{conn: conn} do
       for client <- @client_sign_in_types do
-        params = "as=#{client}&state=abc&nonce=xyz&redirect_to=%2Fsites"
+        params = %{
+          "as" => client,
+          "state" => "abc",
+          "nonce" => "xyz",
+          "redirect_to" => "/sites"
+        }
 
-        conn = get(conn, "/some-account?#{params}")
+        conn = get(conn, ~p"/some-account?#{params}")
 
-        assert redirected_to(conn) == "/some-account/sign_in?#{params}"
+        assert redirected_to(conn) == ~p"/some-account/sign_in?#{params}"
       end
+    end
+
+    test "drops query params that are not part of the sign-in flow", %{conn: conn} do
+      conn = get(conn, ~p"/some-account?#{%{"as" => "client", "utm_source" => "email"}}")
+
+      assert redirected_to(conn) == ~p"/some-account/sign_in?#{%{"as" => "client"}}"
+    end
+
+    test "redirects without raising when a scanner sends an unsafe query string", %{conn: conn} do
+      conn = get(conn, "/some-account?fccc%27\\%22%3E%3Csvg/onload=alert(/xss/)%3E")
+
+      assert redirected_to(conn) == "/some-account/sign_in"
+    end
+
+    test "escapes sign-in params taken from the query string", %{conn: conn} do
+      conn = get(conn, ~p"/some-account?#{%{"redirect_to" => "/sites\\\"><svg/onload=alert(1)>"}}")
+
+      redirect_path = redirected_to(conn)
+
+      assert redirect_path == ~p"/some-account/sign_in?#{%{"redirect_to" => "/sites\\\"><svg/onload=alert(1)>"}}"
+      refute redirect_path =~ "<svg"
     end
   end
 end
