@@ -18,7 +18,7 @@ defmodule Portal.Application do
     :ok = OpentelemetryEcto.setup([:portal, :repo])
     :ok = OpentelemetryEcto.setup([:portal, :repo, :web])
     :ok = OpentelemetryEcto.setup([:portal, :repo, :api])
-    :ok = OpentelemetryBandit.setup()
+    :ok = Portal.Telemetry.OtelBandit.setup()
     :ok = OpentelemetryPhoenix.setup(adapter: :bandit)
     :ok = OpentelemetryOban.setup()
 
