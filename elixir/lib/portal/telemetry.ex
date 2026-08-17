@@ -40,6 +40,12 @@ defmodule Portal.Telemetry do
         [:phoenix, :channel_joined],
         [:phoenix, :channel_handled_in]
       ]
+    },
+    authorizations: %{
+      handler_id: "portal-authorization-metrics",
+      events: [
+        [:portal, :authorization, :granted]
+      ]
     }
   }
 
@@ -308,6 +314,27 @@ defmodule Portal.Telemetry do
       :ok
   end
 
+  @doc """
+  Records that the portal granted a policy authorization to a peer.
+
+  `receiver` is `:gateway` for client-to-gateway authorizations and `:client` for
+  client-to-client device access. The initiator is always the requesting client.
+
+  The three inputs the ICE-less decision is derived from are reported separately, so
+  an authorization that did not go ICE-less can be attributed to the account's
+  feature flag rather than to a peer that never advertised the capability (or the
+  other way around).
+  """
+  @spec authorization_granted(:client | :gateway, keyword()) :: :ok
+  def authorization_granted(receiver, opts) when receiver in [:client, :gateway] do
+    :telemetry.execute([:portal, :authorization, :granted], %{count: 1}, %{
+      receiver: receiver,
+      iceless_feature_enabled: Keyword.fetch!(opts, :iceless_feature_enabled) == true,
+      initiator_iceless_capable: Keyword.fetch!(opts, :initiator_iceless_capable) == true,
+      receiver_iceless_capable: Keyword.fetch!(opts, :receiver_iceless_capable) == true
+    })
+  end
+
   defp register_otel_instruments do
     meter = :opentelemetry_experimental.get_meter()
     node_attrs = %{"node_name" => System.get_env("NODE_NAME", to_string(node()))}
@@ -552,6 +579,15 @@ defmodule Portal.Telemetry do
       %{description: "Channel message handling duration", unit: :ms}
     )
 
+    :otel_meter.create_counter(
+      meter,
+      :"portal.authorizations.granted",
+      %{
+        description: "Total policy authorizations granted, split by ICE-less eligibility",
+        unit: :"1"
+      }
+    )
+
     :ok
   rescue
     error ->
@@ -745,6 +781,43 @@ defmodule Portal.Telemetry do
     :ok
   end
 
+  @doc false
+  @spec handle_authorization_metric(list(), map(), map(), map()) :: :ok
+  def handle_authorization_metric(
+        [:portal, :authorization, :granted],
+        measurements,
+        metadata,
+        config
+      ) do
+    %{
+      receiver: receiver,
+      iceless_feature_enabled: feature_enabled,
+      initiator_iceless_capable: initiator_capable,
+      receiver_iceless_capable: receiver_capable
+    } = metadata
+
+    attrs = %{
+      "authorization.receiver" => to_string(receiver),
+      "iceless.used" => feature_enabled and initiator_capable and receiver_capable,
+      "iceless.feature_enabled" => feature_enabled,
+      "iceless.initiator_capable" => initiator_capable,
+      "iceless.receiver_capable" => receiver_capable,
+      "node_name" => config.node_name
+    }
+
+    meter = :opentelemetry_experimental.get_meter()
+
+    :otel_counter.add(
+      :otel_ctx.get_current(),
+      meter,
+      :"portal.authorizations.granted",
+      measurements.count,
+      attrs
+    )
+
+    :ok
+  end
+
   @spec enable_metrics(atom()) :: :ok | {:error, :already_enabled} | {:error, :unknown_group}
   def enable_metrics(group) do
     case Map.fetch(@metric_groups, group) do
@@ -795,6 +868,7 @@ defmodule Portal.Telemetry do
   defp metric_group_handler(:liveview_lifecycle), do: &__MODULE__.handle_liveview_lifecycle_metric/4
   defp metric_group_handler(:liveview_events), do: &__MODULE__.handle_liveview_event_metric/4
   defp metric_group_handler(:channels), do: &__MODULE__.handle_channel_metric/4
+  defp metric_group_handler(:authorizations), do: &__MODULE__.handle_authorization_metric/4
 
   @doc false
   @spec endpoint_name(Plug.Conn.t()) :: String.t()

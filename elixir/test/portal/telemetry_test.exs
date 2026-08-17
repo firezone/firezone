@@ -450,6 +450,123 @@ defmodule Portal.TelemetryTest do
     end
   end
 
+  describe "authorization_granted/2" do
+    setup do
+      test_pid = self()
+      handler_id = "test-authorization-granted-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :authorization, :granted],
+        fn _event, measurements, metadata, _config ->
+          # The handler is attached globally, so other async tests emitting the
+          # same event land in this mailbox too. Tag with the emitting pid so
+          # each test can ignore them.
+          send(test_pid, {:authorization_granted, self(), measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      %{test_pid: test_pid}
+    end
+
+    test "emits the event with a count of one", %{test_pid: test_pid} do
+      assert :ok =
+               Portal.Telemetry.authorization_granted(:gateway,
+                 iceless_feature_enabled: true,
+                 initiator_iceless_capable: true,
+                 receiver_iceless_capable: true
+               )
+
+      assert_receive {:authorization_granted, ^test_pid, measurements, metadata}
+
+      assert measurements == %{count: 1}
+
+      assert metadata == %{
+               receiver: :gateway,
+               iceless_feature_enabled: true,
+               initiator_iceless_capable: true,
+               receiver_iceless_capable: true
+             }
+    end
+
+    test "keeps the three iceless inputs apart", %{test_pid: test_pid} do
+      assert :ok =
+               Portal.Telemetry.authorization_granted(:client,
+                 iceless_feature_enabled: false,
+                 initiator_iceless_capable: true,
+                 receiver_iceless_capable: false
+               )
+
+      assert_receive {:authorization_granted, ^test_pid, _measurements, metadata}
+
+      assert metadata == %{
+               receiver: :client,
+               iceless_feature_enabled: false,
+               initiator_iceless_capable: true,
+               receiver_iceless_capable: false
+             }
+    end
+
+    test "coerces non-boolean inputs so callers can pass assigns as-is", %{test_pid: test_pid} do
+      assert :ok =
+               Portal.Telemetry.authorization_granted(:gateway,
+                 iceless_feature_enabled: nil,
+                 initiator_iceless_capable: "yes",
+                 receiver_iceless_capable: true
+               )
+
+      assert_receive {:authorization_granted, ^test_pid, _measurements, metadata}
+
+      assert metadata.iceless_feature_enabled == false
+      assert metadata.initiator_iceless_capable == false
+      assert metadata.receiver_iceless_capable == true
+    end
+
+    test "raises when an iceless input is missing" do
+      assert_raise KeyError, fn ->
+        Portal.Telemetry.authorization_granted(:gateway,
+          iceless_feature_enabled: true,
+          initiator_iceless_capable: true
+        )
+      end
+    end
+  end
+
+  describe "handle_authorization_metric/4" do
+    test "returns :ok for an ICE-less authorization" do
+      assert :ok =
+               Portal.Telemetry.handle_authorization_metric(
+                 [:portal, :authorization, :granted],
+                 %{count: 1},
+                 %{
+                   receiver: :gateway,
+                   iceless_feature_enabled: true,
+                   initiator_iceless_capable: true,
+                   receiver_iceless_capable: true
+                 },
+                 @config
+               )
+    end
+
+    test "returns :ok when the account feature flag is off" do
+      assert :ok =
+               Portal.Telemetry.handle_authorization_metric(
+                 [:portal, :authorization, :granted],
+                 %{count: 1},
+                 %{
+                   receiver: :client,
+                   iceless_feature_enabled: false,
+                   initiator_iceless_capable: true,
+                   receiver_iceless_capable: true
+                 },
+                 @config
+               )
+    end
+  end
+
   defp metric_names do
     Enum.map(Portal.Telemetry.metrics(), & &1.name)
   end

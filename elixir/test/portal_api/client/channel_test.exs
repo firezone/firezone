@@ -5488,6 +5488,63 @@ defmodule PortalAPI.Client.ChannelTest do
       assert is_integer(target_expires_at)
     end
 
+    test "reports iceless inputs separately via telemetry", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject,
+      pool_resource: pool_resource
+    } do
+      test_pid = self()
+      handler_id = "test-authorization-granted-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :authorization, :granted],
+        fn _event, _measurements, metadata, _config ->
+          send(test_pid, {:authorization_granted, self(), metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_socket = join_channel(target_client, target_subject)
+      assert_push "init", _
+
+      # The account fixture has the feature on, so both peers advertising the
+      # capability is the case where the connection actually goes ICE-less.
+      push(initiating_socket, "set_snownet_capabilities", %{"iceless" => true})
+      push(target_socket, "set_snownet_capabilities", %{"iceless" => true})
+
+      # Synchronous call on each channel, so both capability pushes are out of
+      # their mailboxes before the authorization can race them.
+      :sys.get_state(initiating_socket.channel_pid)
+      :sys.get_state(target_socket.channel_pid)
+
+      push(initiating_socket, "create_flow", %{
+        "resource_id" => pool_resource.id,
+        "ipv4" => Portal.Types.INET.to_string(target_client.ipv4)
+      })
+
+      assert_push "client_device_access_authorized", %{use_iceless: true}
+
+      # The handler runs in the emitting channel, so match on the target's pid to
+      # ignore events from other tests sharing the globally attached handler.
+      target_channel_pid = target_socket.channel_pid
+      assert_receive {:authorization_granted, ^target_channel_pid, metadata}
+
+      assert metadata == %{
+               receiver: :client,
+               iceless_feature_enabled: true,
+               initiator_iceless_capable: true,
+               receiver_iceless_capable: true
+             }
+    end
+
     test "sends authorized when target ipv6 is found in presence", %{
       client: client,
       subject: subject,
