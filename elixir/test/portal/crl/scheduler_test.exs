@@ -9,11 +9,11 @@ defmodule Portal.Crl.SchedulerTest do
   alias Portal.Crypto.X509
 
   setup do
-    enable_feature(:device_trust)
+    enable_feature(:trust_anchors)
     %{account: account_fixture(), pki: pki()}
   end
 
-  describe "perform/1 when the device_trust feature is off" do
+  describe "perform/1 when the trust_anchors feature is off" do
     test "nothing is queued, so endpoints are left exactly as they are", %{
       account: account,
       pki: pki

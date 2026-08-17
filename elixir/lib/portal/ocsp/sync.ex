@@ -30,7 +30,7 @@ defmodule Portal.Ocsp.Sync do
           "distribution_point" => distribution_point
         } = args
       }) do
-    with true <- Portal.Features.enabled?(:device_trust),
+    with true <- Portal.Features.enabled?(:trust_anchors),
          {:ok, issuer} <- Base.decode64(encoded_issuer),
          endpoint when not is_nil(endpoint) <-
            Database.fetch_endpoint(account_id, issuer, distribution_point) do
@@ -55,7 +55,7 @@ defmodule Portal.Ocsp.Sync do
   """
   @spec enqueue_check(Ecto.UUID.t(), binary(), String.t()) :: :ok
   def enqueue_check(account_id, issuer, serial) do
-    if Portal.Features.enabled?(:device_trust) do
+    if Portal.Features.enabled?(:trust_anchors) do
       Database.ocsp_distribution_points(account_id, issuer)
       |> Enum.each(fn distribution_point ->
         %{

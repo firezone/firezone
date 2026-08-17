@@ -14,7 +14,7 @@ defmodule Portal.Ocsp.Scheduler do
   def perform(%Oban.Job{}) do
     Logger.debug("Scheduling OCSP refresh jobs")
 
-    if Portal.Features.enabled?(:device_trust) do
+    if Portal.Features.enabled?(:trust_anchors) do
       Database.queue_sync_jobs()
     else
       {:ok, :skipped}

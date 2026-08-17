@@ -500,7 +500,7 @@ defmodule PortalAPI.Client.SocketTest do
       Portal.Config.put_env_override(:portal, :mtls_external_url, "https://mtls.firezone.test/")
 
       account = account_fixture()
-      enable_feature(:device_trust)
+      enable_feature(:trust_anchors)
       pki = pki()
       trust_anchor_fixture(account: account, certs: [pki.ca_der])
 
