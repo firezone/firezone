@@ -88,7 +88,8 @@ defmodule Portal.SafeTest do
             Portal.Okta.AuthProvider,
             Portal.OIDC.AuthProvider,
             Portal.EmailOTP.AuthProvider,
-            Portal.Userpass.AuthProvider
+            Portal.Userpass.AuthProvider,
+            Portal.X509.AuthProvider
           ] do
         assert Safe.permit(:delete, schema, :account_admin_user) == :ok
         assert Safe.permit(:read, schema, :api_client) == :ok

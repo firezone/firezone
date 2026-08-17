@@ -44,6 +44,7 @@ defmodule Portal.ChangeLogs.Consumer do
     "trust_anchor_certificates" => Portal.TrustAnchorCertificate,
     "trust_anchors" => Portal.TrustAnchor,
     "userpass_auth_providers" => Portal.Userpass.AuthProvider,
+    "x509_auth_providers" => Portal.X509.AuthProvider,
     "splunk_log_sinks" => Portal.Splunk.LogSink,
     "datadog_log_sinks" => Portal.Datadog.LogSink,
     "newrelic_log_sinks" => Portal.NewRelic.LogSink,

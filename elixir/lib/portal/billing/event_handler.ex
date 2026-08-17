@@ -494,6 +494,7 @@ defmodule Portal.Billing.EventHandler do
 
     # Create email provider
     {:ok, _email_provider} = Database.create_email_provider(account)
+    {:ok, _x509_provider} = Database.create_x509_provider(account)
 
     # Create admin user
     email = metadata["account_admin_email"] || account_email
@@ -663,7 +664,8 @@ defmodule Portal.Billing.EventHandler do
       Account,
       AuthProvider,
       EmailOTP,
-      Safe
+      Safe,
+      X509
     }
 
     def with_customer_lock(customer_id, fun) do
@@ -695,6 +697,42 @@ defmodule Portal.Billing.EventHandler do
       with {:ok, _auth_provider} <- Safe.unscoped(auth_provider) |> Safe.insert(),
            {:ok, email_provider} <- Safe.unscoped(email_otp_provider) |> Safe.insert() do
         {:ok, email_provider}
+      end
+    end
+
+    # OTP 28 dialyzer is stricter about opaque types (MapSet) inside Ecto.Multi
+    @dialyzer {:no_opaque, create_x509_provider: 1}
+    def create_x509_provider(account) do
+      id = Ecto.UUID.generate()
+
+      parent_changeset =
+        cast(
+          %AuthProvider{},
+          %{account_id: account.id, id: id, type: :x509},
+          ~w[id account_id type]a
+        )
+
+      x509_changeset =
+        %X509.AuthProvider{}
+        |> cast(
+          %{
+            id: id,
+            account_id: account.id,
+            name: "X.509",
+            context: :clients_only,
+            is_disabled: true
+          },
+          ~w[id account_id name context is_disabled]a
+        )
+        |> X509.AuthProvider.changeset()
+
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:auth_provider, parent_changeset)
+      |> Ecto.Multi.insert(:x509_provider, x509_changeset)
+      |> Safe.transact()
+      |> case do
+        {:ok, %{x509_provider: provider}} -> {:ok, provider}
+        {:error, _step, changeset, _changes} -> {:error, changeset}
       end
     end
 
