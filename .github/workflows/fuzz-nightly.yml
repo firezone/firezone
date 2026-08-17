@@ -59,7 +59,10 @@ jobs:
       - uses: ./.github/actions/free-disk-space
       - name: Grow, minimize and re-baseline the corpus
         run: mise run //rust/tests/fuzz:grow ${{ matrix.fuzz-target }}
+      # A step of `grow` can fail on a corpus that already carries a crashing
+      # input, and what the run discovered on top of it is worth pushing anyway.
       - name: Save corpus and coverage baseline
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: fuzz-${{ matrix.fuzz-target }}
@@ -71,6 +74,7 @@ jobs:
   propose:
     name: propose-corpus-update
     needs: [discover]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
