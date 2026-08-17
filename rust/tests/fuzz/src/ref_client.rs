@@ -82,9 +82,9 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) connected_dns_resources: BTreeSet<ResourceId>,
 
-    /// The last time a connected gateway resolved each DNS resource domain.
+    /// The current record kinds resolved by a connected gateway for each DNS resource domain.
     #[debug(skip)]
-    dns_resource_resolutions: BTreeMap<(ResourceId, DomainName), Instant>,
+    dns_resource_resolutions: BTreeMap<(ResourceId, DomainName), BTreeSet<RecordType>>,
 
     /// The [`ResourceStatus`] of each site.
     #[debug(skip)]
@@ -799,8 +799,8 @@ impl RefClient {
         &mut self,
         query: &DnsQuery,
         upstream_do53: &[UpstreamDo53],
+        global_dns_records: &DnsRecords,
         icmp_error_hosts: &IcmpErrorHosts,
-        now: Instant,
     ) {
         if self.is_dynamic_device_pool_dns_query(query) {
             self.expect_dns_response(query);
@@ -808,7 +808,7 @@ impl RefClient {
         }
 
         if let Some(resource) = self.is_site_specific_dns_query(query) {
-            self.prepare_dns_resource_connection(resource, now);
+            self.prepare_dns_resource_connection(resource, global_dns_records);
             self.set_resource_online(resource);
             self.connected_dns_resources.insert(resource);
             self.expect_dns_response(query);
@@ -829,8 +829,10 @@ impl RefClient {
             if self.connected_dns_resources.contains(&resource)
                 && matches!(query.r_type, RecordType::A | RecordType::AAAA)
             {
-                self.dns_resource_resolutions
-                    .insert((resource, query.domain.clone()), now);
+                self.dns_resource_resolutions.insert(
+                    (resource, query.domain.clone()),
+                    global_dns_records.domain_rtypes(&query.domain),
+                );
             }
 
             return;
@@ -1244,9 +1246,8 @@ impl RefClient {
     pub(crate) fn resolved_ip4_for_non_resources(
         &self,
         global_dns_records: &DnsRecords,
-        at: Instant,
     ) -> Vec<Ipv4Addr> {
-        self.resolved_ips_for_non_resources(global_dns_records, at)
+        self.resolved_ips_for_non_resources(global_dns_records)
             .filter_map(|ip| match ip {
                 IpAddr::V4(v4) => Some(v4),
                 IpAddr::V6(_) => None,
@@ -1257,9 +1258,8 @@ impl RefClient {
     pub(crate) fn resolved_ip6_for_non_resources(
         &self,
         global_dns_records: &DnsRecords,
-        at: Instant,
     ) -> Vec<Ipv6Addr> {
-        self.resolved_ips_for_non_resources(global_dns_records, at)
+        self.resolved_ips_for_non_resources(global_dns_records)
             .filter_map(|ip| match ip {
                 IpAddr::V6(v6) => Some(v6),
                 IpAddr::V4(_) => None,
@@ -1270,14 +1270,13 @@ impl RefClient {
     fn resolved_ips_for_non_resources<'a>(
         &'a self,
         global_dns_records: &'a DnsRecords,
-        at: Instant,
     ) -> impl Iterator<Item = IpAddr> + 'a {
         self.dns_records
             .keys()
             .filter_map(move |domain| {
                 self.dns_resource_by_domain(domain, |_| true, |_| true)
                     .is_none()
-                    .then_some(global_dns_records.domain_ips_iter(domain, at))
+                    .then_some(global_dns_records.domain_ips_iter(domain))
             })
             .flatten()
     }
@@ -1325,7 +1324,11 @@ impl RefClient {
             .flatten()
     }
 
-    pub(crate) fn prepare_dns_resource_connection(&mut self, resource: ResourceId, now: Instant) {
+    pub(crate) fn prepare_dns_resource_connection(
+        &mut self,
+        resource: ResourceId,
+        global_dns_records: &DnsRecords,
+    ) {
         if self.connected_dns_resources.contains(&resource) {
             return;
         }
@@ -1344,8 +1347,9 @@ impl RefClient {
             .collect_vec();
 
         for domain in domains {
+            let record_types = global_dns_records.domain_rtypes(&domain);
             self.dns_resource_resolutions
-                .insert((resource, domain), now);
+                .insert((resource, domain), record_types);
         }
     }
 
@@ -1353,10 +1357,9 @@ impl RefClient {
         &self,
         resource: ResourceId,
         domain: &DomainName,
-    ) -> Option<Instant> {
+    ) -> Option<&BTreeSet<RecordType>> {
         self.dns_resource_resolutions
             .get(&(resource, domain.clone()))
-            .copied()
     }
 
     fn local_dns_resource_query_has_records(&self, query: &DnsQuery) -> bool {
