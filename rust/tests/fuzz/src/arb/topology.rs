@@ -19,6 +19,7 @@ use super::values::{
 };
 use crate::dns_records::DnsRecords;
 use crate::icmp_error_hosts::{IcmpError, IcmpErrorHosts};
+use crate::os::SimulatedOs;
 use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::reference::ReferenceState;
@@ -408,6 +409,7 @@ fn arb_client_host(
     let internet_resource_active = g.bool();
     let ignore_resource_filters = g.bool();
     let send_untracked_icmp_errors = g.bool();
+    let os = arb_simulated_os(g);
 
     let inner = RefClient::new(
         id,
@@ -420,6 +422,7 @@ fn arb_client_host(
             ignore_resource_filters,
             send_untracked_icmp_errors,
         },
+        os,
     );
 
     let (ip4, ip6) = arb_socket_ip_stack(g);
@@ -446,6 +449,16 @@ fn arb_gateways(
             (id, host)
         })
         .collect::<BTreeMap<_, _>>()
+}
+
+fn arb_simulated_os(g: &mut Generator) -> SimulatedOs {
+    match g.choose_index(5) {
+        0 => SimulatedOs::Linux,
+        1 => SimulatedOs::Android,
+        2 => SimulatedOs::MacOs,
+        3 => SimulatedOs::Ios,
+        _ => SimulatedOs::Windows,
+    }
 }
 
 fn arb_edge_config(g: &mut Generator) -> EdgeConfig {

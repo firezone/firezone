@@ -82,6 +82,7 @@ impl SimClient {
         id: ClientId,
         mut sut: ClientState,
         malicious_behaviour: MaliciousBehaviour,
+        os: crate::os::SimulatedOs,
         now: Instant,
     ) -> Self {
         sut.set_flow_logs_enabled(true);
@@ -102,7 +103,7 @@ impl SimClient {
             search_domain: Default::default(),
             observed_resource_list: Default::default(),
             tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(15), [0u8; 32]),
-            tcp_client: crate::tcp::Client::new(now),
+            tcp_client: crate::tcp::Client::new(now, os),
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
             transmit_buffer: snownet::TransmitBuffer::new(),
