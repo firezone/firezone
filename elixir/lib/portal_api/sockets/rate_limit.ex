@@ -46,7 +46,7 @@ defmodule PortalAPI.Sockets.RateLimit do
 
   defp extract_ip(%{x_headers: x_headers, peer_data: peer_data})
        when is_list(x_headers) and x_headers != [] do
-    RemoteIp.from(x_headers, PortalAPI.Endpoint.real_ip_opts()) || peer_data.address
+    RemoteIp.from(x_headers, Portal.Endpoint.real_ip_opts()) || peer_data.address
   end
 
   defp extract_ip(%{peer_data: peer_data}), do: peer_data.address

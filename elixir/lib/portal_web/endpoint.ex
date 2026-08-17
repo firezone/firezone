@@ -25,18 +25,11 @@ defmodule PortalWeb.Endpoint do
     plug PortalWeb.Plugs.AllowEctoSandbox
   end
 
-  plug Plug.RewriteOn, [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]
   plug Plug.MethodOverride
 
   # Security Headers
   plug PortalWeb.Plugs.PutSTSHeader
   plug PortalWeb.Plugs.PutSecurityHeaders
-
-  plug RemoteIp,
-    headers: ["x-forwarded-for"],
-    parsers: %{"x-forwarded-for" => Portal.RemoteIp.XForwardedForParser},
-    proxies: {__MODULE__, :external_trusted_proxies, []},
-    clients: {__MODULE__, :clients, []}
 
   plug Portal.Plugs.CountryCodeBlocklist
 
@@ -89,25 +82,6 @@ defmodule PortalWeb.Endpoint do
     ],
     longpoll: false,
     drainer: []
-
-  def real_ip_opts do
-    [
-      headers: ["x-forwarded-for"],
-      parsers: %{"x-forwarded-for" => Portal.RemoteIp.XForwardedForParser},
-      proxies: {__MODULE__, :external_trusted_proxies, []},
-      clients: {__MODULE__, :clients, []}
-    ]
-  end
-
-  def external_trusted_proxies do
-    Portal.Config.fetch_env!(:portal, :external_trusted_proxies)
-    |> Enum.map(&to_string/1)
-  end
-
-  def clients do
-    Portal.Config.fetch_env!(:portal, :private_clients)
-    |> Enum.map(&to_string/1)
-  end
 
   def cookie_signing_salt do
     Portal.Config.fetch_env!(:portal, :cookie_signing_salt)

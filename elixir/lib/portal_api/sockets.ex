@@ -96,7 +96,7 @@ defmodule PortalAPI.Sockets do
   defp real_ip(x_headers, peer_data) do
     real_ip =
       if is_list(x_headers) and x_headers != [] do
-        RemoteIp.from(x_headers, PortalAPI.Endpoint.real_ip_opts())
+        RemoteIp.from(x_headers, Portal.Endpoint.real_ip_opts())
       end
 
     real_ip || peer_data.address
