@@ -807,6 +807,25 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  PostHog project API key used to attribute consented website visitors after authentication.
+
+  PostHog analytics are disabled when this is unset or blank.
+  """
+  defconfig(:posthog_project_api_key, :string,
+    default: nil,
+    dump: fn
+      project_api_key when is_binary(project_api_key) ->
+        case String.trim(project_api_key) do
+          "" -> nil
+          project_api_key -> project_api_key
+        end
+
+      project_api_key ->
+        project_api_key
+    end
+  )
+
+  @doc """
   Enable or disable the Firezone telemetry collection.
   """
   defconfig(:instrumentation_client_logs_enabled, :boolean, default: true)
