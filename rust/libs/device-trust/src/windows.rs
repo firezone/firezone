@@ -52,6 +52,11 @@ pub(crate) fn status(_config: &Config, subject_cn: &str) -> Result<Status> {
         .iter()
         .filter(|certificate| certificate.usable)
         .count();
+    let user_identity = certificates
+        .iter()
+        .filter(|certificate| certificate.usable)
+        .max_by_key(|certificate| certificate.metadata.not_before_timestamp)
+        .and_then(|certificate| certificate.metadata.user_identity());
     let mut sections = vec![DetailSection {
         title: "Windows Certificate Store".to_owned(),
         fields: vec![
@@ -79,7 +84,7 @@ pub(crate) fn status(_config: &Config, subject_cn: &str) -> Result<Status> {
                 },
             ),
             field(
-                "Usable for Device Attestation",
+                "Usable for Mutual TLS",
                 if certificate.usable { "Yes" } else { "No" },
             ),
         ];
@@ -121,14 +126,18 @@ pub(crate) fn status(_config: &Config, subject_cn: &str) -> Result<Status> {
             "No X.509 certificate with subject CN '{subject_cn}' was found in the Windows certificate stores."
         ),
         (0, count) => format!(
-            "Found {count} matching X.509 certificate(s), but none are usable for device attestation."
+            "Found {count} matching X.509 certificate(s), but none are usable for mutual TLS."
         ),
-        (count, _) => format!(
-            "{count} X.509 device identity certificate(s) are available for device attestation."
-        ),
+        (count, _) => {
+            format!("{count} X.509 device identity certificate(s) are available for mutual TLS.")
+        }
     };
 
-    Ok(Status { summary, sections })
+    Ok(Status {
+        summary,
+        sections,
+        user_identity,
+    })
 }
 
 pub(crate) fn identity(_config: &Config, subject_cn: &str) -> Result<Option<PlatformIdentity>> {
@@ -140,12 +149,18 @@ pub(crate) fn identity(_config: &Config, subject_cn: &str) -> Result<Option<Plat
         );
     }
 
+    if certificates.is_empty() {
+        return Ok(None);
+    }
+    let matching_count = certificates.len();
     let Some(certificate) = certificates
         .into_iter()
-        .filter(|certificate| certificate.metadata.is_usable(subject_cn))
+        .filter(|certificate| certificate.usable)
         .max_by_key(|certificate| certificate.metadata.not_before_timestamp)
     else {
-        return Ok(None);
+        bail!(
+            "Found {matching_count} Windows X.509 certificate(s) with subject CN '{subject_cn}', but none have a usable CNG private key and mutual-TLS certificate policy"
+        );
     };
     let algorithm = certificate
         .metadata
@@ -176,6 +191,7 @@ pub(crate) fn identity(_config: &Config, subject_cn: &str) -> Result<Option<Plat
     Ok(Some(PlatformIdentity {
         certified_key: Arc::new(CertifiedKey::new(chain, signing_key)),
         mdm_device_id: certificate.metadata.mdm_device_id.clone(),
+        user_identity: certificate.metadata.user_identity(),
     }))
 }
 
@@ -241,7 +257,11 @@ struct WindowsSigner {
 impl Signer for WindowsSigner {
     fn sign(&self, message: &[u8]) -> Result<Vec<u8>, rustls::Error> {
         unsafe { sign_with_certificate(self.context.0, self.scheme, message) }.map_err(|error| {
-            rustls::Error::General(format!("Windows TLS signing failed: {error:#}"))
+            rustls::Error::Other(rustls::OtherError(Arc::new(
+                phoenix_channel::ClientCertificateSigningError(format!(
+                    "Windows TLS signing failed: {error:#}"
+                )),
+            )))
         })
     }
 

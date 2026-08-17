@@ -33,6 +33,7 @@ pub(crate) fn status(config: &Config, subject_cn: &str) -> Result<Status> {
                 title: "Linux PKCS#11 Configuration".to_owned(),
                 fields: vec![field("PKCS#11 URI", "Not configured")],
             }],
+            user_identity: None,
         });
     };
 
@@ -40,6 +41,11 @@ pub(crate) fn status(config: &Config, subject_cn: &str) -> Result<Status> {
     with_session(&parsed, |session| {
         let identities = identities(session, &parsed, subject_cn)?;
         let usable = identities.iter().filter(|identity| identity.usable).count();
+        let user_identity = identities
+            .iter()
+            .filter(|identity| identity.usable)
+            .max_by_key(|identity| identity.metadata.not_before_timestamp)
+            .and_then(|identity| identity.metadata.user_identity());
         let mut sections = vec![configuration_section(&parsed)];
         sections.extend(identities.iter().enumerate().map(|(index, identity)| {
             let mut fields = vec![
@@ -56,7 +62,7 @@ pub(crate) fn status(config: &Config, subject_cn: &str) -> Result<Status> {
                     },
                 ),
                 field(
-                    "Usable for Device Attestation",
+                    "Usable for Mutual TLS",
                     if identity.usable { "Yes" } else { "No" },
                 ),
             ];
@@ -72,14 +78,18 @@ pub(crate) fn status(config: &Config, subject_cn: &str) -> Result<Status> {
                 "No X.509 certificate with subject CN '{subject_cn}' was found in the configured PKCS#11 token."
             ),
             (0, count) => format!(
-                "Found {count} matching X.509 certificate(s), but none are usable for device attestation."
+                "Found {count} matching X.509 certificate(s), but none are usable for mutual TLS."
             ),
             (count, _) => format!(
-                "{count} X.509 device identity certificate(s) are available for device attestation."
+                "{count} X.509 device identity certificate(s) are available for mutual TLS."
             ),
         };
 
-        Ok(Status { summary, sections })
+        Ok(Status {
+            summary,
+            sections,
+            user_identity,
+        })
     })
 }
 
@@ -95,12 +105,20 @@ pub(crate) fn identity(config: &Config, subject_cn: &str) -> Result<Option<Platf
         // The URI's `object` attribute selects leaf identities. Intermediates often use
         // different labels, so enumerate every certificate when assembling each chain.
         let all_certificates = certificate_objects(session, &parsed, false)?;
+        if identities.is_empty() {
+            bail!(
+                "The configured PKCS#11 token contains no X.509 certificate with subject CN '{subject_cn}'"
+            );
+        }
+        let matching_count = identities.len();
         let Some(identity) = identities
             .into_iter()
             .filter(|identity| identity.usable)
             .max_by_key(|identity| identity.metadata.not_before_timestamp)
         else {
-            return Ok(None);
+            bail!(
+                "Found {matching_count} matching X.509 certificate(s) in the configured PKCS#11 token, but none have a usable private key and mutual-TLS certificate policy"
+            );
         };
         let algorithm = identity
             .metadata
@@ -125,7 +143,8 @@ pub(crate) fn identity(config: &Config, subject_cn: &str) -> Result<Option<Platf
 
         Ok(Some(PlatformIdentity {
             certified_key: Arc::new(CertifiedKey::new(chain, signing_key)),
-            mdm_device_id: identity.metadata.mdm_device_id,
+            mdm_device_id: identity.metadata.mdm_device_id.clone(),
+            user_identity: identity.metadata.user_identity(),
         }))
     })
 }
@@ -186,7 +205,13 @@ impl Signer for Pkcs11Signer {
             .context("The selected PKCS#11 private key is no longer available")?;
             sign(session, key, self.scheme, message)
         })
-        .map_err(|error| rustls::Error::General(format!("PKCS#11 TLS signing failed: {error:#}")))
+        .map_err(|error| {
+            rustls::Error::Other(rustls::OtherError(Arc::new(
+                phoenix_channel::ClientCertificateSigningError(format!(
+                    "PKCS#11 TLS signing failed: {error:#}"
+                )),
+            )))
+        })
     }
 
     fn scheme(&self) -> SignatureScheme {
@@ -384,7 +409,7 @@ fn sign(
                 &Mechanism::Sha256RsaPkcsPss(PkcsPssParams {
                     hash_alg: MechanismType::SHA256,
                     mgf: PkcsMgfType::MGF1_SHA256,
-                    s_len: 32,
+                    s_len: 32.into(),
                 }),
                 key,
                 message,
@@ -395,7 +420,7 @@ fn sign(
                 &Mechanism::Sha384RsaPkcsPss(PkcsPssParams {
                     hash_alg: MechanismType::SHA384,
                     mgf: PkcsMgfType::MGF1_SHA384,
-                    s_len: 48,
+                    s_len: 48.into(),
                 }),
                 key,
                 message,
@@ -406,7 +431,7 @@ fn sign(
                 &Mechanism::Sha512RsaPkcsPss(PkcsPssParams {
                     hash_alg: MechanismType::SHA512,
                     mgf: PkcsMgfType::MGF1_SHA512,
-                    s_len: 64,
+                    s_len: 64.into(),
                 }),
                 key,
                 message,

@@ -167,11 +167,29 @@ Microsoft Platform Crypto Provider/TPM. For zero-touch MDM enrollment, install
 the identity and private-key grant in the local-machine certificate store so
 the `LocalSystem` Tunnel service can use it without prompting.
 When multiple usable certificates match, the newest certificate by `notBefore`
-is selected.
+is selected. If matching certificates exist but none satisfy the certificate
+policy or expose an accessible private key, the connection fails instead of
+silently falling back to a connection without mutual TLS.
 
-On Linux, set `FIREZONE_DEVICE_TRUST_PKCS11_URI` for the Tunnel service to an
-RFC 7512 URI identifying the module, token, and certificate/key object. The
-packaged systemd unit reads `/etc/default/firezone-client-tunnel`, so a typical
+On Ubuntu, install TPM-backed PKCS#11 support with:
+
+```sh
+sudo apt install tpm2-tools libtpm2-pkcs11-1 libtpm2-pkcs11-tools libengine-pkcs11-openssl
+```
+
+Generate a TPM-backed CSR using the device UUID assigned by the enrollment
+administrator:
+
+```sh
+sudo scripts/device-trust/generate-linux-tpm-csr.sh DEVICE_ID device.csr
+```
+
+Send `device.csr` to the certificate authority. The private key remains in the
+TPM.
+
+Then set `FIREZONE_DEVICE_TRUST_PKCS11_URI` for the Tunnel service to an RFC
+7512 URI identifying the module, token, and certificate/key object. The packaged
+systemd unit reads `/etc/default/firezone-client-tunnel`, so a typical
 configuration is:
 
 ```sh
@@ -182,6 +200,21 @@ Only `pin-source=file:` is supported; inline `pin-value` credentials are
 rejected. The URI works with PKCS#11 implementations such as `tpm2-pkcs11`,
 OpenSC, and SoftHSM. The service account must be able to read the module, token,
 and optional PIN file.
+Once a PKCS#11 URI is configured, a missing or unusable matching identity is a
+configuration error and the connection does not fall back to non-mutual TLS.
+
+For certificate-based user authentication, include one unambiguous value for
+each of these URI SAN attributes in the leaf certificate:
+
+```text
+firezone://email/alice%40example.com
+firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3
+```
+
+The account ID is the Firezone account UUID. When both attributes are valid,
+the disconnected GUI displays `Connect as alice@example.com` and authenticates
+the mutual-TLS connection without sending a saved bearer token. The X.509
+settings page displays both the derived identity attributes and the raw SANs.
 
 ## Threat model
 

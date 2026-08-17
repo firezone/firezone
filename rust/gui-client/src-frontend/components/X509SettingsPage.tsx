@@ -35,11 +35,12 @@ export default function X509SettingsPage() {
     <div className="page max-w-3xl space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="page-title">X.509 Device Identity</h2>
+          <h2 className="page-title">X.509 Identity</h2>
           <p className="page-description mt-1">
-            Firezone uses a managed certificate to prove device enrollment when
-            connecting. Private-key bytes remain in the Windows certificate
-            provider or Linux PKCS#11 token.
+            Firezone uses a managed certificate for mutual TLS and, when Actor
+            Email and Account ID attributes are present, user authentication.
+            Private-key bytes remain in the Windows certificate provider or
+            Linux PKCS#11 token.
           </p>
         </div>
         <Button disabled={loading} onClick={() => void refresh()}>

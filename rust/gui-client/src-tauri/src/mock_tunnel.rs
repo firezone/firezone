@@ -72,6 +72,7 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
             firezone_id: "00000000-0000-0000-0000-000000000000".to_owned(),
             advanced_settings: AdvancedSettings::default(),
             mdm_settings: MdmSettings::default(),
+            certificate_user_identity: None,
         })
         .await?;
 
@@ -94,6 +95,7 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
                     .send(&ServerMsg::X509Status(Ok(device_trust::Status {
                         summary: "No X.509 device identity is configured.".to_owned(),
                         sections: vec![],
+                        user_identity: None,
                     })))
                     .await?;
             }

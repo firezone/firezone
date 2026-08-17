@@ -1,6 +1,7 @@
 #![cfg_attr(not(any(target_os = "linux", target_os = "windows")), allow(dead_code))]
 
 use std::{
+    collections::HashSet,
     net::{Ipv4Addr, Ipv6Addr},
     time::SystemTime,
 };
@@ -13,7 +14,7 @@ use x509_parser::{
     prelude::{FromDer as _, X509Certificate},
 };
 
-use crate::DetailField;
+use crate::{DetailField, UserIdentity};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SigningAlgorithm {
@@ -39,7 +40,10 @@ pub(crate) struct CertificateMetadata {
     pub subject_cn: Option<String>,
     pub subject: String,
     pub subject_alternative_names: Vec<String>,
+    pub actor_email: Option<String>,
+    pub account_id: Option<String>,
     pub mdm_device_id: Option<String>,
+    pub device_serial: Option<String>,
     pub issuer: String,
     pub serial: String,
     pub has_client_auth_eku: bool,
@@ -67,12 +71,26 @@ impl CertificateMetadata {
     }
 
     pub(crate) fn detail_fields(&self) -> Vec<DetailField> {
-        vec![
+        let mut fields = vec![
             field(
                 "Common Name",
                 self.subject_cn.as_deref().unwrap_or("Unavailable"),
             ),
             field("Subject", &self.subject),
+        ];
+        if let Some(actor_email) = &self.actor_email {
+            fields.push(field("Actor Email", actor_email));
+        }
+        if let Some(account_id) = &self.account_id {
+            fields.push(field("Account ID", account_id));
+        }
+        if let Some(mdm_device_id) = &self.mdm_device_id {
+            fields.push(field("MDM Device ID", mdm_device_id));
+        }
+        if let Some(device_serial) = &self.device_serial {
+            fields.push(field("Device Serial", device_serial));
+        }
+        fields.extend([
             field(
                 "Subject Alternative Names",
                 if self.subject_alternative_names.is_empty() {
@@ -113,7 +131,15 @@ impl CertificateMetadata {
             ),
             field("SHA-256 Fingerprint", &self.fingerprint),
             field("DER Byte Count", self.der_bytes.to_string()),
-        ]
+        ]);
+        fields
+    }
+
+    pub(crate) fn user_identity(&self) -> Option<UserIdentity> {
+        Some(UserIdentity {
+            email: self.actor_email.clone()?,
+            account_id: self.account_id.clone()?,
+        })
     }
 }
 
@@ -145,15 +171,23 @@ pub(crate) fn parse_certificate(der: &[u8], now: SystemTime) -> Option<Certifica
         .collect::<Vec<_>>();
     let subject_alternative_names = general_names
         .iter()
-        .map(|name| format_subject_alternative_name(name))
+        .flat_map(|name| format_subject_alternative_name(name))
         .collect();
-    let mdm_device_id = extract_mdm_device_id(general_names.iter().filter_map(|name| {
-        if let GeneralName::URI(value) = name {
-            Some(*value)
-        } else {
-            None
-        }
-    }));
+    let uri_subject_alternative_names = general_names
+        .iter()
+        .filter_map(|name| {
+            if let GeneralName::URI(value) = name {
+                Some(*value)
+            } else {
+                None
+            }
+        })
+        .flat_map(split_comma_joined_uris)
+        .collect::<Vec<_>>();
+    let actor_email = extract_actor_email(&uri_subject_alternative_names);
+    let account_id = extract_account_id(&uri_subject_alternative_names);
+    let mdm_device_id = extract_mdm_device_id(uri_subject_alternative_names.iter().copied());
+    let device_serial = extract_device_serial(&uri_subject_alternative_names);
     // RFC 5280 permits Key Usage to be omitted. When present, it must allow
     // digitalSignature, matching the portal's verification policy.
     let digital_signature_allowed = certificate
@@ -209,7 +243,10 @@ pub(crate) fn parse_certificate(der: &[u8], now: SystemTime) -> Option<Certifica
         subject_cn,
         subject: certificate.subject().to_string(),
         subject_alternative_names,
+        actor_email,
+        account_id,
         mdm_device_id,
+        device_serial,
         issuer: certificate.issuer().to_string(),
         serial: certificate.raw_serial_as_string(),
         has_client_auth_eku,
@@ -222,6 +259,99 @@ pub(crate) fn parse_certificate(der: &[u8], now: SystemTime) -> Option<Certifica
         fingerprint,
         der_bytes: der.len(),
     })
+}
+
+fn extract_actor_email(uris: &[&str]) -> Option<String> {
+    let emails = firezone_attribute_values(uris, "email")
+        .into_iter()
+        .filter(|value| valid_email(value))
+        .map(|value| value.to_lowercase())
+        .collect::<HashSet<_>>();
+
+    (emails.len() == 1)
+        .then(|| emails.into_iter().next())
+        .flatten()
+}
+
+fn extract_account_id(uris: &[&str]) -> Option<String> {
+    let account_ids = firezone_attribute_values(uris, "account-id")
+        .into_iter()
+        .filter_map(|value| uuid::Uuid::parse_str(&value).ok())
+        .map(|value| value.hyphenated().to_string().to_lowercase())
+        .collect::<HashSet<_>>();
+
+    (account_ids.len() == 1)
+        .then(|| account_ids.into_iter().next())
+        .flatten()
+}
+
+fn extract_device_serial(uris: &[&str]) -> Option<String> {
+    let serials = firezone_attribute_values(uris, "serial")
+        .into_iter()
+        .chain(firezone_attribute_values(uris, "apple-serial"))
+        .collect::<Vec<_>>();
+    let normalized = serials
+        .iter()
+        .map(|value| value.to_lowercase())
+        .collect::<HashSet<_>>();
+
+    (normalized.len() == 1)
+        .then(|| serials.into_iter().next())
+        .flatten()
+}
+
+fn firezone_attribute_values(uris: &[&str], expected_attribute: &str) -> Vec<String> {
+    uris.iter()
+        .filter_map(|uri| {
+            let (scheme, remainder) = uri.split_once("://")?;
+            if !scheme.eq_ignore_ascii_case("firezone") {
+                return None;
+            }
+            let (attribute, raw_value) = remainder.split_once('/')?;
+            if !attribute.eq_ignore_ascii_case(expected_attribute) {
+                return None;
+            }
+
+            let decoded = percent_decode(raw_value).unwrap_or_else(|| raw_value.to_owned());
+            let value = decoded.trim();
+            valid_identifier(value).then(|| value.to_owned())
+        })
+        .collect()
+}
+
+fn valid_email(value: &str) -> bool {
+    if !valid_identifier(value) || value.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let mut parts = value.split('@');
+    matches!((parts.next(), parts.next(), parts.next()), (Some(local), Some(domain), None) if !local.is_empty() && !domain.is_empty())
+}
+
+fn percent_decode(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'%' {
+            decoded.push(bytes[index]);
+            index += 1;
+            continue;
+        }
+        let high = *bytes.get(index + 1)?;
+        let low = *bytes.get(index + 2)?;
+        decoded.push(hex_value(high)? << 4 | hex_value(low)?);
+        index += 3;
+    }
+    String::from_utf8(decoded).ok()
+}
+
+fn hex_value(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        _ => None,
+    }
 }
 
 fn extract_mdm_device_id<'a>(uris: impl IntoIterator<Item = &'a str>) -> Option<String> {
@@ -300,10 +430,10 @@ fn split_comma_joined_uris(value: &str) -> Vec<&str> {
             continue;
         }
 
-        values.push(&value[start..comma]);
+        values.push(value[start..comma].trim());
         start = comma + 1 + (remainder.len() - next.len());
     }
-    values.push(&value[start..]);
+    values.push(value[start..].trim());
 
     values
 }
@@ -326,9 +456,7 @@ fn starts_with_uri_scheme(value: &str) -> bool {
 
 fn valid_identifier(value: &str) -> bool {
     let value = value.trim();
-    !value.is_empty()
-        && value.len() <= 255
-        && value.bytes().all(|byte| (0x20..=0x7e).contains(&byte))
+    !value.is_empty() && value.len() <= 255
 }
 
 fn normalize_mdm_device_id(value: &str) -> Option<String> {
@@ -348,8 +476,8 @@ fn normalize_mdm_device_id(value: &str) -> Option<String> {
     Some(normalized)
 }
 
-fn format_subject_alternative_name(name: &GeneralName<'_>) -> String {
-    match name {
+fn format_subject_alternative_name(name: &GeneralName<'_>) -> Vec<String> {
+    let value = match name {
         GeneralName::OtherName(oid, value) => format!(
             "Other name ({oid}): DER/Base64 {}",
             BASE64_STANDARD.encode(value)
@@ -365,14 +493,20 @@ fn format_subject_alternative_name(name: &GeneralName<'_>) -> String {
             "EDI party name: DER/Base64 {}",
             BASE64_STANDARD.encode(value.data)
         ),
-        GeneralName::URI(value) => format!("URI: {value}"),
+        GeneralName::URI(value) => {
+            return split_comma_joined_uris(value)
+                .into_iter()
+                .map(|value| format!("URI: {value}"))
+                .collect();
+        }
         GeneralName::IPAddress(value) => format!("IP address: {}", format_ip_address(value)),
         GeneralName::RegisteredID(value) => format!("Registered ID: {value}"),
         GeneralName::Invalid(tag, value) => format!(
             "Invalid SAN (tag {tag}): DER/Base64 {}",
             BASE64_STANDARD.encode(value)
         ),
-    }
+    };
+    vec![value]
 }
 
 fn format_ip_address(value: &[u8]) -> String {
@@ -473,6 +607,96 @@ mod tests {
                 "tag:microsoft.com,2022-09-14:sid:S-1-12-1-1, firezone://serial/C02XK1ZGJGH5, firezone://intune-id/5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3",
             ]),
             Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3".to_owned())
+        );
+    }
+
+    #[test]
+    fn extracts_user_identity_from_intune_comma_joined_uri() {
+        let values = split_comma_joined_uris(
+            "tag:microsoft.com,2022-09-14:sid:S-1-12-1-1, firezone://email/Alice%40Example.COM, firezone://account-id/5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3, firezone://serial/C02XK1ZGJGH5",
+        );
+
+        assert_eq!(
+            extract_actor_email(&values).as_deref(),
+            Some("alice@example.com")
+        );
+        assert_eq!(
+            extract_account_id(&values).as_deref(),
+            Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
+        );
+        assert_eq!(
+            extract_device_serial(&values).as_deref(),
+            Some("C02XK1ZGJGH5")
+        );
+    }
+
+    #[test]
+    fn user_identity_requires_unambiguous_valid_attributes() {
+        let conflicting_emails = [
+            "firezone://email/alice@example.com",
+            "firezone://email/bob@example.com",
+            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+        ];
+        let malformed_account = [
+            "firezone://email/alice@example.com",
+            "firezone://account-id/not-a-uuid",
+        ];
+        let duplicate_equivalent_values = [
+            "firezone://email/Alice@Example.COM",
+            "firezone://email/alice@example.com",
+            "firezone://account-id/5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3",
+            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+        ];
+
+        assert_eq!(extract_actor_email(&conflicting_emails), None);
+        assert_eq!(extract_account_id(&malformed_account), None);
+        assert_eq!(
+            extract_actor_email(&duplicate_equivalent_values).as_deref(),
+            Some("alice@example.com")
+        );
+        assert_eq!(
+            extract_account_id(&duplicate_equivalent_values).as_deref(),
+            Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
+        );
+    }
+
+    #[test]
+    fn diagnostics_show_derived_firezone_attributes() {
+        let mut metadata = parse_certificate(
+            RSA_LEAF,
+            SystemTime::UNIX_EPOCH + Duration::from_secs(1_798_761_600),
+        )
+        .expect("test certificate should parse");
+        metadata.actor_email = Some("alice@example.com".to_owned());
+        metadata.account_id = Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3".to_owned());
+        metadata.mdm_device_id = Some("intune-device-123".to_owned());
+        metadata.device_serial = Some("C02XK1ZGJGH5".to_owned());
+
+        let fields = metadata.detail_fields();
+        assert!(
+            fields.iter().any(|field| {
+                field.label == "Actor Email" && field.value == "alice@example.com"
+            })
+        );
+        assert!(fields.iter().any(|field| {
+            field.label == "Account ID" && field.value == "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
+        }));
+        assert!(
+            fields.iter().any(|field| {
+                field.label == "MDM Device ID" && field.value == "intune-device-123"
+            })
+        );
+        assert!(
+            fields
+                .iter()
+                .any(|field| { field.label == "Device Serial" && field.value == "C02XK1ZGJGH5" })
+        );
+        assert_eq!(
+            metadata.user_identity(),
+            Some(UserIdentity {
+                email: "alice@example.com".to_owned(),
+                account_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3".to_owned(),
+            })
         );
     }
 

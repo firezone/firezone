@@ -98,7 +98,7 @@ pub(crate) fn icon_from_state(state: &AppState) -> Icon {
         | ConnlibState::WaitingForBrowser
         | ConnlibState::WaitingForPortal
         | ConnlibState::WaitingForTunnel => IconBase::Busy,
-        ConnlibState::SignedOut => IconBase::SignedOut,
+        ConnlibState::SignedOut { .. } => IconBase::SignedOut,
         ConnlibState::SignedIn { .. } => IconBase::SignedIn,
     };
     Icon {
@@ -130,7 +130,7 @@ impl AppState {
         let quit_text = match &self.connlib {
             ConnlibState::Loading
             | ConnlibState::Quitting
-            | ConnlibState::SignedOut
+            | ConnlibState::SignedOut { .. }
             | ConnlibState::WaitingForBrowser
             | ConnlibState::WaitingForPortal
             | ConnlibState::WaitingForTunnel => QUIT_TEXT_SIGNED_OUT,
@@ -140,7 +140,12 @@ impl AppState {
             ConnlibState::Loading => Menu::default().disabled("Loading..."),
             ConnlibState::Quitting => Menu::default().disabled("Quitting..."),
             ConnlibState::SignedIn(x) => signed_in(&x),
-            ConnlibState::SignedOut => Menu::default().item(Event::SignIn, "Sign In"),
+            ConnlibState::SignedOut { actor_email } => Menu::default().item(
+                Event::SignIn,
+                actor_email
+                    .map(|email| format!("Connect as {email}"))
+                    .unwrap_or_else(|| "Sign In".to_owned()),
+            ),
             ConnlibState::WaitingForBrowser => signing_in("Waiting for browser..."),
             ConnlibState::WaitingForPortal => signing_in("Connecting to Firezone Portal..."),
             ConnlibState::WaitingForTunnel => signing_in("Raising tunnel..."),
@@ -158,7 +163,7 @@ pub enum ConnlibState {
     Loading,
     Quitting,
     SignedIn(SignedIn),
-    SignedOut,
+    SignedOut { actor_email: Option<String> },
     WaitingForBrowser,
     WaitingForPortal,
     WaitingForTunnel,
@@ -166,6 +171,7 @@ pub enum ConnlibState {
 
 pub struct SignedIn {
     pub actor_name: String,
+    pub x509_authenticated: bool,
     pub favorite_resources: HashSet<ResourceId>,
     pub resources: Vec<ResourceView>,
     pub connected_devices: Vec<ConnectedDeviceView>,
@@ -259,6 +265,7 @@ impl Default for Icon {
 fn signed_in(signed_in: &SignedIn) -> Menu {
     let SignedIn {
         actor_name,
+        x509_authenticated,
         favorite_resources,
         resources, // Make sure these are presented in the order we receive them
         connected_devices,
@@ -270,8 +277,19 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         .any(|res| favorite_resources.contains(&res.id()));
 
     let mut menu = Menu::default()
-        .disabled(format!("Signed in as {actor_name}"))
-        .item(Event::SignOut, SIGN_OUT)
+        .disabled(if *x509_authenticated {
+            format!("Connected as {actor_name}")
+        } else {
+            format!("Signed in as {actor_name}")
+        })
+        .item(
+            Event::SignOut,
+            if *x509_authenticated {
+                "Disconnect"
+            } else {
+                SIGN_OUT
+            },
+        )
         .separator();
 
     tracing::debug!(
@@ -472,6 +490,7 @@ mod tests {
         AppState {
             connlib: ConnlibState::SignedIn(SignedIn {
                 actor_name: "Jane Doe".into(),
+                x509_authenticated: false,
                 favorite_resources,
                 resources,
                 connected_devices: Vec::new(),
@@ -587,6 +606,40 @@ mod tests {
             "{}",
             serde_json::to_string_pretty(&actual).unwrap()
         );
+    }
+
+    #[test]
+    fn certificate_user_identity_changes_signed_out_action() {
+        let actual = AppState {
+            connlib: ConnlibState::SignedOut {
+                actor_email: Some("alice@example.com".to_owned()),
+            },
+            ..Default::default()
+        }
+        .into_menu();
+
+        let expected = Menu::default()
+            .item(Event::SignIn, "Connect as alice@example.com")
+            .separator()
+            .item(Event::ShowWindow(Window::About), "About Firezone")
+            .item(Event::AdminPortal, "Admin Portal...")
+            .add_submenu(
+                "Help",
+                Menu::default()
+                    .item(
+                        Event::Url(utm_url("https://www.firezone.dev/kb")),
+                        "Documentation...",
+                    )
+                    .item(
+                        Event::Url(utm_url("https://www.firezone.dev/support")),
+                        "Support...",
+                    ),
+            )
+            .item(Event::ShowWindow(Window::Settings), "Settings")
+            .separator()
+            .item(Event::Quit, QUIT_TEXT_SIGNED_OUT);
+
+        assert_eq!(actual, expected);
     }
 
     #[test]

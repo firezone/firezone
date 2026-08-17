@@ -45,6 +45,7 @@ impl std::fmt::Debug for Config {
 pub struct Identity {
     tls_client_config: Arc<rustls::ClientConfig>,
     mdm_device_id: Option<String>,
+    user_identity: Option<UserIdentity>,
 }
 
 impl std::fmt::Debug for Identity {
@@ -52,6 +53,7 @@ impl std::fmt::Debug for Identity {
         formatter
             .debug_struct("Identity")
             .field("mdm_device_id", &self.mdm_device_id)
+            .field("has_user_identity", &self.user_identity.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -64,11 +66,23 @@ impl Identity {
     pub fn mdm_device_id(&self) -> Option<&str> {
         self.mdm_device_id.as_deref()
     }
+
+    pub fn user_identity(&self) -> Option<&UserIdentity> {
+        self.user_identity.as_ref()
+    }
 }
 
 pub(crate) struct PlatformIdentity {
     pub certified_key: Arc<CertifiedKey>,
     pub mdm_device_id: Option<String>,
+    pub user_identity: Option<UserIdentity>,
+}
+
+/// A portal user identity encoded in a managed certificate's URI SANs.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct UserIdentity {
+    pub email: String,
+    pub account_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -88,6 +102,7 @@ pub struct DetailSection {
 pub struct Status {
     pub summary: String,
     pub sections: Vec<DetailSection>,
+    pub user_identity: Option<UserIdentity>,
 }
 
 impl Status {
@@ -129,6 +144,7 @@ pub fn identity(config: &Config) -> Result<Option<Identity>> {
     Ok(Some(Identity {
         tls_client_config: Arc::new(config),
         mdm_device_id: identity.mdm_device_id,
+        user_identity: identity.user_identity,
     }))
 }
 
@@ -149,6 +165,7 @@ mod platform {
         Ok(Status {
             summary: "X.509 device identity is not supported on this platform.".to_owned(),
             sections: vec![],
+            user_identity: None,
         })
     }
 
@@ -176,6 +193,7 @@ mod tests {
                     value: "CN=one\nOU=two".to_owned(),
                 }],
             }],
+            user_identity: None,
         };
 
         assert_eq!(

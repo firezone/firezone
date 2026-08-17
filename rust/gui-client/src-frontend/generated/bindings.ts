@@ -157,9 +157,15 @@ export type GeneralSettingsViewModel = {
 export type LogsRecounted = FileCount;
 export type SessionChanged = SessionViewModel;
 export type SessionViewModel =
-  | { SignedIn: { account_slug: string; actor_name: string } }
+  | {
+      SignedIn: {
+        account_slug: string;
+        actor_name: string;
+        x509_authenticated: boolean;
+      };
+    }
   | "Loading"
-  | "SignedOut";
+  | { SignedOut: { certificate_actor_email: string | null } };
 export type X509DetailField = { label: string; value: string };
 export type X509DetailSection = {
   title: string;

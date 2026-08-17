@@ -55,7 +55,7 @@ pub enum ClientMsg {
     GetX509Status,
     Connect {
         #[serde(serialize_with = "serialize_token")]
-        token: SecretString,
+        token: Option<SecretString>,
         is_internet_resource_active: bool,
     },
     Disconnect,
@@ -67,16 +67,21 @@ pub enum ClientMsg {
         environment: String,
         release: String,
         account_slug: Option<String>,
+        account_id: Option<String>,
+        actor_email: Option<String>,
     },
     #[cfg(debug_assertions)]
     Panic,
 }
 
-fn serialize_token<S>(token: &SecretString, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_token<S>(token: &Option<SecretString>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
-    serializer.serialize_str(token.expose_secret())
+    match token {
+        Some(token) => serializer.serialize_some(token.expose_secret()),
+        None => serializer.serialize_none(),
+    }
 }
 
 /// Messages that end up in the GUI, either forwarded from connlib or from the Tunnel service.
@@ -86,6 +91,7 @@ pub enum ServerMsg {
         firezone_id: String,
         advanced_settings: AdvancedSettings,
         mdm_settings: MdmSettings,
+        certificate_user_identity: Option<device_trust::UserIdentity>,
     },
     /// The Tunnel service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
@@ -96,6 +102,8 @@ pub enum ServerMsg {
         is_authentication_error: bool,
         is_certificate_revoked: bool,
         is_device_trust_error: bool,
+        used_x509_authentication: bool,
+        certificate_user_identity: Option<device_trust::UserIdentity>,
     },
     AllGatewaysOffline {
         resource_id: ResourceId,
@@ -234,6 +242,7 @@ struct Handler<'a> {
     session: Session,
     telemetry_release: Option<String>,
     mdm_device_id: Option<String>,
+    certificate_user_identity: Option<device_trust::UserIdentity>,
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
     network_notifier: BoxStream<'static, Result<()>>,
@@ -246,17 +255,25 @@ enum Session {
         event_stream: client_shared::EventStream,
         connlib: client_shared::Session,
         started_at: Instant,
+        authentication_mode: AuthenticationMode,
     },
     Connected {
         event_stream: client_shared::EventStream,
         connlib: client_shared::Session,
+        authentication_mode: AuthenticationMode,
     },
     WaitingForNetwork {
-        token: SecretString,
+        token: Option<SecretString>,
         is_internet_resource_active: bool,
     },
     #[default]
     None,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AuthenticationMode {
+    Token,
+    X509,
 }
 
 impl Session {
@@ -266,21 +283,25 @@ impl Session {
                 event_stream,
                 connlib,
                 started_at,
+                authentication_mode,
             } => {
                 tracing::debug!(elapsed = ?started_at.elapsed(), "Tunnel ready");
 
                 *self = Self::Connected {
                     event_stream,
                     connlib,
+                    authentication_mode,
                 };
             }
             Session::Connected {
                 event_stream,
                 connlib,
+                authentication_mode,
             } => {
                 *self = Self::Connected {
                     event_stream,
                     connlib,
+                    authentication_mode,
                 };
             }
             Session::WaitingForNetwork { .. } => {
@@ -321,6 +342,20 @@ impl Session {
 
     fn is_none(&self) -> bool {
         matches!(self, Self::None)
+    }
+
+    fn authentication_mode(&self) -> Option<AuthenticationMode> {
+        match self {
+            Self::Creating {
+                authentication_mode,
+                ..
+            }
+            | Self::Connected {
+                authentication_mode,
+                ..
+            } => Some(*authentication_mode),
+            Self::WaitingForNetwork { .. } | Self::None => None,
+        }
     }
 }
 
@@ -425,11 +460,30 @@ impl<'a> Handler<'a> {
             .inspect_err(|e| tracing::warn!("Failed to load MDM settings, using defaults: {e:#}"))
             .unwrap_or_default();
 
+        let initial_x509_identity = device_trust::identity(&device_trust_config())
+            .inspect_err(|error| {
+                tracing::warn!(
+                    ?error,
+                    "Could not read the X.509 identity while initializing the GUI"
+                )
+            })
+            .ok()
+            .flatten();
+        let mdm_device_id = initial_x509_identity
+            .as_ref()
+            .and_then(device_trust::Identity::mdm_device_id)
+            .map(str::to_owned);
+        let certificate_user_identity = initial_x509_identity
+            .as_ref()
+            .and_then(device_trust::Identity::user_identity)
+            .cloned();
+
         ipc_tx
             .send(&ServerMsg::Hello {
                 firezone_id: device_id.id.clone(),
                 advanced_settings: advanced_settings.clone(),
                 mdm_settings: mdm_settings.clone(),
+                certificate_user_identity: certificate_user_identity.clone(),
             })
             .await
             .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
@@ -444,7 +498,8 @@ impl<'a> Handler<'a> {
             mdm_settings,
             session: Session::None,
             telemetry_release: None,
-            mdm_device_id: None,
+            mdm_device_id,
+            certificate_user_identity,
             tun_device,
             dns_notifier,
             network_notifier,
@@ -599,6 +654,7 @@ impl<'a> Handler<'a> {
     async fn handle_connlib_event(&mut self, msg: client_shared::Event) -> Result<()> {
         match msg {
             client_shared::Event::Disconnected(error) => {
+                let authentication_mode = self.session.authentication_mode();
                 self.session = Session::None;
                 self.reset_telemetry_environment();
                 self.dns_controller.deactivate()?;
@@ -623,6 +679,8 @@ impl<'a> Handler<'a> {
                     is_authentication_error: error.is_authentication_error(),
                     is_certificate_revoked,
                     is_device_trust_error: error.is_device_trust_error(),
+                    used_x509_authentication: authentication_mode == Some(AuthenticationMode::X509),
+                    certificate_user_identity: self.certificate_user_identity.clone(),
                 })
                 .await?
             }
@@ -745,6 +803,8 @@ impl<'a> Handler<'a> {
                 environment,
                 release,
                 account_slug,
+                account_id,
+                actor_email,
             } => {
                 // This is a bit hacky.
                 // It would be cleaner to pass it down from the `Cli` struct.
@@ -760,16 +820,15 @@ impl<'a> Handler<'a> {
                     telemetry::start(&environment, &release, telemetry::GUI_DSN);
                     telemetry::set_firezone_id(self.device_id.id.clone());
                     telemetry::set_mdm_device_id(self.mdm_device_id.clone());
+                    telemetry::set_account_slug_or_clear(account_slug.clone());
+                    telemetry::set_account_id(account_id.clone());
+                    telemetry::set_actor_email(actor_email.clone());
 
                     opentelemetry::global::set_meter_provider(
                         telemetry::SentryMeterProvider::default(),
                     );
 
-                    if let Some(account_slug) = account_slug {
-                        telemetry::set_account_slug(account_slug.clone());
-
-                        analytics::identify(release, Some(account_slug));
-                    }
+                    analytics::identify_with_user(release, account_slug, account_id, actor_email);
                 }
             }
             #[cfg(debug_assertions)]
@@ -790,7 +849,7 @@ impl<'a> Handler<'a> {
 
     fn try_connect(
         &mut self,
-        token: SecretString,
+        token: Option<SecretString>,
         is_internet_resource_active: bool,
     ) -> Result<Session> {
         let started_at = Instant::now();
@@ -800,6 +859,23 @@ impl<'a> Handler<'a> {
 
         let api_url = self.api_url().to_string();
         let identity = self.read_x509_identity()?;
+        let (authentication_mode, token) = select_authentication(
+            identity
+                .as_ref()
+                .and_then(device_trust::Identity::user_identity),
+            token,
+        )?;
+        if let Some(user_identity) = identity
+            .as_ref()
+            .and_then(device_trust::Identity::user_identity)
+        {
+            tracing::info!(
+                account_id = %user_identity.account_id,
+                "Using the managed X.509 identity for user authentication"
+            );
+        } else {
+            tracing::info!("Using the saved web sign-in token for user authentication");
+        }
         let portal_api_url = portal_api_url(
             Url::parse(&api_url).context("Failed to parse URL")?,
             identity.is_some(),
@@ -859,6 +935,7 @@ impl<'a> Handler<'a> {
             event_stream,
             connlib,
             started_at,
+            authentication_mode,
         })
     }
 
@@ -868,7 +945,21 @@ impl<'a> Handler<'a> {
             .as_ref()
             .and_then(device_trust::Identity::mdm_device_id)
             .map(str::to_owned);
+        self.certificate_user_identity = identity
+            .as_ref()
+            .and_then(device_trust::Identity::user_identity)
+            .cloned();
         telemetry::set_mdm_device_id(self.mdm_device_id.clone());
+        telemetry::set_account_id(
+            self.certificate_user_identity
+                .as_ref()
+                .map(|identity| identity.account_id.clone()),
+        );
+        telemetry::set_actor_email(
+            self.certificate_user_identity
+                .as_ref()
+                .map(|identity| identity.email.clone()),
+        );
 
         Ok(identity)
     }
@@ -907,6 +998,19 @@ fn device_trust_config() -> device_trust::Config {
     device_trust::Config {
         pkcs11_uri: std::env::var("FIREZONE_DEVICE_TRUST_PKCS11_URI").ok(),
     }
+}
+
+fn select_authentication(
+    user_identity: Option<&device_trust::UserIdentity>,
+    token: Option<SecretString>,
+) -> Result<(AuthenticationMode, Option<SecretString>)> {
+    if user_identity.is_some() {
+        return Ok((AuthenticationMode::X509, None));
+    }
+    let token = token.context(
+        "No sign-in token is available and the X.509 certificate has no complete user identity",
+    )?;
+    Ok((AuthenticationMode::Token, Some(token)))
 }
 
 fn portal_api_url(mut api_url: Url, use_client_certificate: bool) -> Url {
@@ -1051,6 +1155,31 @@ mod tests {
             "wss://mtls.firez.one:444/custom?foo=bar"
         );
         assert_eq!(portal_api_url(production.clone(), false), production);
+    }
+
+    #[test]
+    fn complete_certificate_user_identity_takes_precedence_over_token() {
+        let identity = device_trust::UserIdentity {
+            email: "alice@example.com".to_owned(),
+            account_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3".to_owned(),
+        };
+
+        let (mode, token) =
+            select_authentication(Some(&identity), Some(SecretString::from("saved-token")))
+                .unwrap();
+
+        assert_eq!(mode, AuthenticationMode::X509);
+        assert!(token.is_none());
+    }
+
+    #[test]
+    fn token_is_required_without_complete_certificate_user_identity() {
+        assert!(select_authentication(None, None).is_err());
+
+        let (mode, token) =
+            select_authentication(None, Some(SecretString::from("saved-token"))).unwrap();
+        assert_eq!(mode, AuthenticationMode::Token);
+        assert!(token.is_some());
     }
 
     #[tokio::test]

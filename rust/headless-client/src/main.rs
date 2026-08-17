@@ -378,6 +378,10 @@ fn try_main() -> Result<()> {
         Arc::new(UdpSocketFactory::default()),
     );
     let x509_identity = device_trust::identity(&x509_config)?;
+    let certificate_user_identity = x509_identity
+        .as_ref()
+        .and_then(device_trust::Identity::user_identity)
+        .cloned();
 
     if cli.is_telemetry_allowed() {
         telemetry::configure(Arc::new(tcp_socket_factory));
@@ -390,18 +394,48 @@ fn try_main() -> Result<()> {
                 .and_then(device_trust::Identity::mdm_device_id)
                 .map(str::to_owned),
         );
+        telemetry::set_account_slug_or_clear(None);
+        telemetry::set_account_id(
+            certificate_user_identity
+                .as_ref()
+                .map(|identity| identity.account_id.clone()),
+        );
+        telemetry::set_actor_email(
+            certificate_user_identity
+                .as_ref()
+                .map(|identity| identity.email.clone()),
+        );
 
-        analytics::identify(RELEASE.to_owned(), None);
+        analytics::identify_with_user(
+            RELEASE.to_owned(),
+            None,
+            certificate_user_identity
+                .as_ref()
+                .map(|identity| identity.account_id.clone()),
+            certificate_user_identity
+                .as_ref()
+                .map(|identity| identity.email.clone()),
+        );
     }
 
     tracing::info!(arch = std::env::consts::ARCH, version = VERSION);
 
-    let token = get_token(token_env_var, &cli.token_path)?.with_context(|| {
-        format!(
-            "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
-            cli.token_path.display()
-        )
-    })?;
+    let token = if let Some(user_identity) = &certificate_user_identity {
+        tracing::info!(
+            account_id = %user_identity.account_id,
+            "Using the managed X.509 identity for user authentication"
+        );
+        None
+    } else {
+        let token = get_token(token_env_var, &cli.token_path)?.with_context(|| {
+            format!(
+                "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
+                cli.token_path.display()
+            )
+        })?;
+        tracing::info!("Using the saved service-account token for authentication");
+        Some(token)
+    };
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
@@ -547,11 +581,20 @@ fn try_main() -> Result<()> {
                     if error.is_certificate_revoked() {
                         match device_trust::identity(&x509_config) {
                             Ok(identity) => {
+                                let user_identity = identity
+                                    .as_ref()
+                                    .and_then(device_trust::Identity::user_identity);
                                 telemetry::set_mdm_device_id(
                                     identity
                                         .as_ref()
                                         .and_then(device_trust::Identity::mdm_device_id)
                                         .map(str::to_owned),
+                                );
+                                telemetry::set_account_id(
+                                    user_identity.map(|identity| identity.account_id.clone()),
+                                );
+                                telemetry::set_actor_email(
+                                    user_identity.map(|identity| identity.email.clone()),
                                 );
                                 tracing::info!(
                                     "Re-read X.509 device identity after certificate revocation"

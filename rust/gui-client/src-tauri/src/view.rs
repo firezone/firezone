@@ -25,9 +25,12 @@ pub enum SessionViewModel {
     SignedIn {
         account_slug: String,
         actor_name: String,
+        x509_authenticated: bool,
     },
     Loading,
-    SignedOut,
+    SignedOut {
+        certificate_actor_email: Option<String>,
+    },
 }
 
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]

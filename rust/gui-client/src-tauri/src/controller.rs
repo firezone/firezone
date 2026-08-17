@@ -43,6 +43,8 @@ pub struct Controller<I: GuiIntegration> {
     legacy_advanced_settings_path: PathBuf,
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
+    certificate_user_identity: Option<device_trust::UserIdentity>,
+    session_uses_x509_authentication: bool,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     x509_status_callbacks: Vec<oneshot::Sender<Result<device_trust::Status, String>>>,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
@@ -197,9 +199,10 @@ impl<I: GuiIntegration> Controller<I> {
         let (mut ipc_rx, mut ipc_client) =
             ipc::connect(socket, ipc::ConnectOptions::default()).await?;
 
-        let (firezone_id, advanced_settings, mdm_settings) = receive_hello(&mut ipc_rx)
-            .await
-            .map_err(FailedToReceiveHello)?;
+        let (firezone_id, advanced_settings, mdm_settings, certificate_user_identity) =
+            receive_hello(&mut ipc_rx)
+                .await
+                .map_err(FailedToReceiveHello)?;
 
         // The GUI bootstraps logging with a default filter before connecting;
         // now that the authoritative settings have arrived, apply the effective
@@ -233,6 +236,8 @@ impl<I: GuiIntegration> Controller<I> {
             advanced_settings,
             legacy_advanced_settings_path,
             auth,
+            certificate_user_identity,
+            session_uses_x509_authentication: false,
             clear_logs_callback: None,
             x509_status_callbacks: Vec::new(),
             ipc_client,
@@ -336,17 +341,19 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    /// Resume a session at startup: if a token is available and connect-on-start
-    /// is enabled, reconnect.
+    /// Resume a session at startup when either certificate authentication or a
+    /// saved browser token is available and connect-on-start is enabled.
     async fn maybe_start_session(&mut self) -> Result<()> {
-        let Some(token) = self
+        let token = self
             .auth
             .token()
-            .context("Failed to load token from disk during app start")?
-        else {
-            tracing::info!("No token / actor_name on disk, starting in signed-out state");
+            .context("Failed to load token from disk during app start")?;
+        if self.certificate_user_identity.is_none() && token.is_none() {
+            tracing::info!(
+                "No certificate user identity or saved token is available; starting disconnected"
+            );
             return Ok(());
-        };
+        }
 
         // For backwards-compatibility prior to MDM-config, also call `start_session` if not configured.
         if self.connect_on_start().is_none_or(|c| c) {
@@ -387,7 +394,7 @@ impl<I: GuiIntegration> Controller<I> {
         .await
     }
 
-    async fn start_session(&mut self, token: SecretString) -> Result<()> {
+    async fn start_session(&mut self, token: Option<SecretString>) -> Result<()> {
         match self.status {
             Status::Disconnected => {}
             Status::Quitting => Err(anyhow!("Can't connect to Firezone, we're quitting"))?,
@@ -401,6 +408,8 @@ impl<I: GuiIntegration> Controller<I> {
 
         tracing::info!(api_url = %self.api_url(), "Starting connlib...");
 
+        self.session_uses_x509_authentication = self.certificate_user_identity.is_some();
+
         self.send_ipc(&service::ClientMsg::Connect {
             token,
             is_internet_resource_active: self.general_settings.internet_resource_enabled(),
@@ -410,13 +419,14 @@ impl<I: GuiIntegration> Controller<I> {
         // Change the status after we begin connecting
         self.status = Status::WaitingForPortal;
 
-        let session = self.auth.session().context("Missing session")?;
-
-        self.general_settings.account_slug = Some(session.account_slug.clone());
-        self.integration
-            .save_general_settings(&self.general_settings)
-            .await?;
-        self.notify_settings_changed()?;
+        if self.certificate_user_identity.is_none() {
+            let session = self.auth.session().context("Missing session")?;
+            self.general_settings.account_slug = Some(session.account_slug.clone());
+            self.integration
+                .save_general_settings(&self.general_settings)
+                .await?;
+            self.notify_settings_changed()?;
+        }
 
         self.refresh_ui_state();
 
@@ -425,11 +435,17 @@ impl<I: GuiIntegration> Controller<I> {
 
     async fn update_telemetry_context(&mut self) -> Result<()> {
         let environment = self.api_url().to_string();
-        let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
+        let certificate_user_identity = self.certificate_user_identity.as_ref();
+        let account_slug = certificate_user_identity
+            .is_none()
+            .then(|| self.auth.session().map(|s| s.account_slug.to_owned()))
+            .flatten();
+        let account_id = certificate_user_identity.map(|identity| identity.account_id.clone());
+        let actor_email = certificate_user_identity.map(|identity| identity.email.clone());
 
-        if let Some(account_slug) = account_slug.clone() {
-            telemetry::set_account_slug(account_slug);
-        }
+        telemetry::set_account_slug_or_clear(account_slug.clone());
+        telemetry::set_account_id(account_id.clone());
+        telemetry::set_actor_email(actor_email.clone());
 
         if !self.telemetry_allowed {
             return Ok(());
@@ -441,6 +457,8 @@ impl<I: GuiIntegration> Controller<I> {
             environment: environment.clone(),
             release: crate::RELEASE.to_string(),
             account_slug,
+            account_id,
+            actor_email,
         })
         .await?;
 
@@ -460,7 +478,7 @@ impl<I: GuiIntegration> Controller<I> {
             .context("Couldn't handle auth response")?;
 
         self.update_telemetry_context().await?;
-        self.start_session(token).await?;
+        self.start_session(Some(token)).await?;
 
         Ok(())
     }
@@ -531,6 +549,16 @@ impl<I: GuiIntegration> Controller<I> {
             Fail(Failure::Error) => Err(anyhow!("Test error"))?,
             Fail(Failure::Panic) => panic!("Test panic"),
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
+                if self.certificate_user_identity.is_some() {
+                    let token = self
+                        .auth
+                        .token()
+                        .context("Failed to load the optional saved token")?;
+                    self.update_telemetry_context().await?;
+                    self.start_session(token).await?;
+                    return Ok(());
+                }
+
                 let auth_url = self.auth_url().clone();
                 let account_slug = self.account_slug().map(|a| a.to_owned());
 
@@ -688,8 +716,23 @@ impl<I: GuiIntegration> Controller<I> {
                 is_authentication_error,
                 is_certificate_revoked,
                 is_device_trust_error,
+                used_x509_authentication,
+                certificate_user_identity,
             } => {
-                if is_certificate_revoked {
+                self.certificate_user_identity = certificate_user_identity;
+                telemetry::set_account_id(
+                    self.certificate_user_identity
+                        .as_ref()
+                        .map(|identity| identity.account_id.clone()),
+                );
+                telemetry::set_actor_email(
+                    self.certificate_user_identity
+                        .as_ref()
+                        .map(|identity| identity.email.clone()),
+                );
+                self.session_uses_x509_authentication = false;
+
+                if is_certificate_revoked || used_x509_authentication {
                     self.status = Status::Disconnected;
                     self.refresh_ui_state();
                 } else {
@@ -704,16 +747,23 @@ impl<I: GuiIntegration> Controller<I> {
                     )?;
                 } else if is_certificate_revoked {
                     tracing::error!(?error_msg, "X.509 device identity certificate was revoked");
-                    let _ = self.integration.show_notification(
+                    self.integration.show_notification(
                         "Device certificate revoked",
                         "Contact your administrator for support.",
                     )?;
                     dialog::error(&error_msg)?;
                 } else if is_device_trust_error {
                     tracing::error!(?error_msg, "Device attestation error");
-                    let _ = self.integration.show_notification(
+                    self.integration.show_notification(
                         "Device verification failed",
                         "Contact your administrator for support.",
+                    )?;
+                    dialog::error(&error_msg)?;
+                } else if used_x509_authentication {
+                    tracing::error!(?error_msg, "Managed X.509 connection failed");
+                    self.integration.show_notification(
+                        "Unable to connect",
+                        "Firezone could not authenticate with the managed certificate.",
                     )?;
                     dialog::error(&error_msg)?;
                 } else {
@@ -786,6 +836,20 @@ impl<I: GuiIntegration> Controller<I> {
                     return Err(anyhow!(
                         "Received X.509 status without a pending GUI request"
                     ));
+                }
+                if let Ok(status) = &result {
+                    self.certificate_user_identity = status.user_identity.clone();
+                    telemetry::set_account_id(
+                        self.certificate_user_identity
+                            .as_ref()
+                            .map(|identity| identity.account_id.clone()),
+                    );
+                    telemetry::set_actor_email(
+                        self.certificate_user_identity
+                            .as_ref()
+                            .map(|identity| identity.email.clone()),
+                    );
+                    self.refresh_ui_state();
                 }
                 for completion_tx in std::mem::take(&mut self.x509_status_callbacks) {
                     // React StrictMode can discard the first receiver while mounting the
@@ -910,34 +974,55 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     fn build_ui_state(&self) -> (system_tray::ConnlibState, SessionViewModel) {
-        // TODO: Refactor `Controller` and the auth module so that "Are we logged in?"
-        // doesn't require such complicated control flow to answer.
-        if let Some(auth_session) = self.auth.session() {
-            match &self.status {
-                Status::Disconnected => {
-                    // If we have an `auth_session` but no connlib session, we are most likely configured to
-                    // _not_ auto-connect on startup. Thus, we treat this the same as being signed out.
+        let x509_authenticated = self.session_uses_x509_authentication;
+        let certificate_identity = self
+            .certificate_user_identity
+            .as_ref()
+            .map(|identity| (identity.account_id.clone(), identity.email.clone()));
+        let token_identity = self
+            .auth
+            .session()
+            .map(|session| (session.account_slug.clone(), session.actor_name.clone()));
+        let display_identity = if x509_authenticated || matches!(self.status, Status::Disconnected)
+        {
+            certificate_identity.or(token_identity)
+        } else {
+            token_identity.or(certificate_identity)
+        };
 
-                    (
-                        system_tray::ConnlibState::SignedOut,
-                        SessionViewModel::SignedOut,
-                    )
-                }
+        if let Some((account_slug, actor_name)) = display_identity {
+            match &self.status {
+                Status::Disconnected => (
+                    system_tray::ConnlibState::SignedOut {
+                        actor_email: self
+                            .certificate_user_identity
+                            .as_ref()
+                            .map(|identity| identity.email.clone()),
+                    },
+                    SessionViewModel::SignedOut {
+                        certificate_actor_email: self
+                            .certificate_user_identity
+                            .as_ref()
+                            .map(|identity| identity.email.clone()),
+                    },
+                ),
                 Status::Quitting => (
                     system_tray::ConnlibState::Quitting,
                     SessionViewModel::Loading,
                 ),
                 Status::TunnelReady { resources } => (
                     system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
-                        actor_name: auth_session.actor_name.clone(),
+                        actor_name: actor_name.clone(),
+                        x509_authenticated,
                         favorite_resources: self.general_settings.favorite_resources.clone(),
                         internet_resource_enabled: self.general_settings.internet_resource_enabled,
                         resources: resources.resources.clone(),
                         connected_devices: resources.connected_devices.clone(),
                     }),
                     SessionViewModel::SignedIn {
-                        account_slug: auth_session.account_slug.clone(),
-                        actor_name: auth_session.actor_name.clone(),
+                        account_slug,
+                        actor_name,
+                        x509_authenticated,
                     },
                 ),
                 Status::WaitingForPortal => (
@@ -957,8 +1042,10 @@ impl<I: GuiIntegration> Controller<I> {
             )
         } else {
             (
-                system_tray::ConnlibState::SignedOut,
-                SessionViewModel::SignedOut,
+                system_tray::ConnlibState::SignedOut { actor_email: None },
+                SessionViewModel::SignedOut {
+                    certificate_actor_email: None,
+                },
             )
         }
     }
@@ -981,7 +1068,8 @@ impl<I: GuiIntegration> Controller<I> {
         }
     }
 
-    /// Deletes the auth token, stops connlib, and refreshes the tray menu
+    /// Stops connlib and refreshes the tray menu. Browser authentication also
+    /// deletes its token; certificate authentication remains available.
     async fn sign_out(&mut self) -> Result<()> {
         match self.status {
             Status::Quitting => return Ok(()),
@@ -990,7 +1078,10 @@ impl<I: GuiIntegration> Controller<I> {
             | Status::WaitingForPortal
             | Status::WaitingForTunnel => {}
         }
-        self.auth.sign_out()?;
+        if !self.session_uses_x509_authentication {
+            self.auth.sign_out()?;
+        }
+        self.session_uses_x509_authentication = false;
         self.status = Status::Disconnected;
         tracing::debug!("disconnecting connlib");
         // This is redundant if the token is expired, in that case
@@ -1065,7 +1156,12 @@ impl<I: GuiIntegration> Controller<I> {
 
 async fn receive_hello(
     ipc_rx: &mut ipc::ClientRead<service::ServerMsg>,
-) -> Result<(String, AdvancedSettings, MdmSettings)> {
+) -> Result<(
+    String,
+    AdvancedSettings,
+    MdmSettings,
+    Option<device_trust::UserIdentity>,
+)> {
     const TIMEOUT: Duration = Duration::from_secs(5);
 
     let server_msg = tokio::time::timeout(TIMEOUT, ipc_rx.next())
@@ -1080,12 +1176,18 @@ async fn receive_hello(
         firezone_id,
         advanced_settings,
         mdm_settings,
+        certificate_user_identity,
     } = server_msg
     else {
         bail!("Expected `Hello` from tunnel service but got `{server_msg}`")
     };
 
-    Ok((firezone_id, advanced_settings, mdm_settings))
+    Ok((
+        firezone_id,
+        advanced_settings,
+        mdm_settings,
+        certificate_user_identity,
+    ))
 }
 
 fn try_delete_legacy_config(path: &Path) -> Result<()> {
@@ -1199,6 +1301,7 @@ mod tests {
         let expected = device_trust::Status {
             summary: "X.509 identity available.".to_owned(),
             sections: vec![],
+            user_identity: None,
         };
         mock_tunnel
             .tx
@@ -1486,6 +1589,29 @@ mod tests {
         mock_tunnel.send_resources(resources).await;
     }
 
+    #[tokio::test]
+    async fn certificate_user_identity_connects_without_browser_token() {
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        let identity = device_trust::UserIdentity {
+            email: "alice@example.com".to_owned(),
+            account_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3".to_owned(),
+        };
+
+        mock_tunnel
+            .send_hello_with_user_identity(Some(identity))
+            .await;
+
+        let msg = mock_tunnel.rx.next().await.unwrap().unwrap();
+        let service::ClientMsg::Connect { token, .. } = msg else {
+            panic!("expected certificate-authenticated `Connect`, got {msg:?}");
+        };
+        assert!(token.is_none());
+        assert!(test_controller.integration().opened_urls.is_empty());
+
+        test_controller.join_handle.abort();
+    }
+
     fn canned_advanced_settings() -> AdvancedSettings {
         AdvancedSettings {
             auth_url: Url::parse("https://canned.example.com").unwrap(),
@@ -1695,11 +1821,19 @@ mod tests {
 
     impl MockTunnel {
         async fn send_hello(&mut self) {
+            self.send_hello_with_user_identity(None).await;
+        }
+
+        async fn send_hello_with_user_identity(
+            &mut self,
+            certificate_user_identity: Option<device_trust::UserIdentity>,
+        ) {
             self.tx
                 .send(&service::ServerMsg::Hello {
                     firezone_id: "test-firezone-id".to_owned(),
                     advanced_settings: AdvancedSettings::default(),
                     mdm_settings: MdmSettings::default(),
+                    certificate_user_identity,
                 })
                 .await
                 .unwrap();

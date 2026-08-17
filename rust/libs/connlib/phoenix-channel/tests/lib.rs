@@ -490,7 +490,7 @@ async fn http_400_returns_client_error() {
 }
 
 #[tokio::test]
-async fn http_401_returns_invalid_token() {
+async fn http_401_with_token_returns_invalid_token() {
     let port = http_status_server(http::StatusCode::UNAUTHORIZED).await;
 
     let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
@@ -510,6 +510,33 @@ async fn http_401_returns_invalid_token() {
     assert!(
         matches!(result, Err(phoenix_channel::Error::InvalidToken)),
         "expected Error::InvalidToken for 401, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn http_401_without_token_returns_certificate_authentication_rejected() {
+    let port = http_status_server(http::StatusCode::UNAUTHORIZED).await;
+
+    let mut channel = make_test_channel_without_token("127.0.0.1", port, default_backoff);
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    assert!(
+        matches!(
+            result,
+            Err(phoenix_channel::Error::CertificateAuthenticationRejected)
+        ),
+        "expected certificate authentication rejection for tokenless 401, got {result:?}"
     );
 }
 
@@ -626,6 +653,28 @@ fn make_test_channel(
     port: u16,
     make_reconnect_backoff: impl Fn() -> backoff::ExponentialBackoff + Send + 'static,
 ) -> TestChannel {
+    make_test_channel_with_optional_token(
+        host,
+        port,
+        Some(SecretString::from("test_token")),
+        make_reconnect_backoff,
+    )
+}
+
+fn make_test_channel_without_token(
+    host: &str,
+    port: u16,
+    make_reconnect_backoff: impl Fn() -> backoff::ExponentialBackoff + Send + 'static,
+) -> TestChannel {
+    make_test_channel_with_optional_token(host, port, None, make_reconnect_backoff)
+}
+
+fn make_test_channel_with_optional_token(
+    host: &str,
+    port: u16,
+    token: Option<SecretString>,
+    make_reconnect_backoff: impl Fn() -> backoff::ExponentialBackoff + Send + 'static,
+) -> TestChannel {
     let url = LoginUrl::client(
         format!("ws://{host}:{port}").as_str(),
         "test-device-id".to_string(),
@@ -636,7 +685,7 @@ fn make_test_channel(
 
     PhoenixChannel::disconnected(
         url,
-        SecretString::from("test_token"),
+        token,
         "test-user-agent".to_string(),
         "test",
         (),

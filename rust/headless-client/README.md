@@ -71,7 +71,15 @@ Only `pin-source=file:` is supported; inline `pin-value` credentials are
 rejected. Private-key bytes remain inside CNG or the PKCS#11 provider.
 The selected identity authenticates the `/client/v2` Phoenix connection with
 mutual TLS. When multiple usable certificates match, the client selects the
-newest certificate by `notBefore`.
+newest certificate by `notBefore`. A configured or matching identity that
+cannot satisfy the certificate policy or access its private key fails the
+connection instead of silently falling back to non-mutual TLS.
+
+If the selected certificate contains one valid, unambiguous
+`firezone://email/...` URI SAN and one `firezone://account-id/...` URI SAN, the
+headless client authenticates as that Firezone user and does not require or send
+a service-account token. The `x509` command displays the derived Actor Email and
+Account ID alongside the raw SAN values.
 
 ## Building
 

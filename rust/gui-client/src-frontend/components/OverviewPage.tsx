@@ -24,12 +24,21 @@ export default function Overview(props: OverviewPageProps) {
 }
 
 function Session(props: OverviewPageProps) {
-  if (!props.session || props.session === "SignedOut") {
-    return <SignedOut signIn={props.signIn} />;
+  if (!props.session) {
+    return <SignedOut actorEmail={null} signIn={props.signIn} />;
   }
 
   if (props.session === "Loading") {
     return <Loading />;
+  }
+
+  if ("SignedOut" in props.session) {
+    return (
+      <SignedOut
+        actorEmail={props.session.SignedOut.certificate_actor_email}
+        signIn={props.signIn}
+      />
+    );
   }
 
   return (
@@ -37,23 +46,26 @@ function Session(props: OverviewPageProps) {
       accountSlug={props.session.SignedIn.account_slug}
       actorName={props.session.SignedIn.actor_name}
       signOut={props.signOut}
+      x509Authenticated={props.session.SignedIn.x509_authenticated}
     />
   );
 }
 
 interface SignedOutProps {
+  actorEmail: string | null;
   signIn: () => void;
 }
 
-function SignedOut({ signIn }: SignedOutProps) {
+function SignedOut({ actorEmail, signIn }: SignedOutProps) {
   return (
     <div className="flex flex-col items-center gap-4">
       <p className="text-sm text-body">
-        You can sign in by clicking the Firezone icon in the taskbar or by
-        clicking &quot;Sign in&quot; below.
+        {actorEmail
+          ? `Connect as ${actorEmail} to access Resources.`
+          : "You can sign in by clicking the Firezone icon in the taskbar or by clicking “Sign in” below."}
       </p>
       <Button onClick={signIn} variant="primary">
-        Sign in
+        {actorEmail ? `Connect as ${actorEmail}` : "Sign in"}
       </Button>
       <p className="text-xs text-subtle">
         Firezone will continue running after this window is closed.
@@ -68,13 +80,20 @@ interface SignedInProps {
   accountSlug: string;
   actorName: string;
   signOut: () => void;
+  x509Authenticated: boolean;
 }
 
-function SignedIn({ actorName, accountSlug, signOut }: SignedInProps) {
+function SignedIn({
+  actorName,
+  accountSlug,
+  signOut,
+  x509Authenticated,
+}: SignedInProps) {
   return (
     <div className="flex flex-col items-center gap-4">
       <p className="text-sm text-body">
-        You are currently signed into&nbsp;
+        You are currently {x509Authenticated ? "connected to" : "signed into"}
+        &nbsp;
         <span className="font-bold text-heading">{accountSlug}</span>
         &nbsp;as&nbsp;
         <span className="font-bold text-heading">{actorName}</span>
@@ -82,7 +101,7 @@ function SignedIn({ actorName, accountSlug, signOut }: SignedInProps) {
         Click the Firezone icon in the taskbar to see the list of Resources.
       </p>
       <Button onClick={signOut} variant="primary">
-        Sign out
+        {x509Authenticated ? "Disconnect" : "Sign out"}
       </Button>
       <p className="text-xs text-subtle">
         Firezone will continue running in the taskbar after this window is
