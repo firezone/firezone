@@ -134,10 +134,9 @@ set -- -ignore_crashes=1 "$@"
 # worth committing whichever step broke, so every one that can still run does
 # and the failure is re-raised at the end. They write through temporaries, so a
 # failed step leaves the committed file it owns untouched.
-#
-# `failed` is a string rather than an array: mise renders this script as a
-# template where a brace followed by a hash opens a comment, so the bash
-# array-length syntax (dollar, brace, hash) would fail to render.
+# Accumulated as a string: `mise` renders this script as a template, and
+# bash's array length syntax (dollar-brace-hash) reads as an unclosed
+# template comment.
 failed=""
 
 step() {

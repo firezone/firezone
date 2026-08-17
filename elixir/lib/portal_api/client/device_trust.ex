@@ -213,7 +213,7 @@ defmodule PortalAPI.Client.DeviceTrust do
 
   defp fetch_anchors(subject) do
     anchors =
-      if Portal.Features.enabled?(:device_trust),
+      if Portal.Features.enabled?(:trust_anchors),
         do: Database.fetch_anchors(subject),
         else: []
 

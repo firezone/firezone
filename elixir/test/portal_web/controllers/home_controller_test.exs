@@ -4,6 +4,42 @@ defmodule PortalWeb.HomeControllerTest do
   import Portal.AccountFixtures
 
   @client_sign_in_types ["client", "gui-client", "headless-client"]
+  @website_distinct_id "7d2ed047-64d3-41f9-9a41-ac2c9b92e761"
+
+  describe "website attribution" do
+    test "stores attribution and redirects sign-up links to a clean URL", %{conn: conn} do
+      conn =
+        get(
+          conn,
+          "/sign_up?fz_website_id=#{@website_distinct_id}&fz_website_path=%2Fpricing"
+        )
+
+      assert redirected_to(conn) == "/sign_up"
+
+      assert get_session(conn, "website_attribution") == %{
+               "distinct_id" => @website_distinct_id,
+               "source" => "www.firezone.dev",
+               "website_path" => "/pricing"
+             }
+    end
+
+    test "preserves unrelated sign-in parameters while removing attribution", %{conn: conn} do
+      conn =
+        get(
+          conn,
+          "/sign_in?as=gui-client&fz_website_id=#{@website_distinct_id}&fz_website_path=%2F"
+        )
+
+      assert redirected_to(conn) == "/sign_in?as=gui-client"
+    end
+
+    test "removes invalid attribution without storing it", %{conn: conn} do
+      conn = get(conn, "/sign_up?fz_website_id=invalid&fz_website_path=%2Fpricing")
+
+      assert redirected_to(conn) == "/sign_up"
+      assert get_session(conn, "website_attribution") == nil
+    end
+  end
 
   describe "home/2" do
     test "redirects to /getting_started when no cookie present", %{conn: conn} do

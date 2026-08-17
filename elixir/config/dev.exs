@@ -222,7 +222,11 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
     "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",
     "style-src 'self'",
-    "script-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/"
+    "script-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self' firezone-fd0020211111:",
+    "frame-ancestors 'none'"
   ],
   live_reload_frame_csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
@@ -230,7 +234,11 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
     "style-src 'self' 'unsafe-inline'",
     "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/",
     "connect-src 'self' ws: wss:",
-    "frame-src 'self'"
+    "frame-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'"
   ]
 
 # Note: on Linux you may need to add `--add-host=host.docker.internal:host-gateway`

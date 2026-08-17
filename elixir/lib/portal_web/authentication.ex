@@ -1,6 +1,10 @@
 defmodule PortalWeb.Authentication do
   use PortalWeb, :verified_routes
 
+  @sign_in_params ["as", "state", "nonce", "redirect_to"]
+
+  @analytics_params ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]
+
   @doc """
   Returns the real IP address of the client.
   """
@@ -21,11 +25,16 @@ defmodule PortalWeb.Authentication do
   """
   def take_sign_in_params(nil), do: %{}
 
-  def take_sign_in_params(params) do
-    params
-    |> Map.take(["as", "state", "nonce", "redirect_to"])
-    |> Map.reject(fn {_key, value} -> value in ["", nil] end)
-  end
+  def take_sign_in_params(params), do: take_non_empty(params, @sign_in_params)
+
+  @doc """
+  Returns the sign in parameters plus the campaign parameters that should survive a
+  redirect into the sign in flow.
+  """
+  def take_sign_in_redirect_params(nil), do: %{}
+
+  def take_sign_in_redirect_params(params),
+    do: take_non_empty(params, @sign_in_params ++ @analytics_params)
 
   @doc """
   Returns true when the params represent a client sign-in flow.
@@ -34,4 +43,10 @@ defmodule PortalWeb.Authentication do
     do: true
 
   def client_sign_in?(_params), do: false
+
+  defp take_non_empty(params, keys) do
+    params
+    |> Map.take(keys)
+    |> Map.reject(fn {_key, value} -> value in ["", nil] end)
+  end
 end

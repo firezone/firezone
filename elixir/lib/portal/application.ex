@@ -44,6 +44,7 @@ defmodule Portal.Application do
       Portal.Repo.Web,
       Portal.Repo.Api,
       Portal.Repo.Poller,
+      {Task.Supervisor, name: Portal.Analytics.TaskSupervisor},
       # Default pg scope for distributed process discovery (used by replication)
       %{id: :pg, start: {:pg, :start_link, []}},
       # Named pg scope for Portal.PG, isolated so a crash here does not affect replication

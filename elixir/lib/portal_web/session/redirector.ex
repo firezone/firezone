@@ -10,7 +10,9 @@ defmodule PortalWeb.Session.Redirector do
   use PortalWeb, :verified_routes
 
   alias Portal.Authentication
+  alias Portal.Analytics.PostHog
   alias Portal.ClientToken
+  alias PortalWeb.WebsiteAttribution
 
   @doc """
   Sanitizes and validates a redirect_to parameter.
@@ -67,6 +69,9 @@ defmodule PortalWeb.Session.Redirector do
 
   def portal_signed_in(%Plug.Conn{} = conn, %Portal.Account{} = account, params, actor) do
     redirect_to = sanitize_redirect_to(account, params["redirect_to"], actor)
+    {conn, website_attribution} = WebsiteAttribution.pop(conn)
+
+    PostHog.identify_actor(actor, account, website_attribution)
 
     conn
     |> PortalWeb.Cookie.RecentAccounts.prepend(account.id)

@@ -73,7 +73,7 @@ defmodule PortalWeb.Settings.LogSinks do
         page_title: "Log Sinks",
         sentinel_setup_tab: "portal",
         s3_setup_tab: "console",
-        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?(),
+        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
         device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
@@ -282,7 +282,7 @@ defmodule PortalWeb.Settings.LogSinks do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        device_trust_enabled?={@device_trust_enabled?}
+        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       />
 

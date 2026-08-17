@@ -623,6 +623,12 @@ if config_env() == :prod do
   config :portal, Portal.Telemetry,
     metrics_reporter: env_var_to_config!(:telemetry_metrics_reporter)
 
+  posthog_project_api_key = env_var_to_config(:posthog_project_api_key)
+
+  config :portal, Portal.Analytics.PostHog,
+    enabled: not is_nil(posthog_project_api_key),
+    project_api_key: posthog_project_api_key
+
   if telemetry_metrics_reporter = env_var_to_config!(:telemetry_metrics_reporter) do
     config :portal,
            telemetry_metrics_reporter,
