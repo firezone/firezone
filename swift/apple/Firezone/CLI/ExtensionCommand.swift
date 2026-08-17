@@ -23,6 +23,9 @@ enum SystemExtension {
     case .needsInstall:
       throw CLIError(
         "System extension is not installed. Launch Firezone.app to install it.")
+    case .needsReboot:
+      throw CLIError(
+        "System extension update is waiting on a restart. Restart your Mac to finish it.")
     case .needsReplacement:
       #if DEBUG
         // Every build stamps a new CURRENT_PROJECT_VERSION, and only the app can
@@ -65,6 +68,9 @@ extension FirezoneCLI {
           throw ExitCode(1)
         case .needsReplacement:
           print("different version installed")
+          throw ExitCode(1)
+        case .needsReboot:
+          print("restart required to finish update")
           throw ExitCode(1)
         }
       }

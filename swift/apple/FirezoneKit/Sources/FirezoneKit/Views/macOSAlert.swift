@@ -325,6 +325,20 @@
       return response == .alertFirstButtonReturn
     }
 
+    /// Tells the user that only a restart can finish the update.
+    ///
+    /// Returns without waiting for the user, so callers don't stall behind the alert.
+    public static func showRestartRequiredAlert() {
+      let alert = NSAlert()
+      alert.messageText = "Your Mac needs to be restarted to complete the Firezone update"
+      alert.informativeText =
+        "macOS finishes updating the Firezone system extension the next time your Mac starts up."
+      alert.addButton(withTitle: "OK")
+      NSApp.activate(ignoringOtherApps: true)
+
+      show(alert)
+    }
+
     /// Shows a disconnected alert explaining why Firezone disconnected.
     public static func showDisconnectedAlert(_ message: String?) async {
       let alert = NSAlert()

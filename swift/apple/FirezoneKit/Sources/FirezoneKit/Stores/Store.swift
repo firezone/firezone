@@ -42,6 +42,10 @@ public final class Store: ObservableObject {
     // The UI layer observes this and resets it after handling.
     @Published public var menuBarOpenRequested = false
 
+    // Startup retries and the manual install button can both land on a staged
+    // replacement; the user only needs telling once per run.
+    private var shownRestartAlert = false
+
     public var quitMenuTitle: String {
       switch vpnStatus {
       case .connected, .connecting:
@@ -223,6 +227,18 @@ public final class Store: ObservableObject {
 
     func installSystemExtension() async throws {
       self.systemExtensionStatus = try await systemExtensionManager.tryInstall()
+      alertIfNeedsReboot()
+    }
+
+    /// Tells the user when only a restart can finish an install we just asked for.
+    ///
+    /// Nothing the app can do finishes a staged replacement, and the system reports it
+    /// once, on the request that staged it, so this is the only chance to say so.
+    private func alertIfNeedsReboot() {
+      guard systemExtensionStatus == .needsReboot, !shownRestartAlert else { return }
+
+      shownRestartAlert = true
+      sessionNotification.showRestartRequiredAlertMacOS()
     }
   #endif
 
@@ -371,11 +387,42 @@ public final class Store: ObservableObject {
       // If already installed but the wrong version, go ahead and install. This shouldn't prompt the user.
       if systemExtensionStatus == .needsReplacement {
         Log.info("Replacing system extension with current version")
-        self.systemExtensionStatus = try await systemExtensionManager.tryInstall()
+        try await replaceSystemExtension()
         Log.info("System extension replacement completed successfully")
       }
+
+      // Startup carries on either way, with whichever version the system still has.
+      alertIfNeedsReboot()
     #endif
   }
+
+  #if os(macOS)
+    /// Installs the current system extension over the one already there.
+    ///
+    /// macOS holds the swap until the next reboot while the extension being replaced still
+    /// has a provider running, and everything the app sends in the meantime goes to the old
+    /// version. So a running tunnel comes down for the install and goes back up afterwards,
+    /// whether the install worked or not. Only a version mismatch gets this far, so an
+    /// up-to-date extension never costs the user a disconnect.
+    private func replaceSystemExtension() async throws {
+      let session = try await VPNConfigurationManager.load(using: tunnelManagerFactory)?.session()
+      let stoppedTunnel: Bool
+
+      if let session {
+        stoppedTunnel = await IPCClient.stopIfRunning(session: session)
+      } else {
+        stoppedTunnel = false
+      }
+
+      defer {
+        if stoppedTunnel, let session {
+          do { try IPCClient.start(session: session) } catch { Log.error(error) }
+        }
+      }
+
+      self.systemExtensionStatus = try await systemExtensionManager.tryInstall()
+    }
+  #endif
 
   private func initVPNConfiguration() async throws {
     // Try to load existing configuration
@@ -397,6 +444,10 @@ public final class Store: ObservableObject {
       guard let session = try manager().session() else {
         throw VPNConfigurationManagerError.managerNotInitialized
       }
+
+      // Replacing the system extension puts a running tunnel back up itself.
+      guard ![.connected, .connecting, .reasserting].contains(session.status) else { return }
+
       try IPCClient.start(session: session)
     }
   }

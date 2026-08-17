@@ -12,7 +12,7 @@ import Testing
 
 // `@unchecked Sendable`: IPCClient and these tests are `@MainActor`, so all access is too.
 private final class RecordingTunnelSession: TunnelSessionProtocol, @unchecked Sendable {
-  let status: NEVPNStatus
+  private(set) var status: NEVPNStatus
 
   private(set) var startTunnelCallCount = 0
   private(set) var stopTunnelCallCount = 0
@@ -27,10 +27,12 @@ private final class RecordingTunnelSession: TunnelSessionProtocol, @unchecked Se
   // swiftlint:disable:next discouraged_optional_collection
   func startTunnel(options: [String: Any]?) throws {
     startTunnelCallCount += 1
+    status = .connected
   }
 
   func stopTunnel() {
     stopTunnelCallCount += 1
+    status = .disconnected
   }
 
   func sendProviderMessage(_ messageData: Data, responseHandler: ((Data?) -> Void)?) throws {
@@ -79,6 +81,30 @@ struct IPCClientTests {
       return
     }
     #expect(request.stateHash == previousHash)
+  }
+
+  @Test("A running tunnel is stopped and reported")
+  func stopIfRunningStopsRunningTunnel() async {
+    for status in [NEVPNStatus.connected, .connecting, .reasserting] {
+      let session = RecordingTunnelSession(status: status)
+
+      let stopped = await IPCClient.stopIfRunning(session: session)
+
+      #expect(stopped)
+      #expect(session.stopTunnelCallCount == 1)
+    }
+  }
+
+  @Test("A tunnel that is already down is left alone")
+  func stopIfRunningLeavesStoppedTunnelAlone() async {
+    for status in [NEVPNStatus.disconnected, .invalid] {
+      let session = RecordingTunnelSession(status: status)
+
+      let stopped = await IPCClient.stopIfRunning(session: session)
+
+      #expect(!stopped)
+      #expect(session.stopTunnelCallCount == 0)
+    }
   }
 
   @Test("A running tunnel is left alone")

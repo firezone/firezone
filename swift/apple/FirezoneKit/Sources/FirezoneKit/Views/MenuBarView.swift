@@ -63,6 +63,11 @@
         Text("Loading VPN configurations from system settings…")
           .foregroundStyle(.secondary)
 
+      case .disconnected where store.systemExtensionStatus == .needsReboot:
+        // Signing in would run against whichever version the system still has.
+        Text("Restart your Mac to finish updating Firezone…")
+          .foregroundStyle(.secondary)
+
       case .disconnected:
         Button("Sign In") {
           signIn()
