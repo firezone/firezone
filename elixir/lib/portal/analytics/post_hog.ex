@@ -89,15 +89,20 @@ defmodule Portal.Analytics.PostHog do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
 
     if Keyword.fetch!(config, :enabled) do
-      Task.Supervisor.start_child(Portal.Analytics.TaskSupervisor, fn ->
-        case capture(event, distinct_id, properties) do
-          :ok -> :ok
-          {:error, reason} -> Logger.warning("PostHog event failed", event: event, reason: reason)
-        end
-      end)
+      Task.Supervisor.start_child(
+        Portal.Analytics.TaskSupervisor,
+        fn -> capture_and_log(event, distinct_id, properties) end
+      )
     end
 
     :ok
+  end
+
+  defp capture_and_log(event, distinct_id, properties) do
+    case capture(event, distinct_id, properties) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("PostHog event failed", event: event, reason: reason)
+    end
   end
 
   defp insert_id(parts) do
