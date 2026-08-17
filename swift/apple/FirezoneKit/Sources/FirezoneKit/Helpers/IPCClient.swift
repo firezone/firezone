@@ -193,12 +193,7 @@ public enum IPCClient {
     message: ProviderMessage,
     cycleStartIfStopped: Bool = true
   ) async throws -> Data? {
-    let isCycleStart: Bool
-    if cycleStartIfStopped {
-      isCycleStart = try await maybeCycleStart(session)
-    } else {
-      isCycleStart = false
-    }
+    let isCycleStart = cycleStartIfStopped ? try await maybeCycleStart(session) : false
 
     defer {
       if isCycleStart { session.stopTunnel() }
