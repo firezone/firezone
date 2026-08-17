@@ -166,24 +166,19 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - tag_prefix: gateway
-            component: gateway
-          - tag_prefix: gui-client
-            component: gui-client
-          - tag_prefix: headless-client
-            component: headless-client
-          - tag_prefix: apple-client
-            component: apple-client
-          - tag_prefix: android-client
-            component: android-client
+        component:
+          - gateway
+          - gui-client
+          - headless-client
+          - apple-client
+          - android-client
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-gpg
         id: setup-gpg
-        if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.tag_prefix) }}
+        if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
         with:
           key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
           email: github-bot@firezone.dev
@@ -220,13 +215,13 @@ jobs:
 
             echo "$env_name=$checksum" >> "$GITHUB_ENV"
           done
-      - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.tag_prefix) }}
+      - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
         run: |
           set -x
 
           # Extract version from release name
           version=${{ inputs.release_name || github.event.release.name }}
-          version=${version#${{ matrix.tag_prefix }}-}
+          version=${version#${{ matrix.component }}-}
 
           # Configure git
           git config --local user.email "github-bot@firezone.dev"
@@ -249,19 +244,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - tag_prefix: gateway
-            component: gateway
-          - tag_prefix: gui-client
-            component: gui-client
-          - tag_prefix: headless-client
-            component: headless-client
-          - tag_prefix: apple-client
-            component: apple-client
-          - tag_prefix: android-client
-            component: android-client
+        component:
+          - gateway
+          - gui-client
+          - headless-client
+          - apple-client
+          - android-client
     steps:
-      - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.tag_prefix) }}
+      - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
         env:
           # repository_dispatch on firezone/website requires this token to
           # have Contents: write there.
@@ -270,7 +260,7 @@ jobs:
         run: |
           set -xeuo pipefail
 
-          version=${release_name#${{ matrix.tag_prefix }}-}
+          version=${release_name#${{ matrix.component }}-}
 
           gh api \
             --method POST \
@@ -282,36 +272,29 @@ jobs:
             --field "client_payload[version]=$version"
 
   create-sentry-release:
-    name: create_${{ matrix.component }}_sentry_release
+    name: create_${{ matrix.component || matrix.project }}_sentry_release
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        # The `apple-client` release ships two components, each reporting its own release name to Sentry.
         include:
-          - component: gateway
-            projects: gateway
-          - component: gui-client
-            projects: gui-client
-          - component: headless-client
-            projects: headless-client
-          - component: macos-client
-            tag_prefix: apple-client
-            projects: apple-client
-          - component: ios-client
-            tag_prefix: apple-client
-            projects: apple-client
-          - component: android-client
-            projects: android-client
+          - project: gateway
+          - project: gui-client
+          - project: headless-client
+          - project: android-client
+          # The `apple-client` release ships two components, each reporting its own release name to Sentry.
+          - project: apple-client
+            component: macos-client
+          - project: apple-client
+            component: ios-client
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/create-sentry-release
-        if: ${{ startsWith(github.event.release.name, matrix.tag_prefix || matrix.component) }}
+        if: ${{ startsWith(github.event.release.name, matrix.project) }}
         with:
+          project: ${{ matrix.project }}
           component: ${{ matrix.component }}
-          tag_prefix: ${{ matrix.tag_prefix }}
-          projects: ${{ matrix.projects }}
           sentry_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
   promote-deb-packages:

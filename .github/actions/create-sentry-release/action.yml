@@ -1,20 +1,16 @@
 ---
 name: "Create Sentry release"
-description: "Creates a Sentry release for projects from a particular Git tag"
+description: "Creates a Sentry release for a project from a particular Git tag"
 inputs:
+  project:
+    description: "The Sentry project, which is also the release name prefix"
+    required: true
+    # e.g. "gateway", "gui-client", "apple-client", ...
   component:
-    description: "The component to create a release for"
-    required: true
-    # e.g. "gateway", "gui-client", "headless-client", ...
-  tag_prefix:
-    description: "The release name prefix that precedes the version"
+    description: "The component to create a release for. Defaults to `project`."
     required: false
-    # Defaults to `component`. Set it when one release ships several
-    # components, e.g. `apple-client-*` ships `macos-client` and `ios-client`.
-  projects:
-    description: "The Sentry projects to create a release for"
-    required: true
-    # Must be space-separated.
+    # Set it when one project ships several components, e.g. `apple-client`
+    # ships `macos-client` and `ios-client`.
   sentry_token:
     description: "The authentication token to use with sentry."
     required: true
@@ -26,9 +22,9 @@ runs:
       id: version
       env:
         release_name: ${{ github.event.release.name }}
-        tag_prefix: ${{ inputs.tag_prefix || inputs.component }}
+        project: ${{ inputs.project }}
       run: |
-        version=${release_name#"$tag_prefix-"}
+        version=${release_name#"$project-"}
         echo "version=$version" >> $GITHUB_OUTPUT
       shell: bash
 
@@ -37,6 +33,6 @@ runs:
         SENTRY_AUTH_TOKEN: ${{ inputs.sentry_token }}
         SENTRY_ORG: firezone-inc
       with:
-        version: ${{ inputs.component }}@${{ steps.version.outputs.version }}
-        projects: ${{ inputs.projects }}
+        version: ${{ inputs.component || inputs.project }}@${{ steps.version.outputs.version }}
+        projects: ${{ inputs.project }}
         set_commits: auto
