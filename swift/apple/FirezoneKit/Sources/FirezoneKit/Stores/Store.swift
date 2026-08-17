@@ -617,6 +617,11 @@ public final class Store: ObservableObject {
           didReload = false
         } catch is CancellationError {
           break
+        } catch IPCClient.Error.noIPCData {
+          // The extension can go away underneath a connected session, and it answers
+          // nothing while it does. The status change that follows stops the poller, so
+          // there is nothing to act on here.
+          Log.debug("Tunnel did not answer the state poll")
         } catch let error as NSError {
           // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
           if error.domain == "NEVPNErrorDomain" && error.code == 1 {
