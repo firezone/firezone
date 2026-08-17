@@ -73,18 +73,18 @@ struct Connection {
     link_scope_route_sync_task: tokio::task::JoinHandle<()>,
 }
 
-/// Exclusive access to the netlink socket.
+/// Serialised access to the netlink socket.
 ///
 /// All clones of a [`Handle`] talk to the kernel over a single socket, and the
 /// kernel only tracks one dump per socket: it rejects a second concurrent one with
 /// `EBUSY`. Rather than have each caller work out whether what it is about to do
-/// counts as a dump, this type owns the only [`Handle`] and lends it out one
-/// caller at a time.
+/// counts as a dump, every use of the socket goes through [`Netlink::run`], which
+/// holds a lock shared by all clones of this type for as long as the closure runs.
 ///
-/// A `&Handle` is therefore only reachable from inside [`Netlink::run`], which is
-/// what keeps a sequence of netlink operations from interleaving with another
-/// task's. Nesting `run` inside `run` deadlocks, but cannot happen by accident:
-/// the helpers below take a `&Handle`, which has no way back to a `Netlink`.
+/// The closure receives a `&Handle`, so a sequence of netlink operations cannot
+/// interleave with another task's. The lock is not reentrant: a closure must
+/// therefore confine itself to the helpers that take a `&Handle` and must not
+/// reach back for a [`Netlink`], which would deadlock.
 #[derive(Clone)]
 struct Netlink {
     handle: Handle,
