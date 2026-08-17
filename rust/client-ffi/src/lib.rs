@@ -103,9 +103,11 @@ pub struct DeviceInfo {
 #[derive(uniffi::Record)]
 pub struct AndroidSessionConfig {
     pub api_url: String,
-    pub token: String,
+    pub token: Option<String>,
     pub device_id: String,
-    pub account_slug: String,
+    pub account_slug: Option<String>,
+    pub account_id: Option<String>,
+    pub actor_email: Option<String>,
     pub device_name: String,
     pub log_dir: String,
     pub log_filter: String,
@@ -248,6 +250,8 @@ impl Session {
             token,
             device_id,
             account_slug,
+            account_id,
+            actor_email,
             device_name,
             log_dir,
             log_filter,
@@ -268,6 +272,8 @@ impl Session {
             token,
             device_id,
             account_slug,
+            account_id,
+            actor_email,
             Some(device_name),
             log_dir,
             log_filter,
@@ -308,9 +314,11 @@ impl Session {
 
         let session = connect(
             api_url,
-            token,
+            Some(token),
             device_id,
-            account_slug,
+            Some(account_slug),
+            None,
+            None,
             device_name,
             log_dir,
             log_filter,
@@ -356,9 +364,11 @@ impl Session {
 
         let session = connect(
             api_url,
-            token,
+            Some(token),
             device_id,
-            account_slug,
+            Some(account_slug),
+            None,
+            None,
             device_name,
             log_dir,
             log_filter,
@@ -564,9 +574,11 @@ impl Drop for Session {
 
 fn connect(
     api_url: String,
-    token: String,
+    token: Option<String>,
     device_id: String,
-    account_slug: String,
+    account_slug: Option<String>,
+    account_id: Option<String>,
+    actor_email: Option<String>,
     device_name: Option<String>,
     log_dir: String,
     log_filter: String,
@@ -585,7 +597,7 @@ fn connect(
         identifier_for_vendor: device_info.identifier_for_vendor,
         firebase_installation_id: device_info.firebase_installation_id,
     };
-    let secret = SecretString::from(token);
+    let secret = token.map(SecretString::from);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
@@ -606,10 +618,12 @@ fn connect(
 
     telemetry::start(&api_url, RELEASE, platform::DSN);
     telemetry::set_firezone_id(device_id.clone());
-    telemetry::set_account_slug(account_slug.clone());
+    telemetry::set_account_slug_or_clear(account_slug.clone());
+    telemetry::set_account_id(account_id.clone());
+    telemetry::set_actor_email(actor_email.clone());
     telemetry::set_mdm_device_id(mdm_device_id);
 
-    analytics::identify(RELEASE.to_owned(), Some(account_slug));
+    analytics::identify_with_user(RELEASE.to_owned(), account_slug, account_id, actor_email);
 
     let portal_api_url = portal_api_url(&api_url, tls_client_config.is_some())?;
     let url = LoginUrl::client(
@@ -675,15 +689,27 @@ pub fn tls_client_config(
     identity: Arc<dyn ClientTlsIdentity>,
 ) -> Result<Arc<rustls::ClientConfig>> {
     use rustls::sign::SingleCertAndKey;
+    #[cfg(not(target_os = "android"))]
     use rustls_platform_verifier::BuilderVerifierExt as _;
 
     install_rustls_crypto_provider();
     let certified_key = client_auth::certified_key(identity)?;
     let resolver = Arc::new(SingleCertAndKey::from(certified_key));
-    let config = rustls::ClientConfig::builder()
+    let builder = rustls::ClientConfig::builder();
+    #[cfg(target_os = "android")]
+    let builder = {
+        // Match the Android channel's existing server-verification behavior. The Android
+        // platform verifier currently misclassifies valid CRL-only Let's Encrypt certificates
+        // as revoked when they omit an OCSP responder.
+        let mut roots = rustls::RootCertStore::empty();
+        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        builder.with_root_certificates(roots)
+    };
+    #[cfg(not(target_os = "android"))]
+    let builder = builder
         .with_platform_verifier()
-        .context("Failed to configure the TLS server certificate verifier")?
-        .with_client_cert_resolver(resolver);
+        .context("Failed to configure the TLS server certificate verifier")?;
+    let config = builder.with_client_cert_resolver(resolver);
 
     Ok(Arc::new(config))
 }

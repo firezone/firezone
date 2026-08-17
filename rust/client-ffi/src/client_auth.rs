@@ -88,7 +88,9 @@ impl Signer for PlatformSigner {
         self.identity
             .sign(self.scheme, message.to_vec())
             .map_err(|error| {
-                rustls::Error::General(format!("Platform TLS signing failed: {error}"))
+                rustls::Error::Other(rustls::OtherError(Arc::new(
+                    phoenix_channel::ClientCertificateSigningError(error.to_string()),
+                )))
             })
     }
 
@@ -206,5 +208,54 @@ mod tests {
         }
 
         assert!(certified_key(Arc::new(EmptyIdentity)).is_err());
+    }
+
+    #[test]
+    fn preserves_platform_signing_failures_as_typed_tls_errors() {
+        #[derive(Debug)]
+        struct FailingIdentity;
+
+        impl ClientTlsIdentity for FailingIdentity {
+            fn certificate_chain(&self) -> Result<Vec<Vec<u8>>, CallbackError> {
+                Ok(vec![vec![1, 2, 3]])
+            }
+
+            fn supported_signature_schemes(&self) -> Vec<TlsSignatureScheme> {
+                vec![TlsSignatureScheme::RsaPssSha256]
+            }
+
+            fn sign(
+                &self,
+                _scheme: TlsSignatureScheme,
+                _message: Vec<u8>,
+            ) -> Result<Vec<u8>, CallbackError> {
+                Err(CallbackError::Failed(
+                    "keychain interaction is unavailable".to_owned(),
+                ))
+            }
+        }
+
+        let certified_key = certified_key(Arc::new(FailingIdentity))
+            .expect("mock identity should produce a certified key");
+        let signer = certified_key
+            .key
+            .choose_scheme(&[SignatureScheme::RSA_PSS_SHA256])
+            .expect("RSA-PSS SHA-256 should be supported");
+        let error = signer
+            .sign(&[4, 5])
+            .expect_err("platform signing should fail");
+        let rustls::Error::Other(other) = error else {
+            panic!("expected a typed rustls error");
+        };
+        let signing_error = other
+            .0
+            .downcast_ref::<phoenix_channel::ClientCertificateSigningError>()
+            .expect("signing error type should survive rustls");
+
+        assert!(
+            signing_error
+                .0
+                .contains("keychain interaction is unavailable")
+        );
     }
 }

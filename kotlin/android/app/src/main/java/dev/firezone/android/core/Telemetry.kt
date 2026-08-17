@@ -11,6 +11,8 @@ import io.sentry.protocol.User
 object Telemetry {
     private var firezoneId: String? = null
     private var accountSlug: String? = null
+    private var accountId: String? = null
+    private var actorEmail: String? = null
     private var mdmDeviceId: String? = null
 
     fun start(context: Context) {
@@ -24,13 +26,26 @@ object Telemetry {
         }
     }
 
-    fun setFirezoneId(id: String?) {
-        firezoneId = id
+    fun setUser(
+        firezoneId: String,
+        accountSlug: String,
+    ) {
+        this.firezoneId = firezoneId
+        this.accountSlug = accountSlug
+        accountId = null
+        actorEmail = null
         updateUser()
     }
 
-    fun setAccountSlug(slug: String?) {
-        accountSlug = slug
+    fun setUser(
+        firezoneId: String,
+        accountId: String,
+        actorEmail: String,
+    ) {
+        this.firezoneId = firezoneId
+        accountSlug = null
+        this.accountId = accountId
+        this.actorEmail = actorEmail
         updateUser()
     }
 
@@ -42,16 +57,21 @@ object Telemetry {
     private fun updateUser() {
         val id = firezoneId
         val slug = accountSlug
+        val accountId = accountId
+        val actorEmail = actorEmail
         val mdmId = mdmDeviceId
 
-        if (id != null && slug != null) {
-            Log.setUser(id, slug, mdmId)
+        if (id != null && (slug != null || (accountId != null && actorEmail != null))) {
+            Log.setUser(id, slug, accountId, actorEmail, mdmId)
             val user =
                 User().apply {
                     this.id = id
+                    this.email = actorEmail
                     this.data =
                         buildMap {
-                            put("account_slug", slug)
+                            slug?.let { put("account_slug", it) }
+                            accountId?.let { put("account_id", it) }
+                            actorEmail?.let { put("actor_email", it) }
                             mdmId?.let { put("mdm_device_id", it) }
                         }
                 }

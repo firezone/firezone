@@ -13,12 +13,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.ApplicationMode
+import dev.firezone.android.core.Log
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.X509_CERTIFICATE_ALIAS_RESTRICTION
+import dev.firezone.android.core.x509.X509Identity
 import dev.firezone.android.tunnel.TunnelService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 private const val REQUEST_DELAY = 1000L
@@ -30,6 +35,7 @@ internal class SplashViewModel
         private val repo: Repository,
         private val applicationRestrictions: Bundle,
         private val applicationMode: ApplicationMode,
+        private val x509Identity: X509Identity,
     ) : ViewModel() {
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
@@ -55,9 +61,15 @@ internal class SplashViewModel
                 }
 
                 val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
+                val hasCertificateUserIdentity =
+                    if (token.isNullOrBlank()) {
+                        hasCertificateUserIdentity()
+                    } else {
+                        false
+                    }
 
-                // If we don't have a token, we can't connect.
-                if (token.isNullOrBlank()) {
+                // A complete certificate identity can authenticate without a web sign-in token.
+                if (token.isNullOrBlank() && !hasCertificateUserIdentity) {
                     actionMutableStateFlow.value = ViewAction.NavigateToSignIn
                     return@launch
                 }
@@ -87,6 +99,30 @@ internal class SplashViewModel
         internal fun clearAction() {
             actionMutableStateFlow.value = null
         }
+
+        private suspend fun hasCertificateUserIdentity(): Boolean =
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    if (!x509Identity.isSupportedProfile()) return@runCatching false
+                    x509Identity.userIdentity(configuredX509Alias()) != null
+                }.onFailure { exception ->
+                    Log.w(
+                        TAG,
+                        "Could not read the X.509 user identity while choosing the startup flow",
+                        exception,
+                    )
+                }.getOrDefault(false)
+            }
+
+        private fun configuredX509Alias(): String? =
+            applicationRestrictions
+                .getString(X509_CERTIFICATE_ALIAS_RESTRICTION)
+                ?.takeUnless { it.isBlank() || it == "null" }
+                ?: if (applicationRestrictions.containsKey(X509_CERTIFICATE_ALIAS_RESTRICTION)) {
+                    null
+                } else {
+                    repo.getX509CertificateAliasSync()
+                }
 
         private fun hasVpnPermissions(context: Context): Boolean = android.net.VpnService.prepare(context) == null
 
@@ -128,5 +164,9 @@ internal class SplashViewModel
             object NavigateToSignIn : ViewAction()
 
             object NavigateToSession : ViewAction()
+        }
+
+        companion object {
+            private const val TAG = "SplashViewModel"
         }
     }

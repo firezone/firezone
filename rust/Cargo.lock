@@ -1295,6 +1295,7 @@ dependencies = [
  "tunnel-bypass-resolver",
  "uniffi",
  "url",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]

@@ -22,6 +22,7 @@ import java.security.spec.MGF1ParameterSpec
 import java.security.spec.PSSParameterSpec
 import java.time.format.DateTimeFormatter
 import java.util.Base64
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,9 +41,15 @@ data class X509IdentityDetails(
     val sections: List<X509DetailSection>,
 )
 
+data class X509UserIdentity(
+    val email: String,
+    val accountId: String,
+)
+
 data class LoadedX509Identity(
     val clientTlsIdentity: ClientTlsIdentity,
     val mdmDeviceId: String?,
+    val userIdentity: X509UserIdentity?,
 )
 
 internal object NoClientTlsIdentity : ClientTlsIdentity {
@@ -84,13 +91,16 @@ class X509Identity
             validateLeafCommonName(leaf)
             val privateKey = loadPrivateKey(alias)
             val schemes = supportedSignatureSchemes(leaf.publicKey)
-            val mdmDeviceId = mdmDeviceId(leaf)
+            val uriSubjectAlternativeNames = uriSubjectAlternativeNames(leaf)
+            val mdmDeviceId = mdmDeviceId(uriSubjectAlternativeNames)
+            val userIdentity = userIdentity(uriSubjectAlternativeNames)
 
             Log.i(
                 TAG,
                 "Loaded mutual-TLS client identity " +
                     "(alias=$alias, certificates=${chain.size}, notBefore=${leaf.notBefore.toInstant()}, " +
-                    "leafFingerprint=${sha256Hex(leaf.encoded)}, mdmDeviceId=${mdmDeviceId ?: "Unavailable"})",
+                    "leafFingerprint=${sha256Hex(leaf.encoded)}, mdmDeviceId=${mdmDeviceId ?: "Unavailable"}, " +
+                    "certificateUserAuth=${if (userIdentity == null) "unavailable" else "available"})",
             )
 
             return LoadedX509Identity(
@@ -102,8 +112,11 @@ class X509Identity
                         schemes = schemes,
                     ),
                 mdmDeviceId = mdmDeviceId,
+                userIdentity = userIdentity,
             )
         }
+
+        fun userIdentity(alias: String?): X509UserIdentity? = clientTlsIdentity(alias)?.userIdentity
 
         fun details(
             alias: String?,
@@ -135,16 +148,23 @@ class X509Identity
             val sections =
                 mutableListOf(
                     X509DetailSection("Configuration", configurationFields),
-                    X509DetailSection(
-                        "Private Key",
-                        listOf(
-                            X509DetailField("Algorithm", privateKey.algorithm),
-                            X509DetailField("Provider class", privateKey.javaClass.name),
-                            X509DetailField("Encoded format", privateKey.format ?: "Non-exportable"),
-                            X509DetailField(
-                                "Private key export",
-                                "Not attempted; mutual-TLS signing occurs through the KeyChain key handle.",
-                            ),
+                )
+
+            val identityAttributeFields = identityAttributeFields(chain.first())
+            if (identityAttributeFields.isNotEmpty()) {
+                sections += X509DetailSection("Identity Attributes", identityAttributeFields)
+            }
+
+            sections +=
+                X509DetailSection(
+                    "Private Key",
+                    listOf(
+                        X509DetailField("Algorithm", privateKey.algorithm),
+                        X509DetailField("Provider class", privateKey.javaClass.name),
+                        X509DetailField("Encoded format", privateKey.format ?: "Non-exportable"),
+                        X509DetailField(
+                            "Private key export",
+                            "Not attempted; mutual-TLS signing occurs through the KeyChain key handle.",
                         ),
                     ),
                 )
@@ -505,13 +525,16 @@ class X509Identity
                         value.toString()
                     }
 
+                if (type == 6 && value is String) {
+                    return splitCommaJoinedUris(listOf(value)).joinToString("\n") { uri -> "$label: $uri" }
+                }
+
                 return "$label: $renderedValue"
             }
 
             internal fun mdmDeviceId(uris: List<String>): String? {
                 val filteredUris =
-                    uris
-                        .flatMap { it.split(COMMA_JOINED_URI_BOUNDARY) }
+                    splitCommaJoinedUris(uris)
                         .filterNot { it.startsWith(MICROSOFT_SID_URI_PREFIX, ignoreCase = true) }
                 var sawTypedIdentifier = false
                 var typedMdmDeviceId: String? = null
@@ -540,7 +563,51 @@ class X509Identity
                 }
             }
 
-            private fun mdmDeviceId(certificate: X509Certificate): String? =
+            internal fun userIdentity(uris: List<String>): X509UserIdentity? {
+                val email = actorEmail(uris) ?: return null
+                val accountId = accountId(uris) ?: return null
+                return X509UserIdentity(email = email, accountId = accountId)
+            }
+
+            internal fun actorEmail(uris: List<String>): String? {
+                val emails =
+                    firezoneAttributeValues("email", uris)
+                        .filter(::validEmail)
+                        .mapTo(mutableSetOf()) { it.lowercase() }
+                return emails.singleOrNull()
+            }
+
+            internal fun accountId(uris: List<String>): String? {
+                val accountIds =
+                    firezoneAttributeValues("account-id", uris)
+                        .mapNotNull { value ->
+                            runCatching { UUID.fromString(value).toString() }
+                                .getOrNull()
+                                ?.takeIf { canonical -> canonical.equals(value, ignoreCase = true) }
+                        }.mapTo(mutableSetOf()) { it.lowercase() }
+                return accountIds.singleOrNull()
+            }
+
+            internal fun deviceSerial(uris: List<String>): String? {
+                val serials =
+                    firezoneAttributeValues("serial", uris) +
+                        firezoneAttributeValues("apple-serial", uris)
+                val valuesByNormalizedValue = serials.groupBy { it.lowercase() }
+                return valuesByNormalizedValue.values.singleOrNull()?.firstOrNull()
+            }
+
+            internal fun identityAttributeFields(uris: List<String>): List<X509DetailField> =
+                listOfNotNull(
+                    actorEmail(uris)?.let { X509DetailField("Actor Email", it) },
+                    accountId(uris)?.let { X509DetailField("Account ID", it) },
+                    mdmDeviceId(uris)?.let { X509DetailField("MDM Device ID", it) },
+                    deviceSerial(uris)?.let { X509DetailField("Device Serial", it) },
+                )
+
+            private fun identityAttributeFields(certificate: X509Certificate): List<X509DetailField> =
+                identityAttributeFields(uriSubjectAlternativeNames(certificate))
+
+            private fun uriSubjectAlternativeNames(certificate: X509Certificate): List<String> =
                 runCatching {
                     certificate.subjectAlternativeNames
                         ?.mapNotNull { name ->
@@ -548,14 +615,47 @@ class X509Identity
                             val value = name.getOrNull(1) as? String
                             value?.takeIf { type == 6 }
                         }.orEmpty()
-                }.map(::mdmDeviceId)
-                    .getOrNull()
+                }.map(::splitCommaJoinedUris)
+                    .getOrDefault(emptyList())
+
+            private fun firezoneAttributeValues(
+                expectedAttribute: String,
+                uris: List<String>,
+            ): List<String> =
+                splitCommaJoinedUris(uris).mapNotNull { uri ->
+                    val match = FIREZONE_URI.matchEntire(uri) ?: return@mapNotNull null
+                    val attribute = match.groupValues[1].lowercase()
+                    if (attribute != expectedAttribute) return@mapNotNull null
+
+                    val rawValue = match.groupValues[2]
+                    val decodedValue = decodeUriPathValue(rawValue).trim()
+                    decodedValue.takeIf(::validIdentifier)
+                }
+
+            private fun splitCommaJoinedUris(uris: List<String>): List<String> =
+                uris
+                    .flatMap { it.split(COMMA_JOINED_URI_BOUNDARY) }
+                    .map(String::trim)
+                    .filter(String::isNotEmpty)
+
+            private fun decodeUriPathValue(rawValue: String): String =
+                runCatching {
+                    java.net.URI
+                        .create("firezone://attribute/$rawValue")
+                        .path
+                        .removePrefix("/")
+                }.getOrDefault(rawValue)
+
+            private fun validEmail(value: String): Boolean {
+                if (!validIdentifier(value) || value.any(Char::isWhitespace)) return false
+                val parts = value.split('@')
+                return parts.size == 2 && parts.all(String::isNotEmpty)
+            }
 
             private fun validIdentifier(value: String): Boolean {
                 val trimmed = value.trim()
                 return trimmed.isNotEmpty() &&
-                    trimmed.toByteArray(Charsets.UTF_8).size <= 255 &&
-                    trimmed.all { it.code in 0x20..0x7E }
+                    trimmed.toByteArray(Charsets.UTF_8).size <= 255
             }
 
             private fun normalizeMdmDeviceId(value: String): String? {
@@ -589,6 +689,8 @@ class X509Identity
                     "ws1-uuid",
                     "jamf-id",
                     "kandji-id",
+                    "email",
+                    "account-id",
                 )
             private val MDM_IDENTIFIER_TYPES =
                 setOf("intune-id", "entra-id", "ws1-uuid", "jamf-id", "kandji-id")

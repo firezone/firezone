@@ -69,6 +69,8 @@ class SessionActivity : AppCompatActivity() {
                 val connectedDevicesState by viewModel.connectedDevicesStateFlow.collectAsStateWithLifecycle()
                 val favorites by viewModel.favorites.collectAsStateWithLifecycle()
                 val serviceStatus by viewModel.serviceStatusStateFlow.collectAsStateWithLifecycle()
+                val certificateUserIdentity by
+                    viewModel.certificateUserIdentity.collectAsStateWithLifecycle()
 
                 // Finish if the tunnel service dies.
                 LaunchedEffect(serviceStatus) {
@@ -96,10 +98,11 @@ class SessionActivity : AppCompatActivity() {
                             }.toImmutableList()
                     }
 
-                val actorName = remember { viewModel.getActorName() }
+                val actorName = certificateUserIdentity?.email ?: remember { viewModel.getActorName() }
 
                 SessionScreen(
                     actorName = actorName,
+                    isCertificateAuthenticated = certificateUserIdentity != null,
                     resources = resources,
                     connectedDevices = connectedDevicesState.toImmutableList(),
                     favorites = favorites,
@@ -116,13 +119,17 @@ class SessionActivity : AppCompatActivity() {
                         startActivity(settings)
                     },
                     onSignOut = {
-                        viewModel.clearToken()
-                        viewModel.clearActorName()
+                        if (certificateUserIdentity == null) {
+                            viewModel.clearToken()
+                            viewModel.clearActorName()
+                        }
                         tunnelService?.disconnect()
                     },
                 )
             }
         }
+
+        viewModel.refreshCertificateUserIdentity()
     }
 
     override fun onDestroy() {

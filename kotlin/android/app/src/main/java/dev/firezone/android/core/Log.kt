@@ -33,27 +33,33 @@ object Log {
 
     fun setUser(
         firezoneId: String,
-        accountSlug: String,
+        accountSlug: String?,
+        accountId: String?,
+        actorEmail: String?,
         mdmDeviceId: String?,
     ) {
         synchronized(attributesLock) {
-            attributes = attributes +
-                mapOf(
-                    "user.id" to firezoneId,
-                    "user.account_slug" to accountSlug,
-                )
-            attributes =
-                if (mdmDeviceId == null) {
-                    attributes - "user.mdm_device_id"
-                } else {
-                    attributes + ("user.mdm_device_id" to mdmDeviceId)
-                }
+            attributes = attributes + ("user.id" to firezoneId)
+            listOf(
+                "user.account_slug" to accountSlug,
+                "user.account_id" to accountId,
+                "user.actor_email" to actorEmail,
+                "user.mdm_device_id" to mdmDeviceId,
+            ).forEach { (key, value) ->
+                attributes = if (value == null) attributes - key else attributes + (key to value)
+            }
         }
     }
 
     fun clearUser() {
         synchronized(attributesLock) {
-            attributes = attributes - "user.id" - "user.account_slug" - "user.mdm_device_id"
+            attributes =
+                attributes -
+                "user.id" -
+                "user.account_slug" -
+                "user.account_id" -
+                "user.actor_email" -
+                "user.mdm_device_id"
         }
     }
 

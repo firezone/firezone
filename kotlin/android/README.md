@@ -70,6 +70,27 @@ returns the current chain. If renewal creates multiple aliases, the DPC must
 return the newest suitable alias from `onChoosePrivateKeyAlias`; the system
 picker performs that choice for user-managed selection.
 
+### Certificate user authentication
+
+Firezone can connect without a saved web sign-in token when the leaf certificate
+contains exactly one valid value for both of these URI SAN attributes:
+
+- `firezone://email/<percent-encoded actor email>`
+- `firezone://account-id/<Firezone account UUID>`
+
+For example:
+
+```text
+firezone://email/alice%40example.com
+firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3
+```
+
+The values may be separate URI SAN entries or part of Intune's comma-joined URI
+SAN. Advanced Settings shows parsed identity attributes and all raw SAN values.
+If either required attribute is missing, malformed, or ambiguous, the
+certificate is still used for mutual TLS device identity and Firezone falls back
+to the saved token or interactive web sign-in for user authentication.
+
 ### Wireless ADB
 
 Useful when your USB connection is flaky. Both flows give you a regular `adb`

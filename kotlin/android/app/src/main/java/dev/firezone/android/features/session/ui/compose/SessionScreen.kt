@@ -50,6 +50,7 @@ private const val TAB_ALL = 1
 @Composable
 fun SessionScreen(
     actorName: String?,
+    isCertificateAuthenticated: Boolean,
     resources: ImmutableList<ResourceUiModel>,
     connectedDevices: ImmutableList<ConnectedDevice>,
     favorites: Favorites,
@@ -109,7 +110,17 @@ fun SessionScreen(
                     modifier = Modifier.padding(start = 8.dp),
                 )
                 Spacer(Modifier.weight(1f))
-                actorName?.let { Text(text = it, style = MaterialTheme.typography.bodySmall) }
+                actorName?.let {
+                    Text(
+                        text =
+                            if (isCertificateAuthenticated) {
+                                stringResource(R.string.connected_as, it)
+                            } else {
+                                it
+                            },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
 
             // The tab bar is the top-level switcher, pinned below the app bar so it stays visible and
@@ -164,7 +175,11 @@ fun SessionScreen(
                     Text(stringResource(R.string.settings))
                 }
                 Button(onClick = onSignOut, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.sign_out))
+                    Text(
+                        stringResource(
+                            if (isCertificateAuthenticated) R.string.disconnect else R.string.sign_out,
+                        ),
+                    )
                 }
             }
         }

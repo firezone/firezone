@@ -301,11 +301,13 @@ class TunnelService : VpnService() {
     }
 
     private fun connect() {
-        val token = appRestrictions.getString("token") ?: repo.getTokenSync()
+        val token =
+            (appRestrictions.getString("token") ?: repo.getTokenSync())
+                ?.takeUnless(String::isBlank)
         val config = repo.getConfigSync()
         resourceState = repo.getInternetResourceStateSync()
 
-        if (!token.isNullOrBlank()) {
+        if (token != null || configuredX509Alias() != null) {
             tunnelState = State.CONNECTING
             // Dismiss any previous disconnected notifications
             TunnelNotification.dismissDisconnectedNotification(this)
@@ -334,11 +336,40 @@ class TunnelService : VpnService() {
                     // Set telemetry environment and user context
                     val deviceIdValue = deviceId()
                     Telemetry.setEnvironmentOrClose(config.apiUrl)
-                    Telemetry.setFirezoneId(deviceIdValue)
-                    Telemetry.setAccountSlug(config.accountSlug)
 
                     val x509ClientIdentity = loadX509ClientIdentity()
                     val mdmDeviceId = x509ClientIdentity?.mdmDeviceId
+                    val certificateUserIdentity = x509ClientIdentity?.userIdentity
+                    val authToken: String?
+                    val accountSlug: String?
+                    val accountId: String?
+                    val actorEmail: String?
+                    if (certificateUserIdentity != null) {
+                        authToken = null
+                        accountSlug = null
+                        accountId = certificateUserIdentity.accountId
+                        actorEmail = certificateUserIdentity.email
+                        Telemetry.setUser(
+                            firezoneId = deviceIdValue,
+                            accountId = certificateUserIdentity.accountId,
+                            actorEmail = certificateUserIdentity.email,
+                        )
+                        Log.i(
+                            TAG,
+                            "Using the managed X.509 identity for user authentication " +
+                                "(accountId=${certificateUserIdentity.accountId}); omitting bearer authorization",
+                        )
+                    } else {
+                        authToken =
+                            token ?: throw X509IdentityException(
+                                "No sign-in token is available and the X.509 certificate has no complete user identity.",
+                            )
+                        accountSlug = config.accountSlug
+                        accountId = null
+                        actorEmail = null
+                        Telemetry.setUser(deviceIdValue, config.accountSlug)
+                        Log.i(TAG, "Using the saved web sign-in token for user authentication")
+                    }
                     Telemetry.setMdmDeviceId(mdmDeviceId)
 
                     Session
@@ -346,8 +377,10 @@ class TunnelService : VpnService() {
                             config =
                                 AndroidSessionConfig(
                                     apiUrl = config.apiUrl,
-                                    token = token,
-                                    accountSlug = config.accountSlug,
+                                    token = authToken,
+                                    accountSlug = accountSlug,
+                                    accountId = accountId,
+                                    actorEmail = actorEmail,
                                     deviceId = deviceIdValue,
                                     deviceName = getDeviceName(),
                                     logDir = getLogDir(),
@@ -623,6 +656,13 @@ class TunnelService : VpnService() {
         try {
             val refreshedIdentity = loadX509ClientIdentity()
             Telemetry.setMdmDeviceId(refreshedIdentity?.mdmDeviceId)
+            refreshedIdentity?.userIdentity?.let { userIdentity ->
+                Telemetry.setUser(
+                    firezoneId = deviceId(),
+                    accountId = userIdentity.accountId,
+                    actorEmail = userIdentity.email,
+                )
+            }
             Log.i(TAG, "Re-read X.509 device identity after certificate revocation")
         } catch (exception: X509IdentityException) {
             Log.w(TAG, "Could not re-read X.509 device identity after certificate revocation", exception)
@@ -718,7 +758,7 @@ class TunnelService : VpnService() {
                                             refreshX509IdentityAfterRevocation()
                                         }
 
-                                        else -> {
+                                        event.error.isAuthenticationError() -> {
                                             repo.clearToken()
                                             repo.clearActorName()
                                         }

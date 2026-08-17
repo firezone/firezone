@@ -137,6 +137,74 @@ class X509IdentityTest {
     }
 
     @Test
+    fun `extracts certificate user identity from Intune comma-joined URI SAN`() {
+        val uris =
+            listOf(
+                "tag:microsoft.com,2022-09-14:sid:S-1-12-1-1, " +
+                    "firezone://email/Alice%40Example.COM, " +
+                    "firezone://account-id/5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3, " +
+                    "firezone://intune-id/ADBCB238-5C99-47D6-957D-F14A1B3C7E41, " +
+                    "firezone://serial/C02XK1ZGJGH5",
+            )
+
+        assertEquals(
+            X509UserIdentity(
+                email = "alice@example.com",
+                accountId = "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+            ),
+            X509Identity.userIdentity(uris),
+        )
+        assertEquals("alice@example.com", X509Identity.actorEmail(uris))
+        assertEquals(
+            "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+            X509Identity.accountId(uris),
+        )
+        assertEquals("adbcb238-5c99-47d6-957d-f14a1b3c7e41", X509Identity.mdmDeviceId(uris))
+        assertEquals("C02XK1ZGJGH5", X509Identity.deviceSerial(uris))
+        assertEquals(
+            listOf("Actor Email", "Account ID", "MDM Device ID", "Device Serial"),
+            X509Identity.identityAttributeFields(uris).map { it.label },
+        )
+    }
+
+    @Test
+    fun `certificate user identity requires complete unambiguous attributes`() {
+        assertEquals(
+            null,
+            X509Identity.userIdentity(listOf("firezone://email/alice@example.com")),
+        )
+        assertEquals(
+            null,
+            X509Identity.userIdentity(
+                listOf(
+                    "firezone://email/alice@example.com, " +
+                        "firezone://email/bob@example.com, " +
+                        "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+                ),
+            ),
+        )
+        assertEquals(
+            null,
+            X509Identity.userIdentity(
+                listOf("firezone://email/alice@example.com,firezone://account-id/not-a-uuid"),
+            ),
+        )
+    }
+
+    @Test
+    fun `formats Intune comma-joined URI SAN values on separate lines`() {
+        assertEquals(
+            "URI: firezone://email/alice@example.com\n" +
+                "URI: firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+            X509Identity.formatSubjectAlternativeName(
+                6,
+                "firezone://email/alice@example.com," +
+                    "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+            ),
+        )
+    }
+
+    @Test
     fun `uses bare UUID fallback only when typed identifiers are absent`() {
         val bareId = "4125c235-441b-48b7-b96d-1c17494931a2"
 

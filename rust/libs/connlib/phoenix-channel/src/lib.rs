@@ -58,8 +58,8 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     last_url: Option<Url>,
     user_agent: String,
     tls_client_config: Option<Arc<rustls::ClientConfig>>,
-    /// The authentication token, sent via X-Authorization header.
-    token: SecretString,
+    /// The optional authentication token, sent via X-Authorization when present.
+    token: Option<SecretString>,
     make_initial_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
     make_reconnect_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
     backoff: Option<ExponentialBackoff>,
@@ -97,7 +97,7 @@ async fn create_and_connect_websocket(
     addresses: Vec<SocketAddr>,
     host: String,
     user_agent: String,
-    token: SecretString,
+    token: Option<SecretString>,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     connect_timeout: Duration,
     tls_client_config: Option<Arc<rustls::ClientConfig>>,
@@ -119,7 +119,7 @@ async fn create_and_connect_websocket(
 
         let connector = tls_client_config.map(Connector::Rustls);
         let (stream, _) = client_async_tls_with_config(
-            make_request(url, host, user_agent, &token),
+            make_request(url, host, user_agent, token.as_ref()),
             socket,
             None,
             connector,
@@ -186,6 +186,10 @@ async fn connect(
 pub enum Error {
     #[error("Authentication token invalid")]
     InvalidToken,
+    #[error("Portal rejected X.509 certificate authentication")]
+    CertificateAuthenticationRejected,
+    #[error("X.509 client certificate signing failed: {0}")]
+    ClientCertificateSigningFailed(String),
     #[error("X.509 device identity certificate was revoked")]
     CertificateRevoked,
     #[error(
@@ -202,6 +206,8 @@ impl Error {
     pub fn is_authentication_error(&self) -> bool {
         match self {
             Error::InvalidToken => true,
+            Error::CertificateAuthenticationRejected => false,
+            Error::ClientCertificateSigningFailed(_) => false,
             Error::CertificateRevoked => false,
             Error::MaxRetriesReached { .. } => false,
             Error::LoginFailed(_) => false,
@@ -211,6 +217,20 @@ impl Error {
 
     pub fn is_certificate_revoked(&self) -> bool {
         matches!(self, Error::CertificateRevoked)
+    }
+}
+
+/// Preserves a platform-backed client-certificate signing failure through rustls and the
+/// WebSocket transport so that it can be treated as terminal rather than a network hiccup.
+#[derive(Debug, thiserror::Error)]
+#[error("Platform TLS signing failed: {0}")]
+pub struct ClientCertificateSigningError(pub String);
+
+fn unauthorized_error(uses_token_authentication: bool) -> Error {
+    if uses_token_authentication {
+        Error::InvalidToken
+    } else {
+        Error::CertificateAuthenticationRejected
     }
 }
 
@@ -229,6 +249,21 @@ enum InternalError {
 }
 
 impl InternalError {
+    fn client_certificate_signing_error(&self) -> Option<String> {
+        let Self::WebSocket(tungstenite::Error::Io(error)) = self else {
+            return None;
+        };
+        let tls_error = error.get_ref()?.downcast_ref::<rustls::Error>()?;
+        let rustls::Error::Other(other) = tls_error else {
+            return None;
+        };
+
+        other
+            .0
+            .downcast_ref::<ClientCertificateSigningError>()
+            .map(|error| error.0.clone())
+    }
+
     /// Parses a Retry-After header value into a Duration.
     ///
     /// The header can be either:
@@ -379,7 +414,7 @@ where
     /// The provided URL must contain a host.
     pub fn disconnected(
         url: LoginUrl<TFinish>,
-        token: SecretString,
+        token: impl Into<Option<SecretString>>,
         user_agent: String,
         login: &'static str,
         init_req: TInitReq,
@@ -394,7 +429,7 @@ where
             url_prototype: url,
             user_agent,
             tls_client_config: None,
-            token,
+            token: token.into(),
             state: State::Closed,
             socket_factory,
             waker: None,
@@ -565,6 +600,8 @@ where
     }
 
     pub fn poll(&mut self, cx: &mut Context) -> Poll<Result<Event<TInboundMsg>, Error>> {
+        let uses_token_authentication = self.token.is_some();
+
         loop {
             // First, check if we are connected.
             let Connected {
@@ -617,9 +654,16 @@ where
                         if r.status() == StatusCode::UNAUTHORIZED =>
                     {
                         self.state = State::Closed;
-                        return Poll::Ready(Err(Error::InvalidToken));
+                        return Poll::Ready(Err(unauthorized_error(uses_token_authentication)));
                     }
                     Poll::Ready(Err(e)) => {
+                        if let Some(message) = e.client_certificate_signing_error() {
+                            self.state = State::Closed;
+                            return Poll::Ready(Err(Error::ClientCertificateSigningFailed(
+                                message,
+                            )));
+                        }
+
                         let backoff = match e.parse_retry_after_header() {
                             Some(duration) => duration,
                             None => {
@@ -865,7 +909,7 @@ where
                             },
                             _,
                         ) => {
-                            return Poll::Ready(Err(Error::InvalidToken));
+                            return Poll::Ready(Err(unauthorized_error(uses_token_authentication)));
                         }
                         (
                             Payload::Disconnect {
@@ -1086,24 +1130,32 @@ impl<T> PhoenixMessage<T> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(url: Url, host: String, user_agent: String, token: &SecretString) -> Request {
+fn make_request(
+    url: Url,
+    host: String,
+    user_agent: String,
+    token: Option<&SecretString>,
+) -> Request {
     let r: [u8; 16] = rand::random();
     let key = base64::engine::general_purpose::STANDARD.encode(r);
 
     let user_agent = user_agent.replace(|c: char| !c.is_ascii(), "");
-    let token = token
-        .expose_secret()
-        .replace(|c: char| c.is_whitespace(), "");
-
-    Request::builder()
+    let mut builder = Request::builder()
         .method("GET")
         .header("Host", host)
         .header("Connection", "Upgrade")
         .header("Upgrade", "websocket")
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", key)
-        .header("User-Agent", user_agent)
-        .header("X-Authorization", format!("Bearer {token}"))
+        .header("User-Agent", user_agent);
+    if let Some(token) = token {
+        let token = token
+            .expose_secret()
+            .replace(|c: char| c.is_whitespace(), "");
+        builder = builder.header("X-Authorization", format!("Bearer {token}"));
+    }
+
+    builder
         .uri(url.to_string())
         .body(())
         .expect("should always be able to build a request if we only pass strings to it")
@@ -1154,6 +1206,19 @@ mod tests {
         let error = anyhow::Error::msg("some other failure").context("Connection hiccup");
 
         assert_eq!(http_error_body(&error), None);
+    }
+
+    #[test]
+    fn extracts_platform_client_certificate_signing_error() {
+        let tls_error = rustls::Error::Other(rustls::OtherError(Arc::new(
+            ClientCertificateSigningError("keychain interaction is unavailable".to_owned()),
+        )));
+        let error = InternalError::WebSocket(tungstenite::Error::Io(io::Error::other(tls_error)));
+
+        assert_eq!(
+            error.client_certificate_signing_error().as_deref(),
+            Some("keychain interaction is unavailable")
+        );
     }
 
     #[derive(Deserialize, PartialEq, Debug)]
@@ -1400,7 +1465,7 @@ mod tests {
             vec![addr],
             "127.0.0.1".to_string(),
             "test-agent".to_string(),
-            SecretString::from("test-token".to_string()),
+            Some(SecretString::from("test-token".to_string())),
             Arc::new(socket_factory::tcp),
             Duration::from_secs(2),
             None,
@@ -1419,7 +1484,9 @@ mod tests {
             Url::parse("ws://example.com/websocket").unwrap(),
             "example.com".to_string(),
             "test-agent".to_string(),
-            &SecretString::from("valid-token-part\ninjected".to_string()),
+            Some(&SecretString::from(
+                "valid-token-part\ninjected".to_string(),
+            )),
         );
 
         assert_eq!(
@@ -1434,7 +1501,9 @@ mod tests {
             Url::parse("ws://example.com/websocket").unwrap(),
             "example.com".to_string(),
             "test-agent".to_string(),
-            &SecretString::from("valid-token-part\rinjected".to_string()),
+            Some(&SecretString::from(
+                "valid-token-part\rinjected".to_string(),
+            )),
         );
 
         assert_eq!(
@@ -1449,12 +1518,26 @@ mod tests {
             Url::parse("ws://example.com/websocket").unwrap(),
             "example.com".to_string(),
             "test-agent".to_string(),
-            &SecretString::from("a-perfectly-valid.token_123".to_string()),
+            Some(&SecretString::from(
+                "a-perfectly-valid.token_123".to_string(),
+            )),
         );
 
         assert_eq!(
             request.headers()["X-Authorization"],
             "Bearer a-perfectly-valid.token_123"
         );
+    }
+
+    #[test]
+    fn make_request_omits_authorization_without_token() {
+        let request = make_request(
+            Url::parse("ws://example.com/websocket").unwrap(),
+            "example.com".to_string(),
+            "test-agent".to_string(),
+            None,
+        );
+
+        assert!(!request.headers().contains_key("X-Authorization"));
     }
 }

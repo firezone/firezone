@@ -26,6 +26,7 @@ class SampleSessionActivity : AppCompatActivity() {
 
                 SessionScreen(
                     actorName = "Jane Doe",
+                    isCertificateAuthenticated = false,
                     resources = sampleResources,
                     connectedDevices = sampleConnectedDevices,
                     favorites = favorites,

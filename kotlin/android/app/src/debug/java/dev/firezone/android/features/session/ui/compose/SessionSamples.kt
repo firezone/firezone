@@ -21,6 +21,7 @@ private fun SessionScreenPreview() {
     FirezoneTheme {
         SessionScreen(
             actorName = "Jane Doe",
+            isCertificateAuthenticated = false,
             resources = sampleResources,
             connectedDevices = sampleConnectedDevices,
             favorites = Favorites(HashSet()),

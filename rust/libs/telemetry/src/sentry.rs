@@ -51,13 +51,13 @@ pub(crate) fn init_sdk_client(
             enable_logs: true,
             enable_metrics: true,
             before_send_log: Some(Arc::new(|log| {
-                let log = crate::insert_user_account_slug_into_log(log);
+                let log = crate::insert_user_attributes_into_log(log);
                 let log = crate::append_tracing_fields_to_message(log);
 
                 Some(log)
             })),
             before_send_metric: Some(Arc::new(|metric| {
-                let metric = crate::insert_user_account_slug_into_metric(metric);
+                let metric = crate::insert_user_attributes_into_metric(metric);
                 let metric = crate::insert_feature_flags_into_metric(metric);
 
                 Some(metric)

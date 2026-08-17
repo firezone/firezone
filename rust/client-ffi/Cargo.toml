@@ -50,6 +50,7 @@ mimalloc = { workspace = true }
 android_log-sys = "0.3.2"
 jni = { workspace = true }
 mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # The Android `cdylib` is `dlopen`-ed, so it needs the dynamic TLS model.
+webpki-roots = { workspace = true }
 
 [lints]
 workspace = true
