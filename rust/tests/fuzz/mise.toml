@@ -134,11 +134,14 @@ set -- -ignore_crashes=1 "$@"
 # worth committing whichever step broke, so every one that can still run does
 # and the failure is re-raised at the end. They write through temporaries, so a
 # failed step leaves the committed file it owns untouched.
-failed=()
+# Accumulated as a string: `mise` renders this script as a template, and
+# bash's array length syntax (dollar-brace-hash) reads as an unclosed
+# template comment.
+failed=""
 
 step() {
   if ! mise run "//rust/tests/fuzz:$1" "${@:2}"; then
-    failed+=("$1")
+    failed="$failed $1"
   fi
 }
 
@@ -149,8 +152,8 @@ step update-baseline "$target"
 step save-crashes "$target"
 step pack-corpus "$target"
 
-if [ "${#failed[@]}" -gt 0 ]; then
-  echo "error: ${#failed[@]} step(s) failed: ${failed[*]}" >&2
+if [ -n "$failed" ]; then
+  echo "error: step(s) failed:$failed" >&2
   exit 1
 fi
 '''
