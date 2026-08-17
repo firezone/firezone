@@ -23,6 +23,7 @@ Changing the generator in `src/arb/` can therefore reinterpret existing inputs; 
 ## Setup
 
 Everything is managed through this directory's `mise.toml`: the pinned nightly toolchain, `cargo-fuzz`, and the profile overrides required by fuzz builds.
+The tasks themselves are shell scripts in `mise-tasks/`.
 Fuzzing tasks require Linux because `cargo-fuzz` is installed only for Linux.
 
 ## Run
