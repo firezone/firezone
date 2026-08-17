@@ -4,9 +4,9 @@ defmodule PortalWeb.NavigationComponents do
   import PortalWeb.CoreComponents
 
   @doc """
-  Returns whether the global `device_trust` rollout flag is enabled.
+  Returns whether the global `trust_anchors` rollout flag is enabled.
   """
-  def device_trust_enabled?, do: Portal.Features.enabled?(:device_trust)
+  def trust_anchors_enabled?, do: Portal.Features.enabled?(:trust_anchors)
 
   @doc """
   Returns whether the global `device_posture` rollout flag is enabled.
@@ -403,7 +403,7 @@ defmodule PortalWeb.NavigationComponents do
   """
   attr :account, :any, required: true
   attr :current_path, :string, required: true
-  attr :device_trust_enabled?, :boolean, default: false
+  attr :trust_anchors_enabled?, :boolean, default: false
   attr :device_posture_enabled?, :boolean, default: false
   slot :actions
 
@@ -524,13 +524,13 @@ defmodule PortalWeb.NavigationComponents do
           REST API
         </.settings_tab>
         <.settings_tab
-          :if={@device_trust_enabled?}
+          :if={@trust_anchors_enabled?}
           current_path={@current_path}
-          navigate={~p"/#{@account}/settings/device_trust"}
-          tab_path="settings/device_trust"
-          icon="ri-fingerprint-fill"
+          navigate={~p"/#{@account}/settings/trust_anchors"}
+          tab_path="settings/trust_anchors"
+          icon="ri-shield-check-fill"
         >
-          Device Trust
+          Trust Anchors
         </.settings_tab>
       </div>
     </div>

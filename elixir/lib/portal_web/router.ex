@@ -319,7 +319,7 @@ defmodule PortalWeb.Router do
           live "/edit", DNS, :edit
         end
 
-        scope "/device_trust", DeviceTrust do
+        scope "/trust_anchors", TrustAnchors do
           live "/", Index
           live "/new", Index, :new
           live "/:id/edit", Index, :edit

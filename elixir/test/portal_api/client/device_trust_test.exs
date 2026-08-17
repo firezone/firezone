@@ -28,7 +28,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       subject: subject,
       pki: pki
     } do
-      enable_feature(:device_trust)
+      enable_feature(:trust_anchors)
       trust_anchor_fixture(account: account, certs: [pki.ca_der])
 
       assert DeviceTrust.attest(connect_info(leaf(pki, :rsa)), subject) ==
@@ -52,14 +52,14 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       pki: pki
     } do
       configure_attestation_host()
-      enable_feature(:device_trust)
+      enable_feature(:trust_anchors)
 
       assert DeviceTrust.attest(connect_info(leaf(pki, :rsa)), subject) ==
                {:error, :no_trust_anchors}
     end
   end
 
-  describe "attest/2 when the device_trust feature is off" do
+  describe "attest/2 when the trust_anchors feature is off" do
     setup do
       configure_attestation_host()
       start_revocation_endpoint_queue()
@@ -98,7 +98,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       start_revocation_endpoint_queue()
 
       account = account_fixture()
-      enable_feature(:device_trust)
+      enable_feature(:trust_anchors)
       pki = pki()
       trust_anchor_fixture(account: account, certs: [pki.ca_der])
       subject = subject_fixture(account: account)

@@ -2,8 +2,8 @@ defmodule Portal.Features do
   # credo:disable-for-this-file Credo.Check.Warning.MissingChangesetFunction
   use Ecto.Schema
 
-  @features [:device_trust, :device_posture]
-  @type feature :: :device_trust | :device_posture
+  @features [:trust_anchors, :device_posture]
+  @type feature :: :trust_anchors | :device_posture
 
   @primary_key false
 

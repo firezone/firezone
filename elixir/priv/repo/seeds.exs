@@ -949,7 +949,7 @@ defmodule Portal.Repo.Seeds do
     Repo.query!(
       """
       INSERT INTO features (feature, enabled)
-      VALUES ('device_trust', true), ('device_posture', true)
+      VALUES ('trust_anchors', true), ('device_posture', true)
       ON CONFLICT (feature) DO UPDATE SET enabled = true
       """
     )
