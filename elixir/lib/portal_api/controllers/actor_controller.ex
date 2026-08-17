@@ -399,6 +399,7 @@ defmodule PortalAPI.ActorController do
         |> Safe.delete_all()
 
       case result do
+        {:error, reason} -> {:error, reason}
         {0, _} -> {:error, :not_found}
         {1, [actor]} -> {:ok, actor}
       end

@@ -1591,12 +1591,6 @@ defmodule PortalWeb.CoreComponents do
     """
   end
 
-  def feature_name(%{feature: :rest_api} = assigns) do
-    ~H"""
-    REST API
-    """
-  end
-
   def feature_name(assigns) do
     ~H""
   end

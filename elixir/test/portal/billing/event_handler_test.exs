@@ -710,7 +710,7 @@ defmodule Portal.Billing.EventHandlerTest do
           name: "Team",
           metadata: %{
             "policy_conditions" => "true",
-            "rest_api" => "false",
+            "idp_sync" => "false",
             "sites_count" => 100
           }
         )
@@ -731,7 +731,7 @@ defmodule Portal.Billing.EventHandlerTest do
 
       updated = Portal.Repo.get!(Portal.Account, account.id)
       assert updated.features.policy_conditions == true
-      assert updated.features.rest_api == false
+      assert updated.features.idp_sync == false
     end
 
     test "parses numeric string limits in metadata", %{account: account, customer: customer} do

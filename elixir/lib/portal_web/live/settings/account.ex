@@ -119,7 +119,6 @@ defmodule PortalWeb.Settings.Account do
               label="Identity Provider Sync"
               enabled={feature_enabled?(@account, :idp_sync)}
             />
-            <.feature_row label="REST API" enabled={feature_enabled?(@account, :rest_api)} />
             <.feature_row
               label="Internet Resource"
               enabled={feature_enabled?(@account, :internet_resource)}

@@ -9,7 +9,7 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
   alias Portal.Actor
 
   setup do
-    account = account_fixture(features: %{rest_api: true})
+    account = account_fixture()
     actor = admin_actor_fixture(account: account)
     %{account: account, actor: actor}
   end
@@ -92,18 +92,6 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
                PortalWeb.Settings.ApiClients.Index.Database.list_actors_with_token(subject)
 
       assert account_id == account.id
-    end
-
-    test "redirects to beta page when rest api is disabled", %{conn: conn} do
-      account = account_fixture(features: %{rest_api: false})
-      actor = admin_actor_fixture(account: account)
-
-      assert {:error, {:live_redirect, %{to: to}}} =
-               conn
-               |> authorize_conn(actor)
-               |> live(~p"/#{account}/settings/api_clients")
-
-      assert to == ~p"/#{account}/settings/api_clients/beta"
     end
 
     test "renders empty state when no tokens", %{conn: conn, account: account, actor: actor} do
@@ -217,11 +205,7 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
     end
 
     test "shows billing limit error when account cannot create more api clients", %{conn: conn} do
-      account =
-        account_fixture(
-          features: %{rest_api: true},
-          limits: %{api_clients_count: 0}
-        )
+      account = account_fixture(limits: %{api_clients_count: 0})
 
       actor = admin_actor_fixture(account: account)
 

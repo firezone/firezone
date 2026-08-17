@@ -278,7 +278,6 @@ defmodule PortalWeb.Router do
         end
 
         scope "/api_clients", ApiClients do
-          live "/beta", Beta
           live "/", Index
           live "/new", Index, :new
           live "/:id/edit", Index, :edit
