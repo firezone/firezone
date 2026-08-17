@@ -6,12 +6,15 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+async-trait = { workspace = true }
 bytes = { workspace = true }
 hex = { workspace = true }
 http = { workspace = true }
 http-client = { workspace = true }
 moka = { workspace = true, features = ["sync"] }
 opentelemetry = { workspace = true }
+opentelemetry-http = { workspace = true }
+opentelemetry-otlp = { workspace = true, features = ["metrics", "http-proto"] }
 opentelemetry_sdk = { workspace = true, features = ["metrics"] }
 parking_lot = { workspace = true }
 rand = { workspace = true }
