@@ -256,8 +256,11 @@ defmodule Portal.Config.Definitions do
   defconfig(:phoenix_listen_address, Types.IP, default: "0.0.0.0")
 
   @doc """
-  Internal HTTP port for the public endpoint. Requests other than readiness
-  checks are redirected to HTTPS. Leave unset to disable the listener.
+  Internal HTTP port for the public endpoint. Leave unset to disable the listener.
+
+  Requests other than readiness checks are redirected to HTTPS while
+  `PHOENIX_HTTPS_PUBLIC_PORT` is set. Without it this listener serves the
+  requests, which is what a reverse proxy that terminates TLS connects to.
   """
   defconfig(:phoenix_http_public_port, :integer,
     default: nil,
@@ -270,7 +273,8 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  Internal HTTPS port for the public endpoint. Leave unset to disable the listener.
+  Internal HTTPS port for the public endpoint. Leave unset to disable the
+  listener and let a reverse proxy in front of Firezone terminate TLS.
   """
   defconfig(:phoenix_https_public_port, :integer,
     default: nil,
@@ -353,6 +357,15 @@ defmodule Portal.Config.Definitions do
   This is used to determine the correct IP address of the client when the
   application is behind a reverse proxy by skipping a trusted proxy IP
   from a list of possible source IPs.
+
+  The public endpoint keeps the `X-Forwarded-*` headers only on requests that
+  arrive from one of these addresses. Every other request has them removed and
+  its client IP address read from the connection itself.
+
+  Your proxy must append the client address to `X-Forwarded-For` rather than
+  pass on what the client sent. Also list your own private ranges in
+  `PHOENIX_PRIVATE_CLIENTS` when your clients have private addresses, because
+  private addresses in the header are read as further proxy hops.
   """
   defconfig(:phoenix_external_trusted_proxies, {:json_array, {:one_of, [Types.IP, Types.CIDR]}},
     default: []

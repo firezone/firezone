@@ -8,7 +8,6 @@ defmodule PortalAPI.Endpoint do
     plug Phoenix.Ecto.SQL.Sandbox
   end
 
-  plug Plug.RewriteOn, [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]
   plug Plug.MethodOverride
   plug :put_hsts_header
   plug Plug.Head
@@ -16,12 +15,6 @@ defmodule PortalAPI.Endpoint do
   if code_reloading? do
     plug Phoenix.CodeReloader
   end
-
-  plug RemoteIp,
-    headers: ["x-forwarded-for"],
-    parsers: %{"x-forwarded-for" => Portal.RemoteIp.XForwardedForParser},
-    proxies: {__MODULE__, :external_trusted_proxies, []},
-    clients: {__MODULE__, :clients, []}
 
   plug Portal.Plugs.CountryCodeBlocklist
 
@@ -127,25 +120,6 @@ defmodule PortalAPI.Endpoint do
     else
       conn
     end
-  end
-
-  def real_ip_opts do
-    [
-      headers: ["x-forwarded-for"],
-      parsers: %{"x-forwarded-for" => Portal.RemoteIp.XForwardedForParser},
-      proxies: {__MODULE__, :external_trusted_proxies, []},
-      clients: {__MODULE__, :clients, []}
-    ]
-  end
-
-  def external_trusted_proxies do
-    Portal.Config.fetch_env!(:portal, :external_trusted_proxies)
-    |> Enum.map(&to_string/1)
-  end
-
-  def clients do
-    Portal.Config.fetch_env!(:portal, :private_clients)
-    |> Enum.map(&to_string/1)
   end
 
   defp redirect_to_canonical_host(%Plug.Conn{host: host} = conn, %URI{host: host}), do: conn
