@@ -16,6 +16,8 @@ config :portal, Portal.Entra.AuthProvider,
 config :portal, PortalWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json"
 
+config :portal, Portal.Analytics.PostHog, enabled: true
+
 config :portal, Portal.Endpoint, server: true
 config :portal, PortalOps.Endpoint, server: true
 
