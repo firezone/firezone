@@ -4,6 +4,7 @@ defmodule PortalWeb.Router do
   pipeline :public do
     plug :accepts, ["html", "xml"]
     plug :fetch_session
+    plug PortalWeb.WebsiteAttribution
     plug :protect_from_forgery
     plug :fetch_live_flash
     plug :put_root_layout, html: {PortalWeb.Layouts, :root}

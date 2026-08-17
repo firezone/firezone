@@ -792,10 +792,10 @@ defmodule PortalWeb.OIDCController do
 
   # Context: :portal
   # Store session cookie and redirect to portal or redirect_to parameter
-  defp signed_in(conn, :portal, account, _identity, session, _provider, _tokens, params) do
+  defp signed_in(conn, :portal, account, identity, session, _provider, _tokens, params) do
     conn
     |> PortalWeb.Cookie.Session.put(account.id, %PortalWeb.Cookie.Session{session_id: session.id})
-    |> Redirector.portal_signed_in(account, params)
+    |> Redirector.portal_signed_in(account, params, identity.actor)
   end
 
   # Context: :gui_client

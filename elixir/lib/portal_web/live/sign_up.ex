@@ -79,9 +79,10 @@ defmodule PortalWeb.SignUp do
 
   # ── Mount & params ────────────────────────────────────────────────────────────
 
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
     real_ip = PortalWeb.Authentication.real_ip(socket)
+    website_attribution = PortalWeb.WebsiteAttribution.fetch(session)
 
     case socket.assigns.live_action do
       :verify ->
@@ -93,6 +94,7 @@ defmodule PortalWeb.SignUp do
            provider: nil,
            actor: nil,
            error_message: nil,
+           website_attribution: website_attribution,
            user_agent: user_agent,
            real_ip: real_ip
          )}
@@ -109,6 +111,7 @@ defmodule PortalWeb.SignUp do
             account: nil,
             provider: nil,
             actor: nil,
+            website_attribution: website_attribution,
             user_agent: user_agent,
             real_ip: real_ip
           )
@@ -524,7 +527,8 @@ defmodule PortalWeb.SignUp do
         send_verification_email(
           registration.email,
           registration.account.name,
-          registration.actor.name
+          registration.actor.name,
+          socket.assigns.website_attribution
         )
       else
         send_existing_accounts_email(registration.email, existing_accounts)
@@ -594,10 +598,16 @@ defmodule PortalWeb.SignUp do
     )
   end
 
-  @spec send_verification_email(String.t(), String.t(), String.t()) ::
+  @spec send_verification_email(String.t(), String.t(), String.t(), map() | nil) ::
           {:ok, any()} | {:error, any()}
-  defp send_verification_email(email, company_name, actor_name) do
-    payload = %{email: email, company_name: company_name, actor_name: actor_name}
+  defp send_verification_email(email, company_name, actor_name, website_attribution) do
+    payload = %{
+      email: email,
+      company_name: company_name,
+      actor_name: actor_name,
+      website_attribution: website_attribution
+    }
+
     token = Phoenix.Token.sign(PortalWeb.Endpoint, @sign_up_token_salt, payload)
     sign_up_url = url(~p"/verify_sign_up?token=#{token}")
 
@@ -741,7 +751,7 @@ defmodule PortalWeb.SignUp do
            email: email,
            company_name: company_name,
            actor_name: actor_name
-         },
+         } = registration_claims,
          user_agent,
          real_ip
        ) do
@@ -756,14 +766,21 @@ defmodule PortalWeb.SignUp do
           actor: %{name: actor_name}
         }
 
-        handle_registration_result(socket, register_account(registration, user_agent, real_ip))
+        handle_registration_result(
+          socket,
+          register_account(registration, user_agent, real_ip),
+          Map.get(registration_claims, :website_attribution)
+        )
     end
   end
 
   defp handle_registration_result(
          socket,
-         {:ok, %{account: account, provider: provider, actor: actor}}
+         {:ok, %{account: account, provider: provider, actor: actor}},
+         website_attribution
        ) do
+    Portal.Analytics.PostHog.identify_actor(actor, account, website_attribution)
+
     assign(socket,
       step: :account_created,
       account: account,
@@ -772,11 +789,11 @@ defmodule PortalWeb.SignUp do
     )
   end
 
-  defp handle_registration_result(socket, {:error, :stripe_provision}) do
+  defp handle_registration_result(socket, {:error, :stripe_provision}, _website_attribution) do
     sign_up_error(socket, "We encountered a temporary error. Please try again.")
   end
 
-  defp handle_registration_result(socket, {:error, _, _, _}) do
+  defp handle_registration_result(socket, {:error, _, _, _}, _website_attribution) do
     sign_up_error(socket, "We encountered an error creating your account. Please try again.")
   end
 
