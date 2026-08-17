@@ -13,6 +13,7 @@ import UserNotifications
 
 public enum NotificationIndentifier: String {
   case sessionEndedNotificationCategory
+  case administratorActionRequiredNotificationCategory
   case signInNotificationAction
   case dismissNotificationAction
 }
@@ -38,14 +39,25 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
         title: "Dismiss",
         options: [])
 
-      let certificateExpiryCategory = UNNotificationCategory(
+      let sessionEndedCategory = UNNotificationCategory(
         identifier: NotificationIndentifier.sessionEndedNotificationCategory.rawValue,
         actions: [signInAction, dismissAction],
         intentIdentifiers: [],
         hiddenPreviewsBodyPlaceholder: "",
         options: [])
 
-      notificationCenter.setNotificationCategories([certificateExpiryCategory])
+      let administratorActionRequiredCategory = UNNotificationCategory(
+        identifier: NotificationIndentifier.administratorActionRequiredNotificationCategory
+          .rawValue,
+        actions: [dismissAction],
+        intentIdentifiers: [],
+        hiddenPreviewsBodyPlaceholder: "",
+        options: [])
+
+      notificationCenter.setNotificationCategories([
+        sessionEndedCategory,
+        administratorActionRequiredCategory,
+      ])
     #endif
   }
 
@@ -125,28 +137,48 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
     }
 
     nonisolated public static func showDeviceAttestationFailureNotificationiOS(_ message: String) {
+      showAdministratorActionRequiredNotificationiOS(
+        identifier: "FirezoneDeviceAttestationFailed",
+        title: "Device attestation failed",
+        message: message
+      )
+    }
+
+    nonisolated public static func showX509ConnectionFailureNotificationiOS(_ message: String) {
+      showAdministratorActionRequiredNotificationiOS(
+        identifier: "FirezoneX509ConnectionFailed",
+        title: "Firezone disconnected",
+        message: message
+      )
+    }
+
+    nonisolated private static func showAdministratorActionRequiredNotificationiOS(
+      identifier: String,
+      title: String,
+      message: String
+    ) {
       UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
         guard notificationSettings.authorizationStatus == .authorized else {
-          Log.warning("Cannot show device-attestation failure notification: notifications denied")
+          Log.warning("Cannot show administrator-action notification: notifications denied")
           return
         }
 
         let content = UNMutableNotificationContent()
-        content.title = "Device attestation failed"
-        content.body = message
+        content.title = title
+        content.body = SessionAuthenticationMode.x509.failureMessage(message)
         content.sound = .default
         content.categoryIdentifier =
-          NotificationIndentifier.sessionEndedNotificationCategory.rawValue
+          NotificationIndentifier.administratorActionRequiredNotificationCategory.rawValue
         let request = UNNotificationRequest(
-          identifier: "FirezoneDeviceAttestationFailed",
+          identifier: identifier,
           content: content,
           trigger: nil
         )
         UNUserNotificationCenter.current().add(request) { error in
           if let error {
-            Log.error("Failed to show device-attestation notification: \(error)")
+            Log.error("Failed to show administrator-action notification: \(error)")
           } else {
-            Log.info("Device-attestation failure notification shown")
+            Log.info("Administrator-action notification shown")
           }
         }
       }
@@ -164,8 +196,11 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
     }
 
     @MainActor
-    public func showDisconnectedAlertMacOS(_ message: String?) async {
-      await MacOSAlert.showDisconnectedAlert(message)
+    public func showDisconnectedAlertMacOS(
+      _ message: String?,
+      authenticationMode: SessionAuthenticationMode
+    ) async {
+      await MacOSAlert.showDisconnectedAlert(message, authenticationMode: authenticationMode)
     }
   #endif
 }
@@ -177,13 +212,14 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
       didReceive response: UNNotificationResponse,
       withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-      Log.log("\(#function): 'Sign In' clicked in notification")
       let actionId = response.actionIdentifier
       let categoryId = response.notification.request.content.categoryIdentifier
+      Log.log("\(#function): notification response (category=\(categoryId), action=\(actionId))")
       if categoryId == NotificationIndentifier.sessionEndedNotificationCategory.rawValue,
         actionId == NotificationIndentifier.signInNotificationAction.rawValue
       {
         // User clicked on 'Sign In' in the notification
+        Log.log("\(#function): 'Sign In' clicked in session-ended notification")
         Task { @MainActor in
           await signInHandler()
         }

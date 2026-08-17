@@ -296,10 +296,52 @@ pub fn is_active() -> bool {
 }
 
 pub fn set_account_slug(slug: String) {
-    let _ = STATE.try_write(|state| state.set_account_slug(slug.clone()));
+    set_account_slug_or_clear(Some(slug));
+}
+
+pub fn set_account_slug_or_clear(slug: Option<String>) {
+    let _ = STATE.try_write(|state| state.set_account_slug_or_clear(slug.clone()));
+
+    update_user(|user| match slug {
+        Some(slug) => {
+            user.other.insert("account_slug".to_owned(), slug.into());
+        }
+        None => {
+            user.other.remove("account_slug");
+        }
+    });
+}
+
+/// Attaches the account UUID read from a managed certificate.
+pub fn set_account_id(account_id: Option<String>) {
+    let _ = STATE.try_write(|state| state.set_account_id(account_id.clone()));
+
+    update_user(|user| match account_id {
+        Some(account_id) => {
+            user.other
+                .insert("account_id".to_owned(), account_id.into());
+        }
+        None => {
+            user.other.remove("account_id");
+        }
+    });
+}
+
+/// Attaches the actor email read from a managed certificate.
+pub fn set_actor_email(actor_email: Option<String>) {
+    let _ = STATE.try_write(|state| state.set_actor_email(actor_email.clone()));
 
     update_user(|user| {
-        user.other.insert("account_slug".to_owned(), slug.into());
+        user.email.clone_from(&actor_email);
+        match actor_email {
+            Some(actor_email) => {
+                user.other
+                    .insert("actor_email".to_owned(), actor_email.into());
+            }
+            None => {
+                user.other.remove("actor_email");
+            }
+        }
     });
 }
 
@@ -350,6 +392,16 @@ pub fn current_user() -> Option<String> {
 #[doc(hidden)] // Only public for testing.
 pub fn current_account_slug() -> Option<String> {
     STATE.try_read(|state| state.account_slug()).ok().flatten()
+}
+
+#[doc(hidden)] // Only public for testing.
+pub fn current_account_id() -> Option<String> {
+    STATE.try_read(|state| state.account_id()).ok().flatten()
+}
+
+#[doc(hidden)] // Only public for testing.
+pub fn current_actor_email() -> Option<String> {
+    STATE.try_read(|state| state.actor_email()).ok().flatten()
 }
 
 #[doc(hidden)] // Only public for testing.
@@ -455,27 +507,43 @@ fn append_tracing_fields_to_message(mut log: Log) -> Log {
     log
 }
 
-fn insert_user_account_slug_into_log(mut log: Log) -> Log {
-    let Some(account_slug) = current_account_slug() else {
-        return log;
-    };
-
-    log.attributes.insert(
-        "user.account_slug".to_owned(),
-        LogAttribute::from(account_slug),
-    );
+fn insert_user_attributes_into_log(mut log: Log) -> Log {
+    if let Some(account_slug) = current_account_slug() {
+        log.attributes.insert(
+            "user.account_slug".to_owned(),
+            LogAttribute::from(account_slug),
+        );
+    }
+    if let Some(account_id) = current_account_id() {
+        log.attributes
+            .insert("user.account_id".to_owned(), LogAttribute::from(account_id));
+    }
+    if let Some(actor_email) = current_actor_email() {
+        log.attributes.insert(
+            "user.actor_email".to_owned(),
+            LogAttribute::from(actor_email),
+        );
+    }
 
     log
 }
 
-fn insert_user_account_slug_into_metric(mut metric: Metric) -> Metric {
-    let Some(account_slug) = current_account_slug() else {
-        return metric;
-    };
-
-    metric
-        .attributes
-        .insert("user.account_slug".into(), LogAttribute::from(account_slug));
+fn insert_user_attributes_into_metric(mut metric: Metric) -> Metric {
+    if let Some(account_slug) = current_account_slug() {
+        metric
+            .attributes
+            .insert("user.account_slug".into(), LogAttribute::from(account_slug));
+    }
+    if let Some(account_id) = current_account_id() {
+        metric
+            .attributes
+            .insert("user.account_id".into(), LogAttribute::from(account_id));
+    }
+    if let Some(actor_email) = current_actor_email() {
+        metric
+            .attributes
+            .insert("user.actor_email".into(), LogAttribute::from(actor_email));
+    }
 
     metric
 }

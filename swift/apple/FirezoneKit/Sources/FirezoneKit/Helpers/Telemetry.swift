@@ -10,10 +10,48 @@ public enum Telemetry {
   /// Sets the Sentry user on both the scope (for error events) and log attributes.
   public static func setUser(firezoneId: String, accountSlug: String) {
     Log.info("Configuring Sentry user: firezone_id=\(firezoneId), account_slug=\(accountSlug)")
-    Log.setUser(firezoneId: firezoneId, accountSlug: accountSlug)
+    setUser(
+      firezoneId: firezoneId,
+      accountSlug: accountSlug,
+      accountId: nil,
+      actorEmail: nil
+    )
+  }
+
+  /// Uses the stable account ID and certificate email when no web-auth session exists.
+  public static func setUser(firezoneId: String, accountId: String, actorEmail: String) {
+    Log.info(
+      "Configuring Sentry user from X.509 identity: "
+        + "firezone_id=\(firezoneId), account_id=\(accountId)"
+    )
+    setUser(
+      firezoneId: firezoneId,
+      accountSlug: nil,
+      accountId: accountId,
+      actorEmail: actorEmail
+    )
+  }
+
+  private static func setUser(
+    firezoneId: String,
+    accountSlug: String?,
+    accountId: String?,
+    actorEmail: String?
+  ) {
+    Log.setUser(
+      firezoneId: firezoneId,
+      accountSlug: accountSlug,
+      accountId: accountId,
+      actorEmail: actorEmail
+    )
     SentrySDK.configureScope { scope in
       let user = User(userId: firezoneId)
-      user.data = ["account_slug": accountSlug]
+      user.email = actorEmail
+      user.data = [
+        "account_slug": accountSlug,
+        "account_id": accountId,
+        "actor_email": actorEmail,
+      ].compactMapValues { $0 }
       scope.setUser(user)
     }
   }

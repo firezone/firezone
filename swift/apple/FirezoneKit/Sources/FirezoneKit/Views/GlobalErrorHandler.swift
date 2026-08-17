@@ -11,10 +11,12 @@ import SwiftUI
 public class ErrorAlert: Identifiable {
   var title: String
   var error: Error
+  var message: String?
 
-  public init(title: String = "An error occurred", error: Error) {
+  public init(title: String = "An error occurred", error: Error, message: String? = nil) {
     self.title = title
     self.error = error
+    self.message = message
   }
 }
 

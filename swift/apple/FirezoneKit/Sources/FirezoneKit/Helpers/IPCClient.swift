@@ -11,12 +11,12 @@ import SystemPackage
 // TODO: Use a more abstract IPC protocol to make this less terse
 
 public enum IPCClient {
-  enum Error: Swift.Error {
+  enum Error: LocalizedError {
     case decodeIPCDataFailed
     case noIPCData
     case invalidStatus(NEVPNStatus)
 
-    var localizedDescription: String {
+    var errorDescription: String? {
       switch self {
       case .decodeIPCDataFailed:
         return "Decoding IPC data failed."
@@ -183,19 +183,41 @@ public enum IPCClient {
   ) async throws -> Data? {
     let isCycleStart = try await maybeCycleStart(session)
 
-    defer {
-      if isCycleStart { session.stopTunnel() }
+    do {
+      let response = try await withCheckedThrowingContinuation { continuation in
+        do {
+          try session.sendProviderMessage(encoder.encode(message)) { data in
+            continuation.resume(returning: data)
+          }
+        } catch {
+          continuation.resume(throwing: error)
+        }
+      }
+
+      if isCycleStart { await stopCycleStartedTunnel(session) }
+      return response
+    } catch {
+      if isCycleStart { await stopCycleStartedTunnel(session) }
+      throw error
+    }
+  }
+
+  /// Waits for a temporary IPC-only tunnel to finish stopping before the caller
+  /// starts observing or reconnecting it. Otherwise its final status changes can
+  /// be mistaken for a real connection and start state polling against an invalid
+  /// session.
+  private static func stopCycleStartedTunnel(_ session: any TunnelSessionProtocol) async {
+    session.stopTunnel()
+
+    for _ in 0..<100 {
+      if [.disconnected, .invalid].contains(session.status) { return }
+      try? await Task.sleep(nanoseconds: 100_000_000)
     }
 
-    return try await withCheckedThrowingContinuation { continuation in
-      do {
-        try session.sendProviderMessage(encoder.encode(message)) { data in
-          continuation.resume(returning: data)
-        }
-      } catch {
-        continuation.resume(throwing: error)
-      }
-    }
+    Log.warning(
+      "Timed out waiting for the temporary IPC tunnel to stop "
+        + "(status=\(session.status))"
+    )
   }
 
   /// On macOS, the tunnel needs to be in a connected, connecting, or reasserting state for the utun to be removed

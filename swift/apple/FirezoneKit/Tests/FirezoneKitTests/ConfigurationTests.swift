@@ -683,6 +683,93 @@ struct ConfigurationTests {
     #expect(factory.createCount == 0)
   }
 
+  #if os(macOS)
+    @Test("VPNConfigurationManager repairs a managed system extension configuration")
+    @MainActor
+    func vpnConfigurationManagerRepairsManagedSystemExtensionConfiguration() async throws {
+      let identityReference = Data([0x01, 0x02, 0x03])
+      let providerConfiguration = [
+        Configuration.Keys.authURL: "https://managed.example.com",
+        Configuration.Keys.accountSlug: "managed-account",
+      ]
+      let mdmManager = MockTunnelProviderManager()
+      mdmManager.localizedDescription = "Corporate Firezone"
+      let mdmProtocol = NETunnelProviderProtocol()
+      mdmProtocol.providerBundleIdentifier = nil
+      mdmProtocol.providerConfiguration = providerConfiguration
+      mdmProtocol.identityReference = identityReference
+      mdmProtocol.serverAddress = "127.0.0.1"
+      mdmManager.protocolConfiguration = mdmProtocol
+
+      let vpnConfigurationManager = VPNConfigurationManager(
+        from: mdmManager,
+        isManaged: true
+      )
+      let repaired =
+        try await vpnConfigurationManager
+        .repairManagedSystemExtensionConfigurationIfNeeded(
+          providerBundleIdentifier: Self.testProviderBundleIdentifier
+        )
+
+      #expect(repaired)
+      #expect(mdmProtocol.providerBundleIdentifier == Self.testProviderBundleIdentifier)
+      #expect(mdmProtocol.identityReference == identityReference)
+      #expect(mdmProtocol.providerConfiguration as? [String: String] == providerConfiguration)
+      #expect(mdmProtocol.serverAddress == "127.0.0.1")
+      #expect(mdmManager.localizedDescription == "Corporate Firezone")
+      #expect(mdmManager.saveCount == 1)
+      #expect(mdmManager.loadCount == 1)
+    }
+
+    @Test("VPNConfigurationManager does not rewrite an already linked managed configuration")
+    @MainActor
+    func vpnConfigurationManagerDoesNotRewriteLinkedManagedConfiguration() async throws {
+      let mdmManager = MockTunnelProviderManager()
+      let mdmProtocol = NETunnelProviderProtocol()
+      mdmProtocol.providerBundleIdentifier = Self.testProviderBundleIdentifier
+      mdmProtocol.identityReference = Data([0x01])
+      mdmManager.protocolConfiguration = mdmProtocol
+
+      let vpnConfigurationManager = VPNConfigurationManager(
+        from: mdmManager,
+        isManaged: true
+      )
+      let repaired =
+        try await vpnConfigurationManager
+        .repairManagedSystemExtensionConfigurationIfNeeded(
+          providerBundleIdentifier: Self.testProviderBundleIdentifier
+        )
+
+      #expect(!repaired)
+      #expect(mdmManager.saveCount == 0)
+      #expect(mdmManager.loadCount == 0)
+    }
+
+    @Test("VPNConfigurationManager does not repair a managed configuration without an identity")
+    @MainActor
+    func vpnConfigurationManagerDoesNotRepairManagedConfigurationWithoutIdentity() async throws {
+      let mdmManager = MockTunnelProviderManager()
+      let mdmProtocol = NETunnelProviderProtocol()
+      mdmProtocol.providerBundleIdentifier = nil
+      mdmManager.protocolConfiguration = mdmProtocol
+
+      let vpnConfigurationManager = VPNConfigurationManager(
+        from: mdmManager,
+        isManaged: true
+      )
+      let repaired =
+        try await vpnConfigurationManager
+        .repairManagedSystemExtensionConfigurationIfNeeded(
+          providerBundleIdentifier: Self.testProviderBundleIdentifier
+        )
+
+      #expect(!repaired)
+      #expect(mdmProtocol.providerBundleIdentifier == nil)
+      #expect(mdmManager.saveCount == 0)
+      #expect(mdmManager.loadCount == 0)
+    }
+  #endif
+
   @Test("VPNConfigurationManager does not create a duplicate when a configuration exists")
   @MainActor
   func vpnConfigurationManagerDoesNotCreateDuplicate() async throws {

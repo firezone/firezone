@@ -21,12 +21,21 @@ import UserNotifications
 // TODO: Move some state logic to view models
 public final class Store: ObservableObject {
   @Published private(set) var actorName: String
+  @Published private(set) var certificateUserIdentity: X509UserIdentity?
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
   @Published private(set) var connectedDevices: [ConnectedDevice] = []
 
   // Encapsulate Tunnel status here to make it easier for other components to observe
   @Published public private(set) var vpnStatus: NEVPNStatus?
+
+  var authenticationMode: SessionAuthenticationMode {
+    certificateUserIdentity == nil ? .token : .x509
+  }
+
+  #if os(macOS)
+    @Published private(set) var isDrainingFlowLogsOnLaunch = false
+  #endif
 
   // Hash of the last tunnel state snapshot received from the network extension.
   private var tunnelStateHash = Data()
@@ -105,6 +114,7 @@ public final class Store: ObservableObject {
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
       self.actorName = self.configuration.actorName
+      self.certificateUserIdentity = nil
       self.shownAlertIds = Set(userDefaults.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
     }
@@ -122,6 +132,7 @@ public final class Store: ObservableObject {
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
       self.actorName = self.configuration.actorName
+      self.certificateUserIdentity = nil
       self.shownAlertIds = Set(userDefaults.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
     }
@@ -129,7 +140,7 @@ public final class Store: ObservableObject {
 
   private func postInit() {
     self.sessionNotification.signInHandler = {
-      do { try await WebAuthSession.signIn(store: self) } catch { Log.error(error) }
+      do { try await self.connect() } catch { Log.error(error) }
     }
 
     // We monitor for configuration changes and persist them to the VPN provider configuration.
@@ -280,14 +291,22 @@ public final class Store: ObservableObject {
               let reason = nsError.userInfo["reason"] as? String,
               let id = nsError.userInfo["id"] as? String
             {
+              let reportedAuthenticationMode =
+                (nsError.userInfo[ConnlibError.authenticationModeUserInfoKey] as? String)
+                .flatMap(SessionAuthenticationMode.init(rawValue:))
+
               // Only show the alert if we haven't shown this specific error before
               Task { @MainActor in
                 guard !self.shownAlertIds.contains(id) else { return }
-                switch code {
-                case .sessionExpired:
+                let authenticationMode = reportedAuthenticationMode ?? self.authenticationMode
+                switch (code, authenticationMode) {
+                case (.sessionExpired, .token):
                   await self.sessionNotification.showSignedOutAlertMacOS(reason)
-                case .disconnected:
-                  await self.sessionNotification.showDisconnectedAlertMacOS(reason)
+                case (.sessionExpired, .x509), (.disconnected, _):
+                  await self.sessionNotification.showDisconnectedAlertMacOS(
+                    reason,
+                    authenticationMode: authenticationMode
+                  )
                 }
                 self.markAlertAsShown(id)
               }
@@ -384,6 +403,7 @@ public final class Store: ObservableObject {
       actorName = configuration.actorName
       await seedInitialSyncedSnapshot()
       self.vpnConfigurationManager = manager
+      try await refreshCertificateUserIdentity()
       SharedAccess.markAppRunning()
     } else {
       self.vpnStatus = .invalid
@@ -410,6 +430,7 @@ public final class Store: ObservableObject {
     try await manager().loadConfiguration(into: configuration, userDefaults: userDefaults)
     actorName = configuration.actorName
     await seedInitialSyncedSnapshot()
+    try await refreshCertificateUserIdentity()
 
     try await setupTunnelObservers()
     SharedAccess.markAppRunning()
@@ -436,6 +457,7 @@ public final class Store: ObservableObject {
     else { return }
 
     self.vpnConfigurationManager = manager
+    try await refreshCertificateUserIdentity()
 
     // Releasing it cancels it, and clearing it lets the observers be set up again.
     vpnStatusTask = nil
@@ -531,6 +553,32 @@ public final class Store: ObservableObject {
     session.stopTunnel()
   }
 
+  /// Connects directly with the managed certificate when it carries a complete
+  /// Firezone user identity. Otherwise this falls back to interactive sign-in.
+  func connect() async throws {
+    try await refreshCertificateUserIdentity()
+
+    guard let certificateUserIdentity else {
+      try await WebAuthSession.signIn(store: self)
+      return
+    }
+
+    Log.info(
+      "Connecting with the managed X.509 user identity "
+        + "(accountId=\(certificateUserIdentity.accountId))"
+    )
+    try await manager().save(configuration: configuration)
+    try await manager().enable()
+
+    shownAlertIds.removeAll()
+    userDefaults.removeObject(forKey: "shownAlertIds")
+
+    guard let session = try manager().session() else {
+      throw VPNConfigurationManagerError.managerNotInitialized
+    }
+    try IPCClient.start(session: session)
+  }
+
   func signIn(authResponse: AuthResponse) async throws {
     let actorName = authResponse.actorName
     let accountSlug = authResponse.accountSlug
@@ -562,6 +610,16 @@ public final class Store: ObservableObject {
     try await IPCClient.signOut(session: session)
   }
 
+  /// Certificate-authenticated sessions have no web session or bearer token to
+  /// revoke, so disconnect them without sending the sign-out IPC message.
+  func disconnect() async throws {
+    if certificateUserIdentity != nil {
+      try await stop()
+    } else {
+      try await signOut()
+    }
+  }
+
   func clearLogs() async throws {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
@@ -573,7 +631,7 @@ public final class Store: ObservableObject {
 
   private func fetchAndCacheFirezoneId() {
     if let firezoneId = userDefaults.string(forKey: "encodedFirezoneId") {
-      Telemetry.setUser(firezoneId: firezoneId, accountSlug: configuration.accountSlug)
+      configureUserTelemetry(firezoneId: firezoneId)
       return
     }
 
@@ -584,10 +642,47 @@ public final class Store: ObservableObject {
         else { return }
 
         userDefaults.set(firezoneId, forKey: "encodedFirezoneId")
-        Telemetry.setUser(firezoneId: firezoneId, accountSlug: configuration.accountSlug)
+        self.configureUserTelemetry(firezoneId: firezoneId)
       } catch {
         Log.error(error)
       }
+    }
+  }
+
+  private func refreshCertificateUserIdentity() async throws {
+    let persistentReference = try manager().identityReference()
+    let identity = try await Task.detached {
+      try X509Identity.clientTlsIdentity(persistentReference: persistentReference)
+    }.value
+    let previousIdentity = certificateUserIdentity
+    certificateUserIdentity = identity?.userIdentity
+    actorName = certificateUserIdentity?.email ?? configuration.actorName
+
+    if previousIdentity != certificateUserIdentity {
+      if let certificateUserIdentity {
+        Log.info(
+          "Managed X.509 identity is eligible for certificate user authentication "
+            + "(accountId=\(certificateUserIdentity.accountId))"
+        )
+      } else {
+        Log.info("Managed X.509 identity is not eligible for certificate user authentication")
+      }
+    }
+
+    if let firezoneId = userDefaults.string(forKey: "encodedFirezoneId") {
+      configureUserTelemetry(firezoneId: firezoneId)
+    }
+  }
+
+  private func configureUserTelemetry(firezoneId: String) {
+    if let certificateUserIdentity {
+      Telemetry.setUser(
+        firezoneId: firezoneId,
+        accountId: certificateUserIdentity.accountId,
+        actorEmail: certificateUserIdentity.email
+      )
+    } else {
+      Telemetry.setUser(firezoneId: firezoneId, accountSlug: configuration.accountSlug)
     }
   }
 
@@ -684,6 +779,8 @@ public final class Store: ObservableObject {
         session.status == .disconnected
       else { return }
 
+      isDrainingFlowLogsOnLaunch = true
+      defer { isDrainingFlowLogsOnLaunch = false }
       await drainFlowLogs()
     }
   #endif

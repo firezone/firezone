@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Firezone custom VPN + identity template for macOS.
+
+  IMPORTANT: This is a template, not a directly deployable Intune Cloud PKI
+  profile. Replace every REPLACE_WITH_* value. In particular, Intune must
+  generate the SCEP Challenge separately for every targeted device. A static
+  challenge copied into this file will expire and must not be reused.
+
+  The SCEP and VPN payloads intentionally live in the same configuration
+  profile. Apple requires PayloadCertificateUUID to refer to a certificate
+  payload in this same profile.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadContent</key>
+			<dict>
+				<key>URL</key>
+				<string>REPLACE_WITH_SCEP_URL</string>
+				<key>Name</key>
+				<string>REPLACE_WITH_SCEP_CA_NAME</string>
+				<key>Subject</key>
+				<array>
+					<array>
+						<array>
+							<string>CN</string>
+							<string>dev.firezone.device-trust</string>
+						</array>
+					</array>
+				</array>
+				<key>SubjectAltName</key>
+				<dict>
+					<key>uniformResourceIdentifier</key>
+					<string>firezone://serial/{{serialnumber}},firezone://intune-id/{{deviceid}}</string>
+				</dict>
+				<key>Challenge</key>
+				<string>REPLACE_WITH_PER_DEVICE_INTUNE_SCEP_CHALLENGE</string>
+				<key>Keysize</key>
+				<integer>2048</integer>
+				<key>Key Type</key>
+				<string>RSA</string>
+				<key>Key Usage</key>
+				<integer>5</integer>
+				<key>KeyIsExtractable</key>
+				<false/>
+				<key>AllowAllAppsAccess</key>
+				<true/>
+			</dict>
+			<key>PayloadDescription</key>
+			<string>Requests the Firezone device identity.</string>
+			<key>PayloadDisplayName</key>
+			<string>Firezone Device Identity</string>
+			<key>PayloadIdentifier</key>
+			<string>dev.firezone.firezone.intune.identity</string>
+			<key>PayloadOrganization</key>
+			<string>Firezone</string>
+			<key>PayloadType</key>
+			<string>com.apple.security.scep</string>
+			<key>PayloadUUID</key>
+			<string>7BC51C91-364F-4F52-B3B3-26508875E53F</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>OverridePrimary</key>
+			<integer>0</integer>
+			<key>UserDefinedName</key>
+			<string>Firezone</string>
+			<key>VendorConfig</key>
+			<dict>
+				<key>accountSlug</key>
+				<string>REPLACE_WITH_FIREZONE_ACCOUNT_SLUG</string>
+				<key>apiURL</key>
+				<string>wss://api.firezone.dev</string>
+				<key>authURL</key>
+				<string>https://app.firezone.dev</string>
+				<key>internetResourceEnabled</key>
+				<string>false</string>
+				<key>logFilter</key>
+				<string>info</string>
+			</dict>
+			<key>VPN</key>
+			<dict>
+				<key>AuthenticationMethod</key>
+				<string>Certificate</string>
+				<key>OnDemandEnabled</key>
+				<integer>0</integer>
+				<key>PayloadCertificateUUID</key>
+				<string>7BC51C91-364F-4F52-B3B3-26508875E53F</string>
+				<key>ProviderBundleIdentifier</key>
+				<string>dev.firezone.firezone.network-extension</string>
+				<key>ProviderDesignatedRequirement</key>
+				<string>identifier "dev.firezone.firezone.network-extension" and anchor apple generic and entitlement["com.apple.developer.team-identifier"] = "47R2M6779T"</string>
+				<key>ProviderType</key>
+				<string>packet-tunnel</string>
+				<key>RemoteAddress</key>
+				<string>127.0.0.1</string>
+			</dict>
+			<key>VPNSubType</key>
+			<string>dev.firezone.firezone</string>
+			<key>VPNType</key>
+			<string>VPN</string>
+			<key>PayloadDescription</key>
+			<string>Configures the Firezone packet tunnel system extension.</string>
+			<key>PayloadDisplayName</key>
+			<string>Firezone VPN</string>
+			<key>PayloadIdentifier</key>
+			<string>dev.firezone.firezone.intune.vpn</string>
+			<key>PayloadOrganization</key>
+			<string>Firezone</string>
+			<key>PayloadType</key>
+			<string>com.apple.vpn.managed</string>
+			<key>PayloadUUID</key>
+			<string>774DC82E-EB47-4EB5-AAB5-061B7421B819</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Configures Firezone with an MDM-provisioned X.509 device identity.</string>
+	<key>PayloadDisplayName</key>
+	<string>Firezone VPN and Device Identity</string>
+	<key>PayloadIdentifier</key>
+	<string>dev.firezone.firezone.intune</string>
+	<key>PayloadOrganization</key>
+	<string>Firezone</string>
+	<key>PayloadRemovalDisallowed</key>
+	<true/>
+	<key>PayloadScope</key>
+	<string>User</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>41908303-3729-41AB-931B-818D14231655</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

@@ -108,17 +108,35 @@ public enum X509SignatureScheme: Sendable {
   case ecdsaNistp521Sha512
 }
 
+/// User authentication attributes carried by a managed client certificate.
+public struct X509UserIdentity: Equatable, Sendable {
+  public let email: String
+  public let accountId: String
+
+  public init(email: String, accountId: String) {
+    self.email = email
+    self.accountId = accountId
+  }
+}
+
 public final class X509ClientTlsIdentity: @unchecked Sendable {
   private let certificates: [Data]
   private let privateKey: SecKey
   private let schemes: [X509SignatureScheme]
   public let mdmDeviceId: String?
+  public let userIdentity: X509UserIdentity?
 
-  fileprivate init(certificates: [Data], privateKey: SecKey, mdmDeviceId: String?) throws {
+  fileprivate init(
+    certificates: [Data],
+    privateKey: SecKey,
+    mdmDeviceId: String?,
+    userIdentity: X509UserIdentity?
+  ) throws {
     self.certificates = certificates
     self.privateKey = privateKey
     self.schemes = try X509Identity.supportedSignatureSchemes(privateKey: privateKey)
     self.mdmDeviceId = mdmDeviceId
+    self.userIdentity = userIdentity
   }
 
   public func certificateChain() throws -> [Data] {
@@ -144,10 +162,23 @@ public final class X509ClientTlsIdentity: @unchecked Sendable {
         &signingError
       ) as Data?
     else {
-      let message = signingError?.takeRetainedValue().localizedDescription ?? "unknown error"
+      let message = signingFailureMessage(signingError?.takeRetainedValue())
       throw X509IdentityError.signingFailed(message)
     }
     return signature
+  }
+
+  private func signingFailureMessage(_ error: CFError?) -> String {
+    guard let error else { return "unknown error" }
+    guard CFErrorGetCode(error) == CFIndex(errSecInteractionNotAllowed) else {
+      return error.localizedDescription
+    }
+
+    Log.error(
+      "X.509 private-key signing was denied because user interaction is unavailable "
+        + "(status=\(CFErrorGetCode(error)), description=\(error.localizedDescription))"
+    )
+    return SessionAuthenticationMode.unusableX509PrivateKeyMessage
   }
 }
 
@@ -177,16 +208,19 @@ public enum X509Identity {
     let certificateData = SecCertificateCopyData(certificate) as Data
     let certificates = copyCertificateChain(leaf: certificate)
     let mdmDeviceId = mdmDeviceId(certificateData: certificateData)
+    let userIdentity = userIdentity(certificateData: certificateData)
     Log.info(
       "Loaded VPN identity for mutual TLS "
         + "(certificates=\(certificates.count), fingerprint=\(sha256Hex(certificateData)), "
-        + "mdmDeviceId=\(mdmDeviceId ?? "Unavailable"))"
+        + "mdmDeviceId=\(mdmDeviceId ?? "Unavailable"), "
+        + "certificateUserAuth=\(userIdentity == nil ? "unavailable" : "available"))"
     )
 
     return try X509ClientTlsIdentity(
       certificates: certificates,
       privateKey: privateKey,
-      mdmDeviceId: mdmDeviceId
+      mdmDeviceId: mdmDeviceId,
+      userIdentity: userIdentity
     )
   }
 
@@ -250,6 +284,17 @@ public enum X509Identity {
           label: "Normalized Issuer (DER)", value: describeData(normalizedIssuer)))
     }
 
+    let subjectAlternativeNameFields = subjectAlternativeNameFields(
+      certificateData: certificateData)
+    let firezoneAttributeFields = firezoneAttributeFields(certificateData: certificateData)
+
+    if !firezoneAttributeFields.isEmpty {
+      sections.insert(
+        X509DetailSection(title: "Identity Attributes", fields: firezoneAttributeFields),
+        at: 0
+      )
+    }
+
     var subjectFieldInsertionIndex = 2
     if let commonName = commonName(certificate) {
       certificateFields.insert(X509DetailField(label: "Common Name", value: commonName), at: 2)
@@ -257,11 +302,10 @@ public enum X509Identity {
     }
     certificateFields.insert(
       X509DetailField(
-        label: "Subject alternative names",
-        value: subjectAlternativeNames(certificateData: certificateData)
+        label: "Subject Alternative Name Count",
+        value: String(subjectAlternativeNameFields.count)
       ),
-      at: subjectFieldInsertionIndex
-    )
+      at: subjectFieldInsertionIndex)
     let emailAddresses = emailAddresses(certificate)
     if !emailAddresses.isEmpty {
       certificateFields.append(
@@ -272,6 +316,14 @@ public enum X509Identity {
         X509DetailField(label: "Serial Number", value: hex(serialNumber, separator: ":")))
     }
     sections.append(X509DetailSection(title: "Leaf Certificate", fields: certificateFields))
+    sections.append(
+      X509DetailSection(
+        title: "Subject Alternative Names (SAN)",
+        fields: subjectAlternativeNameFields.isEmpty
+          ? [X509DetailField(label: "Values", value: "None")]
+          : subjectAlternativeNameFields
+      )
+    )
 
     #if os(macOS)
       sections.append(

@@ -31,7 +31,11 @@ import SwiftUI
       switch store.vpnStatus {
       case .connected:
         if store.configuration.publishedHideResourceList {
-          Text("Signed in as \(store.actorName)")
+          Text(
+            store.certificateUserIdentity == nil
+              ? "Signed in as \(store.actorName)"
+              : "Connected as \(store.actorName)"
+          )
         } else {
           switch store.resourceList {
           case .loaded(let resources):
@@ -72,7 +76,11 @@ import SwiftUI
       case .invalid:
         Text("VPN permission doesn't seem to be granted.")
       case .disconnected:
-        Text("Signed out. Please sign in again to connect to Resources.")
+        if let identity = store.certificateUserIdentity {
+          Text("Disconnected. Connect as \(identity.email) to access Resources.")
+        } else {
+          Text("Signed out. Please sign in again to connect to Resources.")
+        }
       @unknown default:
         Text("Unknown status. Please report this and attach your logs.")
       }

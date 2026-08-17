@@ -12,7 +12,7 @@ import Testing
 
 // `@unchecked Sendable`: IPCClient and these tests are `@MainActor`, so all access is too.
 private final class RecordingTunnelSession: TunnelSessionProtocol, @unchecked Sendable {
-  let status: NEVPNStatus
+  private(set) var status: NEVPNStatus
 
   private(set) var startTunnelCallCount = 0
   private(set) var stopTunnelCallCount = 0
@@ -27,10 +27,14 @@ private final class RecordingTunnelSession: TunnelSessionProtocol, @unchecked Se
   // swiftlint:disable:next discouraged_optional_collection
   func startTunnel(options: [String: Any]?) throws {
     startTunnelCallCount += 1
+    if options?["cycleStart"] as? Bool == true {
+      status = .connecting
+    }
   }
 
   func stopTunnel() {
     stopTunnelCallCount += 1
+    status = .disconnected
   }
 
   func sendProviderMessage(_ messageData: Data, responseHandler: ((Data?) -> Void)?) throws {

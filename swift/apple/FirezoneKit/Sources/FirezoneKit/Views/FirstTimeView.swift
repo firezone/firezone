@@ -23,7 +23,9 @@ import SwiftUI
             .padding(.horizontal, 10)
           Spacer()
           Text(
-            "You can sign in by clicking the Firezone icon in the macOS menu bar or clicking 'Open menu' below."
+            store.authenticationMode == .x509
+              ? "You can connect by clicking the Firezone icon in the macOS menu bar or clicking 'Open menu' below."
+              : "You can sign in by clicking the Firezone icon in the macOS menu bar or clicking 'Open menu' below."
           )
           .font(.body)
           .multilineTextAlignment(.center)

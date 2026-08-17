@@ -24,23 +24,29 @@ struct WelcomeView: View {
           .padding(.horizontal, 10)
           .padding(.vertical, 10)
         Text(
-          """
-            Welcome to Firezone.
-            Sign in to access Resources.
-          """
+          store.authenticationMode == .x509
+            ? "Welcome to Firezone.\nConnect to access Resources."
+            : "Welcome to Firezone.\nSign in to access Resources."
         ).multilineTextAlignment(.center)
           .padding(.bottom, 10)
-        Button("Sign in") {
+        Button(
+          store.certificateUserIdentity.map { "Connect as \($0.email)" } ?? "Sign in"
+        ) {
           Task {
             do {
-              try await WebAuthSession.signIn(store: store)
+              try await store.connect()
             } catch {
               Log.error(error)
 
               self.errorHandler.handle(
                 ErrorAlert(
-                  title: "Error signing in",
-                  error: error
+                  title: store.authenticationMode == .x509
+                    ? "Unable to connect" : "Error signing in",
+                  error: error,
+                  message:
+                    store.authenticationMode == .x509
+                    ? SessionAuthenticationMode.x509.failureMessage(error.localizedDescription)
+                    : nil
                 ))
             }
           }

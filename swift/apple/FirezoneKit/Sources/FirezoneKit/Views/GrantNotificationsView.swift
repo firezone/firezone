@@ -25,7 +25,9 @@ struct GrantNotificationsView: View {
           .padding(.horizontal, 10)
         Spacer()
         Text(
-          "Firezone requires your permission to show local notifications when you need to sign in again."
+          store.authenticationMode == .x509
+            ? "Firezone requires your permission to show local notifications when a connection issue requires administrator support."
+            : "Firezone requires your permission to show local notifications when you need to sign in again."
         )
         .font(.body)
         .multilineTextAlignment(.center)

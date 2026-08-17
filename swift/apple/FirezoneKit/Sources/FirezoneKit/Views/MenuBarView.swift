@@ -51,11 +51,19 @@
     var body: some View {
       switch store.vpnStatus {
       case nil:
-        Text("Loading VPN configurations from system settings…")
-          .foregroundStyle(.secondary)
+        Text(
+          store.isDrainingFlowLogsOnLaunch
+            ? "Uploading pending flow logs…"
+            : "Loading VPN configurations from system settings…"
+        )
+        .foregroundStyle(.secondary)
 
       case .invalid where store.vpnConfigurationManager == nil:
-        Button("Allow the VPN permission to sign in…") {
+        Button(
+          store.authenticationMode == .x509
+            ? "Allow the VPN permission to connect…"
+            : "Allow the VPN permission to sign in…"
+        ) {
           grantPermission()
         }
 
@@ -64,20 +72,26 @@
           .foregroundStyle(.secondary)
 
       case .disconnected:
-        Button("Sign In") {
+        Button(
+          store.certificateUserIdentity.map { "Connect as \($0.email)" } ?? "Sign In"
+        ) {
           signIn()
         }
 
       case .disconnecting:
-        Text("Signing out…")
+        Text(store.certificateUserIdentity == nil ? "Signing out…" : "Disconnecting…")
           .foregroundStyle(.secondary)
 
       case .connected, .reasserting, .connecting:
         Group {
-          Text("Signed in as \(store.actorName)")
-            .foregroundStyle(.secondary)
+          Text(
+            store.certificateUserIdentity == nil
+              ? "Signed in as \(store.actorName)"
+              : "Connected as \(store.actorName)"
+          )
+          .foregroundStyle(.secondary)
 
-          Button("Sign Out") {
+          Button(store.certificateUserIdentity == nil ? "Sign Out" : "Disconnect") {
             signOut()
           }
         }
@@ -91,10 +105,10 @@
     func signIn() {
       Task {
         do {
-          try await WebAuthSession.signIn(store: store)
+          try await store.connect()
         } catch {
           Log.error(error)
-          MacOSAlert.show(for: error)
+          MacOSAlert.show(for: error, authenticationMode: store.authenticationMode)
         }
       }
     }
@@ -102,10 +116,10 @@
     func signOut() {
       Task {
         do {
-          try await store.signOut()
+          try await store.disconnect()
         } catch {
           Log.error(error)
-          MacOSAlert.show(for: error)
+          MacOSAlert.show(for: error, authenticationMode: store.authenticationMode)
         }
       }
     }

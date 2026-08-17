@@ -11,34 +11,42 @@ extension X509Identity {
   /// the subjectAltName extension directly from the certificate DER. Unknown
   /// GeneralName values remain available as DER/Base64 diagnostics.
   static func subjectAlternativeNames(certificateData: Data) -> String {
+    let fields = subjectAlternativeNameFields(certificateData: certificateData)
+    guard !fields.isEmpty else { return "None" }
+    return fields.map { "\($0.label): \($0.value)" }.joined(separator: "\n")
+  }
+
+  /// Returns every SAN as an individual diagnostics row. Intune's combined URI
+  /// GeneralName is expanded so each configured URI appears separately.
+  static func subjectAlternativeNameFields(certificateData: Data) -> [X509DetailField] {
     do {
       guard let extensionValue = try subjectAlternativeNameExtension(in: certificateData) else {
-        return "None"
+        return []
       }
 
       let sequence = try singleElement(in: extensionValue, expectedTag: 0x30)
-      let names = try elements(in: sequence.content)
-      guard !names.isEmpty else { return "None" }
-
-      return try names.map(formatSubjectAlternativeName).joined(separator: "\n")
+      return try elements(in: sequence.content).flatMap { element in
+        do {
+          return try parseSubjectAlternativeName(element)
+        } catch {
+          return [
+            X509DetailField(
+              label: "Parse Error",
+              value:
+                "\(error.localizedDescription)\nDER/Base64 \(element.encoded.base64EncodedString())"
+            )
+          ]
+        }
+      }
     } catch {
-      return "Could not parse (\(error.localizedDescription))"
+      return [
+        X509DetailField(label: "Parse Error", value: error.localizedDescription)
+      ]
     }
   }
 
   static func mdmDeviceId(certificateData: Data) -> String? {
-    guard
-      let extensionValue = try? subjectAlternativeNameExtension(in: certificateData),
-      let sequence = try? singleElement(in: extensionValue, expectedTag: 0x30),
-      let names = try? elements(in: sequence.content)
-    else {
-      return nil
-    }
-
-    let uris = names.compactMap { element -> String? in
-      guard element.tag & 0xC0 == 0x80, Int(element.tag & 0x1F) == 6 else { return nil }
-      return try? stringValue(element.content, context: "URI")
-    }.flatMap(splitCommaJoinedURIs).filter {
+    let uris = uriSubjectAlternativeNames(certificateData: certificateData).filter {
       !$0.lowercased().hasPrefix("tag:microsoft.com,2022-09-14:sid:")
     }
 
@@ -77,6 +85,113 @@ extension X509Identity {
       guard trimmed.count == 36, UUID(uuidString: trimmed) != nil else { return nil }
       return normalizeMdmDeviceId(trimmed)
     }.first
+  }
+
+  /// Returns user authentication attributes only when the leaf contains one
+  /// unambiguous value for each required URI SAN. Intune places all configured
+  /// URI rows in one comma-joined GeneralName, which is expanded by
+  /// `uriSubjectAlternativeNames` before matching these attributes.
+  static func userIdentity(certificateData: Data) -> X509UserIdentity? {
+    guard let email = actorEmail(certificateData: certificateData),
+      let accountId = accountId(certificateData: certificateData)
+    else { return nil }
+
+    return X509UserIdentity(email: email, accountId: accountId)
+  }
+
+  static func actorEmail(certificateData: Data) -> String? {
+    var emails = Set<String>()
+
+    for value in firezoneAttributeValues("email", certificateData: certificateData)
+    where validEmail(value) {
+      emails.insert(value.lowercased())
+    }
+
+    guard emails.count == 1 else { return nil }
+    return emails.first
+  }
+
+  static func accountId(certificateData: Data) -> String? {
+    let accountIds = Set(
+      firezoneAttributeValues("account-id", certificateData: certificateData).compactMap {
+        UUID(uuidString: $0)?.uuidString.lowercased()
+      }
+    )
+
+    guard accountIds.count == 1 else { return nil }
+    return accountIds.first
+  }
+
+  static func deviceSerial(certificateData: Data) -> String? {
+    let serials =
+      firezoneAttributeValues("serial", certificateData: certificateData)
+      + firezoneAttributeValues("apple-serial", certificateData: certificateData)
+    let valuesByNormalizedValue = Dictionary(grouping: serials) {
+      $0.lowercased()
+    }
+
+    guard valuesByNormalizedValue.count == 1 else { return nil }
+    return valuesByNormalizedValue.values.first?.first
+  }
+
+  static func firezoneAttributeFields(certificateData: Data) -> [X509DetailField] {
+    let optionalFields: [X509DetailField?] = [
+      actorEmail(certificateData: certificateData).map {
+        X509DetailField(label: "Actor Email", value: $0)
+      },
+      accountId(certificateData: certificateData).map {
+        X509DetailField(label: "Account ID", value: $0)
+      },
+      mdmDeviceId(certificateData: certificateData).map {
+        X509DetailField(label: "MDM Device ID", value: $0)
+      },
+      deviceSerial(certificateData: certificateData).map {
+        X509DetailField(label: "Device Serial", value: $0)
+      },
+    ]
+    return optionalFields.compactMap { $0 }
+  }
+
+  private static func firezoneAttributeValues(
+    _ expectedAttribute: String,
+    certificateData: Data
+  ) -> [String] {
+    uriSubjectAlternativeNames(certificateData: certificateData).compactMap { uri in
+      guard let separator = uri.range(of: "://") else { return nil }
+      guard String(uri[..<separator.lowerBound]).caseInsensitiveCompare("firezone") == .orderedSame
+      else { return nil }
+
+      let remainder = uri[separator.upperBound...]
+      guard let slash = remainder.firstIndex(of: "/") else { return nil }
+      let attribute = remainder[..<slash].lowercased()
+      guard attribute == expectedAttribute else { return nil }
+
+      let rawValue = String(remainder[remainder.index(after: slash)...])
+      let decodedValue = rawValue.removingPercentEncoding ?? rawValue
+      let value = decodedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+      return validIdentifier(value) ? value : nil
+    }
+  }
+
+  private static func uriSubjectAlternativeNames(certificateData: Data) -> [String] {
+    guard
+      let extensionValue = try? subjectAlternativeNameExtension(in: certificateData),
+      let sequence = try? singleElement(in: extensionValue, expectedTag: 0x30),
+      let names = try? elements(in: sequence.content)
+    else {
+      return []
+    }
+
+    return names.compactMap { element -> String? in
+      guard element.tag & 0xC0 == 0x80, Int(element.tag & 0x1F) == 6 else { return nil }
+      return try? stringValue(element.content, context: "URI")
+    }.flatMap(splitCommaJoinedURIs)
+  }
+
+  private static func validEmail(_ value: String) -> Bool {
+    guard validIdentifier(value), !value.contains(where: { $0.isWhitespace }) else { return false }
+    let parts = value.split(separator: "@", omittingEmptySubsequences: false)
+    return parts.count == 2 && !parts[0].isEmpty && !parts[1].isEmpty
   }
 
   private static func validIdentifier(_ value: String) -> Bool {
@@ -171,7 +286,9 @@ extension X509Identity {
     return nil
   }
 
-  private static func formatSubjectAlternativeName(_ element: DERElement) throws -> String {
+  private static func parseSubjectAlternativeName(_ element: DERElement) throws
+    -> [X509DetailField]
+  {
     guard element.tag & 0xC0 == 0x80, element.tag & 0x1F != 0x1F else {
       throw DERError.malformed(
         String(format: "invalid GeneralName tag 0x%02X", element.tag))
@@ -179,22 +296,24 @@ extension X509Identity {
 
     let type = Int(element.tag & 0x1F)
     let label = generalNameLabel(type)
-    let value: String
+    let values: [String]
 
     switch type {
-    case 1, 2, 6:
-      value = try stringValue(element.content, context: label)
+    case 1, 2:
+      values = [try stringValue(element.content, context: label)]
+    case 6:
+      values = splitCommaJoinedURIs(try stringValue(element.content, context: label))
     case 4:
-      value = try distinguishedName(element.content)
+      values = [try distinguishedName(element.content)]
     case 7:
-      value = try ipAddress(element.content)
+      values = [try ipAddress(element.content)]
     case 8:
-      value = try decodeOID(element.content)
+      values = [try decodeOID(element.content)]
     default:
-      value = "DER/Base64 \(element.encoded.base64EncodedString())"
+      values = ["DER/Base64 \(element.encoded.base64EncodedString())"]
     }
 
-    return "\(label): \(value)"
+    return values.map { X509DetailField(label: label, value: $0) }
   }
 
   private static func generalNameLabel(_ type: Int) -> String {

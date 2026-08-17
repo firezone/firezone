@@ -105,7 +105,7 @@ public struct AppView: View {
         // A freshly installed configuration reports `.invalid` until the system
         // finishes registering it. The `.invalid` + no-manager case is handled
         // above, so reaching here means the configuration is installed and the
-        // user just needs to sign in (which enables it and settles the status).
+        // user just needs to authenticate or connect (which enables it and settles the status).
         IOSNavigationView {
           WelcomeView()
         }

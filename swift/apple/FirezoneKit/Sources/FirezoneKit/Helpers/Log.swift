@@ -33,10 +33,17 @@ public final class Log {
     }
   }
 
-  public static func setUser(firezoneId: String, accountSlug: String) {
+  public static func setUser(
+    firezoneId: String,
+    accountSlug: String?,
+    accountId: String?,
+    actorEmail: String?
+  ) {
     sentryLock.withLock {
       _sentryAttributes["user.id"] = firezoneId
       _sentryAttributes["user.account_slug"] = accountSlug
+      _sentryAttributes["user.account_id"] = accountId
+      _sentryAttributes["user.actor_email"] = actorEmail
     }
   }
 

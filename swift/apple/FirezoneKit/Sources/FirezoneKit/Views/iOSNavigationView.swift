@@ -33,7 +33,7 @@ import SwiftUI
             content: { alert in
               Alert(
                 title: Text(alert.title),
-                message: Text(alert.error.localizedDescription),
+                message: Text(alert.message ?? alert.error.localizedDescription),
                 dismissButton: .default(Text("OK")) {
                   errorHandler.clear()
                 }
@@ -61,13 +61,20 @@ import SwiftUI
     private var authMenu: some View {
       Menu {
         if store.vpnStatus == .connected {
-          Text("Signed in as \(store.actorName)")
+          Text(
+            store.certificateUserIdentity == nil
+              ? "Signed in as \(store.actorName)"
+              : "Connected as \(store.actorName)"
+          )
           Button(
             action: {
               signOutButtonTapped()
             },
             label: {
-              Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+              Label(
+                store.certificateUserIdentity == nil ? "Sign out" : "Disconnect",
+                systemImage: "rectangle.portrait.and.arrow.right"
+              )
             }
           )
         } else {
@@ -77,7 +84,10 @@ import SwiftUI
 
             },
             label: {
-              Label("Sign in", systemImage: "person.crop.circle.fill.badge.plus")
+              Label(
+                store.certificateUserIdentity.map { "Connect as \($0.email)" } ?? "Sign in",
+                systemImage: "person.crop.circle.fill.badge.plus"
+              )
             }
           )
         }
@@ -93,7 +103,6 @@ import SwiftUI
         Button(
           action: {
             // Static URL literal is guaranteed valid
-            // swiftlint:disable:next force_unwrapping
             openURL(URL(string: "https://www.firezone.dev/kb?utm_source=ios=client")!)
           },
           label: {
@@ -108,14 +117,15 @@ import SwiftUI
     func signInButtonTapped() {
       Task {
         do {
-          try await WebAuthSession.signIn(store: store)
+          try await store.connect()
         } catch {
           Log.error(error)
 
           self.errorHandler.handle(
             ErrorAlert(
-              title: "Error signing in",
-              error: error
+              title: store.authenticationMode == .x509 ? "Unable to connect" : "Error signing in",
+              error: error,
+              message: authenticationErrorMessage(error)
             )
           )
         }
@@ -125,18 +135,25 @@ import SwiftUI
     func signOutButtonTapped() {
       Task {
         do {
-          try await store.signOut()
+          try await store.disconnect()
         } catch {
           Log.error(error)
 
           self.errorHandler.handle(
             ErrorAlert(
-              title: "Error signing out",
-              error: error
+              title: store.authenticationMode == .x509
+                ? "Unable to disconnect" : "Error signing out",
+              error: error,
+              message: authenticationErrorMessage(error)
             )
           )
         }
       }
+    }
+
+    private func authenticationErrorMessage(_ error: Error) -> String? {
+      guard store.authenticationMode == .x509 else { return nil }
+      return SessionAuthenticationMode.x509.failureMessage(error.localizedDescription)
     }
 
     private func supportButtonTapped() {

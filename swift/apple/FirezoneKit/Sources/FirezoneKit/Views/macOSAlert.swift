@@ -295,11 +295,18 @@
     }
 
     /// Shows an error alert with a user-friendly message.
-    public static func show(for error: Error) {
-      let message = (error as UserFriendlyError).userMessage() ?? "\(error)"
+    public static func show(
+      for error: Error,
+      authenticationMode: SessionAuthenticationMode? = nil
+    ) {
+      let message =
+        authenticationMode == .x509
+        ? SessionAuthenticationMode.x509.failureMessage(error.localizedDescription)
+        : (error as UserFriendlyError).userMessage() ?? "\(error)"
       let alert = NSAlert()
 
-      alert.messageText = "An error occurred."
+      alert.messageText =
+        authenticationMode == .x509 ? "Firezone connection error" : "An error occurred."
       alert.informativeText = message
       alert.alertStyle = .critical
 
@@ -326,10 +333,13 @@
     }
 
     /// Shows a disconnected alert explaining why Firezone disconnected.
-    public static func showDisconnectedAlert(_ message: String?) async {
+    public static func showDisconnectedAlert(
+      _ message: String?,
+      authenticationMode: SessionAuthenticationMode
+    ) async {
       let alert = NSAlert()
       alert.messageText = "Firezone disconnected"
-      alert.informativeText = message ?? "Firezone has been disconnected."
+      alert.informativeText = authenticationMode.failureMessage(message)
       alert.addButton(withTitle: "OK")
       NSApp.activate(ignoringOtherApps: true)
 

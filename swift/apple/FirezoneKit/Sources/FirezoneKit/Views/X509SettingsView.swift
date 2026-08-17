@@ -17,7 +17,7 @@ struct X509SettingsView: View {
     VStack(alignment: .leading, spacing: 16) {
       HStack(alignment: .firstTextBaseline) {
         VStack(alignment: .leading, spacing: 4) {
-          Text("X.509 Device Identity")
+          Text("X.509")
             .font(.headline)
           Text(
             "Firezone uses this VPN configuration identity to prove device enrollment when connecting. Private-key bytes never leave the Apple Keychain."

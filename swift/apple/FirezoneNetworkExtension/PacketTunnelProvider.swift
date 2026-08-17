@@ -72,15 +72,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Extract token from options before any async work
     let passedToken = options?["token"] as? String
 
-    // Load token synchronously - Keychain access is thread-safe
-    guard let token = loadToken(passedToken: passedToken)
-    else {
-      completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
-      return
-    }
+    // A token is optional when the managed certificate identifies the user.
+    // The Adapter resolves the certificate before selecting the auth mechanism.
+    let token = loadToken(passedToken: passedToken)
 
     // Try to save the token back to the Keychain but continue if we can't
-    handleTokenSave(token)
+    if let token { handleTokenSave(token) }
 
     // The firezone id should be initialized by now
     guard let rawId = defaults.string(forKey: "firezoneId")
@@ -119,7 +116,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     )
 
     Telemetry.setEnvironmentOrClose(apiURL)
-    Telemetry.setUser(firezoneId: firezoneId.encoded, accountSlug: accountSlug)
 
     // Create command channel for Adapter -> Provider communication
     let (commandSender, commandReceiver): (Sender<ProviderCommand>, Receiver<ProviderCommand>) =
@@ -129,6 +125,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       apiURL: apiURL,
       token: token,
       deviceId: firezoneId.uuid,
+      telemetryId: firezoneId.encoded,
       logFilter: logFilter,
       accountSlug: accountSlug,
       internetResourceEnabled: internetResourceEnabled,
@@ -445,9 +442,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     switch command {
     case .cancelWithError(let sendableError):
       let error: Error =
-        sendableError.isAuthenticationError
+        sendableError.isAuthenticationError && sendableError.authenticationMode == .token
         ? FirezoneKit.ConnlibError.sessionExpired(sendableError.message)
-        : FirezoneKit.ConnlibError.disconnected(sendableError.message)
+        : FirezoneKit.ConnlibError.disconnected(
+          sendableError.message,
+          authenticationMode: sendableError.authenticationMode
+        )
       cancelTunnelWithError(error)
 
     case .setReasserting(let value):

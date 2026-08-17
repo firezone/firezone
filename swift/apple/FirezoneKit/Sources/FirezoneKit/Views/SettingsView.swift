@@ -128,6 +128,15 @@ public struct SettingsView: View {
     )
   }
 
+  private var settingsReconnectionMessage: String {
+    switch store.authenticationMode {
+    case .token:
+      return "Some settings require signing out and in again before they take effect."
+    case .x509:
+      return "Some settings require disconnecting and reconnecting before they take effect."
+    }
+  }
+
   public init(store: Store) {
     self.store = store
     self.configuration = store.configuration
@@ -193,7 +202,7 @@ public struct SettingsView: View {
               }
             },
             message: { _ in
-              Text("Some settings require signing out and in again before they take effect.")
+              Text(settingsReconnectionMessage)
             }
           )
         }
@@ -258,7 +267,7 @@ public struct SettingsView: View {
           }
         },
         message: { _ in
-          Text("Some settings require signing out and in again before they take effect.")
+          Text(settingsReconnectionMessage)
         }
       )
     #else

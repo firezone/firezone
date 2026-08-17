@@ -18,6 +18,9 @@ enum AdapterError: Error {
   /// connlib failed to start
   case connlibConnectError(String)
 
+  /// Neither web authentication nor certificate user authentication is available.
+  case authenticationUnavailable
+
   var localizedDescription: String {
     switch self {
     case .invalidSession(let session):
@@ -25,6 +28,8 @@ enum AdapterError: Error {
       return message
     case .connlibConnectError(let error):
       return "connlib failed to start: \(error)"
+    case .authenticationUnavailable:
+      return "No sign-in token is available and the VPN certificate has no complete user identity."
     }
   }
 }
@@ -190,15 +195,18 @@ actor Adapter {
 
   /// Starting parameters
   private let apiURL: String
-  private let token: Token
+  private let token: Token?
   private let deviceId: String
+  private let telemetryId: String
   private let logFilter: String
   private let identityReference: Data?
+  private var authenticationMode: SessionAuthenticationMode?
 
   init(
     apiURL: String,
-    token: Token,
+    token: Token?,
     deviceId: String,
+    telemetryId: String,
     logFilter: String,
     accountSlug: String,
     internetResourceEnabled: Bool,
@@ -208,6 +216,7 @@ actor Adapter {
     self.apiURL = apiURL
     self.token = token
     self.deviceId = deviceId
+    self.telemetryId = telemetryId
     self.logFilter = logFilter
     self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
@@ -219,7 +228,7 @@ actor Adapter {
   }
 
   func start() async throws {
-    Log.log("Adapter.start: Starting session for account: \(accountSlug)")
+    Log.log("Adapter.start: Preparing authenticated session")
 
     // Get device metadata - asynchronously get values from MainActor
     let deviceName: String
@@ -258,14 +267,37 @@ actor Adapter {
     do {
       let x509Identity = try readX509Identity()
       Telemetry.setMdmDeviceId(x509Identity?.mdmDeviceId)
+      let certificateUserIdentity = x509Identity?.userIdentity
+      let authToken: String?
+      if let certificateUserIdentity {
+        authenticationMode = .x509
+        authToken = nil
+        Telemetry.setUser(
+          firezoneId: telemetryId,
+          accountId: certificateUserIdentity.accountId,
+          actorEmail: certificateUserIdentity.email
+        )
+        Log.info(
+          "Using the managed X.509 identity for user authentication "
+            + "(accountId=\(certificateUserIdentity.accountId)); omitting bearer authorization"
+        )
+      } else {
+        guard let token else { throw AdapterError.authenticationUnavailable }
+        authenticationMode = .token
+        authToken = token.description
+        Telemetry.setUser(firezoneId: telemetryId, accountSlug: accountSlug)
+        Log.info("Using the saved web sign-in token for user authentication")
+      }
       let clientTlsIdentity: ClientTlsIdentity =
         x509Identity.map(AppleClientTlsIdentity.init) ?? NoClientTlsIdentity()
 
       session = try Session.newApple(
         apiUrl: apiURL,
-        token: token.description,
+        token: authToken,
         deviceId: deviceId,
-        accountSlug: accountSlug,
+        accountSlug: certificateUserIdentity == nil ? accountSlug : nil,
+        accountId: certificateUserIdentity?.accountId,
+        actorEmail: certificateUserIdentity?.email,
         deviceName: deviceName,
         logDir: logDir,
         logFilter: logFilter,
@@ -549,15 +581,28 @@ actor Adapter {
 
     case .disconnected(let error):
       let errorMessage = error.message()
-      let isAuthenticationError = error.isAuthenticationError()
+      let authenticationMode = authenticationMode ?? .token
+      let isAuthenticationError =
+        authenticationMode == .token && error.isAuthenticationError()
       let isCertificateRevoked = error.isCertificateRevoked()
       let isDeviceTrustError = error.isDeviceTrustError()
-      Log.info("Received Disconnected event: \(errorMessage)")
+      Log.info(
+        "Received Disconnected event "
+          + "(authenticationMode=\(authenticationMode.rawValue), "
+          + "tokenAuthenticationError=\(isAuthenticationError)): \(errorMessage)"
+      )
 
       if isCertificateRevoked {
         do {
           let refreshedIdentity = try readX509Identity()
           Telemetry.setMdmDeviceId(refreshedIdentity?.mdmDeviceId)
+          if let userIdentity = refreshedIdentity?.userIdentity {
+            Telemetry.setUser(
+              firezoneId: telemetryId,
+              accountId: userIdentity.accountId,
+              actorEmail: userIdentity.email
+            )
+          }
           Log.info("Re-read X.509 device identity after certificate revocation")
         } catch {
           Log.error(
@@ -570,12 +615,18 @@ actor Adapter {
       #if os(iOS)
         if isAuthenticationError {
           SessionNotification.showSignedOutNotificationiOS()
+        } else if authenticationMode == .x509 {
+          SessionNotification.showX509ConnectionFailureNotificationiOS(errorMessage)
         } else if isDeviceTrustError {
           SessionNotification.showDeviceAttestationFailureNotificationiOS(errorMessage)
         }
       #endif
 
-      let sendableError = SendableError(errorMessage, isAuthenticationError: isAuthenticationError)
+      let sendableError = SendableError(
+        errorMessage,
+        isAuthenticationError: isAuthenticationError,
+        authenticationMode: authenticationMode
+      )
       providerCommandSender.send(.cancelWithError(sendableError))
 
     case .allGatewaysOffline(let resourceId):
