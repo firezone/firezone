@@ -49,7 +49,7 @@ impl BufferedTransmits {
             },
         };
 
-        let src = match sending_host.egress(src, transmit.dst) {
+        let src = match sending_host.egress(src, transmit.dst, now) {
             Ok(src) => src,
             Err(e) => {
                 tracing::debug!(%src, dst = %transmit.dst, "Edge dropped outbound packet: {e:#}");

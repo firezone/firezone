@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use connlib_model::{ClientId, GatewayId, RelayId, Site, SiteId};
@@ -27,7 +27,7 @@ use crate::resource::{
     CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource,
     StaticDevicePoolResource,
 };
-use crate::sim_net::{EdgeConfig, FilterMode, Host, Mapping, RoutingTable};
+use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
 use crate::stub_portal::StubPortal;
 
 pub(super) fn generate(g: &mut Generator, start: Instant) -> ReferenceState {
@@ -471,9 +471,35 @@ fn arb_edge_config(g: &mut Generator) -> EdgeConfig {
                 _ => FilterMode::PortRestricted,
             };
 
-            EdgeConfig::Nat(Mapping::EndpointIndependent, filter)
+            EdgeConfig::Nat(Mapping::EndpointIndependent, filter, arb_expiry(g))
         }
-        _ => EdgeConfig::Nat(Mapping::EndpointDependent, FilterMode::PortRestricted),
+        _ => EdgeConfig::Nat(
+            Mapping::EndpointDependent,
+            FilterMode::PortRestricted,
+            arb_expiry(g),
+        ),
+    }
+}
+
+/// Samples NAT idle timers found in the wild, from netfilter's 30s unreplied
+/// default up to carrier-grade minutes.
+///
+/// Every timer sits above connlib's 25s keep-alive cadences (the path agent's
+/// `PRIMARY_KEEPALIVE`, snownet's `BINDING_INTERVAL`): a correct implementation
+/// refreshes every flow it depends on at least that often, including reply
+/// traffic on the pair the peer chose, so any expiry-induced connectivity loss
+/// is a real liveness bug and not an artifact of the model.
+fn arb_expiry(g: &mut Generator) -> Expiry {
+    let timeout = Duration::from_secs(match g.choose_index(4) {
+        0 => 30,
+        1 => 60,
+        2 => 120,
+        _ => 300,
+    });
+
+    Expiry {
+        timeout,
+        inbound_refreshes: g.bool(),
     }
 }
 
