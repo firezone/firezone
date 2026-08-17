@@ -4,34 +4,7 @@ use anyhow::{Context, Result};
 use ip_packet::{IpPacket, Layer4Protocol};
 use l3_tcp::Socket;
 
-/// The TCP give-up behaviour of the operating system a client simulates.
-///
-/// Real stacks abort an established connection once outstanding data goes
-/// unacknowledged for the duration of their retransmission budget and let idle
-/// connections live forever. `smoltcp`'s abort timer instead counts from the
-/// last packet received from the remote, whether or not anything is
-/// outstanding, so each socket pairs the profile's timeout with short
-/// keep-alives: an idle connection stays alive through keep-alive round-trips
-/// and only aborts once the path has been dead for the profile's duration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TcpStackProfile {
-    /// Linux and Android: `tcp_retries2 = 15` gives up after ~15 minutes.
-    Linux,
-    /// macOS and iOS: `TCP_MAXRXTSHIFT = 12` gives up after ~7.5 minutes.
-    Apple,
-    /// Windows: 5 data retransmissions give up within ~90 seconds.
-    Windows,
-}
-
-impl TcpStackProfile {
-    fn timeout(&self) -> l3_tcp::Duration {
-        match self {
-            TcpStackProfile::Linux => l3_tcp::Duration::from_secs(924),
-            TcpStackProfile::Apple => l3_tcp::Duration::from_secs(450),
-            TcpStackProfile::Windows => l3_tcp::Duration::from_secs(90),
-        }
-    }
-}
+use crate::os::SimulatedOs;
 
 pub struct Client {
     sockets: l3_tcp::SocketSet<'static>,
@@ -41,7 +14,7 @@ pub struct Client {
     sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), Option<l3_tcp::SocketHandle>>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
-    stack_profile: TcpStackProfile,
+    os: SimulatedOs,
 
     created_at: Instant,
     last_now: Instant,
@@ -58,7 +31,7 @@ pub struct Server {
 }
 
 impl Client {
-    pub fn new(now: Instant, stack_profile: TcpStackProfile) -> Self {
+    pub fn new(now: Instant, os: SimulatedOs) -> Self {
         let mut device = l3_tcp::InMemoryDevice::default();
         let interface = l3_tcp::create_interface(&mut device);
 
@@ -67,7 +40,7 @@ impl Client {
             sockets_by_conn: Default::default(),
             device,
             interface,
-            stack_profile,
+            os,
             created_at: now,
             last_now: now,
         }
@@ -86,7 +59,11 @@ impl Client {
             .connect(self.interface.context(), remote, local)
             .context("Failed to create TCP connection")?;
 
-        socket.set_timeout(Some(self.stack_profile.timeout()));
+        socket.set_timeout(Some(self.os.tcp_timeout()));
+        // `smoltcp`'s abort timer counts from the last packet received from the
+        // remote, whether or not anything is outstanding. Keep-alive round-trips
+        // keep an idle connection's timer fresh, so the socket only aborts once
+        // the path has actually been dead for the OS' timeout.
         socket.set_keep_alive(Some(l3_tcp::Duration::from_secs(5)));
 
         let handle = self.sockets.add(socket);

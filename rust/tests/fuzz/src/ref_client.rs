@@ -52,8 +52,8 @@ pub struct RefClient {
     /// Sampled malicious behaviours for this client.
     pub(crate) malicious_behaviour: MaliciousBehaviour,
 
-    /// The TCP give-up behaviour of the operating system this client simulates.
-    pub(crate) tcp_stack_profile: crate::tcp::TcpStackProfile,
+    /// The operating system this client simulates.
+    pub(crate) os: crate::os::SimulatedOs,
 
     /// Tracks all resources in the order they have been added in.
     ///
@@ -132,7 +132,7 @@ impl RefClient {
         system_dns_resolvers: Vec<IpAddr>,
         internet_resource_active: bool,
         malicious_behaviour: MaliciousBehaviour,
-        tcp_stack_profile: crate::tcp::TcpStackProfile,
+        os: crate::os::SimulatedOs,
     ) -> Self {
         Self {
             id,
@@ -142,7 +142,7 @@ impl RefClient {
             system_dns_resolvers,
             internet_resource_active,
             malicious_behaviour,
-            tcp_stack_profile,
+            os,
             dns_records: Default::default(),
             connected_cidr_resources: Default::default(),
             connected_dns_resources: Default::default(),
@@ -196,7 +196,7 @@ impl RefClient {
             self.id,
             client_state,
             self.malicious_behaviour,
-            self.tcp_stack_profile,
+            self.os,
             now,
         )
     }
@@ -1636,7 +1636,7 @@ mod tests {
             Vec::new(),
             false,
             MaliciousBehaviour::default(),
-            crate::tcp::TcpStackProfile::Linux,
+            crate::os::SimulatedOs::Linux,
         );
         client.add_cidr_resource(CidrResource {
             id: broad_id,
