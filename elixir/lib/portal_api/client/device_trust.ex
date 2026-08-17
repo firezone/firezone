@@ -28,6 +28,7 @@ defmodule PortalAPI.Client.DeviceTrust do
   resource is a policy decision, not a socket one.
   """
 
+  alias Portal.Authentication.{Credential, Subject}
   alias Portal.Crypto.X509
   alias __MODULE__.Database
   require Logger
@@ -120,8 +121,18 @@ defmodule PortalAPI.Client.DeviceTrust do
           matched_on: :mdm_device_id | :cert_identity | nil
         }
 
+  @type prepared_authentication :: %{
+          der: binary(),
+          leaf: tuple(),
+          account_id: Ecto.UUID.t(),
+          email: String.t()
+        }
+
   @type reason ::
-          :not_attestation_host
+          :not_x509_identity
+          | :invalid_x509_identity
+          | :x509_user_not_authorized
+          | :not_attestation_host
           | :no_trust_anchors
           | :no_certificate_presented
           | :invalid_certificate
@@ -133,6 +144,96 @@ defmodule PortalAPI.Client.DeviceTrust do
           | :malformed_cert_issuer
           | :no_device_identifiers
           | :certificate_revoked
+
+  @doc """
+  Decodes the bounded leaf certificate and extracts the X.509 authentication
+  identity without touching the database or validating its chain.
+
+  This intentionally cheap stage lets the socket rate-limit identity-bearing
+  certificate attempts before any account, trust-anchor, or attestation work.
+  """
+  @spec prepare_authentication(map()) ::
+          {:ok, prepared_authentication()} | {:error, reason()}
+  def prepare_authentication(connect_info) do
+    if Portal.Features.enabled?(:trust_anchors) do
+      with :ok <- validate_attestation_host(connect_info),
+           {:ok, der} <- presented_certificate(connect_info),
+           {:ok, leaf} <- decode_leaf(der),
+           {:ok, account_id, email} <- extract_authentication_identity(leaf) do
+        {:ok, %{der: der, leaf: leaf, account_id: account_id, email: email}}
+      else
+        {:error, reason}
+        when reason in [:not_attestation_host, :no_certificate_presented, :not_x509_identity] ->
+          {:error, :not_x509_identity}
+
+        error ->
+          error
+      end
+    else
+      {:error, :not_x509_identity}
+    end
+  end
+
+  @doc """
+  Authenticates a prepared X.509 identity after the socket has rate-limited it.
+
+  The certificate chain is validated before the actor lookup, so an untrusted
+  caller cannot use differing user lookup errors to enumerate active users.
+  Once X.509 identity claims are found, identity and certificate validation
+  failures must not downgrade to bearer authentication.
+  """
+  @spec authenticate(prepared_authentication(), Portal.Authentication.Context.t()) ::
+          {:ok, Subject.t(), verified()} | {:error, reason()}
+  def authenticate(
+        %{der: der, leaf: leaf, account_id: account_id, email: email},
+        context
+      ) do
+    with {:ok, account, auth_provider} <- Database.fetch_x509_account(account_id),
+         {:ok, anchors} <- fetch_anchors(account.id),
+         :ok <- validate_leaf(leaf, der, anchors),
+         :ok <- ensure_account_enabled(account),
+         {:ok, actor} <- Database.fetch_x509_actor(account, email),
+         %DateTime{} = expires_at <- X509.not_after(leaf),
+         subject = %Subject{
+           account: account,
+           actor: actor,
+           credential: %Credential{
+             type: :x509,
+             id: Ecto.UUID.generate(),
+             auth_provider_id: auth_provider.id
+           },
+           expires_at: expires_at,
+           context: context
+         },
+         {:ok, proof} <- attest_validated(der, leaf, subject) do
+      {:ok, subject, proof}
+    else
+      {:error, :x509_authentication_not_found} ->
+        {:error, :not_x509_identity}
+
+      {:error, reason}
+      when reason in [
+             :invalid_x509_identity,
+             :x509_account_not_found,
+             :x509_account_disabled,
+             :x509_user_not_found,
+             :x509_user_disabled,
+             :x509_user_type_not_allowed
+           ] ->
+        Logger.info("X.509 client authentication failed",
+          reason: reason,
+          account_id: account_id,
+          email: email
+        )
+        {:error, :x509_user_not_authorized}
+
+      nil ->
+        {:error, :invalid_certificate}
+
+      error ->
+        error
+    end
+  end
 
   @doc false
   def revocation_endpoint_queue_opts do
@@ -166,8 +267,13 @@ defmodule PortalAPI.Client.DeviceTrust do
          {:ok, der} <- presented_certificate(connect_info),
          {:ok, anchors} <- fetch_anchors(subject),
          {:ok, leaf} <- decode_leaf(der),
-         :ok <- validate_leaf(leaf, der, anchors),
-         {:ok, serial} <- cert_serial(leaf),
+         :ok <- validate_leaf(leaf, der, anchors) do
+      attest_validated(der, leaf, subject)
+    end
+  end
+
+  defp attest_validated(der, leaf, subject) do
+    with {:ok, serial} <- cert_serial(leaf),
          {:ok, issuer} <- cert_issuer(der),
          state = Database.attestation_state(issuer, serial, mdm_device_id(leaf), subject),
          :ok <- ensure_not_revoked(state, issuer, serial),
@@ -222,6 +328,9 @@ defmodule PortalAPI.Client.DeviceTrust do
       anchors -> {:ok, anchors}
     end
   end
+
+  defp ensure_account_enabled(%Portal.Account{is_disabled: false}), do: :ok
+  defp ensure_account_enabled(%Portal.Account{is_disabled: true}), do: {:error, :x509_account_disabled}
 
   defp presented_certificate(%{peer_data: %{ssl_cert: der}})
        when is_binary(der) and byte_size(der) > 0 and byte_size(der) <= @max_cert_bytes,
@@ -610,6 +719,63 @@ defmodule PortalAPI.Client.DeviceTrust do
 
   defp split_joined_uris(uri), do: uri |> String.split(@joined_uri_regex) |> clean_parts()
 
+  defp extract_authentication_identity(leaf) do
+    claims =
+      leaf
+      |> X509.san_uris()
+      |> Enum.flat_map(&split_joined_uris/1)
+      |> Enum.reduce(%{account_ids: MapSet.new(), emails: MapSet.new()}, fn uri, claims ->
+        case Regex.run(@typed_uri_regex, uri) do
+          [_all, idtype, value] -> put_authentication_claim(claims, idtype, value)
+          nil -> claims
+        end
+      end)
+
+    case {MapSet.to_list(claims.account_ids), MapSet.to_list(claims.emails)} do
+      {[account_id], [email]} -> {:ok, account_id, email}
+      {[], _emails} -> {:error, :not_x509_identity}
+      {_account_ids, []} -> {:error, :not_x509_identity}
+      {_account_ids, _emails} -> {:error, :invalid_x509_identity}
+    end
+  end
+
+  defp put_authentication_claim(claims, idtype, value) do
+    case {String.downcase(idtype), decode_uri_component(value)} do
+      {"account-id", {:ok, account_id}} ->
+        case Ecto.UUID.cast(String.trim(account_id)) do
+          {:ok, account_id} ->
+            update_in(claims.account_ids, &MapSet.put(&1, account_id))
+
+          :error ->
+            claims
+        end
+
+      {"email", {:ok, email}} ->
+        case Portal.Actor.normalize_email(email) do
+          {:ok, ""} ->
+            claims
+
+          {:ok, email} ->
+            # Actor emails use citext, so collapse claims using the same
+            # case-insensitive semantics before checking claim uniqueness.
+            email = String.downcase(email)
+            update_in(claims.emails, &MapSet.put(&1, email))
+
+          :error ->
+            claims
+        end
+
+      {_idtype, _value} ->
+        claims
+    end
+  end
+
+  defp decode_uri_component(value) do
+    {:ok, URI.decode(value)}
+  rescue
+    ArgumentError -> {:error, :invalid}
+  end
+
   # A comma is never valid in a hostname, so joined DNS SANs split plainly.
   defp split_joined_dns_names(dns_name), do: dns_name |> String.split(",") |> clean_parts()
 
@@ -699,6 +865,58 @@ defmodule PortalAPI.Client.DeviceTrust do
     import Ecto.Query
     alias Portal.Crypto.X509
     alias Portal.Safe
+
+    def fetch_x509_account(account_id) do
+      query =
+        from(account in Portal.Account,
+          left_join: auth_provider in Portal.X509.AuthProvider,
+          on: auth_provider.account_id == account.id,
+          where: account.id == ^account_id,
+          select: %{
+            account: account,
+            auth_provider: auth_provider
+          }
+        )
+
+      case query |> Safe.unscoped() |> Safe.one() do
+        nil ->
+          {:error, :x509_account_not_found}
+
+        %{auth_provider: nil} ->
+          {:error, :x509_authentication_not_found}
+
+        %{auth_provider: %Portal.X509.AuthProvider{is_disabled: true}} ->
+          {:error, :x509_authentication_not_found}
+
+        %{
+          account: %Portal.Account{} = account,
+          auth_provider: %Portal.X509.AuthProvider{is_disabled: false} = auth_provider
+        } ->
+          {:ok, account, auth_provider}
+      end
+    end
+
+    def fetch_x509_actor(account, email) do
+      query =
+        from(actor in Portal.Actor,
+          where: actor.account_id == ^account.id and actor.email == ^email
+        )
+
+      case query |> Safe.unscoped() |> Safe.one() do
+        nil ->
+          {:error, :x509_user_not_found}
+
+        %Portal.Actor{is_disabled: true} ->
+          {:error, :x509_user_disabled}
+
+        %Portal.Actor{is_disabled: false, type: type} = actor
+        when type in [:account_user, :account_admin_user] ->
+          {:ok, actor}
+
+        _user_type_not_allowed ->
+          {:error, :x509_user_type_not_allowed}
+      end
+    end
 
     # A refused read leaves the connect with no facts rather than with false
     # ones, which the caller treats the same way it treats a certificate no
@@ -828,12 +1046,27 @@ defmodule PortalAPI.Client.DeviceTrust do
       end
     end
 
-    def fetch_anchors(subject) do
+    def fetch_anchors(%Portal.Authentication.Subject{} = subject) do
       from(c in Portal.TrustAnchorCertificate,
         select: %{id: c.id, pem: c.pem}
       )
       |> Safe.scoped(subject)
       |> Safe.all()
+      |> decode_anchors()
+    end
+
+    def fetch_anchors(account_id) when is_binary(account_id) do
+      from(c in Portal.TrustAnchorCertificate,
+        where: c.account_id == ^account_id,
+        select: %{id: c.id, pem: c.pem}
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+      |> decode_anchors()
+    end
+
+    defp decode_anchors(certificates) do
+      certificates
       |> Enum.flat_map(&decode_anchor_pem/1)
       |> Enum.uniq_by(& &1.der)
     end

@@ -285,6 +285,12 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "Your account has been created!"
       assert html =~ "Test Corp"
       assert html =~ "Sign In"
+
+      account = Portal.Repo.get_by!(Portal.Account, name: "Test Corp")
+      provider = Portal.Repo.get_by!(Portal.X509.AuthProvider, account_id: account.id)
+      assert provider.name == "X.509"
+      assert provider.context == :clients_only
+      assert provider.is_disabled
     end
 
     test "valid token for already-registered email redirects to account sign-in", %{conn: conn} do

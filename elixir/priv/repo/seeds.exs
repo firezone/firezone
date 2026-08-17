@@ -31,7 +31,8 @@ defmodule Portal.Repo.Seeds do
     SessionLog,
     Site,
     ClientToken,
-    Userpass
+    Userpass,
+    X509
   }
 
   alias Portal.Types.LogId
@@ -1087,6 +1088,13 @@ defmodule Portal.Repo.Seeds do
     {:ok, _email_provider} =
       create_auth_provider(EmailOTP.AuthProvider, %{name: "Email OTP"}, system_subject)
 
+    {:ok, _x509_provider} =
+      create_auth_provider(
+        X509.AuthProvider,
+        %{name: "X.509", context: :clients_only, is_disabled: true},
+        system_subject
+      )
+
     {:ok, userpass_provider} =
       create_auth_provider(
         Userpass.AuthProvider,
@@ -1148,6 +1156,13 @@ defmodule Portal.Repo.Seeds do
 
     {:ok, _other_email_provider} =
       create_auth_provider(EmailOTP.AuthProvider, %{name: "Email OTP"}, other_system_subject)
+
+    {:ok, _other_x509_provider} =
+      create_auth_provider(
+        X509.AuthProvider,
+        %{name: "X.509", context: :clients_only, is_disabled: true},
+        other_system_subject
+      )
 
     {:ok, _other_userpass_provider} =
       create_auth_provider(

@@ -7,12 +7,14 @@ defmodule PortalWeb.PoliciesTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
+  import Portal.FeaturesFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
   import Portal.PolicyAuthorizationFixtures
   import Portal.PolicyFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
+  import Portal.TrustAnchorFixtures
 
   setup do
     account = account_fixture()
@@ -877,6 +879,60 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "is not in"
     end
 
+    test "warns when X.509 is selected and the account has no trust anchors", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      enable_feature(:trust_anchors)
+      x509_provider = x509_provider_fixture(account: account, is_disabled: false)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      render_click(lv, "add_condition", %{"type" => "auth_provider_id"})
+
+      html = render_click(lv, "toggle_auth_provider_value", %{"id" => x509_provider.id})
+
+      assert html =~ "No devices will be able to use this authentication provider"
+
+      assert has_element?(
+               lv,
+               "a[href='/#{account.slug}/settings/trust_anchors']",
+               "Trust Anchors"
+             )
+    end
+
+    test "does not warn for a selected X.509 provider when a trust anchor exists", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      enable_feature(:trust_anchors)
+      x509_provider = x509_provider_fixture(account: account, is_disabled: false)
+      _anchor = trust_anchor_fixture(account: account)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      render_click(lv, "add_condition", %{"type" => "auth_provider_id"})
+      html = render_click(lv, "toggle_auth_provider_value", %{"id" => x509_provider.id})
+
+      refute html =~ "No devices will be able to use this authentication provider"
+    end
+
     test "manages time-of-day conditions via add range form", %{
       conn: conn,
       account: account,
@@ -1130,6 +1186,38 @@ defmodule PortalWeb.PoliciesTest do
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
       assert html =~ auth_provider.name
+    end
+
+    test "warns when a saved policy condition uses X.509 without a trust anchor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      enable_feature(:trust_anchors)
+      x509_provider = x509_provider_fixture(account: account, is_disabled: false)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      policy =
+        policy_fixture(
+          group: group,
+          resource: resource,
+          conditions: [
+            %{
+              property: :auth_provider_id,
+              operator: :is_in,
+              values: [x509_provider.id]
+            }
+          ]
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}")
+
+      assert html =~ "No devices will be able to use this authentication provider"
+      assert html =~ "/#{account.slug}/settings/trust_anchors"
     end
 
     test "renders ip_range condition from saved policy", %{

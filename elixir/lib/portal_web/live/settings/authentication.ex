@@ -604,11 +604,15 @@ defmodule PortalWeb.Settings.Authentication do
 
   defp init(socket) do
     providers =
-      Database.list_all_providers(socket.assigns.subject)
+      Database.list_all_providers(
+        socket.assigns.subject,
+        socket.assigns.trust_anchors_enabled?
+      )
       |> Database.enrich_with_session_counts(socket.assigns.subject)
 
     assign(socket,
       providers: providers,
+      has_trust_anchors?: Database.has_trust_anchors?(socket.assigns.subject),
       verification_error: nil,
       pending_confirm: nil,
       open_provider_actions_id: nil
@@ -673,6 +677,7 @@ defmodule PortalWeb.Settings.Authentication do
                 type={provider_type(provider)}
                 account={@account}
                 provider={provider}
+                has_trust_anchors?={@has_trust_anchors?}
                 pending_confirm={@pending_confirm}
                 open_provider_actions_id={@open_provider_actions_id}
               />
@@ -926,6 +931,19 @@ defmodule PortalWeb.Settings.Authentication do
               </span>
             </div>
             <div class="font-mono text-[10px] text-subtle mt-0.5">{@provider.id}</div>
+            <p
+              :if={@type == "x509" and not @has_trust_anchors?}
+              class="flex items-start gap-1.5 mt-1.5 max-w-md text-xs text-amber-600 dark:text-amber-400"
+            >
+              <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>
+                No devices will be able to use this authentication provider until you add one or more
+                <.link
+                  navigate={~p"/#{@account}/settings/trust_anchors"}
+                  class="underline hover:no-underline"
+                >Trust Anchors</.link>.
+              </span>
+            </p>
           </div>
         </div>
       </td>
@@ -1062,14 +1080,15 @@ defmodule PortalWeb.Settings.Authentication do
                     <.icon name="ri-star-fill" class="w-3.5 h-3.5 shrink-0" /> Remove default
                   </button>
                   <button
-                    :if={not @can_be_default}
+                    :if={@show_default_action and not @can_be_default}
                     disabled
                     class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-subtle cursor-default"
                   >
                     <.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
                   </button>
-                  <div class="my-1 border-t border-border"></div>
+                  <div :if={@show_default_action} class="my-1 border-t border-border"></div>
                   <.link
+                    :if={@can_be_edited}
                     patch={~p"/#{@account}/settings/authentication/#{@type}/#{@provider.id}/edit"}
                     class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                   >
@@ -1136,7 +1155,9 @@ defmodule PortalWeb.Settings.Authentication do
     %{
       is_default: provider_default?(provider),
       can_be_default: provider_action_allowed?(type),
+      show_default_action: type != "x509",
       can_be_deleted: provider_action_allowed?(type),
+      can_be_edited: type != "x509",
       has_sessions: provider_has_sessions?(provider),
       is_pending_toggle: pending_state == :toggle,
       is_pending_delete: pending_state == :delete,
@@ -1148,7 +1169,7 @@ defmodule PortalWeb.Settings.Authentication do
 
   defp provider_default?(provider), do: Map.get(provider, :is_default, false)
 
-  defp provider_action_allowed?(type), do: type not in ["email_otp", "userpass"]
+  defp provider_action_allowed?(type), do: type not in ["email_otp", "userpass", "x509"]
 
   defp provider_has_sessions?(provider) do
     provider.client_tokens_count > 0 or provider.portal_sessions_count > 0
@@ -1170,7 +1191,8 @@ defmodule PortalWeb.Settings.Authentication do
   defp provider_portal_ttl(_provider), do: nil
 
   defp provider_client_ttl(%{context: context} = provider)
-       when context in [:clients_and_portal, :clients_only] do
+       when context in [:clients_and_portal, :clients_only] and
+              is_map_key(provider, :client_session_lifetime_secs) do
     format_duration(
       Map.get(provider, :client_session_lifetime_secs) ||
         provider.__struct__.default_client_session_lifetime_secs()
@@ -1744,7 +1766,7 @@ defmodule PortalWeb.Settings.Authentication do
       socket.assigns.providers
       |> Enum.find(fn provider -> provider.id == provider_id end)
 
-    with true <- provider_type(provider) not in ["email_otp", "userpass"],
+    with true <- provider_type(provider) not in ["email_otp", "userpass", "x509"],
          {:ok, _result} <- Database.set_default_provider(provider, socket.assigns) do
       socket =
         socket
@@ -1756,7 +1778,7 @@ defmodule PortalWeb.Settings.Authentication do
       false ->
         socket =
           socket
-          |> put_flash(:error, "Email and userpass providers cannot be set as default.")
+          |> put_flash(:error, "Built-in providers cannot be set as default.")
 
         {:noreply, socket}
 
@@ -1819,12 +1841,12 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defmodule Database do
-    alias Portal.{AuthProvider, EmailOTP, Userpass, OIDC, Entra, Google, Okta, Safe}
+    alias Portal.{AuthProvider, EmailOTP, X509, Userpass, OIDC, Entra, Google, Okta, Safe}
     import Ecto.Query
     import Ecto.Changeset
 
-    def list_all_providers(subject) do
-      [
+    def list_all_providers(subject, include_x509?) do
+      providers = [
         EmailOTP.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
         Userpass.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
         Google.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
@@ -1832,7 +1854,22 @@ defmodule PortalWeb.Settings.Authentication do
         Okta.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
         OIDC.AuthProvider |> Safe.scoped(subject) |> Safe.all()
       ]
+
+      providers =
+        if include_x509? do
+          [X509.AuthProvider |> Safe.scoped(subject) |> Safe.all() | providers]
+        else
+          providers
+        end
+
+      providers
       |> List.flatten()
+    end
+
+    def has_trust_anchors?(subject) do
+      Portal.TrustAnchorCertificate
+      |> Safe.scoped(subject)
+      |> Safe.exists?()
     end
 
     def get_provider!(schema, id, subject) do
@@ -1852,6 +1889,8 @@ defmodule PortalWeb.Settings.Authentication do
       |> Safe.scoped(subject)
       |> Safe.update()
     end
+
+    def delete_provider!(%X509.AuthProvider{}, _subject), do: {:error, :cannot_delete}
 
     def delete_provider!(provider, subject) do
       # Delete the parent auth_provider, which will CASCADE delete the child and tokens

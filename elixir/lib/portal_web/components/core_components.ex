@@ -1453,6 +1453,13 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("x509") do
+    %{
+      type: :icon,
+      name: "ri-shield-keyhole-line"
+    }
+  end
+
   defp provider_icon_spec("splunk") do
     %{
       type: :image,

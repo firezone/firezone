@@ -4,6 +4,8 @@ import Config
 web_port = System.get_env("PHOENIX_WEB_PORT", "13443") |> String.to_integer()
 api_port = System.get_env("PHOENIX_API_PORT", "13001") |> String.to_integer()
 ops_port = System.get_env("PHOENIX_OPS_PORT", "13002") |> String.to_integer()
+certfile_path = System.get_env("CERTFILE_PATH", "priv/cert/selfsigned.pem")
+keyfile_path = System.get_env("KEYFILE_PATH", "priv/cert/selfsigned_key.pem")
 
 # DATABASE_SSL can be "true", "false", or a JSON object with SSL options
 db_ssl =
@@ -182,8 +184,8 @@ config :portal, PortalWeb.Endpoint,
   url: [scheme: "https", host: "localhost", port: web_port],
   https: [
     port: web_port,
-    certfile: System.get_env("CERTFILE_PATH", "priv/cert/selfsigned.pem"),
-    keyfile: System.get_env("KEYFILE_PATH", "priv/cert/selfsigned_key.pem")
+    certfile: certfile_path,
+    keyfile: keyfile_path
   ],
   code_reloader: true,
   debug_errors: true,
@@ -213,7 +215,8 @@ config :portal, PortalWeb.Endpoint,
   server: true
 
 config :portal,
-  api_external_url: "http://localhost:#{api_port}"
+  api_external_url: "https://localhost:#{api_port}",
+  mtls_external_url: "https://localhost:#{api_port}"
 
 config :phoenix_live_reload, :dirs, [File.cwd!()]
 
@@ -235,14 +238,31 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
 
 # Note: on Linux you may need to add `--add-host=host.docker.internal:host-gateway`
 # to the `docker run` command. Works on Docker v20.10 and above.
-config :portal, api_url_override: "ws://host.docker.internal:#{api_port}/"
+config :portal, api_url_override: "wss://host.docker.internal:#{api_port}/"
 
 ###############################
 ##### PortalAPI Endpoint ######
 ###############################
 
 config :portal, PortalAPI.Endpoint,
-  http: [port: api_port],
+  url: [scheme: "https", host: "localhost", port: api_port],
+  https: [
+    port: api_port,
+    certfile: certfile_path,
+    keyfile: keyfile_path,
+    thousand_island_options: [
+      transport_options: [
+        # Request a client certificate when one is available, but retain support
+        # for token-authenticated clients. The application validates a presented
+        # leaf against the account's trust anchors after the WebSocket upgrade.
+        verify: :verify_peer,
+        fail_if_no_peer_cert: false,
+        certificate_authorities: false,
+        cacerts: [],
+        verify_fun: {&Portal.TLS.verify_client_certificate/3, nil}
+      ]
+    ]
+  ],
   debug_errors: true,
   code_reloader: true,
   check_origin: ["//10.0.0.107", "//10.0.2.2", "//127.0.0.1", "//localhost"],

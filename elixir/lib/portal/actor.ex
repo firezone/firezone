@@ -67,6 +67,31 @@ defmodule Portal.Actor do
     end
   end
 
+  @doc """
+  Normalizes an email address for storage or comparison.
+
+  Whitespace around each component is removed and the domain is lowercased
+  and IDNA-encoded. The local part retains its case; case-insensitive matching
+  is enforced by the `citext` database column.
+  """
+  @spec normalize_email(String.t()) :: {:ok, String.t()} | :error
+  def normalize_email(email) when is_binary(email) do
+    case String.split(email, "@", parts: 2) do
+      [local, domain] ->
+        local = String.trim(local)
+        domain = domain |> String.trim() |> String.downcase()
+
+        case try_encode_domain(domain) do
+          {:ok, punycode_domain} -> {:ok, local <> "@" <> to_string(punycode_domain)}
+          _error -> :error
+        end
+
+      # No @ sign, return as-is (will be caught by validate_email)
+      _ ->
+        {:ok, String.trim(email)}
+    end
+  end
+
   defp validate_type_transition(changeset) do
     old_type = changeset.data.type
     new_type = get_change(changeset, :type)
@@ -104,7 +129,7 @@ defmodule Portal.Actor do
         nil
 
       email when is_binary(email) ->
-        case encode_email(email) do
+        case normalize_email(email) do
           {:ok, encoded} ->
             encoded
 
@@ -116,22 +141,5 @@ defmodule Portal.Actor do
       other ->
         other
     end)
-  end
-
-  defp encode_email(email) do
-    case String.split(email, "@", parts: 2) do
-      [local, domain] ->
-        local = String.trim(local)
-        domain = String.trim(domain) |> String.downcase()
-
-        case try_encode_domain(domain) do
-          {:ok, punycode_domain} -> {:ok, local <> "@" <> to_string(punycode_domain)}
-          _error -> :error
-        end
-
-      # No @ sign, return as-is (will be caught by validate_email)
-      _ ->
-        {:ok, email}
-    end
   end
 end

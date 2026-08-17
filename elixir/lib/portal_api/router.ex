@@ -99,6 +99,7 @@ defmodule PortalAPI.Router do
     end
 
     resources "/email_otp_auth_providers", EmailOTPAuthProviderController, only: [:index, :show]
+    get "/x509_auth_provider", X509AuthProviderController, :show
     resources "/oidc_auth_providers", OIDCAuthProviderController, only: [:index, :show]
     resources "/google_auth_providers", GoogleAuthProviderController, only: [:index, :show]
     resources "/entra_auth_providers", EntraAuthProviderController, only: [:index, :show]

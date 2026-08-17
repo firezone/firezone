@@ -66,6 +66,7 @@ defmodule Portal.Account do
     has_many :oidc_auth_providers, Portal.OIDC.AuthProvider
     has_one :email_otp_auth_provider, Portal.EmailOTP.AuthProvider
     has_one :userpass_auth_provider, Portal.Userpass.AuthProvider
+    has_one :x509_auth_provider, Portal.X509.AuthProvider
 
     # Billing limit exceeded flags - set by CheckAccountLimits worker and Stripe event processing
     field :users_limit_exceeded, :boolean, default: false

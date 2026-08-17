@@ -37,9 +37,18 @@ defmodule PortalAPI.Client.Socket do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "client.connect" do
-      with {:ok, token} <- PortalAPI.Sockets.extract_token(attrs, connect_info),
-           :ok <- PortalAPI.Sockets.RateLimit.check(connect_info, token: token) do
-        do_connect(token, attrs, socket, connect_info)
+      context = PortalAPI.Sockets.auth_context(connect_info, :client)
+      attrs = normalize_device_attrs(attrs)
+
+      case DeviceTrust.prepare_authentication(connect_info) do
+        {:ok, authentication} ->
+          authenticate_with_certificate(authentication, context, attrs, socket, connect_info)
+
+        {:error, :not_x509_identity} ->
+          connect_with_token(context, attrs, socket, connect_info)
+
+        {:error, reason} ->
+          handle_certificate_authentication_error(reason)
       end
     end
   end
@@ -51,17 +60,47 @@ defmodule PortalAPI.Client.Socket do
 
   ## Private functions
 
-  defp do_connect(token, attrs, socket, connect_info) do
-    context = PortalAPI.Sockets.auth_context(connect_info, :client)
-    attrs = normalize_device_attrs(attrs)
+  defp authenticate_with_certificate(authentication, context, attrs, socket, connect_info) do
+    # The fixed discriminator makes this an IP-only bucket. The bearer header
+    # is irrelevant once X.509 identity claims are present, so allowing it to
+    # vary the key would let a caller evade this pre-authentication limit.
+    with :ok <- PortalAPI.Sockets.RateLimit.check(connect_info, token: "x509"),
+         {:ok, subject, proof} <- DeviceTrust.authenticate(authentication, context) do
+      do_connect(subject, nil, proof, attrs, socket)
+    else
+      {:error, :not_x509_identity} ->
+        connect_with_token(context, attrs, socket, connect_info)
 
-    with {:ok, %{credential: %{type: :client_token, id: token_id}} = subject} <-
-           Authentication.authenticate(token, context),
-         false <- Portal.Billing.client_connect_restricted?(subject.account),
+      {:error, :rate_limit} = error ->
+        error
+
+      {:error, reason} ->
+        handle_certificate_authentication_error(reason)
+    end
+  end
+
+  defp connect_with_token(context, attrs, socket, connect_info) do
+    with {:ok, token} <- PortalAPI.Sockets.extract_token(attrs, connect_info),
+         :ok <- PortalAPI.Sockets.RateLimit.check(connect_info, token: token),
+         {:ok, %{credential: %{type: :client_token, id: token_id}} = subject} <-
+           Authentication.authenticate(token, context) do
+      do_connect(subject, token_id, nil, attrs, socket, connect_info)
+    else
+      {:error, :invalid_token} ->
+        OpenTelemetry.Tracer.set_status(:error, "invalid_token")
+        {:error, :invalid_token}
+
+      error ->
+        error
+    end
+  end
+
+  defp do_connect(subject, token_id, proof, attrs, socket, connect_info \\ nil) do
+    with false <- Portal.Billing.client_connect_restricted?(subject.account),
          {:ok, public_key} <- validate_public_key(attrs),
          changeset = insert_changeset(subject.actor, subject, attrs),
          {:ok, _} <- apply_action(changeset, :validate),
-         {:ok, proof} <- attest_device(connect_info, subject),
+         {:ok, proof} <- attest_device(proof, connect_info, subject),
          {:ok, client, attested?} <- Database.resolve_client(changeset, proof, subject) do
       version = derive_version(subject.context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
@@ -72,10 +111,6 @@ defmodule PortalAPI.Client.Socket do
 
       {:ok, assign_connect(socket, subject, client, version, attested?, proof)}
     else
-      {:error, :invalid_token} ->
-        OpenTelemetry.Tracer.set_status(:error, "invalid_token")
-        {:error, :invalid_token}
-
       true ->
         OpenTelemetry.Tracer.set_status(:error, "limits_exceeded")
         {:error, :limits_exceeded}
@@ -100,12 +135,30 @@ defmodule PortalAPI.Client.Socket do
     end
   end
 
+  defp handle_certificate_authentication_error(:certificate_revoked) do
+    OpenTelemetry.Tracer.set_status(:error, "certificate_revoked")
+    {:error, :certificate_revoked}
+  end
+
+  defp handle_certificate_authentication_error(:x509_user_not_authorized) do
+    OpenTelemetry.Tracer.set_status(:error, "x509_user_not_authorized")
+    {:error, :x509_user_not_authorized}
+  end
+
+  defp handle_certificate_authentication_error(reason) do
+    Logger.warning("Refusing client connect: X.509 authentication failed", reason: reason)
+    OpenTelemetry.Tracer.set_status(:error, "device_untrusted")
+    {:error, :device_untrusted}
+  end
+
   # Arriving on the mutual-TLS host is the client claiming it holds a device
   # certificate, so failing to prove one there refuses the connect instead of
   # silently downgrading to an unattested session. A connect on any other host
   # is unattested and carries on; whether that device may reach a given
   # resource is a policy question, not a socket one.
-  defp attest_device(connect_info, subject) do
+  defp attest_device(%{} = proof, _connect_info, _subject), do: {:ok, proof}
+
+  defp attest_device(nil, connect_info, subject) do
     case DeviceTrust.attest(connect_info, subject) do
       {:ok, proof} ->
         {:ok, proof}
@@ -258,14 +311,16 @@ defmodule PortalAPI.Client.Socket do
   end
 
   defp set_connect_attributes(token_id, client, subject, version) do
-    OpenTelemetry.Tracer.set_attributes(%{
-      token_id: token_id,
+    attributes = %{
       client_id: client.id,
       lat: subject.context.remote_ip_location_lat,
       lon: subject.context.remote_ip_location_lon,
       version: version,
       account_id: subject.account.id
-    })
+    }
+
+    attributes = if token_id, do: Map.put(attributes, :token_id, token_id), else: attributes
+    OpenTelemetry.Tracer.set_attributes(attributes)
   end
 
   defp assign_connect(socket, subject, client, version, attested?, proof) do
