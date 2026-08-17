@@ -1351,17 +1351,14 @@ defmodule PortalWeb.Resources.Components do
           </div>
           <div
             :if={@confirm_remove_group_id != row.group.id}
-            class={[
-              "flex items-center gap-1 pr-4 hover:bg-raised group/item",
-              if(row.policy_is_disabled,
-                do: "opacity-50 hover:opacity-75",
-                else: ""
-              )
-            ]}
+            class="flex items-center gap-1 pr-4 hover:bg-raised group/item"
           >
             <.link
               navigate={~p"/#{@account}/groups/#{row.group.id}"}
-              class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0"
+              class={[
+                "flex items-center gap-3 px-5 py-3 flex-1 min-w-0",
+                row.policy_is_disabled && "opacity-50 hover:opacity-75"
+              ]}
             >
               <.provider_icon provider={provider_type_from_group(row)} size="sm" variant="circle" />
               <div class="flex-1 min-w-0 flex items-center gap-2">
