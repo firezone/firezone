@@ -538,10 +538,14 @@ pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimCli
         let src = SocketAddr::new(*src, sport.0);
         let received_icmp_error_for_tuple = sim_client.failed_tcp_packets.get(&(*sport, *dport));
 
-        let Some((socket, local)) = sim_client.tcp_client.iter_sockets().find_map(|s| {
-            let endpoint = s.local_endpoint()?;
+        // Several sockets can share a local endpoint (one port, several remotes),
+        // so the remote port is needed to pick the right connection.
+        let Some((socket, local, remote)) = sim_client.tcp_client.iter_sockets().find_map(|s| {
+            let local = s.local_endpoint()?;
+            let remote = s.remote_endpoint()?;
 
-            (l3_tcp::IpEndpoint::from(src) == endpoint).then_some((s, endpoint))
+            (l3_tcp::IpEndpoint::from(src) == local && remote.port == dport.0)
+                .then_some((s, local, remote))
         }) else {
             if let Some(icmp_error) = received_icmp_error_for_tuple
                 && icmp_error.is_unreachable_prohibited()
@@ -557,19 +561,6 @@ pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimCli
             tracing::error!(target: "assertions", %src, "Missing TCP connection");
             continue;
         };
-
-        let Some(remote) = socket.remote_endpoint() else {
-            tracing::error!(target: "assertions", %src, "TCP socket does not have a remote endpoint");
-            continue;
-        };
-
-        let port = remote.port;
-
-        if port == dport.0 {
-            tracing::info!(target: "assertions", %port, "TCP connection is targeting expected port");
-        } else {
-            tracing::error!(target: "assertions", expected = %dport.0, actual = %port, "TCP connection dst port does not match");
-        }
 
         let actual = socket.state();
         let expected = l3_tcp::State::Established;
