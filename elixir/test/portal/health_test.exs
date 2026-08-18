@@ -95,7 +95,8 @@ defmodule Portal.HealthTest do
         repos: [
           Portal.Repo,
           Portal.Repo.Web,
-          Portal.Repo.Api
+          Portal.Repo.Api,
+          Portal.Repo.Job
         ]
       )
 
@@ -114,7 +115,8 @@ defmodule Portal.HealthTest do
         repos: [
           Portal.Repo,
           Portal.Repo.Web,
-          Portal.Repo.Api
+          Portal.Repo.Api,
+          Portal.Repo.Job
         ],
         repo_check_query: "SELECT 1 FROM pg_sleep(0.25)"
       )

@@ -8,6 +8,19 @@ defmodule Portal.ApplicationTest do
                "expected Geolix database #{inspect(id)} to be loaded"
       end
     end
+
+    test "Oban descendants inherit the configured job repo" do
+      oban_repo = Application.fetch_env!(:portal, Oban) |> Keyword.fetch!(:repo)
+      ancestors = Process.get(:"$ancestors", [])
+
+      Process.put(:"$ancestors", [Portal.Oban])
+
+      try do
+        assert Portal.Repo.DynamicRepoResolver.inherit(Portal.Repo) == oban_repo
+      after
+        Process.put(:"$ancestors", ancestors)
+      end
+    end
   end
 
   describe "stop/1" do

@@ -55,7 +55,6 @@ if config_env() == :prod do
     [
       {:database, env_var_to_config!(:database_name)},
       {:username, env_var_to_config!(:database_user)},
-      {:port, env_var_to_config!(:database_port)},
       {:queue_target, env_var_to_config!(:database_queue_target)},
       {:queue_interval, env_var_to_config!(:database_queue_interval)},
       {:ssl, env_var_to_config!(:database_ssl)}
@@ -70,19 +69,33 @@ if config_env() == :prod do
         else: [{:hostname, env_var_to_config!(:database_host)}]
       )
 
+  direct_pool_base_opts =
+    [{:port, env_var_to_config!(:database_port)}] ++ pool_base_opts
+
+  pgbouncer_pool_base_opts =
+    case env_var_to_config(:database_pgbouncer_port) do
+      nil ->
+        direct_pool_base_opts
+
+      port ->
+        [{:port, port}, {:prepare, :unnamed}] ++ pool_base_opts
+    end
+
   database_parameters = env_var_to_config!(:database_parameters)
 
-  # Isolated connection pools
+  # Transaction-pooled connection pools. When DATABASE_PGBOUNCER_PORT is not
+  # set they fall back to the direct PostgreSQL endpoint for compatibility.
   for {repo, pool_size_key, app_name} <- [
         {Portal.Repo.Web, :database_pool_size_web, "web"},
-        {Portal.Repo.Api, :database_pool_size_api, "api"}
+        {Portal.Repo.Api, :database_pool_size_api, "api"},
+        {Portal.Repo.Job, :database_pool_size_job, "job"}
       ] do
     config :portal,
            repo,
            [
              {:pool_size, env_var_to_config!(pool_size_key)},
              {:parameters, Keyword.merge(database_parameters, application_name: app_name)}
-           ] ++ pool_base_opts
+           ] ++ pgbouncer_pool_base_opts
   end
 
   # Isolated poller connection pool, sized for the two slot pollers: poll
@@ -93,7 +106,7 @@ if config_env() == :prod do
          [
            {:pool_size, 2},
            {:parameters, Keyword.merge(database_parameters, application_name: "poller")}
-         ] ++ pool_base_opts
+         ] ++ direct_pool_base_opts
 
   config :portal, Portal.ChangeLogs.Consumer,
     enabled: env_var_to_config!(:change_logs_replication_enabled),
@@ -321,6 +334,7 @@ if config_env() == :prod do
   ]
 
   config :portal, Oban,
+    notifier: Oban.Notifiers.PG,
     peer: Oban.Peers.Database,
     plugins: [
       {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
@@ -361,7 +375,7 @@ if config_env() == :prod do
       outbound_emails: 1
     ],
     engine: Oban.Engines.Basic,
-    repo: Portal.Repo
+    repo: Portal.Repo.Job
 
   ###############################
   ##### Public Endpoint #########
