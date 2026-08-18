@@ -1,0 +1,69 @@
+name: "Write compose env file"
+description: "Writes the image and tag variables shared by the compose-based test workflows into `.env`, which `docker compose` loads from the project directory"
+
+inputs:
+  portal_image:
+    required: false
+    default: ""
+  portal_tag:
+    required: false
+    default: ""
+  elixir_image:
+    required: false
+    default: ""
+  elixir_tag:
+    required: false
+    default: ""
+  relay_image:
+    required: false
+    default: ""
+  relay_tag:
+    required: false
+    default: ""
+  gateway_image:
+    required: false
+    default: ""
+  gateway_tag:
+    required: false
+    default: ""
+  client_image:
+    required: false
+    default: ""
+  client_tag:
+    required: false
+    default: ""
+  http_test_server_image:
+    required: false
+    default: ""
+  http_test_server_tag:
+    required: false
+    default: ""
+  extra:
+    description: "Additional KEY=VALUE lines to append"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    # An empty value still falls back to the compose file's `:-` default.
+    - name: Write .env
+      shell: bash
+      run: |
+        {
+          echo "PORTAL_IMAGE=${{ inputs.portal_image }}"
+          echo "PORTAL_TAG=${{ inputs.portal_tag }}"
+          echo "ELIXIR_IMAGE=${{ inputs.elixir_image }}"
+          echo "ELIXIR_TAG=${{ inputs.elixir_tag }}"
+          echo "RELAY_IMAGE=${{ inputs.relay_image }}"
+          echo "RELAY_TAG=${{ inputs.relay_tag }}"
+          echo "GATEWAY_IMAGE=${{ inputs.gateway_image }}"
+          echo "GATEWAY_TAG=${{ inputs.gateway_tag }}"
+          echo "CLIENT_IMAGE=${{ inputs.client_image }}"
+          echo "CLIENT_TAG=${{ inputs.client_tag }}"
+          echo "HTTP_TEST_SERVER_IMAGE=${{ inputs.http_test_server_image }}"
+          echo "HTTP_TEST_SERVER_TAG=${{ inputs.http_test_server_tag }}"
+          if [ -n "${{ inputs.extra }}" ]; then
+            printf '%s\n' "${{ inputs.extra }}"
+          fi
+        } > .env
