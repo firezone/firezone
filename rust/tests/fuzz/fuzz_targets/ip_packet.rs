@@ -3,7 +3,7 @@
 use std::net::IpAddr;
 
 use arbitrary::Arbitrary;
-use ip_packet::{Ecn, IpPacket, IpPacketBuf, Protocol};
+use ip_packet::{Ecn, IcmpError, IpPacket, IpPacketBuf, Protocol};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|input: Input| {
@@ -17,6 +17,10 @@ fuzz_target!(|input: Input| {
 
     if let Ok(mut packet) = IpPacket::new(buf, len) {
         test_all_getters(&packet);
+
+        // Parsing an ICMP error does not require valid checksums, so arbitrary
+        // input can reach this directly.
+        exercise_icmp_error(&packet, input.translate_dst, input.translate_port);
 
         // The mutators patch checksums incrementally: a packet with correct checksums
         // must still have correct checksums after any sequence of mutations. Arbitrary
@@ -46,6 +50,73 @@ fuzz_target!(|input: Input| {
                 Setter::TranslateDst(protocol, dst) => {
                     let _ = packet.translate_destination(protocol, dst);
                 }
+                Setter::UdpSrcPort(port) => {
+                    if let Some(mut udp) = packet.as_udp_mut() {
+                        udp.set_source_port(port);
+
+                        assert_eq!(udp.get_source_port(), port);
+                        let _ = udp.get_checksum();
+                    }
+
+                    // The raw slice setters don't maintain checksums.
+                    packet.compute_checksums();
+                }
+                Setter::UdpDstPort(port) => {
+                    if let Some(mut udp) = packet.as_udp_mut() {
+                        udp.set_destination_port(port);
+
+                        assert_eq!(udp.get_destination_port(), port);
+                    }
+
+                    packet.compute_checksums();
+                }
+                Setter::TcpSrcPort(port) => {
+                    if let Some(mut tcp) = packet.as_tcp_mut() {
+                        tcp.set_source_port(port);
+
+                        assert_eq!(tcp.get_source_port(), port);
+                        let _ = tcp.get_checksum();
+                    }
+
+                    packet.compute_checksums();
+                }
+                Setter::TcpDstPort(port) => {
+                    if let Some(mut tcp) = packet.as_tcp_mut() {
+                        tcp.set_destination_port(port);
+
+                        assert_eq!(tcp.get_destination_port(), port);
+                    }
+
+                    packet.compute_checksums();
+                }
+                Setter::Icmpv4Identifier(id) => {
+                    if let Some(mut icmp) = packet.as_icmpv4_mut() {
+                        // The identifier only exists for echo requests and replies.
+                        if icmp.is_echo_request_or_reply() {
+                            icmp.set_identifier(id);
+
+                            assert_eq!(icmp.get_identifier(), id);
+                        }
+
+                        let _ = icmp.get_checksum();
+                    }
+
+                    packet.compute_checksums();
+                }
+                Setter::Icmpv6Identifier(id) => {
+                    if let Some(mut icmp) = packet.as_icmpv6_mut() {
+                        // The identifier only exists for echo requests and replies.
+                        if icmp.is_echo_request_or_reply() {
+                            icmp.set_identifier(id);
+
+                            assert_eq!(icmp.get_identifier(), id);
+                        }
+
+                        let _ = icmp.get_checksum();
+                    }
+
+                    packet.compute_checksums();
+                }
             }
 
             test_all_getters(&packet);
@@ -56,8 +127,101 @@ fuzz_target!(|input: Input| {
                 "mutators broke checksums: {errors:?}\npacket: {packet:?}"
             );
         }
+
+        make_and_parse_icmp_errors(&packet, input.translate_dst, input.translate_port);
     }
 });
+
+/// Builds ICMP destination-unreachable errors from the packet and parses them back.
+fn make_and_parse_icmp_errors(packet: &IpPacket, translate_dst: IpAddr, translate_port: u16) {
+    type MakeError = fn(&IpPacket) -> anyhow::Result<IpPacket>;
+    type IsCode = fn(&IcmpError) -> bool;
+
+    let cases: [(MakeError, IsCode); 2] = [
+        (
+            ip_packet::make::icmp_dest_unreachable_prohibited,
+            IcmpError::is_unreachable_prohibited,
+        ),
+        (
+            ip_packet::make::icmp_dest_unreachable_network,
+            IcmpError::is_unreachable_network,
+        ),
+    ];
+
+    for (make_error, is_code) in cases {
+        let Ok(error_packet) = make_error(packet) else {
+            continue;
+        };
+
+        test_all_getters(&error_packet);
+
+        assert_eq!(error_packet.source(), packet.destination());
+        assert_eq!(error_packet.destination(), packet.source());
+
+        let errors = checksum_errors(&error_packet);
+        assert!(
+            errors.is_empty(),
+            "constructed ICMP error has broken checksums: {errors:?}\npacket: {error_packet:?}"
+        );
+
+        // An IPv4 UDP or TCP packet always embeds its full IP header plus at least
+        // the ports, so parsing the error back must succeed.
+        if matches!(packet.source(), IpAddr::V4(_)) && (packet.is_udp() || packet.is_tcp()) {
+            let (failed, icmp_error) = error_packet
+                .icmp_error()
+                .unwrap_or_else(|e| {
+                    panic!("failed to parse constructed ICMP error: {e:#}\npacket: {packet:?}")
+                })
+                .expect("constructed ICMP error should contain a failed packet");
+
+            assert_eq!(failed.src(), packet.source());
+            assert_eq!(failed.dst(), packet.destination());
+            assert_eq!(
+                failed.src_proto(),
+                packet
+                    .source_protocol()
+                    .expect("UDP/TCP packets always have a source protocol")
+            );
+            assert_eq!(
+                failed.dst_proto(),
+                packet
+                    .destination_protocol()
+                    .expect("UDP/TCP packets always have a destination protocol")
+            );
+            assert!(is_code(&icmp_error));
+        }
+
+        exercise_icmp_error(&error_packet, translate_dst, translate_port);
+    }
+}
+
+/// Exercises the ICMP error API on any packet that parses as an ICMP error.
+fn exercise_icmp_error(packet: &IpPacket, translate_dst: IpAddr, translate_port: u16) {
+    let Ok(Some((failed, icmp_error))) = packet.icmp_error() else {
+        return;
+    };
+
+    let _ = failed.layer4_protocol();
+    let _ = failed.dst_proto();
+    let _ = icmp_error.is_unreachable_prohibited();
+    let _ = icmp_error.is_unreachable_network();
+    let _ = icmp_error.clone().into_icmp_v4_type();
+    let _ = icmp_error.clone().into_icmp_v6_type();
+    let _ = format!("{icmp_error} / {failed:?}");
+
+    // Translating to the failed destination itself exercises the same-version paths.
+    let dst = failed.dst();
+    let src_proto = failed.src_proto();
+    let _ = failed.translate_destination(dst, src_proto);
+
+    // An arbitrary destination also reaches the version-mismatch arms. Keep the
+    // protocol type intact: `translate_destination` assumes it matches the failed
+    // packet's L4 protocol and may index out of bounds otherwise.
+    if let Ok(Some((failed, _))) = packet.icmp_error() {
+        let src_proto = failed.src_proto().with_value(translate_port);
+        let _ = failed.translate_destination(translate_dst, src_proto);
+    }
+}
 
 /// Compares all stored checksums of the packet against a full recomputation.
 fn checksum_errors(packet: &IpPacket) -> Vec<String> {
@@ -133,6 +297,8 @@ fn checksum_matches(stored: u16, expected: u16) -> bool {
 #[derive(Arbitrary, Debug)]
 struct Input<'a> {
     data: &'a [u8],
+    translate_dst: IpAddr,
+    translate_port: u16,
     setters: Vec<Setter>,
 }
 
@@ -145,6 +311,12 @@ enum Setter {
     Ecn(Ecn),
     TranslateSrc(Protocol, IpAddr),
     TranslateDst(Protocol, IpAddr),
+    UdpSrcPort(u16),
+    UdpDstPort(u16),
+    TcpSrcPort(u16),
+    TcpDstPort(u16),
+    Icmpv4Identifier(u16),
+    Icmpv6Identifier(u16),
 }
 
 fn test_all_getters(packet: &IpPacket) {

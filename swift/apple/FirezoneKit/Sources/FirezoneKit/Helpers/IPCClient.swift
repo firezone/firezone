@@ -59,7 +59,13 @@ public enum IPCClient {
   ) async throws -> StatePollResponse {
     let message = ProviderMessage.pollUpdates(StatePollRequest(stateHash: currentHash))
 
-    guard let data = try await sendProviderMessage(session: session, message: message) else {
+    guard
+      let data = try await sendProviderMessage(
+        session: session,
+        message: message,
+        cycleStartIfStopped: false
+      )
+    else {
       throw Error.noIPCData
     }
 
@@ -177,11 +183,17 @@ public enum IPCClient {
     }
   }
 
+  /// Sends `message` to the provider, waking a stopped tunnel first if asked to.
+  ///
+  /// Polling opts out: cycle-starting from the poll loop would wake the extension
+  /// without a tunnel behind it, and the stop that follows churns the VPN status,
+  /// which starts the loop over again.
   private static func sendProviderMessage(
     session: any TunnelSessionProtocol,
     message: ProviderMessage,
+    cycleStartIfStopped: Bool = true
   ) async throws -> Data? {
-    let isCycleStart = try await maybeCycleStart(session)
+    let isCycleStart = cycleStartIfStopped ? try await maybeCycleStart(session) : false
 
     do {
       let response = try await withCheckedThrowingContinuation { continuation in

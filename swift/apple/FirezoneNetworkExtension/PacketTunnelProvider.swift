@@ -232,8 +232,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         completionHandler?(nil)
       case .pollUpdates(let request):
         guard let adapter else {
+          // The system reports us as connected from the moment `startTunnel` returns, so
+          // the app can poll before there is anything to poll. Answer "nothing changed"
+          // rather than nothing at all, which the app can only read as a broken tunnel.
           Log.warning("Adapter is nil")
-          completionHandler?(nil)
+          let empty = StatePollResponse(stateChange: nil, notifications: [])
+          completionHandler?(try PropertyListEncoder().encode(empty))
           return
         }
 

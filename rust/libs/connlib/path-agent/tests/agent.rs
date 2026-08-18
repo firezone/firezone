@@ -517,6 +517,93 @@ fn roam_recovers_the_data_path_via_probes_without_a_handshake() {
     );
 }
 
+// --- relay invalidation ---
+
+#[test]
+fn invalidated_relay_primary_fails_over_to_remote_relay_and_back() {
+    let mut a = PathAgent::new();
+    let t0 = Instant::now();
+
+    let local_relay = Candidate::relayed(addr(2), addr(2));
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+    a.add_local_candidate(local_relay, t0);
+    a.add_remote_candidate(Candidate::host(addr(9)), t0);
+    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)), t0);
+
+    // Direct pairs never answer in this scenario: only relayed paths work.
+    let via_own_relay = (addr(2), addr(9));
+    let via_remote_relay = (addr(1), addr(4));
+
+    bootstrap_primary(&mut a, via_own_relay, t0);
+    let probes = a.tick(t0);
+    a.ack_probe(&probes, via_own_relay, t0 + ms(30));
+    assert_eq!(a.primary(), Some(via_own_relay));
+    a.drain_events();
+    let _ = a.transmits();
+
+    // Our relay allocation dies while carrying the traffic.
+    let t1 = t0 + secs(2);
+    assert!(a.remove_local_candidate(&local_relay, t1));
+    assert_eq!(
+        a.primary(),
+        None,
+        "losing the in-use relay must clear the primary",
+    );
+
+    let recovery = a.advance(t1, t1 + secs(1));
+    assert!(
+        recovery
+            .transmits
+            .iter()
+            .any(|(at, t)| *at == t1 && (t.local, t.remote) == via_remote_relay),
+        "the pair via the remote's relay must be probed right away",
+    );
+    assert!(
+        recovery.transmits.iter().all(|(_, t)| t.local != addr(2)),
+        "pairs through the dead relay must not be probed",
+    );
+
+    // The remote's relay answers: pathless selection adopts it, keeping the
+    // connection alive without our own relay.
+    let probe = &recovery.probes_for(via_remote_relay)[0];
+    let _ = a.handle_inbound_tun(
+        build_echo_reply(probe.id, probe.seq),
+        via_remote_relay,
+        t1 + ms(50),
+    );
+    assert_eq!(a.primary(), Some(via_remote_relay));
+    a.drain_events();
+
+    // A replacement allocation arrives. Both relayed paths answer; ours wins
+    // the ranking (the relay is on our end, not the remote's).
+    let t2 = t1 + secs(2);
+    let new_relay = Candidate::relayed(addr(6), addr(6));
+    a.add_local_candidate(new_relay, t2);
+    let via_new_relay = (addr(6), addr(9));
+
+    let rediscovery = a.advance(t2, t2 + secs(1));
+
+    let probe = &rediscovery.probes_for(via_remote_relay)[0];
+    let _ = a.handle_inbound_tun(
+        build_echo_reply(probe.id, probe.seq),
+        via_remote_relay,
+        t2 + secs(1),
+    );
+    assert_eq!(a.primary(), Some(via_remote_relay));
+
+    let probe = &rediscovery.probes_for(via_new_relay)[0];
+    let _ = a.handle_inbound_tun(
+        build_echo_reply(probe.id, probe.seq),
+        via_new_relay,
+        t2 + secs(1),
+    );
+    assert_eq!(
+        a.primary(),
+        Some(via_new_relay),
+        "the connection must move back onto our own relay",
+    );
+}
+
 #[test]
 fn signaled_candidate_promotes_a_peer_reflexive_remote_in_place() {
     // A peer behind symmetric NAT reaches us from an unadvertised mapping; we
