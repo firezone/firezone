@@ -5,7 +5,7 @@ set -euox pipefail
 source "./scripts/tests/lib.sh"
 
 docker compose run --rm -T secnetperf-client secnetperf \
-    -target:172.20.0.111 \
+    -target:10.20.0.111 \
     -exec:maxtput \
     -down:30s \
     -ptput:1 |
