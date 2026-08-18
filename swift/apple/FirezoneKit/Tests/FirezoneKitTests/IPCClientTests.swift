@@ -106,7 +106,7 @@ struct IPCClientTests {
       #expect(session.stopTunnelCallCount == 0)
     }
   }
-  
+
   @Test("Polling never starts a stopped tunnel")
   func pollUpdatesDoesNotCycleStart() async {
     for status in [NEVPNStatus.disconnected, .disconnecting, .invalid] {
