@@ -2,10 +2,10 @@
 
 source "./scripts/tests/lib.sh"
 
-client_curl "172.20.0.100/get"
-client_curl "[172:20:0::100]/get"
+client_curl "10.20.0.100/get"
+client_curl "[10:20:0::100]/get"
 
 docker compose stop portal
 
-client_curl "172.20.0.100/get"
-client_curl "[172:20:0::100]/get"
+client_curl "10.20.0.100/get"
+client_curl "[10:20:0::100]/get"
