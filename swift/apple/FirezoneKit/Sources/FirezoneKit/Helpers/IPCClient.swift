@@ -32,6 +32,11 @@ public enum IPCClient {
   private static let encoder = PropertyListEncoder()
   private static let decoder = PropertyListDecoder()
 
+  private static let runningStatuses: [NEVPNStatus] = [.connected, .connecting, .reasserting]
+  private static let settlingStatuses: [NEVPNStatus] = runningStatuses + [.disconnecting]
+  private static let stopTimeout: Duration = .seconds(5)
+  private static let stopPollInterval: Duration = .milliseconds(100)
+
   // Auto-connect: the GUI must save providerConfiguration before calling this so
   // any MDM forced overrides are available to the provider.
   @MainActor
@@ -43,6 +48,28 @@ public enum IPCClient {
   @MainActor
   public static func start(session: any TunnelSessionProtocol, token: String) throws {
     try session.startTunnel(options: ["token": token as NSObject])
+  }
+
+  /// Stops the tunnel if it is running, and waits for the provider to go away.
+  ///
+  /// `stopTunnel` only asks. The provider is still up for a moment afterwards, so callers
+  /// that need it gone rather than going have to wait for the status to follow. Reports
+  /// whether there was a running tunnel, so the caller can put back what it took down.
+  @MainActor
+  static func stopIfRunning(session: any TunnelSessionProtocol) async -> Bool {
+    let wasRunning = runningStatuses.contains(session.status)
+
+    if wasRunning {
+      session.stopTunnel()
+    }
+
+    var waited: Duration = .zero
+    while !Task.isCancelled, settlingStatuses.contains(session.status), waited < stopTimeout {
+      try? await Task.sleep(for: stopPollInterval)
+      waited += stopPollInterval
+    }
+
+    return wasRunning
   }
 
   @MainActor

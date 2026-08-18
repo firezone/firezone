@@ -31,5 +31,8 @@ public protocol SessionNotificationProtocol: AnyObject {
 
     /// Shows a disconnected alert on macOS.
     func showDisconnectedAlertMacOS(_ message: String?) async
+
+    /// Shows an alert asking the user to restart to finish a system extension update.
+    func showRestartRequiredAlertMacOS()
   #endif
 }

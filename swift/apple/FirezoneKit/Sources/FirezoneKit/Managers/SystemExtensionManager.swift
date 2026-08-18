@@ -31,6 +31,19 @@
     // Installed and version is current with our app bundle
     case installed
 
+    // The replacement is staged, but macOS could not swap the extension it is
+    // replacing, so the previous version keeps running until the Mac restarts.
+    // Only an install request reports this; a properties request cannot see it.
+    case needsReboot
+
+    /// Whether the extension the system has can serve the app right now.
+    ///
+    /// A staged replacement leaves the previous version installed and running, so the app
+    /// works. It just isn't the version we shipped with, and only a restart changes that.
+    var isUsable: Bool {
+      self == .installed || self == .needsReboot
+    }
+
     /// Determines extension status by comparing installed extensions against the app version.
     static func fromInstalledExtensions(
       _ extensions: [(bundleVersion: String, bundleShortVersion: String)],
@@ -85,11 +98,15 @@
       didFinishWithResult result: OSSystemExtensionRequest.Result
     ) {
       Task { @MainActor in
-        guard result == .completed else {
+        switch result {
+        case .completed:
+          self.resumeOk(returning: .installed)
+        case .willCompleteAfterReboot:
+          Log.info("System extension replacement is staged until the next restart")
+          self.resumeOk(returning: .needsReboot)
+        @unknown default:
           self.resumeErr(throwing: SystemExtensionError.unknownResult(result))
-          return
         }
-        self.resumeOk(returning: .installed)
       }
     }
 
