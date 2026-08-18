@@ -103,6 +103,7 @@ import SwiftUI
         Button(
           action: {
             // Static URL literal is guaranteed valid
+            // swiftlint:disable:next force_unwrapping
             openURL(URL(string: "https://www.firezone.dev/kb?utm_source=ios=client")!)
           },
           label: {
