@@ -7,8 +7,8 @@ services:
       test: ["CMD-SHELL", "ps -C gunicorn"]
     networks:
       resources:
-        ipv4_address: 172.20.0.100
-        ipv6_address: 172:20:0::100
+        ipv4_address: 10.20.0.100
+        ipv6_address: 10:20:0::100
 
   download.httpbin: # Named after `httpbin` because that is how DNS resources are configured for the test setup.
     build:
@@ -46,8 +46,8 @@ services:
     command: -s -V
     networks:
       resources:
-        ipv4_address: 172.20.0.110
-        ipv6_address: 172:20:0::110
+        ipv4_address: 10.20.0.110
+        ipv6_address: 10:20:0::110
       dns_resources:
         ipv4_address: 172.21.0.110
         aliases:
@@ -61,8 +61,8 @@ services:
       test: ["CMD-SHELL", "grep -q :1151 /proc/net/udp /proc/net/udp6"]
     networks:
       resources:
-        ipv4_address: 172.20.0.111
-        ipv6_address: 172:20:0::111
+        ipv4_address: 10.20.0.111
+        ipv6_address: 10:20:0::111
 
 networks:
   dns_resources:
@@ -74,5 +74,9 @@ networks:
     enable_ipv6: true
     ipam:
       config:
-        - subnet: 172.20.0.0/24
-        - subnet: 172:20:0::/64
+        # Kept outside `172.16.0.0/12`: the Windows Client test routes the
+        # covering CIDR resource into the tunnel while talking to a WSL2 VM,
+        # which picks its NAT subnet from that range on every boot. The IPv6
+        # range mirrors the IPv4 one.
+        - subnet: 10.20.0.0/24
+        - subnet: 10:20:0::/64
