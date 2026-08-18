@@ -67,6 +67,7 @@ on:
         value: ${{ jobs.data-plane-linux.outputs.http_test_server_image }}
 
 permissions:
+  actions: write # gh run cancel
   contents: write # create/update GitHub releases
   id-token: write # OIDC auth
   packages: write # push Docker images to GHCR
@@ -101,6 +102,8 @@ jobs:
           commitish: ${{ env.RESOLVED_SHA }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
 
   data-plane-windows:
     name: client-windows-${{ matrix.target }}
@@ -179,6 +182,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ../scripts/upload/github-release.sh
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
 
   data-plane-linux:
     name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
@@ -471,6 +476,8 @@ jobs:
       - name: Output image name
         id: image-name
         run: echo "${{ matrix.name.image_name }}_image=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
 
   merge-docker-artifacts:
     name: merge-${{ matrix.image.name }}
@@ -566,6 +573,8 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
           category: trivy-${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image.name }}
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
 
   regenerate-apt-index:
     needs: data-plane-linux

@@ -11,6 +11,7 @@ env:
   TSLINK_BUILD: true
 
 permissions:
+  actions: "write" # gh run cancel
   contents: "read"
   id-token: "write" # OIDC auth
   security-events: "write" # trivy SARIF upload from setup-mise
@@ -18,6 +19,7 @@ permissions:
 jobs:
   update-release-draft:
     permissions:
+      actions: write # gh run cancel
       contents: write # for updating the release draft
       id-token: write # OIDC auth
     name: update-release-draft
@@ -37,6 +39,8 @@ jobs:
           commitish: ${{ github.sha }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
 
   static-analysis:
     runs-on: ubuntu-24.04
@@ -48,6 +52,8 @@ jobs:
           lockfile-dir: ./rust/gui-client
       - run: pnpm install
       - run: pnpm eslint .
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
 
   # Runs the Tauri client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
@@ -90,12 +96,15 @@ jobs:
         working-directory: ./rust
         run: cargo run -p gui-smoke-test
         timeout-minutes: 4
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
 
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
     needs: update-release-draft
     runs-on: ${{ matrix.runs-on }}
     permissions:
+      actions: write # gh run cancel
       contents: write # for attaching the build artifacts to the release
       id-token: write # OIDC auth
     strategy:
@@ -329,6 +338,8 @@ jobs:
             --file "${{ env.BINARY_DEST_PATH }}.rpm" \
             --overwrite true \
             --no-progress
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
 
   regenerate-apt-index:
     needs: build-gui

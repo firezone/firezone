@@ -71,6 +71,7 @@ jobs:
     name: collect-images
     runs-on: ubuntu-24.04
     permissions:
+      actions: write # gh run cancel
       contents: read
     env:
       PORTAL_IMAGE: ${{ inputs.portal_image }}
@@ -131,3 +132,5 @@ jobs:
           path: images.tar.zst
           compression-level: 0
           retention-days: 1
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()

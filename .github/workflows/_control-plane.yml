@@ -9,6 +9,7 @@ on:
         default: ${{ github.sha }}
 
 permissions:
+  actions: write # gh run cancel
   id-token: write # OIDC auth
   packages: write # push Docker images to GHCR
   security-events: write # upload Trivy SARIF results
@@ -111,3 +112,5 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
           category: trivy-portal
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
