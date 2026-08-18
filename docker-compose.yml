@@ -165,7 +165,7 @@ services:
   # namespace of `client-1` so its traffic is routed through the tunnel.
   # Run with `docker compose run --rm secnetperf-client secnetperf -target:...`.
   secnetperf-client:
-    image: ghcr.io/firezone/secnetperf:latest
+    image: ghcr.io/firezone/secnetperf:v2.6.0
     network_mode: service:client-1
     depends_on:
       client-1:

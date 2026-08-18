@@ -54,7 +54,7 @@ services:
           - iperf3.test
 
   secnetperf:
-    image: ghcr.io/firezone/secnetperf:latest
+    image: ghcr.io/firezone/secnetperf:v2.6.0
     command: secnetperf -exec:maxtput -stats:1
     healthcheck:
       # 4433 (the default secnetperf port) in hex
