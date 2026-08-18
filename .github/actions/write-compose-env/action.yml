@@ -47,23 +47,33 @@ runs:
   using: "composite"
   steps:
     # An empty value still falls back to the compose file's `:-` default.
+    # The inputs are passed as environment rather than interpolated into the
+    # script, so a value cannot terminate a quote and run as shell.
     - name: Write .env
       shell: bash
+      env:
+        PORTAL_IMAGE: ${{ inputs.portal_image }}
+        PORTAL_TAG: ${{ inputs.portal_tag }}
+        ELIXIR_IMAGE: ${{ inputs.elixir_image }}
+        ELIXIR_TAG: ${{ inputs.elixir_tag }}
+        RELAY_IMAGE: ${{ inputs.relay_image }}
+        RELAY_TAG: ${{ inputs.relay_tag }}
+        GATEWAY_IMAGE: ${{ inputs.gateway_image }}
+        GATEWAY_TAG: ${{ inputs.gateway_tag }}
+        CLIENT_IMAGE: ${{ inputs.client_image }}
+        CLIENT_TAG: ${{ inputs.client_tag }}
+        HTTP_TEST_SERVER_IMAGE: ${{ inputs.http_test_server_image }}
+        HTTP_TEST_SERVER_TAG: ${{ inputs.http_test_server_tag }}
+        EXTRA: ${{ inputs.extra }}
       run: |
         {
-          echo "PORTAL_IMAGE=${{ inputs.portal_image }}"
-          echo "PORTAL_TAG=${{ inputs.portal_tag }}"
-          echo "ELIXIR_IMAGE=${{ inputs.elixir_image }}"
-          echo "ELIXIR_TAG=${{ inputs.elixir_tag }}"
-          echo "RELAY_IMAGE=${{ inputs.relay_image }}"
-          echo "RELAY_TAG=${{ inputs.relay_tag }}"
-          echo "GATEWAY_IMAGE=${{ inputs.gateway_image }}"
-          echo "GATEWAY_TAG=${{ inputs.gateway_tag }}"
-          echo "CLIENT_IMAGE=${{ inputs.client_image }}"
-          echo "CLIENT_TAG=${{ inputs.client_tag }}"
-          echo "HTTP_TEST_SERVER_IMAGE=${{ inputs.http_test_server_image }}"
-          echo "HTTP_TEST_SERVER_TAG=${{ inputs.http_test_server_tag }}"
-          if [ -n "${{ inputs.extra }}" ]; then
-            printf '%s\n' "${{ inputs.extra }}"
+          for var in PORTAL_IMAGE PORTAL_TAG ELIXIR_IMAGE ELIXIR_TAG \
+            RELAY_IMAGE RELAY_TAG GATEWAY_IMAGE GATEWAY_TAG \
+            CLIENT_IMAGE CLIENT_TAG HTTP_TEST_SERVER_IMAGE HTTP_TEST_SERVER_TAG; do
+            printf '%s=%s\n' "$var" "${!var}"
+          done
+
+          if [ -n "$EXTRA" ]; then
+            printf '%s\n' "$EXTRA"
           fi
         } > .env
