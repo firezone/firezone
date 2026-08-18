@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::iter;
 use std::net::{IpAddr, Ipv4Addr};
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, ErrorExt, Result, bail};
@@ -15,6 +17,7 @@ use crate::filter_engine::FilterEngine;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken};
+use crate::p2p_control::dns_resource_nat::NatStatus;
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp};
@@ -77,15 +80,18 @@ impl ClientOnGateway {
         ]
     }
 
-    /// Setup the NAT for a domain of a DNS resource.
+    /// Sets up NAT for a DNS resource domain.
+    ///
+    /// A missing resolution registers the proxy addresses without replacing the last successful
+    /// destination. A completed resolution replaces it, including when it contains no addresses.
     #[tracing::instrument(level = "debug", skip_all, fields(cid = %self.id))]
     pub(crate) fn setup_nat(
         &mut self,
         name: DomainName,
         resource_id: ResourceId,
-        resolved_ips: BTreeSet<IpAddr>,
+        resolve_result: Result<Vec<IpAddr>, Arc<anyhow::Error>>,
         proxy_ips: BTreeSet<IpAddr>,
-    ) -> Result<()> {
+    ) -> Result<NatStatus> {
         if self.have_proxy_ips_been_reassigned(&name, &proxy_ips) {
             tracing::info!("Client has re-assigned proxy IPs, resetting DNS resource NAT");
 
@@ -107,36 +113,61 @@ impl ClientOnGateway {
 
         anyhow::ensure!(crate::dns::is_subdomain(&name, address));
 
-        if resolved_ips.is_empty() {
+        let (resolved_ips, nat_status) = match resolve_result {
+            Ok(resolved_ips) => (Some(resolved_ips.into_iter().collect()), NatStatus::Active),
+            Err(error) => {
+                tracing::warn!("Failed to resolve DNS resource: {error:#}");
+
+                (None, NatStatus::Inactive)
+            }
+        };
+
+        if resolved_ips.as_ref().is_some_and(BTreeSet::is_empty) {
             tracing::debug!(domain = %name, %resource_id, "No A / AAAA records for domain");
         }
 
-        let mut resolved_ipv4 = resolved_ips.iter().filter(|ip| ip.is_ipv4()).cycle();
-        let mut resolved_ipv6 = resolved_ips.iter().filter(|ip| ip.is_ipv6()).cycle();
-
         tracing::debug!(domain = %name, ?resolved_ips, ?proxy_ips, "Setting up DNS resource NAT");
 
-        for proxy_ip in proxy_ips {
-            let maybe_real_ip = match proxy_ip {
-                IpAddr::V4(_) => resolved_ipv4.next(),
-                IpAddr::V6(_) => resolved_ipv6.next(),
-            };
+        {
+            let mut resolved_ipv4 = resolved_ips
+                .iter()
+                .flatten()
+                .filter(|ip| ip.is_ipv4())
+                .cycle();
+            let mut resolved_ipv6 = resolved_ips
+                .iter()
+                .flatten()
+                .filter(|ip| ip.is_ipv6())
+                .cycle();
 
-            tracing::debug!(%name, %proxy_ip, real_ip = ?maybe_real_ip);
+            for proxy_ip in proxy_ips {
+                let resolved_ip = match proxy_ip {
+                    IpAddr::V4(_) => resolved_ipv4.next(),
+                    IpAddr::V6(_) => resolved_ipv6.next(),
+                }
+                .copied();
+                let update = resolved_ips
+                    .as_ref()
+                    .map(|_| ResolutionUpdate::Succeeded(resolved_ip))
+                    .unwrap_or(ResolutionUpdate::Failed);
 
-            let state = self
-                .permanent_translations
-                .entry(proxy_ip)
-                .or_insert_with(|| TranslationState::new(name.clone()));
+                tracing::debug!(%name, %proxy_ip, real_ip = ?resolved_ip);
 
-            state.resources.insert(resource_id);
-            state.resolved_ip = maybe_real_ip.copied();
+                let state = self
+                    .permanent_translations
+                    .entry(proxy_ip)
+                    .or_insert_with(|| TranslationState::new(name.clone()));
+
+                state.update(resource_id, update);
+            }
         }
 
-        domains.insert(name, resolved_ips);
+        if let Some(resolved_ips) = resolved_ips {
+            domains.insert(name, resolved_ips);
+        }
         self.recalculate_filters();
 
-        Ok(())
+        Ok(nat_status)
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -151,13 +182,17 @@ impl ClientOnGateway {
         self.nat_table.handle_timeout(now);
         self.resources.handle_timeout(now);
 
+        let expired_resources = iter::from_fn(|| self.resources.poll_event())
+            .map(|event| match event {
+                expiring_map::Event::EntryExpired { key, value } => (key, value),
+            })
+            .collect::<Vec<_>>();
+        let any_expired = !expired_resources.is_empty();
         let cid = self.id;
-        let mut any_expired = false;
-        while let Some(expiring_map::Event::EntryExpired { key, .. }) = self.resources.poll_event()
-        {
+
+        for (key, resource) in expired_resources {
             tracing::info!(%cid, rid = %key, "Access to resource expired");
-            self.ingest_tokens.remove(&key);
-            any_expired = true;
+            self.cleanup_removed_authorization(key, resource);
         }
 
         if any_expired {
@@ -166,8 +201,10 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
-        self.resources.remove(resource);
-        self.ingest_tokens.remove(resource);
+        if let Some(entry) = self.resources.remove(resource) {
+            self.cleanup_removed_authorization(*resource, entry.value);
+        }
+
         self.recalculate_filters();
     }
 
@@ -225,15 +262,35 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn retain_authorizations(&mut self, authorization: BTreeSet<ResourceId>) {
-        for (rid, _) in self
+        let revoked = self
             .resources
             .extract_if(|rid, _| !authorization.contains(rid))
-        {
+            .collect::<Vec<_>>();
+
+        for (rid, resource) in revoked {
             tracing::info!(%rid, "Revoking resource authorization");
-            self.ingest_tokens.remove(&rid);
+            self.cleanup_removed_authorization(rid, resource);
         }
 
         self.recalculate_filters();
+    }
+
+    fn cleanup_removed_authorization(
+        &mut self,
+        resource_id: ResourceId,
+        resource: ResourceOnGateway,
+    ) {
+        match resource {
+            ResourceOnGateway::Dns { .. } => {
+                for state in self.permanent_translations.values_mut() {
+                    state.detach_resource(resource_id);
+                }
+            }
+            ResourceOnGateway::Cidr { .. } => {}
+            ResourceOnGateway::Internet => {}
+        }
+
+        self.ingest_tokens.remove(&resource_id);
     }
 
     /// Checks if the given proxy IPs assigned for a domain are consistent with what we have stored.
@@ -651,12 +708,18 @@ impl routing_table::RouteEntry for RouteEntry {
 // Current state of a translation for a given proxy ip
 #[derive(Debug)]
 struct TranslationState {
-    /// Which (DNS) resources we belong to.
+    /// Which DNS resources use this translation.
     resources: BTreeSet<ResourceId>,
-    /// The IP we have resolved for the domain.
+    /// The latest IP resolved for the domain.
     resolved_ip: Option<IpAddr>,
     /// The domain we have resolved.
     domain: DomainName,
+}
+
+#[derive(Clone, Copy)]
+enum ResolutionUpdate {
+    Failed,
+    Succeeded(Option<IpAddr>),
 }
 
 impl TranslationState {
@@ -666,6 +729,19 @@ impl TranslationState {
             resolved_ip: None,
             domain,
         }
+    }
+
+    fn update(&mut self, resource: ResourceId, resolution: ResolutionUpdate) {
+        self.resources.insert(resource);
+
+        match resolution {
+            ResolutionUpdate::Failed => {}
+            ResolutionUpdate::Succeeded(resolved_ip) => self.resolved_ip = resolved_ip,
+        }
+    }
+
+    fn detach_resource(&mut self, resource: ResourceId) {
+        self.resources.remove(&resource);
     }
 }
 
@@ -733,6 +809,53 @@ mod tests {
         messages::{Filter, PortRange, gateway::ResourceDescriptionCidr},
         unroutable_packet::RoutingError,
     };
+
+    #[test]
+    fn failed_resolution_preserves_last_success() {
+        let resource = foo_resource_id();
+        let mut state = TranslationState::new(foo_name().parse().unwrap());
+
+        state.update(resource, ResolutionUpdate::Failed);
+        assert_eq!(state.resolved_ip, None);
+        assert_eq!(state.resources, BTreeSet::from([resource]));
+
+        state.update(
+            resource,
+            ResolutionUpdate::Succeeded(Some(foo_real_ip1().into())),
+        );
+        state.update(resource, ResolutionUpdate::Failed);
+
+        assert_eq!(state.resolved_ip, Some(foo_real_ip1().into()));
+    }
+
+    #[test]
+    fn successful_empty_resolution_clears_last_success() {
+        let resource = foo_resource_id();
+        let mut state = TranslationState::new(foo_name().parse().unwrap());
+        state.update(
+            resource,
+            ResolutionUpdate::Succeeded(Some(foo_real_ip1().into())),
+        );
+
+        state.update(resource, ResolutionUpdate::Succeeded(None));
+
+        assert_eq!(state.resolved_ip, None);
+    }
+
+    #[test]
+    fn detaching_resource_preserves_shared_resolution() {
+        let resource = foo_resource_id();
+        let other_resource = foo_resource2_id();
+        let resolved_ip = foo_real_ip1().into();
+        let mut state = TranslationState::new(foo_name().parse().unwrap());
+        state.update(resource, ResolutionUpdate::Succeeded(Some(resolved_ip)));
+        state.update(other_resource, ResolutionUpdate::Failed);
+
+        state.detach_resource(resource);
+
+        assert_eq!(state.resolved_ip, Some(resolved_ip));
+        assert_eq!(state.resources, BTreeSet::from([other_resource]));
+    }
 
     #[test]
     fn gateway_filters_expire_individually() {
@@ -879,7 +1002,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
@@ -945,7 +1068,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
@@ -1041,7 +1164,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
@@ -1109,7 +1232,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
@@ -1131,7 +1254,7 @@ mod tests {
             peer.setup_nat(
                 foo_name().parse().unwrap(),
                 foo_resource_id(),
-                BTreeSet::from([foo_real_ip2().into()]), // Setting up with a new IP!
+                Ok(vec![foo_real_ip2().into()]), // Setting up with a new IP!
                 BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
             )
             .unwrap();
@@ -1199,7 +1322,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
@@ -1226,7 +1349,7 @@ mod tests {
         peer.setup_nat(
             baz_name().parse().unwrap(),
             baz_resource_id(),
-            BTreeSet::from([baz_real_ip1().into()]),
+            Ok(vec![baz_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         )
         .unwrap();
@@ -1250,7 +1373,7 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1(), proxy_ip4_2(), proxy_ip6_1(), proxy_ip6_2()]),
         )
         .unwrap();
@@ -1301,14 +1424,14 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource2_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
+            Ok(vec![foo_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1()]),
         )
         .unwrap();
