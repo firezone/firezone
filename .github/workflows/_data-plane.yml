@@ -161,6 +161,12 @@ jobs:
       - name: Package binary
         shell: bash
         run: cp target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
+      - name: Upload binary for downstream jobs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.package }}-${{ matrix.target }}-${{ inputs.profile }}
+          path: rust/target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe
+          if-no-files-found: error
       - uses: ./.github/actions/setup-azure-sign-tool
         if: ${{ inputs.profile == 'release' }}
         with:
