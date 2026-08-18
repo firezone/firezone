@@ -1126,6 +1126,99 @@ impl PathAgent {
 mod tests {
     use super::*;
     use crate::CandidateKind;
+    use crate::event::Payload;
+    use crate::icmpv6::Echo;
+
+    /// Fires due probes, then answers the echo request sent on `pair`,
+    /// draining all other transmits and events along the way.
+    fn answer_probe(a: &mut PathAgent, pair: (SocketAddr, SocketAddr), now: Instant) {
+        a.handle_timeout(now);
+
+        let mut request = None;
+        while let Some(t) = a.poll_transmit() {
+            if (t.local, t.remote) != pair {
+                continue;
+            }
+            let Payload::Plaintext(packet) = t.payload else {
+                continue;
+            };
+            if let Some(probe) = crate::icmpv6::Probe::try_parse(&packet)
+                && probe.kind == Echo::Request
+            {
+                request = Some(probe);
+            }
+        }
+        let probe = request.expect("a probe was sent on the pair");
+
+        let reply = crate::icmpv6::build_echo_reply(probe.id, probe.seq);
+        let _ = a.handle_inbound_tun(reply, pair, now);
+
+        while a.poll_event().is_some() {}
+    }
+
+    #[test]
+    fn invalidated_relay_primary_fails_over_to_remote_relay() {
+        let mut a = PathAgent {
+            has_session: true,
+            ..Default::default()
+        };
+        let t0 = Instant::now();
+
+        let local_host: SocketAddr = "10.0.0.1:1000".parse().unwrap();
+        let local_relay = Candidate::relayed("203.0.113.1:2000".parse().unwrap(), local_host);
+        let remote_host: SocketAddr = "192.168.1.1:4000".parse().unwrap();
+        let remote_relay = Candidate::relayed("198.51.100.1:3000".parse().unwrap(), remote_host);
+
+        a.add_local_candidate(Candidate::host(local_host), t0);
+        a.add_local_candidate(local_relay, t0);
+        a.add_remote_candidate(Candidate::host(remote_host), t0);
+        a.add_remote_candidate(remote_relay, t0);
+
+        // The direct pair never answers in this test: only relayed paths work.
+        let via_own_relay = (local_relay.local(), remote_host);
+        let via_remote_relay = (local_host, remote_relay.addr());
+
+        answer_probe(&mut a, via_own_relay, t0);
+        assert_eq!(a.primary(), Some(via_own_relay));
+
+        // Our relay allocation dies while in use.
+        let t1 = t0 + Duration::from_secs(1);
+        assert!(a.remove_local_candidate(&local_relay, t1));
+
+        assert_eq!(
+            a.primary(),
+            None,
+            "losing the in-use relay must clear the primary",
+        );
+        assert!(!a.pairs.contains_key(&via_own_relay));
+        assert!(
+            a.poll_timeout().is_some_and(|t| t <= t1),
+            "the surviving pairs must be due for probing right away",
+        );
+
+        // The probe via the remote's relay is answered: pathless selection
+        // adopts it, keeping the connection alive without our own relay.
+        answer_probe(&mut a, via_remote_relay, t1);
+        assert_eq!(a.primary(), Some(via_remote_relay));
+
+        // A replacement allocation arrives. Both relayed paths answer; ours
+        // wins the bucket comparison (relay on our end, not the remote's).
+        let t2 = t1 + Duration::from_secs(1);
+        let new_relay = Candidate::relayed("203.0.113.2:2000".parse().unwrap(), local_host);
+        a.add_local_candidate(new_relay, t2);
+        let via_new_relay = (new_relay.local(), remote_host);
+
+        answer_probe(&mut a, via_remote_relay, t2);
+        assert_eq!(a.primary(), Some(via_remote_relay));
+
+        let t3 = t2 + PROBE_BURST_GAPS[0];
+        answer_probe(&mut a, via_new_relay, t3);
+        assert_eq!(
+            a.primary(),
+            Some(via_new_relay),
+            "the connection must move back onto our own relay",
+        );
+    }
 
     #[test]
     fn inflight_probes_stay_capped_while_hunting_forever() {
