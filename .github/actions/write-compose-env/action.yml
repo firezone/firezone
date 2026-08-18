@@ -67,5 +67,3 @@ runs:
             printf '%s\n' "${{ inputs.extra }}"
           fi
         } > .env
-
-        cat .env

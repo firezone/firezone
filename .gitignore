@@ -35,6 +35,3 @@ gha-creds-*.json
 buildServer.json
 
 erl_crash.dump
-
-# Written by .github/actions/write-compose-env in CI
-.env
