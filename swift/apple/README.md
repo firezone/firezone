@@ -65,8 +65,10 @@ group. Apple treats this as a managed capability; request it for both App IDs,
 enable it after approval, and regenerate the development and distribution
 provisioning profiles before testing or releasing an MDM-provided identity.
 
-See Apple's [Network Extension entitlement guidance](https://developer.apple.com/forums/thread/67613)
-and [managed capability provisioning instructions](https://developer.apple.com/help/account/reference/provisioning-with-managed-capabilities).
+See Apple's
+[Network Extension entitlement guidance](https://developer.apple.com/forums/thread/67613)
+and
+[managed capability provisioning instructions](https://developer.apple.com/help/account/reference/provisioning-with-managed-capabilities).
 
 ### Making release builds for local testing
 
