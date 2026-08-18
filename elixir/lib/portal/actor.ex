@@ -2,6 +2,7 @@ defmodule Portal.Actor do
   use Ecto.Schema
   import Ecto.Changeset
   import Portal.Changeset
+  alias Portal.Email
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -67,31 +68,6 @@ defmodule Portal.Actor do
     end
   end
 
-  @doc """
-  Normalizes an email address for storage or comparison.
-
-  Whitespace around each component is removed and the domain is lowercased
-  and IDNA-encoded. The local part retains its case; case-insensitive matching
-  is enforced by the `citext` database column.
-  """
-  @spec normalize_email(String.t()) :: {:ok, String.t()} | :error
-  def normalize_email(email) when is_binary(email) do
-    case String.split(email, "@", parts: 2) do
-      [local, domain] ->
-        local = String.trim(local)
-        domain = domain |> String.trim() |> String.downcase()
-
-        case try_encode_domain(domain) do
-          {:ok, punycode_domain} -> {:ok, local <> "@" <> to_string(punycode_domain)}
-          _error -> :error
-        end
-
-      # No @ sign, return as-is (will be caught by validate_email)
-      _ ->
-        {:ok, String.trim(email)}
-    end
-  end
-
   defp validate_type_transition(changeset) do
     old_type = changeset.data.type
     new_type = get_change(changeset, :type)
@@ -120,8 +96,12 @@ defmodule Portal.Actor do
 
   defp normalize_for_compare(nil), do: ""
 
-  defp normalize_for_compare(value) when is_binary(value),
-    do: value |> String.trim() |> String.downcase()
+  defp normalize_for_compare(value) when is_binary(value) do
+    case Email.normalize_for_match(value) do
+      {:ok, email} -> email
+      :error -> value |> String.trim() |> String.downcase()
+    end
+  end
 
   defp normalize_email(changeset, field) do
     update_change(changeset, field, fn
@@ -129,7 +109,7 @@ defmodule Portal.Actor do
         nil
 
       email when is_binary(email) ->
-        case normalize_email(email) do
+        case Email.normalize(email) do
           {:ok, encoded} ->
             encoded
 

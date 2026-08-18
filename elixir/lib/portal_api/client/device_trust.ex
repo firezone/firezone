@@ -751,14 +751,11 @@ defmodule PortalAPI.Client.DeviceTrust do
         end
 
       {"email", {:ok, email}} ->
-        case Portal.Actor.normalize_email(email) do
+        case Portal.Email.normalize_for_match(email) do
           {:ok, ""} ->
             claims
 
           {:ok, email} ->
-            # Actor emails use citext, so collapse claims using the same
-            # case-insensitive semantics before checking claim uniqueness.
-            email = String.downcase(email)
             update_in(claims.emails, &MapSet.put(&1, email))
 
           :error ->
