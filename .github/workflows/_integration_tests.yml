@@ -259,18 +259,6 @@ jobs:
           docker compose logs client-1 client-2 | \
             grep --invert "I/O error (os error 5)" | \
             grep " WARN " && exit 1 || exit 0
-      - name: Show Client logs
-        if: "!cancelled()"
-        run: docker compose logs client-1 client-2
-
-      - name: Show Relay-1 logs
-        if: "!cancelled()"
-        run: docker compose logs relay-1
-
-      - name: Show Relay-2 logs
-        if: "!cancelled()"
-        run: docker compose logs relay-2
-
       - name: Ensure Gateway emitted no warnings
         if: "!cancelled()"
         run: |
@@ -279,17 +267,10 @@ jobs:
             grep --invert "I/O error (os error 5)" | \
             ${{ matrix.test.gateway_disable_ipv6 == 1 && 'grep --invert "Failed to add route: Received a netlink error message Permission denied (os error 13) route=fd00:2021:1111::/107" |' || '' }} \
             grep " WARN " && exit 1 || exit 0
-      - name: Show Gateway logs
+      - uses: ./.github/actions/show-compose-logs
         if: "!cancelled()"
-        run: docker compose logs gateway
-
-      - name: Show Portal logs
-        if: "!cancelled()"
-        run: docker compose logs portal
-
-      - name: Show Postgres logs
-        if: "!cancelled()"
-        run: docker compose logs postgres
+        with:
+          services: client-1 client-2 relay-1 relay-2 gateway portal postgres
 
       - name: Ensure no eBPF checksum errors on relay-1
         if: "!cancelled() && steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure'"
