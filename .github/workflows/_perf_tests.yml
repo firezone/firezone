@@ -99,27 +99,10 @@ jobs:
           overwrite: true
           name: ${{ matrix.flavour }}-${{ matrix.test }}-${{ github.sha }}-perf-results
           path: ./${{ matrix.flavour }}-${{ matrix.test }}.bmf.json
-      - name: Show Client logs
+      - uses: ./.github/actions/show-compose-logs
         if: "!cancelled()"
-        run: docker compose logs client-1
-      - name: Show Relay-1 logs
-        if: "!cancelled()"
-        run: docker compose logs relay-1
-      - name: Show Relay-2 logs
-        if: "!cancelled()"
-        run: docker compose logs relay-2
-      - name: Show Gateway logs
-        if: "!cancelled()"
-        run: docker compose logs gateway
-      - name: Show Portal logs
-        if: "!cancelled()"
-        run: docker compose logs portal
-      - name: Show iperf3 logs
-        if: "!cancelled()"
-        run: docker compose logs iperf3
-      - name: Show secnetperf logs
-        if: "!cancelled()"
-        run: docker compose logs secnetperf
+        with:
+          services: client-1 relay-1 relay-2 gateway portal iperf3 secnetperf
 
       - name: Ensure no warnings are logged
         if: "!cancelled()"

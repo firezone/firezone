@@ -1,0 +1,33 @@
+name: "Show compose logs"
+description: "Prints the logs of the given compose services, one log group per service. On Windows runners the logs are read from the Docker daemon inside WSL2."
+
+inputs:
+  services:
+    description: "Space-separated list of compose services"
+    required: true
+  compose-args:
+    description: "Extra arguments for `docker compose`, e.g. `-p` / `-f`"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Show logs
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        for service in ${{ inputs.services }}; do
+          echo "::group::$service"
+          docker compose ${{ inputs.compose-args }} logs "$service"
+          echo "::endgroup::"
+        done
+    - name: Show logs (WSL2)
+      if: runner.os == 'Windows'
+      shell: wsl-bash {0}
+      run: |
+        for service in ${{ inputs.services }}; do
+          echo "::group::$service"
+          docker compose ${{ inputs.compose-args }} logs "$service"
+          echo "::endgroup::"
+        done
