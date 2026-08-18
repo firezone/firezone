@@ -94,7 +94,7 @@ impl State {
         self.env = env;
     }
 
-    pub(crate) fn set_account_slug_or_clear(&mut self, slug: Option<String>) {
+    pub(crate) fn set_account_slug(&mut self, slug: Option<String>) {
         self.account_slug = slug;
     }
 

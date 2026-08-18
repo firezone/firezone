@@ -25,14 +25,9 @@ pub fn new_session(maybe_legacy_id: String, api_url: String) {
     });
 }
 
-/// Associate several properties with the current telemetry user.
-pub fn identify(release: String, account_slug: Option<String>) {
-    identify_with_user(release, account_slug, None, None);
-}
-
-/// Associates certificate-derived account and actor attributes with the current
-/// installation without pretending either value is an account slug.
-pub fn identify_with_user(
+/// Associates the release, account slug, and certificate-derived account and
+/// actor attributes with the current installation; `None` clears an attribute.
+pub fn identify(
     release: String,
     account_slug: Option<String>,
     account_id: Option<String>,

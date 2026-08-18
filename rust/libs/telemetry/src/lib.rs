@@ -295,12 +295,8 @@ pub fn is_active() -> bool {
     STATE.try_read(|state| state.is_active()).unwrap_or(false)
 }
 
-pub fn set_account_slug(slug: String) {
-    set_account_slug_or_clear(Some(slug));
-}
-
-pub fn set_account_slug_or_clear(slug: Option<String>) {
-    let _ = STATE.try_write(|state| state.set_account_slug_or_clear(slug.clone()));
+pub fn set_account_slug(slug: Option<String>) {
+    let _ = STATE.try_write(|state| state.set_account_slug(slug.clone()));
 
     update_user(|user| match slug {
         Some(slug) => {

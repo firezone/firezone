@@ -555,9 +555,9 @@ fn connect(
 
     telemetry::start(&api_url, RELEASE, platform::DSN);
     telemetry::set_firezone_id(device_id.clone());
-    telemetry::set_account_slug(account_slug.clone());
+    telemetry::set_account_slug(Some(account_slug.clone()));
 
-    analytics::identify(RELEASE.to_owned(), Some(account_slug));
+    analytics::identify(RELEASE.to_owned(), Some(account_slug), None, None);
 
     let url = LoginUrl::client(
         api_url.as_str(),
