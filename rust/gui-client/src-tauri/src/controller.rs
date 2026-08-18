@@ -424,7 +424,7 @@ impl<I: GuiIntegration> Controller<I> {
         let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
 
         if let Some(account_slug) = account_slug.clone() {
-            telemetry::set_account_slug(Some(account_slug));
+            telemetry::set_account_slug(account_slug);
         }
 
         if !self.telemetry_allowed {

@@ -295,7 +295,8 @@ pub fn is_active() -> bool {
     STATE.try_read(|state| state.is_active()).unwrap_or(false)
 }
 
-pub fn set_account_slug(slug: Option<String>) {
+pub fn set_account_slug(slug: impl Into<Option<String>>) {
+    let slug = slug.into();
     let _ = STATE.try_write(|state| state.set_account_slug(slug.clone()));
 
     update_user(|user| match slug {
@@ -309,7 +310,8 @@ pub fn set_account_slug(slug: Option<String>) {
 }
 
 /// Attaches the account UUID read from a managed certificate.
-pub fn set_account_id(account_id: Option<String>) {
+pub fn set_account_id(account_id: impl Into<Option<String>>) {
+    let account_id = account_id.into();
     let _ = STATE.try_write(|state| state.set_account_id(account_id.clone()));
 
     update_user(|user| match account_id {
@@ -324,7 +326,8 @@ pub fn set_account_id(account_id: Option<String>) {
 }
 
 /// Attaches the actor email read from a managed certificate.
-pub fn set_actor_email(actor_email: Option<String>) {
+pub fn set_actor_email(actor_email: impl Into<Option<String>>) {
+    let actor_email = actor_email.into();
     let _ = STATE.try_write(|state| state.set_actor_email(actor_email.clone()));
 
     update_user(|user| {
@@ -362,7 +365,8 @@ pub fn set_firezone_id(firezone_id: String) {
 /// This identifier comes from the client certificate and allows an event to be
 /// correlated with the device attested by the Portal even when multiple
 /// installations share a Firezone ID.
-pub fn set_mdm_device_id(mdm_device_id: Option<String>) {
+pub fn set_mdm_device_id(mdm_device_id: impl Into<Option<String>>) {
+    let mdm_device_id = mdm_device_id.into();
     let _ = STATE.try_write(|state| state.set_mdm_device_id(mdm_device_id.clone()));
 
     update_user(|user| match mdm_device_id {

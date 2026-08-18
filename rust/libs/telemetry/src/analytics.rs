@@ -29,10 +29,13 @@ pub fn new_session(maybe_legacy_id: String, api_url: String) {
 /// actor attributes with the current installation; `None` clears an attribute.
 pub fn identify(
     release: String,
-    account_slug: Option<String>,
-    account_id: Option<String>,
-    actor_email: Option<String>,
+    account_slug: impl Into<Option<String>>,
+    account_id: impl Into<Option<String>>,
+    actor_email: impl Into<Option<String>>,
 ) {
+    let account_slug = account_slug.into();
+    let account_id = account_id.into();
+    let actor_email = actor_email.into();
     let Some(env) = current_env() else {
         tracing::debug!("Cannot send $identify: Unknown env");
         return;
