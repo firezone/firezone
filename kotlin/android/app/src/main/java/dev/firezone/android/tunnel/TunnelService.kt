@@ -34,6 +34,7 @@ import dev.firezone.android.tunnel.model.StatusEnum
 import dev.firezone.android.tunnel.model.isInternetResource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -581,6 +582,7 @@ class TunnelService : VpnService() {
         session: SessionInterface,
         commandChannel: Channel<TunnelCommand>,
     ): StopReason {
+        @OptIn(ExperimentalCoroutinesApi::class)
         val eventChannel =
             serviceScope.produce {
                 while (isActive) {
