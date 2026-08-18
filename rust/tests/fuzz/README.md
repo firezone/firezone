@@ -23,6 +23,7 @@ Changing the generator in `src/arb/` can therefore reinterpret existing inputs; 
 ## Setup
 
 Everything is managed through this directory's `mise.toml`: the pinned nightly toolchain, `cargo-fuzz`, and the profile overrides required by fuzz builds.
+The tasks themselves are shell scripts in `mise-tasks/`.
 Fuzzing tasks require Linux because `cargo-fuzz` is installed only for Linux.
 
 ## Run
@@ -47,6 +48,9 @@ mise run //rust/tests/fuzz:repro tunnel-proto <reduced-input> 2> repro.log
 
 Set `RUST_LOG=trace` for detailed scenario and connlib traces.
 
+A fuzz job's findings arrive in the corpus instead, under the `crash-` name libFuzzer gave them, so they keep CI red until the bug is fixed.
+`coverage` names the one it died on and nothing needs pruning afterwards.
+
 ## Coverage
 
 Replay a committed corpus and check its uncovered-region ceiling:
@@ -63,7 +67,8 @@ The ceiling spans every workspace crate the target links, not just the one shari
 A fuzz build instruments the dependencies too, so a target that drives `tunnel-proto` reports what it reached in `snownet`, `dns-types` and the rest as one number.
 Which lines a crate contributes is visible in the HTML coverage report.
 
-When the ceiling is genuinely exceeded, `grow` runs the whole recovery locally: it fuzzes for new coverage, minimizes and repacks the corpus, then refreshes the baseline from what the grown corpus actually reaches.
+When the ceiling is genuinely exceeded, `grow` runs the whole recovery locally: it fuzzes for new coverage, minimizes the corpus, refreshes the baseline from what the grown corpus actually reaches, then repacks it.
+It fuzzes past a crash rather than stopping at the first, and runs its remaining steps even when one of them fails, so a run ends with a repacked corpus carrying what it found either way.
 
 ```console
 mise run //rust/tests/fuzz:grow tunnel-proto
@@ -82,9 +87,10 @@ A local run that gets luckier than CI writes a ceiling CI cannot meet, so re-run
 After growing and minimizing a corpus yourself, the remaining steps run individually; `update-baseline` records the measurement without the risk of truncating the committed file on a failed one:
 
 ```console
-mise run //rust/tests/fuzz:pack-corpus tunnel-proto
 mise run //rust/tests/fuzz:coverage tunnel-proto
 mise run //rust/tests/fuzz:update-baseline tunnel-proto
+mise run //rust/tests/fuzz:save-crashes tunnel-proto
+mise run //rust/tests/fuzz:pack-corpus tunnel-proto
 ```
 
 For a local browsable report:

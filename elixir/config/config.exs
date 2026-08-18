@@ -259,6 +259,12 @@ config :portal, Portal.Okta.AuthProvider,
 # 15 minutes in milliseconds
 config :portal, Portal.Okta.APIClient, req_opts: [receive_timeout: 900_000]
 
+config :portal, Portal.Analytics.PostHog,
+  enabled: false,
+  endpoint: "https://e.firezone.dev/i/v0/e/",
+  project_api_key: nil,
+  req_opts: [receive_timeout: 5_000, retry: :transient]
+
 config :portal, Portal.Splunk.APIClient, req_opts: []
 
 config :portal, Portal.Datadog.APIClient, req_opts: []
@@ -420,7 +426,12 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
     "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
     "style-src 'self'",
-    "script-src 'self' 'nonce-${nonce}'"
+    "script-src 'self' 'nonce-${nonce}'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    # Client deep link: some browsers check form-action across post-submit redirects.
+    "form-action 'self' firezone-fd0020211111:",
+    "frame-ancestors 'none'"
   ]
 
 config :portal, api_url_override: "ws://localhost:13001/"

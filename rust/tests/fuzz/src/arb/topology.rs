@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use connlib_model::{ClientId, GatewayId, RelayId, Site, SiteId};
@@ -19,6 +19,7 @@ use super::values::{
 };
 use crate::dns_records::DnsRecords;
 use crate::icmp_error_hosts::{IcmpError, IcmpErrorHosts};
+use crate::os::SimulatedOs;
 use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::reference::ReferenceState;
@@ -26,7 +27,7 @@ use crate::resource::{
     CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource,
     StaticDevicePoolResource,
 };
-use crate::sim_net::{EdgeConfig, FilterMode, Host, Mapping, RoutingTable};
+use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
 use crate::stub_portal::StubPortal;
 
 pub(super) fn generate(g: &mut Generator, start: Instant) -> ReferenceState {
@@ -408,6 +409,7 @@ fn arb_client_host(
     let internet_resource_active = g.bool();
     let ignore_resource_filters = g.bool();
     let send_untracked_icmp_errors = g.bool();
+    let os = arb_simulated_os(g);
 
     let inner = RefClient::new(
         id,
@@ -420,6 +422,7 @@ fn arb_client_host(
             ignore_resource_filters,
             send_untracked_icmp_errors,
         },
+        os,
     );
 
     let (ip4, ip6) = arb_socket_ip_stack(g);
@@ -448,6 +451,16 @@ fn arb_gateways(
         .collect::<BTreeMap<_, _>>()
 }
 
+fn arb_simulated_os(g: &mut Generator) -> SimulatedOs {
+    match g.choose_index(5) {
+        0 => SimulatedOs::Linux,
+        1 => SimulatedOs::Android,
+        2 => SimulatedOs::MacOs,
+        3 => SimulatedOs::Ios,
+        _ => SimulatedOs::Windows,
+    }
+}
+
 fn arb_edge_config(g: &mut Generator) -> EdgeConfig {
     match g.choose_index(3) {
         0 => EdgeConfig::Open,
@@ -458,9 +471,35 @@ fn arb_edge_config(g: &mut Generator) -> EdgeConfig {
                 _ => FilterMode::PortRestricted,
             };
 
-            EdgeConfig::Nat(Mapping::EndpointIndependent, filter)
+            EdgeConfig::Nat(Mapping::EndpointIndependent, filter, arb_expiry(g))
         }
-        _ => EdgeConfig::Nat(Mapping::EndpointDependent, FilterMode::PortRestricted),
+        _ => EdgeConfig::Nat(
+            Mapping::EndpointDependent,
+            FilterMode::PortRestricted,
+            arb_expiry(g),
+        ),
+    }
+}
+
+/// Samples NAT idle timers found in the wild, from netfilter's 30s unreplied
+/// default up to carrier-grade minutes.
+///
+/// Every timer sits above connlib's 25s keep-alive cadences (the path agent's
+/// `PRIMARY_KEEPALIVE`, snownet's `BINDING_INTERVAL`): a correct implementation
+/// refreshes every flow it depends on at least that often, including reply
+/// traffic on the pair the peer chose, so any expiry-induced connectivity loss
+/// is a real liveness bug and not an artifact of the model.
+fn arb_expiry(g: &mut Generator) -> Expiry {
+    let timeout = Duration::from_secs(match g.choose_index(4) {
+        0 => 30,
+        1 => 60,
+        2 => 120,
+        _ => 300,
+    });
+
+    Expiry {
+        timeout,
+        inbound_refreshes: g.bool(),
     }
 }
 

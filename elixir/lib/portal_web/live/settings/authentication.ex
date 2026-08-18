@@ -51,7 +51,7 @@ defmodule PortalWeb.Settings.Authentication do
     socket =
       assign(socket,
         page_title: "Authentication",
-        device_trust_enabled?: PortalWeb.NavigationComponents.device_trust_enabled?(),
+        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
         device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
@@ -621,7 +621,7 @@ defmodule PortalWeb.Settings.Authentication do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        device_trust_enabled?={@device_trust_enabled?}
+        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       />
 
@@ -875,6 +875,7 @@ defmodule PortalWeb.Settings.Authentication do
       assign(assigns, provider_row_state(assigns.provider, assigns.type, assigns.pending_confirm))
 
     ~H"""
+    <%!-- Dim the cells, not the row: opacity on the row also dims the actions menu. --%>
     <tr class={[
       "border-b transition-colors",
       @is_pending_toggle && "border-amber-200 bg-amber-50",
@@ -883,7 +884,7 @@ defmodule PortalWeb.Settings.Authentication do
       !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke &&
         "border-border hover:bg-raised",
       @provider.is_disabled && !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke &&
-        "opacity-60"
+        "[&>td:not(:last-child)]:opacity-60"
     ]}>
       <td class="px-6 py-3">
         <div class="flex items-center gap-3">

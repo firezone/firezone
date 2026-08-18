@@ -44,7 +44,9 @@ defmodule Portal.Telemetry.OtelBanditTest do
 
       ids = [:bandit, :request] |> :telemetry.list_handlers() |> Enum.map(& &1.id)
 
-      assert log == ""
+      # capture_log/1 collects the whole node, so match the report :telemetry
+      # writes when it drops a handler rather than assert on an empty string.
+      refute log =~ "has been detached"
       assert {OtelBandit, :otel_bandit} in ids
     end
   end

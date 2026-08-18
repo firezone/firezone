@@ -65,12 +65,12 @@ defmodule PortalAPI.Plugs.RequestLogTest do
       assert Repo.aggregate(APIRequestLog, :count) == 2
     end
 
-    test "records the RemoteIp-resolved client address, not the peer", %{actor: actor} do
+    test "records the client address resolved by the public endpoint", %{actor: actor} do
       conn =
         build_conn()
         |> authorize_conn(actor)
-        |> put_req_header("x-forwarded-for", "203.0.113.5")
         |> put_req_header("content-type", "application/json")
+        |> Map.put(:remote_ip, {203, 0, 113, 5})
         |> get(~p"/account")
 
       assert json_response(conn, 200)

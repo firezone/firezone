@@ -14,41 +14,129 @@ defmodule Portal.EndpointTest do
     Portal.Config.put_env_override(:portal, :mtls_external_url, "https://mtls.firezone.test/")
   end
 
-  test "redirects public HTTP requests to HTTPS" do
-    conn = Endpoint.call(conn(:get, "http://api.firezone.test/client?foo=bar"), [])
+  describe "when this endpoint terminates TLS" do
+    setup do
+      Portal.Config.put_env_override(:portal, Endpoint, https: [port: 443])
+    end
 
-    assert conn.status == 301
-    assert get_resp_header(conn, "location") == ["https://api.firezone.test/client?foo=bar"]
+    test "redirects public HTTP requests to HTTPS" do
+      conn = Endpoint.call(conn(:get, "http://api.firezone.test/client?foo=bar"), [])
+
+      assert conn.status == 301
+      assert get_resp_header(conn, "location") == ["https://api.firezone.test/client?foo=bar"]
+    end
+
+    test "preserves the method when redirecting a non-GET request" do
+      conn = Endpoint.call(conn(:post, "http://flow-api.firezone.test/ingestion/flow_logs"), [])
+
+      assert conn.status == 307
+
+      assert get_resp_header(conn, "location") == [
+               "https://flow-api.firezone.test/ingestion/flow_logs"
+             ]
+    end
+
+    test "does not trust forwarded headers from the public listener" do
+      conn =
+        :get
+        |> conn("http://api.firezone.test/client")
+        |> put_req_header("x-forwarded-host", "mtls.firezone.test")
+        |> put_req_header("x-forwarded-proto", "https")
+        |> Endpoint.call([])
+
+      assert conn.status == 301
+      assert get_resp_header(conn, "location") == ["https://api.firezone.test/client"]
+      assert get_req_header(conn, "x-forwarded-host") == []
+      assert get_req_header(conn, "x-forwarded-proto") == []
+    end
+
+    test "serves readiness checks without redirecting" do
+      conn = Endpoint.call(conn(:get, "http://api.firezone.test/readyz"), [])
+
+      assert conn.status in [200, 503]
+      assert get_resp_header(conn, "location") == []
+    end
   end
 
-  test "preserves the method when redirecting a non-GET request" do
-    conn = Endpoint.call(conn(:post, "http://flow-api.firezone.test/ingestion/flow_logs"), [])
+  describe "when a reverse proxy terminates TLS" do
+    test "serves plain HTTP requests instead of redirecting" do
+      conn = Endpoint.call(conn(:get, "http://api.firezone.test/client"), [])
 
-    assert conn.status == 307
-    assert get_resp_header(conn, "location") == [
-             "https://flow-api.firezone.test/ingestion/flow_logs"
-           ]
-  end
+      assert conn.private.phoenix_endpoint == PortalAPI.Endpoint
+    end
 
-  test "does not trust forwarded headers from the public listener" do
-    conn =
-      :get
-      |> conn("http://api.firezone.test/client")
-      |> put_req_header("x-forwarded-host", "mtls.firezone.test")
-      |> put_req_header("x-forwarded-proto", "https")
-      |> Endpoint.call([])
+    test "drops forwarded and geo headers while no proxy is trusted" do
+      conn =
+        :get
+        |> conn("http://unknown.firezone.test/")
+        |> put_req_header("x-forwarded-for", "1.2.3.4")
+        |> put_req_header("x-forwarded-host", "app.firezone.test")
+        |> put_req_header("x-azure-geo-country", "US")
+        |> put_req_header("x-geo-location-region", "US")
+        |> Endpoint.call([])
 
-    assert conn.status == 301
-    assert get_resp_header(conn, "location") == ["https://api.firezone.test/client"]
-    assert get_req_header(conn, "x-forwarded-host") == []
-    assert get_req_header(conn, "x-forwarded-proto") == []
-  end
+      assert conn.status == 404
+      assert conn.remote_ip == {127, 0, 0, 1}
+      assert get_req_header(conn, "x-forwarded-for") == []
+      assert get_req_header(conn, "x-forwarded-host") == []
+      assert get_req_header(conn, "x-azure-geo-country") == []
+      assert get_req_header(conn, "x-geo-location-region") == []
+    end
 
-  test "serves readiness checks without redirecting" do
-    conn = Endpoint.call(conn(:get, "http://api.firezone.test/readyz"), [])
+    test "takes the client, host and scheme from a trusted proxy" do
+      trust_proxy({127, 0, 0, 1})
 
-    assert conn.status in [200, 503]
-    assert get_resp_header(conn, "location") == []
+      conn =
+        :get
+        |> conn("http://portal.internal/not-found")
+        |> put_req_header("x-forwarded-for", "1.2.3.4")
+        |> put_req_header("x-forwarded-host", "app.firezone.test")
+        |> put_req_header("x-forwarded-proto", "https")
+        |> Endpoint.call([])
+
+      assert conn.private.phoenix_endpoint == PortalWeb.Endpoint
+      assert conn.scheme == :https
+      assert conn.remote_ip == {1, 2, 3, 4}
+    end
+
+    test "ignores an address the client prepended before the proxy appended its own" do
+      trust_proxy({127, 0, 0, 1})
+
+      conn =
+        :get
+        |> conn("http://unknown.firezone.test/")
+        |> put_req_header("x-forwarded-for", "6.6.6.6, 203.0.113.5")
+        |> Endpoint.call([])
+
+      assert conn.remote_ip == {203, 0, 113, 5}
+    end
+
+    test "skips further proxy hops on private addresses" do
+      trust_proxy({127, 0, 0, 1})
+
+      conn =
+        :get
+        |> conn("http://unknown.firezone.test/")
+        |> put_req_header("x-forwarded-for", "6.6.6.6, 203.0.113.5, 10.0.0.1")
+        |> Endpoint.call([])
+
+      assert conn.remote_ip == {203, 0, 113, 5}
+    end
+
+    test "ignores forwarded headers on a request that skipped the proxy" do
+      trust_proxy({10, 0, 0, 1})
+
+      conn =
+        :get
+        |> conn("http://unknown.firezone.test/")
+        |> put_req_header("x-forwarded-for", "6.6.6.6")
+        |> put_req_header("x-forwarded-host", "app.firezone.test")
+        |> Endpoint.call([])
+
+      assert conn.status == 404
+      assert conn.remote_ip == {127, 0, 0, 1}
+      assert get_req_header(conn, "x-forwarded-for") == []
+    end
   end
 
   test "dispatches the web hostname to the web endpoint" do
@@ -83,5 +171,11 @@ defmodule Portal.EndpointTest do
 
     assert conn.status == 404
     assert conn.private.phoenix_endpoint == Endpoint
+  end
+
+  defp trust_proxy(address) do
+    Portal.Config.put_env_override(:portal, :external_trusted_proxies, [
+      %Postgrex.INET{address: address, netmask: 32}
+    ])
   end
 end

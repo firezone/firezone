@@ -52,6 +52,9 @@ pub struct RefClient {
     /// Sampled malicious behaviours for this client.
     pub(crate) malicious_behaviour: MaliciousBehaviour,
 
+    /// The operating system this client simulates.
+    pub(crate) os: crate::os::SimulatedOs,
+
     /// Tracks all resources in the order they have been added in.
     ///
     /// When reconnecting to the portal, we simulate them being re-added in the same order.
@@ -129,6 +132,7 @@ impl RefClient {
         system_dns_resolvers: Vec<IpAddr>,
         internet_resource_active: bool,
         malicious_behaviour: MaliciousBehaviour,
+        os: crate::os::SimulatedOs,
     ) -> Self {
         Self {
             id,
@@ -138,6 +142,7 @@ impl RefClient {
             system_dns_resolvers,
             internet_resource_active,
             malicious_behaviour,
+            os,
             dns_records: Default::default(),
             connected_cidr_resources: Default::default(),
             connected_dns_resources: Default::default(),
@@ -187,7 +192,13 @@ impl RefClient {
         });
         client_state.update_system_resolvers(self.system_dns_resolvers);
 
-        SimClient::new(self.id, client_state, self.malicious_behaviour, now)
+        SimClient::new(
+            self.id,
+            client_state,
+            self.malicious_behaviour,
+            self.os,
+            now,
+        )
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
@@ -1625,6 +1636,7 @@ mod tests {
             Vec::new(),
             false,
             MaliciousBehaviour::default(),
+            crate::os::SimulatedOs::Linux,
         );
         client.add_cidr_resource(CidrResource {
             id: broad_id,

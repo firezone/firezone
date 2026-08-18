@@ -336,7 +336,7 @@ impl ReferenceState {
                 ip6,
                 nat_ip4,
                 dead_window,
-                portal_window: _,
+                portal_window,
             } => {
                 // With ICE-less connections, a roam re-keys in place and keeps
                 // the connection alive, so we only reset when the portal hands
@@ -354,7 +354,9 @@ impl ReferenceState {
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 client.exec_mut(|client| {
                     if !all_iceless {
-                        client.reset_connections(now + *dead_window);
+                        // Reconnecting needs the portal, so recovery can only
+                        // start once the portal connection is back.
+                        client.reset_connections(now + *dead_window + *portal_window);
                     }
                     client.readd_all_resources();
                 });

@@ -143,6 +143,45 @@ defmodule PortalWeb.SignUpTest do
       assert_email_sent()
     end
 
+    test "carries website attribution in the signed verification token", %{conn: conn} do
+      distinct_id = "7d2ed047-64d3-41f9-9a41-ac2c9b92e761"
+
+      conn =
+        get(
+          conn,
+          "/sign_up?fz_website_id=#{distinct_id}&fz_website_path=%2Fpricing"
+        )
+
+      assert redirected_to(conn) == "/sign_up"
+      {:ok, lv, _html} = live(recycle(conn), ~p"/sign_up")
+
+      lv
+      |> form("form",
+        registration: %{
+          email: "attributed@example.com",
+          phone: "",
+          account: %{name: "Attributed Corp"},
+          actor: %{name: "Attributed User"}
+        }
+      )
+      |> render_submit()
+
+      assert_email_sent(fn email ->
+        [_, token] = Regex.run(~r/verify_sign_up\?token=([^\s]+)/, email.text_body)
+
+        assert {:ok, claims} =
+                 Phoenix.Token.verify(PortalWeb.Endpoint, @sign_up_token_salt, token)
+
+        assert claims.website_attribution == %{
+                 "distinct_id" => distinct_id,
+                 "source" => "www.firezone.dev",
+                 "website_path" => "/pricing"
+               }
+
+        true
+      end)
+    end
+
     test "honeypot submission shows email sent step without sending email", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/sign_up")
 

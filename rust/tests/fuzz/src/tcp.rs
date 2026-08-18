@@ -4,6 +4,8 @@ use anyhow::{Context, Result};
 use ip_packet::{IpPacket, Layer4Protocol};
 use l3_tcp::Socket;
 
+use crate::os::SimulatedOs;
+
 pub struct Client {
     sockets: l3_tcp::SocketSet<'static>,
     /// The socket for each connection, or `None` for one that [`Client::reset`] dropped.
@@ -12,6 +14,7 @@ pub struct Client {
     sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), Option<l3_tcp::SocketHandle>>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
+    os: SimulatedOs,
 
     created_at: Instant,
     last_now: Instant,
@@ -28,7 +31,7 @@ pub struct Server {
 }
 
 impl Client {
-    pub fn new(now: Instant) -> Self {
+    pub fn new(now: Instant, os: SimulatedOs) -> Self {
         let mut device = l3_tcp::InMemoryDevice::default();
         let interface = l3_tcp::create_interface(&mut device);
 
@@ -37,6 +40,7 @@ impl Client {
             sockets_by_conn: Default::default(),
             device,
             interface,
+            os,
             created_at: now,
             last_now: now,
         }
@@ -55,11 +59,12 @@ impl Client {
             .connect(self.interface.context(), remote, local)
             .context("Failed to create TCP connection")?;
 
-        // A short keep-alive ensures we detect broken connections.
+        socket.set_timeout(Some(self.os.tcp_timeout()));
+        // `smoltcp`'s abort timer counts from the last packet received from the
+        // remote, whether or not anything is outstanding. Keep-alive round-trips
+        // keep an idle connection's timer fresh, so the socket only aborts once
+        // the path has actually been dead for the OS' timeout.
         socket.set_keep_alive(Some(l3_tcp::Duration::from_secs(5)));
-
-        // 30s is a common timeout for TCP connections.
-        socket.set_timeout(Some(l3_tcp::Duration::from_secs(30)));
 
         let handle = self.sockets.add(socket);
 

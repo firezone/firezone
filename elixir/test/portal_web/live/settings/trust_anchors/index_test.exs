@@ -1,4 +1,4 @@
-defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
+defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
   use PortalWeb.ConnCase, async: true
 
   import Portal.AccountFixtures
@@ -64,13 +64,13 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
   setup do
     account = account_fixture()
     actor = admin_actor_fixture(account: account)
-    enable_feature(:device_trust)
+    enable_feature(:trust_anchors)
     %{account: account, actor: actor}
   end
 
   describe "unauthorized" do
     test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
-      path = ~p"/#{account}/settings/device_trust"
+      path = ~p"/#{account}/settings/trust_anchors"
 
       assert live(conn, path) ==
                {:error,
@@ -83,17 +83,17 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
   end
 
   describe "index (default action)" do
-    test "redirects to account settings when device_trust feature is disabled", %{
+    test "redirects to account settings when trust_anchors feature is disabled", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      disable_feature(:device_trust)
+      disable_feature(:trust_anchors)
 
       assert {:error, {:live_redirect, %{to: to}}} =
                conn
                |> authorize_conn(actor)
-               |> live(~p"/#{account}/settings/device_trust")
+               |> live(~p"/#{account}/settings/trust_anchors")
 
       assert to == ~p"/#{account}/settings/account"
     end
@@ -106,7 +106,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust")
+        |> live(~p"/#{account}/settings/trust_anchors")
 
       assert html =~ "Trust Anchors"
       assert html =~ "No trust anchors yet"
@@ -118,7 +118,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust")
+        |> live(~p"/#{account}/settings/trust_anchors")
 
       assert html =~ "Corporate Issuing CA"
       assert html =~ "1 certificate"
@@ -140,13 +140,13 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
 
       {:ok, _lv, index_html} =
         conn
-        |> live(~p"/#{account}/settings/device_trust")
+        |> live(~p"/#{account}/settings/trust_anchors")
 
       assert timestamp_popovers(index_html) == [DateTime.to_iso8601(inserted_at)]
 
       {:ok, _lv, show_html} =
         conn
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
       assert timestamp_popovers(show_html) == [
                DateTime.to_iso8601(inserted_at),
@@ -171,7 +171,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust")
+        |> live(~p"/#{account}/settings/trust_anchors")
 
       refute html =~ "Company Issuing CA"
 
@@ -180,7 +180,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
         |> element("tr[phx-click='select_trust_anchor'][phx-value-id='#{trust_anchor.id}']")
         |> render_click()
 
-      assert_patch(lv, ~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
       refute html =~ "Company Issuing CA"
 
       html = open_certificates_tab(lv)
@@ -189,7 +189,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       assert html =~ Base.encode16(:crypto.hash(:sha256, sample_cert_der()), case: :lower)
 
       render_click(lv, "close_panel")
-      assert_patch(lv, ~p"/#{account}/settings/device_trust")
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
       refute render(lv) =~ "Company Issuing CA"
     end
 
@@ -208,7 +208,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
       html = open_certificates_tab(lv)
 
@@ -247,10 +247,10 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
       render_keydown(lv, "handle_keydown", %{"key" => "Escape"})
-      assert_patch(lv, ~p"/#{account}/settings/device_trust")
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
     end
 
     test "Edit button navigates to the edit form", %{conn: conn, account: account, actor: actor} do
@@ -259,15 +259,15 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
       lv
       |> element(
-        "a[href='#{~p"/#{account}/settings/device_trust/#{trust_anchor.id}/edit"}']"
+        "a[href='#{~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit"}']"
       )
       |> render_click()
 
-      assert_patch(lv, ~p"/#{account}/settings/device_trust/#{trust_anchor.id}/edit")
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
       assert render(lv) =~ "Edit Trust Anchor"
     end
   end
@@ -289,7 +289,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
       assert open_revocation_tab(lv) =~ "No revocation endpoint known yet"
     end
@@ -307,7 +307,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
       assert open_revocation_tab(lv) =~ "CN=EC Trust Anchor CA"
 
@@ -330,7 +330,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
       open_revocation_tab(lv)
       assert expand_first_endpoint(lv) =~ "unsupported_url_scheme"
@@ -362,7 +362,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
       open_revocation_tab(lv)
       popovers = lv |> expand_first_endpoint() |> timestamp_popovers()
@@ -404,7 +404,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
       assert open_revocation_tab(lv) =~ "OCSP"
 
@@ -426,7 +426,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
       assert open_revocation_tab(lv) =~ "No revocation endpoint known yet"
     end
@@ -453,7 +453,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust")
+        |> live(~p"/#{account}/settings/trust_anchors")
 
       assert html =~ "ri-error-warning-fill"
       assert html =~ "having trouble reaching"
@@ -476,7 +476,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust")
+        |> live(~p"/#{account}/settings/trust_anchors")
 
       assert html =~ "ri-error-warning-fill"
       assert html =~ "not being checked"
@@ -493,7 +493,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust")
+        |> live(~p"/#{account}/settings/trust_anchors")
 
       refute html =~ "ri-error-warning-fill"
     end
@@ -516,7 +516,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}/edit")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
 
       lv
       |> form("#trust-anchor-edit-form",
@@ -537,29 +537,29 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/new")
+        |> live(~p"/#{account}/settings/trust_anchors/new")
 
       assert html =~ "New Trust Anchor"
 
       render_click(lv, "close_panel")
-      assert_patch(lv, ~p"/#{account}/settings/device_trust")
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
     end
 
     test "closes creation panel on escape", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/new")
+        |> live(~p"/#{account}/settings/trust_anchors/new")
 
       render_keydown(lv, "handle_keydown", %{"key" => "Escape"})
-      assert_patch(lv, ~p"/#{account}/settings/device_trust")
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
     end
 
     test "validates required fields", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/new")
+        |> live(~p"/#{account}/settings/trust_anchors/new")
 
       html =
         lv
@@ -581,7 +581,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/new")
+        |> live(~p"/#{account}/settings/trust_anchors/new")
 
       html =
         lv
@@ -611,7 +611,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/new")
+        |> live(~p"/#{account}/settings/trust_anchors/new")
 
       html =
         lv
@@ -630,7 +630,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/new")
+        |> live(~p"/#{account}/settings/trust_anchors/new")
 
       html =
         lv
@@ -650,7 +650,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/new")
+        |> live(~p"/#{account}/settings/trust_anchors/new")
 
       html =
         lv
@@ -666,7 +666,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/new")
+        |> live(~p"/#{account}/settings/trust_anchors/new")
 
       html =
         lv
@@ -676,7 +676,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
         |> render_submit()
 
       assert html =~ "Trust anchor created successfully"
-      assert_patch(lv, ~p"/#{account}/settings/device_trust")
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
       assert render(lv) =~ "Pasted CA"
 
       assert trust_anchor = Repo.get_by(TrustAnchor, account_id: account.id, name: "Pasted CA")
@@ -692,7 +692,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/new")
+        |> live(~p"/#{account}/settings/trust_anchors/new")
 
       html =
         lv
@@ -721,7 +721,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/new")
+        |> live(~p"/#{account}/settings/trust_anchors/new")
 
       html =
         lv
@@ -738,7 +738,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/new")
+        |> live(~p"/#{account}/settings/trust_anchors/new")
 
       render_change(lv, "validate_new", %{
         "trust_anchor" => %{"name" => "Uploaded CA", "input_mode" => "upload"}
@@ -761,7 +761,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
         })
 
       assert html =~ "Trust anchor created successfully"
-      assert_patch(lv, ~p"/#{account}/settings/device_trust")
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
       assert render(lv) =~ "Uploaded CA"
 
       assert trust_anchor = Repo.get_by(TrustAnchor, account_id: account.id, name: "Uploaded CA")
@@ -777,7 +777,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/new")
+        |> live(~p"/#{account}/settings/trust_anchors/new")
 
       render_change(lv, "validate_new", %{
         "trust_anchor" => %{"name" => "Multi-file CA", "input_mode" => "upload"}
@@ -807,7 +807,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
         })
 
       assert html =~ "Trust anchor created successfully"
-      assert_patch(lv, ~p"/#{account}/settings/device_trust")
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
       assert render(lv) =~ "Multi-file CA"
 
       assert trust_anchor =
@@ -826,7 +826,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/new")
+        |> live(~p"/#{account}/settings/trust_anchors/new")
 
       render_change(lv, "validate_new", %{
         "trust_anchor" => %{"name" => "No File CA", "input_mode" => "upload"}
@@ -850,7 +850,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}/edit")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
 
       assert html =~ "Edit Trust Anchor"
       assert html =~ "Editable CA"
@@ -865,7 +865,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       assert der == sample_cert_der()
 
       render_click(lv, "close_panel")
-      assert_patch(lv, ~p"/#{account}/settings/device_trust")
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
     end
 
     test "updates trust anchor on submit", %{conn: conn, account: account, actor: actor} do
@@ -874,7 +874,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}/edit")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
 
       html =
         lv
@@ -884,7 +884,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
         |> render_submit()
 
       assert html =~ "Trust anchor updated successfully"
-      assert_patch(lv, ~p"/#{account}/settings/device_trust")
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
       assert render(lv) =~ "New Name"
 
       assert updated = Repo.get_by(TrustAnchor, account_id: account.id, id: trust_anchor.id)
@@ -903,14 +903,14 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
       render_click(lv, "confirm_delete_trust_anchor")
       assert render(lv) =~ "Delete this trust anchor?"
 
       render_click(lv, "delete_trust_anchor")
 
-      assert_patch(lv, ~p"/#{account}/settings/device_trust")
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
       refute render(lv) =~ "Deletable CA"
       refute Repo.get_by(TrustAnchor, account_id: account.id, id: trust_anchor.id)
     end
@@ -925,7 +925,7 @@ defmodule PortalWeb.Settings.DeviceTrust.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_trust/#{trust_anchor.id}")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
       Repo.delete!(trust_anchor)
 

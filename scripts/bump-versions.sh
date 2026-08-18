@@ -107,13 +107,13 @@ function update_version_variables() {
 #
 # Instructions:
 # 1. Run the `Swift` workflow from `main`. This will push iOS and macOS app
-#    store builds to AppStore Connect and upload a new standalone DMG to the
-#    drafted release.
+#    store builds to AppStore Connect and upload the iOS IPA along with the
+#    macOS standalone DMG and PKG to the drafted `apple-client` release.
 # 2. Sign in to AppStore Connect and create new iOS and macOS releases and
 #    submit them for review. Ensure the "automatically publish release" is
 #    DISABLED.
 # 3. Once *both* are approved, publish them in the app stores.
-# 4. Publish the macOS standalone drafted release on GitHub.
+# 4. Publish the drafted `apple-client` release on GitHub.
 # 5. Bump current_apple_client_version / next_apple_client_version at the top
 #    of this script (the release pipeline does this automatically via
 #    `update_version_variables`).

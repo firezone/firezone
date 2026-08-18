@@ -203,6 +203,22 @@ defmodule Portal.ConfigTest do
              }) == dsn
     end
 
+    test "returns nil for a missing or blank PostHog project API key" do
+      assert env_var_to_config!(Portal.Config.Definitions, :posthog_project_api_key, %{}) == nil
+
+      assert env_var_to_config!(Portal.Config.Definitions, :posthog_project_api_key, %{
+               "POSTHOG_PROJECT_API_KEY" => "  \n"
+             }) == nil
+    end
+
+    test "returns the configured PostHog project API key" do
+      project_api_key = "phc_test"
+
+      assert env_var_to_config!(Portal.Config.Definitions, :posthog_project_api_key, %{
+               "POSTHOG_PROJECT_API_KEY" => project_api_key
+             }) == project_api_key
+    end
+
     test "returns config value" do
       assert env_var_to_config!(Test, :optional_generated) ==
                %Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil}

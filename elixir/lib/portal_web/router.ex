@@ -4,6 +4,7 @@ defmodule PortalWeb.Router do
   pipeline :public do
     plug :accepts, ["html", "xml"]
     plug :fetch_session
+    plug PortalWeb.WebsiteAttribution
     plug :protect_from_forgery
     plug :fetch_live_flash
     plug :put_root_layout, html: {PortalWeb.Layouts, :root}
@@ -318,7 +319,7 @@ defmodule PortalWeb.Router do
           live "/edit", DNS, :edit
         end
 
-        scope "/device_trust", DeviceTrust do
+        scope "/trust_anchors", TrustAnchors do
           live "/", Index
           live "/new", Index, :new
           live "/:id/edit", Index, :edit

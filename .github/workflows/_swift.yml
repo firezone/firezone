@@ -11,13 +11,13 @@ jobs:
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
-      RELEASE_NAME: macos-client-1.5.20
+      RELEASE_NAME: apple-client-1.5.20
     steps:
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
-          config-name: release-drafter-macos-client.yml
+          config-name: release-drafter-apple-client.yml
           tag: ${{ env.RELEASE_NAME}}
           version: ${{ env.RELEASE_NAME}}
           name: ${{ env.RELEASE_NAME}}
@@ -90,8 +90,11 @@ jobs:
             rust-targets: aarch64-apple-ios
             build-script: scripts/build/ios-appstore.sh
             upload-script: scripts/upload/app-store-connect.sh
-            artifact-file: "Firezone.ipa"
+            # mark:next-apple-version
+            artifact-file: "firezone-ios-client-1.5.20.ipa"
             platform: iOS
+            # mark:next-apple-version
+            release-name: apple-client-1.5.20
 
           - job_name: build-macos-appstore
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
@@ -109,7 +112,7 @@ jobs:
             # mark:next-apple-version
             pkg-artifact-file: "firezone-macos-client-1.5.20.pkg"
             # mark:next-apple-version
-            release-name: macos-client-1.5.20
+            release-name: apple-client-1.5.20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -181,6 +184,14 @@ jobs:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           RELEASE_NAME: "${{ matrix.release-name }}"
           PLATFORM: "${{ matrix.platform }}"
+      # The App Store IPA is also attached to the release so admins can verify the exact binary we shipped.
+      - name: Upload .ipa to the GitHub release
+        run: scripts/upload/github-release.sh
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && matrix.job_name == 'build-ios' }}"
+        env:
+          ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          RELEASE_NAME: "${{ matrix.release-name }}"
       - name: Setup sentry CLI
         if: "${{ github.event_name == 'workflow_dispatch' }}"
         uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
