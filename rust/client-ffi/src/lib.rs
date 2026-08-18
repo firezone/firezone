@@ -22,7 +22,7 @@ use backoff::ExponentialBackoffBuilder;
 use ip_network::IpNetwork;
 use itertools::Itertools as _;
 use logging::sentry_layer;
-use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
+use phoenix_channel::{ClientCertificate, LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
 use secrecy::SecretString;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -603,12 +603,12 @@ fn connect(
 
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
 
-    let portal_api_url = portal_api_url(&api_url, tls_client_config.is_some())?;
     let url = LoginUrl::client(
-        portal_api_url.as_str(),
+        api_url.as_str(),
         device_id.clone(),
         device_name,
         device_info,
+        tls_client_config.map(|tls_config| ClientCertificate { tls_config }),
     )
     .context("Failed to create login URL")?;
 
@@ -627,10 +627,6 @@ fn connect(
         },
         tcp_socket_factory.clone(),
     );
-    let portal = match tls_client_config {
-        Some(config) => portal.with_tls_client_config(config),
-        None => portal,
-    };
     // The uploader lives and dies with the session (idle, it would only poll
     // and dial); registered so `drain_flow_logs` nudges it instead of racing it.
     let uploader = flow_logs_dir.clone().map(|dir| {
@@ -678,25 +674,6 @@ pub fn tls_client_config(
         .with_client_cert_resolver(resolver);
 
     Ok(Arc::new(config))
-}
-
-fn portal_api_url(api_url: &str, use_client_certificate: bool) -> Result<String> {
-    if !use_client_certificate {
-        return Ok(api_url.to_owned());
-    }
-
-    let mut url = url::Url::parse(api_url).context("Failed to parse the API URL")?;
-    let mtls_host = match url.host_str() {
-        Some("api.firez.one") => Some("mtls.firez.one"),
-        Some("api.firezone.dev") => Some("mtls.firezone.dev"),
-        _ => None,
-    };
-    if let Some(host) = mtls_host {
-        url.set_host(Some(host))
-            .map_err(|_| anyhow!("Failed to set the mTLS API host"))?;
-    }
-
-    Ok(url.into())
 }
 
 fn start_telemetry_inner(tcp: Arc<dyn SocketFactory<TcpSocket>>) {
@@ -991,36 +968,5 @@ impl From<anyhow::Error> for ConnlibError {
 impl From<uniffi::UnexpectedUniFFICallbackError> for CallbackError {
     fn from(value: uniffi::UnexpectedUniFFICallbackError) -> Self {
         Self::Failed(format!("Callback failed: {}", value.reason))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn client_certificate_uses_mtls_api_host() {
-        assert_eq!(
-            portal_api_url("wss://api.firez.one:444/custom?foo=bar", true)
-                .expect("valid production API URL"),
-            "wss://mtls.firez.one:444/custom?foo=bar"
-        );
-        assert_eq!(
-            portal_api_url("wss://api.firezone.dev/custom?foo=bar", true)
-                .expect("valid staging API URL"),
-            "wss://mtls.firezone.dev/custom?foo=bar"
-        );
-    }
-
-    #[test]
-    fn unattested_and_custom_api_urls_are_unchanged() {
-        assert_eq!(
-            portal_api_url("wss://api.firezone.dev", false).expect("valid API URL"),
-            "wss://api.firezone.dev"
-        );
-        assert_eq!(
-            portal_api_url("wss://portal.example.com/client", true).expect("valid custom API URL"),
-            "wss://portal.example.com/client"
-        );
     }
 }

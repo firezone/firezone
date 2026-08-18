@@ -33,7 +33,9 @@ use tokio_tungstenite::{
 use url::Url;
 
 pub use get_user_agent::get_user_agent;
-pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam};
+pub use login_url::{
+    ClientCertificate, DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam,
+};
 pub use tokio_tungstenite::tungstenite::http::StatusCode;
 
 const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
@@ -57,7 +59,6 @@ pub struct PhoenixChannel<TInitReq, TOutboundMsg, TInboundMsg, TFinish> {
     url_prototype: LoginUrl<TFinish>,
     last_url: Option<Url>,
     user_agent: String,
-    tls_client_config: Option<Arc<rustls::ClientConfig>>,
     /// The authentication token, sent via X-Authorization header.
     token: SecretString,
     make_initial_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
@@ -393,7 +394,6 @@ where
             was_connected: false,
             url_prototype: url,
             user_agent,
-            tls_client_config: None,
             token,
             state: State::Closed,
             socket_factory,
@@ -403,16 +403,6 @@ where
             init_req,
             last_url: None,
         }
-    }
-
-    /// Uses the supplied rustls configuration for TLS connections.
-    ///
-    /// This allows callers to configure client certificate authentication, including
-    /// certificate resolvers backed by platform-managed, non-exportable private keys.
-    /// Without this, the channel uses its existing default TLS configuration.
-    pub fn with_tls_client_config(mut self, config: Arc<rustls::ClientConfig>) -> Self {
-        self.tls_client_config = Some(config);
-        self
     }
 
     /// Join our room.
@@ -501,7 +491,7 @@ where
             let user_agent = self.user_agent.clone();
             let token = self.token.clone();
             let socket_factory = self.socket_factory.clone();
-            let tls_client_config = self.tls_client_config.clone();
+            let tls_client_config = self.url_prototype.tls_client_config();
 
             async move {
                 if let Err(e) = closing.await {

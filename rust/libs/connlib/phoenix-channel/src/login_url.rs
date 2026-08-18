@@ -6,6 +6,7 @@ use std::{
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
     str::FromStr as _,
+    sync::Arc,
 };
 use url::Url;
 use uuid::Uuid;
@@ -40,7 +41,18 @@ pub struct LoginUrl<TFinish> {
     host: String,
     port: u16,
 
+    certificate: Option<ClientCertificate>,
+
     phantom: PhantomData<TFinish>,
+}
+
+/// An X.509 client certificate presented to the portal during the TLS handshake.
+///
+/// Constructing a [`LoginUrl`] with a certificate dials the portal's mTLS endpoint instead of the regular one.
+/// Platform code builds the [`rustls::ClientConfig`], typically with a certificate resolver backed by a keystore-managed, non-exportable private key, and hands it in here.
+#[derive(Clone)]
+pub struct ClientCertificate {
+    pub tls_config: Arc<rustls::ClientConfig>,
 }
 
 #[derive(Debug, Clone)]
@@ -73,7 +85,14 @@ impl LoginUrl<PublicKeyParam> {
         device_id: String,
         device_name: Option<String>,
         device_info: DeviceInfo,
+        certificate: Option<ClientCertificate>,
     ) -> Result<Self, LoginUrlError<E>> {
+        let mut url = url.try_into().map_err(LoginUrlError::InvalidUrl)?;
+
+        if certificate.is_some() {
+            set_mtls_host(&mut url);
+        }
+
         let external_id = if uuid::Uuid::from_str(&device_id).is_ok() {
             hex::encode(sha2::Sha256::digest(device_id))
         } else {
@@ -85,7 +104,7 @@ impl LoginUrl<PublicKeyParam> {
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
         let url = get_websocket_path(
-            url.try_into().map_err(LoginUrlError::InvalidUrl)?,
+            url,
             "client",
             Some("v2"),
             Some(external_id),
@@ -102,6 +121,7 @@ impl LoginUrl<PublicKeyParam> {
             host,
             port,
             url,
+            certificate,
             phantom: PhantomData,
         })
     }
@@ -138,6 +158,7 @@ impl LoginUrl<PublicKeyParam> {
             host,
             port,
             url,
+            certificate: None,
             phantom: PhantomData,
         })
     }
@@ -169,6 +190,7 @@ impl LoginUrl<NoParams> {
             host,
             port,
             url,
+            certificate: None,
             phantom: PhantomData,
         })
     }
@@ -200,6 +222,26 @@ impl<TFinish> LoginUrl<TFinish> {
 
         url.to_string()
     }
+
+    pub(crate) fn tls_client_config(&self) -> Option<Arc<rustls::ClientConfig>> {
+        let certificate = self.certificate.as_ref()?;
+
+        Some(certificate.tls_config.clone())
+    }
+}
+
+/// Replaces a SaaS API host with its mTLS counterpart, leaving other hosts untouched.
+///
+/// The portal requests a client certificate based on the host we dial, so presenting a certificate implies dialing the mTLS host.
+fn set_mtls_host(url: &mut Url) {
+    let mtls_host = match url.host_str() {
+        Some("api.firez.one") => "mtls.firez.one",
+        Some("api.firezone.dev") => "mtls.firezone.dev",
+        _ => return,
+    };
+
+    url.set_host(Some(mtls_host))
+        .expect("hard-coded hostname is valid");
 }
 
 /// Parse the host from a URL, including port if present. e.g. `example.com:8080`.
@@ -325,6 +367,7 @@ mod tests {
             "some-id".to_owned(),
             None,
             DeviceInfo::default(),
+            None,
         )
         .unwrap();
 
@@ -340,6 +383,7 @@ mod tests {
             "some-id".to_owned(),
             Some("some-name".to_owned()),
             DeviceInfo::default(),
+            None,
         )
         .unwrap();
 
@@ -347,6 +391,65 @@ mod tests {
             login_url.to_url(PublicKeyParam([0; 32])).path(),
             "/client/v2/websocket"
         )
+    }
+
+    #[test]
+    fn client_with_certificate_uses_mtls_api_host() {
+        let login_url = LoginUrl::client(
+            "wss://api.firez.one:444",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+            DeviceInfo::default(),
+            Some(certificate()),
+        )
+        .unwrap();
+
+        assert_eq!(login_url.host_and_port(), ("mtls.firez.one", 444));
+        assert!(login_url.tls_client_config().is_some());
+    }
+
+    #[test]
+    fn client_with_certificate_uses_mtls_staging_api_host() {
+        let login_url = LoginUrl::client(
+            "wss://api.firezone.dev",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+            DeviceInfo::default(),
+            Some(certificate()),
+        )
+        .unwrap();
+
+        assert_eq!(login_url.host_and_port(), ("mtls.firezone.dev", 443));
+    }
+
+    #[test]
+    fn client_with_certificate_keeps_custom_api_host() {
+        let login_url = LoginUrl::client(
+            "wss://portal.example.com",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+            DeviceInfo::default(),
+            Some(certificate()),
+        )
+        .unwrap();
+
+        assert_eq!(login_url.host_and_port(), ("portal.example.com", 443));
+        assert!(login_url.tls_client_config().is_some());
+    }
+
+    #[test]
+    fn client_without_certificate_keeps_api_host() {
+        let login_url = LoginUrl::client(
+            "wss://api.firezone.dev",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+            DeviceInfo::default(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(login_url.host_and_port(), ("api.firezone.dev", 443));
+        assert!(login_url.tls_client_config().is_none());
     }
 
     #[test]
@@ -376,5 +479,19 @@ mod tests {
         .unwrap();
 
         assert_eq!(login_url.to_url(NoParams).path(), "/relay/websocket")
+    }
+
+    fn certificate() -> ClientCertificate {
+        let tls_config = rustls::ClientConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_root_certificates(rustls::RootCertStore::empty())
+        .with_no_client_auth();
+
+        ClientCertificate {
+            tls_config: Arc::new(tls_config),
+        }
     }
 }
