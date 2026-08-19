@@ -34,8 +34,6 @@ members = [
     "libs/connlib/tunnel",
     "libs/connlib/tunnel-proto",
     "libs/desktop-notifications",
-    "libs/device-trust",
-    "libs/device-trust-ffi",
     "libs/eventloop-budget",
     "libs/flow-log-spool",
     "libs/flow-log-upload",
@@ -48,6 +46,8 @@ members = [
     "libs/telemetry",
     "libs/tunnel-bypass-resolver",
     "libs/windows-security",
+    "libs/x509-identity",
+    "libs/x509-identity-ffi",
     "relay/ebpf-shared",
     "relay/ebpf-turn-router",
     "relay/proto",
@@ -102,8 +102,6 @@ dashmap = "6.2.1"
 dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
 derive_more = { version = "2.1.1", default-features = false }
 desktop-notifications = { path = "libs/desktop-notifications" }
-device-trust = { path = "libs/device-trust" }
-device-trust-ffi = { path = "libs/device-trust-ffi" }
 difference = "2.0.0"
 dirs = "6.0.0"
 divan = "0.1.21"
@@ -265,6 +263,8 @@ windows-native-keyring-store = "1.1.0"
 windows-security = { path = "libs/windows-security" }
 windows-service = "0.8.1"
 winreg = "0.56.0"
+x509-identity = { path = "libs/x509-identity" }
+x509-identity-ffi = { path = "libs/x509-identity-ffi" }
 x509-parser = "0.18.0"
 zbus = "5.15.0"
 zip = { version = "8.6.0", default-features = false }

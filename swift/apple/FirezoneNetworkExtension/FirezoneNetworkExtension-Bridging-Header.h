@@ -4,6 +4,6 @@
 
 // UniFFI generated headers
 #include "Connlib/Generated/connlibFFI.h"
-#include "Connlib/Generated/devicetrustFFI.h"
+#include "Connlib/Generated/x509identityFFI.h"
 
 #include <resolv.h>

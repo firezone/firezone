@@ -1,4 +1,4 @@
 $(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/connlib.swift
 $(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/connlibFFI.h
-$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/devicetrust.swift
-$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/devicetrustFFI.h
+$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/x509identity.swift
+$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/x509identityFFI.h

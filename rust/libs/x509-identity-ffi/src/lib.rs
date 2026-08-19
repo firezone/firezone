@@ -1,7 +1,7 @@
-//! UniFFI bindings for the [`device_trust`] certificate parser.
+//! UniFFI bindings for the [`x509_identity`] certificate parser.
 //!
 //! Only the mobile and Apple clients go through here. The parsing itself lives in
-//! `device-trust`, which stays free of `uniffi` so the GUI and headless clients can
+//! `x509-identity`, which stays free of `uniffi` so the GUI and headless clients can
 //! depend on it directly.
 
 use std::time::SystemTime;
@@ -22,9 +22,9 @@ pub struct DetailField {
     pub value: String,
 }
 
-/// Metadata parsed from a client certificate, mirroring [`device_trust::CertificateMetadata`].
+/// Metadata parsed from a client certificate, mirroring [`x509_identity::ParsedCertificate`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct CertificateInfo {
+pub struct ParsedCertificate {
     pub subject_cn: Option<String>,
     pub subject: String,
     /// Human-readable renderings of all subject alternative names.
@@ -55,50 +55,50 @@ pub struct CertificateInfo {
 ///
 /// Returns [`None`] if the bytes are not a valid X.509 certificate.
 #[uniffi::export]
-pub fn parse_client_certificate(der: Vec<u8>) -> Option<CertificateInfo> {
-    let metadata = device_trust::parse_certificate(&der, SystemTime::now())?;
+pub fn parse_client_certificate(der: Vec<u8>) -> Option<ParsedCertificate> {
+    let parsed = x509_identity::parse_certificate(&der, SystemTime::now())?;
 
-    Some(CertificateInfo::from(metadata))
+    Some(ParsedCertificate::from(parsed))
 }
 
-impl From<device_trust::CertificateMetadata> for CertificateInfo {
-    fn from(metadata: device_trust::CertificateMetadata) -> Self {
-        let user_identity = metadata.user_identity().map(UserIdentity::from);
-        let detail_fields = metadata
+impl From<x509_identity::ParsedCertificate> for ParsedCertificate {
+    fn from(parsed: x509_identity::ParsedCertificate) -> Self {
+        let user_identity = parsed.user_identity().map(UserIdentity::from);
+        let detail_fields = parsed
             .detail_fields()
             .into_iter()
             .map(DetailField::from)
             .collect();
 
         Self {
-            subject_cn: metadata.subject_cn,
-            subject: metadata.subject,
-            subject_alternative_names: metadata.subject_alternative_names,
-            actor_email: metadata.actor_email,
-            account_id: metadata.account_id,
-            mdm_device_id: metadata.mdm_device_id,
-            device_serial: metadata.device_serial,
-            issuer: metadata.issuer,
-            serial: metadata.serial,
-            has_client_auth_eku: metadata.has_client_auth_eku,
-            digital_signature_allowed: metadata.digital_signature_allowed,
-            is_currently_valid: metadata.is_currently_valid,
-            not_before: metadata.not_before,
-            not_before_timestamp: metadata.not_before_timestamp,
-            not_after: metadata.not_after,
-            signing_algorithm: metadata
+            subject_cn: parsed.subject_cn,
+            subject: parsed.subject,
+            subject_alternative_names: parsed.subject_alternative_names,
+            actor_email: parsed.actor_email,
+            account_id: parsed.account_id,
+            mdm_device_id: parsed.mdm_device_id,
+            device_serial: parsed.device_serial,
+            issuer: parsed.issuer,
+            serial: parsed.serial,
+            has_client_auth_eku: parsed.has_client_auth_eku,
+            digital_signature_allowed: parsed.digital_signature_allowed,
+            is_currently_valid: parsed.is_currently_valid,
+            not_before: parsed.not_before,
+            not_before_timestamp: parsed.not_before_timestamp,
+            not_after: parsed.not_after,
+            signing_algorithm: parsed
                 .signing_algorithm
                 .map(|algorithm| algorithm.label().to_owned()),
-            fingerprint: metadata.fingerprint,
-            der_bytes: metadata.der_bytes as u64,
+            fingerprint: parsed.fingerprint,
+            der_bytes: parsed.der_bytes as u64,
             user_identity,
             detail_fields,
         }
     }
 }
 
-impl From<device_trust::UserIdentity> for UserIdentity {
-    fn from(identity: device_trust::UserIdentity) -> Self {
+impl From<x509_identity::UserIdentity> for UserIdentity {
+    fn from(identity: x509_identity::UserIdentity) -> Self {
         Self {
             email: identity.email,
             account_id: identity.account_id,
@@ -106,8 +106,8 @@ impl From<device_trust::UserIdentity> for UserIdentity {
     }
 }
 
-impl From<device_trust::DetailField> for DetailField {
-    fn from(field: device_trust::DetailField) -> Self {
+impl From<x509_identity::DetailField> for DetailField {
+    fn from(field: x509_identity::DetailField) -> Self {
         Self {
             label: field.label,
             value: field.value,

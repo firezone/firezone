@@ -1,4 +1,4 @@
-# UniFFI Configuration for device-trust-ffi
+# UniFFI Configuration for x509-identity-ffi
 
 [bindings.swift]
 generate_immutable_records = true

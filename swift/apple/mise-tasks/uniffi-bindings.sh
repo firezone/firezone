@@ -31,7 +31,7 @@ rm -f "${GENERATED_DIR}"/*.modulemap
 
 # The bindings are delivered via bridging header instead of a Clang module, so the
 # canImport block must go; libconnlib.a carries one binding set per UniFFI namespace.
-for namespace in connlib devicetrust; do
+for namespace in connlib x509identity; do
     generated_swift="${GENERATED_DIR}/${namespace}.swift"
     if [ -f "${generated_swift}" ]; then
         sed -i.bak "/#if canImport(${namespace}FFI)/,/#endif/s/^/\/\/ /" "${generated_swift}"

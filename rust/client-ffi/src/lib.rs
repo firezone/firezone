@@ -7,11 +7,11 @@ static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 mod fd;
 mod platform;
 
-// Links the `devicetrust` UniFFI scaffolding into `libconnlib`, so that one Rust
+// Links the `x509identity` UniFFI scaffolding into `libconnlib`, so that one Rust
 // library serves both namespaces. A binary can only carry a single Rust staticlib
 // without duplicating the runtime, so the bindings ship inside `libconnlib` instead
 // of a second library.
-use devicetrust as _;
+use x509identity as _;
 
 use crate::fd::RawFd;
 
