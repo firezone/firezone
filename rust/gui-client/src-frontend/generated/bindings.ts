@@ -15,6 +15,14 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async x509Status(): Promise<Result<X509Status, Error>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("x509_status") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async exportLogs(): Promise<Result<null, Error>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("export_logs") };
@@ -152,6 +160,9 @@ export type SessionViewModel =
   | { SignedIn: { account_slug: string; actor_name: string } }
   | "Loading"
   | "SignedOut";
+export type X509DetailField = { label: string; value: string };
+export type X509DetailSection = { title: string; fields: X509DetailField[] };
+export type X509Status = { summary: string; sections: X509DetailSection[] };
 
 /** tauri-specta globals **/
 

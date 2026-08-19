@@ -39,6 +39,26 @@ capability to open `/dev/net/tun`. You can add this to the client binary with:
 sudo setcap 'cap_net_admin+eip' /path/to/firezone-headless-client
 ```
 
+## X.509 device identity
+
+The headless Client authenticates its portal connection with an MDM-provisioned
+X.509 certificate over mutual TLS whenever the platform keystore holds a
+currently valid certificate whose subject CN is `dev.firezone.device-trust` and
+whose extended key usage permits TLS client authentication. Otherwise it
+connects as it always has. Private-key bytes are never exported.
+
+To inspect what the keystore holds without connecting to the portal or reading a
+Firezone token, run:
+
+```sh
+firezone-headless-client x509
+```
+
+The command prints the matching certificates with their validity, client-auth
+EKU, private-key access, signing algorithm and SHA-256 fingerprint. A keystore
+without a matching identity is reported as a normal status; a keystore that
+cannot be read exits non-zero.
+
 ## Building
 
 Assuming you have Rust installed, you can build the headless Client with:

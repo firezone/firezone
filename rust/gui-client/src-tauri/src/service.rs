@@ -52,6 +52,8 @@ pub(crate) use platform::ProcessToken;
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
     ClearLogs,
+    /// Ask the Tunnel service what the platform keystore holds.
+    GetX509Status,
     Connect {
         #[serde(serialize_with = "serialize_token")]
         token: SecretString,
@@ -105,6 +107,8 @@ pub enum ServerMsg {
     /// Result of an `ApplyAdvancedSettings` from the GUI. `Ok` echoes the
     /// persisted struct so the GUI is certain about what landed.
     AdvancedSettingsApplied(Result<AdvancedSettings, String>),
+    /// Result of a `GetX509Status` from the GUI.
+    X509Status(Result<x509_keystore::Status, String>),
     /// The Tunnel service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -643,6 +647,16 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::ClearedLogs(result.map_err(|e| e.to_string())))
                     .await?
             }
+            ClientMsg::GetX509Status => {
+                // Reading the keystore blocks on platform APIs that may talk to a TPM.
+                let result = tokio::task::spawn_blocking(x509_keystore::status)
+                    .await
+                    .context("Failed to join the keystore task")
+                    .and_then(|result| result)
+                    .map_err(|error| format!("{error:#}"));
+
+                self.send_ipc(ServerMsg::X509Status(result)).await?
+            }
             ClientMsg::Connect {
                 token,
                 is_internet_resource_active,
@@ -764,6 +778,8 @@ impl<'a> Handler<'a> {
             device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
         let api_url = self.api_url().to_string();
+        let certificate =
+            x509_keystore::certificate().context("Failed to read the platform keystore")?;
         let url = LoginUrl::client(
             Url::parse(&api_url).context("Failed to parse URL")?,
             device_id.id.clone(),
@@ -773,7 +789,7 @@ impl<'a> Handler<'a> {
                 device_uuid: device_info::uuid(),
                 ..Default::default()
             },
-            None,
+            certificate,
         )
         .context("Failed to create `LoginUrl`")?;
 

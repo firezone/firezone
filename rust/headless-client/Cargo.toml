@@ -39,6 +39,7 @@ tokio = { workspace = true, features = ["macros", "signal", "process", "time", "
 tracing = { workspace = true }
 tunnel-bypass-resolver = { workspace = true }
 url = { workspace = true }
+x509-keystore = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # `local_dynamic_tls` keeps the allocator's TLS model compatible with our static musl builds.
