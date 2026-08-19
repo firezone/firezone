@@ -44,11 +44,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     Log.info(
       "NetworkExtension starting - Version: \(version), Build: \(build), Bundle ID: \(bundleId)")
 
-    // Prototype smoke test: calling into the x509identity bindings proves that the
-    // uniffi_x509identity_* symbols in libconnlib.a link into the extension.
-    let emptyCertificate = parseClientCertificate(der: Data())
-    Log.info("x509identity parses empty DER as: \(String(describing: emptyCertificate))")
-
     migrateFirezoneId()
   }
 
