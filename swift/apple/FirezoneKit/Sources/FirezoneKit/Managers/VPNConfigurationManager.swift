@@ -161,8 +161,7 @@ public final class VPNConfigurationManager {
       )
     }
 
-    guard let selected = candidates.first(where: \.hasIdentityReference) ?? candidates.first
-    else {
+    guard let selected = candidates.first(where: \.hasIdentityReference) ?? candidates.first else {
       Log.info("No Firezone VPN configuration was found")
       return nil
     }

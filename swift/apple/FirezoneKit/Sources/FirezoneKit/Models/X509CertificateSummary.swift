@@ -21,18 +21,11 @@ public struct X509CertificateField: Hashable, Sendable {
 public struct X509CertificateSummary: Equatable, Sendable {
   /// Whether the certificate is inside its validity period right now.
   public let isCurrentlyValid: Bool
-  /// The portal user the certificate authenticates, when it encodes one.
-  public let actorEmail: String?
   /// Rows to render, in the order the parser produced them.
   public let fields: [X509CertificateField]
 
-  public init(
-    isCurrentlyValid: Bool,
-    actorEmail: String?,
-    fields: [X509CertificateField]
-  ) {
+  public init(isCurrentlyValid: Bool, fields: [X509CertificateField]) {
     self.isCurrentlyValid = isCurrentlyValid
-    self.actorEmail = actorEmail
     self.fields = fields
   }
 }

@@ -20,6 +20,10 @@ struct X509SettingsView: View {
 
   @State private var loadState: LoadState = .loading
 
+  init(identityReference: @escaping @MainActor @Sendable () throws -> Data?) {
+    self.identityReference = identityReference
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       header
@@ -40,7 +44,7 @@ struct X509SettingsView: View {
         details(summary)
       }
     }
-    .task { await reload() }
+    .onAppear { Task { await reload() } }
   }
 
   private var header: some View {
@@ -81,7 +85,7 @@ struct X509SettingsView: View {
   private func details(_ summary: X509CertificateSummary) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       if !summary.isCurrentlyValid {
-        Label("This certificate is outside its validity period", systemImage: "clock.badge.xmark")
+        Label("This certificate is not currently valid", systemImage: "exclamationmark.triangle")
           .font(.callout)
       }
 
