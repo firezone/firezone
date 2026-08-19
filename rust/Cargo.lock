@@ -3013,6 +3013,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tunnel-proto",
+ "x509-identity",
 ]
 
 [[package]]
