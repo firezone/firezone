@@ -201,6 +201,8 @@ actor Adapter {
   private let logFilter: String
   /// Persistent keychain reference to the client identity MDM put on the VPN profile.
   private let identityReference: Data?
+  /// What proved this session's identity to the portal, decided during `start`.
+  private var authenticationMode: SessionAuthenticationMode = .token
 
   init(
     apiURL: String,
@@ -264,6 +266,10 @@ actor Adapter {
     #endif
 
     let tlsIdentity = try resolveTlsIdentity()
+
+    // A token still identifies the user when both are present; the certificate then
+    // only proves the device.
+    authenticationMode = token == nil ? .certificate : .token
 
     // Create the session
     let session: Session
@@ -564,16 +570,29 @@ actor Adapter {
 
     case .disconnected(let error):
       let errorMessage = error.message()
-      let requiresSignIn = error.requiresSignIn()
-      Log.info("Received Disconnected event: \(errorMessage)")
+      // Only a token can be replaced by signing in again. A certificate session has no
+      // sign-in to return to, so a rejected or revoked certificate must not send the
+      // user somewhere they cannot fix it.
+      let requiresSignIn = authenticationMode == .token && error.requiresSignIn()
+      Log.info(
+        "Received Disconnected event (authenticatedWith=\(authenticationMode.rawValue)): "
+          + errorMessage)
 
       // iOS shows the notification from the tunnel process because the UI
       // process isn't guaranteed to be alive; macOS handles it from the UI.
       #if os(iOS)
-        SessionNotification.showDisconnectedNotificationiOS(errorMessage)
+        if requiresSignIn {
+          SessionNotification.showDisconnectedNotificationiOS(errorMessage)
+        } else if authenticationMode == .certificate {
+          SessionNotification.showCertificateFailureNotificationiOS(errorMessage)
+        }
       #endif
 
-      let sendableError = SendableError(errorMessage, requiresSignIn: requiresSignIn)
+      let sendableError = SendableError(
+        errorMessage,
+        requiresSignIn: requiresSignIn,
+        authenticationMode: authenticationMode
+      )
       providerCommandSender.send(.cancelWithError(sendableError))
 
     case .allGatewaysOffline(let resourceId):

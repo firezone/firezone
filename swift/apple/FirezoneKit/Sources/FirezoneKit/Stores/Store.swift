@@ -322,6 +322,8 @@ public final class Store: ObservableObject {
               let reason = nsError.userInfo["reason"] as? String,
               let id = nsError.userInfo["id"] as? String
             {
+              let authenticationMode = Store.authenticationMode(of: nsError)
+
               // Only show the alert if we haven't shown this specific error before
               Task { @MainActor in
                 guard !self.shownAlertIds.contains(id) else { return }
@@ -329,7 +331,10 @@ public final class Store: ObservableObject {
                 case .sessionExpired:
                   await self.sessionNotification.showSignedOutAlertMacOS(reason)
                 case .disconnected:
-                  await self.sessionNotification.showDisconnectedAlertMacOS(reason)
+                  await self.sessionNotification.showDisconnectedAlertMacOS(
+                    reason,
+                    authenticationMode: authenticationMode
+                  )
                 }
                 self.markAlertAsShown(id)
               }
@@ -487,6 +492,17 @@ public final class Store: ObservableObject {
 
     try await setupTunnelObservers()
     SharedAccess.markAppRunning()
+  }
+
+  /// How the disconnected session authenticated, defaulting to a token for older payloads.
+  nonisolated private static func authenticationMode(of error: NSError)
+    -> SessionAuthenticationMode
+  {
+    guard let raw = error.userInfo[ConnlibError.authenticationModeKey] as? String,
+      let mode = SessionAuthenticationMode(rawValue: raw)
+    else { return .token }
+
+    return mode
   }
 
   func manager() throws -> VPNConfigurationManager {

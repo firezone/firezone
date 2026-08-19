@@ -462,7 +462,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       let error: Error =
         sendableError.requiresSignIn
         ? FirezoneKit.ConnlibError.sessionExpired(sendableError.message)
-        : FirezoneKit.ConnlibError.disconnected(sendableError.message)
+        : FirezoneKit.ConnlibError.disconnected(
+          sendableError.message,
+          authenticationMode: sendableError.authenticationMode
+        )
       cancelTunnelWithError(error)
 
     case .setReasserting(let value):
