@@ -17,6 +17,7 @@ import {
   FileCount,
   GeneralSettingsViewModel,
   SessionViewModel,
+  X509Status,
 } from "../generated/bindings";
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
     useState<GeneralSettingsViewModel | null>(null);
   const [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSettingsViewModel | null>(null);
+  const [x509Status, setX509Status] = useState<X509Status | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(true);
 
   useEffect(() => {
@@ -50,6 +52,12 @@ export default function App() {
       console.log("logs_recounted", { file_count: event.payload });
       setLogCount(event.payload);
     });
+    const x509StatusChangedUnlisten = events.x509StatusChanged.listen(
+      (event) => {
+        console.log("x509_status_changed", { status: event.payload });
+        setX509Status(event.payload);
+      }
+    );
 
     commands.updateState();
 
@@ -58,6 +66,7 @@ export default function App() {
       generalSettingsChangedUnlisten.then((unlisten) => unlisten());
       advancedSettingsChangedUnlisten.then((unlisten) => unlisten());
       logsRecountedUnlisten.then((unlisten) => unlisten());
+      x509StatusChangedUnlisten.then((unlisten) => unlisten());
     };
   }, []);
 
@@ -194,7 +203,10 @@ export default function App() {
                 />
               }
             />
-            <Route path="/x509" element={<X509SettingsPage />} />
+            <Route
+              path="/x509"
+              element={<X509SettingsPage status={x509Status} />}
+            />
             <Route
               path="/diagnostics"
               element={
