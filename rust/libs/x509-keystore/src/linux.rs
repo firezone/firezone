@@ -3,7 +3,12 @@
 #[cfg(test)]
 mod tests;
 
-use std::{path::PathBuf, sync::Arc, time::SystemTime};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, PoisonError},
+    time::SystemTime,
+};
 
 use anyhow::{Context as _, ErrorExt as _, Result, anyhow, bail};
 use cryptoki::{
@@ -336,13 +341,37 @@ fn encode_der_length(output: &mut Vec<u8>, length: usize) {
     }
 }
 
-/// Opens a read-only session on the configured token, unlocking it when a PIN is configured.
-fn open_session(uri: &Pkcs11Uri) -> Result<Session> {
-    let pkcs11 = Pkcs11::new(&uri.module_path)
-        .with_context(|| format!("Failed to load {}", uri.module_path.display()))?;
-    pkcs11
+/// The PKCS#11 context each module is used through, kept for the life of the process.
+///
+/// A module may only be initialized once: a second `C_Initialize` answers that it already is, so
+/// two contexts for one module would cut each other off whenever they overlap, as a diagnostics
+/// read and a handshake signature do. Holding on to the context is also what keeps the module
+/// loaded for the sessions still using it.
+static CONTEXTS: Mutex<BTreeMap<PathBuf, Pkcs11>> = Mutex::new(BTreeMap::new());
+
+/// Returns the context for `module_path`, loading and initializing the module on first use.
+fn context(module_path: &Path) -> Result<Pkcs11> {
+    let mut contexts = CONTEXTS.lock().unwrap_or_else(PoisonError::into_inner);
+
+    if let Some(context) = contexts.get(module_path) {
+        return Ok(context.clone());
+    }
+
+    let context = Pkcs11::new(module_path)
+        .with_context(|| format!("Failed to load {}", module_path.display()))?;
+    context
         .initialize(CInitializeArgs::new(CInitializeFlags::OS_LOCKING_OK))
         .context("PKCS#11 initialization failed")?;
+    // Only a context that initialized is remembered, so a module that failed to load can be
+    // retried once whatever kept it from loading is fixed.
+    contexts.insert(module_path.to_owned(), context.clone());
+
+    Ok(context)
+}
+
+/// Opens a read-only session on the configured token, unlocking it when a PIN is configured.
+fn open_session(uri: &Pkcs11Uri) -> Result<Session> {
+    let pkcs11 = context(&uri.module_path)?;
 
     let slot = find_slot(&pkcs11, uri.token_label.as_deref())?;
     let session = pkcs11
@@ -350,12 +379,30 @@ fn open_session(uri: &Pkcs11Uri) -> Result<Session> {
         .context("Failed to open the PKCS#11 token")?;
 
     if let Some(pin) = uri.read_pin()? {
-        session
-            .login(UserType::User, Some(&AuthPin::new(pin.into_boxed_str())))
-            .context("Failed to unlock the PKCS#11 token")?;
+        unlock(&session, pin).context("Failed to unlock the PKCS#11 token")?;
     }
 
     Ok(session)
+}
+
+/// Logs into the token, treating a login an overlapping session already did as success.
+///
+/// PKCS#11 tracks the login per token rather than per session, so a token that another session of
+/// this process unlocked is unlocked for this one too, and logging in again is refused.
+fn unlock(session: &Session, pin: String) -> Result<()> {
+    let Err(error) = session.login(UserType::User, Some(&AuthPin::new(pin.into_boxed_str())))
+    else {
+        return Ok(());
+    };
+
+    if matches!(
+        error,
+        cryptoki::error::Error::Pkcs11(RvError::UserAlreadyLoggedIn, _)
+    ) {
+        return Ok(());
+    }
+
+    Err(error.into())
 }
 
 fn find_slot(pkcs11: &Pkcs11, token_label: Option<&str>) -> Result<cryptoki::slot::Slot> {
