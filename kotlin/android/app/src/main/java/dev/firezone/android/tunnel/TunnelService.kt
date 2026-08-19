@@ -64,6 +64,7 @@ import uniffi.connlib.isLogStreamingActive
 import uniffi.connlib.logCleanupDefaultIntervalSecs
 import uniffi.connlib.logCleanupDefaultMaxSizeMb
 import uniffi.connlib.startTelemetry
+import uniffi.x509claims.UserIdentity
 import uniffi.connlib.stopTelemetry
 import uniffi.connlib.use
 import java.nio.file.Files
@@ -110,12 +111,16 @@ class TunnelService : VpnService() {
     private val _resourcesState = MutableStateFlow<List<Resource>>(emptyList())
     private val _connectedDevicesState = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     private val _actorNameState = MutableStateFlow<String?>(null)
+    private val _certificateUserState = MutableStateFlow<UserIdentity?>(null)
 
     // A `StateFlow` replays its current value to every new collector, so a newly bound SessionActivity catches up on its own.
     val serviceState: StateFlow<State> = _serviceState.asStateFlow()
     val resourcesState: StateFlow<List<Resource>> = _resourcesState.asStateFlow()
     val connectedDevicesState: StateFlow<List<ConnectedDevice>> = _connectedDevicesState.asStateFlow()
     val actorNameState: StateFlow<String?> = _actorNameState.asStateFlow()
+
+    /** The user the session's client certificate authenticates, who has no token to sign out of. */
+    val certificateUserState: StateFlow<UserIdentity?> = _certificateUserState.asStateFlow()
 
     var tunnelResources: List<Resource>
         get() = _resourcesState.value
@@ -363,6 +368,7 @@ class TunnelService : VpnService() {
                     // it constructs the session, so load it before we get there.
                     val identity =
                         withContext(Dispatchers.IO) { x509Identity.load(certificateAlias) }
+                    _certificateUserState.value = identity?.userIdentity
 
                     sessionFactory
                         .open(

@@ -66,6 +66,7 @@ class SessionActivity : AppCompatActivity() {
                 val favorites by viewModel.favorites.collectAsStateWithLifecycle()
                 val serviceStatus by (tunnelService?.serviceState ?: emptyFlow()).collectAsStateWithLifecycle<State?>(null)
                 val actorName by (tunnelService?.actorNameState ?: emptyFlow()).collectAsStateWithLifecycle(null)
+                val certificateUser by (tunnelService?.certificateUserState ?: emptyFlow()).collectAsStateWithLifecycle(null)
 
                 // Finish if the tunnel service dies.
                 LaunchedEffect(serviceStatus) {
@@ -111,7 +112,11 @@ class SessionActivity : AppCompatActivity() {
                         startActivity(settings)
                     },
                     onSignOut = {
-                        viewModel.clearToken()
+                        // A client certificate re-authenticates on its own, so there is nothing to
+                        // discard: disconnecting is all this can do.
+                        if (certificateUser == null) {
+                            viewModel.clearToken()
+                        }
                         tunnelService?.disconnect()
                     },
                 )

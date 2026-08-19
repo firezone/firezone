@@ -27,14 +27,17 @@
 
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>
+	<string name="connect_as">Connect as %1$s</string>
 	<string name="settings">Settings</string>
 	<string name="sign_in_welcome">Welcome to Firezone.</string>
 	<string name="sign_in_prompt">Sign in to access Resources.</string>
+	<string name="disconnected_connect_as">Connect as %1$s</string>
 
 	<!-- Sign Out -->
 	<string name="resources">Resources</string>
 	<string name="connected_devices">Connected Devices</string>
 	<string name="sign_out">Sign Out</string>
+	<string name="connected_as">Connected as %1$s</string>
 
 	<!-- Profile -->
 	<string name="profile">Profile</string>

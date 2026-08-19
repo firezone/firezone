@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.ApplicationMode
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.x509.CertificateUser
 import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +31,7 @@ internal class SplashViewModel
         private val repo: Repository,
         private val applicationRestrictions: Bundle,
         private val applicationMode: ApplicationMode,
+        private val certificateUser: CertificateUser,
     ) : ViewModel() {
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
@@ -56,8 +58,8 @@ internal class SplashViewModel
 
                 val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
 
-                // If we don't have a token, we can't connect.
-                if (token.isNullOrBlank()) {
+                // Without a token we can only connect if a client certificate authenticates us.
+                if (token.isNullOrBlank() && certificateUser.identity() == null) {
                     actionMutableStateFlow.value = ViewAction.NavigateToSignIn
                     return@launch
                 }
