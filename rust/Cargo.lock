@@ -1307,6 +1307,7 @@ dependencies = [
  "backoff",
  "client-shared",
  "connlib-model",
+ "device-trust-ffi",
  "flow-log-upload",
  "flow-log-writer",
  "ip-packet",
@@ -1938,6 +1939,14 @@ dependencies = [
  "sha2 0.11.0",
  "uuid",
  "x509-parser",
+]
+
+[[package]]
+name = "device-trust-ffi"
+version = "0.1.0"
+dependencies = [
+ "device-trust",
+ "uniffi",
 ]
 
 [[package]]
