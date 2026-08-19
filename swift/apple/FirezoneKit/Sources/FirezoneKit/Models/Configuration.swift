@@ -110,12 +110,34 @@ public class Configuration: ObservableObject {
     internetResourceEnabledSubject.eraseToAnyPublisher()
   }
 
-  var isAuthURLForced: Bool { defaults.objectIsForced(forKey: Keys.authURL) }
-  var isApiURLForced: Bool { defaults.objectIsForced(forKey: Keys.apiURL) }
-  var isLogFilterForced: Bool { defaults.objectIsForced(forKey: Keys.logFilter) }
-  var isAccountSlugForced: Bool { defaults.objectIsForced(forKey: Keys.accountSlug) }
-  var isConnectOnStartForced: Bool { defaults.objectIsForced(forKey: Keys.connectOnStart) }
-  var isStartOnLoginForced: Bool { defaults.objectIsForced(forKey: Keys.startOnLogin) }
+  /// Whether the settings come from a VPN configuration profile rather than from the GUI.
+  ///
+  /// A profile is the administrator's to edit, so every setting it carries is read-only
+  /// here, exactly as an individually forced key would be.
+  @Published private(set) var isVPNConfigurationManaged = false
+
+  var isAuthURLForced: Bool {
+    isVPNConfigurationManaged || defaults.objectIsForced(forKey: Keys.authURL)
+  }
+  var isApiURLForced: Bool {
+    isVPNConfigurationManaged || defaults.objectIsForced(forKey: Keys.apiURL)
+  }
+  var isLogFilterForced: Bool {
+    isVPNConfigurationManaged || defaults.objectIsForced(forKey: Keys.logFilter)
+  }
+  var isAccountSlugForced: Bool {
+    isVPNConfigurationManaged || defaults.objectIsForced(forKey: Keys.accountSlug)
+  }
+  var isConnectOnStartForced: Bool {
+    isVPNConfigurationManaged || defaults.objectIsForced(forKey: Keys.connectOnStart)
+  }
+  var isStartOnLoginForced: Bool {
+    isVPNConfigurationManaged || defaults.objectIsForced(forKey: Keys.startOnLogin)
+  }
+
+  func setVPNConfigurationManaged(_ isManaged: Bool) {
+    isVPNConfigurationManaged = isManaged
+  }
 
   var authURL: String {
     get { effectiveString(Keys.authURL, default: ConfigurationDefaults.authURL) }
