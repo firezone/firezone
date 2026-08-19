@@ -50,6 +50,12 @@
         <item name="android:textColorPrimary">@color/neutral_900</item>
     </style>
 
+    <style name="AppTheme.Base.H6">
+        <item name="fontFamily">@font/source_sans_pro_bold</item>
+        <item name="android:textSize">@dimen/text_h6</item>
+        <item name="android:textColorPrimary">@color/neutral_900</item>
+    </style>
+
     <style name="AppTheme.Base.Body1">
         <item name="fontFamily">@font/source_sans_pro</item>
         <item name="android:textSize">@dimen/text_body1</item>
