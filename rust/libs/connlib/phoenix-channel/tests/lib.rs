@@ -490,8 +490,12 @@ async fn http_400_returns_client_error() {
 }
 
 #[tokio::test]
-async fn http_401_returns_invalid_token() {
-    let port = http_status_server(http::StatusCode::UNAUTHORIZED).await;
+async fn http_401_with_invalid_token_code_returns_invalid_token() {
+    let port = http_problem_details_server(
+        http::StatusCode::UNAUTHORIZED,
+        r#"{"type":"about:blank","title":"Unauthorized","status":401,"detail":"Invalid token","code":"invalid_token"}"#,
+    )
+    .await;
 
     let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
 
@@ -509,7 +513,59 @@ async fn http_401_returns_invalid_token() {
 
     assert!(
         matches!(result, Err(phoenix_channel::Error::InvalidToken)),
-        "expected Error::InvalidToken for 401, got {result:?}"
+        "expected Error::InvalidToken for 401 with `invalid_token` code, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn http_401_without_code_returns_authentication_failed() {
+    let port = http_problem_details_server(
+        http::StatusCode::UNAUTHORIZED,
+        r#"{"type":"about:blank","title":"Unauthorized","status":401,"detail":"Invalid token"}"#,
+    )
+    .await;
+
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    assert!(
+        matches!(result, Err(phoenix_channel::Error::AuthenticationFailed(_))),
+        "expected Error::AuthenticationFailed for 401 without code, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn http_401_without_problem_details_returns_authentication_failed() {
+    let port = http_status_server(http::StatusCode::UNAUTHORIZED).await;
+
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    assert!(
+        matches!(result, Err(phoenix_channel::Error::AuthenticationFailed(_))),
+        "expected Error::AuthenticationFailed for 401 without problem details, got {result:?}"
     );
 }
 
@@ -671,6 +727,21 @@ async fn http_status_server(code: http::StatusCode) -> u16 {
          Content-Length: 0\r\n\r\n",
         status = code.as_u16(),
         reason = code.as_str()
+    ))
+    .await
+}
+
+/// Spawns a server that rejects the WebSocket upgrade with RFC 9457 problem details.
+async fn http_problem_details_server(code: http::StatusCode, body: &str) -> u16 {
+    http_response_server(format!(
+        "HTTP/1.1 {status} {reason}\r\n\
+         Connection: close\r\n\
+         Content-Type: application/problem+json; charset=utf-8\r\n\
+         Content-Length: {length}\r\n\r\n\
+         {body}",
+        status = code.as_u16(),
+        reason = code.canonical_reason().unwrap_or_default(),
+        length = body.len()
     ))
     .await
 }
