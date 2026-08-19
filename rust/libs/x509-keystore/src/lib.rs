@@ -24,6 +24,11 @@ pub use x509_claims::{
 /// Re-exported because [`Identity::client_certificate`] hands out a [`ClientCertificate`].
 pub use x509_credential::ClientCertificate;
 
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+use linux as keystore;
+
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 mod sign;
 
@@ -32,9 +37,9 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows as keystore;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 mod unsupported;
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 use unsupported as keystore;
 
 /// The subject common name of the certificates Firezone's MDM integrations provision.
