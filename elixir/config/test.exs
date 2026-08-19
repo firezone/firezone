@@ -292,7 +292,6 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
     "script-src 'self' 'nonce-${nonce}'",
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self' firezone-fd0020211111:",
     "frame-ancestors 'none'"
   ]
 
