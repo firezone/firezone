@@ -20,6 +20,7 @@
 	<string name="log_filter">Log Filter</string>
 	<string name="button_reset_to_defaults">Reset to Defaults</string>
 	<!-- Diagnostic Logs Settings -->
+	<string name="x509_settings_title">Certificate</string>
 	<string name="log_settings_title">Logs</string>
 	<string name="share_diagnostic_logs">Export Logs</string>
 	<string name="log_directory_size">Log directory size: %1$s</string>

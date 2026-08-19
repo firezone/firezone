@@ -66,7 +66,7 @@ internal class X509SettingsViewModel
                     uiMutableStateFlow.value =
                         uiMutableStateFlow.value.copy(
                             isLoading = false,
-                            details = identity?.diagnostics().orEmpty(),
+                            details = identity?.detailFields().orEmpty(),
                         )
                 }
         }
@@ -98,7 +98,7 @@ internal class X509SettingsViewModel
             val alias: String? = null,
             val isManaged: Boolean = false,
             val isLoading: Boolean = false,
-            val details: String = "",
+            val details: List<DetailField> = emptyList(),
             val error: String? = null,
         )
 
@@ -108,19 +108,12 @@ internal class X509SettingsViewModel
     }
 
 /**
- * The certificate rendered for a support ticket.
+ * The certificate as the settings screen lists it.
  *
- * The rows come from the Rust parser, so this only lays them out and adds what the KeyChain itself
- * knows.
+ * The rows come from the Rust parser; this only prepends what the KeyChain itself knows.
  */
-private fun LoadedX509Identity.diagnostics(): String =
-    (
-        listOf(
-            DetailField("KeyChain Alias", alias),
-            DetailField("Certificates In Chain", certificateCount.toString()),
-        ) + certificate?.detailFields.orEmpty()
-    ).joinToString("\n") { field ->
-        val value = field.value.lineSequence().joinToString("\n") { line -> "  $line" }
-
-        "${field.label}:\n$value"
-    }
+private fun LoadedX509Identity.detailFields(): List<DetailField> =
+    listOf(
+        DetailField("KeyChain Alias", alias),
+        DetailField("Certificates In Chain", certificateCount.toString()),
+    ) + certificate?.detailFields.orEmpty()
