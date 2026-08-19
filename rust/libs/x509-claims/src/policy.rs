@@ -34,7 +34,7 @@ impl SigningAlgorithm {
 }
 
 #[derive(Debug, Clone)]
-pub struct CertificateMetadata {
+pub struct ParsedCertificate {
     pub subject_cn: Option<String>,
     pub subject: String,
     pub subject_alternative_names: Vec<String>,
@@ -55,7 +55,7 @@ pub struct CertificateMetadata {
     pub der_bytes: usize,
 }
 
-impl CertificateMetadata {
+impl ParsedCertificate {
     pub fn matches_subject(&self, expected_subject_cn: &str) -> bool {
         self.subject_cn.as_deref() == Some(expected_subject_cn)
     }
@@ -141,7 +141,7 @@ impl CertificateMetadata {
     }
 }
 
-pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<CertificateMetadata> {
+pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificate> {
     let (_, certificate) = X509Certificate::from_der(der).ok()?;
 
     let subject_cn = certificate
@@ -237,7 +237,7 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<CertificateMetad
         .collect::<Vec<_>>()
         .join(":");
 
-    Some(CertificateMetadata {
+    Some(ParsedCertificate {
         subject_cn,
         subject: certificate.subject().to_string(),
         subject_alternative_names,
