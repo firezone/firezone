@@ -4,6 +4,7 @@
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+mod client_identity;
 mod fd;
 mod platform;
 
@@ -55,6 +56,37 @@ pub enum CallbackError {
     Failed(String),
 }
 
+/// The TLS handshake signature schemes a platform-held key can sign with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum TlsSignatureScheme {
+    RsaPkcs1Sha256,
+    RsaPkcs1Sha384,
+    RsaPkcs1Sha512,
+    RsaPssSha256,
+    RsaPssSha384,
+    RsaPssSha512,
+    EcdsaNistp256Sha256,
+    EcdsaNistp384Sha384,
+    EcdsaNistp521Sha512,
+}
+
+/// A certificate chain and a non-exportable platform key, presented to the portal for mutual TLS.
+///
+/// The key material stays in the platform keystore, so we ask it for a signature whenever the TLS handshake needs one.
+#[uniffi::export(with_foreign)]
+pub trait ClientTlsIdentity: Send + Sync + fmt::Debug {
+    /// Returns the DER-encoded certificate chain, end-entity certificate first.
+    fn certificate_chain(&self) -> Result<Vec<Vec<u8>>, CallbackError>;
+
+    /// Returns the signature schemes the key can sign with, most preferred first.
+    ///
+    /// All of them must belong to the same key algorithm.
+    fn supported_signature_schemes(&self) -> Vec<TlsSignatureScheme>;
+
+    /// Signs the unhashed TLS handshake message with the requested scheme.
+    fn sign(&self, scheme: TlsSignatureScheme, message: Vec<u8>) -> Result<Vec<u8>, CallbackError>;
+}
+
 #[derive(uniffi::Object, Debug)]
 pub struct DisconnectError(client_shared::DisconnectError);
 
@@ -82,7 +114,7 @@ pub struct DeviceInfo {
 #[derive(uniffi::Record)]
 pub struct AndroidSessionConfig {
     pub api_url: String,
-    pub token: String,
+    pub token: Option<String>,
     pub device_id: String,
     pub account_slug: String,
     pub device_name: String,
@@ -227,10 +259,11 @@ pub trait ProtectSocket: Send + Sync + fmt::Debug {
 #[uniffi::export]
 #[cfg(target_os = "android")]
 impl Session {
-    #[uniffi::constructor]
+    #[uniffi::constructor(default(tls_identity = None))]
     pub fn new_android(
         config: AndroidSessionConfig,
         protect_socket: Arc<dyn ProtectSocket>,
+        tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
     ) -> Result<Self, ConnlibError> {
         let AndroidSessionConfig {
             api_url,
@@ -252,6 +285,7 @@ impl Session {
             Some(device_name),
             device_info,
             is_internet_resource_active,
+            tls_identity,
             tcp_socket_factory,
             udp_socket_factory,
         )
@@ -261,15 +295,20 @@ impl Session {
 #[uniffi::export]
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 impl Session {
-    #[uniffi::constructor]
+    #[uniffi::constructor(default(tls_identity = None))]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "This is the API we want to expose over FFI."
+    )]
     pub fn new_apple(
         api_url: String,
-        token: String,
+        token: Option<String>,
         device_id: String,
         account_slug: String,
         device_name: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
+        tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
     ) -> Result<Self, ConnlibError> {
         // iOS doesn't need socket protection like Android
         let tcp_socket_factory = Arc::new(socket_factory::tcp);
@@ -288,6 +327,7 @@ impl Session {
             device_name,
             device_info,
             is_internet_resource_active,
+            tls_identity,
             tcp_socket_factory,
             udp_socket_factory,
         )?;
@@ -300,18 +340,23 @@ impl Session {
 
 #[uniffi::export]
 impl Session {
-    #[uniffi::constructor]
+    #[uniffi::constructor(default(tls_identity = None))]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "This is the API we want to expose over FFI."
+    )]
     /// Dummy constructor that isn't feature-gated by an OS.
     ///
     /// This only exists to make working on the FFI module from Linux/Windows more convenient without many "unused code" warnings.
     pub fn new_dummy(
         api_url: String,
-        token: String,
+        token: Option<String>,
         device_id: String,
         account_slug: String,
         device_name: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
+        tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
     ) -> Result<Self, ConnlibError> {
         let tcp_socket_factory = Arc::new(socket_factory::tcp);
         let udp_socket_factory = Arc::new(socket_factory::udp);
@@ -324,6 +369,7 @@ impl Session {
             device_name,
             device_info,
             is_internet_resource_active,
+            tls_identity,
             tcp_socket_factory,
             udp_socket_factory,
         )?;
@@ -508,12 +554,13 @@ impl Drop for Session {
 
 fn connect(
     api_url: String,
-    token: String,
+    token: Option<String>,
     device_id: String,
     account_slug: String,
     device_name: Option<String>,
     device_info: DeviceInfo,
     is_internet_resource_active: bool,
+    tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 ) -> Result<Session, ConnlibError> {
@@ -524,7 +571,11 @@ fn connect(
         identifier_for_vendor: device_info.identifier_for_vendor,
         firebase_installation_id: device_info.firebase_installation_id,
     };
-    let secret = SecretString::from(token);
+    let token = token.map(SecretString::from);
+
+    if token.is_none() && tls_identity.is_none() {
+        return Err(anyhow!("Cannot authenticate without a token or a client certificate").into());
+    }
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
@@ -551,12 +602,17 @@ fn connect(
 
     analytics::identify(RELEASE.to_owned(), account_slug, None, None);
 
+    let certificate = tls_identity
+        .map(client_identity::certificate)
+        .transpose()
+        .context("Failed to set up the client certificate")?;
+
     let url = LoginUrl::client(
         api_url.as_str(),
         device_id.clone(),
         device_name,
         device_info,
-        None,
+        certificate,
     )
     .context("Failed to create login URL")?;
 
@@ -564,7 +620,7 @@ fn connect(
 
     let portal = PhoenixChannel::disconnected(
         url,
-        secret,
+        token,
         get_user_agent(platform::COMPONENT, platform::VERSION),
         "client",
         (),
