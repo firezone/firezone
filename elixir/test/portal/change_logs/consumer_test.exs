@@ -56,6 +56,17 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       refute "log_sinks" in tables
       refute "log_sink_cursors" in tables
     end
+
+    # Only the typed rows are audited, matching log sinks. The synced devices are
+    # a mirror of the tenant rather than something an admin does.
+    test "includes the typed posture provider tables only", %{tables: tables} do
+      assert "intune_posture_providers" in tables
+      assert "iru_posture_providers" in tables
+
+      refute "posture_providers" in tables
+      refute "intune_devices" in tables
+      refute "iru_devices" in tables
+    end
   end
 
   describe "on_begin/2" do
@@ -212,6 +223,33 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       attrs = result_state.flush_buffer[12345]
       assert attrs.after["hec_token"] == "[redacted]"
       assert attrs.after["collector_url"] == "https://http-inputs-acme.splunkcloud.com"
+    end
+
+    test "redacts the Iru API token in the buffered snapshot", %{
+      account: account,
+      initial_state: initial_state
+    } do
+      data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "subdomain" => "acme",
+        "region" => "us",
+        "api_token" => "super-secret-token"
+      }
+
+      result_state =
+        Consumer.on_write(
+          initial_state,
+          12346,
+          :insert,
+          "iru_posture_providers",
+          nil,
+          data
+        )
+
+      attrs = result_state.flush_buffer[12346]
+      assert attrs.after["api_token"] == "[redacted]"
+      assert attrs.after["subdomain"] == "acme"
     end
 
     test "preserves existing buffer items", %{account: account, initial_state: initial_state} do

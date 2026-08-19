@@ -302,8 +302,9 @@ defmodule PortalWeb.Router do
 
         scope "/device_posture" do
           live "/", DevicePosture
-          live "/intune/new", DevicePosture, :new
-          live "/intune/:id/edit", DevicePosture, :edit
+          live "/new", DevicePosture, :select_type
+          live "/:type/new", DevicePosture, :new
+          live "/:type/:id/edit", DevicePosture, :edit
         end
 
         # Log Sinks

@@ -234,6 +234,9 @@ if config_env() == :prod do
     # Schedule Intune device inventory sync every 2 hours
     {"10 */2 * * *", Portal.Intune.Scheduler},
 
+    # Schedule Iru device inventory sync every 2 hours
+    {"50 */2 * * *", Portal.Iru.Scheduler},
+
     # Schedule Google directory sync every 2 hours
     {"20 */2 * * *", Portal.Google.Scheduler},
 
@@ -259,6 +262,8 @@ if config_env() == :prod do
      args: %{provider: "okta", frequency: "daily"}},
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "intune", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "iru", frequency: "daily"}},
 
     # Directory sync error notifications - every 3 days for medium error count
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
@@ -269,6 +274,8 @@ if config_env() == :prod do
      args: %{provider: "okta", frequency: "three_days"}},
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "intune", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "iru", frequency: "three_days"}},
 
     # Directory sync error notifications - weekly for high error count
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
@@ -279,6 +286,8 @@ if config_env() == :prod do
      args: %{provider: "okta", frequency: "weekly"}},
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
      args: %{provider: "intune", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "iru", frequency: "weekly"}},
 
     # Log sink delivery error notifications
     {"0 9 * * *", Portal.Workers.LogSinkErrorNotification},
@@ -337,6 +346,8 @@ if config_env() == :prod do
       entra_sync: 5,
       intune_scheduler: 1,
       intune_sync: 5,
+      iru_scheduler: 1,
+      iru_sync: 5,
       google_scheduler: 1,
       google_sync: 5,
       okta_scheduler: 1,

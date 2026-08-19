@@ -29,7 +29,7 @@ defmodule Portal.Intune.Device do
     # enrollment, so it is the key rather than an id of our own.
     field :intune_id, :string, primary_key: true
 
-    belongs_to :device_integration, Portal.DeviceIntegration
+    belongs_to :posture_provider, Portal.PostureProvider
 
     field :device_name, :string
     field :managed_device_name, :string
@@ -143,8 +143,8 @@ defmodule Portal.Intune.Device do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_required([:account_id, :device_integration_id, :intune_id, :synced_at])
+    |> validate_required([:account_id, :posture_provider_id, :intune_id, :synced_at])
     |> assoc_constraint(:account)
-    |> assoc_constraint(:device_integration)
+    |> assoc_constraint(:posture_provider)
   end
 end

@@ -7,6 +7,7 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
   import Portal.ActorFixtures
   import Portal.EntraDirectoryFixtures
   import Portal.GoogleDirectoryFixtures
+  import Portal.DevicePostureFixtures
   import Portal.IntuneFixtures
   import Portal.OktaDirectoryFixtures
   import Portal.OutboundEmailTestHelpers
@@ -210,27 +211,27 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
       assert collect_queued_emails(account.id) == []
     end
 
-    test "notifies admins when an Intune integration is disabled by a sync error" do
+    test "notifies admins when an Intune provider is disabled by a sync error" do
       enable_device_posture()
       account = device_posture_account_fixture()
       session_log_fixture(account: account)
       admin = admin_actor_fixture(account: account)
 
-      integration = intune_integration_fixture(account: account)
+      provider = intune_posture_provider_fixture(account: account)
 
       Portal.Intune.ErrorHandler.handle(
         Portal.Intune.SyncError.exception(
-          integration_id: integration.id,
+          provider_id: provider.id,
           step: :list_managed_devices,
           error: %Req.Response{status: 403, body: ""}
         ),
-        integration.id
+        provider.id
       )
 
       errored =
-        Repo.get_by!(Portal.Intune.Integration,
-          account_id: integration.account_id,
-          id: integration.id
+        Repo.get_by!(Portal.Intune.PostureProvider,
+          account_id: provider.account_id,
+          id: provider.id
         )
 
       assert errored.is_disabled
@@ -240,42 +241,74 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
 
       assert :ok = perform_job(SyncErrorNotification, notification_args("intune", "daily"))
 
-      assert Repo.get_by!(Portal.Intune.Integration,
-               account_id: integration.account_id,
-               id: integration.id
+      assert Repo.get_by!(Portal.Intune.PostureProvider,
+               account_id: provider.account_id,
+               id: provider.id
              ).error_email_count == 1
 
       [email] = collect_queued_emails(account.id)
-      assert email.subject == "Device Integration Error - #{integration.name}"
+      assert email.subject == "Posture Provider Error - #{provider.name}"
       assert {"", admin.email} in email.bcc
-      assert email.text_body =~ "device integration has encountered an unrecoverable error"
+      assert email.text_body =~ "posture provider has encountered an unrecoverable error"
       assert email.text_body =~ "settings/device_posture"
-      assert email.text_body =~ integration.tenant_id
+      assert email.text_body =~ provider.tenant_id
       assert email.text_body =~ "DeviceManagementManagedDevices.Read.All"
+    end
+
+    test "notifies admins when an Iru provider is disabled by a sync error" do
+      enable_device_posture()
+      account = device_posture_account_fixture()
+      session_log_fixture(account: account)
+      admin = admin_actor_fixture(account: account)
+
+      provider = Portal.IruFixtures.iru_posture_provider_fixture(account: account)
+
+      Portal.Iru.ErrorHandler.handle(
+        Portal.Iru.SyncError.exception(
+          provider_id: provider.id,
+          step: :list_devices,
+          error: %Req.Response{status: 403, body: ""}
+        ),
+        provider.id
+      )
+
+      assert :ok = perform_job(SyncErrorNotification, notification_args("iru", "daily"))
+
+      assert Repo.get_by!(Portal.Iru.PostureProvider,
+               account_id: provider.account_id,
+               id: provider.id
+             ).error_email_count == 1
+
+      [email] = collect_queued_emails(account.id)
+      assert email.subject == "Posture Provider Error - #{provider.name}"
+      assert {"", admin.email} in email.bcc
+      assert email.text_body =~ "settings/device_posture"
+      assert email.text_body =~ provider.subdomain
+      assert email.text_body =~ "Iru API token"
     end
 
     test "does not email when the global device_posture flag is off" do
       enable_device_posture()
       account = device_posture_account_fixture()
-      integration = errored_intune_integration(account)
+      provider = errored_intune_provider(account)
 
       enable_device_posture(false)
 
       assert :ok = perform_job(SyncErrorNotification, notification_args("intune", "daily"))
 
       assert collect_queued_emails(account.id) == []
-      assert error_email_count(integration) == 0
+      assert error_email_count(provider) == 0
     end
 
     test "does not email an account whose device_posture feature is off" do
       enable_device_posture()
       account = account_fixture(features: %{device_posture: false})
-      integration = errored_intune_integration(account)
+      provider = errored_intune_provider(account)
 
       assert :ok = perform_job(SyncErrorNotification, notification_args("intune", "daily"))
 
       assert collect_queued_emails(account.id) == []
-      assert error_email_count(integration) == 0
+      assert error_email_count(provider) == 0
     end
 
     test "returns an error for unknown providers" do
@@ -284,27 +317,27 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
     end
   end
 
-  defp errored_intune_integration(account) do
+  defp errored_intune_provider(account) do
     session_log_fixture(account: account)
     admin_actor_fixture(account: account)
-    integration = intune_integration_fixture(account: account)
+    provider = intune_posture_provider_fixture(account: account)
 
     Portal.Intune.ErrorHandler.handle(
       Portal.Intune.SyncError.exception(
-        integration_id: integration.id,
+        provider_id: provider.id,
         step: :list_managed_devices,
         error: %Req.Response{status: 403, body: ""}
       ),
-      integration.id
+      provider.id
     )
 
-    integration
+    provider
   end
 
-  defp error_email_count(integration) do
-    Repo.get_by!(Portal.Intune.Integration,
-      account_id: integration.account_id,
-      id: integration.id
+  defp error_email_count(provider) do
+    Repo.get_by!(Portal.Intune.PostureProvider,
+      account_id: provider.account_id,
+      id: provider.id
     ).error_email_count
   end
 

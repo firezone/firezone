@@ -106,8 +106,15 @@ defmodule PortalAPI.Router do
     resources "/google_directories", GoogleDirectoryController, only: [:index, :show]
     resources "/entra_directories", EntraDirectoryController, only: [:index, :show]
     resources "/okta_directories", OktaDirectoryController, only: [:index, :show]
-    resources "/intune_integration", IntuneIntegrationController, only: [:show], singleton: true
+    resources "/intune_posture_providers", IntunePostureProviderController,
+      only: [:index, :show]
+
     resources "/intune_devices", IntuneDeviceController, only: [:index, :show]
+
+    resources "/iru_posture_providers", IruPostureProviderController,
+      only: [:index, :show]
+
+    resources "/iru_devices", IruDeviceController, only: [:index, :show]
   end
 
   scope "/integrations", PortalAPI.Integrations do

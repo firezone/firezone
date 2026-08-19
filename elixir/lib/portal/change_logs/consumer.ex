@@ -51,7 +51,9 @@ defmodule Portal.ChangeLogs.Consumer do
     "sentinel_log_sinks" => Portal.Sentinel.LogSink,
     "s3_log_sinks" => Portal.S3.LogSink,
     "qradar_log_sinks" => Portal.QRadar.LogSink,
-    "http_log_sinks" => Portal.HTTP.LogSink
+    "http_log_sinks" => Portal.HTTP.LogSink,
+    "intune_posture_providers" => Portal.Intune.PostureProvider,
+    "iru_posture_providers" => Portal.Iru.PostureProvider
   }
 
   @impl true

@@ -3,9 +3,10 @@ defmodule Portal.Intune.SyncTest do
   use Oban.Testing, repo: Portal.Repo
 
   import Ecto.Query
+  import Portal.DevicePostureFixtures
   import Portal.IntuneFixtures
 
-  alias Portal.Intune.{Device, Integration, Sync}
+  alias Portal.Intune.{Device, PostureProvider, Sync}
   alias Portal.Microsoft.Graph.APIClient
 
   setup do
@@ -15,7 +16,7 @@ defmodule Portal.Intune.SyncTest do
   end
 
   test "stores every managed device in the tenant" do
-    integration = intune_integration_fixture()
+    provider = intune_posture_provider_fixture()
 
     stub_managed_devices([
       managed_device(%{
@@ -30,7 +31,7 @@ defmodule Portal.Intune.SyncTest do
       })
     ])
 
-    assert :ok = perform_job(Sync, %{"account_id" => integration.account_id, "device_integration_id" => integration.id})
+    assert :ok = perform_job(Sync, %{"account_id" => provider.account_id, "posture_provider_id" => provider.id})
 
     assert [first, second] = Repo.all(from(d in Device, order_by: d.intune_id))
 
@@ -43,19 +44,19 @@ defmodule Portal.Intune.SyncTest do
     assert first.is_encrypted
     assert first.enrolled_at == ~U[2026-08-01 01:02:03.000000Z]
     assert first.last_sync_at == ~U[2026-08-02 01:02:03.000000Z]
-    assert first.account_id == integration.account_id
-    assert first.device_integration_id == integration.id
+    assert first.account_id == provider.account_id
+    assert first.posture_provider_id == provider.id
 
     assert second.intune_id == "managed-device-2"
     assert second.device_name == "Bob's Mac"
   end
 
   test "stores every property Microsoft Graph returns for a managed device" do
-    integration = intune_integration_fixture()
+    provider = intune_posture_provider_fixture()
 
     stub_managed_devices([full_managed_device()])
 
-    assert :ok = perform_job(Sync, %{"account_id" => integration.account_id, "device_integration_id" => integration.id})
+    assert :ok = perform_job(Sync, %{"account_id" => provider.account_id, "posture_provider_id" => provider.id})
 
     device = Repo.get_by!(Device, intune_id: "705c034c")
 
@@ -165,12 +166,12 @@ defmodule Portal.Intune.SyncTest do
   end
 
   test "every column except our own bookkeeping is filled from the Graph payload" do
-    integration = intune_integration_fixture()
+    provider = intune_posture_provider_fixture()
     stub_managed_devices([full_managed_device()])
 
-    assert :ok = perform_job(Sync, %{"account_id" => integration.account_id, "device_integration_id" => integration.id})
+    assert :ok = perform_job(Sync, %{"account_id" => provider.account_id, "posture_provider_id" => provider.id})
 
-    ours = ~w[account_id device_integration_id intune_id synced_at inserted_at updated_at]a
+    ours = ~w[account_id posture_provider_id intune_id synced_at inserted_at updated_at]a
     device = Repo.get_by!(Device, intune_id: "705c034c")
 
     unset =
@@ -184,7 +185,7 @@ defmodule Portal.Intune.SyncTest do
   # value, so it becomes nil. 9999-12-31 means "never expires", which is not the
   # same thing, so it stays a real date and keeps date comparisons truthful.
   test "discards the placeholder timestamps Intune sends for unset dates" do
-    integration = intune_integration_fixture()
+    provider = intune_posture_provider_fixture()
 
     stub_managed_devices([
       managed_device(%{
@@ -197,7 +198,7 @@ defmodule Portal.Intune.SyncTest do
       })
     ])
 
-    assert :ok = perform_job(Sync, %{"account_id" => integration.account_id, "device_integration_id" => integration.id})
+    assert :ok = perform_job(Sync, %{"account_id" => provider.account_id, "posture_provider_id" => provider.id})
 
     device = Repo.get_by!(Device, intune_id: "managed-device")
     assert is_nil(device.eas_activated_at)
@@ -217,7 +218,7 @@ defmodule Portal.Intune.SyncTest do
   # null, and enum values turn up that the v1.0 reference does not list, which
   # is why these columns are plain strings and not Ecto.Enum.
   test "handles the shapes a real tenant returns" do
-    integration = intune_integration_fixture()
+    provider = intune_posture_provider_fixture()
 
     stub_managed_devices([
       managed_device(%{
@@ -240,7 +241,7 @@ defmodule Portal.Intune.SyncTest do
       })
     ])
 
-    assert :ok = perform_job(Sync, %{"account_id" => integration.account_id, "device_integration_id" => integration.id})
+    assert :ok = perform_job(Sync, %{"account_id" => provider.account_id, "posture_provider_id" => provider.id})
 
     device = Repo.get_by!(Device, intune_id: "managed-device")
     assert is_nil(device.config_manager_inventory)
@@ -262,7 +263,7 @@ defmodule Portal.Intune.SyncTest do
   end
 
   test "follows every page of managed devices" do
-    integration = intune_integration_fixture()
+    provider = intune_posture_provider_fixture()
 
     Req.Test.stub(APIClient, fn conn ->
       cond do
@@ -281,7 +282,7 @@ defmodule Portal.Intune.SyncTest do
       end
     end)
 
-    assert :ok = perform_job(Sync, %{"account_id" => integration.account_id, "device_integration_id" => integration.id})
+    assert :ok = perform_job(Sync, %{"account_id" => provider.account_id, "posture_provider_id" => provider.id})
 
     assert Repo.aggregate(Device, :count) == 2
     assert Repo.get_by!(Device, intune_id: "page-one-device")
@@ -291,7 +292,7 @@ defmodule Portal.Intune.SyncTest do
   # Postgres caps a statement at 65535 bind parameters and a device carries a
   # column per Graph property, so a full page has to be split across inserts.
   test "stores a full Graph page without exceeding the bind parameter limit" do
-    integration = intune_integration_fixture()
+    provider = intune_posture_provider_fixture()
 
     devices =
       Enum.map(1..999, fn i ->
@@ -300,30 +301,30 @@ defmodule Portal.Intune.SyncTest do
 
     stub_managed_devices(devices)
 
-    assert :ok = perform_job(Sync, %{"account_id" => integration.account_id, "device_integration_id" => integration.id})
+    assert :ok = perform_job(Sync, %{"account_id" => provider.account_id, "posture_provider_id" => provider.id})
     assert Repo.aggregate(Device, :count) == 999
   end
 
   test "deletes devices absent from a completed sync" do
-    integration = intune_integration_fixture()
-    stale = intune_device_fixture(integration: integration, intune_id: "stale-device")
+    provider = intune_posture_provider_fixture()
+    stale = intune_device_fixture(provider: provider, intune_id: "stale-device")
 
     stub_managed_devices([managed_device(%{"id" => "current-device"})])
 
-    assert :ok = perform_job(Sync, %{account_id: integration.account_id, device_integration_id: integration.id})
+    assert :ok = perform_job(Sync, %{account_id: provider.account_id, posture_provider_id: provider.id})
     refute Repo.get_by(Device, account_id: stale.account_id, intune_id: stale.intune_id)
     assert Repo.get_by!(Device, intune_id: "current-device")
   end
 
   test "updates the existing row for a managed device on later syncs" do
-    integration = intune_integration_fixture()
+    provider = intune_posture_provider_fixture()
 
     stub_managed_devices([managed_device(%{"id" => "managed-device", "deviceName" => "Before"})])
-    assert :ok = perform_job(Sync, %{account_id: integration.account_id, device_integration_id: integration.id})
+    assert :ok = perform_job(Sync, %{account_id: provider.account_id, posture_provider_id: provider.id})
     first = Repo.get_by!(Device, intune_id: "managed-device")
 
     stub_managed_devices([managed_device(%{"id" => "managed-device", "deviceName" => "After"})])
-    assert :ok = perform_job(Sync, %{account_id: integration.account_id, device_integration_id: integration.id})
+    assert :ok = perform_job(Sync, %{account_id: provider.account_id, posture_provider_id: provider.id})
 
     assert Repo.aggregate(Device, :count) == 1
     updated = Repo.get_by!(Device, intune_id: "managed-device")
@@ -331,9 +332,9 @@ defmodule Portal.Intune.SyncTest do
     assert updated.inserted_at == first.inserted_at
   end
 
-  test "records the sync and clears earlier errors on the integration" do
-    integration =
-      intune_integration_fixture(
+  test "records the sync and clears earlier errors on the provider" do
+    provider =
+      intune_posture_provider_fixture(
         errored_at: DateTime.utc_now(),
         error_message: "Something went wrong",
         error_email_count: 4
@@ -341,57 +342,57 @@ defmodule Portal.Intune.SyncTest do
 
     stub_managed_devices([managed_device(%{"id" => "managed-device"})])
 
-    assert :ok = perform_job(Sync, %{account_id: integration.account_id, device_integration_id: integration.id})
+    assert :ok = perform_job(Sync, %{account_id: provider.account_id, posture_provider_id: provider.id})
 
-    integration = Repo.get_by!(Integration, account_id: integration.account_id, id: integration.id)
-    assert integration.synced_at
-    refute integration.errored_at
-    refute integration.error_message
-    assert integration.error_email_count == 0
+    provider = Repo.get_by!(PostureProvider, account_id: provider.account_id, id: provider.id)
+    assert provider.synced_at
+    refute provider.errored_at
+    refute provider.error_message
+    assert provider.error_email_count == 0
   end
 
-  test "does not sync a disabled or unverified integration" do
-    disabled = intune_integration_fixture(is_disabled: true)
-    unverified = intune_integration_fixture(is_verified: false)
+  test "does not sync a disabled or unverified provider" do
+    disabled = intune_posture_provider_fixture(is_disabled: true)
+    unverified = intune_posture_provider_fixture(is_verified: false)
 
-    assert :ok = perform_job(Sync, %{account_id: disabled.account_id, device_integration_id: disabled.id})
-    assert :ok = perform_job(Sync, %{account_id: unverified.account_id, device_integration_id: unverified.id})
+    assert :ok = perform_job(Sync, %{account_id: disabled.account_id, posture_provider_id: disabled.id})
+    assert :ok = perform_job(Sync, %{account_id: unverified.account_id, posture_provider_id: unverified.id})
 
     assert Repo.aggregate(Device, :count) == 0
   end
 
-  test "does not sync an integration belonging to another account" do
-    integration = intune_integration_fixture()
+  test "does not sync an provider belonging to another account" do
+    provider = intune_posture_provider_fixture()
     other_account = Portal.AccountFixtures.account_fixture()
     stub_managed_devices([full_managed_device()])
 
     assert :ok =
              perform_job(Sync, %{
                account_id: other_account.id,
-               device_integration_id: integration.id
+               posture_provider_id: provider.id
              })
 
     assert Repo.aggregate(Device, :count) == 0
   end
 
   test "skips a job queued without an account id" do
-    integration = intune_integration_fixture()
+    provider = intune_posture_provider_fixture()
     stub_managed_devices([full_managed_device()])
 
-    assert :ok = perform_job(Sync, %{device_integration_id: integration.id})
+    assert :ok = perform_job(Sync, %{posture_provider_id: provider.id})
 
     assert Repo.aggregate(Device, :count) == 0
   end
 
   test "does not sync an account that lost the device_posture feature" do
     downgraded = Portal.AccountFixtures.account_fixture(features: %{device_posture: false})
-    integration = intune_integration_fixture(account: downgraded)
+    provider = intune_posture_provider_fixture(account: downgraded)
     stub_managed_devices([full_managed_device()])
 
     assert :ok =
              perform_job(Sync, %{
-               account_id: integration.account_id,
-               device_integration_id: integration.id
+               account_id: provider.account_id,
+               posture_provider_id: provider.id
              })
 
     assert Repo.aggregate(Device, :count) == 0
@@ -399,39 +400,39 @@ defmodule Portal.Intune.SyncTest do
 
   test "does not sync when the global device_posture flag is off" do
     enable_device_posture(false)
-    integration = intune_integration_fixture()
+    provider = intune_posture_provider_fixture()
     stub_managed_devices([full_managed_device()])
 
     assert :ok =
              perform_job(Sync, %{
-               account_id: integration.account_id,
-               device_integration_id: integration.id
+               account_id: provider.account_id,
+               posture_provider_id: provider.id
              })
 
     assert Repo.aggregate(Device, :count) == 0
   end
 
   test "raises when Microsoft Graph returns a device without an ID" do
-    integration = intune_integration_fixture()
+    provider = intune_posture_provider_fixture()
 
     stub_managed_devices([%{"deviceName" => "No ID"}])
 
     assert_raise Portal.Intune.SyncError, fn ->
-      perform_job(Sync, %{account_id: integration.account_id, device_integration_id: integration.id})
+      perform_job(Sync, %{account_id: provider.account_id, posture_provider_id: provider.id})
     end
 
     assert Repo.aggregate(Device, :count) == 0
   end
 
   test "raises when the access token request fails" do
-    integration = intune_integration_fixture()
+    provider = intune_posture_provider_fixture()
 
     Req.Test.stub(APIClient, fn conn ->
       conn |> Plug.Conn.put_status(401) |> Req.Test.json(%{"error" => "invalid_client"})
     end)
 
     assert_raise Portal.Intune.SyncError, fn ->
-      perform_job(Sync, %{account_id: integration.account_id, device_integration_id: integration.id})
+      perform_job(Sync, %{account_id: provider.account_id, posture_provider_id: provider.id})
     end
   end
 

@@ -47,7 +47,12 @@ defmodule Portal.Telemetry.Reporter.Oban do
   end
 
   defp handle_error(%{reason: reason, job: %{worker: "Portal.Intune.Sync"} = job}) do
-    Portal.Intune.ErrorHandler.handle(reason, job.args["device_integration_id"])
+    Portal.Intune.ErrorHandler.handle(reason, job.args["posture_provider_id"])
+    build_sentry_context(job)
+  end
+
+  defp handle_error(%{reason: reason, job: %{worker: "Portal.Iru.Sync"} = job}) do
+    Portal.Iru.ErrorHandler.handle(reason, job.args["posture_provider_id"])
     build_sentry_context(job)
   end
 

@@ -66,11 +66,11 @@ defmodule Portal.Mailer.SyncErrorEmailTest do
     end
   end
 
-  describe "device_integration_error_email/2" do
+  describe "posture_provider_error_email/2" do
     setup %{account: account} do
-      integration =
+      provider =
         [account: account]
-        |> Portal.IntuneFixtures.intune_integration_fixture()
+        |> Portal.IntuneFixtures.intune_posture_provider_fixture()
         |> Ecto.Changeset.change(
           error_message: "403 - Forbidden",
           errored_at: DateTime.utc_now()
@@ -78,31 +78,50 @@ defmodule Portal.Mailer.SyncErrorEmailTest do
         |> Repo.update!()
         |> Repo.preload(:account)
 
-      %{integration: integration}
+      %{provider: provider}
     end
 
-    test "plain text body opens with the error headline", %{integration: integration} do
-      email_body = device_integration_error_email(integration, "admin@example.com")
+    test "plain text body opens with the error headline", %{provider: provider} do
+      email_body = posture_provider_error_email(provider, "admin@example.com")
 
-      assert String.starts_with?(email_body.text_body, "#{integration.name} Sync Error!")
+      assert String.starts_with?(email_body.text_body, "#{provider.name} Sync Error!")
     end
 
     test "body contains the sync error, tenant and settings link", %{
       account: account,
-      integration: integration
+      provider: provider
     } do
-      email_body = device_integration_error_email(integration, "admin@example.com")
+      email_body = posture_provider_error_email(provider, "admin@example.com")
 
       assert email_body.text_body =~ "403 - Forbidden"
-      assert email_body.text_body =~ ~r/Tenant ID:\s*#{integration.tenant_id}/
+      assert email_body.text_body =~ ~r/Tenant ID:\s*#{provider.tenant_id}/
       assert email_body.text_body =~ "/#{account.slug}/settings/device_posture"
       refute email_body.text_body =~ "/#{account.id}/settings/device_posture"
     end
 
-    test "email subject includes the integration name", %{integration: integration} do
-      email_body = device_integration_error_email(integration, "admin@example.com")
+    test "email subject includes the provider name", %{provider: provider} do
+      email_body = posture_provider_error_email(provider, "admin@example.com")
 
-      assert email_body.subject =~ integration.name
+      assert email_body.subject =~ provider.name
+    end
+
+    test "an Iru provider names its tenant by subdomain and region", %{account: account} do
+      provider =
+        [account: account, region: :eu]
+        |> Portal.IruFixtures.iru_posture_provider_fixture()
+        |> Ecto.Changeset.change(
+          error_message: "401 - Invalid token.",
+          errored_at: DateTime.utc_now()
+        )
+        |> Repo.update!()
+        |> Repo.preload(:account)
+
+      email_body = posture_provider_error_email(provider, "admin@example.com")
+
+      assert email_body.text_body =~ "401 - Invalid token."
+      assert email_body.text_body =~ ~r/Subdomain:\s*#{provider.subdomain}/
+      assert email_body.text_body =~ ~r/Region:\s*EU/
+      assert email_body.text_body =~ "Iru API token"
     end
   end
 end

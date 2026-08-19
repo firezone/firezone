@@ -3,7 +3,9 @@ defmodule PortalWeb.Settings.DevicePostureTest do
   use Oban.Testing, repo: Portal.Repo
 
   import Portal.ActorFixtures
+  import Portal.DevicePostureFixtures
   import Portal.IntuneFixtures
+  import Portal.IruFixtures
 
   setup do
     enable_device_posture()
@@ -12,11 +14,18 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     %{account: account, actor: actor}
   end
 
-  defp reload(integration) do
-    Portal.Repo.get_by!(Portal.Intune.Integration,
-      account_id: integration.account_id,
-      id: integration.id
-    )
+  defp reload(provider) do
+    provider.__struct__
+    |> Portal.Repo.get_by!(account_id: provider.account_id, id: provider.id)
+    |> Map.put(:name, provider_name(provider))
+  end
+
+  # The name lives on the shared posture_providers row.
+  defp provider_name(provider) do
+    Portal.Repo.get_by!(Portal.PostureProvider,
+      account_id: provider.account_id,
+      id: provider.id
+    ).name
   end
 
   defp reverify(lv, tenant_id) do
@@ -24,7 +33,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       lv |> element("button[phx-click=reset_verification]") |> render_click()
     end
 
-    lv |> element("#intune-admin-consent-button") |> render_click()
+    lv |> element("#provider-verification-button") |> render_click()
     assert_push_event(lv, "open_url", %{url: url})
 
     state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
@@ -37,7 +46,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
     ack_ref = make_ref()
 
-    send(lv.pid, {:intune_device_integration_complete, tenant_id, ref, {self(), ack_ref}})
+    send(lv.pid, {:intune_posture_provider_complete, tenant_id, ref, {self(), ack_ref}})
     assert_receive {:verification_ack, ^ack_ref}
 
     lv
@@ -96,7 +105,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
                "Integrate with MDM and EDR solutions to provide device telemetry to use in policy conditions"
 
       assert html =~ "settings/device_posture"
-      refute html =~ "Add Microsoft Intune"
+      refute html =~ "Add posture provider"
 
       # The slide-over cannot be opened from the splash.
       assert lv
@@ -109,31 +118,31 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       account: account,
       actor: actor
     } do
-      integration = intune_integration_fixture(account: account)
+      provider = intune_posture_provider_fixture(account: account)
 
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
       enable_device_posture(false)
 
-      render_click(lv, "toggle", %{"id" => integration.id})
+      render_click(lv, "toggle", %{"id" => provider.id})
 
-      refute Portal.Repo.get_by!(Portal.Intune.Integration,
-               account_id: integration.account_id,
-               id: integration.id
+      refute Portal.Repo.get_by!(Portal.Intune.PostureProvider,
+               account_id: provider.account_id,
+               id: provider.id
              ).is_disabled
     end
   end
 
-  test "renders the empty integration settings page", %{conn: conn, account: account, actor: actor} do
+  test "renders the empty provider settings page", %{conn: conn, account: account, actor: actor} do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/device_posture")
 
     assert html =~ "Device Posture"
-    assert html =~ "No device posture provider configured."
-    assert html =~ "Add Microsoft Intune"
+    assert html =~ "No posture provider configured."
+    assert html =~ "Add posture provider"
     refute html =~ "Devices synced"
     refute html =~ "Upgrade to Unlock"
   end
@@ -143,10 +152,10 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     account: account,
     actor: actor
   } do
-    integration = intune_integration_fixture(account: account)
+    provider = intune_posture_provider_fixture(account: account)
 
     for state <- ~w[compliant compliant noncompliant inGracePeriod unknown] do
-      intune_device_fixture(integration: integration, compliance_state: state)
+      intune_device_fixture(provider: provider, compliance_state: state)
     end
 
     intune_device_fixture(compliance_state: "compliant")
@@ -165,7 +174,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     assert summary =~ ~r/1.*In grace period/s
   end
 
-  test "uses the signed Microsoft consent flow and creates the verified integration", %{
+  test "uses the signed Microsoft consent flow and creates the verified provider", %{
     conn: conn,
     account: account,
     actor: actor
@@ -177,27 +186,27 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
     assert has_element?(
              lv,
-             "#intune-verification.p-4.border.border-border.bg-raised.rounded"
+             "#provider-verification.p-4.border.border-border.bg-raised.rounded"
            )
-    assert has_element?(lv, "#intune-admin-consent-open-url[phx-hook=OpenURL]")
+    assert has_element?(lv, "#provider-verification-open-url[phx-hook=OpenURL]")
 
     assert has_element?(
              lv,
-             "#intune-admin-consent-button[phx-click=start_verification]",
+             "#provider-verification-button[phx-click=start_verification]",
              "Verify Now"
            )
 
     assert has_element?(lv, "#intune-tenant-id", "Awaiting verification...")
 
-    lv |> element("#intune-admin-consent-button") |> render_click()
+    lv |> element("#provider-verification-button") |> render_click()
     assert_push_event(lv, "open_url", %{url: url})
-    assert has_element?(lv, "#intune-admin-consent-open-url button[disabled]", "Verifying...")
+    assert has_element?(lv, "#provider-verification-open-url button[disabled]", "Verifying...")
 
     state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
 
     assert {:ok,
             %{
-              type: "intune-device-integration",
+              type: "intune-posture-provider",
               verification_ref: verification_ref
             }} = PortalWeb.OIDC.verify_verification_state(state)
 
@@ -208,65 +217,65 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
     send(
       lv.pid,
-      {:intune_device_integration_complete, "tenant-123", verification_ref, {self(), ack_ref}}
+      {:intune_posture_provider_complete, "tenant-123", verification_ref, {self(), ack_ref}}
     )
 
     assert_receive {:verification_ack, ^ack_ref}
     assert render(lv) =~ "tenant-123"
-    assert has_element?(lv, "#intune-verification-status", "Verified")
+    assert has_element?(lv, "#provider-verification-status", "Verified")
     assert has_element?(lv, "#intune-tenant-id", "tenant-123")
     assert has_element?(lv, "button[phx-click=reset_verification]", "Reset verification")
 
     lv
-    |> form("#device-posture-form", integration: %{name: "Corporate Intune"})
+    |> form("#device-posture-form", provider: %{name: "Corporate Intune"})
     |> render_submit()
 
     assert_patch(lv, ~p"/#{account}/settings/device_posture")
 
-    integration = Portal.Repo.get_by!(Portal.Intune.Integration, account_id: account.id)
-    assert integration.name == "Corporate Intune"
-    assert integration.tenant_id == "tenant-123"
-    assert integration.is_verified
+    provider = Portal.Repo.get_by!(Portal.Intune.PostureProvider, account_id: account.id)
+    assert provider_name(provider) == "Corporate Intune"
+    assert provider.tenant_id == "tenant-123"
+    assert provider.is_verified
   end
 
   describe "sync action" do
-    test "queues a sync for an integration in the caller's account", %{
+    test "queues a sync for a provider in the caller's account", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      integration = intune_integration_fixture(account: account)
+      provider = intune_posture_provider_fixture(account: account)
 
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
-      render_click(lv, "sync", %{"id" => integration.id})
+      render_click(lv, "sync", %{"id" => provider.id})
 
       assert_enqueued(
         worker: Portal.Intune.Sync,
-        args: %{"account_id" => integration.account_id, "device_integration_id" => integration.id}
+        args: %{"account_id" => provider.account_id, "posture_provider_id" => provider.id}
       )
     end
 
-    test "refuses to queue a sync for another account's integration", %{
+    test "refuses to queue a sync for another account's provider", %{
       conn: conn,
       account: account,
       actor: actor
     } do
       enable_device_posture()
       other_account = device_posture_account_fixture()
-      other_integration = intune_integration_fixture(account: other_account)
+      other_provider = intune_posture_provider_fixture(account: other_account)
 
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
-      render_click(lv, "sync", %{"id" => other_integration.id})
+      render_click(lv, "sync", %{"id" => other_provider.id})
 
       refute_enqueued(
         worker: Portal.Intune.Sync,
         args: %{
-          "account_id" => other_integration.account_id,
-          "device_integration_id" => other_integration.id
+          "account_id" => other_provider.account_id,
+          "posture_provider_id" => other_provider.id
         }
       )
 
@@ -278,26 +287,26 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       account: account,
       actor: actor
     } do
-      integration = intune_integration_fixture(account: account)
+      provider = intune_posture_provider_fixture(account: account)
 
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
       enable_device_posture(false)
 
-      render_click(lv, "sync", %{"id" => integration.id})
+      render_click(lv, "sync", %{"id" => provider.id})
 
       refute_enqueued(
         worker: Portal.Intune.Sync,
-        args: %{"account_id" => integration.account_id, "device_integration_id" => integration.id}
+        args: %{"account_id" => provider.account_id, "posture_provider_id" => provider.id}
       )
     end
   end
 
   describe "recovering from a sync error" do
     setup %{account: account} do
-      integration =
-        intune_integration_fixture(
+      provider =
+        intune_posture_provider_fixture(
           account: account,
           is_disabled: true,
           is_verified: false,
@@ -307,45 +316,45 @@ defmodule PortalWeb.Settings.DevicePostureTest do
           error_email_count: 2
         )
 
-      %{integration: integration}
+      %{provider: provider}
     end
 
-    test "refuses to enable an integration that is not verified", %{
+    test "refuses to enable a provider that is not verified", %{
       conn: conn,
       account: account,
       actor: actor,
-      integration: integration
+      provider: provider
     } do
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
-      assert render_click(lv, "toggle", %{"id" => integration.id}) =~
+      assert render_click(lv, "toggle", %{"id" => provider.id}) =~
                "must be verified before enabling"
 
-      assert reload(integration).is_disabled
+      assert reload(provider).is_disabled
     end
 
-    test "clears the error state when a verified integration is enabled", %{
+    test "clears the error state when a verified provider is enabled", %{
       conn: conn,
       account: account,
       actor: actor,
-      integration: integration
+      provider: provider
     } do
-      integration
+      provider
       |> Ecto.Changeset.change(is_verified: true)
       |> Portal.Repo.update!()
 
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
-      render_click(lv, "toggle", %{"id" => integration.id})
+      render_click(lv, "toggle", %{"id" => provider.id})
 
-      integration = reload(integration)
-      refute integration.is_disabled
-      refute integration.disabled_reason
-      refute integration.error_message
-      refute integration.errored_at
-      assert integration.error_email_count == 0
+      provider = reload(provider)
+      refute provider.is_disabled
+      refute provider.disabled_reason
+      refute provider.error_message
+      refute provider.errored_at
+      assert provider.error_email_count == 0
     end
   end
 
@@ -355,7 +364,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       account: account,
       actor: actor
     } do
-      integration = intune_integration_fixture(account: account)
+      provider = intune_posture_provider_fixture(account: account)
 
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
@@ -366,9 +375,9 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       |> Ecto.Changeset.change(features: %Portal.Accounts.Features{device_posture: false})
       |> Portal.Repo.update!()
 
-      render_click(lv, "toggle", %{"id" => integration.id})
+      render_click(lv, "toggle", %{"id" => provider.id})
 
-      refute reload(integration).is_disabled
+      refute reload(provider).is_disabled
     end
 
     test "survives a verification that lands after the panel closed", %{
@@ -381,7 +390,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/device_posture/intune/new")
 
-      lv |> element("#intune-admin-consent-button") |> render_click()
+      lv |> element("#provider-verification-button") |> render_click()
       assert_push_event(lv, "open_url", %{url: url})
 
       state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
@@ -394,7 +403,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert_receive {:pending_verification, nil}
 
       ack_ref = make_ref()
-      send(lv.pid, {:intune_device_integration_complete, "tenant-123", ref, {self(), ack_ref}})
+      send(lv.pid, {:intune_posture_provider_complete, "tenant-123", ref, {self(), ack_ref}})
       assert_receive {:verification_ack, ^ack_ref}
 
       assert render(lv) =~ "Device Posture"
@@ -403,8 +412,8 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
   describe "reverifying after a sync error" do
     setup %{conn: conn, account: account, actor: actor} do
-      integration =
-        intune_integration_fixture(
+      provider =
+        intune_posture_provider_fixture(
           account: account,
           is_disabled: true,
           is_verified: false,
@@ -417,57 +426,57 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_posture/intune/#{integration.id}/edit")
+        |> live(~p"/#{account}/settings/device_posture/intune/#{provider.id}/edit")
 
-      %{integration: integration, lv: lv}
+      %{provider: provider, lv: lv}
     end
 
-    test "enables the integration and clears the error state", %{
+    test "enables the provider and clears the error state", %{
       lv: lv,
-      integration: integration
+      provider: provider
     } do
       reverify(lv, "tenant-123")
 
       lv
-      |> form("#device-posture-form", integration: %{name: integration.name})
+      |> form("#device-posture-form", provider: %{name: provider.name})
       |> render_submit()
 
-      integration = reload(integration)
-      assert integration.is_verified
-      refute integration.is_disabled
-      refute integration.disabled_reason
-      refute integration.error_message
-      refute integration.errored_at
-      assert integration.error_email_count == 0
+      provider = reload(provider)
+      assert provider.is_verified
+      refute provider.is_disabled
+      refute provider.disabled_reason
+      refute provider.error_message
+      refute provider.errored_at
+      assert provider.error_email_count == 0
     end
 
     test "queues a sync so the stale inventory is refreshed", %{
       lv: lv,
-      integration: integration
+      provider: provider
     } do
-      reverify(lv, integration.tenant_id)
+      reverify(lv, provider.tenant_id)
 
       lv
-      |> form("#device-posture-form", integration: %{name: integration.name})
+      |> form("#device-posture-form", provider: %{name: provider.name})
       |> render_submit()
 
       assert_enqueued(
         worker: Portal.Intune.Sync,
         args: %{
-          "account_id" => integration.account_id,
-          "device_integration_id" => integration.id
+          "account_id" => provider.account_id,
+          "posture_provider_id" => provider.id
         }
       )
     end
   end
 
-  test "reverifying does not re-enable an integration an admin disabled", %{
+  test "reverifying does not re-enable a provider an admin disabled", %{
     conn: conn,
     account: account,
     actor: actor
   } do
-    integration =
-      intune_integration_fixture(
+    provider =
+      intune_posture_provider_fixture(
         account: account,
         is_disabled: true,
         is_verified: false,
@@ -477,35 +486,35 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(actor)
-      |> live(~p"/#{account}/settings/device_posture/intune/#{integration.id}/edit")
+      |> live(~p"/#{account}/settings/device_posture/intune/#{provider.id}/edit")
 
     reverify(lv, "tenant-123")
 
     lv
-    |> form("#device-posture-form", integration: %{name: integration.name})
+    |> form("#device-posture-form", provider: %{name: provider.name})
     |> render_submit()
 
-    integration = reload(integration)
-    assert integration.is_verified
-    assert integration.is_disabled
-    assert integration.disabled_reason == "Disabled by admin"
+    provider = reload(provider)
+    assert provider.is_verified
+    assert provider.is_disabled
+    assert provider.disabled_reason == "Disabled by admin"
   end
 
-  describe "editing an integration" do
+  describe "editing a provider" do
     test "queues a sync when the verified tenant changes", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      integration = intune_integration_fixture(account: account)
+      provider = intune_posture_provider_fixture(account: account)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_posture/intune/#{integration.id}/edit")
+        |> live(~p"/#{account}/settings/device_posture/intune/#{provider.id}/edit")
 
       lv |> element("button[phx-click=reset_verification]") |> render_click()
-      lv |> element("#intune-admin-consent-button") |> render_click()
+      lv |> element("#provider-verification-button") |> render_click()
       assert_push_event(lv, "open_url", %{url: url})
 
       state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
@@ -516,20 +525,20 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
       ack_ref = make_ref()
 
-      send(lv.pid, {:intune_device_integration_complete, "new-tenant", ref, {self(), ack_ref}})
+      send(lv.pid, {:intune_posture_provider_complete, "new-tenant", ref, {self(), ack_ref}})
       assert_receive {:verification_ack, ^ack_ref}
 
       lv
-      |> form("#device-posture-form", integration: %{name: integration.name})
+      |> form("#device-posture-form", provider: %{name: provider.name})
       |> render_submit()
 
-      assert reload(integration).tenant_id == "new-tenant"
+      assert reload(provider).tenant_id == "new-tenant"
 
       assert_enqueued(
         worker: Portal.Intune.Sync,
         args: %{
-          "account_id" => integration.account_id,
-          "device_integration_id" => integration.id
+          "account_id" => provider.account_id,
+          "posture_provider_id" => provider.id
         }
       )
     end
@@ -539,23 +548,23 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       account: account,
       actor: actor
     } do
-      integration = intune_integration_fixture(account: account)
+      provider = intune_posture_provider_fixture(account: account)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/device_posture/intune/#{integration.id}/edit")
+        |> live(~p"/#{account}/settings/device_posture/intune/#{provider.id}/edit")
 
       lv
-      |> form("#device-posture-form", integration: %{name: "Renamed"})
+      |> form("#device-posture-form", provider: %{name: "Renamed"})
       |> render_submit()
 
-      assert reload(integration).name == "Renamed"
+      assert reload(provider).name == "Renamed"
       refute_enqueued(worker: Portal.Intune.Sync)
     end
   end
 
-  test "returns a changeset error when a second integration races the first", %{
+  test "surfaces a changeset error when the tenant is already connected", %{
     conn: conn,
     account: account,
     actor: actor
@@ -565,49 +574,318 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/device_posture/intune/new")
 
-    lv |> element("#intune-admin-consent-button") |> render_click()
-    assert_push_event(lv, "open_url", %{url: url})
+    reverify(lv, "tenant-123")
 
-    state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
-    {:ok, %{verification_ref: verification_ref}} = PortalWeb.OIDC.verify_verification_state(state)
-
-    send(lv.pid, {:get_pending_verification, self()})
-    assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
-
-    ack_ref = make_ref()
-
-    send(
-      lv.pid,
-      {:intune_device_integration_complete, "tenant-123", verification_ref, {self(), ack_ref}}
-    )
-
-    assert_receive {:verification_ack, ^ack_ref}
-
-    # The page decided the account had none while this was open.
-    intune_integration_fixture(account: account)
+    # Another admin connected the same tenant while this panel was open.
+    intune_posture_provider_fixture(account: account, tenant_id: "tenant-123")
 
     html =
       lv
-      |> form("#device-posture-form", integration: %{name: "Corporate Intune"})
+      |> form("#device-posture-form", provider: %{name: "Corporate Intune"})
       |> render_submit()
 
-    assert html =~ "device-posture-form"
-    assert Portal.Repo.aggregate(Portal.DeviceIntegration, :count) == 1
+    assert html =~ "This Intune tenant is already connected."
+    assert Portal.Repo.aggregate(Portal.PostureProvider, :count) == 1
   end
 
-  test "allows only one configured inventory provider", %{conn: conn, account: account, actor: actor} do
-    intune_integration_fixture(account: account)
+  test "refuses a name another provider of the account already uses", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    iru_posture_provider_fixture(account: account, name: "Corporate")
 
-    assert {:error,
-            {:live_redirect,
-             %{
-               to: path,
-               flash: %{"error" => "Only one device inventory integration can be configured at a time."}
-             }}} =
-             conn
-             |> authorize_conn(actor)
-             |> live(~p"/#{account}/settings/device_posture/intune/new")
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture/intune/new")
 
-    assert path == ~p"/#{account}/settings/device_posture"
+    reverify(lv, "tenant-123")
+
+    html =
+      lv
+      |> form("#device-posture-form", provider: %{name: "Corporate"})
+      |> render_submit()
+
+    assert html =~ "A posture provider with this name already exists."
+    assert Portal.Repo.aggregate(Portal.PostureProvider, :count) == 1
+  end
+
+  test "refuses to rename a provider onto a name already in use", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    iru_posture_provider_fixture(account: account, name: "Corporate")
+    provider = intune_posture_provider_fixture(account: account, name: "Contoso")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture/intune/#{provider.id}/edit")
+
+    html =
+      lv
+      |> form("#device-posture-form", provider: %{name: "Corporate"})
+      |> render_submit()
+
+    assert html =~ "A posture provider with this name already exists."
+    assert provider_name(provider) == "Contoso"
+  end
+
+  test "connects a second provider of the same type", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    intune_posture_provider_fixture(account: account, tenant_id: "first-tenant")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture/intune/new")
+
+    reverify(lv, "second-tenant")
+
+    lv
+    |> form("#device-posture-form", provider: %{name: "Second Intune"})
+    |> render_submit()
+
+    assert_patch(lv, ~p"/#{account}/settings/device_posture")
+    assert Portal.Repo.aggregate(Portal.PostureProvider, :count) == 2
+  end
+
+  describe "selecting a provider type" do
+    test "lists both providers", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture/new")
+
+      html = render(lv)
+      assert html =~ "Select Provider Type"
+      assert html =~ "Microsoft Intune"
+      assert html =~ "Iru"
+
+      assert has_element?(
+               lv,
+               ~s|a[href="/#{account.slug}/settings/device_posture/intune/new"]|
+             )
+
+      assert has_element?(lv, ~s|a[href="/#{account.slug}/settings/device_posture/iru/new"]|)
+    end
+
+    test "raises on an unknown provider type", %{conn: conn, account: account, actor: actor} do
+      assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture/jamf/new")
+      end
+    end
+  end
+
+  describe "Iru providers" do
+    setup %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture/iru/new")
+
+      %{lv: lv}
+    end
+
+    test "names every endpoint the token has to allow", %{lv: lv} do
+      html = render(lv)
+
+      assert html =~ "GET /api/v1/devices"
+
+      for category <- Portal.Iru.Sync.prism_categories() do
+        assert html =~ "GET /api/v1/prism/#{category}"
+      end
+
+      assert html =~ "An endpoint you leave off is skipped"
+    end
+
+    test "verifies the token against the tenant and creates the provider", %{
+      lv: lv,
+      account: account
+    } do
+      Req.Test.stub(Portal.Iru.APIClient, fn conn -> Req.Test.json(conn, []) end)
+      Req.Test.allow(Portal.Iru.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Acme Iru", subdomain: "acme", region: "us", api_token: "token"}
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Acme Iru", subdomain: "acme", region: "us", api_token: "token"}
+      )
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+      provider = Portal.Repo.get_by!(Portal.Iru.PostureProvider, account_id: account.id)
+      assert provider_name(provider) == "Acme Iru"
+      assert provider.subdomain == "acme"
+      assert provider.region == :us
+      assert provider.api_token == "token"
+      assert provider.is_verified
+
+      assert_enqueued(
+        worker: Portal.Iru.Sync,
+        args: %{"account_id" => account.id, "posture_provider_id" => provider.id}
+      )
+    end
+
+    test "reports a rejected token and saves nothing", %{lv: lv} do
+      Req.Test.stub(Portal.Iru.APIClient, fn conn ->
+        conn |> Plug.Conn.put_status(401) |> Req.Test.json(%{"detail" => "Invalid token."})
+      end)
+
+      Req.Test.allow(Portal.Iru.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Acme Iru", subdomain: "acme", region: "us", api_token: "wrong"}
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert render(lv) =~ "Iru rejected the API token"
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.Iru.PostureProvider, :count) == 0
+    end
+
+    test "drops the verification when the tenant changes", %{lv: lv} do
+      Req.Test.stub(Portal.Iru.APIClient, fn conn -> Req.Test.json(conn, []) end)
+      Req.Test.allow(Portal.Iru.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Acme Iru", subdomain: "acme", region: "us", api_token: "token"}
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Acme Iru", subdomain: "other", region: "us", api_token: "token"}
+      )
+      |> render_change()
+
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert has_element?(lv, "#provider-verification-button", "Verify Now")
+    end
+  end
+
+  test "renaming an Iru provider keeps the stored API token", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    provider = iru_posture_provider_fixture(account: account, api_token: "secret-token")
+
+    {:ok, lv, html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture/iru/#{provider.id}/edit")
+
+    refute html =~ "secret-token"
+
+    lv
+    |> form("#device-posture-form", provider: %{name: "Renamed Iru", api_token: ""})
+    |> render_submit()
+
+
+
+    assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+    reloaded = reload(provider)
+
+    assert reloaded.name == "Renamed Iru"
+    assert reloaded.api_token == "secret-token"
+  end
+
+  # The sync no longer announces itself; writing its provider row does, through
+  # the posture provider change hooks.
+  test "refreshes when the device inventory changes", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    provider = intune_posture_provider_fixture(account: account)
+
+    {:ok, lv, _html} =
+      conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+    assert lv |> element("#device-posture-summary") |> render() =~ ~r/0.*Devices synced/s
+
+    intune_device_fixture(provider: provider)
+
+    send(lv.pid, %Portal.Changes.Change{
+      lsn: 0,
+      op: :update,
+      old_struct: provider,
+      struct: %{provider | synced_at: DateTime.utc_now()}
+    })
+
+    assert lv |> element("#device-posture-summary") |> render() =~ ~r/1.*Devices synced/s
+  end
+
+  test "replaces the Iru token only when a new one is typed", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    provider = iru_posture_provider_fixture(account: account, api_token: "old-token")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture/iru/#{provider.id}/edit")
+
+    Req.Test.stub(Portal.Iru.APIClient, fn conn -> Req.Test.json(conn, []) end)
+    Req.Test.allow(Portal.Iru.APIClient, self(), lv.pid)
+
+    html =
+      lv
+      |> form("#device-posture-form", provider: %{api_token: "new-token"})
+      |> render_change()
+
+    # What the admin just typed is theirs to see; the stored one is not sent.
+    assert html =~ "new-token"
+
+    # A new token is a new claim on the tenant, so it has to be proven again.
+    refute has_element?(lv, "#provider-verification-status", "Verified")
+    lv |> element("#provider-verification-button") |> render_click()
+    assert has_element?(lv, "#provider-verification-status", "Verified")
+
+    lv
+    |> form("#device-posture-form", provider: %{api_token: "new-token"})
+    |> render_submit()
+
+    assert Portal.Repo.get_by!(Portal.Iru.PostureProvider,
+             account_id: provider.account_id,
+             id: provider.id
+           ).api_token == "new-token"
+  end
+
+  test "lists providers of both types", %{conn: conn, account: account, actor: actor} do
+    intune_posture_provider_fixture(account: account, name: "Contoso Intune")
+    iru_provider = iru_posture_provider_fixture(account: account, name: "Acme Iru")
+    iru_device_fixture(provider: iru_provider, filevault_enabled: false)
+
+    {:ok, lv, html} =
+      conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+    assert html =~ "Contoso Intune"
+    assert html =~ "Acme Iru"
+    assert html =~ "Iru (formerly Kandji)"
+
+    summary = lv |> element("#device-posture-summary") |> render()
+    assert summary =~ ~r/1.*FileVault off/s
   end
 end
