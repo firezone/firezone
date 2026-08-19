@@ -171,6 +171,23 @@ work if you
 
 `x86_64` architecture is supported for Windows. `aarch64` and `x86_64` are supported for Linux.
 
+## X.509 device identity
+
+The Client can authenticate its portal connection with an MDM-provisioned X.509
+certificate over mutual TLS. Whether a certificate is used is decided per device
+by what the platform keystore holds: when the Tunnel service finds a currently
+valid certificate whose subject CN is `dev.firezone.device-trust` and whose
+extended key usage permits TLS client authentication, it connects to the
+portal's mTLS endpoint and presents it. Otherwise it connects as it always has.
+
+Private-key bytes are never exported. Every handshake signature is delegated
+back to the keystore that holds the key.
+
+The **X.509 Identity** settings page shows what the keystore holds: certificate
+validity, client-auth EKU, private-key access, signing algorithm and
+fingerprint. It reads through the privileged Tunnel service, so it reports the
+same identity the connection would use.
+
 ## Threat model
 
 See [Security](docs/security.md)

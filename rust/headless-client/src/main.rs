@@ -198,6 +198,9 @@ enum Cmd {
         #[arg(long, short)]
         force: bool,
     },
+
+    /// Show the X.509 client identities the platform keystore holds
+    X509,
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -237,6 +240,11 @@ fn try_main() -> Result<()> {
         }
         Some(Cmd::SignOut { force }) => {
             handle_sign_out(&cli.token_path, *force)?;
+
+            return Ok(());
+        }
+        Some(Cmd::X509) => {
+            handle_x509_status()?;
 
             return Ok(());
         }
@@ -364,6 +372,8 @@ fn try_main() -> Result<()> {
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
+    let certificate =
+        x509_keystore::certificate().context("Failed to read the platform keystore")?;
     let url = LoginUrl::client(
         cli.api_url.clone(),
         firezone_id.clone(),
@@ -373,7 +383,7 @@ fn try_main() -> Result<()> {
             device_uuid: device_info::uuid(),
             ..Default::default()
         },
-        None,
+        certificate,
     )?;
 
     if cli.check {
@@ -538,6 +548,18 @@ fn try_main() -> Result<()> {
     })?;
 
     rt.shutdown_timeout(Duration::from_secs(1));
+
+    Ok(())
+}
+
+#[expect(
+    clippy::print_stdout,
+    reason = "This status command is designed to print to stdout"
+)]
+fn handle_x509_status() -> Result<()> {
+    let status = x509_keystore::status()?;
+
+    print!("{}", status.text_description());
 
     Ok(())
 }
