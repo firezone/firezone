@@ -27,10 +27,10 @@ enum ProviderCommand: Sendable {
 /// Captures the essential error information needed for tunnel cancellation.
 struct SendableError: Sendable {
   let message: String
-  let isAuthenticationError: Bool
+  let requiresSignIn: Bool
 
-  init(_ message: String, isAuthenticationError: Bool = false) {
+  init(_ message: String, requiresSignIn: Bool = false) {
     self.message = message
-    self.isAuthenticationError = isAuthenticationError
+    self.requiresSignIn = requiresSignIn
   }
 }

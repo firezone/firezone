@@ -189,7 +189,11 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn is_authentication_error(&self) -> bool {
+    /// Returns whether the stored token must be discarded and the user sent through sign-in again.
+    ///
+    /// This does not report whether the failure was authentication-related in general.
+    /// Only failures that render the token itself unusable require a new sign-in.
+    pub fn requires_sign_in(&self) -> bool {
         match self {
             Error::InvalidToken => true,
             Error::MaxRetriesReached { .. } => false,
