@@ -687,6 +687,7 @@ fn make_test_channel(
         "test-device-id".to_string(),
         Some("test-device".to_string()),
         DeviceInfo::default(),
+        None,
     )
     .unwrap();
 
