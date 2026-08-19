@@ -2992,6 +2992,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tunnel-proto",
+ "x509-claims",
 ]
 
 [[package]]
