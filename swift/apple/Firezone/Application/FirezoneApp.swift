@@ -26,6 +26,20 @@ struct FirezoneApp: App {
     // Initialize Telemetry as early as possible
     Telemetry.start()
 
+    // Certificate parsing lives in Rust. FirezoneKit is a Swift package and cannot
+    // import the UniFFI bindings, so hand it the parser from here.
+    X509CertificateParser.use { der in
+      guard let parsed = parseClientCertificate(der: der) else { return nil }
+
+      return X509CertificateSummary(
+        isCurrentlyValid: parsed.isCurrentlyValid,
+        actorEmail: parsed.actorEmail,
+        fields: parsed.detailFields.map {
+          X509CertificateField(label: $0.label, value: $0.value)
+        }
+      )
+    }
+
     #if DEBUG
       // `--mock-tunnel` runs the real Store against a canned backend (see MockTunnel.swift).
       let store = Store.mockFromCommandLine() ?? Store()
