@@ -211,7 +211,8 @@ actor Adapter {
         accountSlug: accountSlug,
         deviceName: deviceName,
         deviceInfo: deviceInfo,
-        isInternetResourceActive: internetResourceEnabled
+        isInternetResourceActive: internetResourceEnabled,
+        tlsIdentity: nil
       )
     } catch let error as ConnlibError {
       throw AdapterError.connlibConnectError(error.message())
