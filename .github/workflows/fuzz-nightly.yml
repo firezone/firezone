@@ -14,7 +14,7 @@ run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
   workflow_dispatch:
     inputs:
       targets:
-        description: "Space-separated fuzz targets to work on, e.g. 'ip-packet tunnel-proto'. Leave empty for every target in tests/fuzz/targets.json."
+        description: "Space-separated fuzz targets to work on, e.g. 'ip-packet tunnel-proto'. Leave empty for every target in rust/tests/fuzz/targets.json."
         required: false
         type: string
         default: ""
