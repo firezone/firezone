@@ -10348,7 +10348,6 @@ dependencies = [
  "anyhow-ext",
  "rustls",
  "serde",
- "tracing",
  "x509-claims",
  "x509-credential",
 ]

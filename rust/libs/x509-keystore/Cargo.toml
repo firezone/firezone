@@ -9,7 +9,6 @@ license = { workspace = true }
 anyhow = { workspace = true }
 rustls = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-tracing = { workspace = true }
 x509-claims = { workspace = true }
 x509-credential = { workspace = true }
 
