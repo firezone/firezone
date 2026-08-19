@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/tvX509IdentityTitle"
+        style="@style/AppTheme.Base.H6"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/x509_claims_title" />
+
+    <TextView
+        android:id="@+id/tvX509IdentityDescription"
+        style="@style/AppTheme.Base.Body2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/spacing_small"
+        android:text="@string/x509_claims_description" />
+
+    <TextView
+        android:id="@+id/tvX509Guidance"
+        style="@style/AppTheme.Base.Body2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/spacing_medium" />
+
+    <LinearLayout
+        android:id="@+id/x509Actions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/spacing_medium"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btSelectX509Certificate"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/x509_select_certificate" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btForgetX509Certificate"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_small"
+            android:text="@string/x509_forget_certificate"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btRefreshX509"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:text="@string/x509_refresh" />
+
+    <ProgressBar
+        android:id="@+id/progressX509"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="@dimen/spacing_medium"
+        android:contentDescription="@string/x509_loading"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/tvX509Summary"
+        style="@style/AppTheme.Base.Body2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/spacing_medium"
+        android:textIsSelectable="true" />
+
+    <TextView
+        android:id="@+id/tvX509Error"
+        style="@style/AppTheme.Base.Body2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/spacing_medium"
+        android:background="@color/neutral_100"
+        android:padding="@dimen/spacing_medium"
+        android:textIsSelectable="true"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/tvX509Details"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/spacing_medium"
+        android:fontFamily="monospace"
+        android:textIsSelectable="true"
+        android:textSize="@dimen/text_caption"
+        android:visibility="gone" />
+</LinearLayout>
