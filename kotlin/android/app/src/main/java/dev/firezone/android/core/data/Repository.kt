@@ -22,6 +22,9 @@ import javax.inject.Inject
 const val ON_SYMBOL: String = "<->"
 const val OFF_SYMBOL: String = " — "
 
+/** Managed-configuration key naming the KeyChain alias to present to the portal. */
+const val X509_CERTIFICATE_ALIAS_RESTRICTION: String = "x509CertificateAlias"
+
 enum class ResourceState {
     @SerializedName("enabled")
     ENABLED,
@@ -178,6 +181,35 @@ class Repository
                 emit(editor.apply())
             }.flowOn(coroutineDispatcher)
 
+        /**
+         * The KeyChain alias of the client certificate to present to the portal.
+         *
+         * A managed configuration overrides whatever the user picked, and one that sets the alias to
+         * an empty value turns certificate authentication off entirely.
+         */
+        fun getX509CertificateAliasSync(applicationRestrictions: Bundle): String? =
+            if (isX509CertificateAliasManaged(applicationRestrictions)) {
+                applicationRestrictions
+                    .getString(X509_CERTIFICATE_ALIAS_RESTRICTION)
+                    ?.takeUnless(String::isBlank)
+            } else {
+                sharedPreferences.getString(X509_CERTIFICATE_ALIAS_KEY, null)
+            }
+
+        fun isX509CertificateAliasManaged(applicationRestrictions: Bundle): Boolean =
+            applicationRestrictions.containsKey(X509_CERTIFICATE_ALIAS_RESTRICTION)
+
+        fun saveX509CertificateAliasSync(alias: String?) {
+            sharedPreferences.edit().apply {
+                if (alias == null) {
+                    remove(X509_CERTIFICATE_ALIAS_KEY)
+                } else {
+                    putString(X509_CERTIFICATE_ALIAS_KEY, alias)
+                }
+                apply()
+            }
+        }
+
         fun getDeviceIdSync(): String? = sharedPreferences.getString(DEVICE_ID_KEY, null)
 
         private fun saveFavoritesSync() {
@@ -332,6 +364,7 @@ class Repository
             private const val ACCOUNT_SLUG_KEY = "accountSlug"
             private const val START_ON_LOGIN_KEY = "startOnLogin"
             private const val CONNECT_ON_START_KEY = "connectOnStart"
+            private const val X509_CERTIFICATE_ALIAS_KEY = "x509CertificateAlias"
             private const val MANAGED_AUTH_URL_KEY = "managedAuthUrl"
             private const val MANAGED_API_URL_KEY = "managedApiUrl"
             private const val MANAGED_LOG_FILTER_KEY = "managedLogFilter"

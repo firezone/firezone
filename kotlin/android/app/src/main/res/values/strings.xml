@@ -117,6 +117,12 @@
 	<string name="config_connect_on_start_description">
 		Whether Firezone should automatically try to connect when the app is launched.
 	</string>
+	<string name="config_x509_certificate_alias_title">Client Certificate Alias</string>
+	<string name="config_x509_certificate_alias_description">
+		The system KeyChain alias of the client certificate used for mutual TLS. The device policy
+		controller must install the key pair and grant dev.firezone.android access to it. Leave
+		empty to disable certificate authentication.
+	</string>
 
 	<string name="managed_setting_info_description">
 		This setting is being managed by your organization.
