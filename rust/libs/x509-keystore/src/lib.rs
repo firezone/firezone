@@ -8,25 +8,52 @@
 //! crate only talks to the keystores. Private-key material never leaves them: every handshake
 //! signature is delegated back to the keystore.
 
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use anyhow::{Context as _, Result};
 use rustls::pki_types::CertificateDer;
 use serde::{Deserialize, Serialize};
 use x509_credential::{ClientCertificate, PrivateKey};
 
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+use linux as keystore;
+
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
 use windows as keystore;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 mod unsupported;
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 use unsupported as keystore;
 
 /// The subject common name of the certificates Firezone's MDM integrations provision.
 const SUBJECT_COMMON_NAME: &str = "dev.firezone.device-trust";
+
+/// What the keystore needs told about itself, where it cannot discover it.
+#[derive(Clone, Default)]
+pub struct Config {
+    /// The RFC 7512 URI naming the PKCS#11 module, token and object the Linux keystore uses.
+    ///
+    /// Other platforms discover their keystore on their own and ignore this.
+    pub pkcs11_uri: Option<String>,
+}
+
+impl fmt::Debug for Config {
+    /// Redacts the URI, which names the file the token's PIN is read from.
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Config")
+            .field(
+                "pkcs11_uri",
+                &self.pkcs11_uri.as_ref().map(|_| "[configured]"),
+            )
+            .finish()
+    }
+}
 
 /// Returns the client certificate for the portal connection, if the keystore holds a usable one.
 ///
@@ -34,8 +61,8 @@ const SUBJECT_COMMON_NAME: &str = "dev.firezone.device-trust";
 ///
 /// Returns an error if the keystore cannot be read at all. A readable keystore that holds no
 /// usable identity yields [`None`], because running without mTLS is the normal case.
-pub fn certificate() -> Result<Option<ClientCertificate>> {
-    let Some(identity) = keystore::identity(SUBJECT_COMMON_NAME)? else {
+pub fn certificate(config: &Config) -> Result<Option<ClientCertificate>> {
+    let Some(identity) = keystore::identity(config, SUBJECT_COMMON_NAME)? else {
         return Ok(None);
     };
 
@@ -50,8 +77,8 @@ pub fn certificate() -> Result<Option<ClientCertificate>> {
 /// # Errors
 ///
 /// Returns an error if the keystore cannot be read.
-pub fn status() -> Result<Status> {
-    let status = keystore::status(SUBJECT_COMMON_NAME)?;
+pub fn status(config: &Config) -> Result<Status> {
+    let status = keystore::status(config, SUBJECT_COMMON_NAME)?;
 
     Ok(status)
 }
@@ -139,6 +166,13 @@ impl Status {
     }
 }
 
+pub(crate) fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: FieldValue::Present(value.into()),
+    }
+}
+
 impl From<x509_claims::DetailField> for DetailField {
     fn from(field: x509_claims::DetailField) -> Self {
         Self {
@@ -169,10 +203,7 @@ mod tests {
             summary: "One identity is available.".to_owned(),
             sections: vec![DetailSection {
                 title: "Certificate".to_owned(),
-                fields: vec![DetailField {
-                    label: "Subject".to_owned(),
-                    value: FieldValue::Present("CN=one\nOU=two".to_owned()),
-                }],
+                fields: vec![field("Subject", "CN=one\nOU=two")],
             }],
         };
 

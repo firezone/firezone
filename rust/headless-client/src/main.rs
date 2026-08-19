@@ -153,6 +153,35 @@ struct Cli {
     /// spooling and uploading them is always controlled by the portal.
     #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
     flow_logs: bool,
+
+    /// RFC 7512 URI naming the PKCS#11 module, token and object to read the X.509 identity from
+    #[arg(long, env = "FIREZONE_PKCS11_URI", global = true)]
+    pkcs11_uri: Option<Pkcs11Uri>,
+}
+
+/// A PKCS#11 URI that keeps itself out of logs.
+///
+/// The URI names the file the token's PIN is read from, which does not belong in a debug dump of
+/// the parsed command line.
+#[derive(Clone)]
+struct Pkcs11Uri(String);
+
+impl std::fmt::Debug for Pkcs11Uri {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("[configured]")
+    }
+}
+
+impl std::str::FromStr for Pkcs11Uri {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        if !value.starts_with("pkcs11:") {
+            return Err("PKCS#11 URI must begin with 'pkcs11:'".to_owned());
+        }
+
+        Ok(Self(value.to_owned()))
+    }
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -244,7 +273,7 @@ fn try_main() -> Result<()> {
             return Ok(());
         }
         Some(Cmd::X509) => {
-            handle_x509_status()?;
+            handle_x509_status(&keystore_config(&cli))?;
 
             return Ok(());
         }
@@ -372,8 +401,8 @@ fn try_main() -> Result<()> {
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
-    let certificate =
-        x509_keystore::certificate().context("Failed to read the platform keystore")?;
+    let certificate = x509_keystore::certificate(&keystore_config(&cli))
+        .context("Failed to read the platform keystore")?;
     let url = LoginUrl::client(
         cli.api_url.clone(),
         firezone_id.clone(),
@@ -556,12 +585,18 @@ fn try_main() -> Result<()> {
     clippy::print_stdout,
     reason = "This status command is designed to print to stdout"
 )]
-fn handle_x509_status() -> Result<()> {
-    let status = x509_keystore::status()?;
+fn handle_x509_status(config: &x509_keystore::Config) -> Result<()> {
+    let status = x509_keystore::status(config)?;
 
     print!("{}", status.text_description());
 
     Ok(())
+}
+
+fn keystore_config(cli: &Cli) -> x509_keystore::Config {
+    x509_keystore::Config {
+        pkcs11_uri: cli.pkcs11_uri.as_ref().map(|uri| uri.0.clone()),
+    }
 }
 
 /// Constructs the authentication URL for browser-based sign-in.
@@ -753,6 +788,27 @@ mod tests {
             Cli::try_parse_from([exe_name, "--check", "--log-dir", "bogus_log_dir"]).unwrap();
         assert!(actual.check);
         assert_eq!(actual.log_dir, Some(PathBuf::from("bogus_log_dir")));
+    }
+
+    #[test]
+    fn x509_reads_the_pkcs11_uri_without_logging_it() {
+        let actual = Cli::try_parse_from([
+            "firezone-headless-client",
+            "x509",
+            "--pkcs11-uri",
+            "pkcs11:token=Firezone?module-path=/usr/lib/libpkcs11.so",
+        ])
+        .unwrap();
+
+        assert!(matches!(actual._command, Some(Cmd::X509)));
+        assert_eq!(
+            actual.pkcs11_uri.as_ref().unwrap().0,
+            "pkcs11:token=Firezone?module-path=/usr/lib/libpkcs11.so"
+        );
+
+        let debug = format!("{actual:?}");
+        assert!(debug.contains("[configured]"));
+        assert!(!debug.contains("libpkcs11"));
     }
 
     #[test]
