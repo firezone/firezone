@@ -242,7 +242,7 @@ pub trait ProtectSocket: Send + Sync + fmt::Debug {
 #[uniffi::export]
 #[cfg(target_os = "android")]
 impl Session {
-    #[uniffi::constructor(default(tls_identity = None))]
+    #[uniffi::constructor]
     pub fn new_android(
         config: AndroidSessionConfig,
         protect_socket: Arc<dyn ProtectSocket>,
@@ -284,7 +284,7 @@ impl Session {
 #[uniffi::export]
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 impl Session {
-    #[uniffi::constructor(default(tls_identity = None))]
+    #[uniffi::constructor]
     #[expect(
         clippy::too_many_arguments,
         reason = "This is the API we want to expose over FFI."
@@ -330,7 +330,7 @@ impl Session {
 
 #[uniffi::export]
 impl Session {
-    #[uniffi::constructor(default(tls_identity = None))]
+    #[uniffi::constructor]
     #[expect(
         clippy::too_many_arguments,
         reason = "This is the API we want to expose over FFI."

@@ -204,7 +204,8 @@ actor Adapter {
         logFilter: logFilter,
         flowLogsDir: flowLogsDir,
         deviceInfo: deviceInfo,
-        isInternetResourceActive: internetResourceEnabled
+        isInternetResourceActive: internetResourceEnabled,
+        tlsIdentity: nil
       )
     } catch {
       throw AdapterError.connlibConnectError(String(describing: error))
