@@ -33,6 +33,12 @@ fn recognizes_rsa_client_identity() {
 }
 
 #[test]
+fn rejects_bytes_that_are_not_a_certificate() {
+    assert!(parse_certificate(&[], now()).is_none());
+    assert!(parse_certificate(&[0xde, 0xad, 0xbe, 0xef], now()).is_none());
+}
+
+#[test]
 fn recognizes_p384_digest() {
     let metadata =
         parse_certificate(P384_LEAF, now()).expect("fixture should be a valid P-384 certificate");
