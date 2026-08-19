@@ -24,6 +24,7 @@ internal val settingsPages: List<Pair<Int, () -> Fragment>> =
     listOf(
         R.id.settingsGeneral to { GeneralSettingsFragment() },
         R.id.settingsAdvanced to { AdvancedSettingsFragment() },
+        R.id.settingsX509 to { X509SettingsFragment() },
         R.id.settingsLogs to { LogSettingsFragment() },
     )
 
