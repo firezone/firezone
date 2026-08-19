@@ -13,8 +13,7 @@ import Testing
 struct ConnlibErrorTests {
   @Test("A disconnect carries how the session authenticated")
   func disconnectCarriesAuthenticationMode() {
-    let error = ConnlibError.disconnected("revoked", authenticationMode: .certificate)
-      as NSError
+    let error = ConnlibError.disconnected("revoked", authenticationMode: .certificate) as NSError
 
     #expect(error.userInfo["reason"] as? String == "revoked")
     #expect(
