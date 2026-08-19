@@ -10340,6 +10340,7 @@
       },
       "patch": {
         "callbacks": {},
+        "description": "Adds and/or removes individual Actors, leaving every other member of the\nGroup untouched.\n\nBoth operations are idempotent: adding an Actor already in the Group and\nremoving one that isn't are both no-ops. `remove` is applied before `add`,\nso an Actor named in both ends up in the Group. Retrying a request that may\nalready have been applied is therefore safe.\n\nRepeating an Actor within `add` or `remove` is not an error; both lists are\ndeduplicated. `actor_ids` in the response is sorted.\n",
         "operationId": "PortalAPI.MembershipController.update_patch",
         "parameters": [
           {
@@ -10484,6 +10485,7 @@
       },
       "put": {
         "callbacks": {},
+        "description": "Replaces the Group's entire membership list with the given Actors.\n\nAny Actor not named in the request is removed from the Group. To add or\nremove individual Actors without disturbing the rest, use `PATCH`.\n\nMembers that are not changing keep their membership rows, so a replace that\nleaves the list untouched is a no-op rather than a full rewrite.\n\nRepeating an Actor in the request body is not an error; the list is\ndeduplicated. `actor_ids` in the response is sorted, not returned in\nrequest order.\n",
         "operationId": "PortalAPI.MembershipController.update_put",
         "parameters": [
           {
