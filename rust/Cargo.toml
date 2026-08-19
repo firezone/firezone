@@ -35,6 +35,7 @@ members = [
     "libs/connlib/tunnel-proto",
     "libs/desktop-notifications",
     "libs/device-trust",
+    "libs/device-trust-ffi",
     "libs/eventloop-budget",
     "libs/flow-log-spool",
     "libs/flow-log-upload",
@@ -102,6 +103,7 @@ dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rus
 derive_more = { version = "2.1.1", default-features = false }
 desktop-notifications = { path = "libs/desktop-notifications" }
 device-trust = { path = "libs/device-trust" }
+device-trust-ffi = { path = "libs/device-trust-ffi" }
 difference = "2.0.0"
 dirs = "6.0.0"
 divan = "0.1.21"
