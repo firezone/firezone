@@ -43,6 +43,9 @@ pub struct AdvancedSettingsChanged(pub AdvancedSettingsViewModel);
 pub struct LogsRecounted(pub FileCount);
 
 /// The keystore diagnostics as the settings page renders them.
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct X509StatusChanged(pub X509Status);
+
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub struct X509Status {
     pub summary: String,
@@ -61,21 +64,21 @@ pub struct X509DetailField {
     pub value: String,
 }
 
-impl From<x509_keystore::Status> for X509Status {
-    fn from(status: x509_keystore::Status) -> Self {
+impl From<&x509_keystore::Status> for X509Status {
+    fn from(status: &x509_keystore::Status) -> Self {
         Self {
-            summary: status.summary,
+            summary: status.summary.clone(),
             sections: status
                 .sections
-                .into_iter()
+                .iter()
                 .map(|section| X509DetailSection {
-                    title: section.title,
+                    title: section.title.clone(),
                     fields: section
                         .fields
-                        .into_iter()
+                        .iter()
                         .map(|field| X509DetailField {
-                            label: field.label,
-                            value: field.value,
+                            label: field.label.clone(),
+                            value: field.value.clone(),
                         })
                         .collect(),
                 })
@@ -98,23 +101,6 @@ pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
         .map_err(anyhow::Error::msg)?;
 
     Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn x509_status(managed: tauri::State<'_, Managed>) -> Result<X509Status> {
-    let (tx, rx) = tokio::sync::oneshot::channel();
-
-    managed
-        .send_request(ControllerRequest::GetX509Status(tx))
-        .await?;
-
-    let status = rx
-        .await
-        .context("Failed to await `GetX509Status` result")?
-        .map_err(anyhow::Error::msg)?;
-
-    Ok(status.into())
 }
 
 #[tauri::command]
