@@ -685,6 +685,46 @@ defmodule PortalAPI.MembershipControllerTest do
     end
   end
 
+  describe "authorization" do
+    # An account_user may read a Group (permit(:read, Portal.Group,
+    # :account_user)) but has no Portal.Actor clause, so it clears
+    # fetch_group and then fails the Actor lookup. validate_actors/2 has to
+    # propagate that rather than read an empty result as "no such actor",
+    # which would answer an authorization failure with a 422 claiming every
+    # ID is nonexistent.
+    test "PATCH returns unauthorized, not a validation error, when the subject cannot read Actors",
+         %{conn: conn, account: account} do
+      group = group_fixture(account: account)
+      target = actor_fixture(account: account)
+      account_user = actor_fixture(account: account, type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(account_user)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/groups/#{group.id}/memberships", memberships: %{"add" => [target.id]})
+
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "PUT returns unauthorized, not a validation error, when the subject cannot read Actors",
+         %{conn: conn, account: account} do
+      group = group_fixture(account: account)
+      target = actor_fixture(account: account)
+      account_user = actor_fixture(account: account, type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(account_user)
+        |> put_req_header("content-type", "application/json")
+        |> put("/groups/#{group.id}/memberships", memberships: [%{"actor_id" => target.id}])
+
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+  end
+
   describe "response contract" do
     # These pin behaviour that changed when the controller moved off
     # cast_assoc, so a future refactor cannot flip it back silently. Before,

@@ -265,21 +265,29 @@ defmodule PortalAPI.MembershipController do
     def validate_actors(actor_ids, subject) do
       actor_ids = Enum.uniq(actor_ids)
 
-      found =
-        from(a in Actor, where: a.id in ^actor_ids, select: a.id)
-        |> Safe.scoped(subject)
-        |> Safe.all()
-
-      case actor_ids -- List.wrap(found) do
-        [] ->
-          :ok
-
-        missing ->
-          {:error, :unprocessable_entity,
-           validation_errors: %{
-             memberships: Enum.map(missing, &"#{&1} is not an Actor in this account")
-           }}
+      case existing_actor_ids(actor_ids, subject) do
+        # Safe.all/1 returns {:error, :unauthorized} for a subject that may
+        # not read Actors. An account_user reaches here - it may read a Group
+        # but not an Actor - so this has to propagate rather than be treated
+        # as "found nothing", which would report every ID as nonexistent.
+        {:error, reason} -> {:error, reason}
+        found -> validate_none_missing(actor_ids -- found)
       end
+    end
+
+    defp existing_actor_ids(actor_ids, subject) do
+      from(a in Actor, where: a.id in ^actor_ids, select: a.id)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    defp validate_none_missing([]), do: :ok
+
+    defp validate_none_missing(missing) do
+      {:error, :unprocessable_entity,
+       validation_errors: %{
+         memberships: Enum.map(missing, &"#{&1} is not an Actor in this account")
+       }}
     end
 
     @doc """
