@@ -34,9 +34,9 @@ use x509_claims::{ParsedCertificate, parse_certificate};
 use x509_credential::SigningError;
 
 use crate::{
-    CandidateCertificate, ClientIdentity, DetailField, Identity, Problem, Status, UnreadableStore,
-    UnusableCause, certificate_sections, failed_field, join, selected_certificate, sign,
-    unusable_causes,
+    CandidateCertificate, ClientIdentity, Config, DetailField, Identity, Problem, Status,
+    UnreadableStore, UnusableCause, certificate_sections, failed_field, join, selected_certificate,
+    sign, unusable_causes,
 };
 
 /// The store MDM-provisioned identities land in.
@@ -46,7 +46,7 @@ use crate::{
 /// certificates nobody provisioned there. Device-scope profiles write here.
 const STORE: (u32, &str) = (CERT_SYSTEM_STORE_LOCAL_MACHINE, "LocalMachine\\My");
 
-pub(crate) fn status(subject_cn: &str) -> Result<Status> {
+pub(crate) fn status(_config: &Config, subject_cn: &str) -> Result<Status> {
     let (certificates, store_errors) = enumerate_matching(subject_cn);
     if certificates.is_empty() && !store_errors.is_empty() {
         bail!(
@@ -82,7 +82,7 @@ pub(crate) fn status(subject_cn: &str) -> Result<Status> {
     })
 }
 
-pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
+pub(crate) fn identity(_config: &Config, subject_cn: &str) -> Result<Option<Identity>> {
     let (mut certificates, store_errors) = enumerate_matching(subject_cn);
     if certificates.is_empty() && !store_errors.is_empty() {
         bail!(

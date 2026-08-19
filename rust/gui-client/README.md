@@ -188,6 +188,19 @@ validity, client-auth EKU, private-key access, signing algorithm and
 fingerprint. It reads through the privileged Tunnel service, so it reports the
 same identity the connection would use.
 
+On Linux the keystore is a PKCS#11 token, named by an RFC 7512 URI in
+`FIREZONE_PKCS11_URI`. The packaged systemd unit sources
+`/etc/default/firezone-client-tunnel`, so a typical configuration is:
+
+```sh
+FIREZONE_PKCS11_URI='pkcs11:token=Firezone;object=device-trust?module-path=/usr/lib/x86_64-linux-gnu/pkcs11/libtpm2_pkcs11.so&pin-source=file:/etc/firezone/pkcs11-pin'
+```
+
+Only `pin-source=file:` is supported; inline `pin-value` credentials are
+rejected so that a PIN never travels in configuration that gets logged. The URI
+works with PKCS#11 implementations such as `tpm2-pkcs11`, OpenSC and SoftHSM.
+The service account must be able to read the module, the token and the PIN file.
+
 ## Threat model
 
 See [Security](docs/security.md)

@@ -2,13 +2,13 @@
 
 use anyhow::Result;
 
-use crate::{ClientIdentity, DetailSection, Identity, Problem, Status, field};
+use crate::{ClientIdentity, Config, DetailSection, Identity, Problem, Status, field};
 
 #[expect(
     clippy::unnecessary_wraps,
     reason = "Keep the signature identical to the keystore backends"
 )]
-pub(crate) fn identity(_subject_cn: &str) -> Result<Option<Identity>> {
+pub(crate) fn identity(_config: &Config, _subject_cn: &str) -> Result<Option<Identity>> {
     Ok(None)
 }
 
@@ -16,7 +16,7 @@ pub(crate) fn identity(_subject_cn: &str) -> Result<Option<Identity>> {
     clippy::unnecessary_wraps,
     reason = "Keep the signature identical to the keystore backends"
 )]
-pub(crate) fn status(_subject_cn: &str) -> Result<Status> {
+pub(crate) fn status(_config: &Config, _subject_cn: &str) -> Result<Status> {
     Ok(Status {
         problems: vec![Problem::UnsupportedPlatform],
         sections: vec![DetailSection {

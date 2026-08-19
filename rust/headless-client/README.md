@@ -59,6 +59,17 @@ EKU, private-key access, signing algorithm and SHA-256 fingerprint. A keystore
 without a matching identity is reported as a normal status; a keystore that
 cannot be read exits non-zero.
 
+On Linux the keystore is a PKCS#11 token. Name it with an RFC 7512 URI, either
+through `FIREZONE_PKCS11_URI` or with `--pkcs11-uri`:
+
+```sh
+export FIREZONE_PKCS11_URI='pkcs11:token=Firezone;object=device-trust?module-path=/usr/lib/x86_64-linux-gnu/pkcs11/libtpm2_pkcs11.so&pin-source=file:/etc/firezone/pkcs11-pin'
+firezone-headless-client x509
+```
+
+Only `pin-source=file:` is supported; inline `pin-value` credentials are
+rejected so that a PIN never travels in configuration that gets logged.
+
 ## Building
 
 Assuming you have Rust installed, you can build the headless Client with:

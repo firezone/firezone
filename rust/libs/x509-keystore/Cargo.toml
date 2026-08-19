@@ -12,6 +12,11 @@ serde = { workspace = true, features = ["derive"] }
 x509-claims = { workspace = true }
 x509-credential = { workspace = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+cryptoki = { workspace = true }
+sha2 = { workspace = true }
+tracing = { workspace = true }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 sha2 = { workspace = true }
 tracing = { workspace = true }
