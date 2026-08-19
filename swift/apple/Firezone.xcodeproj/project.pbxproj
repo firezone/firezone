@@ -48,7 +48,6 @@
 		D7C0DE012E90000000000002 /* x509claims.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C0DE012E90000000000001 /* x509claims.swift */; };
 		D7C0DE012E90000000000003 /* x509claims.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C0DE012E90000000000001 /* x509claims.swift */; };
 		D7C0DE012E90000000000004 /* x509claims.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C0DE012E90000000000001 /* x509claims.swift */; };
-		D7C0DE012E90000000000006 /* X509IdentitySmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C0DE012E90000000000005 /* X509IdentitySmoke.swift */; };
 		FZ0CLI012E80000000000001 /* FirezoneCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000010 /* FirezoneCLI.swift */; platformFilters = (macos, ); };
 		FZ0CLI012E80000000000006 /* SignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000014 /* SignIn.swift */; platformFilters = (macos, ); };
 		FZ0CLI012E80000000000008 /* ConnectCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000016 /* ConnectCommand.swift */; platformFilters = (macos, ); };
@@ -155,7 +154,6 @@
 		9A1000042F10000100BEEF01 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		9A1000052F10000100BEEF01 /* KeepFirezoneRunning.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeepFirezoneRunning.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D7C0DE012E90000000000001 /* x509claims.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = x509claims.swift; path = FirezoneNetworkExtension/Connlib/Generated/x509claims.swift; sourceTree = "<group>"; };
-		D7C0DE012E90000000000005 /* X509IdentitySmoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = X509IdentitySmoke.swift; sourceTree = "<group>"; };
 		D7C0DE012E90000000000007 /* Firezone-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Firezone-Bridging-Header.h"; sourceTree = "<group>"; };
 		E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SessionEventLoop.swift; sourceTree = "<group>"; };
 		FZ0CLI012E80000000000010 /* FirezoneCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirezoneCLI.swift; sourceTree = "<group>"; };
@@ -244,7 +242,6 @@
 			children = (
 				8DCC021C28D512AC007E12D2 /* FirezoneApp.swift */,
 				8D0F0A032E9A000100BEEF02 /* main.swift */,
-				D7C0DE012E90000000000005 /* X509IdentitySmoke.swift */,
 			);
 			path = Application;
 			sourceTree = "<group>";
@@ -745,7 +742,6 @@
 				8DCC021D28D512AC007E12D2 /* FirezoneApp.swift in Sources */,
 				8D0F0A022E9A000100BEEF02 /* main.swift in Sources */,
 				D7C0DE012E90000000000004 /* x509claims.swift in Sources */,
-				D7C0DE012E90000000000006 /* X509IdentitySmoke.swift in Sources */,
 				FZ0CLI012E80000000000001 /* FirezoneCLI.swift in Sources */,
 				FZ0CLI012E80000000000006 /* SignIn.swift in Sources */,
 				FZ0CLI012E80000000000007 /* TunnelSupervisor.swift in Sources */,
