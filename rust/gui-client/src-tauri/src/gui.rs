@@ -399,6 +399,7 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
         ])
         .commands(tauri_specta::collect_commands![
             crate::view::clear_logs,
+            crate::view::x509_status,
             crate::view::export_logs,
             crate::view::apply_advanced_settings,
             crate::view::reset_advanced_settings,

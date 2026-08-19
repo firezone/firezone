@@ -2576,6 +2576,7 @@ dependencies = [
  "windows-security",
  "windows-service",
  "winreg 0.56.0",
+ "x509-keystore",
  "zip",
 ]
 
@@ -2614,6 +2615,7 @@ dependencies = [
  "tracing",
  "tunnel-bypass-resolver",
  "url",
+ "x509-keystore",
 ]
 
 [[package]]
