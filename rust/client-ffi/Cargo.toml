@@ -14,6 +14,7 @@ anyhow = { workspace = true }
 backoff = { workspace = true }
 client-shared = { workspace = true }
 connlib-model = { workspace = true }
+device-trust-ffi = { workspace = true }
 flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
 ip-packet = { workspace = true }
