@@ -48,6 +48,7 @@ members = [
     "libs/x509-claims",
     "libs/x509-claims-ffi",
     "libs/x509-credential",
+    "libs/x509-keystore",
     "relay/ebpf-shared",
     "relay/ebpf-turn-router",
     "relay/proto",
@@ -265,6 +266,7 @@ winreg = "0.56.0"
 x509-claims = { path = "libs/x509-claims" }
 x509-claims-ffi = { path = "libs/x509-claims-ffi" }
 x509-credential = { path = "libs/x509-credential" }
+x509-keystore = { path = "libs/x509-keystore" }
 x509-parser = "0.18.0"
 zbus = "5.15.0"
 zip = { version = "8.6.0", default-features = false }
