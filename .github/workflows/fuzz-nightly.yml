@@ -5,12 +5,19 @@ run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
 # uncovered-region ceilings alongside. The scheduled run works on main and
 # proposes the result as one bot PR; dispatching the workflow on any other
 # branch pushes the result back to that branch instead, e.g. to re-grow the
-# corpus for a PR that changes the harness. Pull-request CI only replays
-# committed inputs; coverage discovery happens here.
+# corpus for a PR that changes the harness. A dispatch can also narrow the run
+# to a subset of targets. Pull-request CI only replays committed inputs;
+# coverage discovery happens here.
 "on":
   schedule:
     - cron: "0 4 * * *" # daily, 04:00 UTC
   workflow_dispatch:
+    inputs:
+      targets:
+        description: "Space-separated fuzz targets to work on, e.g. 'ip-packet tunnel-proto'. Leave empty for every target in tests/fuzz/targets.json."
+        required: false
+        type: string
+        default: ""
 
 defaults:
   run:
@@ -34,7 +41,28 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: targets
-        run: echo "targets=$(jq -c . tests/fuzz/targets.json)" >> "$GITHUB_OUTPUT"
+        env:
+          # Empty for the schedule, which cannot pass inputs.
+          REQUESTED_TARGETS: ${{ inputs.targets }}
+        run: |
+          set -euo pipefail
+
+          read -ra requested <<<"$REQUESTED_TARGETS"
+
+          if [[ ${#requested[@]} -eq 0 ]]; then
+            echo "targets=$(jq -c . tests/fuzz/targets.json)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Reject an unknown name instead of fuzzing nothing: an empty matrix
+          # would let the run succeed without discovering any coverage.
+          unknown=$(jq -r '$ARGS.positional - . | join(", ")' tests/fuzz/targets.json --args "${requested[@]}")
+          if [[ -n "$unknown" ]]; then
+            echo "::error::Unknown fuzz target(s): $unknown. Known targets: $(jq -r 'join(", ")' tests/fuzz/targets.json)"
+            exit 1
+          fi
+
+          echo "targets=$(jq -c '$ARGS.positional' tests/fuzz/targets.json --args "${requested[@]}")" >> "$GITHUB_OUTPUT"
 
   discover:
     name: discover-${{ matrix.fuzz-target }}
