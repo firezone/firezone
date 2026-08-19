@@ -225,7 +225,8 @@ public final class VPNConfigurationManager {
     if isManaged {
       // The profile is the source of truth. Neither migrate legacy UserDefaults into
       // it nor normalize its stored settings back into it.
-      configuration.loadProviderConfiguration(try providerConfiguration())
+      let managed = try providerConfiguration()
+      configuration.loadProviderConfiguration(managed)
       Log.info("Loaded read-only settings from the managed VPN profile")
 
       return

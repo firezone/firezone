@@ -154,8 +154,9 @@ public enum X509Identity {
     guard let persistentReference else { return nil }
 
     let identity = try loadIdentity(persistentReference: persistentReference)
+    let certificate = try copyCertificate(identity: identity)
 
-    return SecCertificateCopyData(try copyCertificate(identity: identity)) as Data
+    return SecCertificateCopyData(certificate) as Data
   }
 
   private static func loadIdentity(persistentReference: Data) throws -> SecIdentity {
