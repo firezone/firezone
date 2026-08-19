@@ -181,6 +181,7 @@ quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
 rand = "0.10.1"
 rangemap = "1.7.1"
+rcgen = { version = "0.14.9", default-features = false, features = ["ring"] }
 relay-proto = { path = "relay/proto" }
 reqwest = { version = "0.13.4", default-features = false }
 resolv-conf = "0.7.6"
