@@ -1,0 +1,15 @@
+[package]
+name = "device-trust"
+version = "0.1.0"
+edition = { workspace = true }
+authors = ["Firezone, Inc."]
+license = { workspace = true }
+
+[dependencies]
+base64 = { workspace = true, features = ["std"] }
+sha2 = { workspace = true }
+uuid = { workspace = true }
+x509-parser = { workspace = true }
+
+[lints]
+workspace = true
