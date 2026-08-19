@@ -268,23 +268,19 @@ enum KeyAlgorithm {
     EcdsaP256,
 }
 
+/// The script that mints a certificate, resolved at compile time so the tests do not depend on the
+/// working directory.
+const MINT_CERTIFICATE_SCRIPT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/src/windows/mint-certificate.ps1"
+);
+
 /// Creates a certificate for `subject_cn` that satisfies Firezone's rules for a client identity.
 fn mint_certificate(subject_cn: &str, algorithm: KeyAlgorithm) -> MintedCertificate {
-    let output = powershell(&format!(
-        "$ErrorActionPreference = 'Stop'; \
-         $certificate = New-SelfSignedCertificate \
-         -Type Custom \
-         -Subject 'CN={subject_cn}' \
-         -CertStoreLocation 'Cert:\\CurrentUser\\My' \
-         -Provider 'Microsoft Software Key Storage Provider' \
-         -KeyExportPolicy NonExportable \
-         -KeyUsage DigitalSignature \
-         -TextExtension @('2.5.29.37={{text}}1.3.6.1.5.5.7.3.2') \
-         {}; \
-         [Console]::Out.WriteLine($certificate.Thumbprint); \
-         [Console]::Out.WriteLine([Convert]::ToBase64String($certificate.RawData))",
-        algorithm.parameters()
-    ))
+    let output = powershell(
+        MINT_CERTIFICATE_SCRIPT,
+        &["-SubjectCn", subject_cn, "-Algorithm", algorithm.argument()],
+    )
     .unwrap_or_else(|error| panic!("PowerShell should mint a certificate: {error:#}"));
 
     let mut lines = output.lines();
@@ -306,31 +302,46 @@ fn mint_certificate(subject_cn: &str, algorithm: KeyAlgorithm) -> MintedCertific
 }
 
 impl KeyAlgorithm {
-    /// Returns the `New-SelfSignedCertificate` arguments that select this algorithm.
-    ///
-    /// `CurveExport CurveName` makes the certificate name its curve by OID instead of spelling out
-    /// the curve parameters, which is the encoding `x509-claims` reads the key algorithm from.
-    fn parameters(&self) -> &'static str {
+    /// Returns the value [`MINT_CERTIFICATE_SCRIPT`] expects for its `-Algorithm` parameter.
+    fn argument(&self) -> &'static str {
         match self {
-            Self::Rsa => "-KeyAlgorithm RSA -KeyLength 2048",
-            Self::EcdsaP256 => "-KeyAlgorithm ECDSA_nistP256 -CurveExport CurveName",
+            Self::Rsa => "Rsa",
+            Self::EcdsaP256 => "EcdsaP256",
         }
     }
 }
 
+/// The script that removes a minted certificate together with its private key.
+const REMOVE_CERTIFICATE_SCRIPT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/src/windows/remove-certificate.ps1"
+);
+
 impl Drop for MintedCertificate {
     fn drop(&mut self) {
-        let _ = powershell(&format!(
-            "Remove-Item -Path 'Cert:\\CurrentUser\\My\\{}' -DeleteKey -Confirm:$false",
-            self.thumbprint
-        ));
+        let _ = powershell(
+            REMOVE_CERTIFICATE_SCRIPT,
+            &["-Thumbprint", &self.thumbprint],
+        );
     }
 }
 
-/// Runs `script` through Windows PowerShell and returns what it wrote to standard output.
-fn powershell(script: &str) -> Result<String> {
+/// Runs the PowerShell script at `script` with `arguments` and returns what it wrote to standard
+/// output.
+///
+/// The scripts ship unsigned next to the tests, so the execution policy is bypassed to keep the
+/// tests independent of how the machine happens to be configured.
+fn powershell(script: &str, arguments: &[&str]) -> Result<String> {
     let output = Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            script,
+        ])
+        .args(arguments)
         .output()
         .context("Failed to run PowerShell")?;
     anyhow::ensure!(
