@@ -10339,6 +10339,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "x509-keystore"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "rustls",
+ "serde",
+ "tracing",
+ "x509-claims",
+ "x509-credential",
+]
+
+[[package]]
 name = "x509-parser"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
