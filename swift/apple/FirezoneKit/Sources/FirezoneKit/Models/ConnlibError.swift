@@ -6,9 +6,24 @@
 
 import Foundation
 
+/// What proved the session's identity to the portal.
+public enum SessionAuthenticationMode: String, Sendable {
+  /// A token the user obtained through web sign-in.
+  case token
+  /// A client certificate the administrator installed on the VPN profile.
+  case certificate
+}
+
 public enum ConnlibError: Swift.Error {
   case sessionExpired(String, id: String = UUID().uuidString)
-  case disconnected(String, id: String = UUID().uuidString)
+  case disconnected(
+    String,
+    authenticationMode: SessionAuthenticationMode = .token,
+    id: String = UUID().uuidString
+  )
+
+  /// Key under which `errorUserInfo` carries the session's authentication mode.
+  public static let authenticationModeKey = "authenticationMode"
 
   public enum Code: Int {
     case sessionExpired = 0
@@ -34,10 +49,16 @@ extension ConnlibError: CustomNSError {
 
   public var errorUserInfo: [String: Any] {
     switch self {
-    case .sessionExpired(let reason, let id), .disconnected(let reason, let id):
+    case .sessionExpired(let reason, let id):
       return [
         "reason": reason,
         "id": id,
+      ]
+    case .disconnected(let reason, let authenticationMode, let id):
+      return [
+        "reason": reason,
+        "id": id,
+        Self.authenticationModeKey: authenticationMode.rawValue,
       ]
     }
   }
