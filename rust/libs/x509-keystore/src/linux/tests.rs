@@ -122,6 +122,25 @@ fn reports_no_identity_when_no_certificate_matches() {
 }
 
 #[test]
+#[ignore = "Requires the SoftHSM PKCS#11 module and writes to a temporary token store"]
+fn signs_while_another_session_is_open() {
+    let _serialized = serialize_token_access();
+    let token = provision_token("overlapping", KeyAlgorithm::Rsa);
+    let uri = Pkcs11Uri::parse(&token.uri).expect("the token's URI should be valid");
+
+    let identity = super::identity(&token.config(), &token.subject_cn)
+        .expect("the SoftHSM token should be readable")
+        .expect("the provisioned certificate should be selected as the client identity");
+    // Stands in for a diagnostics screen reading the token while a handshake signs.
+    let _open = open_session(&uri).expect("the token should open a second session");
+
+    identity
+        .key
+        .sign(SignatureScheme::RSA_PKCS1_SHA256, MESSAGE)
+        .expect("the token should sign while another session is open");
+}
+
+#[test]
 fn parses_pkcs11_uri() {
     let uri = "pkcs11:token=Firezone;object=device%20identity?module-path=/usr/lib/libpkcs11.so&pin-source=file:/etc/firezone/pin";
 
@@ -322,6 +341,7 @@ fn provision_token(suffix: &str, algorithm: KeyAlgorithm) -> Token {
     // SAFETY: `serialize_token_access` holds off every other test that sets or reads this variable,
     // and the remaining tests in this binary are pure functions that never touch the environment.
     unsafe { std::env::set_var("SOFTHSM2_CONF", &configuration) };
+    unload_module();
 
     let certificate = initialize_token(&module, &label, &subject_cn, algorithm);
     let uri = format!(
@@ -358,11 +378,22 @@ fn softhsm_module() -> PathBuf {
         })
 }
 
+/// Drops the contexts the backend cached, which unloads the module along with the last of them.
+///
+/// SoftHSM reads `SOFTHSM2_CONF` while it initializes, so a context left over from an earlier test
+/// would keep answering out of that test's token store. Unloading is also what lets the setup below
+/// initialize the module itself.
+fn unload_module() {
+    CONTEXTS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clear();
+}
+
 /// Sets up the token's PINs, generates its key pair and stores a certificate for it.
 ///
-/// Returns the certificate, having closed everything it opened: `cryptoki` never calls
-/// `C_Finalize`, so a module the test still holds open would refuse the backend's own
-/// `C_Initialize` with `CKR_CRYPTOKI_ALREADY_INITIALIZED`.
+/// Returns the certificate, having closed everything it opened, so that the module is unloaded
+/// again by the time the backend initializes its own context against this store.
 fn initialize_token(
     module: &Path,
     label: &str,
