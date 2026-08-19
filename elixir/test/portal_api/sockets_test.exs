@@ -169,7 +169,7 @@ defmodule PortalAPI.SocketsTest do
 
       assert result.status == 409
       assert json_body(result)["detail"] == "A gateway with this ID is already connected"
-      assert_problem_json(result, "conflict")
+      assert_problem_json(result, "gateway_already_connected")
     end
 
     test "returns 503 with retry-after header for rate_limit" do
@@ -195,7 +195,7 @@ defmodule PortalAPI.SocketsTest do
 
       assert result.status == 400
       assert json_body(result)["detail"] =~ "name"
-      assert_problem_json(result, "invalid_request")
+      assert_problem_json(result, "invalid_connect_params")
     end
 
     test "returns 500 and logs for an unhandled reason" do
@@ -205,7 +205,7 @@ defmodule PortalAPI.SocketsTest do
 
       assert result.status == 500
       assert json_body(result)["detail"] == "An unexpected error occurred."
-      assert_problem_json(result, "internal_error")
+      assert_problem_json(result, "unhandled_connect_error")
       assert log =~ "Unhandled socket connect error"
       assert log =~ "some_new_reason"
     end

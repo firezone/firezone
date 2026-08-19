@@ -78,13 +78,19 @@ defmodule PortalAPI.Sockets do
       ProblemDetails.send_with_code(
         conn,
         409,
-        :conflict,
+        :gateway_already_connected,
         "A gateway with this ID is already connected"
       )
 
   def handle_error(conn, %Ecto.Changeset{} = changeset) do
     Logger.error("Invalid connection request", changeset: inspect(changeset))
-    ProblemDetails.send_with_code(conn, 400, :invalid_request, changeset_error_detail(changeset))
+
+    ProblemDetails.send_with_code(
+      conn,
+      400,
+      :invalid_connect_params,
+      changeset_error_detail(changeset)
+    )
   end
 
   # We use 503 instead of 429 because connlib treats 429 as fatal until
@@ -102,7 +108,12 @@ defmodule PortalAPI.Sockets do
   def handle_error(conn, reason) do
     Logger.error("Unhandled socket connect error", reason: inspect(reason))
 
-    ProblemDetails.send_with_code(conn, 500, :internal_error, "An unexpected error occurred.")
+    ProblemDetails.send_with_code(
+      conn,
+      500,
+      :unhandled_connect_error,
+      "An unexpected error occurred."
+    )
   end
 
   def auth_context(%{user_agent: user_agent, x_headers: x_headers, peer_data: peer_data}, type) do

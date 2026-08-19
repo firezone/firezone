@@ -49,13 +49,17 @@ defmodule PortalAPI.ProblemDetailsTest do
 
     test "keeps extension members alongside the code" do
       conn =
-        ProblemDetails.send_with_code(Plug.Test.conn(:get, "/"), 400, :invalid_request, "Bad", %{
-          validation_errors: %{"name" => ["can't be blank"]}
-        })
+        ProblemDetails.send_with_code(
+          Plug.Test.conn(:get, "/"),
+          400,
+          :invalid_connect_params,
+          "Bad",
+          %{validation_errors: %{"name" => ["can't be blank"]}}
+        )
 
       body = json_body(conn)
 
-      assert body["code"] == "invalid_request"
+      assert body["code"] == "invalid_connect_params"
       assert body["validation_errors"] == %{"name" => ["can't be blank"]}
     end
   end
