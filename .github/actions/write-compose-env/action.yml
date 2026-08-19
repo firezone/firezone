@@ -1,0 +1,20 @@
+name: "Write compose env file"
+description: "Serialises the image and tag variables from the job's environment into a `.env` file for `docker compose --env-file`"
+
+runs:
+  using: "composite"
+  steps:
+    # Needed wherever the compose project runs somewhere that the job's
+    # environment does not reach, e.g. inside WSL2: `wsl.exe` does not forward
+    # Windows environment variables into the VM. Reading the values from the
+    # environment rather than taking them as inputs keeps callers declaring
+    # them the same way they always have. A variable that is unset here still
+    # falls back to the compose file's `:-` default.
+    - name: Write .env
+      shell: bash
+      run: |
+        for var in PORTAL_IMAGE PORTAL_TAG ELIXIR_IMAGE ELIXIR_TAG \
+          RELAY_IMAGE RELAY_TAG GATEWAY_IMAGE GATEWAY_TAG \
+          CLIENT_IMAGE CLIENT_TAG HTTP_TEST_SERVER_IMAGE HTTP_TEST_SERVER_TAG; do
+          printf '%s=%s\n' "$var" "${!var}"
+        done > .env

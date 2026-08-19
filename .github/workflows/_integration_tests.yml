@@ -162,6 +162,7 @@ jobs:
             rust_log: debug,path_agent=trace,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/write-compose-env
       - uses: ./.github/actions/setup-docker
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
