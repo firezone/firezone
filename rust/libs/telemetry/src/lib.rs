@@ -295,53 +295,43 @@ pub fn is_active() -> bool {
     STATE.try_read(|state| state.is_active()).unwrap_or(false)
 }
 
-pub fn set_account_slug(slug: impl Into<Option<String>>) {
-    let slug = slug.into();
-    let _ = STATE.try_write(|state| state.set_account_slug(slug.clone()));
+/// Stores an identity attribute in the crate state and mirrors it into the
+/// Sentry user's attribute map; `None` clears both.
+fn set_identity_attribute(
+    key: &'static str,
+    value: Option<String>,
+    store: fn(&mut state::State, Option<String>),
+) {
+    let _ = STATE.try_write(|state| store(state, value.clone()));
 
-    update_user(|user| match slug {
-        Some(slug) => {
-            user.other.insert("account_slug".to_owned(), slug.into());
+    update_user(|user| match value {
+        Some(value) => {
+            user.other.insert(key.to_owned(), value.into());
         }
         None => {
-            user.other.remove("account_slug");
+            user.other.remove(key);
         }
     });
 }
 
+pub fn set_account_slug(slug: impl Into<Option<String>>) {
+    set_identity_attribute("account_slug", slug.into(), state::State::set_account_slug);
+}
+
 /// Attaches the account UUID read from a managed certificate.
 pub fn set_account_id(account_id: impl Into<Option<String>>) {
-    let account_id = account_id.into();
-    let _ = STATE.try_write(|state| state.set_account_id(account_id.clone()));
-
-    update_user(|user| match account_id {
-        Some(account_id) => {
-            user.other
-                .insert("account_id".to_owned(), account_id.into());
-        }
-        None => {
-            user.other.remove("account_id");
-        }
-    });
+    set_identity_attribute(
+        "account_id",
+        account_id.into(),
+        state::State::set_account_id,
+    );
 }
 
 /// Attaches the actor email read from a managed certificate.
 pub fn set_actor_email(actor_email: impl Into<Option<String>>) {
     let actor_email = actor_email.into();
-    let _ = STATE.try_write(|state| state.set_actor_email(actor_email.clone()));
-
-    update_user(|user| {
-        user.email.clone_from(&actor_email);
-        match actor_email {
-            Some(actor_email) => {
-                user.other
-                    .insert("actor_email".to_owned(), actor_email.into());
-            }
-            None => {
-                user.other.remove("actor_email");
-            }
-        }
-    });
+    update_user(|user| user.email.clone_from(&actor_email));
+    set_identity_attribute("actor_email", actor_email, state::State::set_actor_email);
 }
 
 /// Attaches the Firezone ID to the active Sentry session.
@@ -366,17 +356,11 @@ pub fn set_firezone_id(firezone_id: String) {
 /// correlated with the device attested by the Portal even when multiple
 /// installations share a Firezone ID.
 pub fn set_mdm_device_id(mdm_device_id: impl Into<Option<String>>) {
-    let mdm_device_id = mdm_device_id.into();
-    let _ = STATE.try_write(|state| state.set_mdm_device_id(mdm_device_id.clone()));
-
-    update_user(|user| match mdm_device_id {
-        Some(id) => {
-            user.other.insert("mdm_device_id".to_owned(), id.into());
-        }
-        None => {
-            user.other.remove("mdm_device_id");
-        }
-    });
+    set_identity_attribute(
+        "mdm_device_id",
+        mdm_device_id.into(),
+        state::State::set_mdm_device_id,
+    );
 }
 
 #[doc(hidden)] // Only public for testing.
