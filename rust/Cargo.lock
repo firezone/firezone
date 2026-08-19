@@ -10349,6 +10349,10 @@ dependencies = [
  "anyhow-ext",
  "rustls",
  "serde",
+ "sha2 0.11.0",
+ "tracing",
+ "windows",
+ "windows-core",
  "x509-claims",
  "x509-credential",
 ]
