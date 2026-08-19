@@ -14,8 +14,8 @@ import javax.inject.Inject
  * Answers whom the configured client certificate authenticates.
  *
  * The sign-in screens use this to decide whether a browser sign-in is still needed and whom to name
- * while they wait. Failures end up as "nobody" because those screens cannot act on them; the tunnel
- * loads the identity itself and reports the real error when it connects.
+ * while they wait. Failures end up as "nobody" and stay at debug level: the tunnel loads the
+ * identity itself and is the one that reports a broken keystore to the user and to telemetry.
  */
 class CertificateUser
     @Inject
@@ -33,7 +33,7 @@ class CertificateUser
                 } catch (exception: CancellationException) {
                     throw exception
                 } catch (exception: Exception) {
-                    Log.w(TAG, "Could not read the configured client certificate", exception)
+                    Log.d(TAG, "Could not read the configured client certificate", exception)
 
                     null
                 }
