@@ -185,6 +185,7 @@ rcgen = { version = "0.14.9", default-features = false, features = ["ring"] }
 relay-proto = { path = "relay/proto" }
 reqwest = { version = "0.13.4", default-features = false }
 resolv-conf = "0.7.6"
+ring = "0.17.14"
 ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
 rpassword = "7.5.3"

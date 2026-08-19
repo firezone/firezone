@@ -1,5 +1,8 @@
 //! X.509 client identities from the Windows certificate stores, signed through CNG.
 
+#[cfg(test)]
+mod tests;
+
 use std::{ffi::c_void, fmt, ptr, slice, sync::Arc, time::SystemTime};
 
 use anyhow::{Context as _, Result, bail};
@@ -885,57 +888,4 @@ fn classify_private_key_storage(
     }
 
     "CNG provider (hardware backing unknown)"
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn classifies_windows_key_storage() {
-        assert_eq!(
-            classify_private_key_storage(Some("Microsoft Platform Crypto Provider"), None),
-            "TPM (hardware-backed keystore)"
-        );
-        assert_eq!(
-            classify_private_key_storage(Some("Microsoft Software Key Storage Provider"), None),
-            "Software keystore"
-        );
-        assert_eq!(
-            classify_private_key_storage(Some("Third-party KSP"), Some(NCRYPT_IMPL_HARDWARE_FLAG)),
-            "Hardware-backed keystore"
-        );
-    }
-
-    #[test]
-    fn names_the_cause_behind_a_cng_failure() {
-        assert!(matches!(
-            classify_signing_error(NTE_NO_KEY.into()),
-            SigningError::KeyUnavailable(_)
-        ));
-        assert!(matches!(
-            classify_signing_error(NTE_SILENT_CONTEXT.into()),
-            SigningError::AccessDenied(_)
-        ));
-        assert!(matches!(
-            classify_signing_error(SCARD_W_CANCELLED_BY_USER.into()),
-            SigningError::AccessDenied(_)
-        ));
-        assert!(matches!(
-            classify_signing_error(windows::Win32::Foundation::E_UNEXPECTED.into()),
-            SigningError::Keystore(_)
-        ));
-    }
-
-    #[test]
-    fn ecdsa_signature_is_der_encoded() {
-        let mut raw = vec![0; 64];
-        raw[31] = 1;
-        raw[63] = 2;
-
-        assert_eq!(
-            der_encode_ecdsa_signature(&raw).expect("signature should encode"),
-            vec![0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02]
-        );
-    }
 }

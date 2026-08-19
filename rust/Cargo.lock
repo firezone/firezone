@@ -10346,6 +10346,8 @@ name = "x509-keystore"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "base64 0.23.1",
+ "ring",
  "rustls",
  "serde",
  "sha2 0.11.0",
@@ -10354,6 +10356,7 @@ dependencies = [
  "windows-core",
  "x509-claims",
  "x509-credential",
+ "x509-parser",
 ]
 
 [[package]]
