@@ -5,12 +5,19 @@ run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
 # uncovered-region ceilings alongside. The scheduled run works on main and
 # proposes the result as one bot PR; dispatching the workflow on any other
 # branch pushes the result back to that branch instead, e.g. to re-grow the
-# corpus for a PR that changes the harness. Pull-request CI only replays
-# committed inputs; coverage discovery happens here.
+# corpus for a PR that changes the harness. A dispatch can also narrow the run
+# to a single target. Pull-request CI only replays committed inputs;
+# coverage discovery happens here.
 "on":
   schedule:
     - cron: "0 4 * * *" # daily, 04:00 UTC
   workflow_dispatch:
+    inputs:
+      target:
+        description: "A single fuzz target to work on, e.g. 'tunnel-proto'. Leave empty for every target in rust/tests/fuzz/targets.json."
+        required: false
+        type: string
+        default: ""
 
 defaults:
   run:
@@ -34,7 +41,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: targets
-        run: echo "targets=$(jq -c . tests/fuzz/targets.json)" >> "$GITHUB_OUTPUT"
+        env:
+          # Empty for the schedule, which cannot pass inputs.
+          REQUESTED_TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+
+          read -r requested _ <<<"$REQUESTED_TARGET"
+
+          if [[ -z "$requested" ]]; then
+            echo "targets=$(jq -c . tests/fuzz/targets.json)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "targets=$(jq -nc --arg target "$requested" '[$target]')" >> "$GITHUB_OUTPUT"
 
   discover:
     name: discover-${{ matrix.fuzz-target }}
