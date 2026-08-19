@@ -15,14 +15,6 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
-  async x509Status(): Promise<Result<X509Status, Error>> {
-    try {
-      return { status: "ok", data: await TAURI_INVOKE("x509_status") };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
   async exportLogs(): Promise<Result<null, Error>> {
     try {
       return { status: "ok", data: await TAURI_INVOKE("export_logs") };
@@ -112,11 +104,13 @@ export const events = __makeEvents__<{
   generalSettingsChanged: GeneralSettingsChanged;
   logsRecounted: LogsRecounted;
   sessionChanged: SessionChanged;
+  x509StatusChanged: X509StatusChanged;
 }>({
   advancedSettingsChanged: "advanced-settings-changed",
   generalSettingsChanged: "general-settings-changed",
   logsRecounted: "logs-recounted",
   sessionChanged: "session-changed",
+  x509StatusChanged: "x509-status-changed",
 });
 
 /** user-defined constants **/
@@ -163,6 +157,7 @@ export type SessionViewModel =
 export type X509DetailField = { label: string; value: string };
 export type X509DetailSection = { title: string; fields: X509DetailField[] };
 export type X509Status = { summary: string; sections: X509DetailSection[] };
+export type X509StatusChanged = X509Status;
 
 /** tauri-specta globals **/
 
