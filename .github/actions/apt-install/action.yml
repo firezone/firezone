@@ -19,15 +19,22 @@ runs:
         Acquire::http::Timeout "30";
         Acquire::https::Timeout "30";
         EOF
+    # `timeout` is what makes the retry reachable: apt's own timeout only fires on inactivity, so a
+    # mirror that keeps trickling bytes runs until the job's step timeout with nothing installed.
     - name: Update package index
       if: ${{ inputs.update == 'true' }}
       shell: bash
+      env:
+        RETRY_MAX_ATTEMPTS: "3"
       run: |
-        "$GITHUB_ACTION_PATH/retry.sh" apt-get update
+        "$GITHUB_ACTION_PATH/../setup-scripts/retry.sh" \
+          sudo timeout --kill-after=10s 120 apt-get update
     - name: Install packages
       shell: bash
       env:
         PACKAGES: ${{ inputs.packages }}
+        RETRY_MAX_ATTEMPTS: "2"
       run: |
         read -ra packages <<< "$PACKAGES"
-        "$GITHUB_ACTION_PATH/retry.sh" apt-get --yes install -- "${packages[@]}"
+        "$GITHUB_ACTION_PATH/../setup-scripts/retry.sh" \
+          sudo timeout --kill-after=10s 300 apt-get --yes install -- "${packages[@]}"
