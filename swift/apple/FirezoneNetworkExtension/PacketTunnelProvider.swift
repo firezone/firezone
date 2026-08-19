@@ -56,6 +56,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     Log.info(
       "NetworkExtension starting - Version: \(version), Build: \(build), Bundle ID: \(bundleId)")
 
+    // Prototype smoke test: calling into the devicetrust bindings proves that the
+    // uniffi_devicetrust_* symbols in libconnlib.a link into the extension.
+    let emptyCertificate = parseClientCertificate(der: Data())
+    Log.info("devicetrust parses empty DER as: \(String(describing: emptyCertificate))")
+
     migrateFirezoneId()
   }
 
