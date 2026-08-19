@@ -1,5 +1,5 @@
 [package]
-name = "device-trust"
+name = "x509-claims"
 version = "0.1.0"
 edition = { workspace = true }
 authors = ["Firezone, Inc."]

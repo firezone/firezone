@@ -1307,7 +1307,6 @@ dependencies = [
  "backoff",
  "client-shared",
  "connlib-model",
- "device-trust-ffi",
  "flow-log-upload",
  "flow-log-writer",
  "ip-packet",
@@ -1334,6 +1333,7 @@ dependencies = [
  "tun",
  "tunnel-bypass-resolver",
  "uniffi",
+ "x509-claims-ffi",
 ]
 
 [[package]]
@@ -1929,24 +1929,6 @@ dependencies = [
  "url",
  "windows",
  "zbus",
-]
-
-[[package]]
-name = "device-trust"
-version = "0.1.0"
-dependencies = [
- "base64 0.23.1",
- "sha2 0.11.0",
- "uuid",
- "x509-parser",
-]
-
-[[package]]
-name = "device-trust-ffi"
-version = "0.1.0"
-dependencies = [
- "device-trust",
- "uniffi",
 ]
 
 [[package]]
@@ -10289,6 +10271,24 @@ dependencies = [
  "getrandom 0.4.2",
  "rand_core 0.10.1",
  "zeroize",
+]
+
+[[package]]
+name = "x509-claims"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "sha2 0.11.0",
+ "uuid",
+ "x509-parser",
+]
+
+[[package]]
+name = "x509-claims-ffi"
+version = "0.1.0"
+dependencies = [
+ "uniffi",
+ "x509-claims",
 ]
 
 [[package]]
