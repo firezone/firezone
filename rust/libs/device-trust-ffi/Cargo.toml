@@ -1,0 +1,16 @@
+[package]
+name = "device-trust-ffi"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[lib]
+name = "devicetrust"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[dependencies]
+device-trust = { workspace = true }
+uniffi = { workspace = true }
+
+[lints]
+workspace = true
