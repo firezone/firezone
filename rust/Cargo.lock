@@ -5606,6 +5606,7 @@ dependencies = [
  "backoff",
  "base64 0.23.1",
  "chrono",
+ "client-tls",
  "futures",
  "hex",
  "hostname",
@@ -5614,6 +5615,8 @@ dependencies = [
  "logging",
  "os_info",
  "rand 0.10.2",
+ "rustls",
+ "rustls-native-certs",
  "secrecy",
  "serde",
  "serde_json",
@@ -5625,6 +5628,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]

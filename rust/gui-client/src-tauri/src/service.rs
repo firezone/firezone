@@ -773,6 +773,7 @@ impl<'a> Handler<'a> {
                 device_uuid: device_info::uuid(),
                 ..Default::default()
             },
+            None,
         )
         .context("Failed to create `LoginUrl`")?;
 
