@@ -91,6 +91,12 @@ jobs:
       - run: mise run //rust:install-ebpf-toolchain
         if: runner.os == 'Linux'
       - uses: ./.github/actions/free-disk-space
+      # `x509-keystore`'s PKCS#11 tests sign with a SoftHSM token. They fail rather than skip
+      # when the module is missing, so that a run cannot report coverage it did not have.
+      - uses: ./.github/actions/apt-install
+        if: runner.os == 'Linux'
+        with:
+          packages: softhsm2
       - name: "cargo test"
         shell: bash
         run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture
