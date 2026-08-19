@@ -32,4 +32,17 @@ defmodule PortalAPI.ProblemDetails do
     |> Plug.Conn.send_resp(status, Phoenix.json_library().encode_to_iodata!(body))
     |> halt()
   end
+
+  @doc """
+  Sends an RFC 9457 problem details JSON response carrying a machine-readable `code`.
+
+  `code` is an atom naming the failure reason. It is emitted as a top-level `code`
+  extension member holding its snake_case string form, so clients can branch on the
+  reason instead of parsing `detail` or guessing from `status`. Several reasons map
+  onto the same status code, so `status` alone cannot discriminate between them.
+  """
+  @spec send_with_code(Plug.Conn.t(), integer(), atom(), String.t(), map()) :: Plug.Conn.t()
+  def send_with_code(conn, status, code, detail, extensions \\ %{}) when is_atom(code) do
+    send(conn, status, detail, Map.put(extensions, :code, Atom.to_string(code)))
+  end
 end
