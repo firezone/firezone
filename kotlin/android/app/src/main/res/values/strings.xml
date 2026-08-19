@@ -25,6 +25,30 @@
 	<string name="log_directory_size">Log directory size: %1$s</string>
 	<string name="clear_log_directory">Clear Log Directory</string>
 
+	<!-- Client Certificate -->
+	<string name="x509_claims_title">Client Certificate</string>
+	<string name="x509_claims_description">
+		Firezone can authenticate with a certificate from the system KeyChain instead of a browser
+		sign-in. The private key never leaves the KeyChain.
+	</string>
+	<string name="x509_managed_description">
+		Your organization configured this certificate. The administrator must also grant Firezone
+		access to the matching KeyChain key.
+	</string>
+	<string name="x509_user_description">
+		Pick a certificate once. Android asks you to confirm access and Firezone remembers the alias
+		for future connections.
+	</string>
+	<string name="x509_select_certificate">Select Certificate</string>
+	<string name="x509_forget_certificate">Forget Selection</string>
+	<string name="x509_refresh">Refresh</string>
+	<string name="x509_loading">Reading the KeyChain…</string>
+	<string name="x509_no_certificate_selected">No RSA or EC certificate was selected.</string>
+	<string name="x509_not_configured">No client certificate is configured.</string>
+	<string name="x509_alias_configured">KeyChain alias: %1$s</string>
+	<string name="x509_error_title">Unable to read the client certificate</string>
+	<string name="x509_contact_admin">Contact your administrator for support.</string>
+
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>
 	<string name="connect_as">Connect as %1$s</string>
