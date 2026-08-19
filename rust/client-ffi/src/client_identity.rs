@@ -159,7 +159,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "the platform keystore failed to sign: the keystore is locked"
+            "the keystore failed to sign: the keystore is locked"
         );
     }
 
@@ -174,7 +174,7 @@ mod tests {
             .sign(SignatureScheme::ED25519, &[4, 5])
             .expect_err("Ed25519 is not advertised");
 
-        assert_eq!(error.to_string(), "the key cannot sign with ED25519");
+        assert_eq!(error.to_string(), "the keystore cannot sign with ED25519");
     }
 
     #[test]
