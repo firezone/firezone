@@ -423,9 +423,7 @@ impl<I: GuiIntegration> Controller<I> {
         let environment = self.api_url().to_string();
         let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
 
-        if let Some(account_slug) = account_slug.clone() {
-            telemetry::set_account_slug(account_slug);
-        }
+        telemetry::set_account_slug(account_slug.clone());
 
         if !self.telemetry_allowed {
             return Ok(());

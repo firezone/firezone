@@ -730,11 +730,9 @@ impl<'a> Handler<'a> {
                         telemetry::SentryMeterProvider::default(),
                     );
 
-                    if let Some(account_slug) = account_slug {
-                        telemetry::set_account_slug(account_slug.clone());
+                    telemetry::set_account_slug(account_slug.clone());
 
-                        analytics::identify(release, account_slug, None, None);
-                    }
+                    analytics::identify(release, account_slug, None, None);
                 }
             }
             #[cfg(debug_assertions)]
