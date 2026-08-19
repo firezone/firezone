@@ -30,6 +30,28 @@ defmodule PortalAPI.Router do
     get "/", OpenApiSpex.Plug.SwaggerUI, path: "/openapi.json"
   end
 
+  # The MCP endpoint is deliberately thinner than the :api pipeline. Rate
+  # limiting and request logging are charged once per call inside
+  # PortalAPI.MCPController - a tools/call re-enters this router, and metering
+  # here as well would charge every tool call twice.
+  pipeline :mcp do
+    plug Plug.Parsers,
+      parsers: [:json],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library()
+
+    plug :accepts, ["json"]
+    plug PortalAPI.Plugs.Auth
+  end
+
+  scope "/mcp", PortalAPI do
+    pipe_through :mcp
+
+    post "/", MCPController, :handle
+    get "/", MCPController, :method_not_allowed
+    delete "/", MCPController, :method_not_allowed
+  end
+
   pipeline :ingestion do
     plug Plug.Parsers,
       parsers: [:json],
