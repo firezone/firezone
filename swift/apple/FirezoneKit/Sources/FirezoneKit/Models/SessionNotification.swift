@@ -13,6 +13,7 @@ import UserNotifications
 
 public enum NotificationIndentifier: String {
   case sessionEndedNotificationCategory
+  case administratorActionRequiredNotificationCategory
   case signInNotificationAction
   case dismissNotificationAction
 }
@@ -38,14 +39,26 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
         title: "Dismiss",
         options: [])
 
-      let certificateExpiryCategory = UNNotificationCategory(
+      let sessionEndedCategory = UNNotificationCategory(
         identifier: NotificationIndentifier.sessionEndedNotificationCategory.rawValue,
         actions: [signInAction, dismissAction],
         intentIdentifiers: [],
         hiddenPreviewsBodyPlaceholder: "",
         options: [])
 
-      notificationCenter.setNotificationCategories([certificateExpiryCategory])
+      // A certificate session offers no sign-in, so this category only dismisses.
+      let administratorActionRequiredCategory = UNNotificationCategory(
+        identifier: NotificationIndentifier.administratorActionRequiredNotificationCategory
+          .rawValue,
+        actions: [dismissAction],
+        intentIdentifiers: [],
+        hiddenPreviewsBodyPlaceholder: "",
+        options: [])
+
+      notificationCenter.setNotificationCategories([
+        sessionEndedCategory,
+        administratorActionRequiredCategory,
+      ])
     #endif
   }
 
@@ -123,6 +136,34 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
         }
       }
     }
+    /// Tells the user a certificate-authenticated session ended and who can fix it.
+    nonisolated public static func showCertificateFailureNotificationiOS(_ message: String) {
+      UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
+        guard notificationSettings.authorizationStatus == .authorized else {
+          Log.warning("Cannot show the certificate failure notification: notifications denied")
+          return
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Your Firezone session has ended"
+        content.body = "\(message)\n\nContact your administrator for support."
+        content.sound = .default
+        content.categoryIdentifier =
+          NotificationIndentifier.administratorActionRequiredNotificationCategory.rawValue
+        let request = UNNotificationRequest(
+          identifier: "FirezoneCertificateFailure",
+          content: content,
+          trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+          if let error {
+            Log.error(error)
+          } else {
+            Log.debug("Certificate failure notification requested")
+          }
+        }
+      }
+    }
   #elseif os(macOS)
     // In macOS, use a Cocoa alert.
     // This gets called from the app side.
@@ -136,8 +177,11 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
     }
 
     @MainActor
-    public func showDisconnectedAlertMacOS(_ message: String?) async {
-      await MacOSAlert.showDisconnectedAlert(message)
+    public func showDisconnectedAlertMacOS(
+      _ message: String?,
+      authenticationMode: SessionAuthenticationMode
+    ) async {
+      await MacOSAlert.showDisconnectedAlert(message, authenticationMode: authenticationMode)
     }
 
     @MainActor
