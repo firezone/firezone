@@ -1328,6 +1328,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "client-tls"
+version = "0.1.0"
+dependencies = [
+ "rustls",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "clipboard-win"
 version = "5.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -10,6 +10,7 @@ members = [
     "libs/backoff",
     "libs/bin-shared",
     "libs/client-shared",
+    "libs/client-tls",
     "libs/clock",
     "libs/connlib/bootstrap-dns-client",
     "libs/connlib/bufferpool",
@@ -90,6 +91,7 @@ caps = "0.5.6"
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 clap = "4.6.1"
 client-shared = { path = "libs/client-shared" }
+client-tls = { path = "libs/client-tls" }
 clock = { path = "libs/clock" }
 connlib-model = { path = "libs/connlib/model" }
 crc32fast = "1.5.0"
@@ -186,6 +188,7 @@ roxmltree = "0.21.1"
 rpassword = "7.5.3"
 rtnetlink = { version = "0.21.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.40", default-features = false, features = ["ring"] }
+rustls-native-certs = "0.8.1"
 rustls-pki-types = "1.14.1"
 rustls-platform-verifier = "0.7.0"
 sadness-generator = "0.7.0"
