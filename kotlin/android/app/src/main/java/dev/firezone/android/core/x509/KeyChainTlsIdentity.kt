@@ -61,12 +61,19 @@ internal class KeyChainTlsIdentity(
          */
         internal fun signatureSchemes(publicKey: PublicKey): List<TlsSignatureScheme> =
             when (publicKey) {
-                is RSAPublicKey -> rsaSchemes(publicKey.modulus.bitLength())
-                is ECPublicKey -> ecdsaSchemes(publicKey.params.curve.field.fieldSize)
-                else ->
+                is RSAPublicKey -> {
+                    rsaSchemes(publicKey.modulus.bitLength())
+                }
+
+                is ECPublicKey -> {
+                    ecdsaSchemes(publicKey.params.curve.field.fieldSize)
+                }
+
+                else -> {
                     throw X509IdentityException(
                         "The certificate holds a ${publicKey.algorithm} key, which cannot sign a TLS handshake.",
                     )
+                }
             }
 
         /**
@@ -96,13 +103,23 @@ internal class KeyChainTlsIdentity(
          */
         private fun ecdsaSchemes(fieldSizeBits: Int): List<TlsSignatureScheme> =
             when (fieldSizeBits) {
-                256 -> listOf(TlsSignatureScheme.ECDSA_NISTP256_SHA256)
-                384 -> listOf(TlsSignatureScheme.ECDSA_NISTP384_SHA384)
-                521 -> listOf(TlsSignatureScheme.ECDSA_NISTP521_SHA512)
-                else ->
+                256 -> {
+                    listOf(TlsSignatureScheme.ECDSA_NISTP256_SHA256)
+                }
+
+                384 -> {
+                    listOf(TlsSignatureScheme.ECDSA_NISTP384_SHA384)
+                }
+
+                521 -> {
+                    listOf(TlsSignatureScheme.ECDSA_NISTP521_SHA512)
+                }
+
+                else -> {
                     throw X509IdentityException(
                         "The certificate holds an EC key on an unsupported $fieldSizeBits-bit curve.",
                     )
+                }
             }
 
         /** Signs [message] with [privateKey] the way [scheme] prescribes. */
@@ -120,21 +137,41 @@ internal class KeyChainTlsIdentity(
         /** A [Signature] configured for [scheme], ready to be initialised with a key. */
         internal fun signature(scheme: TlsSignatureScheme): Signature =
             when (scheme) {
-                TlsSignatureScheme.RSA_PKCS1_SHA256 -> Signature.getInstance("SHA256withRSA")
-                TlsSignatureScheme.RSA_PKCS1_SHA384 -> Signature.getInstance("SHA384withRSA")
-                TlsSignatureScheme.RSA_PKCS1_SHA512 -> Signature.getInstance("SHA512withRSA")
-                TlsSignatureScheme.RSA_PSS_SHA256 ->
+                TlsSignatureScheme.RSA_PKCS1_SHA256 -> {
+                    Signature.getInstance("SHA256withRSA")
+                }
+
+                TlsSignatureScheme.RSA_PKCS1_SHA384 -> {
+                    Signature.getInstance("SHA384withRSA")
+                }
+
+                TlsSignatureScheme.RSA_PKCS1_SHA512 -> {
+                    Signature.getInstance("SHA512withRSA")
+                }
+
+                TlsSignatureScheme.RSA_PSS_SHA256 -> {
                     pssSignature("SHA256withRSA/PSS", "SHA-256", MGF1ParameterSpec.SHA256, saltLength = 32)
+                }
 
-                TlsSignatureScheme.RSA_PSS_SHA384 ->
+                TlsSignatureScheme.RSA_PSS_SHA384 -> {
                     pssSignature("SHA384withRSA/PSS", "SHA-384", MGF1ParameterSpec.SHA384, saltLength = 48)
+                }
 
-                TlsSignatureScheme.RSA_PSS_SHA512 ->
+                TlsSignatureScheme.RSA_PSS_SHA512 -> {
                     pssSignature("SHA512withRSA/PSS", "SHA-512", MGF1ParameterSpec.SHA512, saltLength = 64)
+                }
 
-                TlsSignatureScheme.ECDSA_NISTP256_SHA256 -> Signature.getInstance("SHA256withECDSA")
-                TlsSignatureScheme.ECDSA_NISTP384_SHA384 -> Signature.getInstance("SHA384withECDSA")
-                TlsSignatureScheme.ECDSA_NISTP521_SHA512 -> Signature.getInstance("SHA512withECDSA")
+                TlsSignatureScheme.ECDSA_NISTP256_SHA256 -> {
+                    Signature.getInstance("SHA256withECDSA")
+                }
+
+                TlsSignatureScheme.ECDSA_NISTP384_SHA384 -> {
+                    Signature.getInstance("SHA384withECDSA")
+                }
+
+                TlsSignatureScheme.ECDSA_NISTP521_SHA512 -> {
+                    Signature.getInstance("SHA512withECDSA")
+                }
             }
 
         /**
