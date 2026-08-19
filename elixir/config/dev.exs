@@ -225,7 +225,6 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
     "script-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/",
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self' firezone-fd0020211111:",
     "frame-ancestors 'none'"
   ],
   live_reload_frame_csp_policy: [
@@ -237,7 +236,6 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
     "frame-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self'",
     "frame-ancestors 'self'"
   ]
 

@@ -429,8 +429,6 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
     "script-src 'self' 'nonce-${nonce}'",
     "object-src 'none'",
     "base-uri 'self'",
-    # Client deep link: some browsers check form-action across post-submit redirects.
-    "form-action 'self' firezone-fd0020211111:",
     "frame-ancestors 'none'"
   ]
 

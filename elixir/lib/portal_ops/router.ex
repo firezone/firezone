@@ -11,7 +11,6 @@ defmodule PortalOps.Router do
          "connect-src 'self' ws: wss:; " <>
          "object-src 'none'; " <>
          "base-uri 'self'; " <>
-         "form-action 'self'; " <>
          "frame-ancestors 'none'"
 
   @secure_browser_headers PortalWeb.Plugs.PutSecurityHeaders.headers(@csp)
