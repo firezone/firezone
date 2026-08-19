@@ -44,8 +44,11 @@ pub struct Controller<I: GuiIntegration> {
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
-    /// Everyone waiting on the keystore status the Tunnel service was last asked for.
-    x509_status_callbacks: Vec<oneshot::Sender<Result<x509_keystore::Status, String>>>,
+    /// What the Tunnel service last reported about the platform keystore.
+    ///
+    /// The service pushes this; we keep it so the GUI can be told again whenever it asks for the
+    /// current state, e.g. after a window reload.
+    x509_status: Option<x509_keystore::Status>,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
     ipc_rx: ipc::ClientRead<service::ServerMsg>,
     integration: I,
@@ -77,6 +80,7 @@ pub trait GuiIntegration {
         advanced_settings: AdvancedSettings,
     ) -> Result<()>;
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
+    fn notify_x509_status_changed(&self, status: &x509_keystore::Status) -> Result<()>;
 
     /// Also opens non-URLs
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
@@ -109,8 +113,6 @@ pub enum ControllerRequest {
     ResetGeneralSettings,
     /// Clear the GUI's logs and await the Tunnel service to clear its logs
     ClearLogs(oneshot::Sender<Result<(), String>>),
-    /// Inspect the platform keystore through the privileged Tunnel service
-    GetX509Status(oneshot::Sender<Result<x509_keystore::Status, String>>),
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
         path: PathBuf,
@@ -235,7 +237,7 @@ impl<I: GuiIntegration> Controller<I> {
             legacy_advanced_settings_path,
             auth,
             clear_logs_callback: None,
-            x509_status_callbacks: Vec::new(),
+            x509_status: None,
             ipc_client,
             ipc_rx,
             integration,
@@ -506,12 +508,6 @@ impl<I: GuiIntegration> Controller<I> {
                 self.send_ipc(&service::ClientMsg::ClearLogs).await?;
                 self.clear_logs_callback = Some(completion_tx);
             }
-            GetX509Status(completion_tx) => {
-                if self.x509_status_callbacks.is_empty() {
-                    self.send_ipc(&service::ClientMsg::GetX509Status).await?;
-                }
-                self.x509_status_callbacks.push(completion_tx);
-            }
             ExportLogs { path, stem } => {
                 // Exporting logs is a best-effort diagnostic action, so a failure must
                 // notify the user rather than bring down the whole controller.
@@ -635,6 +631,7 @@ impl<I: GuiIntegration> Controller<I> {
             }
             UpdateState => {
                 self.notify_settings_changed()?;
+                self.notify_x509_status_changed()?;
 
                 let file_count = logging::count_logs().await?;
                 self.integration.notify_logs_recounted(&file_count)?;
@@ -768,17 +765,14 @@ impl<I: GuiIntegration> Controller<I> {
                     .show_notification("Failed to save settings", &err)?;
             }
             service::ServerMsg::X509Status(result) => {
-                if self.x509_status_callbacks.is_empty() {
-                    return Err(anyhow!(
-                        "Received a keystore status without a pending GUI request"
-                    ));
+                match result {
+                    Ok(status) => self.x509_status = Some(status),
+                    // A keystore we cannot read is not a reason to bring the GUI down; the
+                    // diagnostics screen keeps showing whatever we last knew.
+                    Err(e) => tracing::warn!("Failed to read the platform keystore: {e}"),
                 }
 
-                for completion_tx in std::mem::take(&mut self.x509_status_callbacks) {
-                    // React's strict mode discards the first receiver while mounting the settings
-                    // page, so a dropped receiver is expected and must not fail the controller.
-                    let _ = completion_tx.send(result.clone());
-                }
+                self.notify_x509_status_changed()?;
             }
             service::ServerMsg::GatewayVersionMismatch { resource_id } => {
                 let (resource, site) = self.resource_by_id(resource_id)?;
@@ -1022,6 +1016,17 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
+    /// Tells the GUI what the keystore holds, if the Tunnel service has said so yet.
+    fn notify_x509_status_changed(&self) -> Result<()> {
+        let Some(status) = self.x509_status.as_ref() else {
+            return Ok(());
+        };
+
+        self.integration.notify_x509_status_changed(status)?;
+
+        Ok(())
+    }
+
     fn auth_url(&self) -> &Url {
         self.mdm_settings
             .auth_url
@@ -1149,39 +1154,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn coalesces_x509_status_requests_when_first_receiver_is_dropped() {
+    async fn forwards_the_pushed_x509_status_to_the_gui() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
         mock_tunnel.send_hello().await;
-
-        let (first_tx, first_rx) = oneshot::channel();
-        let (second_tx, second_rx) = oneshot::channel();
-        test_controller
-            .ctrl_tx
-            .send(ControllerRequest::GetX509Status(first_tx))
-            .await
-            .unwrap();
-        test_controller
-            .ctrl_tx
-            .send(ControllerRequest::GetX509Status(second_tx))
-            .await
-            .unwrap();
-
-        assert!(
-            matches!(
-                mock_tunnel.rx.next().await.unwrap().unwrap(),
-                service::ClientMsg::GetX509Status
-            ),
-            "expected one keystore status request"
-        );
-        assert!(
-            tokio::time::timeout(Duration::from_millis(100), mock_tunnel.rx.next())
-                .await
-                .is_err(),
-            "the coalesced request should not send a second service message"
-        );
-        drop(first_rx);
 
         let expected = x509_keystore::Status {
             summary: "One identity is available.".to_owned(),
@@ -1193,7 +1170,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(second_rx.await.unwrap().unwrap(), expected);
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        assert_eq!(test_controller.integration().x509_statuses, vec![expected]);
     }
 
     #[tokio::test]
@@ -1564,6 +1543,7 @@ mod tests {
         general_settings: Vec<GeneralSettings>,
         advanced_settings: Vec<AdvancedSettings>,
         file_counts: Vec<FileCount>,
+        x509_statuses: Vec<x509_keystore::Status>,
         opened_urls: Vec<String>,
         tray_icons: Vec<system_tray::Icon>,
         tray_states: Vec<system_tray::AppState>,
@@ -1605,6 +1585,12 @@ mod tests {
 
         fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()> {
             self.lock().file_counts.push(file_count.clone());
+
+            Ok(())
+        }
+
+        fn notify_x509_status_changed(&self, status: &x509_keystore::Status) -> Result<()> {
+            self.lock().x509_statuses.push(status.clone());
 
             Ok(())
         }
