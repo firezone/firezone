@@ -22,11 +22,11 @@ runs:
     - name: Update package index
       if: ${{ inputs.update == 'true' }}
       shell: bash
-      run: sudo apt-get update
+      run: "$GITHUB_ACTION_PATH/retry.sh" apt-get update
     - name: Install packages
       shell: bash
       env:
         PACKAGES: ${{ inputs.packages }}
       run: |
         read -ra packages <<< "$PACKAGES"
-        sudo apt-get --yes install -- "${packages[@]}"
+        "$GITHUB_ACTION_PATH/retry.sh" apt-get --yes install -- "${packages[@]}"
