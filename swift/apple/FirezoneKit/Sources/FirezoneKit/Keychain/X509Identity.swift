@@ -129,6 +129,11 @@ public enum X509Identity {
     .rsaPssSha512, .rsaPssSha384, .rsaPssSha256, .rsaPkcs1Sha512, .rsaPkcs1Sha384, .rsaPkcs1Sha256,
   ]
 
+  // Bridged here rather than in the `case` patterns below, where `as String` would parse
+  // as a cast of the value being matched instead of a bridge of the constant.
+  private static let rsaKeyType = kSecAttrKeyTypeRSA as String
+  private static let ellipticCurveKeyType = kSecAttrKeyTypeECSECPrimeRandom as String
+
   /// Resolves the persistent keychain reference MDM stored on the VPN configuration.
   ///
   /// The reference is used verbatim rather than searching the keychain for a matching
@@ -242,9 +247,9 @@ public enum X509Identity {
 
     let candidates: [X509SignatureScheme]
     switch keyType {
-    case kSecAttrKeyTypeRSA as String:
+    case Self.rsaKeyType:
       candidates = Self.rsaSchemes
-    case kSecAttrKeyTypeECSECPrimeRandom as String:
+    case Self.ellipticCurveKeyType:
       switch sizeInBits {
       case 256: candidates = [.ecdsaNistp256Sha256]
       case 384: candidates = [.ecdsaNistp384Sha384]
