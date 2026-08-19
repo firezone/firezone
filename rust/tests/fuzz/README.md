@@ -16,6 +16,7 @@ Pull-request CI only replays these inputs, making fuzz regression and coverage c
 It never performs random coverage discovery.
 
 The nightly `fuzz-nightly.yml` workflow runs every target from `targets.json` on `main`, minimizes and repacks the grown corpora, refreshes their coverage baselines, and opens a bot PR per target, so a corpus that carries a crashing input only holds up its own review.
+Dispatching it manually takes an optional `target` input to work on one entry of `targets.json` instead of all of them, and on a branch other than `main` it pushes the result back to that branch instead of opening a PR.
 
 Tunnel inputs are decoded positionally with `arbitrary::Unstructured`.
 Changing the generator in `src/arb/` can therefore reinterpret existing inputs; after a substantial generator change, re-minimize and grow the corpus before updating the archive.
