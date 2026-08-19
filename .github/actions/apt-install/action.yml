@@ -22,7 +22,8 @@ runs:
     - name: Update package index
       if: ${{ inputs.update == 'true' }}
       shell: bash
-      run: "$GITHUB_ACTION_PATH/retry.sh" apt-get update
+      run: |
+        "$GITHUB_ACTION_PATH/retry.sh" apt-get update
     - name: Install packages
       shell: bash
       env:
