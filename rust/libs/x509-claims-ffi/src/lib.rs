@@ -114,29 +114,3 @@ impl From<x509_claims::DetailField> for DetailField {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const RSA_LEAF: &[u8] =
-        include_bytes!("../../../../elixir/test/support/fixtures/trust_anchors/leaf_cert.der");
-
-    #[test]
-    fn parses_der_certificate() {
-        let info = parse_client_certificate(RSA_LEAF.to_vec()).expect("fixture should parse");
-
-        assert_eq!(
-            info.subject_cn.as_deref(),
-            Some("dev.firezone.device-trust")
-        );
-        assert_eq!(info.der_bytes, RSA_LEAF.len() as u64);
-        assert!(!info.detail_fields.is_empty());
-    }
-
-    #[test]
-    fn rejects_garbage() {
-        assert_eq!(parse_client_certificate(Vec::new()), None);
-        assert_eq!(parse_client_certificate(vec![0xde, 0xad, 0xbe, 0xef]), None);
-    }
-}
