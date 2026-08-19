@@ -20,7 +20,7 @@ use x509_parser::prelude::{FromDer as _, X509Certificate};
 use super::*;
 
 #[test]
-#[ignore = "Requires Windows and writes to the CurrentUser certificate store"]
+#[ignore = "Writes to the CurrentUser certificate store"]
 fn signs_with_the_cng_key_of_an_rsa_certificate() {
     let _serialized = serialize_certificate_store_access();
     let subject_cn = unique_subject_cn("rsa");
@@ -36,7 +36,7 @@ fn signs_with_the_cng_key_of_an_rsa_certificate() {
 }
 
 #[test]
-#[ignore = "Requires Windows and writes to the CurrentUser certificate store"]
+#[ignore = "Writes to the CurrentUser certificate store"]
 fn signs_with_the_cng_key_of_an_ecdsa_certificate() {
     let _serialized = serialize_certificate_store_access();
     let subject_cn = unique_subject_cn("ecdsa");
@@ -56,7 +56,7 @@ fn signs_with_the_cng_key_of_an_ecdsa_certificate() {
 }
 
 #[test]
-#[ignore = "Requires Windows and writes to the CurrentUser certificate store"]
+#[ignore = "Writes to the CurrentUser certificate store"]
 fn describes_a_minted_certificate_in_the_diagnostics() {
     let _serialized = serialize_certificate_store_access();
     let subject_cn = unique_subject_cn("status");
@@ -101,7 +101,7 @@ fn describes_a_minted_certificate_in_the_diagnostics() {
 }
 
 #[test]
-#[ignore = "Requires Windows and reads the CurrentUser certificate store"]
+#[ignore = "Reads the CurrentUser certificate store"]
 fn reports_no_identity_when_no_certificate_matches() {
     let _serialized = serialize_certificate_store_access();
     let subject_cn = unique_subject_cn("absent");
