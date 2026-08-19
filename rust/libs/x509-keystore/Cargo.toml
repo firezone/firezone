@@ -21,5 +21,10 @@ windows = { workspace = true, features = [
 ] }
 windows-core = { workspace = true }
 
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+base64 = { workspace = true, features = ["std"] }
+ring = { workspace = true }
+x509-parser = { workspace = true }
+
 [lints]
 workspace = true
