@@ -15,7 +15,7 @@ import Security
 /// Mirrors `TlsSignatureScheme` of the connlib bindings. FirezoneKit is a Swift package
 /// and cannot see those bindings, which are compiled into the app and Network Extension
 /// targets, so the Network Extension translates between the two.
-public enum X509SignatureScheme: CaseIterable, Sendable {
+public enum X509SignatureScheme: Sendable {
   case rsaPkcs1Sha256
   case rsaPkcs1Sha384
   case rsaPkcs1Sha512
@@ -52,16 +52,13 @@ public enum X509IdentityError: LocalizedError {
   public var errorDescription: String? {
     switch self {
     case .keychainLookup(let status):
-      return
-        "The VPN certificate could not be read from the keychain (\(Self.describe(status)))."
+      return "The VPN certificate could not be read from the keychain (\(Self.describe(status)))."
     case .notAnIdentity:
       return "The VPN certificate reference did not resolve to a keychain identity."
     case .copyCertificate(let status):
-      return
-        "The certificate could not be read from the VPN identity (\(Self.describe(status)))."
+      return "The certificate could not be read from the VPN identity (\(Self.describe(status)))."
     case .copyPrivateKey(let status):
-      return
-        "The private key could not be opened for mutual TLS (\(Self.describe(status)))."
+      return "The private key could not be opened for mutual TLS (\(Self.describe(status)))."
     case .unsupportedPrivateKey(let type, let sizeInBits):
       let size = sizeInBits.map { ", \($0) bits" } ?? ""
       return "The VPN identity uses an unsupported private key (\(type)\(size))."
@@ -102,14 +99,12 @@ public final class X509ClientIdentity: @unchecked Sendable {
     }
 
     var error: Unmanaged<CFError>?
-    guard
-      let signature = SecKeyCreateSignature(privateKey, algorithm, message as CFData, &error)
-        as Data?
+    guard let signature = SecKeyCreateSignature(privateKey, algorithm, message as CFData, &error)
     else {
       throw X509IdentityError.signingFailed(Self.describe(error?.takeRetainedValue()))
     }
 
-    return signature
+    return signature as Data
   }
 
   private static func describe(_ error: CFError?) -> String {
@@ -129,6 +124,11 @@ public final class X509ClientIdentity: @unchecked Sendable {
 
 /// Loads the identity referenced by `NEVPNProtocol.identityReference`.
 public enum X509Identity {
+  /// PSS first: TLS 1.3 accepts only PSS, and TLS 1.2 accepts either padding.
+  private static let rsaSchemes: [X509SignatureScheme] = [
+    .rsaPssSha512, .rsaPssSha384, .rsaPssSha256, .rsaPkcs1Sha512, .rsaPkcs1Sha384, .rsaPkcs1Sha256,
+  ]
+
   /// Resolves the persistent keychain reference MDM stored on the VPN configuration.
   ///
   /// The reference is used verbatim rather than searching the keychain for a matching
@@ -242,11 +242,8 @@ public enum X509Identity {
     let candidates: [X509SignatureScheme]
     switch keyType {
     case kSecAttrKeyTypeRSA as String:
-      candidates = [
-        .rsaPssSha512, .rsaPssSha384, .rsaPssSha256,
-        .rsaPkcs1Sha512, .rsaPkcs1Sha384, .rsaPkcs1Sha256,
-      ]
-    case kSecAttrKeyTypeECSECPrimeRandom as String, kSecAttrKeyTypeEC as String:
+      candidates = Self.rsaSchemes
+    case kSecAttrKeyTypeECSECPrimeRandom as String:
       switch sizeInBits {
       case 256: candidates = [.ecdsaNistp256Sha256]
       case 384: candidates = [.ecdsaNistp384Sha384]

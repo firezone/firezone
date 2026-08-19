@@ -56,8 +56,7 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
         options: [])
 
       notificationCenter.setNotificationCategories([
-        sessionEndedCategory,
-        administratorActionRequiredCategory,
+        sessionEndedCategory, administratorActionRequiredCategory,
       ])
     #endif
   }
@@ -136,6 +135,7 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
         }
       }
     }
+
     /// Tells the user a certificate-authenticated session ended and who can fix it.
     nonisolated public static func showCertificateFailureNotificationiOS(_ message: String) {
       UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in

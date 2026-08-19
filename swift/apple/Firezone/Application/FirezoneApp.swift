@@ -33,10 +33,7 @@ struct FirezoneApp: App {
 
       return X509CertificateSummary(
         isCurrentlyValid: parsed.isCurrentlyValid,
-        actorEmail: parsed.actorEmail,
-        fields: parsed.detailFields.map {
-          X509CertificateField(label: $0.label, value: $0.value)
-        }
+        fields: parsed.detailFields.map { X509CertificateField(label: $0.label, value: $0.value) }
       )
     }
 
