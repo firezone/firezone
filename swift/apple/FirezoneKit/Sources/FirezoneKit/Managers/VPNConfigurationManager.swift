@@ -69,12 +69,18 @@ public final class NETunnelProviderManagerFactory: TunnelProviderManagerFactory 
 
 enum VPNConfigurationManagerError: Error {
   case managerNotInitialized
+  case managedConfigurationRepairDidNotPersist
+  case managedConfigurationRepairLostIdentity
   case savedProtocolConfigurationIsInvalid
 
   var localizedDescription: String {
     switch self {
     case .managerNotInitialized:
       return "NETunnelProviderManager is not yet initialized. Race condition?"
+    case .managedConfigurationRepairDidNotPersist:
+      return "The system extension identifier could not be saved to the managed VPN configuration."
+    case .managedConfigurationRepairLostIdentity:
+      return "The managed VPN configuration lost its client certificate while being repaired."
     case .savedProtocolConfigurationIsInvalid:
       return "Saved protocol configuration is invalid. Check types?"
     }
@@ -87,10 +93,18 @@ enum VPNConfigurationManagerError: Error {
 public final class VPNConfigurationManager {
   let manager: any TunnelProviderManager
 
+  /// Whether NetworkExtension handed us a configuration installed by a profile.
+  ///
+  /// There is no public managed flag. Profile-backed configurations may omit the
+  /// provider bundle identifier, and a client certificate reference only ever comes
+  /// from MDM because Firezone never writes one itself.
+  public let isManaged: Bool
+
   static let bundleDescription = "Firezone"
 
-  init(from manager: any TunnelProviderManager) {
+  init(from manager: any TunnelProviderManager, isManaged: Bool = false) {
     self.manager = manager
+    self.isManaged = isManaged
   }
 
   // Create and save a new VPN configuration in system Preferences
@@ -118,15 +132,66 @@ public final class VPNConfigurationManager {
   public static func load(using factory: TunnelProviderManagerFactory) async throws
     -> VPNConfigurationManager?
   {
-    // loadAllFromPreferences() returns list of VPN configurations created by our main app's bundle ID.
-    // Since our bundle ID can change (by us), find the one that's current and ignore the others.
-    let managers = try await factory.loadAllFromPreferences()
+    try await load(
+      using: factory,
+      providerBundleIdentifier: NETunnelProviderManager.extensionBundleIdentifier)
+  }
 
-    for manager in managers where manager.localizedDescription == bundleDescription {
-      return VPNConfigurationManager(from: manager)
+  /// A candidate configuration and what we could learn about where it came from.
+  private struct Candidate {
+    let manager: any TunnelProviderManager
+    let hasIdentityReference: Bool
+    let isManaged: Bool
+  }
+
+  static func load(
+    using factory: TunnelProviderManagerFactory,
+    providerBundleIdentifier: String
+  ) async throws -> VPNConfigurationManager? {
+    // MDM chooses the user-visible description, so it cannot identify our configuration.
+    // The provider bundle identifier is the stable link between both app-created and
+    // MDM-installed configurations and our extension.
+    let managers = try await factory.loadAllFromPreferences()
+    let candidates = managers.compactMap { manager -> Candidate? in
+      guard let configuration = manager.protocolConfiguration as? NETunnelProviderProtocol
+      else { return nil }
+
+      // A com.apple.vpn.managed payload can leave this unset even though
+      // loadAllFromPreferences returned the configuration for us: NetworkExtension
+      // associated it with this app through the payload's VPNSubType. Our own
+      // initializer always sets it.
+      if let configured = configuration.providerBundleIdentifier,
+        configured != providerBundleIdentifier
+      {
+        return nil
+      }
+
+      let hasIdentityReference = configuration.identityReference != nil
+
+      return Candidate(
+        manager: manager,
+        hasIdentityReference: hasIdentityReference,
+        isManaged: configuration.providerBundleIdentifier == nil || hasIdentityReference
+      )
     }
 
-    return nil
+    guard let selected = candidates.first(where: \.hasIdentityReference) ?? candidates.first
+    else {
+      Log.info("No Firezone VPN configuration was found")
+      return nil
+    }
+
+    if candidates.count > 1 {
+      Log.warning(
+        "Found \(candidates.count) Firezone VPN configurations; preferring one with a client certificate"
+      )
+    }
+
+    Log.info(
+      "Loaded the Firezone VPN configuration (managed=\(selected.isManaged), clientCertificate=\(selected.hasIdentityReference))"
+    )
+
+    return VPNConfigurationManager(from: selected.manager, isManaged: selected.isManaged)
   }
 
   // If another VPN is activated on the system, ours becomes disabled. This is provided so that we may call it before
@@ -137,6 +202,10 @@ public final class VPNConfigurationManager {
   // that happened, so a needless save from the headless client leaves the app talking
   // to a configuration the system has already replaced.
   public func enable() async throws {
+    #if os(macOS)
+      try await repairManagedSystemExtensionConfigurationIfNeeded()
+    #endif
+
     guard !manager.isEnabled else { return }
 
     manager.isEnabled = true
@@ -150,6 +219,23 @@ public final class VPNConfigurationManager {
 
   func loadConfiguration(into configuration: Configuration, userDefaults: UserDefaults) async throws
   {
+    // Repair before Store attaches its observers: saving and reloading the manager can
+    // replace the tunnel session those observers would otherwise be watching.
+    #if os(macOS)
+      try await repairManagedSystemExtensionConfigurationIfNeeded()
+    #endif
+
+    configuration.setVPNConfigurationManaged(isManaged)
+
+    if isManaged {
+      // The profile is the source of truth. Neither migrate legacy UserDefaults into
+      // it nor normalize its stored settings back into it.
+      configuration.loadProviderConfiguration(try providerConfiguration())
+      Log.info("Loaded read-only settings from the managed VPN profile")
+
+      return
+    }
+
     try await ConfigurationMigrator.migrateUserDefaultsIfNeeded(
       userDefaults: userDefaults,
       vpnConfigurationManager: self
@@ -224,7 +310,79 @@ public final class VPNConfigurationManager {
     return providerConfiguration
   }
 
+  /// The persistent keychain reference to the client identity, installed by MDM.
+  public func identityReference() throws -> Data? {
+    guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol
+    else {
+      throw VPNConfigurationManagerError.savedProtocolConfigurationIsInvalid
+    }
+
+    return protocolConfiguration.identityReference
+  }
+
+  #if os(macOS)
+    /// Adds the system-extension link that some MDM-generated VPN payloads omit.
+    ///
+    /// Everything else in the profile stays as the administrator wrote it. In particular
+    /// the client identity reference is preserved rather than rediscovered through a
+    /// keychain query, which could pick the wrong certificate.
+    func repairManagedSystemExtensionConfigurationIfNeeded(
+      providerBundleIdentifier configuredProviderBundleIdentifier: String? = nil
+    ) async throws {
+      guard isManaged else { return }
+
+      guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol
+      else {
+        throw VPNConfigurationManagerError.savedProtocolConfigurationIsInvalid
+      }
+
+      guard protocolConfiguration.providerBundleIdentifier == nil else { return }
+
+      guard let identityReference = protocolConfiguration.identityReference else {
+        Log.warning(
+          "The managed VPN configuration has neither a provider bundle identifier nor a client certificate; leaving it alone"
+        )
+
+        return
+      }
+
+      // Resolved only once a repair is needed: Bundle.main has no identifier when
+      // FirezoneKit is hosted by `swift test`.
+      let providerBundleIdentifier =
+        configuredProviderBundleIdentifier ?? VPNConfigurationManager.bundleIdentifier
+
+      Log.warning(
+        "Repairing the managed VPN configuration with the system extension identifier \(providerBundleIdentifier)"
+      )
+
+      protocolConfiguration.providerBundleIdentifier = providerBundleIdentifier
+      manager.protocolConfiguration = protocolConfiguration
+
+      try await manager.saveToPreferences()
+      try await manager.loadFromPreferences()
+
+      guard
+        let saved = manager.protocolConfiguration as? NETunnelProviderProtocol,
+        saved.providerBundleIdentifier == providerBundleIdentifier
+      else {
+        throw VPNConfigurationManagerError.managedConfigurationRepairDidNotPersist
+      }
+
+      guard saved.identityReference == identityReference else {
+        throw VPNConfigurationManagerError.managedConfigurationRepairLostIdentity
+      }
+
+      Log.info("Repaired the managed VPN configuration; its client certificate is intact")
+    }
+  #endif
+
   func save(providerConfiguration newProviderConfiguration: [String: String]) async throws {
+    guard !isManaged else {
+      Log.warning("Not writing settings back to the MDM-managed VPN profile")
+
+      return
+    }
+
     guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol
     else {
       throw VPNConfigurationManagerError.savedProtocolConfigurationIsInvalid
