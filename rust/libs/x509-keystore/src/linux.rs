@@ -1,5 +1,8 @@
 //! X.509 client identities held by a PKCS#11 token.
 
+#[cfg(test)]
+mod tests;
+
 use std::{path::PathBuf, sync::Arc, time::SystemTime};
 
 use anyhow::{Context as _, ErrorExt as _, Result, anyhow, bail};
@@ -722,55 +725,4 @@ fn percent_decode(input: &str) -> Result<String> {
     let decoded = String::from_utf8(output).context("PKCS#11 URI component is not UTF-8")?;
 
     Ok(decoded)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_pkcs11_uri() {
-        let uri = "pkcs11:token=Firezone;object=device%20identity?module-path=/usr/lib/libpkcs11.so&pin-source=file:/etc/firezone/pin";
-
-        let parsed = Pkcs11Uri::parse(uri).expect("URI should be valid");
-
-        assert_eq!(parsed.module_path, PathBuf::from("/usr/lib/libpkcs11.so"));
-        assert_eq!(parsed.token_label.as_deref(), Some("Firezone"));
-        assert_eq!(parsed.object_label.as_deref(), Some("device identity"));
-        assert_eq!(parsed.pin_source.as_deref(), Some("file:/etc/firezone/pin"));
-    }
-
-    #[test]
-    fn rejects_inline_pin_and_missing_module() {
-        assert!(Pkcs11Uri::parse("pkcs11:token=Firezone?pin-value=1234").is_err());
-        assert!(Pkcs11Uri::parse("pkcs11:token=Firezone").is_err());
-    }
-
-    #[test]
-    fn names_the_cause_behind_a_token_failure() {
-        assert!(matches!(
-            classify_return_value(RvError::DeviceRemoved, String::new()),
-            SigningError::KeyUnavailable(_)
-        ));
-        assert!(matches!(
-            classify_return_value(RvError::PinLocked, String::new()),
-            SigningError::AccessDenied(_)
-        ));
-        assert!(matches!(
-            classify_return_value(RvError::DeviceError, String::new()),
-            SigningError::Keystore(_)
-        ));
-    }
-
-    #[test]
-    fn ecdsa_signature_is_der_encoded() {
-        let mut raw = vec![0; 64];
-        raw[31] = 1;
-        raw[63] = 2;
-
-        assert_eq!(
-            der_encode_ecdsa_signature(&raw).expect("signature should encode"),
-            vec![0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02]
-        );
-    }
 }
