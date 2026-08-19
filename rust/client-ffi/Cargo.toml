@@ -37,6 +37,7 @@ tun = { workspace = true }
 tunnel-bypass-resolver = { workspace = true }
 uniffi = { workspace = true }
 x509-claims-ffi = { workspace = true }
+x509-credential = { workspace = true }
 
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 oslog = { version = "0.2.0", default-features = false }
