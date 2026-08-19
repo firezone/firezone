@@ -118,12 +118,16 @@ impl From<anyhow::Error> for DisconnectError {
 }
 
 impl DisconnectError {
-    pub fn is_authentication_error(&self) -> bool {
+    /// Returns whether the stored token must be discarded and the user sent through sign-in again.
+    ///
+    /// This does not report whether the failure was authentication-related in general.
+    /// Only failures that render the token itself unusable require a new sign-in.
+    pub fn requires_sign_in(&self) -> bool {
         let Some(e) = self.0.any_downcast_ref::<phoenix_channel::Error>() else {
             return false;
         };
 
-        e.is_authentication_error()
+        e.requires_sign_in()
     }
 }
 
@@ -200,7 +204,7 @@ impl Eventloop {
                     return Ok(());
                 }
                 Err(e) => {
-                    if !e.is_authentication_error() {
+                    if !e.requires_sign_in() {
                         tracing::error!("Fatal tunnel error: {e:#}");
                     }
 

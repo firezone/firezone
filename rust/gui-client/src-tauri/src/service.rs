@@ -92,7 +92,7 @@ pub enum ServerMsg {
     DisconnectedGracefully,
     OnDisconnect {
         error_msg: String,
-        is_authentication_error: bool,
+        requires_sign_in: bool,
     },
     AllGatewaysOffline {
         resource_id: ResourceId,
@@ -597,7 +597,7 @@ impl<'a> Handler<'a> {
                 self.dns_controller.deactivate()?;
                 self.send_ipc(ServerMsg::OnDisconnect {
                     error_msg: error.to_string(),
-                    is_authentication_error: error.is_authentication_error(),
+                    requires_sign_in: error.requires_sign_in(),
                 })
                 .await?
             }

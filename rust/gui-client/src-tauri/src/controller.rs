@@ -675,10 +675,10 @@ impl<I: GuiIntegration> Controller<I> {
             }
             service::ServerMsg::OnDisconnect {
                 error_msg,
-                is_authentication_error,
+                requires_sign_in,
             } => {
                 self.sign_out().await?;
-                if is_authentication_error {
+                if requires_sign_in {
                     tracing::info!(?error_msg, "Auth error");
                     self.integration.show_notification(
                         "Firezone disconnected",

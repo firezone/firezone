@@ -187,8 +187,12 @@ impl DisconnectError {
         self.0.to_string()
     }
 
-    pub fn is_authentication_error(&self) -> bool {
-        self.0.is_authentication_error()
+    /// Returns whether the stored token must be discarded and the user sent through sign-in again.
+    ///
+    /// This does not report whether the failure was authentication-related in general.
+    /// Only failures that render the token itself unusable require a new sign-in.
+    pub fn requires_sign_in(&self) -> bool {
+        self.0.requires_sign_in()
     }
 }
 
