@@ -5,6 +5,7 @@
 - `ip-packet` — parses and mutates a single IP packet through `ip-packet`'s API.
 - `relay-proto`: drives the relay's message handling with arbitrary datagrams, repairing the nonce and HMAC on request so the authenticated path is reachable.
 - `tunnel-proto` — drives the connlib tunnel state machine with a reference model and system-under-test harness.
+- `x509-claims` parses arbitrary DER as a client identity certificate and exercises everything derived from it.
 
 Every fuzz target is listed in `targets.json` and has the same name as the crate whose coverage it tracks.
 This list drives both pull-request CI and the nightly discovery matrix.
