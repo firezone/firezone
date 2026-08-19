@@ -1,5 +1,8 @@
 defmodule PortalAPI.SocketsTest do
   use ExUnit.Case, async: true
+
+  import ExUnit.CaptureLog
+
   alias PortalAPI.Sockets
 
   describe "extract_token/2" do
@@ -82,7 +85,7 @@ defmodule PortalAPI.SocketsTest do
 
       assert result.status == 401
       assert json_body(result)["detail"] == "Invalid token"
-      assert_problem_json(result)
+      assert_problem_json(result, "invalid_token")
     end
 
     test "returns 401 for missing_token" do
@@ -92,7 +95,7 @@ defmodule PortalAPI.SocketsTest do
 
       assert result.status == 401
       assert json_body(result)["detail"] == "Missing token"
-      assert_problem_json(result)
+      assert_problem_json(result, "missing_token")
     end
 
     test "returns 402 for seats_limit_exceeded" do
@@ -106,7 +109,7 @@ defmodule PortalAPI.SocketsTest do
                "This account is temporarily suspended from client authentication " <>
                  "due to exceeding billing limits. Please contact your administrator to add more seats."
 
-      assert_problem_json(result)
+      assert_problem_json(result, "limits_exceeded")
     end
 
     test "returns 403 for account_disabled" do
@@ -116,7 +119,7 @@ defmodule PortalAPI.SocketsTest do
 
       assert result.status == 403
       assert json_body(result)["detail"] == "The account is disabled"
-      assert_problem_json(result)
+      assert_problem_json(result, "account_disabled")
     end
 
     test "returns 403 for unauthenticated" do
@@ -126,7 +129,47 @@ defmodule PortalAPI.SocketsTest do
 
       assert result.status == 403
       assert json_body(result)["detail"] == "Forbidden"
-      assert_problem_json(result)
+      assert_problem_json(result, "unauthenticated")
+    end
+
+    test "returns 403 for device_untrusted" do
+      conn = Plug.Test.conn(:get, "/")
+
+      result = Sockets.handle_error(conn, :device_untrusted)
+
+      assert result.status == 403
+      assert json_body(result)["detail"] =~ "did not present a valid certificate"
+      assert_problem_json(result, "device_untrusted")
+    end
+
+    test "returns 403 for certificate_revoked" do
+      conn = Plug.Test.conn(:get, "/")
+
+      result = Sockets.handle_error(conn, :certificate_revoked)
+
+      assert result.status == 403
+      assert json_body(result)["detail"] =~ "has been revoked"
+      assert_problem_json(result, "certificate_revoked")
+    end
+
+    test "returns 409 for device_identity_conflict" do
+      conn = Plug.Test.conn(:get, "/")
+
+      result = Sockets.handle_error(conn, :device_identity_conflict)
+
+      assert result.status == 409
+      assert json_body(result)["detail"] =~ "reports different hardware"
+      assert_problem_json(result, "device_identity_conflict")
+    end
+
+    test "returns 409 for conflict" do
+      conn = Plug.Test.conn(:get, "/")
+
+      result = Sockets.handle_error(conn, :conflict)
+
+      assert result.status == 409
+      assert json_body(result)["detail"] == "A gateway with this ID is already connected"
+      assert_problem_json(result, "gateway_already_connected")
     end
 
     test "returns 503 with retry-after header for rate_limit" do
@@ -137,7 +180,7 @@ defmodule PortalAPI.SocketsTest do
       assert result.status == 503
       assert json_body(result)["detail"] == "Service Unavailable"
       assert Plug.Conn.get_resp_header(result, "retry-after") == ["1"]
-      assert_problem_json(result)
+      assert_problem_json(result, "rate_limit")
     end
 
     test "returns 400 with changeset errors" do
@@ -152,18 +195,31 @@ defmodule PortalAPI.SocketsTest do
 
       assert result.status == 400
       assert json_body(result)["detail"] =~ "name"
-      assert_problem_json(result)
+      assert_problem_json(result, "invalid_connect_params")
+    end
+
+    test "returns 500 and logs for an unhandled reason" do
+      conn = Plug.Test.conn(:get, "/")
+
+      {result, log} = with_log(fn -> Sockets.handle_error(conn, :some_new_reason) end)
+
+      assert result.status == 500
+      assert json_body(result)["detail"] == "An unexpected error occurred."
+      assert_problem_json(result, "unhandled_connect_error")
+      assert log =~ "Unhandled socket connect error"
+      assert log =~ "some_new_reason"
     end
   end
 
   defp json_body(conn), do: JSON.decode!(conn.resp_body)
 
-  defp assert_problem_json(conn) do
+  defp assert_problem_json(conn, code) do
     [content_type] = Plug.Conn.get_resp_header(conn, "content-type")
     assert content_type =~ "application/problem+json"
     body = json_body(conn)
     assert body["type"] == "about:blank"
-    assert is_integer(body["status"])
+    assert body["code"] == code
+    assert body["status"] == conn.status
     assert is_binary(body["title"])
   end
 end

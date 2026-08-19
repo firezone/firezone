@@ -22,59 +22,75 @@ defmodule PortalAPI.Sockets do
   end
 
   def handle_error(conn, :invalid_token),
-    do: ProblemDetails.send(conn, 401, "Invalid token")
+    do: ProblemDetails.send_with_code(conn, 401, :invalid_token, "Invalid token")
 
   def handle_error(conn, :missing_token),
-    do: ProblemDetails.send(conn, 401, "Missing token")
+    do: ProblemDetails.send_with_code(conn, 401, :missing_token, "Missing token")
 
   def handle_error(conn, :limits_exceeded),
     do:
-      ProblemDetails.send(
+      ProblemDetails.send_with_code(
         conn,
         402,
+        :limits_exceeded,
         "This account is temporarily suspended from client authentication " <>
           "due to exceeding billing limits. Please contact your administrator to add more seats."
       )
 
   def handle_error(conn, :account_disabled),
-    do: ProblemDetails.send(conn, 403, "The account is disabled")
+    do: ProblemDetails.send_with_code(conn, 403, :account_disabled, "The account is disabled")
 
   def handle_error(conn, :unauthenticated),
-    do: ProblemDetails.send(conn, 403, "Forbidden")
+    do: ProblemDetails.send_with_code(conn, 403, :unauthenticated, "Forbidden")
 
   def handle_error(conn, :device_untrusted),
     do:
-      ProblemDetails.send(
+      ProblemDetails.send_with_code(
         conn,
         403,
+        :device_untrusted,
         "This device did not present a valid certificate from a certificate authority " <>
           "your organization trusts. Please contact your administrator."
       )
 
   def handle_error(conn, :certificate_revoked),
     do:
-      ProblemDetails.send(
+      ProblemDetails.send_with_code(
         conn,
         403,
+        :certificate_revoked,
         "This device's certificate has been revoked by your organization's certificate " <>
           "authority. Please contact your administrator."
       )
 
   def handle_error(conn, :device_identity_conflict),
     do:
-      ProblemDetails.send(
+      ProblemDetails.send_with_code(
         conn,
         409,
+        :device_identity_conflict,
         "This device's certificate reports different hardware than the device already " <>
           "registered under the same MDM device ID. Please contact your administrator."
       )
 
   def handle_error(conn, :conflict),
-    do: ProblemDetails.send(conn, 409, "A gateway with this ID is already connected")
+    do:
+      ProblemDetails.send_with_code(
+        conn,
+        409,
+        :gateway_already_connected,
+        "A gateway with this ID is already connected"
+      )
 
   def handle_error(conn, %Ecto.Changeset{} = changeset) do
     Logger.error("Invalid connection request", changeset: inspect(changeset))
-    ProblemDetails.send(conn, 400, changeset_error_detail(changeset))
+
+    ProblemDetails.send_with_code(
+      conn,
+      400,
+      :invalid_connect_params,
+      changeset_error_detail(changeset)
+    )
   end
 
   # We use 503 instead of 429 because connlib treats 429 as fatal until
@@ -85,7 +101,19 @@ defmodule PortalAPI.Sockets do
       "retry-after",
       Integer.to_string(PortalAPI.Sockets.RateLimit.retry_after_seconds())
     )
-    |> ProblemDetails.send(503, "Service Unavailable")
+    |> ProblemDetails.send_with_code(503, :rate_limit, "Service Unavailable")
+  end
+
+  # Must stay last so it cannot shadow the clauses above.
+  def handle_error(conn, reason) do
+    Logger.error("Unhandled socket connect error", reason: inspect(reason))
+
+    ProblemDetails.send_with_code(
+      conn,
+      500,
+      :unhandled_connect_error,
+      "An unexpected error occurred."
+    )
   end
 
   def auth_context(%{user_agent: user_agent, x_headers: x_headers, peer_data: peer_data}, type) do
