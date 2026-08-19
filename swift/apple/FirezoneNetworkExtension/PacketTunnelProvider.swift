@@ -85,14 +85,24 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let passedToken = options?["token"] as? String
 
     // Load token synchronously - Keychain access is thread-safe
-    guard let token = loadToken(passedToken: passedToken)
+    let token = loadToken(passedToken: passedToken)
+
+    // MDM installs the mutual-TLS identity on the VPN profile itself. When one is
+    // present it authenticates the session, so a token is no longer required.
+    let identityReference =
+      (protocolConfiguration as? NETunnelProviderProtocol)?.identityReference
+    Log.info(
+      "VPN client certificate "
+        + (identityReference.map { "is configured (\($0.count) bytes)" } ?? "is not configured"))
+
+    guard token != nil || identityReference != nil
     else {
       completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
       return
     }
 
     // Try to save the token back to the Keychain but continue if we can't
-    handleTokenSave(token)
+    if let token { handleTokenSave(token) }
 
     // The firezone id should be initialized by now
     guard let rawId = defaults.string(forKey: "firezoneId")
@@ -133,6 +143,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       deviceId: firezoneId.uuid,
       logFilter: logFilter,
       internetResourceEnabled: internetResourceEnabled,
+      identityReference: identityReference,
       providerCommandSender: commandSender
     )
 
