@@ -10,7 +10,9 @@ cd "${SCRIPT_DIR}/.."
 # writes, so it is often the only place the SDK location is recorded.
 sdk_dir="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 if [[ -z "$sdk_dir" && -f local.properties ]]; then
-    sdk_dir="$(awk '/^[[:space:]]*sdk\.dir[[:space:]]*=/ { sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); dir = $0 } END { print dir }' local.properties)"
+    # `Properties.load` unescapes the value, so `:`, `=` and `\` reach Gradle without
+    # the backslash Android Studio wrote them with.
+    sdk_dir="$(awk '/^[[:space:]]*sdk\.dir[[:space:]]*=/ { sub(/^[^=]*=[[:space:]]*/, ""); sub(/\r$/, ""); dir = $0 } END { print dir }' local.properties | sed 's/\\\(.\)/\1/g')"
 fi
 
 if [[ -z "$sdk_dir" ]]; then
