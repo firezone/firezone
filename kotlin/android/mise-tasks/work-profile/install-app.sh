@@ -23,16 +23,16 @@ user_id="$(require_work_profile_user)" || exit 1
 echo "==> Building the debug APK (${HOST_ABI} only)..."
 ./gradlew assembleDebug "-Pandroid.injected.build.abi=$HOST_ABI"
 
-# Newest rather than first: a stale APK from an earlier all-ABI build sorts ahead of the one that
-# was just built, and installing that is indistinguishable from the build not having taken effect.
-# The whole tree rather than the `debug` directory alone, so a flavour nesting it deeper still works.
+# `-Pandroid.injected.build.abi` is how Android Studio asks for a single-ABI deployable build, and
+# AGP leaves that APK under `intermediates` instead of copying it to `outputs`. Searching both, newest
+# first, is what stops a stale `outputs` APK from being installed over the one just built.
 # `-exec ... +` runs nothing when nothing matches, where piping into `xargs ls -t` would list the
 # working directory instead.
-apk="$(find app/build/outputs/apk -type f -name '*.apk' -exec ls -t {} + 2>/dev/null | head -1 || true)"
+apk="$(find app/build/intermediates/apk app/build/outputs/apk -type f -name '*.apk' -exec ls -t {} + 2>/dev/null | head -1 || true)"
 
 if [ -z "$apk" ]; then
-    echo "The build produced no APK under app/build/outputs/apk. What is there:" >&2
-    find app/build/outputs -maxdepth 3 2>/dev/null | sed 's/^/    /' >&2 || true
+    echo "The build produced no APK under app/build. What is there:" >&2
+    find app/build/intermediates/apk app/build/outputs/apk 2>/dev/null | sed 's/^/    /' >&2 || true
     exit 1
 fi
 
