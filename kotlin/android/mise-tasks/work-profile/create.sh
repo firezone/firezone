@@ -15,6 +15,8 @@ set -euo pipefail
 #     cd android-testdpc && ./gradlew assembleDebug
 #     export TESTDPC_APK="$PWD/app/build/outputs/apk/debug/TestDPC-debug.apk"
 #
+# 'work-profile:build-dpc' does that for you and leaves the APK where this task looks by default.
+#
 # Any other DPC works too: override DPC_PACKAGE and DPC_RECEIVER to match it.
 DPC_PACKAGE="${DPC_PACKAGE:-com.afwsamples.testdpc}"
 DPC_RECEIVER="${DPC_RECEIVER:-com.afwsamples.testdpc.DeviceAdminReceiver}"
@@ -29,11 +31,18 @@ if ! command -v adb >/dev/null 2>&1; then
     exit 1
 fi
 
+TESTDPC_DIR="${TESTDPC_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/firezone/android-testdpc}"
+
 if [ -z "${TESTDPC_APK:-}" ]; then
-    echo "TESTDPC_APK is not set. Build TestDPC and point TESTDPC_APK at the APK:" >&2
-    echo "    git clone https://github.com/googlesamples/android-testdpc" >&2
-    echo "    cd android-testdpc && ./gradlew assembleDebug" >&2
-    echo "    export TESTDPC_APK=\"\$PWD/app/build/outputs/apk/debug/TestDPC-debug.apk\"" >&2
+    TESTDPC_APK="$(find "$TESTDPC_DIR/app/build/outputs/apk/debug" -name '*.apk' -type f -print0 2>/dev/null |
+        xargs -0 ls -t 2>/dev/null |
+        head -1)"
+fi
+
+if [ -z "${TESTDPC_APK:-}" ]; then
+    echo "No DPC to install. Build one:" >&2
+    echo "    mise run //kotlin/android:work-profile:build-dpc" >&2
+    echo "Or point TESTDPC_APK at an APK you built yourself." >&2
     exit 1
 fi
 
