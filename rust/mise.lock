@@ -213,6 +213,10 @@ url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-a
 checksum = "sha256:4aded3cddac80aed06db65bab1c3d8228c0608296d7fa4168ab0eb12f2022683"
 url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-apple-darwin.tar.xz"
 
+[tools."github:mozilla/dump_syms"."platforms.windows-arm64"]
+checksum = "sha256:bd42a87409c39be18709b788f793fcdbfe1fde79511404112358b18511bb24f8"
+url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-pc-windows-msvc.zip"
+
 [tools."github:mozilla/dump_syms"."platforms.windows-x64"]
 checksum = "sha256:bd42a87409c39be18709b788f793fcdbfe1fde79511404112358b18511bb24f8"
 url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-pc-windows-msvc.zip"

@@ -157,10 +157,6 @@ jobs:
       - uses: ./.github/actions/setup-tauri-v2
         # Installing new packages can take time
         timeout-minutes: 15
-      - uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
-        with:
-          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          organization: firezone-inc
       - name: Install pnpm deps
         run: pnpm install
       - uses: ./.github/actions/setup-azure-sign-tool
@@ -242,8 +238,15 @@ jobs:
 
       - name: Upload debug symbols to Sentry
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        # `matbour/setup-sentry-cli` has no `win32/arm64` build, so the CLI
+        # comes from npm here, which ships one for every runner we use.
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: firezone-inc
         shell: bash
-        run: ${{ env.SYMBOLS_SCRIPT }}
+        run: |
+          npm install --global @sentry/cli@3.6.2
+          ${{ env.SYMBOLS_SCRIPT }}
 
       - name: Upload Release Assets
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
