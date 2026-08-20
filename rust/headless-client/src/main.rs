@@ -373,6 +373,7 @@ fn try_main() -> Result<()> {
             device_uuid: device_info::uuid(),
             ..Default::default()
         },
+        None,
     )?;
 
     if cli.check {

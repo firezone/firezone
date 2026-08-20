@@ -17,6 +17,7 @@ libc = { workspace = true }
 logging = { workspace = true }
 os_info = { workspace = true }
 rand = { workspace = true }
+rustls = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -27,11 +28,14 @@ tokio = { workspace = true, features = ["net", "time"] }
 tracing = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["std", "v4"] }
+x509-credential = { workspace = true }
 
 [target.'cfg(not(system_certs))'.dependencies]
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
+webpki-roots = { workspace = true }
 
 [target.'cfg(system_certs)'.dependencies]
+rustls-native-certs = { workspace = true }
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-native-roots"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]

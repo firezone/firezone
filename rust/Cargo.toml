@@ -45,6 +45,7 @@ members = [
     "libs/telemetry",
     "libs/tunnel-bypass-resolver",
     "libs/windows-security",
+    "libs/x509-credential",
     "relay/ebpf-shared",
     "relay/ebpf-turn-router",
     "relay/proto",
@@ -186,6 +187,7 @@ roxmltree = "0.21.1"
 rpassword = "7.5.3"
 rtnetlink = { version = "0.21.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.40", default-features = false, features = ["ring"] }
+rustls-native-certs = "0.8.1"
 rustls-pki-types = "1.14.1"
 rustls-platform-verifier = "0.7.0"
 sadness-generator = "0.7.0"
@@ -258,6 +260,7 @@ windows-native-keyring-store = "1.1.0"
 windows-security = { path = "libs/windows-security" }
 windows-service = "0.8.1"
 winreg = "0.56.0"
+x509-credential = { path = "libs/x509-credential" }
 zbus = "5.15.0"
 zip = { version = "8.6.0", default-features = false }
 

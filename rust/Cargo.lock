@@ -5606,6 +5606,8 @@ dependencies = [
  "logging",
  "os_info",
  "rand 0.10.2",
+ "rustls",
+ "rustls-native-certs",
  "secrecy",
  "serde",
  "serde_json",
@@ -5617,6 +5619,8 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "webpki-roots 1.0.9",
+ "x509-credential",
 ]
 
 [[package]]
@@ -10195,6 +10199,14 @@ dependencies = [
  "getrandom 0.4.2",
  "rand_core 0.10.1",
  "zeroize",
+]
+
+[[package]]
+name = "x509-credential"
+version = "0.1.0"
+dependencies = [
+ "rustls",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

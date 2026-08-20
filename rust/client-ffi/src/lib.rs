@@ -568,6 +568,7 @@ fn connect(
         device_id.clone(),
         device_name,
         device_info,
+        None,
     )
     .context("Failed to create login URL")?;
 
