@@ -541,6 +541,90 @@ defmodule PortalAPI.Client.SocketTest do
       assert is_nil(socket.assigns.client.client_token_id)
     end
 
+    test "authenticates a service account from an X.509 actor ID claim", %{
+      account: account,
+      pki: pki
+    } do
+      actor = actor_fixture(account: account, type: :service_account)
+      provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, actor)
+        )
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.subject.actor.id == actor.id
+      assert socket.assigns.subject.actor.type == :service_account
+      assert socket.assigns.subject.credential.type == :x509
+      assert socket.assigns.subject.credential.auth_provider_id == provider.id
+      assert socket.assigns.client.attested?
+      assert is_nil(socket.assigns.client.client_token_id)
+    end
+
+    test "prefers an X.509 actor ID claim over an email claim", %{
+      account: account,
+      actor: email_actor,
+      pki: pki
+    } do
+      actor = actor_fixture(account: account, type: :service_account)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, actor, email_actor.email)
+        )
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.subject.actor.id == actor.id
+    end
+
+    test "does not fall back to email when an X.509 actor ID claim is invalid", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, %{id: "%ZZ"}, actor.email)
+        )
+
+      assert capture_log(fn ->
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :device_untrusted}
+             end) =~ "invalid_x509_identity"
+    end
+
+    test "scopes an X.509 actor ID claim to the claimed account", %{
+      account: account,
+      pki: pki
+    } do
+      other_account = account_fixture()
+      actor = actor_fixture(account: other_account, type: :service_account)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, actor)
+        )
+
+      log =
+        capture_log(fn ->
+          assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                   {:error, :x509_user_not_authorized}
+        end)
+
+      assert log =~ "x509_user_not_found"
+      assert log =~ "account_id=#{account.id}"
+      assert log =~ "actor_id=#{actor.id}"
+    end
+
     test "normalizes the certificate email before matching the actor", %{
       account: account,
       pki: pki
@@ -1473,6 +1557,26 @@ defmodule PortalAPI.Client.SocketTest do
         {:uniformResourceIdentifier, String.to_charlist("firezone://email/#{actor.email}")},
         {:uniformResourceIdentifier, ~c"firezone://serial/C02XK1ZGJGH5"}
       ]
+    )
+  end
+
+  defp x509_actor_id_cert(pki, account, actor, email \\ nil) do
+    email_sans =
+      if email do
+        [{:uniformResourceIdentifier, String.to_charlist("firezone://email/#{email}")}]
+      else
+        []
+      end
+
+    leaf(pki,
+      sans:
+        [
+          {:uniformResourceIdentifier,
+           String.to_charlist("firezone://account-id/#{account.id}")},
+          {:uniformResourceIdentifier, String.to_charlist("firezone://actor-id/#{actor.id}")}
+        ] ++
+          email_sans ++
+          [{:uniformResourceIdentifier, ~c"firezone://serial/C02XK1ZGJGH5"}]
     )
   end
 end
