@@ -49,10 +49,7 @@ internal class SignInFragment : Fragment(R.layout.fragment_sign_in) {
                         certificateUser
                             ?.let { getString(R.string.connect_as, it.email) }
                             ?: getString(R.string.sign_in)
-                    binding.tvSessionStatus.text =
-                        certificateUser
-                            ?.let { getString(R.string.disconnected_connect_as, it.email) }
-                            ?: getString(R.string.signed_out)
+                    binding.tvSessionStatus.text = getString(R.string.signed_out)
                 }
             }
         }
