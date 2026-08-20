@@ -92,8 +92,26 @@ ensure_system_image() {
     sdkmanager --sdk_root="$ANDROID_HOME" "$SYSTEM_IMAGE" >/dev/null
 }
 
+# An AVD outlives the image it was created with: uninstalling that image, or moving to a fresh SDK,
+# leaves the AVD pointing at a directory that is gone, which the emulator reports as a missing kernel.
+# The AVD records the image as a path relative to the SDK root, so reinstalling it is a rename away.
+reinstall_missing_system_image() {
+    local config sysdir
+    config="$ANDROID_USER_HOME/avd/${AVD_NAME}.avd/config.ini"
+    # An AVD kept somewhere else has no config.ini here, which is an answer rather than a failure.
+    sysdir="$(sed -n 's/^image\.sysdir\.1=//p' "$config" 2>/dev/null | tail -1 || true)"
+
+    if [ -z "$sysdir" ] || [ -d "$ANDROID_HOME/$sysdir" ]; then
+        return
+    fi
+
+    SYSTEM_IMAGE="$(echo "${sysdir%/}" | tr '/' ';')"
+    ensure_system_image
+}
+
 ensure_avd() {
     if avdmanager list avd 2>/dev/null | grep -qE "^\s*Name:\s+${AVD_NAME}\s*\$"; then
+        reinstall_missing_system_image
         return
     fi
 
