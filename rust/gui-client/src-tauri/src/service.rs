@@ -733,7 +733,7 @@ impl<'a> Handler<'a> {
                     if let Some(account_slug) = account_slug {
                         telemetry::set_account_slug(account_slug.clone());
 
-                        analytics::identify(release, Some(account_slug));
+                        analytics::identify(release, account_slug, None, None);
                     }
                 }
             }

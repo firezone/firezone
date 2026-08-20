@@ -419,7 +419,7 @@ impl Eventloop {
                 if let Some(account_slug) = account_slug {
                     telemetry::set_account_slug(account_slug.clone());
 
-                    analytics::identify(RELEASE.to_owned(), Some(account_slug))
+                    analytics::identify(RELEASE.to_owned(), account_slug, None, None)
                 }
 
                 tunnel

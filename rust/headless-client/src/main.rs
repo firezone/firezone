@@ -350,7 +350,7 @@ fn try_main() -> Result<()> {
         telemetry::start(cli.api_url.as_ref(), RELEASE, telemetry::HEADLESS_DSN);
         telemetry::set_firezone_id(firezone_id.clone());
 
-        analytics::identify(RELEASE.to_owned(), None);
+        analytics::identify(RELEASE.to_owned(), None, None, None);
     }
 
     tracing::info!(arch = std::env::consts::ARCH, version = VERSION);
