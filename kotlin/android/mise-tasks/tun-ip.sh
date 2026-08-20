@@ -2,12 +2,8 @@
 #MISE description="Print the Firezone tunnel IPv4/IPv6 of the connected Android device/emulator"
 set -euo pipefail
 
-ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
-export ANDROID_HOME
-export PATH="$ANDROID_HOME/platform-tools:$PATH"
-
 if ! command -v adb >/dev/null 2>&1; then
-    echo "adb not found in PATH. Run 'mise run setup' first." >&2
+    echo "adb not found. Run 'mise run //kotlin/android:setup-sdk' first." >&2
     exit 1
 fi
 

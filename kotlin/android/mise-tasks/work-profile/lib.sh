@@ -5,21 +5,18 @@
 # Sourced, never run: it carries no `#MISE description=` line and is not executable, so mise does not
 # offer it as a task, and it leaves `set -euo pipefail` to the task that sources it.
 
-# `ANDROID_SDK_ROOT` is the deprecated spelling of `ANDROID_HOME` that plenty of setups still export.
-android_home() {
-    ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
-    export ANDROID_HOME
-}
+# `kotlin/android/mise.toml` resolves `ANDROID_HOME` and puts the SDK's tool directories on `PATH`,
+# so a tool missing here is one the SDK does not have installed rather than one `PATH` cannot see.
+require_sdk_tool() {
+    local tool="$1"
 
-# `adb` ships with the SDK, which is not on `PATH` by default.
-require_adb() {
-    android_home
-    export PATH="$ANDROID_HOME/platform-tools:$PATH"
-
-    if ! command -v adb >/dev/null 2>&1; then
-        echo "adb not found in PATH. Run 'mise run setup' first." >&2
-        exit 1
+    if command -v "$tool" >/dev/null 2>&1; then
+        return
     fi
+
+    echo "${tool} not found under ${ANDROID_HOME:-the Android SDK}." >&2
+    echo "Install it with 'mise run //kotlin/android:setup-sdk'." >&2
+    exit 1
 }
 
 # The ABI to build for and to boot an emulator with. Fails on anything else so the caller can say
@@ -74,7 +71,11 @@ testdpc_dir() {
 # The artifact has been named TestDPC-debug.apk for years, but taking the newest APK under the debug
 # output directory survives a rename upstream.
 newest_testdpc_apk() {
-    find "$(testdpc_dir)/app/build/outputs/apk/debug" -name '*.apk' -type f -print0 2>/dev/null |
-        xargs -0 ls -t 2>/dev/null |
-        head -1
+    local debug_dir
+    debug_dir="$(testdpc_dir)/app/build/outputs/apk/debug"
+
+    # Nothing built yet is a normal state that the callers report themselves, so a missing directory
+    # or an unmatched glob is an empty answer rather than an error. A glob rather than `find`, whose
+    # `-printf` is GNU-only, piped into `xargs ls -t` lists the working directory when nothing matches.
+    ls -t "$debug_dir"/*.apk 2>/dev/null | head -1 || true
 }
