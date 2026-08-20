@@ -208,7 +208,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   override func stopTunnel(
     with reason: NEProviderStopReason, completionHandler: @escaping @Sendable () -> Void
   ) {
-    Log.log("stopTunnel: Reason: \(reason)")
+    Log.log("stopTunnel: Reason: \(Self.describe(reason))")
 
     logCleanupTask = nil
 
@@ -221,6 +221,36 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       await adapter?.stop()
       completionHandler()
     }
+  }
+
+  /// Names a stop reason, which otherwise logs as `NEProviderStopReason(rawValue: 1)`.
+  ///
+  /// `userInitiated` is the one worth recognising on sight: it means something asked the
+  /// session to stop rather than the tunnel failing, so the cause is in the app, not here.
+  private static func describe(_ reason: NEProviderStopReason) -> String {
+    let name =
+      switch reason {
+      case .none: "none"
+      case .userInitiated: "userInitiated"
+      case .providerFailed: "providerFailed"
+      case .noNetworkAvailable: "noNetworkAvailable"
+      case .unrecoverableNetworkChange: "unrecoverableNetworkChange"
+      case .providerDisabled: "providerDisabled"
+      case .authenticationCanceled: "authenticationCanceled"
+      case .configurationFailed: "configurationFailed"
+      case .idleTimeout: "idleTimeout"
+      case .configurationDisabled: "configurationDisabled"
+      case .configurationRemoved: "configurationRemoved"
+      case .superceded: "superceded"
+      case .userLogout: "userLogout"
+      case .userSwitch: "userSwitch"
+      case .connectionFailed: "connectionFailed"
+      case .sleep: "sleep"
+      case .appUpdate: "appUpdate"
+      @unknown default: "unknown"
+      }
+
+    return "\(name) (\(reason.rawValue))"
   }
 
   // It would be helpful to be able to encapsulate Errors here. To do that

@@ -316,28 +316,51 @@ public final class Store: ObservableObject {
       if vpnStatus == .disconnected {
         do {
           try manager().session()?.fetchLastDisconnectError { error in
-            if let nsError = error as NSError?,
-              nsError.domain == ConnlibError.errorDomain,
+            guard let error else { return }
+
+            // Logged before it is classified: every early return in the provider's
+            // `startTunnel` reports a `PacketTunnelProviderError`, which carries
+            // neither a reason nor an id and would otherwise be dropped silently.
+            Log.error(error)
+
+            let nsError = error as NSError
+
+            guard nsError.domain == ConnlibError.errorDomain,
               let code = ConnlibError.Code(rawValue: nsError.code),
               let reason = nsError.userInfo["reason"] as? String,
               let id = nsError.userInfo["id"] as? String
-            {
-              let authenticationMode = Store.authenticationMode(of: nsError)
+            else {
+              // Deduplicated on the error itself, since only connlib mints an id.
+              let id = "\(nsError.domain):\(nsError.code)"
+              let message = error.localizedDescription
 
-              // Only show the alert if we haven't shown this specific error before
               Task { @MainActor in
                 guard !self.shownAlertIds.contains(id) else { return }
-                switch code {
-                case .sessionExpired:
-                  await self.sessionNotification.showSignedOutAlertMacOS(reason)
-                case .disconnected:
-                  await self.sessionNotification.showDisconnectedAlertMacOS(
-                    reason,
-                    authenticationMode: authenticationMode
-                  )
-                }
+                await self.sessionNotification.showDisconnectedAlertMacOS(
+                  message,
+                  authenticationMode: .token
+                )
                 self.markAlertAsShown(id)
               }
+
+              return
+            }
+
+            let authenticationMode = Store.authenticationMode(of: nsError)
+
+            // Only show the alert if we haven't shown this specific error before
+            Task { @MainActor in
+              guard !self.shownAlertIds.contains(id) else { return }
+              switch code {
+              case .sessionExpired:
+                await self.sessionNotification.showSignedOutAlertMacOS(reason)
+              case .disconnected:
+                await self.sessionNotification.showDisconnectedAlertMacOS(
+                  reason,
+                  authenticationMode: authenticationMode
+                )
+              }
+              self.markAlertAsShown(id)
             }
           }
         } catch {
