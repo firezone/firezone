@@ -56,7 +56,14 @@ jobs:
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
-        runs-on: [ubuntu-22.04, ubuntu-24.04, windows-2022, windows-2025]
+        runs-on:
+          [
+            ubuntu-22.04,
+            ubuntu-24.04,
+            windows-2022,
+            windows-2025,
+            windows-11-arm,
+          ]
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
@@ -112,6 +119,10 @@ jobs:
             pkg-extension: deb
           - runs-on: windows-2022
             arch: x86_64
+            os: windows
+            pkg-extension: msi
+          - runs-on: windows-11-arm
+            arch: aarch64
             os: windows
             pkg-extension: msi
     env:
