@@ -70,6 +70,29 @@ resolve_system_image() {
     exit 1
 }
 
+# The Pixel device profiles turn the hardware keyboard off, and an AOSP image may ship no on-screen
+# keyboard either, which leaves a device that cannot be typed into at all. Forwarding the host's
+# keyboard is the one path that does not depend on the image carrying an IME.
+enable_hardware_keyboard() {
+    local config tmp
+    config="$ANDROID_USER_HOME/avd/${AVD_NAME}.avd/config.ini"
+
+    if [ ! -f "$config" ]; then
+        return 0
+    fi
+
+    if grep -q '^hw\.keyboard=yes$' "$config"; then
+        return 0
+    fi
+
+    echo "==> Enabling the hardware keyboard for '${AVD_NAME}'..."
+    # `sed -i` spells its in-place flag differently on GNU and BSD, so write a copy and move it over.
+    tmp="$(mktemp)"
+    sed '/^hw\.keyboard=/d' "$config" >"$tmp"
+    echo "hw.keyboard=yes" >>"$tmp"
+    mv "$tmp" "$config"
+}
+
 emulator_online() {
     adb devices | awk 'NR>1 && /^emulator-/ && $2=="device" {found=1} END {exit !found}'
 }
@@ -128,6 +151,7 @@ if emulator_online; then
 else
     ensure_emulator_pkg
     ensure_avd
+    enable_hardware_keyboard
 
     echo "==> Booting emulator '${AVD_NAME}'..."
     nohup emulator -avd "$AVD_NAME" -no-snapshot-save >/tmp/firezone-work-profile-emulator.log 2>&1 &
