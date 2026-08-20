@@ -24,6 +24,7 @@ config :portal, Portal.Repo,
 for repo <- [
       Portal.Repo.Web,
       Portal.Repo.Api,
+      Portal.Repo.Job,
       Portal.Repo.Poller
     ] do
   config :portal, repo,
@@ -36,6 +37,7 @@ end
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :portal, Oban,
+  notifier: Oban.Notifiers.PG,
   # Periodic jobs don't make sense in tests
   plugins: [
     # Keep the last 90 days of completed, cancelled, and discarded jobs

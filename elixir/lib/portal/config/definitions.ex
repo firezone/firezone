@@ -403,9 +403,17 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_socket_dir, :string, default: nil)
 
   @doc """
-  PostgreSQL port.
+  Direct PostgreSQL port used by migrations, cluster discovery, and replication polling.
   """
   defconfig(:database_port, :integer, default: 5432)
+
+  @doc """
+  PgBouncer port used by the Web, API, and background job connection pools.
+
+  When unset, these pools use `DATABASE_PORT` to preserve compatibility with
+  deployments that don't run PgBouncer.
+  """
+  defconfig(:database_pgbouncer_port, :integer, default: nil)
 
   @doc """
   Name of the PostgreSQL database.
@@ -453,6 +461,11 @@ defmodule Portal.Config.Definitions do
   Size of the connection pool for PortalAPI (REST + Sockets) queries.
   """
   defconfig(:database_pool_size_api, :integer, default: 10)
+
+  @doc """
+  Size of the connection pool for Oban and background job queries.
+  """
+  defconfig(:database_pool_size_job, :integer, default: 4)
 
   @doc """
   The target threshold for the length of time in milliseconds that a query should wait in the queue

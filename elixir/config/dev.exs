@@ -12,7 +12,7 @@ db_ssl =
     "false" -> false
   end
 
-db_opts = [
+direct_db_opts = [
   database: System.get_env("DATABASE_NAME", "firezone_dev"),
   username: System.get_env("DATABASE_USER", "postgres"),
   hostname: System.get_env("DATABASE_HOST", "localhost"),
@@ -21,24 +21,36 @@ db_opts = [
   ssl: db_ssl
 ]
 
+pgbouncer_db_opts =
+  case System.get_env("DATABASE_PGBOUNCER_PORT") do
+    nil ->
+      direct_db_opts
+
+    port ->
+      direct_db_opts
+      |> Keyword.put(:port, String.to_integer(port))
+      |> Keyword.put(:prepare, :unnamed)
+  end
+
 ###############################
 ##### Portal ##################
 ###############################
 
-config :portal, Portal.Repo, db_opts
-config :portal, Portal.Repo.Web, db_opts
-config :portal, Portal.Repo.Api, db_opts
-config :portal, Portal.Repo.Poller, db_opts
+config :portal, Portal.Repo, direct_db_opts
+config :portal, Portal.Repo.Web, pgbouncer_db_opts
+config :portal, Portal.Repo.Api, pgbouncer_db_opts
+config :portal, Portal.Repo.Job, pgbouncer_db_opts
+config :portal, Portal.Repo.Poller, direct_db_opts
 
 # Poll fast locally so live updates and change logs appear without a wait
 config :portal, Portal.ChangeLogs.Consumer,
-  replication_slot_name: db_opts[:database] <> "_clog_slot",
-  publication_name: db_opts[:database] <> "_clog_pub",
+  replication_slot_name: direct_db_opts[:database] <> "_clog_slot",
+  publication_name: direct_db_opts[:database] <> "_clog_pub",
   poll_interval: :timer.seconds(1)
 
 config :portal, Portal.Changes.Consumer,
-  replication_slot_name: db_opts[:database] <> "_changes_slot",
-  publication_name: db_opts[:database] <> "_changes_pub",
+  replication_slot_name: direct_db_opts[:database] <> "_changes_slot",
+  publication_name: direct_db_opts[:database] <> "_changes_pub",
   poll_interval: 250
 
 config :portal, outbound_email_adapter_configured?: true
@@ -67,6 +79,7 @@ worker_dev_schedule = System.get_env("WORKER_DEV_SCHEDULE", "* * * * *")
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :portal, Oban,
+  notifier: Oban.Notifiers.PG,
   plugins: [
     # Keep the last 7 days of completed, cancelled, and discarded jobs
     {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
@@ -155,7 +168,7 @@ config :portal, Oban,
     outbound_emails: 1
   ],
   engine: Oban.Engines.Basic,
-  repo: Portal.Repo
+  repo: Portal.Repo.Job
 
 config :portal, Portal.Okta.AuthProvider,
   redirect_uri: "https://localhost:#{web_port}/auth/oidc/callback"

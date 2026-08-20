@@ -55,7 +55,8 @@ defmodule Portal.Health do
   @repos [
     Portal.Repo,
     Portal.Repo.Web,
-    Portal.Repo.Api
+    Portal.Repo.Api,
+    Portal.Repo.Job
   ]
 
   defp repos_ready? do

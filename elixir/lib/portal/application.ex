@@ -18,6 +18,7 @@ defmodule Portal.Application do
     :ok = OpentelemetryEcto.setup([:portal, :repo])
     :ok = OpentelemetryEcto.setup([:portal, :repo, :web])
     :ok = OpentelemetryEcto.setup([:portal, :repo, :api])
+    :ok = OpentelemetryEcto.setup([:portal, :repo, :job])
     :ok = Portal.Telemetry.OtelBandit.setup()
     :ok = OpentelemetryPhoenix.setup(adapter: :bandit)
     :ok = OpentelemetryOban.setup()
@@ -40,9 +41,10 @@ defmodule Portal.Application do
     base_children = token_caches() ++ [
       # Core services
       Portal.Repo,
-      # Isolated connection pools (web/api/poller)
+      # Isolated connection pools (web/api/job/poller)
       Portal.Repo.Web,
       Portal.Repo.Api,
+      Portal.Repo.Job,
       Portal.Repo.Poller,
       {Task.Supervisor, name: Portal.Analytics.TaskSupervisor},
       # Default pg scope for distributed process discovery (used by replication)
@@ -195,7 +197,7 @@ defmodule Portal.Application do
     # generating the OpenAPI spec without a Postgres service). Oban 2.22+
     # verifies migrations at supervisor start, which requires a live DB.
     if Portal.Config.env_var_to_config!(:oban_enabled) do
-      [{Oban, Application.fetch_env!(:portal, Oban)}]
+      [{Portal.Oban, Application.fetch_env!(:portal, Oban)}]
     else
       []
     end
