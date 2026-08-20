@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Build Google's TestDPC so the work profile has a Device Policy Controller"
+#MISE tools={bazelisk="latest"}
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -17,6 +18,12 @@ if [ ! -d "$ANDROID_HOME" ]; then
     exit 1
 fi
 
+# TestDPC patches the setupdesign library it pulls in, with `ed`, while fetching its dependencies.
+if ! command -v ed >/dev/null 2>&1; then
+    echo "TestDPC's build needs 'ed'. Install it with your package manager (e.g. 'sudo dnf install ed')." >&2
+    exit 1
+fi
+
 if [ -d "$TESTDPC_DIR/.git" ]; then
     echo "==> Updating TestDPC in ${TESTDPC_DIR}..."
     git -C "$TESTDPC_DIR" pull --ff-only
@@ -26,14 +33,27 @@ else
     git clone --depth 1 "$TESTDPC_REPO" "$TESTDPC_DIR"
 fi
 
-echo "==> Building the debug APK..."
-# TestDPC ships its own wrapper, and its AGP reads the SDK location from ANDROID_HOME.
-(cd "$TESTDPC_DIR" && ./gradlew --no-daemon assembleDebug)
+# Bazel finds the SDK through ANDROID_HOME but not the platform TestDPC compiles against, which it
+# names in its own WORKSPACE so that reading it from there keeps up with upstream.
+api_level="$(sed -n 's/.*api_level *= *\([0-9][0-9]*\).*/\1/p' "$TESTDPC_DIR/WORKSPACE" | head -1 || true)"
 
-apk="$(newest_testdpc_apk)"
+if [ -n "$api_level" ] && [ ! -d "$ANDROID_HOME/platforms/android-${api_level}" ]; then
+    require_sdk_tool sdkmanager
 
-if [ -z "$apk" ]; then
-    echo "The build produced no APK under ${TESTDPC_DIR}/app/build/outputs/apk/debug." >&2
+    echo "==> Installing platform android-${api_level}..."
+    yes 2>/dev/null | sdkmanager --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
+    sdkmanager --sdk_root="$ANDROID_HOME" "platforms;android-${api_level}" >/dev/null
+fi
+
+echo "==> Building the APK..."
+# `bazelisk` reads TestDPC's .bazelversion and fetches the Bazel release it asks for. The target name
+# is upstream's own: `build.sh` in the checkout runs exactly this.
+(cd "$TESTDPC_DIR" && bazelisk build testdpc)
+
+apk="$(testdpc_apk)"
+
+if [ ! -f "$apk" ]; then
+    echo "The build produced no APK at ${apk}." >&2
     exit 1
 fi
 
