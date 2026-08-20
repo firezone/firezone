@@ -293,22 +293,30 @@ defmodule PortalAPI.PoolMemberController do
     def validate_client_devices(device_ids, subject) do
       device_ids = Enum.uniq(device_ids)
 
-      found =
-        from(d in Device, where: d.id in ^device_ids and d.type == :client, select: d.id)
-        |> Safe.scoped(subject)
-        |> Safe.all()
-
-      case device_ids -- List.wrap(found) do
-        [] ->
-          :ok
-
-        missing ->
-          {:error, :unprocessable_entity,
-           validation_errors: %{
-             pool_members:
-               Enum.map(missing, &"#{&1} is not a Client in this account")
-           }}
+      case existing_client_device_ids(device_ids, subject) do
+        # Safe.all/1 returns {:error, :unauthorized} for a subject that may
+        # not read Devices. No actor type can reach here without that
+        # permission today, but treating the tuple as an empty result would
+        # answer an authorization failure with a 422 claiming every ID is
+        # nonexistent, so it propagates instead.
+        {:error, reason} -> {:error, reason}
+        found -> validate_none_missing(device_ids -- found)
       end
+    end
+
+    defp existing_client_device_ids(device_ids, subject) do
+      from(d in Device, where: d.id in ^device_ids and d.type == :client, select: d.id)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    defp validate_none_missing([]), do: :ok
+
+    defp validate_none_missing(missing) do
+      {:error, :unprocessable_entity,
+       validation_errors: %{
+         pool_members: Enum.map(missing, &"#{&1} is not a Client in this account")
+       }}
     end
 
     @doc """

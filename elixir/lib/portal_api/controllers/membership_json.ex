@@ -15,8 +15,7 @@ defmodule PortalAPI.MembershipJSON do
   @doc """
   Renders a list of Actor IDs for an Actor Group
   """
-  def memberships(%{memberships: memberships}) do
-    actor_ids = for(membership <- memberships, do: membership.actor_id)
+  def memberships(%{actor_ids: actor_ids}) do
     %{data: %{actor_ids: actor_ids}}
   end
 
