@@ -66,6 +66,7 @@ internal class X509SettingsViewModel
                     uiMutableStateFlow.value =
                         uiMutableStateFlow.value.copy(
                             isLoading = false,
+                            isUsable = identity != null,
                             details = identity?.detailFields().orEmpty(),
                         )
                 }
@@ -74,7 +75,9 @@ internal class X509SettingsViewModel
         /** Records the alias the user picked, unless the administrator dictates one. */
         fun onAliasSelected(alias: String) {
             if (repository.isX509CertificateAliasManaged(applicationRestrictions)) {
-                Log.w(TAG, "Ignoring a user-picked alias because the administrator configured one")
+                // The administrator chooses the alias; what the prompt achieves is the KeyChain
+                // grant that lets us read the key behind it.
+                Log.d(TAG, "Keeping the managed alias after the user answered the KeyChain prompt")
             } else {
                 repository.saveX509CertificateAliasSync(alias)
             }
@@ -100,6 +103,8 @@ internal class X509SettingsViewModel
             val isLoading: Boolean = false,
             val details: List<DetailField> = emptyList(),
             val error: String? = null,
+            /** Whether the KeyChain released the key for [alias]. */
+            val isUsable: Boolean = false,
         )
 
         private companion object {
