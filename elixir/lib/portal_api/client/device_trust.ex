@@ -21,6 +21,10 @@ defmodule PortalAPI.Client.DeviceTrust do
   that the holder has some certificate from the anchor CA, not which device
   it is, so it cannot attest anything.
 
+  X.509 client authentication also reads typed SAN URIs. It requires an
+  `account-id` and authenticates by `actor-id` when that claim is present,
+  otherwise falling back to the actor's normalized email.
+
   Reaching the portal through that host is the client stating it has a
   certificate to present, so failing to prove one there is fatal to the
   connect rather than a silent downgrade. Connects that arrive anywhere else
@@ -125,7 +129,7 @@ defmodule PortalAPI.Client.DeviceTrust do
           der: binary(),
           leaf: tuple(),
           account_id: Ecto.UUID.t(),
-          email: String.t()
+          identity: {:actor_id, Ecto.UUID.t()} | {:email, String.t()}
         }
 
   @type reason ::
@@ -159,8 +163,8 @@ defmodule PortalAPI.Client.DeviceTrust do
       with :ok <- validate_attestation_host(connect_info),
            {:ok, der} <- presented_certificate(connect_info),
            {:ok, leaf} <- decode_leaf(der),
-           {:ok, account_id, email} <- extract_authentication_identity(leaf) do
-        {:ok, %{der: der, leaf: leaf, account_id: account_id, email: email}}
+           {:ok, account_id, identity} <- extract_authentication_identity(leaf) do
+        {:ok, %{der: der, leaf: leaf, account_id: account_id, identity: identity}}
       else
         {:error, reason}
         when reason in [:not_attestation_host, :no_certificate_presented, :not_x509_identity] ->
@@ -185,14 +189,14 @@ defmodule PortalAPI.Client.DeviceTrust do
   @spec authenticate(prepared_authentication(), Portal.Authentication.Context.t()) ::
           {:ok, Subject.t(), verified()} | {:error, reason()}
   def authenticate(
-        %{der: der, leaf: leaf, account_id: account_id, email: email},
+        %{der: der, leaf: leaf, account_id: account_id, identity: identity},
         context
       ) do
     with {:ok, account, auth_provider} <- Database.fetch_x509_account(account_id),
          {:ok, anchors} <- fetch_anchors(account.id),
          :ok <- validate_leaf(leaf, der, anchors),
          :ok <- ensure_account_enabled(account),
-         {:ok, actor} <- Database.fetch_x509_actor(account, email),
+         {:ok, actor} <- Database.fetch_x509_actor(account, identity),
          %DateTime{} = expires_at <- X509.not_after(leaf),
          subject = %Subject{
            account: account,
@@ -220,11 +224,11 @@ defmodule PortalAPI.Client.DeviceTrust do
              :x509_user_disabled,
              :x509_user_type_not_allowed
            ] ->
-        Logger.info("X.509 client authentication failed",
-          reason: reason,
-          account_id: account_id,
-          email: email
+        Logger.info(
+          "X.509 client authentication failed",
+          [reason: reason, account_id: account_id] ++ authentication_identity_log(identity)
         )
+
         {:error, :x509_user_not_authorized}
 
       nil ->
@@ -234,6 +238,9 @@ defmodule PortalAPI.Client.DeviceTrust do
         error
     end
   end
+
+  defp authentication_identity_log({:actor_id, actor_id}), do: [actor_id: actor_id]
+  defp authentication_identity_log({:email, email}), do: [email: email]
 
   @doc false
   def revocation_endpoint_queue_opts do
@@ -724,46 +731,77 @@ defmodule PortalAPI.Client.DeviceTrust do
       leaf
       |> X509.san_uris()
       |> Enum.flat_map(&split_joined_uris/1)
-      |> Enum.reduce(%{account_ids: MapSet.new(), emails: MapSet.new()}, fn uri, claims ->
-        case Regex.run(@typed_uri_regex, uri) do
-          [_all, idtype, value] -> put_authentication_claim(claims, idtype, value)
-          nil -> claims
+      |> Enum.reduce(
+        %{
+          account_ids: MapSet.new(),
+          actor_ids: MapSet.new(),
+          actor_id_claim?: false,
+          emails: MapSet.new()
+        },
+        fn uri, claims ->
+          case Regex.run(@typed_uri_regex, uri) do
+            [_all, idtype, value] -> put_authentication_claim(claims, idtype, value)
+            nil -> claims
+          end
         end
-      end)
+      )
 
-    case {MapSet.to_list(claims.account_ids), MapSet.to_list(claims.emails)} do
-      {[account_id], [email]} -> {:ok, account_id, email}
-      {[], _emails} -> {:error, :not_x509_identity}
-      {_account_ids, []} -> {:error, :not_x509_identity}
-      {_account_ids, _emails} -> {:error, :invalid_x509_identity}
+    case {
+      MapSet.to_list(claims.account_ids),
+      MapSet.to_list(claims.actor_ids),
+      MapSet.to_list(claims.emails),
+      claims.actor_id_claim?
+    } do
+      {[account_id], [actor_id], _emails, true} ->
+        {:ok, account_id, {:actor_id, actor_id}}
+
+      {[account_id], [], [email], false} ->
+        {:ok, account_id, {:email, email}}
+
+      {[], _actor_ids, _emails, _actor_id_claim?} ->
+        {:error, :not_x509_identity}
+
+      {_account_ids, [], [], false} ->
+        {:error, :not_x509_identity}
+
+      {_account_ids, _actor_ids, _emails, _actor_id_claim?} ->
+        {:error, :invalid_x509_identity}
     end
   end
 
   defp put_authentication_claim(claims, idtype, value) do
-    case {String.downcase(idtype), decode_uri_component(value)} do
-      {"account-id", {:ok, account_id}} ->
-        case Ecto.UUID.cast(String.trim(account_id)) do
-          {:ok, account_id} ->
-            update_in(claims.account_ids, &MapSet.put(&1, account_id))
+    case String.downcase(idtype) do
+      "account-id" ->
+        put_uuid_authentication_claim(claims, :account_ids, value)
 
-          :error ->
-            claims
-        end
-
-      {"email", {:ok, email}} ->
-        case Portal.Email.normalize_for_match(email) do
-          {:ok, ""} ->
-            claims
-
-          {:ok, email} ->
-            update_in(claims.emails, &MapSet.put(&1, email))
-
-          :error ->
-            claims
-        end
-
-      {_idtype, _value} ->
+      "actor-id" ->
         claims
+        |> Map.put(:actor_id_claim?, true)
+        |> put_uuid_authentication_claim(:actor_ids, value)
+
+      "email" ->
+        put_email_authentication_claim(claims, value)
+
+      _idtype ->
+        claims
+    end
+  end
+
+  defp put_uuid_authentication_claim(claims, key, value) do
+    with {:ok, value} <- decode_uri_component(value),
+         {:ok, id} <- Ecto.UUID.cast(String.trim(value)) do
+      Map.update!(claims, key, &MapSet.put(&1, id))
+    else
+      _error -> claims
+    end
+  end
+
+  defp put_email_authentication_claim(claims, value) do
+    with {:ok, email} <- decode_uri_component(value),
+         {:ok, email} when email != "" <- Portal.Email.normalize_for_match(email) do
+      update_in(claims.emails, &MapSet.put(&1, email))
+    else
+      _error -> claims
     end
   end
 
@@ -893,12 +931,25 @@ defmodule PortalAPI.Client.DeviceTrust do
       end
     end
 
-    def fetch_x509_actor(account, email) do
+    def fetch_x509_actor(account, {:actor_id, actor_id}) do
+      query =
+        from(actor in Portal.Actor,
+          where: actor.account_id == ^account.id and actor.id == ^actor_id
+        )
+
+      authorize_x509_actor(query, [:account_user, :account_admin_user, :service_account])
+    end
+
+    def fetch_x509_actor(account, {:email, email}) do
       query =
         from(actor in Portal.Actor,
           where: actor.account_id == ^account.id and actor.email == ^email
         )
 
+      authorize_x509_actor(query, [:account_user, :account_admin_user])
+    end
+
+    defp authorize_x509_actor(query, allowed_types) do
       case query |> Safe.unscoped() |> Safe.one() do
         nil ->
           {:error, :x509_user_not_found}
@@ -906,9 +957,10 @@ defmodule PortalAPI.Client.DeviceTrust do
         %Portal.Actor{is_disabled: true} ->
           {:error, :x509_user_disabled}
 
-        %Portal.Actor{is_disabled: false, type: type} = actor
-        when type in [:account_user, :account_admin_user] ->
-          {:ok, actor}
+        %Portal.Actor{is_disabled: false, type: type} = actor ->
+          if type in allowed_types,
+            do: {:ok, actor},
+            else: {:error, :x509_user_type_not_allowed}
 
         _user_type_not_allowed ->
           {:error, :x509_user_type_not_allowed}
