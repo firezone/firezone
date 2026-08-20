@@ -56,6 +56,15 @@ internal class SplashViewModel
                     return@launch
                 }
 
+                // An administrator can configure a certificate that only the user can release, which
+                // is what a work profile on a personally-owned device looks like. Ask once per
+                // launch: pressing on without it only fails later, at the tunnel.
+                if (!certificateSelectionOffered && certificateUser.needsSelection()) {
+                    certificateSelectionOffered = true
+                    actionMutableStateFlow.value = ViewAction.NavigateToCertificatePermission
+                    return@launch
+                }
+
                 val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
 
                 // Without a token we can only connect if a client certificate authenticates us.
@@ -120,10 +129,22 @@ internal class SplashViewModel
             return true
         }
 
+        private companion object {
+            /**
+             * Survives the ViewModel so the screen appears once per launch rather than every time
+             * the splash re-checks, and returns on the next start while the certificate is still
+             * out of reach.
+             */
+            @Volatile
+            private var certificateSelectionOffered = false
+        }
+
         internal sealed class ViewAction {
             object NavigateToVpnPermission : ViewAction()
 
             object NavigateToNotificationPermission : ViewAction()
+
+            object NavigateToCertificatePermission : ViewAction()
 
             object NavigateToSettings : ViewAction()
 
