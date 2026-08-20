@@ -2,6 +2,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::Deserialize;
 use sha2::Digest as _;
 use std::{
+    borrow::Cow,
     iter,
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
@@ -86,8 +87,8 @@ impl LoginUrl<PublicKeyParam> {
             Some(certificate) => {
                 require_tls(&url)?;
 
-                let mtls_host = mtls_host(&url)?;
-                set_host(&mut url, mtls_host);
+                let mtls_host = mtls_host(&url, std::env::var(MTLS_HOST_ENV_VAR).ok())?;
+                set_host(&mut url, &mtls_host)?;
 
                 Some(crate::tls::client_config(certificate).map_err(LoginUrlError::Tls)?)
             }
@@ -229,24 +230,33 @@ impl<TFinish> LoginUrl<TFinish> {
     }
 }
 
-/// Returns the mTLS counterpart of a SaaS API host.
+/// The environment variable naming the mTLS host of a portal we do not know.
+pub const MTLS_HOST_ENV_VAR: &str = "FIREZONE_MTLS_HOST";
+
+/// Returns the mTLS counterpart of an API host.
 ///
 /// The portal requests a client certificate based on the host we dial, so presenting a certificate implies dialing the mTLS host.
-/// Only the SaaS portals operate one; a self-hosted portal cannot authenticate us by certificate, so we refuse rather than silently dial it without one.
-fn mtls_host<E>(url: &Url) -> Result<&'static str, LoginUrlError<E>> {
+/// The SaaS portals have a known counterpart. Any other portal has to name its own through [`MTLS_HOST_ENV_VAR`], because dialing one that never asks for a certificate would sign us in without the identity the caller asked for.
+fn mtls_host<E>(
+    url: &Url,
+    override_host: Option<String>,
+) -> Result<Cow<'static, str>, LoginUrlError<E>> {
     let host = url.host_str().ok_or(LoginUrlError::MissingHost)?;
 
     match host {
-        "api.firez.one" => Ok("mtls.firez.one"),
-        "api.firezone.dev" => Ok("mtls.firezone.dev"),
-        other => Err(LoginUrlError::CertificateNotSupported(other.to_owned())),
+        "api.firez.one" => Ok(Cow::Borrowed("mtls.firez.one")),
+        "api.firezone.dev" => Ok(Cow::Borrowed("mtls.firezone.dev")),
+        other => override_host
+            .filter(|host| !host.trim().is_empty())
+            .map(Cow::Owned)
+            .ok_or_else(|| LoginUrlError::CertificateNotSupported(other.to_owned())),
     }
 }
 
-/// Points the URL at a hard-coded host.
-fn set_host(url: &mut Url, host: &'static str) {
+/// Points the URL at the given host.
+fn set_host<E>(url: &mut Url, host: &str) -> Result<(), LoginUrlError<E>> {
     url.set_host(Some(host))
-        .expect("hard-coded hostname is valid");
+        .map_err(|_| LoginUrlError::InvalidMtlsHost(host.to_owned()))
 }
 
 /// Parse the host from a URL, including port if present. e.g. `example.com:8080`.
@@ -267,6 +277,8 @@ pub enum LoginUrlError<E> {
     InsecureUrlWithCertificate(String),
     #[error("`{0}` does not support signing in with a client certificate")]
     CertificateNotSupported(String),
+    #[error("`{0}` is not a valid hostname")]
+    InvalidMtlsHost(String),
     #[error("failed to parse URL: {0}")]
     InvalidUrl(E),
     #[error("the url is missing a host")]
@@ -442,6 +454,44 @@ mod tests {
         .unwrap();
 
         assert_eq!(login_url.host_and_port(), ("localhost", 8081));
+    }
+
+    #[test]
+    fn an_unknown_host_can_name_its_mtls_counterpart() {
+        let url = Url::parse("wss://api.example.com:444").unwrap();
+
+        let host = mtls_host::<url::ParseError>(&url, Some("mtls.example.com".to_owned())).unwrap();
+
+        assert_eq!(host, "mtls.example.com");
+    }
+
+    #[test]
+    fn an_unknown_host_without_an_override_is_refused() {
+        let url = Url::parse("wss://api.example.com:444").unwrap();
+
+        let error = mtls_host::<url::ParseError>(&url, None).unwrap_err();
+
+        assert!(
+            matches!(error, LoginUrlError::CertificateNotSupported(host) if host == "api.example.com")
+        );
+    }
+
+    #[test]
+    fn a_blank_override_counts_as_unset() {
+        let url = Url::parse("wss://api.example.com:444").unwrap();
+
+        let error = mtls_host::<url::ParseError>(&url, Some("  ".to_owned())).unwrap_err();
+
+        assert!(matches!(error, LoginUrlError::CertificateNotSupported(_)));
+    }
+
+    #[test]
+    fn an_override_does_not_displace_a_known_saas_host() {
+        let url = Url::parse("wss://api.firez.one:444").unwrap();
+
+        let host = mtls_host::<url::ParseError>(&url, Some("mtls.example.com".to_owned())).unwrap();
+
+        assert_eq!(host, "mtls.firez.one");
     }
 
     #[test]
