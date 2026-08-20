@@ -42,7 +42,7 @@ for _ in $(seq 1 150); do
         echo "==> Applied:"
         adb shell cat "$restrictions_file" | sed 's/^/    /'
         echo
-        echo "==> Restart the app to hit the certificate screen:"
+        echo "==> Restart the app to hit the certificate screen ('adb root' first if these are refused):"
         echo "    adb shell am force-stop --user ${user_id} ${PACKAGE}"
         echo "    adb shell am start --user ${user_id} -n ${PACKAGE}/.core.presentation.MainActivity"
         exit 0

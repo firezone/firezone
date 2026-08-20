@@ -37,7 +37,12 @@ if [ -z "$apk" ]; then
 fi
 
 echo "==> Force-stopping any running instance of ${PACKAGE} in user ${user_id}..."
-adb shell am force-stop --user "$user_id" "$PACKAGE"
+# Reaching into another user needs INTERACT_ACROSS_USERS_FULL, which the shell user does not always
+# hold even where `pm install --user` is allowed. The reinstall below terminates the app regardless,
+# so a refusal here is worth a note rather than the whole task.
+if ! adb shell am force-stop --user "$user_id" "$PACKAGE" 2>/dev/null; then
+    echo "    Refused; the reinstall stops it anyway. 'adb root' first if you want the step to work."
+fi
 
 echo "==> Installing ${apk} into user ${user_id}..."
 adb install -r -g --user "$user_id" "$apk"
