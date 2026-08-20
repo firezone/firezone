@@ -160,5 +160,6 @@ echo "    ${ca_crt}"
 echo
 echo "The certificate itself is ${p12} (password: ${P12_PASSWORD}). Install it with:"
 echo
-echo "    mise run //swift/apple:install-certificate   # macOS"
-echo "    mise run //rust:install-certificate          # Linux and Windows"
+echo "    mise run //:x509:install-linux"
+echo "    mise run //:x509:install-macos"
+echo "    mise run //:x509:install-windows"

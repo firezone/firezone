@@ -2,21 +2,14 @@
 #MISE description="Import the test X.509 client certificate into the login keychain"
 set -euo pipefail
 
-CERT_ALIAS="${CERT_ALIAS:-firezone-client}"
-CERT_SUBJECT_CN="${CERT_SUBJECT_CN:-dev.firezone.device-trust}"
-P12_PASSWORD="${P12_PASSWORD:-firezone}"
-P12_PATH="${P12_PATH:-${XDG_CACHE_HOME:-${HOME}/.cache}/firezone/x509/${CERT_ALIAS}.p12}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+
+require_os 'Darwin' 'a macOS keychain'
+require_p12
+
 FIREZONE_APP="${FIREZONE_APP:-/Applications/Firezone.app}"
-
-if [ "$(uname -s)" != "Darwin" ]; then
-    echo "error: this task imports into a macOS keychain; use //rust:install-certificate here" >&2
-    exit 1
-fi
-
-if [ ! -f "$P12_PATH" ]; then
-    echo "error: ${P12_PATH} does not exist; run 'mise run //:certificate' first" >&2
-    exit 1
-fi
 
 # `security login-keychain` prints the path quoted and indented.
 keychain="$(security login-keychain | sed -e 's/^[[:blank:]]*//' -e 's/"//g')"
