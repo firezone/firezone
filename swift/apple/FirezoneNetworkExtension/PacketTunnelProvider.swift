@@ -247,6 +247,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       case .connectionFailed: "connectionFailed"
       case .sleep: "sleep"
       case .appUpdate: "appUpdate"
+      case .internalError: "internalError"
       @unknown default: "unknown"
       }
 
