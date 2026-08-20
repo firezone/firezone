@@ -12,10 +12,8 @@ source "${SCRIPT_DIR}/lib.sh"
 TESTDPC_REPO="${TESTDPC_REPO:-https://github.com/googlesamples/android-testdpc}"
 TESTDPC_DIR="$(testdpc_dir)"
 
-android_home
-
 if [ ! -d "$ANDROID_HOME" ]; then
-    echo "No Android SDK at ${ANDROID_HOME}. Run 'mise run //kotlin/android:work-profile:setup' first." >&2
+    echo "No Android SDK at ${ANDROID_HOME}. Run 'mise run //kotlin/android:setup-sdk' first." >&2
     exit 1
 fi
 

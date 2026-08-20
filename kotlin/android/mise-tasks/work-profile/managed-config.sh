@@ -13,7 +13,7 @@ RESTRICTION_KEY="x509CertificateAlias"
 PACKAGE="dev.firezone.android"
 DPC_PACKAGE="${DPC_PACKAGE:-com.afwsamples.testdpc}"
 
-require_adb
+require_sdk_tool adb
 
 user_id="$(require_work_profile_user)" || exit 1
 

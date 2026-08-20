@@ -15,7 +15,7 @@ if ! HOST_ABI="$(host_abi)"; then
     exit 1
 fi
 
-require_adb
+require_sdk_tool adb
 
 user_id="$(require_work_profile_user)" || exit 1
 

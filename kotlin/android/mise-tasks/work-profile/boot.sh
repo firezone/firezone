@@ -14,21 +14,24 @@ if ! HOST_ABI="$(host_abi)"; then
     exit 1
 fi
 
-android_home
+require_sdk_tool sdkmanager
+require_sdk_tool avdmanager
+require_sdk_tool adb
+
 # avdmanager (cmdline-tools 7+) defaults to $XDG_CONFIG_HOME/.android, emulator still looks at $HOME/.android.
 # Pin both to the same location.
 export ANDROID_USER_HOME="${ANDROID_USER_HOME:-$HOME/.android}"
-export PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 
 SYSTEM_IMAGE="${SYSTEM_IMAGE:-}"
 
 newest_image() {
-    sdkmanager --list 2>/dev/null |
+    # `grep` finding nothing is an answer, not a failure, so it must not trip `set -e`.
+    echo "$1" |
         cut -d'|' -f1 |
         tr -d '[:space:]' |
-        grep -E "^system-images;android-[0-9]+;$1;${HOST_ABI}\$" |
+        grep -E "^system-images;android-[0-9]+;$2;${HOST_ABI}\$" |
         sort -V |
-        tail -1
+        tail -1 || true
 }
 
 # A profile owner can only be set on a user that carries no accounts, and the Play-flavoured images
@@ -44,12 +47,18 @@ resolve_system_image() {
         return
     fi
 
+    local packages
+    if ! packages="$(sdkmanager --list 2>&1)"; then
+        echo "$packages" >&2
+        echo "Could not list the packages of the SDK at ${ANDROID_HOME}." >&2
+        exit 1
+    fi
+
     # `default` is the plain AOSP image. `aosp_atd` is the slimmed-down automated-test variant of
     # the same thing; it boots faster but drops apps, so it is only the fallback for API levels that
     # no longer publish `default`.
     for variant in default aosp_atd; do
-        # `grep` finding nothing is an answer, not a failure, so it must not trip `set -e`.
-        SYSTEM_IMAGE="$(newest_image "$variant" || true)"
+        SYSTEM_IMAGE="$(newest_image "$packages" "$variant")"
         if [ -n "$SYSTEM_IMAGE" ]; then
             return
         fi

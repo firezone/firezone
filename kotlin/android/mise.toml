@@ -7,10 +7,32 @@
 auto_install = false
 
 [env]
-# Single source of truth for Android tool versions used by tasks and setup.sh.
+# Single source of truth for the Android tool versions the setup tasks install.
 # Keep the NDK version in sync with `ndkVersion` in `app/build.gradle.kts`.
 NDK_VERSION = "28.2.13676358"
 ANDROID_CMD_TOOLS_VERSION = "11076708"
+
+# Resolved in the order `resolveNdkDir` in `app/build.gradle.kts` uses, so the tasks, Gradle and
+# Android Studio always mean the same SDK. `sed` rather than a properties parser keeps this cheap
+# enough to run on every mise invocation, and `sdk.dir` needs no unescaping on Linux or macOS.
+ANDROID_HOME = '''
+{%- set from_properties = exec(command="sed -n 's/^sdk.dir=//p' '" ~ config_root ~ "/local.properties' 2>/dev/null | tail -1") -%}
+{%- if env.ANDROID_HOME -%}{{ env.ANDROID_HOME }}
+{%- elif env.ANDROID_SDK_ROOT -%}{{ env.ANDROID_SDK_ROOT }}
+{%- elif from_properties -%}{{ from_properties }}
+{%- elif os() == 'macos' -%}{{ env.HOME }}/Library/Android/sdk
+{%- else -%}{{ env.HOME }}/Android/Sdk
+{%- endif -%}
+'''
+
+# `sdkmanager`, `avdmanager`, `adb` and `emulator` all live inside the SDK, which puts none of them
+# on `PATH`. Doing it here means no task has to rebuild `PATH` and no shell profile has to be edited.
+# 'setup-sdk' fills these directories in.
+_.path = [
+    "{{ env.ANDROID_HOME }}/cmdline-tools/latest/bin",
+    "{{ env.ANDROID_HOME }}/platform-tools",
+    "{{ env.ANDROID_HOME }}/emulator",
+]
 
 [task_config]
 includes = ["mise-tasks"]
