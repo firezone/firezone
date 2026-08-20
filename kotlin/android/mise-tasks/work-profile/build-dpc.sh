@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Build Google's TestDPC so the work profile has a Device Policy Controller"
-#MISE tools={bazelisk="latest"}
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
