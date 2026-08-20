@@ -23,7 +23,9 @@ user_id="$(require_work_profile_user)" || exit 1
 echo "==> Building the debug APK (${HOST_ABI} only)..."
 ./gradlew assembleDebug "-Pandroid.injected.build.abi=$HOST_ABI"
 
-apk="$(find app/build/outputs/apk/debug -name '*.apk' -print 2>/dev/null | head -1 || true)"
+# Newest rather than first: a stale APK from an earlier all-ABI build sorts ahead of the one that
+# was just built, and installing that is indistinguishable from the build not having taken effect.
+apk="$(ls -t app/build/outputs/apk/debug/*.apk 2>/dev/null | head -1 || true)"
 
 if [ -z "$apk" ]; then
     echo "No debug APK under app/build/outputs/apk/debug." >&2
