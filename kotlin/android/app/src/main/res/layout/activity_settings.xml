@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="@dimen/spacing_medium"
+    android:paddingTop="@dimen/spacing_medium"
     android:fitsSystemWindows="true">
 
     <com.google.android.material.button.MaterialButton
@@ -12,7 +12,7 @@
         style="@style/Widget.MaterialComponents.Button.TextButton"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
+        android:layout_marginStart="@dimen/spacing_medium"
         android:enabled="true"
         android:text="@android:string/cancel"
         app:layout_constraintStart_toStartOf="parent"
@@ -35,6 +35,7 @@
         style="@style/Widget.MaterialComponents.Button.TextButton"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginEnd="@dimen/spacing_medium"
         android:enabled="false"
         android:text="@string/save"
         app:layout_constraintEnd_toEndOf="parent"
@@ -56,6 +57,7 @@
         android:id="@+id/bottomNavigation"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:background="?attr/colorSurface"
         app:labelVisibilityMode="labeled"
         app:menu="@menu/settings_navigation"
         app:layout_constraintBottom_toBottomOf="parent"
