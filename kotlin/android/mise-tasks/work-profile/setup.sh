@@ -9,7 +9,7 @@ set -euo pipefail
 # The last two steps need you at the emulator: only a profile owner can put a key into the
 # KeyChain or push managed configuration, and the DPC drives both from its own UI. Both tasks
 # print numbered instructions when they get there, and the last one waits for you.
-for step in boot create install-app certificate managed-config; do
+for step in build-dpc boot create install-app certificate managed-config; do
     echo
     echo "############ //kotlin/android:work-profile:${step} ############"
     echo

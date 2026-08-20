@@ -68,14 +68,8 @@ testdpc_dir() {
     echo "${TESTDPC_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/firezone/android-testdpc}"
 }
 
-# The artifact has been named TestDPC-debug.apk for years, but taking the newest APK under the debug
-# output directory survives a rename upstream.
-newest_testdpc_apk() {
-    local debug_dir
-    debug_dir="$(testdpc_dir)/app/build/outputs/apk/debug"
-
-    # Nothing built yet is a normal state that the callers report themselves, so a missing directory
-    # or an unmatched glob is an empty answer rather than an error. A glob rather than `find`, whose
-    # `-printf` is GNU-only, piped into `xargs ls -t` lists the working directory when nothing matches.
-    ls -t "$debug_dir"/*.apk 2>/dev/null | head -1 || true
+# `bazel build testdpc` signs its output with a debug key and leaves it under the `bazel-bin`
+# convenience symlink in the checkout.
+testdpc_apk() {
+    echo "$(testdpc_dir)/bazel-bin/testdpc.apk"
 }
