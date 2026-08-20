@@ -37,7 +37,6 @@ class X509SettingsFragment : Fragment() {
                         state = state,
                         onSelectCertificate = ::chooseCertificate,
                         onForgetCertificate = viewModel::forgetSelection,
-                        onRefresh = viewModel::loadDetails,
                     )
                 }
             }
