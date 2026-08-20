@@ -24,14 +24,15 @@ export ANDROID_USER_HOME="${ANDROID_USER_HOME:-$HOME/.android}"
 
 SYSTEM_IMAGE="${SYSTEM_IMAGE:-}"
 
-newest_image() {
+# The package paths out of the table `sdkmanager --list` prints, one per line. `[:blank:]` rather
+# than `[:space:]`, which includes the newlines and would collapse the listing onto a single line.
+list_images() {
     # `grep` finding nothing is an answer, not a failure, so it must not trip `set -e`.
     echo "$1" |
         cut -d'|' -f1 |
-        tr -d '[:space:]' |
-        grep -E "^system-images;android-[0-9]+;$2;${HOST_ABI}\$" |
-        sort -V |
-        tail -1 || true
+        tr -d '[:blank:]' |
+        grep -E "^system-images;$2;${HOST_ABI}\$" |
+        sort -V || true
 }
 
 # A profile owner can only be set on a user that carries no accounts, and the Play-flavoured images
@@ -58,14 +59,14 @@ resolve_system_image() {
     # the same thing; it boots faster but drops apps, so it is only the fallback for API levels that
     # no longer publish `default`.
     for variant in default aosp_atd; do
-        SYSTEM_IMAGE="$(newest_image "$packages" "$variant")"
+        SYSTEM_IMAGE="$(list_images "$packages" "android-[0-9]+;${variant}" | tail -1)"
         if [ -n "$SYSTEM_IMAGE" ]; then
             return
         fi
     done
 
-    echo "No AOSP system image found for ${HOST_ABI}." >&2
-    echo "List what your SDK offers with 'sdkmanager --list | grep system-images' and set SYSTEM_IMAGE." >&2
+    echo "No AOSP system image found for ${HOST_ABI}. Set SYSTEM_IMAGE to one of:" >&2
+    list_images "$packages" "[^;]+;[^;]+" | sed 's/^/    /' >&2
     exit 1
 }
 
