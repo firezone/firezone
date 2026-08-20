@@ -25,22 +25,19 @@ class CertificateUser
         private val x509Identity: X509Identity,
     ) {
         /**
-         * Whether an administrator configured a certificate that this device will not release on
-         * its own.
+         * Whether this device is configured to authenticate by certificate but cannot read the one
+         * it was given.
          *
-         * A managed alias says the administrator means this device to authenticate by certificate.
-         * On a company-owned device they grant us the key as well, so reading it succeeds and
-         * nobody is asked anything. On a personally-owned device carrying a work profile they
-         * cannot grant it, and the KeyChain reports the alias as absent until the user picks it
-         * once. Any other failure to read a managed alias lands here too, because offering the
-         * chooser is more useful to the user than a screen they cannot act on.
+         * A configured alias says this device is meant to authenticate by certificate, whether an
+         * administrator chose it or the user did. Where the key is granted to us the read succeeds
+         * and nobody is asked anything, which is what keeps unattended devices unattended. A
+         * personally-owned device carrying a work profile cannot be granted the key by its
+         * administrator, and the KeyChain reports the alias as absent until the user picks it once.
+         * A grant that is later revoked, or a certificate that is removed, lands here too, because
+         * offering the chooser is more useful than silently falling back to a browser sign-in.
          */
         suspend fun needsSelection(): Boolean =
             withContext(Dispatchers.IO) {
-                if (!repository.isX509CertificateAliasManaged(applicationRestrictions)) {
-                    return@withContext false
-                }
-
                 val alias =
                     repository.getX509CertificateAliasSync(applicationRestrictions)
                         ?: return@withContext false
@@ -50,7 +47,7 @@ class CertificateUser
                 } catch (exception: CancellationException) {
                     throw exception
                 } catch (exception: Exception) {
-                    Log.d(TAG, "The managed alias '$alias' needs to be selected by the user", exception)
+                    Log.d(TAG, "The alias '$alias' needs to be selected by the user", exception)
 
                     true
                 }
