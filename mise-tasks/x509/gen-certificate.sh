@@ -161,5 +161,9 @@ echo
 echo "The certificate itself is ${p12} (password: ${P12_PASSWORD}). Install it with:"
 echo
 echo "    mise run //:x509:install-linux"
-echo "    mise run //:x509:install-macos"
 echo "    mise run //:x509:install-windows"
+echo
+echo "The Apple Clients read no keystore of their own: their identity comes from the VPN"
+echo "configuration a profile installs. Write one with:"
+echo
+echo "    mise run //swift/apple:gen-x509-profile"
