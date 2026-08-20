@@ -64,9 +64,8 @@ If you'd rather not use `mise run setup`:
 
 1. Install Rust, JDK 17, and the Android SDK (via
    [Android Studio](https://developer.android.com/studio) or `sdkmanager`).
-1. Install the NDK version pinned in `app/build.gradle.kts` (currently
-   `28.1.13356709`) via Android Studio's SDK Manager or
-   `sdkmanager "ndk;<version>"`.
+1. Install the NDK version pinned as `ndkVersion` in `app/build.gradle.kts` via
+   Android Studio's SDK Manager or `sdkmanager "ndk;<version>"`.
 1. Create `local.properties` with `sdk.dir=/path/to/Android/Sdk`.
 1. Add the Rust cross-compilation targets to the toolchain pinned in
    `rust/rust-toolchain.toml`:
@@ -77,13 +76,13 @@ If you'd rather not use `mise run setup`:
 
 1. Run `./gradlew assembleDebug` to verify.
 
-If you get errors about `rustc` or `cargo` not being found, it can help to
-explicitly specify the path to these in your shell environment. For example:
+If you get errors about `cargo` not being found, make sure `~/.cargo/bin` is on
+the `PATH` of whatever launches the build; the Gradle task invokes `cargo`
+directly. For example:
 
 ```
 # ~/.zprofile or ~/.bash_profile
-export RUST_ANDROID_GRADLE_RUSTC_COMMAND=$HOME/.cargo/bin/rustc
-export RUST_ANDROID_GRADLE_CARGO_COMMAND=$HOME/.cargo/bin/cargo
+export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
 ## Release Setup
