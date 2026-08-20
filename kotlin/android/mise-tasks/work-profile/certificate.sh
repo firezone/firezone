@@ -2,6 +2,10 @@
 #MISE description="Generate a Firezone-style client certificate and stage it for the work profile's KeyChain"
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+
 # The claims the client reads out of a managed certificate are URI subject alternative names of the
 # form `firezone://<attribute>/<value>`; see `rust/libs/x509-claims/src/lib.rs`. These defaults make
 # the certificate screen show real values instead of blanks.
@@ -13,14 +17,7 @@ DEVICE_SERIAL="${DEVICE_SERIAL:-EMU8CE1F0A2}"
 P12_PASSWORD="${P12_PASSWORD:-firezone}"
 OUT_DIR="${OUT_DIR:-${TMPDIR:-/tmp}/firezone-work-profile}"
 
-ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
-export ANDROID_HOME
-export PATH="$ANDROID_HOME/platform-tools:$PATH"
-
-if ! command -v adb >/dev/null 2>&1; then
-    echo "adb not found in PATH. Run 'mise run setup' first." >&2
-    exit 1
-fi
+require_adb
 
 p12="${OUT_DIR}/${CERT_ALIAS}.p12"
 
@@ -112,26 +109,7 @@ openssl x509 -in "${OUT_DIR}/client.crt" -noout -text |
     awk '/Subject Alternative Name/ {getline; print}' |
     sed 's/^ */    /'
 
-# FLAG_MANAGED_PROFILE is 0x20 in the hex flags `pm list users` prints per user.
-work_profile_user() {
-    adb shell pm list users 2>/dev/null |
-        tr -d '\r' |
-        sed -n 's/.*UserInfo{\([0-9][0-9]*\):[^:]*:\([0-9a-fA-F][0-9a-fA-F]*\)}.*/\1 \2/p' |
-        while read -r id flags; do
-            if [ $((0x$flags & 0x20)) -ne 0 ]; then
-                echo "$id"
-            fi
-        done |
-        head -1
-}
-
-user_id="${WORK_PROFILE_USER:-$(work_profile_user || true)}"
-
-if [ -z "$user_id" ]; then
-    echo "No work profile found. Is the emulator running?" >&2
-    echo "Create one with 'mise run //kotlin/android:work-profile:create'." >&2
-    exit 1
-fi
+user_id="$(require_work_profile_user)" || exit 1
 
 # The DPC's file picker only sees the work profile's own storage, and `adb push` writes user 0's.
 # The AOSP images are userdebug, so `adb root` can put the file where the profile can reach it.
