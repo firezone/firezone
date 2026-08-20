@@ -50,7 +50,9 @@ if ! adb shell am force-stop --user "$user_id" "$PACKAGE" 2>/dev/null; then
 fi
 
 echo "==> Installing ${apk} into user ${user_id}..."
-adb install -r -g --user "$user_id" "$apk"
+# `-t` because the injected-ABI build is the one Android Studio deploys, and AGP marks it
+# `android:testOnly`, which the package manager otherwise refuses to install.
+adb install -r -g -t --user "$user_id" "$apk"
 
 echo
 echo "==> Installed. Next: mise run //kotlin/android:work-profile:certificate"
