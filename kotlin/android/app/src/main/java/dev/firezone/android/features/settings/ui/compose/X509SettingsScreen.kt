@@ -13,7 +13,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,7 +39,6 @@ internal fun X509SettingsScreen(
     state: X509SettingsViewModel.UiState,
     onSelectCertificate: () -> Unit,
     onForgetCertificate: () -> Unit,
-    onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -55,10 +53,6 @@ internal fun X509SettingsScreen(
             style = MaterialTheme.typography.titleLarge,
         )
         Text(
-            text = stringResource(R.string.x509_claims_description),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
             text =
                 stringResource(
                     if (state.isManaged) R.string.x509_managed_description else R.string.x509_user_description,
@@ -67,8 +61,8 @@ internal fun X509SettingsScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (!state.isManaged) {
+        if (!state.isManaged) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onSelectCertificate) {
                     Text(stringResource(R.string.x509_select_certificate))
                 }
@@ -78,10 +72,6 @@ internal fun X509SettingsScreen(
                         Text(stringResource(R.string.x509_forget_certificate))
                     }
                 }
-            }
-
-            OutlinedButton(onClick = onRefresh, enabled = !state.isLoading) {
-                Text(stringResource(R.string.x509_refresh))
             }
         }
 
@@ -170,7 +160,6 @@ private fun X509SettingsScreenPreview() {
                 ),
             onSelectCertificate = {},
             onForgetCertificate = {},
-            onRefresh = {},
         )
     }
 }
