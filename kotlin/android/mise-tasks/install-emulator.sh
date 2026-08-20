@@ -26,12 +26,9 @@ arm64 | aarch64)
 esac
 SYSTEM_IMAGE="${SYSTEM_IMAGE:-system-images;android-36;google_apis;${HOST_ABI}}"
 
-ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
-export ANDROID_HOME
 # avdmanager (cmdline-tools 7+) defaults to $XDG_CONFIG_HOME/.android, emulator still looks at $HOME/.android.
 # Pin both to the same location.
 export ANDROID_USER_HOME="${ANDROID_USER_HOME:-$HOME/.android}"
-export PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 
 emulator_online() {
     adb devices | awk 'NR>1 && /^emulator-/ && $2=="device" {found=1} END {exit !found}'

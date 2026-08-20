@@ -5,10 +5,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${SCRIPT_DIR}/.."
 
-ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
-export ANDROID_HOME
-export PATH="$ANDROID_HOME/platform-tools:$PATH"
-
 # Require exactly one device, unless ANDROID_SERIAL is set (then adb targets that one).
 if [ -z "${ANDROID_SERIAL:-}" ]; then
     device_count=$(adb devices | awk 'NR>1 && $2=="device"' | wc -l | tr -d ' ')

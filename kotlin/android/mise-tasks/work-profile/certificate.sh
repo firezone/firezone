@@ -17,7 +17,7 @@ DEVICE_SERIAL="${DEVICE_SERIAL:-EMU8CE1F0A2}"
 P12_PASSWORD="${P12_PASSWORD:-firezone}"
 OUT_DIR="${OUT_DIR:-${TMPDIR:-/tmp}/firezone-work-profile}"
 
-require_adb
+require_sdk_tool adb
 
 p12="${OUT_DIR}/${CERT_ALIAS}.p12"
 

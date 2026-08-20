@@ -26,7 +26,7 @@ DPC_PACKAGE="${DPC_PACKAGE:-com.afwsamples.testdpc}"
 DPC_RECEIVER="${DPC_RECEIVER:-com.afwsamples.testdpc.DeviceAdminReceiver}"
 PROFILE_NAME="${PROFILE_NAME:-Work}"
 
-require_adb
+require_sdk_tool adb
 
 if [ -z "${TESTDPC_APK:-}" ]; then
     TESTDPC_APK="$(newest_testdpc_apk)"
