@@ -2,12 +2,23 @@
 #MISE description="Import the test X.509 client certificate into a SoftHSM PKCS#11 token"
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=./lib.sh
-source "${SCRIPT_DIR}/lib.sh"
+CERT_ALIAS="${CERT_ALIAS:-firezone-client}"
+P12_PASSWORD="${P12_PASSWORD:-firezone}"
+P12_PATH="${P12_PATH:-${XDG_CACHE_HOME:-${HOME}/.cache}/firezone/x509/${CERT_ALIAS}.p12}"
 
-require_os '^Linux' 'a PKCS#11 token'
-require_p12
+# One task per platform, so running the wrong one is a mistake worth naming rather than a
+# confusing failure further down.
+host_os="$(uname -s)"
+if [ "$host_os" != "Linux" ]; then
+    echo "error: this task installs into a PKCS#11 token, but this is ${host_os}." >&2
+    echo "'mise tasks' lists the task for this platform." >&2
+    exit 1
+fi
+
+if [ ! -f "$P12_PATH" ]; then
+    echo "error: ${P12_PATH} does not exist; run 'mise run //:x509:gen-certificate' first" >&2
+    exit 1
+fi
 
 # The PKCS#11 token holds the private key, and its PIN is written beside it.
 umask 077
