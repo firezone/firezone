@@ -63,6 +63,17 @@ require_work_profile_user() {
     echo "$user_id"
 }
 
+# The emulator advertises a hardware keyboard, which makes Android hide the on-screen one and wait
+# for the host's. Anything driven by hand needs the on-screen keyboard back. The setting is per user,
+# so a work profile does not inherit what user 0 has.
+show_soft_keyboard() {
+    if [ -n "${1:-}" ]; then
+        adb shell settings --user "$1" put secure show_ime_with_hard_keyboard 1
+    else
+        adb shell settings put secure show_ime_with_hard_keyboard 1
+    fi
+}
+
 # Where 'work-profile:build-dpc' keeps its checkout and where 'work-profile:create' expects the APK.
 testdpc_dir() {
     echo "${TESTDPC_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/firezone/android-testdpc}"
