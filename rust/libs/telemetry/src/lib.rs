@@ -508,6 +508,12 @@ fn insert_user_attributes_into_log(mut log: Log) -> Log {
             LogAttribute::from(actor_email),
         );
     }
+    if let Some(mdm_device_id) = current_mdm_device_id() {
+        log.attributes.insert(
+            "user.mdm_device_id".to_owned(),
+            LogAttribute::from(mdm_device_id),
+        );
+    }
 
     log
 }
@@ -527,6 +533,12 @@ fn insert_user_attributes_into_metric(mut metric: Metric) -> Metric {
         metric
             .attributes
             .insert("user.actor_email".into(), LogAttribute::from(actor_email));
+    }
+    if let Some(mdm_device_id) = current_mdm_device_id() {
+        metric.attributes.insert(
+            "user.mdm_device_id".into(),
+            LogAttribute::from(mdm_device_id),
+        );
     }
 
     metric
@@ -661,6 +673,18 @@ mod tests {
                 )
             ])
         )
+    }
+
+    #[test]
+    fn user_attributes_carry_the_mdm_device_id() {
+        set_mdm_device_id("device-1234".to_owned());
+
+        let log = insert_user_attributes_into_log(log("Foobar", &[]));
+
+        assert_eq!(
+            log.attributes.get("user.mdm_device_id"),
+            Some(&LogAttribute::from("device-1234".to_owned()))
+        );
     }
 
     fn event(msg: &str) -> Event<'static> {
