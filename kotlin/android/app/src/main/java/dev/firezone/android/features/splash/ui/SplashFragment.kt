@@ -69,6 +69,12 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
                                 )
                             }
 
+                            SplashViewModel.ViewAction.NavigateToCertificatePermission -> {
+                                findNavController().navigate(
+                                    R.id.certificatePermissionActivity,
+                                )
+                            }
+
                             SplashViewModel.ViewAction.NavigateToSignIn -> {
                                 findNavController().navigate(
                                     R.id.signInFragment,

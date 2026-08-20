@@ -24,6 +24,38 @@ class CertificateUser
         private val applicationRestrictions: Bundle,
         private val x509Identity: X509Identity,
     ) {
+        /**
+         * Whether an administrator configured a certificate that this device will not release on
+         * its own.
+         *
+         * A managed alias says the administrator means this device to authenticate by certificate.
+         * On a company-owned device they grant us the key as well, so reading it succeeds and
+         * nobody is asked anything. On a personally-owned device carrying a work profile they
+         * cannot grant it, and the KeyChain reports the alias as absent until the user picks it
+         * once. Any other failure to read a managed alias lands here too, because offering the
+         * chooser is more useful to the user than a screen they cannot act on.
+         */
+        suspend fun needsSelection(): Boolean =
+            withContext(Dispatchers.IO) {
+                if (!repository.isX509CertificateAliasManaged(applicationRestrictions)) {
+                    return@withContext false
+                }
+
+                val alias =
+                    repository.getX509CertificateAliasSync(applicationRestrictions)
+                        ?: return@withContext false
+
+                try {
+                    x509Identity.load(alias) == null
+                } catch (exception: CancellationException) {
+                    throw exception
+                } catch (exception: Exception) {
+                    Log.d(TAG, "The managed alias '$alias' needs to be selected by the user", exception)
+
+                    true
+                }
+            }
+
         suspend fun identity(): UserIdentity? =
             withContext(Dispatchers.IO) {
                 try {
