@@ -151,4 +151,6 @@ else
     fi
 fi
 
+show_soft_keyboard
+
 echo "==> Booted. Next: mise run //kotlin/android:work-profile:create"
