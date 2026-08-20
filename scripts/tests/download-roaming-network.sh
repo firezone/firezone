@@ -2,14 +2,18 @@
 
 source "./scripts/tests/lib.sh"
 
-# Download 10MB at a max rate of 1MB/s.
-# Budget: 10s for the download + 5s pre-roam wait + ~7s reconnect overhead + buffer.
+# Download 10MB at a max rate of 300KB/s, i.e. ~33s of transfer.
+# The roam has to happen while the download is still in flight, and enough of it
+# has to remain afterwards for the gateway to record the reconnected path. That
+# window has to cover a slow `docker network disconnect`, which has taken as long
+# as 14s to take effect on a loaded runner, on top of the 5s pre-roam wait, the 3s
+# outage and the reconnect.
 client sh -c \
     "curl \
         --fail \
-        --max-time 25 \
+        --max-time 60 \
         --keepalive-time 1 \
-        --limit-rate 1000000 \
+        --limit-rate 300000 \
         --output download.file \
         http://download.httpbin/bytes?num=10000000" &
 
