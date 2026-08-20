@@ -2,24 +2,19 @@
 #MISE description="Create and boot an AOSP emulator (no Google accounts) for work-profile testing"
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+
 AVD_NAME="${AVD_NAME:-firezone-work-profile}"
 DEVICE_PROFILE="${DEVICE_PROFILE:-pixel_7}"
 
-case "$(uname -m)" in
-x86_64 | amd64)
-    HOST_ABI="x86_64"
-    ;;
-arm64 | aarch64)
-    HOST_ABI="arm64-v8a"
-    ;;
-*)
+if ! HOST_ABI="$(host_abi)"; then
     echo "Unsupported host arch: $(uname -m). Set SYSTEM_IMAGE manually." >&2
     exit 1
-    ;;
-esac
+fi
 
-ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
-export ANDROID_HOME
+android_home
 # avdmanager (cmdline-tools 7+) defaults to $XDG_CONFIG_HOME/.android, emulator still looks at $HOME/.android.
 # Pin both to the same location.
 export ANDROID_USER_HOME="${ANDROID_USER_HOME:-$HOME/.android}"

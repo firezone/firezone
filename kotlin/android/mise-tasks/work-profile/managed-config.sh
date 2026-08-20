@@ -2,6 +2,10 @@
 #MISE description="Point the app's managed configuration at the staged certificate alias"
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+
 # Keep in sync with certificate.sh; both default to the same alias.
 CERT_ALIAS="${CERT_ALIAS:-firezone-client}"
 # X509_CERTIFICATE_ALIAS_RESTRICTION in `core/data/Repository.kt`.
@@ -9,35 +13,9 @@ RESTRICTION_KEY="x509CertificateAlias"
 PACKAGE="dev.firezone.android"
 DPC_PACKAGE="${DPC_PACKAGE:-com.afwsamples.testdpc}"
 
-ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
-export ANDROID_HOME
-export PATH="$ANDROID_HOME/platform-tools:$PATH"
+require_adb
 
-if ! command -v adb >/dev/null 2>&1; then
-    echo "adb not found in PATH. Run 'mise run setup' first." >&2
-    exit 1
-fi
-
-# FLAG_MANAGED_PROFILE is 0x20 in the hex flags `pm list users` prints per user.
-work_profile_user() {
-    adb shell pm list users 2>/dev/null |
-        tr -d '\r' |
-        sed -n 's/.*UserInfo{\([0-9][0-9]*\):[^:]*:\([0-9a-fA-F][0-9a-fA-F]*\)}.*/\1 \2/p' |
-        while read -r id flags; do
-            if [ $((0x$flags & 0x20)) -ne 0 ]; then
-                echo "$id"
-            fi
-        done |
-        head -1
-}
-
-user_id="${WORK_PROFILE_USER:-$(work_profile_user || true)}"
-
-if [ -z "$user_id" ]; then
-    echo "No work profile found. Is the emulator running?" >&2
-    echo "Create one with 'mise run //kotlin/android:work-profile:create'." >&2
-    exit 1
-fi
+user_id="$(require_work_profile_user)" || exit 1
 
 restrictions_file="/data/system/users/${user_id}/res_${PACKAGE}.xml"
 

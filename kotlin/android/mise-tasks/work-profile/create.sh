@@ -2,6 +2,10 @@
 #MISE description="Create a managed work profile on the running emulator and give it a profile owner"
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+
 # Simulating a personally-owned device with a work profile needs a Device Policy Controller: only a
 # profile owner can install a key pair into the profile's KeyChain and push managed configuration to
 # an app, and neither operation is reachable from `adb`. Google's reference DPC is TestDPC:
@@ -22,21 +26,10 @@ DPC_PACKAGE="${DPC_PACKAGE:-com.afwsamples.testdpc}"
 DPC_RECEIVER="${DPC_RECEIVER:-com.afwsamples.testdpc.DeviceAdminReceiver}"
 PROFILE_NAME="${PROFILE_NAME:-Work}"
 
-ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
-export ANDROID_HOME
-export PATH="$ANDROID_HOME/platform-tools:$PATH"
-
-if ! command -v adb >/dev/null 2>&1; then
-    echo "adb not found in PATH. Run 'mise run setup' first." >&2
-    exit 1
-fi
-
-TESTDPC_DIR="${TESTDPC_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/firezone/android-testdpc}"
+require_adb
 
 if [ -z "${TESTDPC_APK:-}" ]; then
-    TESTDPC_APK="$(find "$TESTDPC_DIR/app/build/outputs/apk/debug" -name '*.apk' -type f -print0 2>/dev/null |
-        xargs -0 ls -t 2>/dev/null |
-        head -1)"
+    TESTDPC_APK="$(newest_testdpc_apk)"
 fi
 
 if [ -z "${TESTDPC_APK:-}" ]; then
@@ -50,19 +43,6 @@ if [ ! -f "$TESTDPC_APK" ]; then
     echo "TESTDPC_APK does not point at a file: ${TESTDPC_APK}" >&2
     exit 1
 fi
-
-# FLAG_MANAGED_PROFILE is 0x20 in the hex flags `pm list users` prints per user.
-work_profile_user() {
-    adb shell pm list users 2>/dev/null |
-        tr -d '\r' |
-        sed -n 's/.*UserInfo{\([0-9][0-9]*\):[^:]*:\([0-9a-fA-F][0-9a-fA-F]*\)}.*/\1 \2/p' |
-        while read -r id flags; do
-            if [ $((0x$flags & 0x20)) -ne 0 ]; then
-                echo "$id"
-            fi
-        done |
-        head -1
-}
 
 user_id="$(work_profile_user || true)"
 
