@@ -41,7 +41,17 @@ defmodule PortalAPI.Router do
       json_decoder: Phoenix.json_library()
 
     plug :accepts, ["json"]
-    plug PortalAPI.Plugs.Auth
+    plug PortalAPI.Plugs.MCPAuth
+  end
+
+  # Read before the client holds any credential, so it cannot be authenticated.
+  # Both paths are served: a client tries the one scoped to the MCP endpoint's
+  # path first and falls back to the root.
+  scope "/.well-known", PortalAPI do
+    pipe_through :public
+
+    get "/oauth-protected-resource/mcp", OAuthMetadataController, :show
+    get "/oauth-protected-resource", OAuthMetadataController, :show
   end
 
   scope "/mcp", PortalAPI do

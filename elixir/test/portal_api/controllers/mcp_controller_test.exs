@@ -11,27 +11,74 @@ defmodule PortalAPI.MCPControllerTest do
 
   setup do
     account = account_fixture()
-    actor = actor_fixture(type: :api_client, account: account)
+    actor = actor_fixture(type: :account_admin_user, account: account)
 
     %{account: account, actor: actor}
   end
 
   describe "transport" do
-    test "rejects an unauthenticated request", %{conn: conn} do
+    test "rejects an unauthenticated request with a discovery challenge", %{conn: conn} do
       conn = rpc(conn, "server/discover")
 
       assert %{"status" => 401} = json_response(conn, 401)
+
+      assert [challenge] = get_resp_header(conn, "www-authenticate")
+      assert challenge =~ ~s(resource_metadata=")
+      assert challenge =~ "/.well-known/oauth-protected-resource/mcp"
+      assert challenge =~ ~s(scope="mcp:read")
+    end
+
+    test "rejects an API token, which is not a credential for this endpoint", %{
+      conn: conn,
+      account: account
+    } do
+      api_actor = actor_fixture(type: :api_client, account: account)
+      conn = conn |> authorize_conn(api_actor) |> rpc("server/discover")
+
+      assert json_response(conn, 401)
+    end
+
+    test "rejects a token minted for another audience", %{conn: conn, actor: actor} do
+      {_token, encoded, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(
+          account: actor.account,
+          actor: actor,
+          resource: "https://mcp.evil.example.com/mcp"
+        )
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer " <> encoded)
+        |> rpc("server/discover")
+
+      assert json_response(conn, 401)
+    end
+
+    test "rejects an expired token", %{conn: conn, actor: actor} do
+      {_token, encoded, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(
+          account: actor.account,
+          actor: actor,
+          expires_at: DateTime.add(DateTime.utc_now(), -60, :second)
+        )
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer " <> encoded)
+        |> rpc("server/discover")
+
+      assert json_response(conn, 401)
     end
 
     test "answers GET with 405", %{conn: conn, actor: actor} do
-      conn = conn |> authorize_conn(actor) |> get("/mcp")
+      conn = conn |> authorize_mcp_conn(actor) |> get("/mcp")
 
       assert %{"error" => %{"code" => code}} = json_response(conn, 405)
       assert code == MCP.invalid_request()
     end
 
     test "answers DELETE with 405", %{conn: conn, actor: actor} do
-      conn = conn |> authorize_conn(actor) |> delete("/mcp")
+      conn = conn |> authorize_mcp_conn(actor) |> delete("/mcp")
 
       assert json_response(conn, 405)
     end
@@ -39,7 +86,7 @@ defmodule PortalAPI.MCPControllerTest do
     test "rejects a cross-origin request", %{conn: conn, actor: actor} do
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> put_req_header("origin", "https://evil.example.com")
         |> rpc("server/discover")
 
@@ -50,7 +97,7 @@ defmodule PortalAPI.MCPControllerTest do
     test "allows a same-origin request", %{conn: conn, actor: actor} do
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> put_req_header("origin", "http://www.example.com")
         |> rpc("server/discover")
 
@@ -60,7 +107,7 @@ defmodule PortalAPI.MCPControllerTest do
     test "returns 202 with no body for a notification", %{conn: conn, actor: actor} do
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> put_req_header("content-type", "application/json")
         |> post("/mcp", Jason.encode!(%{"jsonrpc" => "2.0", "method" => "notifications/anything"}))
 
@@ -70,7 +117,7 @@ defmodule PortalAPI.MCPControllerTest do
     test "rejects a body that is not JSON-RPC", %{conn: conn, actor: actor} do
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> put_req_header("content-type", "application/json")
         |> post("/mcp", Jason.encode!(%{"hello" => "world"}))
 
@@ -79,7 +126,7 @@ defmodule PortalAPI.MCPControllerTest do
     end
 
     test "returns 404 and -32601 for an unknown method", %{conn: conn, actor: actor} do
-      conn = conn |> authorize_conn(actor) |> rpc("resources/list")
+      conn = conn |> authorize_mcp_conn(actor) |> rpc("resources/list")
 
       assert %{"error" => %{"code" => code, "message" => message}} = json_response(conn, 404)
       assert code == MCP.method_not_found()
@@ -91,7 +138,7 @@ defmodule PortalAPI.MCPControllerTest do
     test "rejects a missing MCP-Protocol-Version header", %{conn: conn, actor: actor} do
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> put_req_header("content-type", "application/json")
         |> put_req_header("mcp-method", "server/discover")
         |> post("/mcp", Jason.encode!(request("server/discover")))
@@ -103,7 +150,7 @@ defmodule PortalAPI.MCPControllerTest do
     test "rejects a header that disagrees with the body", %{conn: conn, actor: actor} do
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> headers("server/discover")
         |> put_req_header("mcp-method", "tools/list")
         |> post("/mcp", Jason.encode!(request("server/discover")))
@@ -118,7 +165,7 @@ defmodule PortalAPI.MCPControllerTest do
 
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> headers("server/discover")
         |> put_req_header("mcp-protocol-version", "2024-11-05")
         |> post("/mcp", Jason.encode!(body))
@@ -133,7 +180,7 @@ defmodule PortalAPI.MCPControllerTest do
 
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> headers("server/discover")
         |> post("/mcp", Jason.encode!(body))
 
@@ -146,7 +193,7 @@ defmodule PortalAPI.MCPControllerTest do
 
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> headers("tools/call")
         |> put_req_header("mcp-name", encoded)
         |> post("/mcp", Jason.encode!(request("tools/call", %{"name" => "list_resources"})))
@@ -157,7 +204,7 @@ defmodule PortalAPI.MCPControllerTest do
     test "rejects an Mcp-Name that disagrees with the body", %{conn: conn, actor: actor} do
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> headers("tools/call")
         |> put_req_header("mcp-name", "get_account")
         |> post("/mcp", Jason.encode!(request("tools/call", %{"name" => "list_resources"})))
@@ -169,7 +216,7 @@ defmodule PortalAPI.MCPControllerTest do
 
   describe "server/discover" do
     test "reports versions, capabilities, and caching hints", %{conn: conn, actor: actor} do
-      conn = conn |> authorize_conn(actor) |> rpc("server/discover")
+      conn = conn |> authorize_mcp_conn(actor) |> rpc("server/discover")
 
       assert %{"result" => result} = json_response(conn, 200)
 
@@ -185,7 +232,7 @@ defmodule PortalAPI.MCPControllerTest do
 
   describe "tools/list" do
     test "lists only read tools when writes are disabled", %{conn: conn, actor: actor} do
-      conn = conn |> authorize_conn(actor) |> rpc("tools/list")
+      conn = conn |> authorize_mcp_conn(actor) |> rpc("tools/list")
 
       assert %{"result" => %{"tools" => tools}} = json_response(conn, 200)
 
@@ -197,10 +244,13 @@ defmodule PortalAPI.MCPControllerTest do
       assert Enum.all?(tools, & &1["annotations"]["readOnlyHint"])
     end
 
-    test "lists write tools when the feature is enabled", %{conn: conn, actor: actor} do
+    test "lists write tools when the scope is granted and the feature is enabled", %{
+      conn: conn,
+      actor: actor
+    } do
       enable_feature(:mcp_writes)
 
-      conn = conn |> authorize_conn(actor) |> rpc("tools/list")
+      conn = conn |> authorize_mcp_conn(actor, ~w[mcp:read mcp:write]) |> rpc("tools/list")
 
       assert %{"result" => %{"tools" => tools}} = json_response(conn, 200)
 
@@ -210,7 +260,7 @@ defmodule PortalAPI.MCPControllerTest do
     end
 
     test "returns tools in a stable order with cache hints", %{conn: conn, actor: actor} do
-      conn = conn |> authorize_conn(actor) |> rpc("tools/list")
+      conn = conn |> authorize_mcp_conn(actor) |> rpc("tools/list")
 
       assert %{"result" => result} = json_response(conn, 200)
 
@@ -225,7 +275,7 @@ defmodule PortalAPI.MCPControllerTest do
       conn: conn,
       actor: actor
     } do
-      conn = conn |> authorize_conn(actor) |> rpc("tools/list")
+      conn = conn |> authorize_mcp_conn(actor) |> rpc("tools/list")
 
       assert %{"result" => %{"tools" => tools}} = json_response(conn, 200)
 
@@ -238,7 +288,7 @@ defmodule PortalAPI.MCPControllerTest do
     end
 
     test "rejects a cursor it never issued", %{conn: conn, actor: actor} do
-      conn = conn |> authorize_conn(actor) |> rpc("tools/list", %{"cursor" => "made-up"})
+      conn = conn |> authorize_mcp_conn(actor) |> rpc("tools/list", %{"cursor" => "made-up"})
 
       assert %{"error" => %{"code" => code}} = json_response(conn, 400)
       assert code == MCP.invalid_params()
@@ -256,7 +306,7 @@ defmodule PortalAPI.MCPControllerTest do
 
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> call_tool("list_resources", %{})
 
       assert %{"result" => result} = json_response(conn, 200)
@@ -278,7 +328,7 @@ defmodule PortalAPI.MCPControllerTest do
 
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> call_tool("get_resource", %{"id" => resource.id})
 
       assert %{"result" => %{"structuredContent" => %{"data" => data}}} = json_response(conn, 200)
@@ -296,7 +346,7 @@ defmodule PortalAPI.MCPControllerTest do
 
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> call_tool("list_resources", %{"name" => "findable"})
 
       assert %{"result" => %{"structuredContent" => %{"data" => [found]}}} =
@@ -311,7 +361,7 @@ defmodule PortalAPI.MCPControllerTest do
 
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor, ~w[mcp:read mcp:write])
         |> call_tool("create_resource", %{
           "resource" => %{
             "name" => "From MCP",
@@ -326,16 +376,31 @@ defmodule PortalAPI.MCPControllerTest do
       assert result["structuredContent"]["data"]["name"] == "From MCP"
     end
 
-    test "hides write tools behind the feature flag", %{conn: conn, actor: actor} do
-      conn = conn |> authorize_conn(actor) |> call_tool("delete_actor", %{"id" => actor.id})
+    test "hides write tools when the operator switched writes off", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_mcp_conn(actor, ~w[mcp:read mcp:write])
+        |> call_tool("delete_actor", %{"id" => actor.id})
 
       assert %{"error" => %{"code" => code, "message" => message}} = json_response(conn, 400)
       assert code == MCP.invalid_params()
-      assert message =~ "read-only"
+      assert message =~ "switched off"
+    end
+
+    test "challenges for the write scope when the token lacks it", %{conn: conn, actor: actor} do
+      enable_feature(:mcp_writes)
+
+      conn = conn |> authorize_mcp_conn(actor) |> call_tool("delete_actor", %{"id" => actor.id})
+
+      assert json_response(conn, 403)
+      assert [challenge] = get_resp_header(conn, "www-authenticate")
+      assert challenge =~ ~s(error="insufficient_scope")
+      assert challenge =~ ~s(scope="mcp:write")
+      assert challenge =~ "oauth-protected-resource"
     end
 
     test "returns a protocol error for an unknown tool", %{conn: conn, actor: actor} do
-      conn = conn |> authorize_conn(actor) |> call_tool("drop_database", %{})
+      conn = conn |> authorize_mcp_conn(actor) |> call_tool("drop_database", %{})
 
       assert %{"error" => %{"code" => code, "message" => message}} = json_response(conn, 400)
       assert code == MCP.invalid_params()
@@ -343,7 +408,7 @@ defmodule PortalAPI.MCPControllerTest do
     end
 
     test "returns a tool error for an unknown argument", %{conn: conn, actor: actor} do
-      conn = conn |> authorize_conn(actor) |> call_tool("list_resources", %{"nope" => "1"})
+      conn = conn |> authorize_mcp_conn(actor) |> call_tool("list_resources", %{"nope" => "1"})
 
       assert %{"result" => result} = json_response(conn, 200)
       assert result["isError"] == true
@@ -352,7 +417,7 @@ defmodule PortalAPI.MCPControllerTest do
     end
 
     test "returns a tool error for a missing path parameter", %{conn: conn, actor: actor} do
-      conn = conn |> authorize_conn(actor) |> call_tool("get_resource", %{})
+      conn = conn |> authorize_mcp_conn(actor) |> call_tool("get_resource", %{})
 
       assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} =
                json_response(conn, 200)
@@ -366,7 +431,7 @@ defmodule PortalAPI.MCPControllerTest do
     } do
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> call_tool("get_resource", %{"id" => Ecto.UUID.generate()})
 
       assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} =
@@ -382,7 +447,7 @@ defmodule PortalAPI.MCPControllerTest do
 
       conn =
         conn
-        |> authorize_conn(actor)
+        |> authorize_mcp_conn(actor)
         |> call_tool("get_resource", %{"id" => other_resource.id})
 
       assert %{"result" => %{"isError" => true}} = json_response(conn, 200)
@@ -393,7 +458,7 @@ defmodule PortalAPI.MCPControllerTest do
       account: account,
       actor: actor
     } do
-      conn |> authorize_conn(actor) |> call_tool("list_resources", %{})
+      conn |> authorize_mcp_conn(actor) |> call_tool("list_resources", %{})
 
       logs = Portal.Repo.all(Portal.APIRequestLog)
 

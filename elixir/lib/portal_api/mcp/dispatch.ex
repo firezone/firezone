@@ -11,6 +11,12 @@ defmodule PortalAPI.MCP.Dispatch do
 
   Dispatching this way rather than calling controller actions directly is what
   keeps MCP from becoming a second, subtly different API surface.
+
+  The subject authenticated for the MCP request is handed to the inner one
+  rather than being derived again. Re-authenticating would fail outright, since
+  an OAuth access token is not a credential the REST pipeline accepts, and even
+  where it did work it would stamp the token's last-seen columns twice for one
+  request.
   """
 
   alias PortalAPI.MCP.CaptureAdapter
@@ -90,7 +96,9 @@ defmodule PortalAPI.MCP.Dispatch do
   # controller's view in place would make every operation render through it.
   # `before_send` callbacks belong to the outer response, not to this one.
   defp inner_private(%Plug.Conn{} = conn) do
-    Map.drop(conn.private, [
+    conn.private
+    |> Map.put(PortalAPI.Plugs.Auth.subject_key(), conn.assigns.subject)
+    |> Map.drop([
       :before_send,
       :phoenix_action,
       :phoenix_controller,

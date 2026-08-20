@@ -127,6 +127,14 @@ defmodule PortalAPI.MCPController do
       {:error, :unknown_tool, message} ->
         send_rpc(conn, 400, MCP.error(id, MCP.invalid_params(), message))
 
+      {:error, :insufficient_scope, scope} ->
+        conn
+        |> put_resp_header("www-authenticate", MCP.insufficient_scope_challenge(scope))
+        |> send_rpc(
+          403,
+          MCP.error(id, MCP.invalid_request(), "This tool requires the #{scope} scope.")
+        )
+
       {:error, message} when is_binary(message) ->
         send_rpc(conn, 200, MCP.result(id, tool_error(message)))
     end
@@ -141,11 +149,19 @@ defmodule PortalAPI.MCPController do
 
     case Tools.fetch(name) do
       {:ok, %Tool{write?: true} = tool} ->
-        if :write in scopes do
-          {:ok, tool}
-        else
-          {:error, :unknown_tool,
-           "Tool #{tool.name} is not available: this server is configured for read-only access."}
+        cond do
+          :write in scopes ->
+            {:ok, tool}
+
+          # No scope can unlock a tool the operator has switched off, so saying
+          # which scope is missing would send the client on a pointless
+          # authorization round trip.
+          not Portal.Features.enabled?(:mcp_writes) ->
+            {:error, :unknown_tool,
+             "Tool #{tool.name} is not available: writes are switched off for this deployment."}
+
+          true ->
+            {:error, :insufficient_scope, Scopes.required_scope(tool)}
         end
 
       {:ok, tool} ->

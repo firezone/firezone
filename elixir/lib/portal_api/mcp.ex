@@ -60,6 +60,41 @@ defmodule PortalAPI.MCP do
   def unsupported_protocol_version, do: @unsupported_protocol_version
 
   @doc """
+  The canonical URI of this MCP server.
+
+  Tokens are minted for this exact audience and checked against it on every
+  request, so a token issued for anything else is refused even while it is
+  otherwise valid.
+  """
+  def resource_uri, do: PortalAPI.Endpoint.url() <> "/mcp"
+
+  @doc "Where a client fetches this resource's OAuth metadata."
+  def resource_metadata_url do
+    PortalAPI.Endpoint.url() <> "/.well-known/oauth-protected-resource/mcp"
+  end
+
+  @doc "The authorization server that issues tokens for this resource."
+  def authorization_server, do: PortalWeb.Endpoint.url()
+
+  @doc """
+  The `WWW-Authenticate` value for an unauthenticated request.
+
+  Without it a conforming client has no way to discover where to authenticate,
+  and can only report a bare failure.
+  """
+  def challenge do
+    ~s(Bearer resource_metadata="#{resource_metadata_url()}", ) <>
+      ~s(scope="#{Portal.OAuth.Scope.encode(Portal.OAuth.Scope.supported())}")
+  end
+
+  @doc "The `WWW-Authenticate` value telling a client which scopes it still needs."
+  def insufficient_scope_challenge(required) do
+    ~s(Bearer error="insufficient_scope", ) <>
+      ~s(scope="#{Portal.OAuth.Scope.encode(List.wrap(required))}", ) <>
+      ~s(resource_metadata="#{resource_metadata_url()}")
+  end
+
+  @doc """
   Name and version this server reports as `serverInfo`.
 
   Self-reported and unverified by the protocol, so it is for display and
