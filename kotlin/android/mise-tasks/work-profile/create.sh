@@ -67,6 +67,8 @@ if ! adb shell dpm set-profile-owner --user "$user_id" "${DPC_PACKAGE}/${DPC_REC
     echo "    Could not set the profile owner. Harmless if this profile already has one." >&2
 fi
 
+show_soft_keyboard "$user_id"
+
 echo "==> Owners now known to the device:"
 adb shell dpm list-owners || true
 
