@@ -43,3 +43,4 @@ run = "./gradlew test"
 
 [tools]
 "aqua:firebase/firebase-tools" = "15.18.0"
+bazelisk = "1.29.0"
