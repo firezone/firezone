@@ -5,11 +5,13 @@ import android.net.Uri
 import android.os.Bundle
 import android.security.KeyChain
 import android.widget.Toast
+import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.databinding.ActivityCertificatePermissionBinding
+import dev.firezone.android.features.permission.certificate.ui.compose.CertificatePermissionScreen
+import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import javax.inject.Inject
 
 /**
@@ -22,8 +24,6 @@ import javax.inject.Inject
  */
 @AndroidEntryPoint
 class CertificatePermissionActivity : AppCompatActivity() {
-    private lateinit var binding: ActivityCertificatePermissionBinding
-
     @Inject
     lateinit var repository: Repository
 
@@ -32,11 +32,15 @@ class CertificatePermissionActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityCertificatePermissionBinding.inflate(layoutInflater)
-        setContentView(binding.root)
 
-        binding.btnSelect.setOnClickListener { chooseCertificate() }
-        binding.btnSkip.setOnClickListener { finish() }
+        setContent {
+            FirezoneTheme {
+                CertificatePermissionScreen(
+                    onSelectCertificate = ::chooseCertificate,
+                    onSkip = ::finish,
+                )
+            }
+        }
     }
 
     private fun chooseCertificate() {
