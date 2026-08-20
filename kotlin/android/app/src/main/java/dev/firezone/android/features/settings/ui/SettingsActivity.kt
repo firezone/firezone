@@ -14,7 +14,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
-import com.google.android.material.tabs.TabLayoutMediator
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.databinding.ActivitySettingsBinding
@@ -26,6 +25,25 @@ internal class SettingsActivity : AppCompatActivity() {
     private val viewModel: SettingsViewModel by viewModels()
     private var lastFocusedView: View? = null
     private var lastSelectedPage = -1
+
+    /** The navigation item for each page of the pager, in order. */
+    private val pageMenuItems =
+        listOf(
+            R.id.settingsGeneral,
+            R.id.settingsAdvanced,
+            R.id.settingsLogs,
+        )
+
+    private val navigationSelectionSync =
+        object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                // Checking the item directly rather than assigning `selectedItemId`, which would
+                // call back into the item listener and drive the pager again.
+                binding.bottomNavigation.menu
+                    .getItem(position)
+                    .isChecked = true
+            }
+        }
 
     private val focusTracker =
         ViewTreeObserver.OnGlobalFocusChangeListener { _, newFocus ->
@@ -73,29 +91,21 @@ internal class SettingsActivity : AppCompatActivity() {
             // See https://issuetracker.google.com/issues/140656866
             window.decorView.viewTreeObserver.addOnGlobalFocusChangeListener(focusTracker)
             viewPager.registerOnPageChangeCallback(pageReselectionFocusRestorer)
+            viewPager.registerOnPageChangeCallback(navigationSelectionSync)
 
-            TabLayoutMediator(tabLayout, viewPager) { tab, position ->
-                when (position) {
-                    0 -> {
-                        tab.setIcon(R.drawable.rounded_discover_tune_black_24dp)
-                        tab.setText("General")
-                    }
+            bottomNavigation.setOnItemSelectedListener { item ->
+                val position = pageMenuItems.indexOf(item.itemId)
 
-                    1 -> {
-                        tab.setIcon(R.drawable.rounded_settings_black_24dp)
-                        tab.setText("Advanced")
-                    }
-
-                    2 -> {
-                        tab.setIcon(R.drawable.rounded_description_black_24dp)
-                        tab.setText("Logs")
-                    }
-
-                    else -> {
-                        throw IllegalArgumentException("Invalid tab position: $position")
-                    }
+                if (position < 0) {
+                    return@setOnItemSelectedListener false
                 }
-            }.attach()
+
+                // Without smooth scrolling, so that jumping across the bar does not create and
+                // then discard every fragment in between.
+                viewPager.setCurrentItem(position, false)
+
+                true
+            }
 
             val isUserSignedIn = intent.getBooleanExtra("isUserSignedIn", false)
             if (isUserSignedIn) {
@@ -152,6 +162,7 @@ internal class SettingsActivity : AppCompatActivity() {
     override fun onDestroy() {
         window.decorView.viewTreeObserver.removeOnGlobalFocusChangeListener(focusTracker)
         binding.viewPager.unregisterOnPageChangeCallback(pageReselectionFocusRestorer)
+        binding.viewPager.unregisterOnPageChangeCallback(navigationSelectionSync)
         lastFocusedView = null
         super.onDestroy()
     }
@@ -159,14 +170,14 @@ internal class SettingsActivity : AppCompatActivity() {
     private inner class SettingsPagerAdapter(
         activity: FragmentActivity,
     ) : FragmentStateAdapter(activity) {
-        override fun getItemCount(): Int = 3 // Three tabs
+        override fun getItemCount(): Int = pageMenuItems.size
 
         override fun createFragment(position: Int): Fragment =
             when (position) {
                 0 -> GeneralSettingsFragment()
                 1 -> AdvancedSettingsFragment()
                 2 -> LogSettingsFragment()
-                else -> throw IllegalArgumentException("Invalid tab position: $position")
+                else -> throw IllegalArgumentException("Invalid page position: $position")
             }
     }
 }
