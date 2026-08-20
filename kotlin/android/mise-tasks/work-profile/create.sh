@@ -28,6 +28,13 @@ PROFILE_NAME="${PROFILE_NAME:-Work}"
 
 require_sdk_tool adb
 
+if ! adb_root; then
+    echo "This device refuses 'adb root', so a work profile cannot be created over adb." >&2
+    echo "Boot the emulator through 'mise run //kotlin/android:work-profile:boot', which picks a" >&2
+    echo "userdebug AOSP image." >&2
+    exit 1
+fi
+
 TESTDPC_APK="${TESTDPC_APK:-$(testdpc_apk)}"
 
 if [ ! -f "$TESTDPC_APK" ]; then
