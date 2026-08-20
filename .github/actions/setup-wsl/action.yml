@@ -12,6 +12,18 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Configure WSL
+      shell: pwsh
+      # WSL2 shuts the VM down once it has been idle for a while, taking the
+      # Docker daemon and every container with it. Steps that do not talk to
+      # WSL2, such as the one running the Client, are idle time as far as WSL2
+      # is concerned. The configuration is read when the VM starts, so this has
+      # to happen before anything else uses `wsl`.
+      run: |
+        @"
+        [wsl2]
+        vmIdleTimeout=-1
+        "@ | Set-Content -Path (Join-Path $env:USERPROFILE ".wslconfig") -Encoding ascii
     - name: Update WSL
       shell: pwsh
       # The runner image ships the inbox WSL, whose kernel predates the
@@ -182,10 +194,7 @@ runs:
     - name: Start the Docker daemon
       shell: pwsh
       # An imported distribution has no init system, so the daemon is started
-      # directly. Running it as a detached session also keeps the VM alive:
-      # WSL2 terminates the VM roughly a minute after the last `wsl.exe`
-      # session exits, taking the daemon and every container with it. The
-      # runner reaps the process at the end of the job.
+      # directly. The runner reaps the process at the end of the job.
       run: Start-Process wsl -ArgumentList "-u", "root", "--", "dockerd" -WindowStyle Hidden
     - name: Wait for the Docker daemon
       shell: wsl-bash {0}
@@ -195,3 +204,10 @@ runs:
           sleep 2
         done
         docker info
+    - name: Keep the distribution running
+      shell: pwsh
+      # A distribution terminates once its last `wsl.exe` session exits, which
+      # takes the Docker daemon and every container with it. This session
+      # bridges the steps that do not talk to WSL2 themselves, such as the one
+      # running the Client.
+      run: Start-Process wsl -ArgumentList "-u", "root", "--", "sleep", "infinity" -WindowStyle Hidden

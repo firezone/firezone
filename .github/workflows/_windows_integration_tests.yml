@@ -260,6 +260,12 @@ jobs:
             Receive-Job $probe -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
             Remove-Job $probe -Force -ErrorAction SilentlyContinue
             Write-Host "::endgroup::"
+
+            # TEMPORARY: tells apart the distribution having been restarted
+            # from the Docker daemon alone having been restarted.
+            Write-Host "::group::WSL2 VM state"
+            wsl -u root -- bash -c 'uptime; ps -o pid,etimes,comm -p 1; ps -o pid,etimes,args -C dockerd; docker ps -a --format "{{.Names}} {{.Status}}"; journalctl --no-pager -n 40 -u docker.service; dmesg | tail -n 20; true'
+            Write-Host "::endgroup::"
           }
       - name: Ensure the Client emitted no errors
         if: "!cancelled()"
