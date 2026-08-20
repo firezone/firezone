@@ -77,8 +77,8 @@ If you'd rather not use `mise run setup`:
 1. Run `./gradlew assembleDebug` to verify.
 
 If you get errors about `cargo` not being found, make sure `~/.cargo/bin` is on
-the `PATH` of whatever launches the build; Android Studio started from a desktop
-launcher does not read your shell profile. For example:
+the `PATH` of whatever launches the build; the Gradle task invokes `cargo`
+directly. For example:
 
 ```
 # ~/.zprofile or ~/.bash_profile
