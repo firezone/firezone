@@ -41,6 +41,12 @@
 		for future connections.
 	</string>
 	<string name="x509_select_certificate">Select Certificate</string>
+	<string name="x509_selection_title">Select your client certificate</string>
+	<string name="x509_selection_description">
+		Your administrator issued a certificate that Firezone uses to sign you in. Because this
+		device is personally owned, Android only releases the certificate once you choose it.
+		You are asked this once: Android remembers your choice.
+	</string>
 	<string name="x509_forget_certificate">Forget Selection</string>
 	<string name="x509_refresh">Refresh</string>
 	<string name="x509_loading">Reading the KeyChain…</string>
