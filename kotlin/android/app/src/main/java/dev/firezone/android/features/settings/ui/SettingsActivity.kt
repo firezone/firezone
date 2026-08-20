@@ -26,21 +26,22 @@ internal class SettingsActivity : AppCompatActivity() {
     private var lastFocusedView: View? = null
     private var lastSelectedPage = -1
 
-    /** The navigation item for each page of the pager, in order. */
-    private val pageMenuItems =
+    /** The navigation item and the page it shows, in order. */
+    private val pages: List<Pair<Int, () -> Fragment>> =
         listOf(
-            R.id.settingsGeneral,
-            R.id.settingsAdvanced,
-            R.id.settingsLogs,
+            R.id.settingsGeneral to { GeneralSettingsFragment() },
+            R.id.settingsAdvanced to { AdvancedSettingsFragment() },
+            R.id.settingsLogs to { LogSettingsFragment() },
         )
 
     private val navigationSelectionSync =
         object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
-                // Checking the item directly rather than assigning `selectedItemId`, which would
+                // By id rather than by menu position, which would assume the menu is ordered like
+                // the pager. Checking the item rather than assigning `selectedItemId`, which would
                 // call back into the item listener and drive the pager again.
                 binding.bottomNavigation.menu
-                    .getItem(position)
+                    .findItem(pages[position].first)
                     .isChecked = true
             }
         }
@@ -94,7 +95,7 @@ internal class SettingsActivity : AppCompatActivity() {
             viewPager.registerOnPageChangeCallback(navigationSelectionSync)
 
             bottomNavigation.setOnItemSelectedListener { item ->
-                val position = pageMenuItems.indexOf(item.itemId)
+                val position = pages.indexOfFirst { it.first == item.itemId }
 
                 if (position < 0) {
                     return@setOnItemSelectedListener false
@@ -170,14 +171,8 @@ internal class SettingsActivity : AppCompatActivity() {
     private inner class SettingsPagerAdapter(
         activity: FragmentActivity,
     ) : FragmentStateAdapter(activity) {
-        override fun getItemCount(): Int = pageMenuItems.size
+        override fun getItemCount(): Int = pages.size
 
-        override fun createFragment(position: Int): Fragment =
-            when (position) {
-                0 -> GeneralSettingsFragment()
-                1 -> AdvancedSettingsFragment()
-                2 -> LogSettingsFragment()
-                else -> throw IllegalArgumentException("Invalid page position: $position")
-            }
+        override fun createFragment(position: Int): Fragment = pages[position].second()
     }
 }
