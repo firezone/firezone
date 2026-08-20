@@ -88,6 +88,16 @@ internal fun X509SettingsScreen(
             style = MaterialTheme.typography.bodyMedium,
         )
 
+        // The KeyChain answers a missing grant with a null key rather than an error, so this state
+        // would otherwise be an alias with no detail underneath it and no reason given.
+        if (state.alias != null && !state.isLoading && !state.isUsable && state.error == null) {
+            Text(
+                text = stringResource(R.string.x509_not_released),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         if (state.isLoading) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

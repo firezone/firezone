@@ -46,6 +46,9 @@
 	<string name="x509_no_certificate_selected">No RSA or EC certificate was selected.</string>
 	<string name="x509_not_configured">No client certificate is configured.</string>
 	<string name="x509_alias_configured">KeyChain alias: %1$s</string>
+	<string name="x509_not_released">
+		Android has not released this certificate to Firezone. Selecting it grants access.
+	</string>
 	<string name="x509_error_title">Unable to read the client certificate</string>
 	<string name="x509_contact_admin">Contact your administrator for support.</string>
 
