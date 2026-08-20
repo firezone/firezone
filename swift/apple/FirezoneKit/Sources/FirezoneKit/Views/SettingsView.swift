@@ -154,6 +154,11 @@ public struct SettingsView: View {
                   Text("Advanced")
                 }
                 .badge(viewModel.isValid() ? nil : "!")
+              certificateTab
+                .tabItem {
+                  Image(systemName: "checkmark.seal")
+                  Text("Certificate")
+                }
               logsTab
                 .tabItem {
                   Image(systemName: "doc.text")
@@ -208,6 +213,10 @@ public struct SettingsView: View {
           advancedTab
             .tabItem {
               Text("Advanced")
+            }
+          certificateTab
+            .tabItem {
+              Text("Certificate")
             }
           logsTab
             .tabItem {
@@ -397,9 +406,6 @@ public struct SettingsView: View {
             .frame(width: 500)
             Spacer()
           }
-
-          clientCertificateSettings
-            .frame(maxWidth: 600)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical)
@@ -463,10 +469,6 @@ public struct SettingsView: View {
             header: { Text("Advanced Settings") },
             footer: { Text(FootnoteText.forAdvanced ?? "") }
           )
-
-          Section {
-            clientCertificateSettings
-          }
         }
         Spacer()
         HStack {
@@ -581,6 +583,31 @@ public struct SettingsView: View {
                 self.exportLogsWithSavePanelOnMac()
               }
             )
+          }
+        }
+      }
+    #else
+      #error("Unsupported platform")
+    #endif
+  }
+
+  private var certificateTab: some View {
+    #if os(macOS)
+      ScrollView {
+        HStack {
+          Spacer()
+          clientCertificateSettings
+            .frame(maxWidth: 600)
+          Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical)
+      }
+    #elseif os(iOS)
+      VStack {
+        Form {
+          Section {
+            clientCertificateSettings
           }
         }
       }
