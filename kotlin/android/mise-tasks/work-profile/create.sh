@@ -16,8 +16,8 @@ source "${SCRIPT_DIR}/lib.sh"
 # TestDPC from. Point TESTDPC_APK at an APK you built yourself:
 #
 #     git clone https://github.com/googlesamples/android-testdpc
-#     cd android-testdpc && ./gradlew assembleDebug
-#     export TESTDPC_APK="$PWD/app/build/outputs/apk/debug/TestDPC-debug.apk"
+#     cd android-testdpc && bazelisk build testdpc
+#     export TESTDPC_APK="$PWD/bazel-bin/testdpc.apk"
 #
 # 'work-profile:build-dpc' does that for you and leaves the APK where this task looks by default.
 #
@@ -28,19 +28,12 @@ PROFILE_NAME="${PROFILE_NAME:-Work}"
 
 require_sdk_tool adb
 
-if [ -z "${TESTDPC_APK:-}" ]; then
-    TESTDPC_APK="$(newest_testdpc_apk)"
-fi
-
-if [ -z "${TESTDPC_APK:-}" ]; then
-    echo "No DPC to install. Build one:" >&2
-    echo "    mise run //kotlin/android:work-profile:build-dpc" >&2
-    echo "Or point TESTDPC_APK at an APK you built yourself." >&2
-    exit 1
-fi
+TESTDPC_APK="${TESTDPC_APK:-$(testdpc_apk)}"
 
 if [ ! -f "$TESTDPC_APK" ]; then
-    echo "TESTDPC_APK does not point at a file: ${TESTDPC_APK}" >&2
+    echo "No DPC to install at ${TESTDPC_APK}. Build one:" >&2
+    echo "    mise run //kotlin/android:work-profile:build-dpc" >&2
+    echo "Or point TESTDPC_APK at an APK you built yourself." >&2
     exit 1
 fi
 
