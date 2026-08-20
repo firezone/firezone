@@ -194,6 +194,34 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path windows-client-logs -Force | Out-Null
 
+          # TEMPORARY: samples the host's view of the WSL2 VM alongside the
+          # Client, to tell apart the VM becoming unreachable from the Client
+          # mis-routing its own traffic once the tunnel is up.
+          $probe = Start-Job -ArgumentList "${{ steps.wsl.outputs.ip }}" -ScriptBlock {
+            param($ip)
+
+            while ($true) {
+              $tcp = $false
+              try {
+                $client = [System.Net.Sockets.TcpClient]::new()
+                $tcp = $client.ConnectAsync($ip, 8081).Wait(1000)
+              }
+              catch { }
+              finally { $client.Dispose() }
+
+              $adapter = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+                Where-Object InterfaceAlias -like "*WSL*" |
+                ForEach-Object { "$($_.InterfaceAlias)=$($_.IPAddress)/$($_.PrefixLength)" }) -join " "
+              $route = (Get-NetRoute -DestinationPrefix "$ip/32" -ErrorAction SilentlyContinue |
+                ForEach-Object { "if$($_.InterfaceIndex)->$($_.NextHop)" }) -join " "
+              $ping = Test-Connection $ip -Count 1 -Quiet -ErrorAction SilentlyContinue
+
+              "$((Get-Date).ToString('HH:mm:ss.fff')) tcp8081=$tcp icmp=$ping route=[$route] adapter=[$adapter]"
+
+              Start-Sleep -Milliseconds 500
+            }
+          }
+
           $client = Start-Process -FilePath (Resolve-Path $env:CLIENT_BINARY).Path -NoNewWindow -PassThru `
             -RedirectStandardOutput windows-client-logs\client-stdout.log `
             -RedirectStandardError windows-client-logs\client-stderr.log
@@ -226,6 +254,12 @@ jobs:
               Stop-Process -Id $client.Id -Force
               $client.WaitForExit()
             }
+
+            Write-Host "::group::Host view of the WSL2 VM"
+            Stop-Job $probe -ErrorAction SilentlyContinue
+            Receive-Job $probe -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+            Remove-Job $probe -Force -ErrorAction SilentlyContinue
+            Write-Host "::endgroup::"
           }
       - name: Ensure the Client emitted no errors
         if: "!cancelled()"
