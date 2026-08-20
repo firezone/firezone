@@ -32,6 +32,43 @@ jobs:
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest -Pandroid.injected.build.abi=x86_64
 
+  instrumented-tests:
+    # The emulator needs KVM, which only the Linux runners provide.
+    runs-on: ubuntu-24.04
+    # An emulator that never boots would otherwise hold the run open for six hours.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk-space
+        with:
+          keep-android: "true"
+      - uses: ./.github/actions/setup-android
+        with:
+          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      # The runner ships /dev/kvm but leaves it readable only by root.
+      - name: Grant access to KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run instrumented tests
+        uses: reactivecircus/android-emulator-runner@c9c93e6ba9c4194322e114c40970d5983d9a07cc # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          # An image without Play Services boots faster, and a device owner can only be
+          # set while a device carries no accounts, which a test DPC would need.
+          target: default
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # `script` is not a `run:` step, so it does not pick up the workflow's
+          # `working-directory` default and starts at the repository root.
+          # Narrowing the ABI reuses the cargo build the other jobs already do.
+          script: >-
+            cd kotlin/android &&
+            ./gradlew connectedDebugAndroidTest
+            -Pandroid.injected.build.abi=x86_64
+
   update-release-draft:
     name: update-release-draft
     runs-on: ubuntu-24.04
