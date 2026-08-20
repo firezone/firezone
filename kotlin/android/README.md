@@ -100,14 +100,15 @@ both profile-owner APIs, and neither has an `adb` equivalent, so the flow needs
 a Device Policy Controller. The emulator deliberately runs an AOSP image, since
 a profile owner can only be set on a user that carries no accounts, which means
 there is no Play Store to install one from. Build Google's
-[TestDPC](https://github.com/googlesamples/android-testdpc) and point
-`TESTDPC_APK` at the result:
+[TestDPC](https://github.com/googlesamples/android-testdpc):
 
 ```bash
-git clone https://github.com/googlesamples/android-testdpc
-cd android-testdpc && ./gradlew assembleDebug
-export TESTDPC_APK="$PWD/app/build/outputs/apk/debug/TestDPC-debug.apk"
+mise run //kotlin/android:work-profile:build-dpc
 ```
+
+That clones and builds it under `~/.cache/firezone/android-testdpc`, which is
+where `work-profile:create` looks. Set `TESTDPC_APK` to use an APK you built
+elsewhere, or another DPC entirely alongside `DPC_PACKAGE` and `DPC_RECEIVER`.
 
 ### Running it
 
