@@ -201,7 +201,8 @@ impl Error {
     pub fn requires_sign_in(&self) -> bool {
         match self {
             Error::InvalidToken => true,
-            Error::AuthenticationFailed(_) => true,
+            // The portal rejected us without naming the token, so a new one is not known to help.
+            Error::AuthenticationFailed(_) => false,
             Error::MaxRetriesReached { .. } => false,
             Error::LoginFailed(_) => false,
             Error::FatalIo(_) => false,
@@ -1174,7 +1175,7 @@ mod tests {
 
         let error = Error::from_unauthorized(&response);
 
-        assert!(error.requires_sign_in());
+        assert!(!error.requires_sign_in());
         assert_eq!(
             error.to_string(),
             "Failed to authenticate with portal: Invalid token"
