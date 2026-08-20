@@ -61,13 +61,16 @@ internal fun X509SettingsScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        if (!state.isManaged) {
+        // A managed alias the KeyChain will not release is the personally-owned case: only the user
+        // can let the app have that key, so the chooser stays reachable even when the administrator
+        // picked the alias.
+        if (!state.isManaged || (state.alias != null && !state.isLoading && !state.isUsable)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onSelectCertificate) {
                     Text(stringResource(R.string.x509_select_certificate))
                 }
 
-                if (state.alias != null) {
+                if (!state.isManaged && state.alias != null) {
                     TextButton(onClick = onForgetCertificate) {
                         Text(stringResource(R.string.x509_forget_certificate))
                     }
@@ -152,6 +155,7 @@ private fun X509SettingsScreenPreview() {
                 X509SettingsViewModel.UiState(
                     alias = "firezone-device",
                     isManaged = true,
+                    isUsable = true,
                     details =
                         listOf(
                             DetailField("KeyChain Alias", "firezone-device"),
