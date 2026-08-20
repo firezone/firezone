@@ -33,7 +33,7 @@ echo "  4. Save. TestDPC applies it immediately."
 echo
 echo "==> Waiting up to 5 min for the restriction to appear (Ctrl-C to stop waiting)..."
 
-adb root >/dev/null 2>&1 && adb wait-for-device || true
+adb_root || true
 
 for _ in $(seq 1 150); do
     # Readable only because the AOSP images are userdebug; this is a convenience check, so a
