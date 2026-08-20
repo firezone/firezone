@@ -2,6 +2,7 @@
 
 mod get_user_agent;
 mod login_url;
+mod problem_details;
 
 use anyhow::{Context as _, Result};
 use futures::stream::FuturesUnordered;
@@ -20,6 +21,7 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use itertools::Itertools as _;
 use logging::err_with_src;
+use problem_details::ProblemDetails;
 use secrecy::{ExposeSecret as _, SecretString};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
@@ -178,6 +180,9 @@ async fn connect(
 pub enum Error {
     #[error("Authentication token invalid")]
     InvalidToken,
+    /// The portal refused to authenticate us for a reason we cannot act on specifically.
+    #[error("Failed to authenticate with portal: {0}")]
+    AuthenticationFailed(String),
     #[error(
         "Got disconnected from portal and hit the max-retry limit. Last connection error: {final_error}"
     )]
@@ -196,9 +201,29 @@ impl Error {
     pub fn requires_sign_in(&self) -> bool {
         match self {
             Error::InvalidToken => true,
+            // The portal rejected us without naming the token, so a new one is not known to help.
+            Error::AuthenticationFailed(_) => false,
             Error::MaxRetriesReached { .. } => false,
             Error::LoginFailed(_) => false,
             Error::FatalIo(_) => false,
+        }
+    }
+
+    /// Classifies a rejected connection attempt by the reason the portal reported.
+    ///
+    /// Reasons the client cannot act on specifically map to [`Error::AuthenticationFailed`],
+    /// as do responses without problem details, e.g. an error page from an intermediary proxy.
+    fn from_unauthorized(response: &tungstenite::handshake::client::Response) -> Self {
+        let problem = ProblemDetails::from_response(response).unwrap_or_default();
+
+        match problem.code.as_deref() {
+            Some("invalid_token") => Error::InvalidToken,
+            Some("missing_token") => Error::InvalidToken,
+            _ => Error::AuthenticationFailed(
+                problem
+                    .detail
+                    .unwrap_or_else(|| "no reason provided".to_owned()),
+            ),
         }
     }
 }
@@ -593,7 +618,7 @@ where
                         if r.status() == StatusCode::UNAUTHORIZED =>
                     {
                         self.state = State::Closed;
-                        return Poll::Ready(Err(Error::InvalidToken));
+                        return Poll::Ready(Err(Error::from_unauthorized(&r)));
                     }
                     Poll::Ready(Err(e)) => {
                         let backoff = match e.parse_retry_after_header() {
@@ -1121,6 +1146,40 @@ mod tests {
         let error = anyhow::Error::msg("some other failure").context("Connection hiccup");
 
         assert_eq!(http_error_body(&error), None);
+    }
+
+    #[test]
+    fn unauthorized_with_invalid_token_code_blames_the_token() {
+        let response = tungstenite::http::Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .header("content-type", "application/problem+json; charset=utf-8")
+            .body(Some(
+                br#"{"title":"Unauthorized","status":401,"detail":"Invalid token","code":"invalid_token"}"#.to_vec(),
+            ))
+            .unwrap();
+
+        let error = Error::from_unauthorized(&response);
+
+        assert!(matches!(error, Error::InvalidToken), "got {error:?}");
+    }
+
+    #[test]
+    fn unauthorized_without_code_does_not_blame_the_token() {
+        let response = tungstenite::http::Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .header("content-type", "application/problem+json; charset=utf-8")
+            .body(Some(
+                br#"{"title":"Unauthorized","status":401,"detail":"Invalid token"}"#.to_vec(),
+            ))
+            .unwrap();
+
+        let error = Error::from_unauthorized(&response);
+
+        assert!(!error.requires_sign_in());
+        assert_eq!(
+            error.to_string(),
+            "Failed to authenticate with portal: Invalid token"
+        );
     }
 
     #[derive(Deserialize, PartialEq, Debug)]
