@@ -39,28 +39,54 @@ defmodule Portal.Telemetry.Reporter.ObanTest do
     end
 
     test "routes Intune device inventory sync exceptions to the Intune error handler" do
-      integration = Portal.IntuneFixtures.intune_integration_fixture()
+      provider = Portal.IntuneFixtures.intune_posture_provider_fixture()
 
       job = %Oban.Job{
         id: 2,
         worker: "Portal.Intune.Sync",
         queue: "intune_sync",
         meta: %{},
-        args: %{"account_id" => integration.account_id, "device_integration_id" => integration.id}
+        args: %{"account_id" => provider.account_id, "posture_provider_id" => provider.id}
       }
 
       reason =
         Portal.Intune.SyncError.exception(
-          integration_id: integration.id,
+          provider_id: provider.id,
           step: :list_managed_devices,
           error: %Req.Response{status: 403, body: ""}
         )
 
       Reporter.handle_event([:oban, :job, :exception], %{}, %{reason: reason, job: job, stacktrace: []}, [])
 
-      assert Portal.Repo.get_by!(Portal.Intune.Integration,
-               account_id: integration.account_id,
-               id: integration.id
+      assert Portal.Repo.get_by!(Portal.Intune.PostureProvider,
+               account_id: provider.account_id,
+               id: provider.id
+             ).is_disabled
+    end
+
+    test "routes Iru device inventory sync exceptions to the Iru error handler" do
+      provider = Portal.IruFixtures.iru_posture_provider_fixture()
+
+      job = %Oban.Job{
+        id: 3,
+        worker: "Portal.Iru.Sync",
+        queue: "iru_sync",
+        meta: %{},
+        args: %{"account_id" => provider.account_id, "posture_provider_id" => provider.id}
+      }
+
+      reason =
+        Portal.Iru.SyncError.exception(
+          provider_id: provider.id,
+          step: :list_devices,
+          error: %Req.Response{status: 403, body: ""}
+        )
+
+      Reporter.handle_event([:oban, :job, :exception], %{}, %{reason: reason, job: job, stacktrace: []}, [])
+
+      assert Portal.Repo.get_by!(Portal.Iru.PostureProvider,
+               account_id: provider.account_id,
+               id: provider.id
              ).is_disabled
     end
   end

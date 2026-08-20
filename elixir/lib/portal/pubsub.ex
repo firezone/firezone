@@ -48,13 +48,13 @@ defmodule Portal.PubSub do
             | :actors
             | :client_tokens
             | :devices
-            | :device_inventory
             | :directories
             | :groups
             | :memberships
             | :policies
             | :policy_authorizations
             | :portal_sessions
+            | :posture_providers
             | :resources
             | :sites
             | :static_device_pool_members

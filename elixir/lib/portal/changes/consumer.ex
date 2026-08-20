@@ -38,7 +38,9 @@ defmodule Portal.Changes.Consumer do
     "entra_directories" => Hooks.Directories,
     "okta_directories" => Hooks.Directories,
     "google_directories" => Hooks.Directories,
-    "relay_tokens" => Hooks.RelayTokens
+    "relay_tokens" => Hooks.RelayTokens,
+    "intune_posture_providers" => Hooks.IntunePostureProviders,
+    "iru_posture_providers" => Hooks.IruPostureProviders
   }
 
   @impl true

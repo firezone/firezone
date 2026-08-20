@@ -1,18 +1,18 @@
 defmodule Portal.Intune.SyncError do
-  defexception [:message, :error, :integration_id, :step]
+  defexception [:message, :error, :provider_id, :step]
 
   @impl true
   def exception(opts) do
-    integration_id = Keyword.fetch!(opts, :integration_id)
+    provider_id = Keyword.fetch!(opts, :provider_id)
     step = Keyword.fetch!(opts, :step)
     error = Keyword.get(opts, :error)
 
     %__MODULE__{
-      integration_id: integration_id,
+      provider_id: provider_id,
       step: step,
       error: error,
       message:
-        "Intune sync failed for integration #{integration_id} at #{step}: #{inspect(error)}"
+        "Intune sync failed for provider #{provider_id} at #{step}: #{inspect(error)}"
     }
   end
 end

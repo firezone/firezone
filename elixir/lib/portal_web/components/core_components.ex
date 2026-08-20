@@ -1422,6 +1422,22 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("intune") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-intune.svg",
+      alt: "Microsoft Intune"
+    }
+  end
+
+  defp provider_icon_spec("iru") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-iru.png",
+      alt: "Iru"
+    }
+  end
+
   defp provider_icon_spec("okta") do
     %{
       type: :image,

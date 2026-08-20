@@ -399,15 +399,15 @@ defmodule PortalWeb.VerificationControllerTest do
     end
   end
 
-  describe "entra/2 for Intune device integrations" do
+  describe "entra/2 for Intune posture providers" do
     test "accepts a tenant-wide administrator", %{conn: conn} do
       parent = self()
 
       lv_pid =
         spawn(fn ->
           receive do
-            {:intune_device_integration_complete, tenant_id, verification_ref, {from, ref}} ->
-              send(parent, {:intune_device_integration_complete_received, tenant_id,
+            {:intune_posture_provider_complete, tenant_id, verification_ref, {from, ref}} ->
+              send(parent, {:intune_posture_provider_complete_received, tenant_id,
                             verification_ref})
 
               send(from, {:verification_ack, ref})
@@ -419,7 +419,7 @@ defmodule PortalWeb.VerificationControllerTest do
       token =
         sign_entra_result(%{
           ok: true,
-          type: "intune-device-integration",
+          type: "intune-posture-provider",
           tenant_id: @tenant_id,
           role_ids: [@global_administrator_role_id],
           lv_pid: serialize_pid(lv_pid),
@@ -431,7 +431,7 @@ defmodule PortalWeb.VerificationControllerTest do
       assert conn.status == 200
       assert conn.resp_body =~ "Verification Successful"
 
-      assert_received {:intune_device_integration_complete_received, @tenant_id,
+      assert_received {:intune_posture_provider_complete_received, @tenant_id,
                        ^verification_ref}
     end
 
@@ -444,7 +444,7 @@ defmodule PortalWeb.VerificationControllerTest do
       token =
         sign_entra_result(%{
           ok: true,
-          type: "intune-device-integration",
+          type: "intune-posture-provider",
           tenant_id: @tenant_id,
           role_ids: [],
           lv_pid: serialize_pid(self()),
@@ -456,7 +456,7 @@ defmodule PortalWeb.VerificationControllerTest do
       assert conn.resp_body =~ "Global Administrator or Privileged Role Administrator"
       assert_received {:verification_failed, message, ^verification_ref}
       assert message =~ "Global Administrator or Privileged Role Administrator"
-      refute_received {:intune_device_integration_complete, _tenant_id, _ref, _ack_to}
+      refute_received {:intune_posture_provider_complete, _tenant_id, _ref, _ack_to}
     end
 
     test "rejects an unrelated directory role", %{conn: conn} do
@@ -465,7 +465,7 @@ defmodule PortalWeb.VerificationControllerTest do
       token =
         sign_entra_result(%{
           ok: true,
-          type: "intune-device-integration",
+          type: "intune-posture-provider",
           tenant_id: @tenant_id,
           # Intune Administrator: manages Intune, but cannot grant the tenant-wide
           # Graph consent this setup depends on.
@@ -477,7 +477,7 @@ defmodule PortalWeb.VerificationControllerTest do
       conn = get(conn, ~p"/verification/entra", %{"result" => token})
 
       assert conn.resp_body =~ "Global Administrator or Privileged Role Administrator"
-      refute_received {:intune_device_integration_complete, _tenant_id, _ref, _ack_to}
+      refute_received {:intune_posture_provider_complete, _tenant_id, _ref, _ack_to}
     end
   end
 

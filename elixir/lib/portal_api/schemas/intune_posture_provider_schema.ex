@@ -1,4 +1,4 @@
-defmodule PortalAPI.Schemas.IntuneIntegration do
+defmodule PortalAPI.Schemas.IntunePostureProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -6,8 +6,8 @@ defmodule PortalAPI.Schemas.IntuneIntegration do
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "IntuneIntegration",
-      description: "Microsoft Intune device inventory integration",
+      title: "IntunePostureProvider",
+      description: "Microsoft Intune posture provider",
       type: :object,
       properties: %{
         id: %Schema{type: :string, format: :uuid},
@@ -33,9 +33,27 @@ defmodule PortalAPI.Schemas.IntuneIntegration do
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "IntuneIntegrationResponse",
+      title: "IntunePostureProviderResponse",
       type: :object,
-      properties: %{data: PortalAPI.Schemas.IntuneIntegration.Schema}
+      properties: %{data: PortalAPI.Schemas.IntunePostureProvider.Schema}
+    })
+  end
+
+  defmodule ListResponse do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+    alias PortalAPI.Schemas.PaginationMetadata
+
+    OpenApiSpex.schema(%{
+      title: "IntunePostureProviderListResponse",
+      type: :object,
+      properties: %{
+        data: %Schema{
+          type: :array,
+          items: PortalAPI.Schemas.IntunePostureProvider.Schema
+        },
+        metadata: PaginationMetadata
+      }
     })
   end
 end

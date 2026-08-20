@@ -2,23 +2,24 @@ defmodule PortalAPI.IntuneDeviceControllerTest do
   use PortalAPI.ConnCase, async: true
 
   import Portal.ActorFixtures
+  import Portal.DevicePostureFixtures
   import Portal.IntuneFixtures
 
   setup do
     enable_device_posture()
     account = device_posture_account_fixture()
     actor = api_client_fixture(account: account)
-    integration = intune_integration_fixture(account: account)
+    provider = intune_posture_provider_fixture(account: account)
 
     device =
       intune_device_fixture(
-        integration: integration,
+        provider: provider,
         device_name: "Managed Surface",
         compliance_state: "compliant",
         operating_system: "Windows"
       )
 
-    %{account: account, actor: actor, integration: integration, device: device}
+    %{account: account, actor: actor, provider: provider, device: device}
   end
 
   test "index is paginated and account scoped", %{conn: conn, actor: actor, device: device} do

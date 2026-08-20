@@ -107,6 +107,8 @@ config :portal, Portal.ChangeLogs.Consumer,
     api_tokens
     trust_anchors
     trust_anchor_certificates
+    intune_posture_providers
+    iru_posture_providers
     splunk_log_sinks
     datadog_log_sinks
     newrelic_log_sinks
@@ -160,6 +162,8 @@ config :portal, Portal.Changes.Consumer,
     entra_directories
     okta_directories
     google_directories
+    intune_posture_providers
+    iru_posture_providers
     relay_tokens
     portal_sessions
   ],
@@ -216,6 +220,16 @@ config :portal, Portal.Microsoft.Graph.APIClient,
     # Fixes `pool_not_available` errors on a cold Finch pool right after a deploy,
     # since some requests are POSTs and the default `:safe_transient` retry strategy only retries HEADS and GETs.
     retry: :transient
+  ]
+
+# Iru still serves its API from the Kandji hosts it used before the rename, so
+# the domains are configuration rather than a constant.
+config :portal, Portal.Iru.APIClient,
+  api_domains: [us: "api.kandji.io", eu: "api.eu.kandji.io"],
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
   ]
 
 config :portal, Portal.Google.APIClient,

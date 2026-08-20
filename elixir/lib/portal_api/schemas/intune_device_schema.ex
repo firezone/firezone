@@ -8,7 +8,7 @@ defmodule PortalAPI.Schemas.IntuneDevice do
     # The device table mirrors the Microsoft Graph managedDevice resource field
     # for field, so the documented properties are derived from the Ecto schema.
     # A newly synced field cannot end up in the database but missing here.
-    @required [:account_id, :device_integration_id, :intune_id, :synced_at]
+    @required [:account_id, :posture_provider_id, :intune_id, :synced_at]
 
     @properties Map.new(Portal.Intune.Device.__schema__(:fields), fn field ->
                   nullable = field not in @required

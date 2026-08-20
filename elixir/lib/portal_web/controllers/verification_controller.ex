@@ -166,7 +166,7 @@ defmodule PortalWeb.VerificationController do
          conn,
          %{
            ok: true,
-           type: "intune-device-integration",
+           type: "intune-posture-provider",
            tenant_id: tenant_id,
            role_ids: role_ids,
            lv_pid: lv_pid_string,
@@ -179,7 +179,7 @@ defmodule PortalWeb.VerificationController do
     if PortalWeb.OIDC.entra_setup_admin?(role_ids) do
       case notify_and_await_ack(
              lv_pid,
-             {:intune_device_integration_complete, tenant_id, verification_ref}
+             {:intune_posture_provider_complete, tenant_id, verification_ref}
            ) do
         :ok -> render(conn, :success)
         {:error, _reason} -> render(conn, :failure, error: @verification_ack_error)

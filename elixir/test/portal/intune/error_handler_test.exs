@@ -3,78 +3,78 @@ defmodule Portal.Intune.ErrorHandlerTest do
 
   import Portal.IntuneFixtures
 
-  alias Portal.Intune.{ErrorHandler, Integration, SyncError}
+  alias Portal.Intune.{ErrorHandler, PostureProvider, SyncError}
 
-  test "disables and unverifies the integration when Microsoft Graph denies access" do
-    integration = intune_integration_fixture()
+  test "disables and unverifies the provider when Microsoft Graph denies access" do
+    provider = intune_posture_provider_fixture()
 
-    ErrorHandler.handle(sync_error(%Req.Response{status: 403, body: ""}), integration.id)
+    ErrorHandler.handle(sync_error(%Req.Response{status: 403, body: ""}), provider.id)
 
-    integration = Repo.get_by!(Integration, account_id: integration.account_id, id: integration.id)
-    assert integration.is_disabled
-    assert integration.disabled_reason == "Sync error"
-    refute integration.is_verified
-    assert integration.errored_at
-    assert integration.error_message =~ "DeviceManagementManagedDevices.Read.All"
+    provider = Repo.get_by!(PostureProvider, account_id: provider.account_id, id: provider.id)
+    assert provider.is_disabled
+    assert provider.disabled_reason == "Sync error"
+    refute provider.is_verified
+    assert provider.errored_at
+    assert provider.error_message =~ "DeviceManagementManagedDevices.Read.All"
   end
 
-  test "does not disable the integration when Microsoft Graph throttles the tenant" do
+  test "does not disable the provider when Microsoft Graph throttles the tenant" do
     for status <- [408, 429] do
-      integration = intune_integration_fixture()
+      provider = intune_posture_provider_fixture()
 
       ErrorHandler.handle(
         sync_error(%Req.Response{status: status, body: %{"error" => %{"code" => "TooManyRequests"}}}),
-        integration.id
+        provider.id
       )
 
-      integration =
-        Repo.get_by!(Integration, account_id: integration.account_id, id: integration.id)
+      provider =
+        Repo.get_by!(PostureProvider, account_id: provider.account_id, id: provider.id)
 
-      refute integration.is_disabled
-      assert integration.is_verified
-      assert integration.errored_at
+      refute provider.is_disabled
+      assert provider.is_verified
+      assert provider.errored_at
     end
   end
 
-  test "records a transient error without disabling the integration" do
-    integration = intune_integration_fixture()
+  test "records a transient error without disabling the provider" do
+    provider = intune_posture_provider_fixture()
 
-    ErrorHandler.handle(sync_error(%Req.TransportError{reason: :timeout}), integration.id)
+    ErrorHandler.handle(sync_error(%Req.TransportError{reason: :timeout}), provider.id)
 
-    integration = Repo.get_by!(Integration, account_id: integration.account_id, id: integration.id)
-    refute integration.is_disabled
-    assert integration.is_verified
-    assert integration.errored_at
-    assert integration.error_message == "Connection timed out."
+    provider = Repo.get_by!(PostureProvider, account_id: provider.account_id, id: provider.id)
+    refute provider.is_disabled
+    assert provider.is_verified
+    assert provider.errored_at
+    assert provider.error_message == "Connection timed out."
   end
 
   test "keeps the first errored_at so the transient window is measured from it" do
     first_errored_at = DateTime.utc_now() |> DateTime.add(-1, :hour)
-    integration = intune_integration_fixture(errored_at: first_errored_at)
+    provider = intune_posture_provider_fixture(errored_at: first_errored_at)
 
-    ErrorHandler.handle(sync_error(%Req.Response{status: 503, body: ""}), integration.id)
+    ErrorHandler.handle(sync_error(%Req.Response{status: 503, body: ""}), provider.id)
 
-    integration = Repo.get_by!(Integration, account_id: integration.account_id, id: integration.id)
-    refute integration.is_disabled
-    assert DateTime.compare(integration.errored_at, first_errored_at) == :eq
+    provider = Repo.get_by!(PostureProvider, account_id: provider.account_id, id: provider.id)
+    refute provider.is_disabled
+    assert DateTime.compare(provider.errored_at, first_errored_at) == :eq
   end
 
-  test "disables the integration once transient errors have persisted for a day" do
-    integration =
-      intune_integration_fixture(errored_at: DateTime.utc_now() |> DateTime.add(-25, :hour))
+  test "disables the provider once transient errors have persisted for a day" do
+    provider =
+      intune_posture_provider_fixture(errored_at: DateTime.utc_now() |> DateTime.add(-25, :hour))
 
-    ErrorHandler.handle(sync_error(%Req.Response{status: 503, body: ""}), integration.id)
+    ErrorHandler.handle(sync_error(%Req.Response{status: 503, body: ""}), provider.id)
 
-    integration = Repo.get_by!(Integration, account_id: integration.account_id, id: integration.id)
-    assert integration.is_disabled
-    refute integration.is_verified
+    provider = Repo.get_by!(PostureProvider, account_id: provider.account_id, id: provider.id)
+    assert provider.is_disabled
+    refute provider.is_verified
   end
 
-  test "handles an unknown integration id without raising" do
+  test "handles an unknown provider id without raising" do
     assert :ok = ErrorHandler.handle(sync_error(:missing_device_id), Ecto.UUID.generate())
   end
 
   defp sync_error(error) do
-    SyncError.exception(integration_id: Ecto.UUID.generate(), step: :list_managed_devices, error: error)
+    SyncError.exception(provider_id: Ecto.UUID.generate(), step: :list_managed_devices, error: error)
   end
 end

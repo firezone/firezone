@@ -2,7 +2,7 @@ defmodule Portal.Intune.ErrorHandler do
   @moduledoc """
   Handles Intune device inventory sync errors.
 
-  Classifies errors, formats user-friendly messages, and updates integration state.
+  Classifies errors, formats user-friendly messages, and updates provider state.
   """
 
   alias Portal.Intune
@@ -12,12 +12,12 @@ defmodule Portal.Intune.ErrorHandler do
 
   @disable_transient_errors_after_hours 24
 
-  def handle(%Intune.SyncError{error: error}, integration_id) do
-    action(classify(error), format(error), integration_id)
+  def handle(%Intune.SyncError{error: error}, provider_id) do
+    action(classify(error), format(error), provider_id)
   end
 
-  def handle(error, integration_id) do
-    action(:transient, format_generic(error), integration_id)
+  def handle(error, provider_id) do
+    action(:transient, format_generic(error), provider_id)
   end
 
   # Classification
@@ -35,7 +35,7 @@ defmodule Portal.Intune.ErrorHandler do
   defp classify(%Req.TransportError{}), do: :transient
 
   # A managedDevice with no id is a Graph anomaly, not a misconfiguration, so it
-  # rides out the transient window instead of disabling the integration and
+  # rides out the transient window instead of disabling the provider and
   # telling the admin to re-grant consent they never lost.
   defp classify(:missing_device_id), do: :transient
 
@@ -96,32 +96,32 @@ defmodule Portal.Intune.ErrorHandler do
 
   # Action
 
-  defp action(type, message, integration_id) do
-    case Database.get_integration(integration_id) do
+  defp action(type, message, provider_id) do
+    case Database.get_provider(provider_id) do
       nil ->
-        Logger.info("Intune integration not found, skipping error update",
-          device_integration_id: integration_id
+        Logger.info("Intune provider not found, skipping error update",
+          posture_provider_id: provider_id
         )
 
         :ok
 
-      integration ->
-        update_integration(integration, type, message, DateTime.utc_now())
+      provider ->
+        update_provider(provider, type, message, DateTime.utc_now())
     end
   end
 
-  defp update_integration(integration, :client_error, message, now) do
-    Database.update_integration(
-      integration,
+  defp update_provider(provider, :client_error, message, now) do
+    Database.update_provider(
+      provider,
       Map.merge(%{"errored_at" => now, "error_message" => message}, disable_attrs())
     )
   end
 
-  # A single failed run should not take the integration down, so transient
+  # A single failed run should not take the provider down, so transient
   # errors only disable it once they have persisted for a full day. Keeping the
   # first errored_at is what makes that window measurable.
-  defp update_integration(integration, :transient, message, now) do
-    errored_at = integration.errored_at || now
+  defp update_provider(provider, :transient, message, now) do
+    errored_at = provider.errored_at || now
     updates = %{"errored_at" => errored_at, "error_message" => message}
 
     updates =
@@ -131,7 +131,7 @@ defmodule Portal.Intune.ErrorHandler do
         updates
       end
 
-    Database.update_integration(integration, updates)
+    Database.update_provider(provider, updates)
   end
 
   defp disable_attrs,
@@ -143,15 +143,15 @@ defmodule Portal.Intune.ErrorHandler do
     import Ecto.Query
     alias Portal.{Intune, Safe}
 
-    def get_integration(integration_id) do
-      from(i in Intune.Integration, where: i.id == ^integration_id)
+    def get_provider(provider_id) do
+      from(i in Intune.PostureProvider, where: i.id == ^provider_id)
       |> Safe.unscoped()
       |> Safe.one()
     end
 
-    def update_integration(integration, attrs) do
-      {:ok, _integration} =
-        integration
+    def update_provider(provider, attrs) do
+      {:ok, _provider} =
+        provider
         |> Ecto.Changeset.cast(attrs, [
           :errored_at,
           :error_message,

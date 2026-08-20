@@ -16,7 +16,7 @@ defmodule Portal.Intune.Scheduler do
 
     def queue_sync_jobs do
       Safe.transact(fn ->
-        from(i in Portal.Intune.Integration,
+        from(i in Portal.Intune.PostureProvider,
           join: a in Portal.Account,
           on: a.id == i.account_id,
           where: i.is_disabled == false,
@@ -26,9 +26,9 @@ defmodule Portal.Intune.Scheduler do
         )
         |> Safe.unscoped()
         |> Safe.stream()
-        |> Stream.each(fn integration ->
+        |> Stream.each(fn provider ->
           {:ok, _job} =
-            %{account_id: integration.account_id, device_integration_id: integration.id}
+            %{account_id: provider.account_id, posture_provider_id: provider.id}
             |> Portal.Intune.Sync.new()
             |> Oban.insert()
         end)

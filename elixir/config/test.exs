@@ -171,6 +171,13 @@ config :portal, Portal.Microsoft.Graph.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Iru.APIClient,
+  api_domains: [us: "api.kandji.io", eu: "api.eu.kandji.io"],
+  req_opts: [
+    plug: {Req.Test, Portal.Iru.APIClient},
+    retry: false
+  ]
+
 config :portal, Portal.Workers.SyncErrorNotification, []
 
 config :portal, Portal.Workers.LogSinkErrorNotification, []

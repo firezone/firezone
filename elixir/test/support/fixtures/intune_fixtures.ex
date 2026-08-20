@@ -1,39 +1,23 @@
 defmodule Portal.IntuneFixtures do
-  import Portal.AccountFixtures
-
-  @doc """
-  Turns on the global half of the device_posture flag for the current test.
-
-  The account half is set through `account_fixture(features: ...)`; both must be
-  on for the REST API and the settings LiveView to allow anything.
+  @moduledoc """
+  Test helpers for creating Intune posture providers and their devices.
   """
-  def enable_device_posture(enabled? \\ true)
-  def enable_device_posture(true), do: Portal.FeaturesFixtures.enable_feature(:device_posture)
-  def enable_device_posture(false), do: Portal.FeaturesFixtures.disable_feature(:device_posture)
 
-  def device_posture_account_fixture(attrs \\ %{}) do
-    attrs
-    |> Enum.into(%{})
-    |> Map.update(:features, %{device_posture: true}, &Map.put(&1, :device_posture, true))
-    |> account_fixture()
-  end
+  import Portal.DevicePostureFixtures
 
-  def intune_integration_fixture(attrs \\ %{}) do
+  def intune_posture_provider_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
     account = Map.get(attrs, :account) || device_posture_account_fixture()
     id = Map.get(attrs, :id, Ecto.UUID.generate())
     unique = System.unique_integer([:positive, :monotonic])
 
-    parent =
-      %Portal.DeviceIntegration{}
-      |> Ecto.Changeset.change(%{id: id, account_id: account.id, type: :intune})
-      |> Portal.DeviceIntegration.changeset()
-      |> Portal.Repo.insert!()
+    name = Map.get(attrs, :name, "Microsoft Intune #{unique}")
+    parent = posture_provider_fixture(account, id, :intune, name)
 
-    integration_attrs = %{
+    provider_attrs = %{
       id: id,
       account_id: account.id,
-      name: Map.get(attrs, :name, "Microsoft Intune #{unique}"),
+      name: name,
       tenant_id: Map.get(attrs, :tenant_id, Ecto.UUID.generate()),
       is_verified: Map.get(attrs, :is_verified, true),
       is_disabled: Map.get(attrs, :is_disabled, false),
@@ -44,20 +28,20 @@ defmodule Portal.IntuneFixtures do
       error_email_count: Map.get(attrs, :error_email_count, 0)
     }
 
-    %Portal.Intune.Integration{device_integration: parent}
-    |> Ecto.Changeset.cast(integration_attrs, Map.keys(integration_attrs))
-    |> Portal.Intune.Integration.changeset()
+    %Portal.Intune.PostureProvider{posture_provider: parent}
+    |> Ecto.Changeset.cast(provider_attrs, Map.keys(provider_attrs))
+    |> Portal.Intune.PostureProvider.changeset()
     |> Portal.Repo.insert!()
   end
 
   def intune_device_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
-    integration = Map.get(attrs, :integration) || intune_integration_fixture(attrs)
+    provider = Map.get(attrs, :provider) || intune_posture_provider_fixture(attrs)
     unique = System.unique_integer([:positive, :monotonic])
 
     device_attrs = %{
-      account_id: integration.account_id,
-      device_integration_id: integration.id,
+      account_id: provider.account_id,
+      posture_provider_id: provider.id,
       intune_id: Map.get(attrs, :intune_id, Ecto.UUID.generate()),
       device_name: Map.get(attrs, :device_name, "Inventory Device #{unique}"),
       managed_device_name: Map.get(attrs, :managed_device_name),
