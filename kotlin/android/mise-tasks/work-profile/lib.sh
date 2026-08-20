@@ -19,6 +19,22 @@ require_sdk_tool() {
     exit 1
 }
 
+# Reaching into another user, to install into it or to read its storage, needs
+# INTERACT_ACROSS_USERS_FULL, which the shell user does not hold on these images. The emulator runs
+# userdebug builds (see boot.sh) precisely so restarting adbd as root is available.
+adb_root() {
+    if [ "$(adb shell id -u 2>/dev/null | tr -d '\r')" = "0" ]; then
+        return 0
+    fi
+
+    if ! adb root >/dev/null 2>&1; then
+        return 1
+    fi
+
+    # Restarting adbd drops the connection for a moment.
+    adb wait-for-device
+}
+
 # The ABI to build for and to boot an emulator with. Fails on anything else so the caller can say
 # what to do about it, which differs per task.
 host_abi() {

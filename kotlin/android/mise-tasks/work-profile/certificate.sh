@@ -115,7 +115,7 @@ user_id="$(require_work_profile_user)" || exit 1
 # The AOSP images are userdebug, so `adb root` can put the file where the profile can reach it.
 staged=0
 echo "==> Staging the certificate in the work profile's Downloads..."
-if adb root >/dev/null 2>&1 && adb wait-for-device; then
+if adb_root; then
     adb push "$p12" "/data/local/tmp/${CERT_ALIAS}.p12" >/dev/null
     if adb shell mkdir -p "/data/media/${user_id}/Download" &&
         adb shell cp "/data/local/tmp/${CERT_ALIAS}.p12" "/data/media/${user_id}/Download/${CERT_ALIAS}.p12" &&

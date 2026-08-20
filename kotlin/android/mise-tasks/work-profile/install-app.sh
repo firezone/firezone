@@ -17,6 +17,13 @@ fi
 
 require_sdk_tool adb
 
+if ! adb_root; then
+    echo "This device refuses 'adb root', so nothing can install into the work profile." >&2
+    echo "Boot the emulator through 'mise run //kotlin/android:work-profile:boot', which picks a" >&2
+    echo "userdebug AOSP image." >&2
+    exit 1
+fi
+
 user_id="$(require_work_profile_user)" || exit 1
 
 # `installDebug` targets user 0, so the APK is built and then installed into the profile by hand.
@@ -37,11 +44,9 @@ if [ -z "$apk" ]; then
 fi
 
 echo "==> Force-stopping any running instance of ${PACKAGE} in user ${user_id}..."
-# Reaching into another user needs INTERACT_ACROSS_USERS_FULL, which the shell user does not always
-# hold even where `pm install --user` is allowed. The reinstall below terminates the app regardless,
-# so a refusal here is worth a note rather than the whole task.
+# The reinstall below terminates the app regardless, so this is worth a note rather than the task.
 if ! adb shell am force-stop --user "$user_id" "$PACKAGE" 2>/dev/null; then
-    echo "    Refused; the reinstall stops it anyway. 'adb root' first if you want the step to work."
+    echo "    Refused; the reinstall stops it anyway."
 fi
 
 echo "==> Installing ${apk} into user ${user_id}..."
