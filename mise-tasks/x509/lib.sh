@@ -12,18 +12,21 @@ P12_PATH="${P12_PATH:-${XDG_CACHE_HOME:-${HOME}/.cache}/firezone/x509/${CERT_ALI
 
 # One task per platform, so running the wrong one is a mistake worth naming rather than a confusing
 # failure further down.
+# Matched as a regular expression rather than a `case` pattern, because a `case` pattern is parsed
+# before the variable holding it is expanded, so an alternation arriving this way would be matched
+# as the literal characters `|` and a space. Windows needs one, reporting MINGW, MSYS or CYGWIN.
 require_os() {
-    local pattern="$1" keystore="$2"
+    local expression="$1" keystore="$2" os
 
-    # shellcheck disable=SC2254 # A glob on purpose: Windows reports several different names.
-    case "$(uname -s)" in
-    $pattern) ;;
-    *)
-        echo "error: this task installs into ${keystore}, but this is $(uname -s)." >&2
-        echo "'mise tasks' lists the task for this platform." >&2
-        exit 1
-        ;;
-    esac
+    os="$(uname -s)"
+
+    if [[ "$os" =~ $expression ]]; then
+        return 0
+    fi
+
+    echo "error: this task installs into ${keystore}, but this is ${os}." >&2
+    echo "'mise tasks' lists the task for this platform." >&2
+    exit 1
 }
 
 require_p12() {

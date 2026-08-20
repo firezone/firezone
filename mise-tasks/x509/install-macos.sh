@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=./lib.sh
 source "${SCRIPT_DIR}/lib.sh"
 
-require_os 'Darwin' 'a macOS keychain'
+require_os '^Darwin' 'a macOS keychain'
 require_p12
 
 FIREZONE_APP="${FIREZONE_APP:-/Applications/Firezone.app}"

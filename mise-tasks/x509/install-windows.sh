@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=./lib.sh
 source "${SCRIPT_DIR}/lib.sh"
 
-require_os 'MINGW* | MSYS* | CYGWIN*' 'a Windows certificate store'
+require_os '^(MINGW|MSYS|CYGWIN)' 'a Windows certificate store'
 require_p12
 
 # Windows PowerShell rather than pwsh: the PKI module that provides Import-PfxCertificate

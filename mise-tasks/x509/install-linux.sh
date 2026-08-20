@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=./lib.sh
 source "${SCRIPT_DIR}/lib.sh"
 
-require_os 'Linux' 'a PKCS#11 token'
+require_os '^Linux' 'a PKCS#11 token'
 require_p12
 
 # The PKCS#11 token holds the private key, and its PIN is written beside it.
