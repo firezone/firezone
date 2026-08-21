@@ -116,6 +116,11 @@ defmodule PortalAPI.Router do
       only: [:index, :show]
 
     resources "/iru_devices", IruDeviceController, only: [:index, :show]
+
+    resources "/defender_posture_providers", DefenderPostureProviderController,
+      only: [:index, :show]
+
+    resources "/defender_devices", DefenderDeviceController, only: [:index, :show]
   end
 
   scope "/integrations", PortalAPI.Integrations do

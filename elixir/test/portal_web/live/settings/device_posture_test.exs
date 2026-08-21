@@ -6,6 +6,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
   import Portal.DevicePostureFixtures
   import Portal.IntuneFixtures
   import Portal.IruFixtures
+  import Portal.DefenderFixtures
 
   setup do
     enable_device_posture()
@@ -196,7 +197,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
              "Verify Now"
            )
 
-    assert has_element?(lv, "#intune-tenant-id", "Awaiting verification...")
+    assert has_element?(lv, "#provider-tenant-id", "Awaiting verification...")
 
     lv |> element("#provider-verification-button") |> render_click()
     assert_push_event(lv, "open_url", %{url: url})
@@ -223,7 +224,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     assert_receive {:verification_ack, ^ack_ref}
     assert render(lv) =~ "tenant-123"
     assert has_element?(lv, "#provider-verification-status", "Verified")
-    assert has_element?(lv, "#intune-tenant-id", "tenant-123")
+    assert has_element?(lv, "#provider-tenant-id", "tenant-123")
     assert has_element?(lv, "button[phx-click=reset_verification]", "Reset verification")
 
     lv
@@ -656,7 +657,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
   end
 
   describe "selecting a provider type" do
-    test "lists both providers", %{conn: conn, account: account, actor: actor} do
+    test "lists every provider", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture/new")
 
@@ -664,6 +665,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert html =~ "Select Provider Type"
       assert html =~ "Microsoft Intune"
       assert html =~ "Iru"
+      assert html =~ "Microsoft Defender for Endpoint"
 
       assert has_element?(
                lv,
@@ -671,6 +673,11 @@ defmodule PortalWeb.Settings.DevicePostureTest do
              )
 
       assert has_element?(lv, ~s|a[href="/#{account.slug}/settings/device_posture/iru/new"]|)
+
+      assert has_element?(
+               lv,
+               ~s|a[href="/#{account.slug}/settings/device_posture/defender/new"]|
+             )
     end
 
     test "raises on an unknown provider type", %{conn: conn, account: account, actor: actor} do
@@ -886,10 +893,100 @@ defmodule PortalWeb.Settings.DevicePostureTest do
            ).api_token == "new-token"
   end
 
-  test "lists providers of both types", %{conn: conn, account: account, actor: actor} do
+  describe "Defender providers" do
+    test "uses the signed Microsoft consent flow and creates the verified provider", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/defender/new")
+
+      assert has_element?(lv, "#provider-tenant-id", "Awaiting verification...")
+      assert render(lv) =~ "Grant Microsoft admin consent"
+
+      lv |> element("#provider-verification-button") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      state =
+        url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+
+      assert {:ok, %{type: "defender-posture-provider", verification_ref: ref}} =
+               PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:get_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^ref}}
+
+      ack_ref = make_ref()
+      send(lv.pid, {:defender_posture_provider_complete, "tenant-9", ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+      assert has_element?(lv, "#provider-tenant-id", "tenant-9")
+
+      lv
+      |> form("#device-posture-form", provider: %{name: "Contoso EDR"})
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+      provider = Portal.Repo.get_by!(Portal.Defender.PostureProvider, account_id: account.id)
+      assert provider_name(provider) == "Contoso EDR"
+      assert provider.tenant_id == "tenant-9"
+      assert provider.is_verified
+
+      assert_enqueued(
+        worker: Portal.Defender.Sync,
+        args: %{"account_id" => account.id, "posture_provider_id" => provider.id}
+      )
+    end
+
+    test "refuses a second provider for the same tenant", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      defender_posture_provider_fixture(account: account, tenant_id: "tenant-9")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/defender/new")
+
+      lv |> element("#provider-verification-button") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      state =
+        url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+
+      {:ok, %{verification_ref: ref}} = PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:get_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^ref}}
+
+      ack_ref = make_ref()
+      send(lv.pid, {:defender_posture_provider_complete, "tenant-9", ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+
+      lv
+      |> form("#device-posture-form", provider: %{name: "Duplicate EDR"})
+      |> render_submit()
+
+      assert render(lv) =~ "This Defender tenant is already connected."
+      assert Portal.Repo.aggregate(Portal.Defender.PostureProvider, :count) == 1
+    end
+  end
+
+  test "lists providers of every type", %{conn: conn, account: account, actor: actor} do
     intune_posture_provider_fixture(account: account, name: "Contoso Intune")
     iru_provider = iru_posture_provider_fixture(account: account, name: "Acme Iru")
     iru_device_fixture(provider: iru_provider, filevault_enabled: false)
+
+    defender_provider = defender_posture_provider_fixture(account: account, name: "Contoso EDR")
+    defender_device_fixture(provider: defender_provider, health_status: "Active")
+    defender_device_fixture(provider: defender_provider, health_status: "Inactive")
 
     {:ok, lv, html} =
       conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
@@ -897,9 +994,13 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     assert html =~ "Contoso Intune"
     assert html =~ "Acme Iru"
     assert html =~ "Iru (formerly Kandji)"
+    assert html =~ "Contoso EDR"
+    assert html =~ "Microsoft Defender for Endpoint"
 
     summary = lv |> element("#device-posture-summary") |> render()
     assert summary =~ ~r/1.*FileVault off/s
+    assert summary =~ ~r/1.*Sensor active/s
+    assert summary =~ ~r/1.*Sensor inactive/s
   end
 
   describe "verified fields" do

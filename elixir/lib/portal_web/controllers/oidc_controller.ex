@@ -67,6 +67,9 @@ defmodule PortalWeb.OIDCController do
       {:intune_posture_provider, lv_pid_string, verification_ref} ->
         handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref)
 
+      {:defender_posture_provider, lv_pid_string, verification_ref} ->
+        handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref)
+
       {:entra_tenant_proof,
        verification_type,
        lv_pid_string,
@@ -121,6 +124,15 @@ defmodule PortalWeb.OIDCController do
           conn,
           params,
           "intune-posture-provider",
+          lv_pid_string,
+          verification_ref
+        )
+
+      {:defender_posture_provider, lv_pid_string, verification_ref} ->
+        handle_entra_admin_consent(
+          conn,
+          params,
+          "defender-posture-provider",
           lv_pid_string,
           verification_ref
         )
@@ -1246,7 +1258,8 @@ defmodule PortalWeb.OIDCController do
        when verification_type in [
               "entra-auth-provider",
               "entra-directory-sync",
-              "intune-posture-provider"
+              "intune-posture-provider",
+              "defender-posture-provider"
             ] do
     tenant_id = params["tenant"]
 
@@ -1331,6 +1344,9 @@ defmodule PortalWeb.OIDCController do
 
   defp entra_tenant_proof_state_type("intune-posture-provider"),
     do: "intune-posture-provider-tenant-proof"
+
+  defp entra_tenant_proof_state_type("defender-posture-provider"),
+    do: "defender-posture-provider-tenant-proof"
 
   defp handle_entra_tenant_proof_error(
          conn,
@@ -1637,6 +1653,14 @@ defmodule PortalWeb.OIDCController do
        do: {:intune_posture_provider, lv_pid, verification_ref}
 
   defp parse_verified_callback_state(%{
+         type: "defender-posture-provider",
+         lv_pid: lv_pid,
+         verification_ref: verification_ref
+       })
+       when is_binary(verification_ref),
+       do: {:defender_posture_provider, lv_pid, verification_ref}
+
+  defp parse_verified_callback_state(%{
          type: "google-directory-sync",
          lv_pid: lv_pid,
          verification_ref: verification_ref
@@ -1675,6 +1699,18 @@ defmodule PortalWeb.OIDCController do
        })
        when is_binary(verification_ref) and is_binary(tenant_id) and is_boolean(silent?) do
     {:entra_tenant_proof, "intune-posture-provider", lv_pid, verification_ref, tenant_id,
+     silent?}
+  end
+
+  defp parse_verified_callback_state(%{
+         type: "defender-posture-provider-tenant-proof",
+         lv_pid: lv_pid,
+         verification_ref: verification_ref,
+         tenant_id: tenant_id,
+         silent: silent?
+       })
+       when is_binary(verification_ref) and is_binary(tenant_id) and is_boolean(silent?) do
+    {:entra_tenant_proof, "defender-posture-provider", lv_pid, verification_ref, tenant_id,
      silent?}
   end
 

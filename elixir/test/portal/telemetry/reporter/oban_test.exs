@@ -89,5 +89,31 @@ defmodule Portal.Telemetry.Reporter.ObanTest do
                id: provider.id
              ).is_disabled
     end
+
+    test "routes Defender device inventory sync exceptions to the Defender error handler" do
+      provider = Portal.DefenderFixtures.defender_posture_provider_fixture()
+
+      job = %Oban.Job{
+        id: 4,
+        worker: "Portal.Defender.Sync",
+        queue: "defender_sync",
+        meta: %{},
+        args: %{"account_id" => provider.account_id, "posture_provider_id" => provider.id}
+      }
+
+      reason =
+        Portal.Defender.SyncError.exception(
+          provider_id: provider.id,
+          step: :list_machines,
+          error: %Req.Response{status: 403, body: %{}}
+        )
+
+      Reporter.handle_event([:oban, :job, :exception], %{}, %{reason: reason, job: job, stacktrace: []}, [])
+
+      assert Portal.Repo.get_by!(Portal.Defender.PostureProvider,
+               account_id: provider.account_id,
+               id: provider.id
+             ).is_disabled
+    end
   end
 end
