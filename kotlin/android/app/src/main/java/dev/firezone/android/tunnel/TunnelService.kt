@@ -35,6 +35,7 @@ import dev.firezone.android.tunnel.model.ResourceType
 import dev.firezone.android.tunnel.model.Site
 import dev.firezone.android.tunnel.model.StatusEnum
 import dev.firezone.android.tunnel.model.isInternetResource
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -105,7 +106,15 @@ class TunnelService : VpnService() {
 
     var startedByUser: Boolean = false
     private var commandChannel: Channel<TunnelCommand>? = null
-    private val serviceScope = CoroutineScope(SupervisorJob())
+    // A `SupervisorJob` keeps one failed child from cancelling its siblings, but an exception it
+    // does not handle still reaches the thread's default handler and takes the process with it.
+    // Reporting the failure and leaving the service to reset its own state is always better than
+    // killing the app underneath the user.
+    private val serviceExceptionHandler =
+        CoroutineExceptionHandler { _, throwable ->
+            Log.e(TAG, "Unhandled exception in the tunnel service", throwable)
+        }
+    private val serviceScope = CoroutineScope(SupervisorJob() + serviceExceptionHandler)
 
     private val _serviceState = MutableStateFlow(State.DOWN)
     private val _resourcesState = MutableStateFlow<List<Resource>>(emptyList())
