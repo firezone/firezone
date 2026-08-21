@@ -15,21 +15,23 @@ pub struct UserIdentity {
     pub account_id: String,
 }
 
-/// A label-value pair for certificate diagnostics screens.
+/// A row for certificate diagnostics screens.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct DetailField {
     pub label: String,
-    pub value: String,
+    pub value: ClaimValue,
 }
 
-/// A `firezone://` claim found in a subject alternative name that the parser will not attest.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct RejectedClaim {
-    /// The attribute as it appeared in the URI, lower-cased, e.g. `email`.
-    pub attribute: String,
-    /// The value as it appeared, percent-decoded and trimmed, truncated for display.
-    pub value: String,
-    pub reason: RejectionReason,
+/// What a certificate says about one of the claims the clients read, mirroring
+/// [`x509_claims::ClaimValue`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum ClaimValue {
+    /// Exactly one value, which the clients will attest.
+    Present(String),
+    /// The certificate carries no `firezone://` name for this claim.
+    Absent,
+    /// The certificate carries one, but not one the clients will attest.
+    Invalid(RejectionReason),
 }
 
 /// Why a `firezone://` claim was not attested, mirroring [`x509_claims::RejectionReason`].
@@ -51,11 +53,12 @@ pub struct ParsedCertificate {
     pub subject: String,
     /// Human-readable renderings of all subject alternative names.
     pub subject_alternative_names: Vec<String>,
-    pub actor_email: Option<String>,
-    pub account_id: Option<String>,
-    pub mdm_device_id: Option<String>,
-    pub device_serial: Option<String>,
-    pub rejected_claims: Vec<RejectedClaim>,
+    pub actor_email: ClaimValue,
+    pub account_id: ClaimValue,
+    pub mdm_device_id: ClaimValue,
+    pub device_serial: ClaimValue,
+    /// `firezone://` names whose attribute the parser does not read, e.g. a typo in a template.
+    pub unrecognised_claims: Vec<String>,
     pub issuer: String,
     pub serial: String,
     pub has_client_auth_eku: bool,
@@ -95,21 +98,16 @@ impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
             .into_iter()
             .map(DetailField::from)
             .collect();
-        let rejected_claims = parsed
-            .rejected_claims
-            .into_iter()
-            .map(RejectedClaim::from)
-            .collect();
 
         Self {
             subject_cn: parsed.subject_cn,
             subject: parsed.subject,
             subject_alternative_names: parsed.subject_alternative_names,
-            actor_email: parsed.actor_email,
-            account_id: parsed.account_id,
-            mdm_device_id: parsed.mdm_device_id,
-            device_serial: parsed.device_serial,
-            rejected_claims,
+            actor_email: ClaimValue::from(parsed.actor_email),
+            account_id: ClaimValue::from(parsed.account_id),
+            mdm_device_id: ClaimValue::from(parsed.mdm_device_id),
+            device_serial: ClaimValue::from(parsed.device_serial),
+            unrecognised_claims: parsed.unrecognised_claims,
             issuer: parsed.issuer,
             serial: parsed.serial,
             has_client_auth_eku: parsed.has_client_auth_eku,
@@ -143,17 +141,19 @@ impl From<x509_claims::DetailField> for DetailField {
     fn from(field: x509_claims::DetailField) -> Self {
         Self {
             label: field.label,
-            value: field.value,
+            value: ClaimValue::from(field.value),
         }
     }
 }
 
-impl From<x509_claims::RejectedClaim> for RejectedClaim {
-    fn from(claim: x509_claims::RejectedClaim) -> Self {
-        Self {
-            attribute: claim.attribute,
-            value: claim.value,
-            reason: RejectionReason::from(claim.reason),
+impl From<x509_claims::ClaimValue> for ClaimValue {
+    fn from(value: x509_claims::ClaimValue) -> Self {
+        match value {
+            x509_claims::ClaimValue::Present(value) => Self::Present(value),
+            x509_claims::ClaimValue::Absent => Self::Absent,
+            x509_claims::ClaimValue::Invalid(reason) => {
+                Self::Invalid(RejectionReason::from(reason))
+            }
         }
     }
 }
