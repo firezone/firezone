@@ -400,6 +400,10 @@ fn extract_mdm_device_id<'a>(uris: impl IntoIterator<Item = &'a str>) -> Option<
             continue;
         };
         let id_type = id_type.to_ascii_lowercase();
+        // The same escaping the other typed claims go through: an MDM that percent-encodes its
+        // identifier must not end up attesting the literal escape sequence.
+        let value = percent_decode(value).unwrap_or_else(|| value.to_owned());
+        let value = value.as_str();
         if !matches!(
             id_type.as_str(),
             "serial"
