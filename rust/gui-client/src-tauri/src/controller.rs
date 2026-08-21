@@ -1169,6 +1169,7 @@ mod tests {
         mock_tunnel.send_hello().await;
 
         let expected = x509_keystore::Status {
+            severity: x509_keystore::StatusSeverity::Ok,
             summary: "One identity is available.".to_owned(),
             sections: vec![],
         };

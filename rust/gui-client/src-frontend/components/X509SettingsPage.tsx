@@ -1,5 +1,6 @@
 import React from "react";
 import { X509Status } from "../generated/bindings";
+import RemixIcon from "./RemixIcon";
 
 export default function X509SettingsPage({
   status,
@@ -23,7 +24,14 @@ export default function X509SettingsPage({
         </div>
       ) : (
         <>
-          <p className="text-body">{status.summary}</p>
+          {status.severity === "Warning" ? (
+            <div className="flex gap-2.5 rounded border border-warning/30 bg-warning-light p-3 text-sm text-warning">
+              <RemixIcon className="mt-0.5 h-4 w-4" name="alert" />
+              <p>{status.summary}</p>
+            </div>
+          ) : (
+            <p className="text-body">{status.summary}</p>
+          )}
           {status.sections.map((section, sectionIndex) => (
             <section
               className="panel p-4"
