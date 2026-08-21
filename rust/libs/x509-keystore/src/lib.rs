@@ -39,36 +39,14 @@ use unsupported as keystore;
 /// The subject common name of the certificates Firezone's MDM integrations provision.
 const SUBJECT_COMMON_NAME: &str = "dev.firezone.device-trust";
 
-/// What the keystore needs told about itself, where it cannot discover it.
-#[derive(Clone, Default)]
-pub struct Config {
-    /// The RFC 7512 URI naming the PKCS#11 module, token and object the Linux keystore uses.
-    ///
-    /// Other platforms discover their keystore on their own and ignore this.
-    pub pkcs11_uri: Option<String>,
-}
-
-impl fmt::Debug for Config {
-    /// Redacts the URI, which names the file the token's PIN is read from.
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("Config")
-            .field(
-                "pkcs11_uri",
-                &self.pkcs11_uri.as_ref().map(|_| "[configured]"),
-            )
-            .finish()
-    }
-}
-
 /// Returns the client certificate for the portal connection, if the keystore holds a usable one.
 ///
 /// # Errors
 ///
 /// Returns an error if the keystore cannot be read at all. A readable keystore that holds no
 /// usable identity yields [`None`], because running without mTLS is the normal case.
-pub fn certificate(config: &Config) -> Result<Option<ClientCertificate>> {
-    let Some(identity) = keystore::identity(config, SUBJECT_COMMON_NAME)? else {
+pub fn certificate() -> Result<Option<ClientCertificate>> {
+    let Some(identity) = keystore::identity(SUBJECT_COMMON_NAME)? else {
         return Ok(None);
     };
 
@@ -83,8 +61,8 @@ pub fn certificate(config: &Config) -> Result<Option<ClientCertificate>> {
 /// # Errors
 ///
 /// Returns an error if the keystore cannot be read.
-pub fn status(config: &Config) -> Result<Status> {
-    let status = keystore::status(config, SUBJECT_COMMON_NAME)?;
+pub fn status() -> Result<Status> {
+    let status = keystore::status(SUBJECT_COMMON_NAME)?;
 
     Ok(status)
 }

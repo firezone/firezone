@@ -29,7 +29,7 @@ fn signs_with_the_cng_key_of_an_rsa_certificate() {
     let subject_cn = unique_subject_cn("rsa");
     let minted = mint_certificate(&subject_cn, KeyAlgorithm::Rsa);
 
-    let identity = super::identity(&Config::default(), &subject_cn)
+    let identity = super::identity(&subject_cn)
         .expect("the Windows certificate stores should be readable")
         .expect("the minted certificate should be selected as the client identity");
 
@@ -45,7 +45,7 @@ fn signs_with_the_cng_key_of_an_ecdsa_certificate() {
     let subject_cn = unique_subject_cn("ecdsa");
     let minted = mint_certificate(&subject_cn, KeyAlgorithm::EcdsaP256);
 
-    let identity = super::identity(&Config::default(), &subject_cn)
+    let identity = super::identity(&subject_cn)
         .expect("the Windows certificate stores should be readable")
         .expect("the minted certificate should be selected as the client identity");
 
@@ -65,8 +65,8 @@ fn describes_a_minted_certificate_in_the_diagnostics() {
     let subject_cn = unique_subject_cn("status");
     let _minted = mint_certificate(&subject_cn, KeyAlgorithm::Rsa);
 
-    let status = super::status(&Config::default(), &subject_cn)
-        .expect("the Windows certificate stores should be readable");
+    let status =
+        super::status(&subject_cn).expect("the Windows certificate stores should be readable");
 
     assert_eq!(status.problems, []);
     let section = status
@@ -92,10 +92,10 @@ fn reports_no_identity_when_no_certificate_matches() {
     let _serialized = serialize_certificate_store_access();
     let subject_cn = unique_subject_cn("absent");
 
-    let identity = super::identity(&Config::default(), &subject_cn)
-        .expect("the Windows certificate stores should be readable");
-    let status = super::status(&Config::default(), &subject_cn)
-        .expect("the Windows certificate stores should be readable");
+    let identity =
+        super::identity(&subject_cn).expect("the Windows certificate stores should be readable");
+    let status =
+        super::status(&subject_cn).expect("the Windows certificate stores should be readable");
 
     assert!(identity.is_none());
     assert_eq!(

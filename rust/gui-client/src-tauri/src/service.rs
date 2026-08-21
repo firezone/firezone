@@ -326,9 +326,7 @@ impl Session {
 
 /// Reads what the platform keystore holds, off the runtime because it may block on a TPM.
 async fn x509_status() -> Result<x509_keystore::Status, String> {
-    let config = keystore_config();
-
-    tokio::task::spawn_blocking(move || x509_keystore::status(&config))
+    tokio::task::spawn_blocking(x509_keystore::status)
         .await
         .context("Failed to join the keystore task")
         .and_then(|result| result)
@@ -794,12 +792,10 @@ impl<'a> Handler<'a> {
             device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
         let api_url = self.api_url().to_string();
-        let keystore_config = keystore_config();
-        let certificate =
-            tokio::task::spawn_blocking(move || x509_keystore::certificate(&keystore_config))
-                .await
-                .context("Failed to join the keystore task")?
-                .context("Failed to read the platform keystore")?;
+        let certificate = tokio::task::spawn_blocking(x509_keystore::certificate)
+            .await
+            .context("Failed to join the keystore task")?
+            .context("Failed to read the platform keystore")?;
         let url = LoginUrl::client(
             Url::parse(&api_url).context("Failed to parse URL")?,
             device_id.id.clone(),
@@ -882,16 +878,6 @@ impl<'a> Handler<'a> {
             .with_context(|| format!("Failed to send IPC message `{msg}`"))?;
 
         Ok(())
-    }
-}
-
-/// Reads the keystore configuration from the Tunnel service's own environment.
-///
-/// The packaged systemd unit sources `/etc/default/firezone-client-tunnel`, which is where an
-/// administrator sets this.
-fn keystore_config() -> x509_keystore::Config {
-    x509_keystore::Config {
-        pkcs11_uri: std::env::var("FIREZONE_PKCS11_URI").ok(),
     }
 }
 

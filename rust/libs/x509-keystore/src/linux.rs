@@ -5,6 +5,9 @@ mod tests;
 
 use std::{
     collections::BTreeMap,
+    fs::File,
+    io::Read as _,
+    os::unix::fs::MetadataExt as _,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, PoisonError},
     time::SystemTime,
@@ -20,6 +23,7 @@ use cryptoki::{
     },
     object::{Attribute, AttributeType, CertificateType, KeyType, ObjectClass, ObjectHandle},
     session::{Session, UserType},
+    slot::{Slot, TokenInfo},
     types::AuthPin,
 };
 use rustls::{SignatureAlgorithm, SignatureScheme, pki_types::CertificateDer};
@@ -27,30 +31,52 @@ use sha2::{Digest as _, Sha256, Sha384, Sha512};
 use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
 use x509_credential::{PrivateKey, SigningError};
 
-use crate::{Config, DetailField, DetailSection, Identity, Status, field};
+use crate::{DetailField, DetailSection, Identity, Status, field};
 
-pub(crate) fn status(config: &Config, subject_cn: &str) -> Result<Status> {
-    let Some(uri) = config.pkcs11_uri.as_deref() else {
+/// The only PKCS#11 module Firezone loads.
+///
+/// p11-kit's proxy federates every module registered on the system, so whichever driver an
+/// administrator installed for their token is reachable without Firezone being told about it.
+const PROXY_MODULE: &str = "p11-kit-proxy.so";
+
+/// The file a token's PIN is read from.
+const PIN_FILE: &str = "/etc/firezone/pkcs11-pin";
+
+pub(crate) fn status(subject_cn: &str) -> Result<Status> {
+    let status = status_on(&proxy_module()?, Path::new(PIN_FILE), subject_cn)?;
+
+    Ok(status)
+}
+
+pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
+    let identity = identity_on(&proxy_module()?, Path::new(PIN_FILE), subject_cn)?;
+
+    Ok(identity)
+}
+
+fn status_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Status> {
+    let Some(token) = find_token(module, pin_file, subject_cn)? else {
         return Ok(Status {
-            summary: "No PKCS#11 token is configured.".to_owned(),
+            summary: format!(
+                "No PKCS#11 token holds an X.509 certificate with subject CN '{subject_cn}'."
+            ),
             sections: vec![DetailSection {
-                title: "PKCS#11 Configuration".to_owned(),
-                fields: vec![field("PKCS#11 URI", "Not configured")],
+                title: "PKCS#11 Token".to_owned(),
+                fields: vec![field("Module Path", module.display().to_string())],
             }],
         });
     };
 
-    let uri = Pkcs11Uri::parse(uri).context("Invalid PKCS#11 configuration")?;
-    let session = open_session(&uri)?;
-    let certificates = matching_certificates(&session, &uri, subject_cn)?;
-    let usable = certificates
+    let usable = token
+        .certificates
         .iter()
         .filter(|certificate| certificate.usable)
         .count();
 
-    let mut sections = vec![configuration_section(&uri)];
+    let mut sections = vec![token_section(module, &token.info)];
     sections.extend(
-        certificates
+        token
+            .certificates
             .iter()
             .enumerate()
             .map(|(index, certificate)| DetailSection {
@@ -59,14 +85,12 @@ pub(crate) fn status(config: &Config, subject_cn: &str) -> Result<Status> {
             }),
     );
 
-    let summary = match (usable, certificates.len()) {
-        (0, 0) => format!(
-            "No X.509 certificate with subject CN '{subject_cn}' is on the configured PKCS#11 token."
+    let summary = match usable {
+        0 => format!(
+            "Found {} matching X.509 certificate(s), but none of them are usable as a client identity.",
+            token.certificates.len()
         ),
-        (0, count) => format!(
-            "Found {count} matching X.509 certificate(s), but none of them are usable as a client identity."
-        ),
-        (count, _) => {
+        count => {
             format!("{count} X.509 client identity certificate(s) are available for mutual TLS.")
         }
     };
@@ -74,54 +98,45 @@ pub(crate) fn status(config: &Config, subject_cn: &str) -> Result<Status> {
     Ok(Status { summary, sections })
 }
 
-pub(crate) fn identity(config: &Config, subject_cn: &str) -> Result<Option<Identity>> {
-    let Some(uri) = config.pkcs11_uri.as_deref() else {
-        tracing::debug!("No PKCS#11 token is configured for mutual TLS");
+fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Option<Identity>> {
+    let Some(token) = find_token(module, pin_file, subject_cn)? else {
+        tracing::debug!("No PKCS#11 token holds a Firezone client identity");
 
         return Ok(None);
     };
-
-    let uri = Pkcs11Uri::parse(uri).context("Invalid PKCS#11 configuration")?;
-    let session = open_session(&uri)?;
-    let certificates = matching_certificates(&session, &uri, subject_cn)?;
-    // The URI's `object` attribute names the leaf. Intermediates usually carry a different label,
-    // so the chain is assembled from every certificate on the token.
-    let issuers = certificate_objects(&session, &uri, IncludeIssuers::Yes)?;
-
-    let unusable = certificates
+    let unusable = token
+        .certificates
         .iter()
         .filter(|certificate| !certificate.usable)
         .map(unusable_reason)
         .collect::<Vec<_>>();
 
-    let Some(certificate) = certificates
+    let Some(certificate) = token
+        .certificates
         .into_iter()
         .filter(|certificate| certificate.usable)
         .max_by_key(|certificate| certificate.metadata.not_before_timestamp)
     else {
-        // A token that holds nothing for us is the ordinary no-certificate case. Skipping one that
-        // was provisioned for Firezone reads to an administrator as if none had been, so say which
-        // rule it failed instead of connecting without it.
-        if !unusable.is_empty() {
-            bail!(
-                "The PKCS#11 token holds no usable Firezone client identity: {}",
-                unusable.join("; ")
-            );
-        }
-
-        return Ok(None);
+        // Skipping a certificate that was provisioned for Firezone reads to an administrator as if
+        // none had been, so say which rule it failed instead of connecting without it.
+        bail!(
+            "The PKCS#11 token holds no usable Firezone client identity: {}",
+            unusable.join("; ")
+        );
     };
 
     let algorithm = certificate
         .metadata
         .signing_algorithm
         .context("The selected PKCS#11 certificate uses an unsupported key algorithm")?;
-    let chain = certificate_chain(&certificate.der, &issuers)
+    let chain = certificate_chain(&certificate.der, &token.objects)
         .into_iter()
         .map(CertificateDer::from)
         .collect();
     let key = Arc::new(Pkcs11Key {
-        uri,
+        module: module.to_owned(),
+        pin_file: pin_file.to_owned(),
+        slot: token.slot,
         key_id: certificate.id,
         key_label: certificate.label,
         algorithm,
@@ -140,7 +155,9 @@ pub(crate) fn identity(config: &Config, subject_cn: &str) -> Result<Option<Ident
 /// Sessions cannot be shared between threads, so each signature opens its own.
 #[derive(Debug)]
 struct Pkcs11Key {
-    uri: Pkcs11Uri,
+    module: PathBuf,
+    pin_file: PathBuf,
+    slot: Slot,
     key_id: Option<Vec<u8>>,
     key_label: Option<String>,
     algorithm: SigningAlgorithm,
@@ -161,7 +178,8 @@ impl PrivateKey for Pkcs11Key {
     }
 
     fn sign(&self, scheme: SignatureScheme, message: &[u8]) -> Result<Vec<u8>, SigningError> {
-        let session = open_session(&self.uri).map_err(classify_signing_error)?;
+        let session = open_session(&self.module, self.slot, &self.pin_file)
+            .map_err(classify_signing_error)?;
         let key = find_private_key(
             &session,
             self.key_id.as_deref(),
@@ -357,6 +375,37 @@ fn encode_der_length(output: &mut Vec<u8>, length: usize) {
     }
 }
 
+/// Returns the path of the p11-kit proxy module.
+///
+/// # Errors
+///
+/// Returns an error if p11-kit is not installed, because it is how Firezone reaches every token.
+fn proxy_module() -> Result<PathBuf> {
+    let module = module_directories()
+        .map(|directory| directory.join(PROXY_MODULE))
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| {
+            anyhow!(
+                "Failed to find {PROXY_MODULE}: Firezone reads PKCS#11 tokens through p11-kit, which has to be installed (the `p11-kit-modules` package on Debian)"
+            )
+        })?;
+
+    Ok(module)
+}
+
+/// The directories a distribution may have installed PKCS#11 modules into.
+fn module_directories() -> impl Iterator<Item = PathBuf> {
+    // Debian keeps modules below a directory named after the architecture triplet, e.g.
+    // `/usr/lib/x86_64-linux-gnu/pkcs11`.
+    let multiarch = std::fs::read_dir("/usr/lib")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path().join("pkcs11"));
+
+    multiarch.chain(["/usr/lib/pkcs11", "/usr/lib64/pkcs11"].map(PathBuf::from))
+}
+
 /// The PKCS#11 context each module is used through, kept for the life of the process.
 ///
 /// A module may only be initialized once: a second `C_Initialize` answers that it already is, so
@@ -385,29 +434,130 @@ fn context(module_path: &Path) -> Result<Pkcs11> {
     Ok(context)
 }
 
-/// Opens a read-only session on the configured token, unlocking it when a PIN is configured.
-fn open_session(uri: &Pkcs11Uri) -> Result<Session> {
-    let pkcs11 = context(&uri.module_path)?;
+/// The token Firezone authenticates with, and everything it holds that bears on that.
+struct Token {
+    slot: Slot,
+    info: TokenInfo,
+    /// Every X.509 object on the token, which is what the chain of a certificate is built from.
+    objects: Vec<CertificateObject>,
+    /// The objects whose subject common name is the one Firezone looks for.
+    certificates: Vec<Certificate>,
+}
 
-    let slot = find_slot(&pkcs11, uri.token_label.as_deref())?;
-    let session = pkcs11
-        .open_ro_session(slot)
-        .context("Failed to open the PKCS#11 token")?;
+/// Returns the first token holding a certificate for `subject_cn`, unlocked and ready to sign.
+///
+/// Certificates are public objects, so every token can be searched without logging in, and only
+/// the one that turns out to hold ours is unlocked. Logging into each token in turn would instead
+/// spend the PIN attempts of tokens that have nothing to do with Firezone.
+fn find_token(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Option<Token>> {
+    let pkcs11 = context(module)?;
+    let slots = pkcs11
+        .get_slots_with_token()
+        .context("Failed to enumerate PKCS#11 tokens")?;
 
-    if let Some(pin) = uri.read_pin()? {
-        unlock(&session, pin).context("Failed to unlock the PKCS#11 token")?;
+    for slot in slots {
+        let Some(candidate) = search_slot(&pkcs11, slot, subject_cn)
+            .inspect_err(|error| tracing::debug!(?slot, "Skipping a PKCS#11 token: {error:#}"))
+            .ok()
+            .flatten()
+        else {
+            continue;
+        };
+
+        let Candidate {
+            info,
+            session,
+            objects,
+            matches,
+        } = candidate;
+
+        unlock(&session, pin_file)?;
+
+        let certificates = matches
+            .into_iter()
+            .map(|(object, metadata)| {
+                describe_certificate(&session, &objects[object], metadata, subject_cn)
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        return Ok(Some(Token {
+            slot,
+            info,
+            objects,
+            certificates,
+        }));
     }
 
-    Ok(session)
+    Ok(None)
+}
+
+/// A token that holds at least one certificate for the subject common name we look for.
+struct Candidate {
+    info: TokenInfo,
+    session: Session,
+    objects: Vec<CertificateObject>,
+    /// The index of each matching object in `objects`, alongside what its certificate says.
+    matches: Vec<(usize, ParsedCertificate)>,
+}
+
+/// Reads the certificates on `slot`, before any login, to see whether the token is one of ours.
+fn search_slot(pkcs11: &Pkcs11, slot: Slot, subject_cn: &str) -> Result<Option<Candidate>> {
+    let info = pkcs11
+        .get_token_info(slot)
+        .context("Failed to read the token information")?;
+    let session = pkcs11
+        .open_ro_session(slot)
+        .context("Failed to open the token")?;
+    let objects = certificate_objects(&session)?;
+    let now = SystemTime::now();
+    let matches = objects
+        .iter()
+        .enumerate()
+        .filter_map(|(index, object)| {
+            let Some(metadata) = parse_certificate(&object.der, now) else {
+                tracing::debug!(
+                    object_label = ?object.label,
+                    "Ignoring an invalid PKCS#11 X.509 certificate"
+                );
+
+                return None;
+            };
+
+            (metadata.subject_cn.as_deref() == Some(subject_cn)).then_some((index, metadata))
+        })
+        .collect::<Vec<_>>();
+
+    if matches.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(Candidate {
+        info,
+        session,
+        objects,
+        matches,
+    }))
+}
+
+/// Unlocks the token with the PIN Firezone keeps on disk, when there is one.
+fn unlock(session: &Session, pin_file: &Path) -> Result<()> {
+    if !pin_file.exists() {
+        return Ok(());
+    }
+
+    let pin = read_pin(pin_file)?;
+
+    log_in(session, &pin).context("Failed to unlock the PKCS#11 token")?;
+
+    Ok(())
 }
 
 /// Logs into the token, treating a login an overlapping session already did as success.
 ///
 /// PKCS#11 tracks the login per token rather than per session, so a token that another session of
 /// this process unlocked is unlocked for this one too, and logging in again is refused.
-fn unlock(session: &Session, pin: String) -> Result<()> {
-    let Err(error) = session.login(UserType::User, Some(&AuthPin::new(pin.into_boxed_str())))
-    else {
+fn log_in(session: &Session, pin: &AuthPin) -> Result<()> {
+    let Err(error) = session.login(UserType::User, Some(pin)) else {
         return Ok(());
     };
 
@@ -421,27 +571,64 @@ fn unlock(session: &Session, pin: String) -> Result<()> {
     Err(error.into())
 }
 
-fn find_slot(pkcs11: &Pkcs11, token_label: Option<&str>) -> Result<cryptoki::slot::Slot> {
-    let slots = pkcs11
-        .get_slots_with_token()
-        .context("Failed to enumerate PKCS#11 tokens")?;
+/// Reads the token's PIN from `path`.
+///
+/// Ownership and permissions are checked on the open file rather than on its path, so that a file
+/// swapped in between the check and the read cannot get its contents used.
+///
+/// # Errors
+///
+/// Returns an error if the file is missing or unreadable, or if it is not root's alone.
+fn read_pin(path: &Path) -> Result<AuthPin> {
+    let mut file = File::open(path)
+        .with_context(|| format!("Failed to open the PKCS#11 PIN file '{}'", path.display()))?;
+    let metadata = file
+        .metadata()
+        .with_context(|| format!("Failed to read the metadata of '{}'", path.display()))?;
 
-    let Some(label) = token_label else {
-        let slot = slots
-            .into_iter()
-            .next()
-            .ok_or_else(|| anyhow!("No PKCS#11 tokens are available"))?;
+    ensure_root_only(metadata.mode(), metadata.uid(), path)?;
 
-        return Ok(slot);
-    };
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)
+        .with_context(|| format!("Failed to read '{}'", path.display()))?;
 
-    for slot in slots {
-        if pkcs11.get_token_info(slot)?.label().trim() == label {
-            return Ok(slot);
-        }
+    // A PIN may deliberately begin or end with a space, so only the line ending is stripped.
+    Ok(AuthPin::from(contents.trim_end_matches(['\n', '\r'])))
+}
+
+/// Refuses a PIN file that any account other than root can get at.
+///
+/// The Tunnel service runs as root, so a PIN file another account owns or can read is one a
+/// compromised account could use to authenticate the device.
+fn ensure_root_only(mode: u32, uid: u32, path: &Path) -> Result<()> {
+    if mode & 0o077 != 0 {
+        bail!(
+            "Permissions 0{:o} for '{}' are too open; the PKCS#11 PIN file must not be accessible by group or others",
+            mode & 0o777,
+            path.display()
+        );
     }
 
-    bail!("No PKCS#11 token with label '{label}' was found");
+    if uid != 0 {
+        bail!(
+            "'{}' is owned by uid {uid} rather than by root; only root may hold the PKCS#11 PIN",
+            path.display()
+        );
+    }
+
+    Ok(())
+}
+
+/// Opens a read-only session on `slot`, unlocking its token.
+fn open_session(module: &Path, slot: Slot, pin_file: &Path) -> Result<Session> {
+    let pkcs11 = context(module)?;
+    let session = pkcs11
+        .open_ro_session(slot)
+        .context("Failed to open the PKCS#11 token")?;
+
+    unlock(&session, pin_file)?;
+
+    Ok(session)
 }
 
 /// A certificate on the token whose subject CN is the one we look for.
@@ -450,8 +637,32 @@ struct Certificate {
     id: Option<Vec<u8>>,
     label: Option<String>,
     metadata: ParsedCertificate,
-    key_available: bool,
+    key: Option<ObjectHandle>,
     usable: bool,
+}
+
+/// Says whether the token can sign with a certificate it holds, and how it describes it.
+fn describe_certificate(
+    session: &Session,
+    object: &CertificateObject,
+    metadata: ParsedCertificate,
+    subject_cn: &str,
+) -> Result<Certificate> {
+    let key = find_private_key(
+        session,
+        object.id.as_deref(),
+        object.label.as_deref(),
+        metadata.signing_algorithm,
+    )?;
+
+    Ok(Certificate {
+        der: object.der.clone(),
+        id: object.id.clone(),
+        label: object.label.clone(),
+        usable: metadata.is_usable(subject_cn) && key.is_some(),
+        metadata,
+        key,
+    })
 }
 
 /// Says why a certificate that matched the subject common name cannot be used.
@@ -466,7 +677,7 @@ fn unusable_reason(certificate: &Certificate) -> String {
         "it is expired or not yet valid"
     } else if metadata.signing_algorithm.is_none() {
         "it holds a key algorithm we cannot sign with"
-    } else if !certificate.key_available {
+    } else if certificate.key.is_none() {
         "the token holds no private key for it"
     } else {
         "it does not match the requested common name"
@@ -484,7 +695,7 @@ impl Certificate {
             ),
             field(
                 "Private Key Access",
-                if self.key_available {
+                if self.key.is_some() {
                     "Available"
                 } else {
                     "Unavailable"
@@ -506,65 +717,13 @@ impl Certificate {
     }
 }
 
-fn matching_certificates(
-    session: &Session,
-    uri: &Pkcs11Uri,
-    subject_cn: &str,
-) -> Result<Vec<Certificate>> {
-    let now = SystemTime::now();
-    let mut certificates = Vec::new();
-
-    for object in certificate_objects(session, uri, IncludeIssuers::No)? {
-        let Some(metadata) = parse_certificate(&object.der, now) else {
-            tracing::warn!(
-                object_label = ?object.label,
-                "Ignoring an invalid PKCS#11 X.509 certificate"
-            );
-            continue;
-        };
-        if metadata.subject_cn.as_deref() != Some(subject_cn) {
-            continue;
-        }
-
-        let key_available = find_private_key(
-            session,
-            object.id.as_deref(),
-            object.label.as_deref(),
-            metadata.signing_algorithm,
-        )?
-        .is_some();
-
-        certificates.push(Certificate {
-            der: object.der,
-            id: object.id,
-            label: object.label,
-            usable: metadata.is_usable(subject_cn) && key_available,
-            metadata,
-            key_available,
-        });
-    }
-
-    Ok(certificates)
-}
-
-/// Whether to look past the object label the URI selects, which only names the leaf.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum IncludeIssuers {
-    Yes,
-    No,
-}
-
 struct CertificateObject {
     der: Vec<u8>,
     id: Option<Vec<u8>>,
     label: Option<String>,
 }
 
-fn certificate_objects(
-    session: &Session,
-    uri: &Pkcs11Uri,
-    include_issuers: IncludeIssuers,
-) -> Result<Vec<CertificateObject>> {
+fn certificate_objects(session: &Session) -> Result<Vec<CertificateObject>> {
     let handles = session
         .find_objects(&[
             Attribute::Class(ObjectClass::CERTIFICATE),
@@ -605,12 +764,6 @@ fn certificate_objects(
             }
         }
 
-        if include_issuers == IncludeIssuers::No
-            && uri.object_label.is_some()
-            && label != uri.object_label
-        {
-            continue;
-        }
         if let Some(der) = der {
             certificates.push(CertificateObject { der, id, label });
         }
@@ -681,132 +834,22 @@ fn certificate_chain(leaf: &[u8], issuers: &[CertificateObject]) -> Vec<Vec<u8>>
     chain
 }
 
-fn configuration_section(uri: &Pkcs11Uri) -> DetailSection {
+fn token_section(module: &Path, info: &TokenInfo) -> DetailSection {
     DetailSection {
-        title: "PKCS#11 Configuration".to_owned(),
+        title: "PKCS#11 Token".to_owned(),
         fields: vec![
             field("Certificate Storage", "PKCS#11 token"),
             field(
                 "Private Key Storage",
                 "PKCS#11 token (hardware backing is provider-specific)",
             ),
-            field("Module Path", uri.module_path.display().to_string()),
+            field("Module Path", module.display().to_string()),
+            field("Token Label", info.label().trim()),
+            field("Token Model", info.model().trim()),
             field(
-                "Token Label",
-                uri.token_label
-                    .as_deref()
-                    .unwrap_or("First available token"),
-            ),
-            field(
-                "Object Label",
-                uri.object_label.as_deref().unwrap_or("Any object"),
-            ),
-            field(
-                "PIN Source",
-                uri.pin_source.as_deref().unwrap_or("Not configured"),
+                "Login Required",
+                if info.login_required() { "Yes" } else { "No" },
             ),
         ],
     }
-}
-
-/// The [RFC 7512](https://www.rfc-editor.org/rfc/rfc7512) URI naming the module, token and object.
-#[derive(Debug, Default, Clone)]
-struct Pkcs11Uri {
-    module_path: PathBuf,
-    token_label: Option<String>,
-    object_label: Option<String>,
-    pin_source: Option<String>,
-}
-
-impl Pkcs11Uri {
-    fn parse(uri: &str) -> Result<Self> {
-        let body = uri
-            .strip_prefix("pkcs11:")
-            .ok_or_else(|| anyhow!("PKCS#11 URI must begin with 'pkcs11:'"))?;
-        let (path, query) = body
-            .split_once('?')
-            .map_or((body, None), |(path, query)| (path, Some(query)));
-        let mut parsed = Self::default();
-
-        for component in path.split(';').filter(|component| !component.is_empty()) {
-            let (key, value) = component
-                .split_once('=')
-                .ok_or_else(|| anyhow!("Malformed PKCS#11 URI component '{component}'"))?;
-            let value = percent_decode(value)?;
-            match key {
-                "module-path" => parsed.module_path = PathBuf::from(value),
-                "token" => parsed.token_label = Some(value),
-                "object" => parsed.object_label = Some(value),
-                _ => {}
-            }
-        }
-
-        for component in query
-            .unwrap_or_default()
-            .split('&')
-            .filter(|component| !component.is_empty())
-        {
-            let (key, value) = component
-                .split_once('=')
-                .ok_or_else(|| anyhow!("Malformed PKCS#11 URI query '{component}'"))?;
-            let value = percent_decode(value)?;
-            match key {
-                "module-path" => parsed.module_path = PathBuf::from(value),
-                "pin-source" => parsed.pin_source = Some(value),
-                "pin-value" => {
-                    bail!("PKCS#11 pin-value is not supported; use pin-source=file:/path instead")
-                }
-                _ => {}
-            }
-        }
-
-        if parsed.module_path.as_os_str().is_empty() {
-            bail!("PKCS#11 URI is missing the required module-path attribute");
-        }
-
-        Ok(parsed)
-    }
-
-    /// Reads the token's PIN from the file the URI names.
-    ///
-    /// Inline `pin-value` credentials are rejected while parsing, so a PIN never travels in
-    /// configuration that is logged or passed on a command line.
-    fn read_pin(&self) -> Result<Option<String>> {
-        let Some(source) = self.pin_source.as_deref() else {
-            return Ok(None);
-        };
-        let Some(path) = source.strip_prefix("file:") else {
-            bail!("Unsupported PKCS#11 pin-source scheme; only file: is supported");
-        };
-
-        let pin = std::fs::read_to_string(path)
-            .with_context(|| format!("Failed to read the PKCS#11 PIN from {path}"))?;
-
-        Ok(Some(pin.trim_end_matches(['\n', '\r']).to_owned()))
-    }
-}
-
-fn percent_decode(input: &str) -> Result<String> {
-    let input = input.as_bytes();
-    let mut output = Vec::with_capacity(input.len());
-    let mut index = 0;
-
-    while index < input.len() {
-        if input[index] != b'%' {
-            output.push(input[index]);
-            index += 1;
-            continue;
-        }
-
-        let encoded = input
-            .get(index + 1..index + 3)
-            .context("Truncated percent escape in PKCS#11 URI")?;
-        let encoded = std::str::from_utf8(encoded)?;
-        output.push(u8::from_str_radix(encoded, 16).context("Invalid percent escape")?);
-        index += 3;
-    }
-
-    let decoded = String::from_utf8(output).context("PKCS#11 URI component is not UTF-8")?;
-
-    Ok(decoded)
 }
