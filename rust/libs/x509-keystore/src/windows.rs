@@ -107,11 +107,27 @@ pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
         );
     }
 
+    let unusable = certificates
+        .iter()
+        .filter(|certificate| !certificate.usable)
+        .map(unusable_reason)
+        .collect::<Vec<_>>();
+
     let Some(certificate) = certificates
         .into_iter()
         .filter(|certificate| certificate.usable)
         .max_by_key(|certificate| certificate.metadata.not_before_timestamp)
     else {
+        // Only a store that holds nothing for us is the ordinary no-certificate case. Skipping a
+        // certificate that was provisioned for Firezone reads to an administrator as if none had
+        // been, so say which rule it failed instead of connecting without it.
+        if !unusable.is_empty() {
+            bail!(
+                "The Windows certificate store holds no usable Firezone client identity: {}",
+                unusable.join("; ")
+            );
+        }
+
         return Ok(None);
     };
 
@@ -500,6 +516,35 @@ impl Drop for Certificate {
             let _ = CertFreeCertificateContext(Some(self.context));
         }
     }
+}
+
+/// Says why a certificate that matched the subject common name cannot be used.
+fn unusable_reason(certificate: &Certificate) -> String {
+    let metadata = &certificate.metadata;
+
+    let reason = if !metadata.has_client_auth_eku {
+        "it has no TLS client authentication extended key usage"
+    } else if !metadata.digital_signature_allowed {
+        "its key usage does not allow digital signatures"
+    } else if !metadata.is_currently_valid {
+        "it is expired or not yet valid"
+    } else if metadata.signing_algorithm.is_none() {
+        "it holds a key algorithm we cannot sign with"
+    } else if !certificate.key_available {
+        // CNG refuses a key held by a legacy CSP rather than a KSP, which is what an older
+        // certificate template provisions.
+        return match &certificate.key_error {
+            Some(error) => format!(
+                "{} has a private key CNG will not use: {error}",
+                metadata.fingerprint
+            ),
+            None => format!("{} has no usable private key", metadata.fingerprint),
+        };
+    } else {
+        "it does not match the requested common name"
+    };
+
+    format!("{} is unusable because {reason}", metadata.fingerprint)
 }
 
 fn enumerate_matching(subject_cn: &str) -> (Vec<Certificate>, Vec<String>) {
