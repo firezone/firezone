@@ -8,7 +8,8 @@ use rcgen::{
     SerialNumber, string::Ia5String,
 };
 use x509_claims::{
-    ParsedCertificate, SigningAlgorithm, UnusableReason, UserIdentity, parse_certificate,
+    DetailField, ParsedCertificate, RejectionReason, SigningAlgorithm, UnusableReason,
+    UserIdentity, parse_certificate,
 };
 
 const RSA_LEAF: &[u8] =
@@ -299,6 +300,153 @@ fn elides_a_serial_number_no_issuer_would_have_produced() {
         oversized.serial,
         format!("00:{} (+4076 octets)", ["ab"; 20].join(":"))
     );
+}
+
+#[test]
+fn reports_every_firezone_claim_it_will_not_attest() {
+    let der = certificate_with_uri_sans(&[
+        "firezone://email/not-an-address",
+        "firezone://account-id/not-a-uuid",
+        "firezone://intune-id/00000000-0000-0000-0000-000000000000",
+        "firezone://not-a-real-attribute/x",
+    ]);
+
+    let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+
+    assert_eq!(
+        rejected_claims(&metadata),
+        [
+            (
+                "email",
+                "not-an-address",
+                RejectionReason::NotAnEmailAddress
+            ),
+            ("account-id", "not-a-uuid", RejectionReason::NotAUuid),
+            (
+                "intune-id",
+                "00000000-0000-0000-0000-000000000000",
+                RejectionReason::PlaceholderIdentifier
+            ),
+            (
+                "not-a-real-attribute",
+                "x",
+                RejectionReason::UnknownAttribute
+            ),
+        ]
+    );
+    assert_eq!(metadata.actor_email, None);
+    assert_eq!(metadata.account_id, None);
+    assert_eq!(metadata.mdm_device_id, None);
+}
+
+#[test]
+fn reports_conflicting_claims_rather_than_picking_one() {
+    let der = certificate_with_uri_sans(&[
+        "firezone://email/alice@example.com",
+        "firezone://email/bob@example.com",
+    ]);
+
+    let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+
+    assert_eq!(metadata.actor_email, None);
+    assert_eq!(
+        rejected_claims(&metadata),
+        [
+            ("email", "alice@example.com", RejectionReason::Ambiguous),
+            ("email", "bob@example.com", RejectionReason::Ambiguous),
+        ]
+    );
+}
+
+#[test]
+fn attests_a_valid_claim_beside_a_rejected_one() {
+    let der = certificate_with_uri_sans(&[
+        "firezone://email/alice@example.com",
+        "firezone://email/not-an-address",
+    ]);
+
+    let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+
+    assert_eq!(metadata.actor_email.as_deref(), Some("alice@example.com"));
+    assert_eq!(
+        rejected_claims(&metadata),
+        [(
+            "email",
+            "not-an-address",
+            RejectionReason::NotAnEmailAddress
+        )],
+        "an attested claim should not also be reported as rejected"
+    );
+}
+
+#[test]
+fn elides_a_rejected_value_too_long_to_display() {
+    let der = certificate_with_uri_sans(&[&format!("firezone://email/{}", "a".repeat(300))]);
+
+    let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+
+    assert_eq!(
+        rejected_claims(&metadata),
+        [(
+            "email",
+            format!("{} (+236 characters)", "a".repeat(64)).as_str(),
+            RejectionReason::TooLong
+        )]
+    );
+}
+
+#[test]
+fn diagnostics_show_why_a_claim_was_not_attested() {
+    let der = certificate_with_uri_sans(&[
+        "firezone://email/not-an-address",
+        "firezone://not-a-real-attribute/x",
+    ]);
+
+    let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+    let fields = metadata.detail_fields();
+
+    assert_eq!(
+        detail_value(&metadata, "Rejected Claims"),
+        "firezone://email/not-an-address: not an email address\nfirezone://not-a-real-attribute/x: not an attribute we understand"
+    );
+    assert!(
+        position(&fields, "Rejected Claims") < position(&fields, "Subject Alternative Names"),
+        "rejected claims should sit with the other Firezone claims"
+    );
+}
+
+#[test]
+fn diagnostics_omit_rejected_claims_when_there_are_none() {
+    let der = certificate_with_uri_sans(&[
+        "firezone://email/alice@example.com",
+        "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+        "firezone://serial/C02XK1ZGJGH5",
+    ]);
+
+    let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+
+    assert!(metadata.rejected_claims.is_empty());
+    assert!(
+        !metadata
+            .detail_fields()
+            .iter()
+            .any(|field| field.label == "Rejected Claims")
+    );
+}
+
+fn rejected_claims(metadata: &ParsedCertificate) -> Vec<(&str, &str, RejectionReason)> {
+    metadata
+        .rejected_claims
+        .iter()
+        .map(|claim| (claim.attribute.as_str(), claim.value.as_str(), claim.reason))
+        .collect()
+}
+
+fn position(fields: &[DetailField], label: &str) -> usize {
+    fields
+        .iter()
+        .position(|field| field.label == label)
+        .unwrap_or_else(|| panic!("diagnostics should show {label}"))
 }
 
 fn detail_value(metadata: &ParsedCertificate, label: &str) -> String {

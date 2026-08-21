@@ -13,7 +13,7 @@ use std::{
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use sha2::{Digest as _, Sha256};
-use x509_claims::{ParsedCertificate, UnusableReason, parse_certificate};
+use x509_claims::{ParsedCertificate, RejectedClaim, UnusableReason, parse_certificate};
 
 fuzz_target!(|input: Input| {
     let Some(certificate) = parse_certificate(input.der, instant(input.seconds_since_epoch)) else {
@@ -40,6 +40,7 @@ fuzz_target!(|input: Input| {
     assert_actor_email_is_addressable(&certificate);
     assert_mdm_device_id_is_normalised(&certificate);
     assert_device_serial_is_printable(&certificate);
+    assert_rejected_claims_are_not_attested(&certificate);
     assert_fingerprint_covers_the_input(&certificate, input.der);
     assert_serial_is_bounded(&certificate);
     assert_detail_fields_are_labelled(&certificate);
@@ -219,6 +220,51 @@ fn assert_device_serial_is_printable(certificate: &ParsedCertificate) {
 
     assert!(!device_serial.trim().is_empty());
     assert!(device_serial.len() <= 255);
+}
+
+/// Asserts that a claim the parser attests is never also reported as rejected.
+///
+/// Both end up on the same diagnostics screen, so a value in each would tell an administrator
+/// that their certificate is at once accepted and refused.
+fn assert_rejected_claims_are_not_attested(certificate: &ParsedCertificate) {
+    for claim in &certificate.rejected_claims {
+        assert!(claim.value.chars().count() <= 96, "{}", claim.value);
+        assert!(!claim.reason.label().is_empty());
+    }
+
+    let claims = certificate.rejected_claims.as_slice();
+
+    assert_not_rejected(claims, &certificate.actor_email, &["email"]);
+    assert_not_rejected(claims, &certificate.account_id, &["account-id"]);
+    assert_not_rejected(
+        claims,
+        &certificate.mdm_device_id,
+        &["intune-id", "entra-id", "ws1-uuid", "jamf-id", "kandji-id"],
+    );
+    assert_not_rejected(
+        claims,
+        &certificate.device_serial,
+        &["serial", "apple-serial"],
+    );
+}
+
+/// Asserts that no rejected claim under one of `attributes` carries the attested value.
+fn assert_not_rejected(claims: &[RejectedClaim], attested: &Option<String>, attributes: &[&str]) {
+    let Some(attested) = attested else {
+        return;
+    };
+
+    for claim in claims {
+        if !attributes.contains(&claim.attribute.as_str()) {
+            continue;
+        }
+
+        assert!(
+            !claim.value.eq_ignore_ascii_case(attested),
+            "{attested} is attested and rejected as {}",
+            claim.reason.label()
+        );
+    }
 }
 
 /// Asserts that the fingerprint identifies the very bytes that were parsed.

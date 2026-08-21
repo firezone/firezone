@@ -22,6 +22,28 @@ pub struct DetailField {
     pub value: String,
 }
 
+/// A `firezone://` claim found in a subject alternative name that the parser will not attest.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct RejectedClaim {
+    /// The attribute as it appeared in the URI, lower-cased, e.g. `email`.
+    pub attribute: String,
+    /// The value as it appeared, percent-decoded and trimmed, truncated for display.
+    pub value: String,
+    pub reason: RejectionReason,
+}
+
+/// Why a `firezone://` claim was not attested, mirroring [`x509_claims::RejectionReason`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum RejectionReason {
+    Empty,
+    TooLong,
+    NotAnEmailAddress,
+    NotAUuid,
+    Ambiguous,
+    PlaceholderIdentifier,
+    UnknownAttribute,
+}
+
 /// Metadata parsed from a client certificate, mirroring [`x509_claims::ParsedCertificate`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ParsedCertificate {
@@ -33,6 +55,7 @@ pub struct ParsedCertificate {
     pub account_id: Option<String>,
     pub mdm_device_id: Option<String>,
     pub device_serial: Option<String>,
+    pub rejected_claims: Vec<RejectedClaim>,
     pub issuer: String,
     pub serial: String,
     pub has_client_auth_eku: bool,
@@ -72,6 +95,11 @@ impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
             .into_iter()
             .map(DetailField::from)
             .collect();
+        let rejected_claims = parsed
+            .rejected_claims
+            .into_iter()
+            .map(RejectedClaim::from)
+            .collect();
 
         Self {
             subject_cn: parsed.subject_cn,
@@ -81,6 +109,7 @@ impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
             account_id: parsed.account_id,
             mdm_device_id: parsed.mdm_device_id,
             device_serial: parsed.device_serial,
+            rejected_claims,
             issuer: parsed.issuer,
             serial: parsed.serial,
             has_client_auth_eku: parsed.has_client_auth_eku,
@@ -115,6 +144,30 @@ impl From<x509_claims::DetailField> for DetailField {
         Self {
             label: field.label,
             value: field.value,
+        }
+    }
+}
+
+impl From<x509_claims::RejectedClaim> for RejectedClaim {
+    fn from(claim: x509_claims::RejectedClaim) -> Self {
+        Self {
+            attribute: claim.attribute,
+            value: claim.value,
+            reason: RejectionReason::from(claim.reason),
+        }
+    }
+}
+
+impl From<x509_claims::RejectionReason> for RejectionReason {
+    fn from(reason: x509_claims::RejectionReason) -> Self {
+        match reason {
+            x509_claims::RejectionReason::Empty => Self::Empty,
+            x509_claims::RejectionReason::TooLong => Self::TooLong,
+            x509_claims::RejectionReason::NotAnEmailAddress => Self::NotAnEmailAddress,
+            x509_claims::RejectionReason::NotAUuid => Self::NotAUuid,
+            x509_claims::RejectionReason::Ambiguous => Self::Ambiguous,
+            x509_claims::RejectionReason::PlaceholderIdentifier => Self::PlaceholderIdentifier,
+            x509_claims::RejectionReason::UnknownAttribute => Self::UnknownAttribute,
         }
     }
 }
