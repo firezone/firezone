@@ -541,13 +541,16 @@ async fn http_403_with_certificate_code_is_terminal() {
     .await
     .expect("should not retry a rejected certificate");
 
-    let Err(phoenix_channel::Error::CertificateRejected { code, detail }) = result else {
+    let Err(error) = result else {
         panic!(
             "expected Error::CertificateRejected for 403 with a certificate code, got {result:?}"
         )
     };
-    assert_eq!(code, "certificate_revoked");
+    let phoenix_channel::Error::CertificateRejected(detail) = &error else {
+        panic!("expected Error::CertificateRejected for 403 with a certificate code, got {error:?}")
+    };
     assert_eq!(detail, "This device's certificate has been revoked.");
+    assert!(error.is_certificate_error());
 }
 
 #[tokio::test]
@@ -573,10 +576,7 @@ async fn http_409_with_certificate_code_is_terminal() {
     .expect("should not retry a rejected certificate");
 
     assert!(
-        matches!(
-            result,
-            Err(phoenix_channel::Error::CertificateRejected { .. })
-        ),
+        matches!(result, Err(phoenix_channel::Error::CertificateRejected(_))),
         "expected Error::CertificateRejected for 409 with a certificate code, got {result:?}"
     );
 }
