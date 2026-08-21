@@ -2,10 +2,11 @@ defmodule Portal.Defender.APIClient do
   @moduledoc """
   Client for the Microsoft Defender for Endpoint API.
 
-  The app registration is granted the `Machine.Read.All` application permission
-  on the WindowsDefenderATP API rather than on Microsoft Graph, so this does not
-  go through `Portal.Microsoft.Graph.APIClient` even though both authenticate
-  the same way against the same Entra tenant.
+  Machine inventory has no Microsoft Graph equivalent: the Graph security API
+  carries alerts, incidents and hunting queries, not devices. So this talks to
+  the classic Defender API, with `Machine.Read.All` granted on WindowsDefenderATP
+  rather than on Graph, and does not go through `Portal.Microsoft.Graph.APIClient`
+  even though both authenticate the same way against the same Entra tenant.
 
   Paging is `$top` plus `$skip`, not the `@odata.nextLink` Graph hands back.
   Defender keeps next links for its export endpoints and documents `$top` as
