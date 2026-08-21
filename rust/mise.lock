@@ -197,25 +197,28 @@ provenance = "github-attestations"
 version = "3.6.2"
 backend = "github:getsentry/sentry-cli"
 
+[tools."github:getsentry/sentry-cli".options]
+matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-"
+
 [tools."github:getsentry/sentry-cli"."platforms.linux-arm64"]
-checksum = "sha256:e21f19f0880bdb624cd9d603184a09a4211ac96117953571234a0349ee28511d"
-url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-linux-arm64-3.6.2.tgz"
-url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164026"
+checksum = "sha256:ff112ecf694b7d6b3629a6228ed4e3f7a0d51401bdf48a5051a79d8749dccd06"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Linux-aarch64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164039"
 
 [tools."github:getsentry/sentry-cli"."platforms.linux-arm64-musl"]
-checksum = "sha256:e21f19f0880bdb624cd9d603184a09a4211ac96117953571234a0349ee28511d"
-url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-linux-arm64-3.6.2.tgz"
-url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164026"
+checksum = "sha256:ff112ecf694b7d6b3629a6228ed4e3f7a0d51401bdf48a5051a79d8749dccd06"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Linux-aarch64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164039"
 
 [tools."github:getsentry/sentry-cli"."platforms.linux-x64"]
-checksum = "sha256:6d32e314a2745b340a9e9f6d22b760b206217316495a360b3fb3f667a6167e73"
-url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-linux-x64-3.6.2.tgz"
-url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164029"
+checksum = "sha256:3a4bbf2c0d06378d4e59b337647483751a0a2b1603db5fd4991847d0cfd6478c"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Linux-x86_64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164037"
 
 [tools."github:getsentry/sentry-cli"."platforms.linux-x64-musl"]
-checksum = "sha256:6d32e314a2745b340a9e9f6d22b760b206217316495a360b3fb3f667a6167e73"
-url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-linux-x64-3.6.2.tgz"
-url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164029"
+checksum = "sha256:3a4bbf2c0d06378d4e59b337647483751a0a2b1603db5fd4991847d0cfd6478c"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Linux-x86_64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164037"
 
 [tools."github:getsentry/sentry-cli"."platforms.macos-arm64"]
 checksum = "sha256:5a497deb1e388cc6445c09ddd6d2da4fc2aae8295405d6393c2e0ee635ca3687"
