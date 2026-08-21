@@ -346,6 +346,7 @@ class TunnelService : VpnService() {
                                     deviceInfo = deviceInfo,
                                 ),
                             protectSocket = protectSocketCallback,
+                            tlsIdentity = null,
                         ).use { session ->
                             startNetworkMonitoring()
                             startLogCleanup()
