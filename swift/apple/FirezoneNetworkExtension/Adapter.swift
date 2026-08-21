@@ -195,8 +195,6 @@ actor Adapter {
   private let logFilter: String
   /// Persistent keychain reference to the client identity MDM put on the VPN profile.
   private let identityReference: Data?
-  /// What proved this session's identity to the portal, decided during `start`.
-  private var authenticationMode: SessionAuthenticationMode = .token
 
   init(
     apiURL: String,
@@ -257,10 +255,6 @@ actor Adapter {
     #endif
 
     let tlsIdentity = try resolveTlsIdentity()
-
-    // A token still identifies the user when both are present; the certificate then
-    // only proves the device.
-    authenticationMode = token == nil ? .certificate : .token
 
     // Create the session
     let session: Session
@@ -551,20 +545,20 @@ actor Adapter {
 
     case .disconnected(let error):
       let errorMessage = error.message()
-      // Only a token can be replaced by signing in again. A certificate session has no
-      // sign-in to return to, so a rejected or revoked certificate must not send the
-      // user somewhere they cannot fix it.
-      let requiresSignIn = authenticationMode == .token && error.requiresSignIn()
+      let requiresSignIn = error.requiresSignIn()
+      // Connlib reports what actually failed, which is not the same as how the session
+      // authenticated: one that presented a certificate can still fail for reasons that
+      // have nothing to do with it.
+      let isCertificateError = error.isCertificateError()
       Log.info(
-        "Received Disconnected event (authenticatedWith=\(authenticationMode.rawValue)): "
-          + errorMessage)
+        "Received Disconnected event (isCertificateError=\(isCertificateError)): " + errorMessage)
 
       // iOS shows the notification from the tunnel process because the UI
       // process isn't guaranteed to be alive; macOS handles it from the UI.
       #if os(iOS)
         if requiresSignIn {
           SessionNotification.showSignedOutNotificationiOS()
-        } else if authenticationMode == .certificate {
+        } else if isCertificateError {
           SessionNotification.showCertificateFailureNotificationiOS(errorMessage)
         }
       #endif
@@ -572,7 +566,7 @@ actor Adapter {
       let sendableError = SendableError(
         errorMessage,
         requiresSignIn: requiresSignIn,
-        authenticationMode: authenticationMode
+        isCertificateError: isCertificateError
       )
       providerCommandSender.send(.cancelWithError(sendableError))
 

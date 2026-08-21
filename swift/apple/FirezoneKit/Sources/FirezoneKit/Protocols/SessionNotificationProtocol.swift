@@ -29,10 +29,10 @@ public protocol SessionNotificationProtocol: AnyObject {
     /// Shows a signed-out alert on macOS.
     func showSignedOutAlertMacOS(_ message: String?) async
 
-    /// Shows a disconnected alert on macOS, worded for how the session authenticated.
+    /// Shows a disconnected alert on macOS, worded for what failed.
     func showDisconnectedAlertMacOS(
       _ message: String?,
-      authenticationMode: SessionAuthenticationMode
+      isCertificateError: Bool
     ) async
 
     /// Shows an alert asking the user to restart to finish a system extension update.
