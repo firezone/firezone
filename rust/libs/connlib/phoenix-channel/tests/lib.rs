@@ -535,22 +535,20 @@ async fn http_403_with_certificate_code_is_terminal() {
 
     // Without the terminal path this is an `Event::Hiccup` and the poll never resolves, so
     // reaching the timeout is the failure this test is really guarding against.
-    let result = tokio::time::timeout(Duration::from_secs(5), async {
+    let error = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
     })
     .await
-    .expect("should not retry a rejected certificate");
+    .expect("should not retry a rejected certificate")
+    .unwrap_err();
 
-    let Err(error) = result else {
-        panic!(
-            "expected Error::CertificateRejected for 403 with a certificate code, got {result:?}"
-        )
-    };
-    let phoenix_channel::Error::CertificateRejected(detail) = &error else {
-        panic!("expected Error::CertificateRejected for 403 with a certificate code, got {error:?}")
-    };
-    assert_eq!(detail, "This device's certificate has been revoked.");
+    assert_eq!(
+        error.to_string(),
+        "The portal rejected the client certificate: This device's certificate has been revoked."
+    );
     assert!(error.is_certificate_error());
+    // A new token cannot replace the credential the portal refused.
+    assert!(!error.requires_sign_in());
 }
 
 #[tokio::test]
@@ -569,15 +567,71 @@ async fn http_409_with_certificate_code_is_terminal() {
         PublicKeyParam([0u8; 32]),
     );
 
+    let error = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not retry a rejected certificate")
+    .unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        "The portal rejected the client certificate: Different hardware."
+    );
+    assert!(error.is_certificate_error());
+    assert!(!error.requires_sign_in());
+}
+
+#[tokio::test]
+async fn http_403_with_another_code_triggers_retry() {
+    let port = http_problem_details_server(
+        http::StatusCode::FORBIDDEN,
+        r#"{"type":"about:blank","title":"Forbidden","status":403,"detail":"The account is disabled","code":"account_disabled"}"#,
+    )
+    .await;
+
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
+
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         future::poll_fn(|cx| channel.poll(cx)).await
     })
     .await
-    .expect("should not retry a rejected certificate");
+    .expect("should not timeout");
+
+    // Only the codes that name the certificate are terminal; the rest stay retryable.
+    assert!(
+        matches!(result, Ok(Event::Hiccup { .. })),
+        "expected Event::Hiccup for a 403 without a certificate code, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn http_403_without_problem_details_triggers_retry() {
+    let port = http_status_server(http::StatusCode::FORBIDDEN).await;
+
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
 
     assert!(
-        matches!(result, Err(phoenix_channel::Error::CertificateRejected(_))),
-        "expected Error::CertificateRejected for 409 with a certificate code, got {result:?}"
+        matches!(result, Ok(Event::Hiccup { .. })),
+        "expected Event::Hiccup for a 403 an intermediary sent, got {result:?}"
     );
 }
 
