@@ -518,6 +518,70 @@ async fn http_401_with_invalid_token_code_returns_invalid_token() {
 }
 
 #[tokio::test]
+async fn http_403_with_certificate_code_is_terminal() {
+    let port = http_problem_details_server(
+        http::StatusCode::FORBIDDEN,
+        r#"{"type":"about:blank","title":"Forbidden","status":403,"detail":"This device's certificate has been revoked.","code":"certificate_revoked"}"#,
+    )
+    .await;
+
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
+
+    // Without the terminal path this is an `Event::Hiccup` and the poll never resolves, so
+    // reaching the timeout is the failure this test is really guarding against.
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not retry a rejected certificate");
+
+    let Err(phoenix_channel::Error::CertificateRejected { code, detail }) = result else {
+        panic!(
+            "expected Error::CertificateRejected for 403 with a certificate code, got {result:?}"
+        )
+    };
+    assert_eq!(code, "certificate_revoked");
+    assert_eq!(detail, "This device's certificate has been revoked.");
+}
+
+#[tokio::test]
+async fn http_409_with_certificate_code_is_terminal() {
+    let port = http_problem_details_server(
+        http::StatusCode::CONFLICT,
+        r#"{"type":"about:blank","title":"Conflict","status":409,"detail":"Different hardware.","code":"device_identity_conflict"}"#,
+    )
+    .await;
+
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not retry a rejected certificate");
+
+    assert!(
+        matches!(
+            result,
+            Err(phoenix_channel::Error::CertificateRejected { .. })
+        ),
+        "expected Error::CertificateRejected for 409 with a certificate code, got {result:?}"
+    );
+}
+
+#[tokio::test]
 async fn http_401_without_code_returns_authentication_failed() {
     let port = http_problem_details_server(
         http::StatusCode::UNAUTHORIZED,
