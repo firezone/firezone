@@ -12,12 +12,7 @@ uuid = { workspace = true }
 x509-parser = { workspace = true }
 
 [dev-dependencies]
-divan = { workspace = true }
 rcgen = { workspace = true }
-
-[[bench]]
-name = "parse_certificate"
-harness = false
 
 [lints]
 workspace = true
