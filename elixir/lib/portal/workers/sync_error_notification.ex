@@ -16,6 +16,7 @@ defmodule Portal.Workers.SyncErrorNotification do
     unique: [period: :infinity, states: :incomplete]
 
   alias Portal.Billing
+  alias Portal.Defender
   alias Portal.Entra
   alias Portal.Google
   alias Portal.Intune
@@ -33,6 +34,7 @@ defmodule Portal.Workers.SyncErrorNotification do
       "okta" -> check_okta_directories(args)
       "intune" -> check_intune_providers(args)
       "iru" -> check_iru_providers(args)
+      "defender" -> check_defender_providers(args)
       _ -> {:error, "Unknown provider: #{provider}"}
     end
   end
@@ -79,6 +81,15 @@ defmodule Portal.Workers.SyncErrorNotification do
     |> Database.errored_disabled_providers(frequency)
     |> Enum.filter(&Portal.Account.device_posture_enabled?(&1.account))
     |> Enum.each(&send_notification(:iru, &1, frequency))
+
+    :ok
+  end
+
+  defp check_defender_providers(%{"frequency" => frequency}) do
+    Defender.PostureProvider
+    |> Database.errored_disabled_providers(frequency)
+    |> Enum.filter(&Portal.Account.device_posture_enabled?(&1.account))
+    |> Enum.each(&send_notification(:defender, &1, frequency))
 
     :ok
   end
@@ -149,7 +160,7 @@ defmodule Portal.Workers.SyncErrorNotification do
     end
   end
 
-  defp error_email(provider_type, provider, recipients) when provider_type in [:intune, :iru],
+  defp error_email(provider_type, provider, recipients) when provider_type in [:intune, :iru, :defender],
     do: sync_email_module().posture_provider_error_email(provider, recipients)
 
   defp error_email(provider, directory, recipients) when provider in [:entra, :google, :okta],

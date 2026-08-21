@@ -165,6 +165,19 @@ if config_env() == :prod do
       intune: [client_id: env_var_to_config!(:intune_sync_client_id), client_secret: nil]
     ]
 
+  # Defender for Endpoint uses its own app registration, granted Machine.Read.All
+  # on the WindowsDefenderATP API rather than on Microsoft Graph. It follows the
+  # same rules as the two above: no client secret in production, and the
+  # delegated Graph `openid` and `profile` permissions plus groupMembershipClaims
+  # set to DirectoryRole so one admin-consent grant also covers the signed user
+  # identity proof.
+  config :portal, Portal.Defender.APIClient,
+    client_id: env_var_to_config!(:defender_sync_client_id),
+    client_secret: nil,
+    token_base_url: "https://login.microsoftonline.com",
+    endpoint: "https://api.security.microsoft.com",
+    token_scope: "https://api.securitycenter.microsoft.com/.default"
+
   # No client secret: production authenticates the app with workload identity
   # federation, minting a token-exchange assertion from the portal's managed
   # identity (Portal.Azure.ManagedIdentity).
@@ -250,6 +263,9 @@ if config_env() == :prod do
     # Schedule Iru device inventory sync every 2 hours
     {"50 */2 * * *", Portal.Iru.Scheduler},
 
+    # Schedule Defender device inventory sync every 2 hours
+    {"30 */2 * * *", Portal.Defender.Scheduler},
+
     # Schedule Google directory sync every 2 hours
     {"20 */2 * * *", Portal.Google.Scheduler},
 
@@ -277,6 +293,8 @@ if config_env() == :prod do
      args: %{provider: "intune", frequency: "daily"}},
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "iru", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "defender", frequency: "daily"}},
 
     # Directory sync error notifications - every 3 days for medium error count
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
@@ -289,6 +307,8 @@ if config_env() == :prod do
      args: %{provider: "intune", frequency: "three_days"}},
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "iru", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "defender", frequency: "three_days"}},
 
     # Directory sync error notifications - weekly for high error count
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
@@ -301,6 +321,8 @@ if config_env() == :prod do
      args: %{provider: "intune", frequency: "weekly"}},
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
      args: %{provider: "iru", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "defender", frequency: "weekly"}},
 
     # Log sink delivery error notifications
     {"0 9 * * *", Portal.Workers.LogSinkErrorNotification},
@@ -362,6 +384,8 @@ if config_env() == :prod do
       intune_sync: 5,
       iru_scheduler: 1,
       iru_sync: 5,
+      defender_scheduler: 1,
+      defender_sync: 5,
       google_scheduler: 1,
       google_sync: 5,
       okta_scheduler: 1,

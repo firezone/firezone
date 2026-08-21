@@ -157,29 +157,30 @@ defmodule PortalWeb.VerificationController do
     end
   end
 
-  # The Intune app registration is granted DeviceManagementManagedDevices.Read.All
-  # and nothing else, so it cannot look the caller's directory roles up through
-  # Graph the way directory sync does. The signed wids claim is the only proof of
-  # tenant-wide role available here, which is why the app registration has to set
-  # groupMembershipClaims to DirectoryRole.
+  # A posture provider app registration is granted its one device-reading
+  # permission and nothing else, so it cannot look the caller's directory roles
+  # up through Graph the way directory sync does. The signed wids claim is the
+  # only proof of tenant-wide role available here, which is why the app
+  # registration has to set groupMembershipClaims to DirectoryRole.
   defp render_entra_result(
          conn,
          %{
            ok: true,
-           type: "intune-posture-provider",
+           type: type,
            tenant_id: tenant_id,
            role_ids: role_ids,
            lv_pid: lv_pid_string,
            verification_ref: verification_ref
          }
        )
-       when is_binary(tenant_id) and is_list(role_ids) and is_binary(verification_ref) do
+       when type in ["intune-posture-provider", "defender-posture-provider"] and
+              is_binary(tenant_id) and is_list(role_ids) and is_binary(verification_ref) do
     lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid_string)
 
     if PortalWeb.OIDC.entra_setup_admin?(role_ids) do
       case notify_and_await_ack(
              lv_pid,
-             {:intune_posture_provider_complete, tenant_id, verification_ref}
+             {posture_provider_complete(type), tenant_id, verification_ref}
            ) do
         :ok -> render(conn, :success)
         {:error, _reason} -> render(conn, :failure, error: @verification_ack_error)
@@ -241,6 +242,12 @@ defmodule PortalWeb.VerificationController do
   end
 
   defp render_entra_result(conn, _result), do: render_invalid_entra_result(conn)
+
+  defp posture_provider_complete("intune-posture-provider"),
+    do: :intune_posture_provider_complete
+
+  defp posture_provider_complete("defender-posture-provider"),
+    do: :defender_posture_provider_complete
 
   defp render_invalid_entra_result(conn) do
     render(conn, :failure, error: "Invalid or expired verification result. Please try again.")
