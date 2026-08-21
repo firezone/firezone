@@ -185,6 +185,16 @@ async fn connect(
     Err(InternalError::SocketConnection(errors))
 }
 
+/// The problem codes the portal reports when it refuses the certificate we presented.
+///
+/// None of them can be retried into success: the certificate has to be replaced, or the portal
+/// reconfigured, before another attempt means anything.
+const CERTIFICATE_REJECTION_CODES: &[&str] = &[
+    "device_untrusted",
+    "certificate_revoked",
+    "device_identity_conflict",
+];
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Authentication token invalid")]
@@ -194,6 +204,12 @@ pub enum Error {
     AuthenticationFailed(String),
     #[error("X.509 client certificate signing failed: {0}")]
     ClientCertificateSigningFailed(String),
+    /// The portal refused the X.509 client certificate we presented.
+    ///
+    /// `code` is the portal's machine-readable reason, kept so the clients can tell a revoked
+    /// certificate from an untrusted one without matching on prose.
+    #[error("The portal rejected the client certificate: {detail}")]
+    CertificateRejected { code: String, detail: String },
     #[error(
         "Got disconnected from portal and hit the max-retry limit. Last connection error: {final_error}"
     )]
@@ -215,10 +231,35 @@ impl Error {
             // The portal rejected us without naming the token, so a new one is not known to help.
             Error::AuthenticationFailed(_) => false,
             Error::ClientCertificateSigningFailed(_) => false,
+            // The certificate is the credential the portal refused, so a new token cannot help.
+            Error::CertificateRejected { .. } => false,
             Error::MaxRetriesReached { .. } => false,
             Error::LoginFailed(_) => false,
             Error::FatalIo(_) => false,
         }
+    }
+
+    /// Classifies a refusal of the certificate we presented, if that is what the portal reported.
+    ///
+    /// The portal answers these with 403 and 409 rather than 401, so without this they would be
+    /// indistinguishable from a transient failure and retried until the backoff gave up, long
+    /// after the portal had said something the user could act on.
+    fn from_certificate_rejection(
+        response: &tungstenite::handshake::client::Response,
+    ) -> Option<Self> {
+        let problem = ProblemDetails::from_response(response)?;
+        let code = problem.code?;
+
+        if !CERTIFICATE_REJECTION_CODES.contains(&code.as_str()) {
+            return None;
+        }
+
+        Some(Error::CertificateRejected {
+            code,
+            detail: problem
+                .detail
+                .unwrap_or_else(|| "no reason provided".to_owned()),
+        })
     }
 
     /// Classifies a rejected connection attempt by the reason the portal reported.
@@ -651,6 +692,12 @@ where
                     {
                         self.state = State::Closed;
                         return Poll::Ready(Err(Error::from_unauthorized(&r)));
+                    }
+                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(ref r))))
+                        if let Some(error) = Error::from_certificate_rejection(r) =>
+                    {
+                        self.state = State::Closed;
+                        return Poll::Ready(Err(error));
                     }
                     Poll::Ready(Err(e))
                         if let Some(message) = e.client_certificate_signing_error() =>
@@ -1217,6 +1264,64 @@ mod tests {
         let error = anyhow::Error::msg("some other failure").context("Connection hiccup");
 
         assert_eq!(http_error_body(&error), None);
+    }
+
+    #[test]
+    fn forbidden_with_a_certificate_code_is_terminal() {
+        let response = tungstenite::http::Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header("content-type", "application/problem+json")
+            .body(Some(
+                br#"{"title":"Forbidden","status":403,"detail":"This device's certificate has been revoked.","code":"certificate_revoked"}"#.to_vec(),
+            ))
+            .unwrap();
+
+        let error = Error::from_certificate_rejection(&response)
+            .expect("a certificate code should be recognised");
+
+        let Error::CertificateRejected { code, detail } = &error else {
+            panic!("expected `CertificateRejected`, got {error:?}");
+        };
+        assert_eq!(code, "certificate_revoked");
+        assert_eq!(detail, "This device's certificate has been revoked.");
+        // A new token cannot replace the credential the portal refused.
+        assert!(!error.requires_sign_in());
+    }
+
+    #[test]
+    fn a_conflict_naming_the_device_identity_is_terminal() {
+        let response = tungstenite::http::Response::builder()
+            .status(StatusCode::CONFLICT)
+            .header("content-type", "application/problem+json")
+            .body(Some(
+                br#"{"title":"Conflict","status":409,"detail":"Different hardware.","code":"device_identity_conflict"}"#.to_vec(),
+            ))
+            .unwrap();
+
+        assert!(Error::from_certificate_rejection(&response).is_some());
+    }
+
+    #[test]
+    fn other_rejections_keep_retrying() {
+        let response = tungstenite::http::Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header("content-type", "application/problem+json")
+            .body(Some(
+                br#"{"title":"Forbidden","status":403,"detail":"The account is disabled","code":"account_disabled"}"#.to_vec(),
+            ))
+            .unwrap();
+
+        assert!(Error::from_certificate_rejection(&response).is_none());
+    }
+
+    #[test]
+    fn a_rejection_without_problem_details_keeps_retrying() {
+        let response = tungstenite::http::Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(Some(b"<html>Forbidden</html>".to_vec()))
+            .unwrap();
+
+        assert!(Error::from_certificate_rejection(&response).is_none());
     }
 
     #[test]
