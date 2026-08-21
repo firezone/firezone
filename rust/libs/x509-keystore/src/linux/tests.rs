@@ -125,7 +125,7 @@ fn reports_no_identity_when_no_certificate_matches() {
 
 #[test]
 #[ignore = "Requires the SoftHSM PKCS#11 module and writes to a temporary token store"]
-fn signs_while_another_session_is_open() {
+fn signs_after_a_second_session_read_the_token() {
     let _serialized = serialize_token_access();
     let token = provision_token("overlapping", KeyAlgorithm::Rsa);
 
@@ -133,15 +133,24 @@ fn signs_while_another_session_is_open() {
         .identity()
         .expect("the SoftHSM token should be readable")
         .expect("the provisioned certificate should be selected as the client identity");
-    // Stands in for a diagnostics screen reading the token while a handshake signs.
-    let _open = token
+    // Stands in for the diagnostics screen, which opens and closes its own session on the token
+    // the identity holds one on.
+    token
         .status()
-        .expect("the token should be readable while the identity is held");
+        .expect("the token should be readable while an identity holds a session on it");
 
     identity
         .key
         .sign(SignatureScheme::RSA_PKCS1_SHA256, MESSAGE)
-        .expect("the token should sign while another session is open");
+        .expect("the token should still sign for the identity it unlocked");
+}
+
+/// Proves that the session an identity holds still satisfies the bounds rustls puts on a signer.
+#[test]
+fn the_key_can_be_shared_across_threads() {
+    fn assert_send_and_sync<T: Send + Sync>() {}
+
+    assert_send_and_sync::<Pkcs11Key>();
 }
 
 #[test]
