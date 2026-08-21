@@ -44,6 +44,7 @@ fuzz_target!(|input: Input| {
     assert_device_serial_is_printable(&certificate);
     assert_claims_are_rendered_as_they_were_read(&certificate);
     assert_unrecognised_claims_are_shown(&certificate);
+    assert_every_rejection_reason_reads();
     assert_fingerprint_covers_the_input(&certificate, input.der);
     assert_serial_is_bounded(&certificate);
     assert_detail_fields_are_labelled(&certificate);
@@ -264,6 +265,29 @@ fn assert_unrecognised_claims_are_shown(certificate: &ParsedCertificate) {
         assert!(claim.chars().count() <= 96, "{claim}");
         assert!(unrecognised.contains(claim), "{claim} has no row");
     }
+}
+
+/// Asserts that every refusal a claim can carry renders a phrase of its own.
+///
+/// The clients show these to an administrator, so a blank phrase says nothing and two reasons
+/// sharing one phrase sends them after the wrong part of their certificate template.
+fn assert_every_rejection_reason_reads() {
+    let labels = [
+        RejectionReason::Empty,
+        RejectionReason::TooLong,
+        RejectionReason::NotAnEmailAddress,
+        RejectionReason::NotAUuid,
+        RejectionReason::Ambiguous,
+        RejectionReason::PlaceholderIdentifier,
+        RejectionReason::UnknownAttribute,
+    ]
+    .map(RejectionReason::label);
+
+    for label in labels {
+        assert!(!label.is_empty());
+    }
+
+    assert_eq!(labels.iter().collect::<HashSet<_>>().len(), labels.len());
 }
 
 /// Asserts that the fingerprint identifies the very bytes that were parsed.
