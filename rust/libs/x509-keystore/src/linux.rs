@@ -31,7 +31,10 @@ use sha2::{Digest as _, Sha256, Sha384, Sha512};
 use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
 use x509_credential::{PrivateKey, SigningError};
 
-use crate::{DetailField, DetailSection, Identity, Status, StatusSeverity, field};
+use crate::{
+    DetailField, DetailSection, Identity, Status, StatusSeverity, absent_field, field,
+    invalid_field,
+};
 
 /// The only PKCS#11 module Firezone loads.
 ///
@@ -735,22 +738,20 @@ fn unusable_reasons(certificates: &[Certificate]) -> Vec<String> {
 impl Certificate {
     fn detail_fields(&self) -> Vec<DetailField> {
         let mut fields = vec![
-            field(
-                "Object Label",
-                self.label.as_deref().unwrap_or("Unavailable"),
-            ),
-            field(
-                "Private Key Access",
-                if self.key.is_some() {
-                    "Available"
-                } else {
-                    "Unavailable"
-                },
-            ),
-            field(
-                "Usable With Its Private Key",
-                if self.usable { "Yes" } else { "No" },
-            ),
+            match self.label.as_deref() {
+                Some(label) => field("Object Label", label),
+                None => absent_field("Object Label"),
+            },
+            if self.key.is_some() {
+                field("Private Key Access", "Available")
+            } else {
+                absent_field("Private Key Access")
+            },
+            if self.usable {
+                field("Usable With Its Private Key", "Yes")
+            } else {
+                invalid_field("Usable With Its Private Key", "No")
+            },
         ];
         fields.extend(
             self.metadata
