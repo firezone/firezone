@@ -69,6 +69,7 @@ fn describes_a_provisioned_certificate_in_the_diagnostics() {
         .status()
         .expect("the SoftHSM token should be readable");
 
+    assert_eq!(status.severity, StatusSeverity::Ok);
     assert_eq!(
         status.summary,
         "1 X.509 client identity certificate(s) are available for mutual TLS."
@@ -91,6 +92,10 @@ fn describes_a_provisioned_certificate_in_the_diagnostics() {
     assert_eq!(
         field_value(certificate, "Private Key Access"),
         Some("Available")
+    );
+    assert_eq!(
+        field_value(certificate, "Usable With Its Private Key"),
+        Some("Yes")
     );
     assert_eq!(
         field_value(certificate, "Common Name"),
@@ -117,6 +122,7 @@ fn reports_no_identity_when_no_certificate_matches() {
         .expect("the SoftHSM token should be readable");
 
     assert!(identity.is_none());
+    assert_eq!(status.severity, StatusSeverity::Warning);
     assert_eq!(
         status.summary,
         format!("No PKCS#11 token holds an X.509 certificate with subject CN '{subject_cn}'.")
