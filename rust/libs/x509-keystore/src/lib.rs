@@ -151,6 +151,22 @@ pub(crate) fn field(label: impl Into<String>, value: impl Into<String>) -> Detai
     }
 }
 
+/// A row for something the keystore looked for and did not find.
+pub(crate) fn absent_field(label: impl Into<String>) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: FieldValue::Absent,
+    }
+}
+
+/// A row for something the keystore found and cannot use.
+pub(crate) fn invalid_field(label: impl Into<String>, message: impl Into<String>) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: FieldValue::Invalid(message.into()),
+    }
+}
+
 impl From<x509_claims::DetailField> for DetailField {
     fn from(field: x509_claims::DetailField) -> Self {
         Self {
