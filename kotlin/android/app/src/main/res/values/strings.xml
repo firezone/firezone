@@ -50,6 +50,10 @@
 		Android has not released this certificate to Firezone. Selecting it grants access.
 	</string>
 	<string name="x509_error_title">Unable to read the client certificate</string>
+	<string name="x509_unusable_title">Firezone will not present this certificate</string>
+	<string name="x509_unusable_reason">
+		It cannot be used to prove this device is enrolled: %1$s.
+	</string>
 	<string name="x509_contact_admin">Contact your administrator for support.</string>
 
 	<!-- Sign In -->
