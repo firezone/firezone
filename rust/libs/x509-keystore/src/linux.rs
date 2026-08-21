@@ -31,7 +31,7 @@ use sha2::{Digest as _, Sha256, Sha384, Sha512};
 use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
 use x509_credential::{PrivateKey, SigningError};
 
-use crate::{DetailField, DetailSection, Identity, Status, field};
+use crate::{DetailField, DetailSection, Identity, Status, StatusSeverity, field};
 
 /// The only PKCS#11 module Firezone loads.
 ///
@@ -51,6 +51,7 @@ const MISSING_P11_KIT: &str = "No PKCS#11 module is installed, so no X.509 clien
 pub(crate) fn status(subject_cn: &str) -> Result<Status> {
     let Some(module) = proxy_module() else {
         return Ok(Status {
+            severity: StatusSeverity::Warning,
             summary: MISSING_P11_KIT.to_owned(),
             sections: Vec::new(),
         });
@@ -73,6 +74,7 @@ pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
 fn status_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Status> {
     let Some(token) = find_token(module, pin_file, subject_cn)? else {
         return Ok(Status {
+            severity: StatusSeverity::Warning,
             summary: format!(
                 "No PKCS#11 token holds an X.509 certificate with subject CN '{subject_cn}'."
             ),
@@ -101,17 +103,26 @@ fn status_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Status>
             }),
     );
 
-    let summary = match usable {
-        0 => format!(
-            "Found {} matching X.509 certificate(s), but none of them are usable as a client identity.",
-            token.certificates.len()
+    let (severity, summary) = match usable {
+        0 => (
+            StatusSeverity::Warning,
+            format!(
+                "Found {} matching X.509 certificate(s), but none of them are usable as a client identity: {}",
+                token.certificates.len(),
+                unusable_reasons(&token.certificates).join("; ")
+            ),
         ),
-        count => {
-            format!("{count} X.509 client identity certificate(s) are available for mutual TLS.")
-        }
+        count => (
+            StatusSeverity::Ok,
+            format!("{count} X.509 client identity certificate(s) are available for mutual TLS."),
+        ),
     };
 
-    Ok(Status { summary, sections })
+    Ok(Status {
+        severity,
+        summary,
+        sections,
+    })
 }
 
 fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Option<Identity>> {
@@ -126,11 +137,7 @@ fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Optio
         certificates,
         ..
     } = token;
-    let unusable = certificates
-        .iter()
-        .filter(|certificate| !certificate.usable)
-        .map(unusable_reason)
-        .collect::<Vec<_>>();
+    let unusable = unusable_reasons(&certificates);
 
     let Some(certificate) = certificates
         .into_iter()
@@ -716,25 +723,13 @@ fn describe_certificate(
     })
 }
 
-/// Says why a certificate that matched the subject common name cannot be used.
-fn unusable_reason(certificate: &Certificate) -> String {
-    let metadata = &certificate.metadata;
-
-    let reason = if !metadata.has_client_auth_eku {
-        "it has no TLS client authentication extended key usage"
-    } else if !metadata.digital_signature_allowed {
-        "its key usage does not allow digital signatures"
-    } else if !metadata.is_currently_valid {
-        "it is expired or not yet valid"
-    } else if metadata.signing_algorithm.is_none() {
-        "it holds a key algorithm we cannot sign with"
-    } else if certificate.key.is_none() {
-        "the token holds no private key for it"
-    } else {
-        "it does not match the requested common name"
-    };
-
-    format!("{} is unusable because {reason}", metadata.fingerprint)
+/// Says why each certificate that matched the subject common name cannot be used.
+fn unusable_reasons(certificates: &[Certificate]) -> Vec<String> {
+    certificates
+        .iter()
+        .filter(|certificate| !certificate.usable)
+        .map(Certificate::unusable_reason)
+        .collect()
 }
 
 impl Certificate {
@@ -753,7 +748,7 @@ impl Certificate {
                 },
             ),
             field(
-                "Usable as a Client Identity",
+                "Usable With Its Private Key",
                 if self.usable { "Yes" } else { "No" },
             ),
         ];
@@ -765,6 +760,17 @@ impl Certificate {
         );
 
         fields
+    }
+
+    /// Says why this certificate cannot be presented for mutual TLS.
+    fn unusable_reason(&self) -> String {
+        let fingerprint = &self.metadata.fingerprint;
+
+        let Some(summary) = self.metadata.unusable_summary() else {
+            return format!("{fingerprint} is unusable: the token holds no private key for it");
+        };
+
+        format!("{fingerprint} is unusable: {summary}")
     }
 }
 
