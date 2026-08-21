@@ -10357,6 +10357,7 @@ dependencies = [
  "cryptoki",
  "ring",
  "rustls",
+ "secrecy",
  "serde",
  "sha2 0.11.0",
  "tracing",

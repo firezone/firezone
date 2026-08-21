@@ -28,6 +28,7 @@ windows-core = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 ring = { workspace = true }
+secrecy = { workspace = true }
 x509-parser = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dev-dependencies]
