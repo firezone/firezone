@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 #MISE description="Issue a throwaway X.509 client certificate and pack it as a PKCS#12"
+#USAGE cmd "user" help="Carries an actor, so a Client can sign in as a portal identity" {
+#USAGE     flag "--email <email>" help="Actor email to put in the certificate" required=#true
+#USAGE     flag "--account-id <account_id>" help="Account UUID to put in the certificate" required=#true
+#USAGE     flag "--serial <serial>" help="Device serial to attest as; read from this machine when omitted"
+#USAGE     flag "--alias <alias>" help="Name the key is stored under [default: firezone-client]"
+#USAGE     flag "--password <password>" help="PKCS#12 export password [default: firezone]"
+#USAGE     flag "--regenerate-ca" help="Throw the existing CA away; invalidates certificates the portal already trusts"
+#USAGE }
+#USAGE cmd "device" help="Carries no actor, so the certificate can only attest the device" {
+#USAGE     flag "--serial <serial>" help="Device serial to attest as; read from this machine when omitted"
+#USAGE     flag "--alias <alias>" help="Name the key is stored under [default: firezone-client]"
+#USAGE     flag "--password <password>" help="PKCS#12 export password [default: firezone]"
+#USAGE     flag "--regenerate-ca" help="Throw the existing CA away; invalidates certificates the portal already trusts"
+#USAGE }
 set -euo pipefail
 
 # Everything written below is private key material, so nobody else on the machine may read it.
@@ -8,43 +22,75 @@ umask 077
 # The Clients only consider a certificate whose subject common name is this one, and read
 # everything else about it out of URI subject alternative names of the form
 # `firezone://<attribute>/<value>`.
-CERT_SUBJECT_CN="${CERT_SUBJECT_CN:-dev.firezone.device-trust}"
-
-# `user` carries the actor email and account id, which is what lets a client sign in as a portal
-# identity. `device` leaves both out, so the certificate can only ever attest the device.
-CERT_KIND="${CERT_KIND:-user}"
-
-CERT_ALIAS="${CERT_ALIAS:-firezone-client}"
-ACTOR_EMAIL="${ACTOR_EMAIL:-alice@example.com}"
-ACCOUNT_ID="${ACCOUNT_ID:-d7a2f1f0-5b6c-4d3e-9a1b-2c3d4e5f6a7b}"
-MDM_DEVICE_ID="${MDM_DEVICE_ID:-5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3}"
-DEVICE_SERIAL="${DEVICE_SERIAL:-FZTESTSERIAL1}"
-P12_PASSWORD="${P12_PASSWORD:-firezone}"
-
-# Set to 1 to throw the CA away and start over. Every certificate issued by the previous one stops
-# chaining to the trust anchor the portal has registered.
-REGENERATE_CA="${REGENERATE_CA:-0}"
+SUBJECT_CN="dev.firezone.device-trust"
 
 OUT_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/firezone/x509"
-
-case "$CERT_KIND" in
-user | device) ;;
-*)
-    echo "error: CERT_KIND must be 'user' or 'device', got '${CERT_KIND}'" >&2
-    exit 1
-    ;;
-esac
 
 command -v openssl >/dev/null || {
     echo "error: openssl is not installed" >&2
     exit 1
 }
 
+# OEM placeholders the portal discards, so reading one is the same as reading nothing.
+is_placeholder_serial() {
+    case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    "to be filled by o.e.m." | "to be filled by oem" | "default string" | \
+        "system serial number" | "systemserialnumb" | "none" | "n/a" | \
+        "not specified" | "not applicable" | "invalid" | "oem_serial" | "eval")
+        return 0
+        ;;
+    *) return 1 ;;
+    esac
+}
+
+# Reading the serial needs root on Linux and is best-effort everywhere, hence `--serial`.
+read_machine_serial() {
+    local serial=""
+
+    case "$(uname -s)" in
+    Darwin)
+        serial="$(ioreg -rd1 -c IOPlatformExpertDevice 2>/dev/null |
+            awk -F'"' '/IOPlatformSerialNumber/ { print $4 }')"
+        ;;
+    Linux)
+        serial="$(cat /sys/class/dmi/id/product_serial 2>/dev/null || true)"
+        ;;
+    esac
+
+    serial="$(printf '%s' "$serial" | tr -d '[:space:]')"
+
+    if [ -z "$serial" ] || is_placeholder_serial "$serial"; then
+        return 1
+    fi
+
+    printf '%s' "$serial"
+}
+
+if [ -z "${usage_cmd:-}" ]; then
+    echo "error: expected 'user' or 'device'; see 'mise run //:x509:gen-certificate --help'" >&2
+    exit 1
+fi
+
+kind="$usage_cmd"
+alias="${usage_alias:-firezone-client}"
+password="${usage_password:-firezone}"
+
+if [ -n "${usage_serial:-}" ]; then
+    serial="$usage_serial"
+elif serial="$(read_machine_serial)"; then
+    echo "==> Read this machine's serial: ${serial}"
+else
+    # Every identifier the portal recognises is a device identifier; an actor alone does not
+    # satisfy `device_identifiers/1`, so a certificate without one is refused whatever its kind.
+    echo "error: could not read this machine's serial; pass --serial <serial>" >&2
+    exit 1
+fi
+
 ca_crt="${OUT_DIR}/ca.crt"
 ca_key="${OUT_DIR}/ca.key"
-client_crt="${OUT_DIR}/${CERT_ALIAS}.crt"
-client_key="${OUT_DIR}/${CERT_ALIAS}.key"
-p12="${OUT_DIR}/${CERT_ALIAS}.p12"
+client_crt="${OUT_DIR}/${alias}.crt"
+client_key="${OUT_DIR}/${alias}.key"
+p12="${OUT_DIR}/${alias}.p12"
 
 mkdir -p "$OUT_DIR"
 
@@ -73,7 +119,7 @@ prompt = no
 
 [dn]
 O = Firezone
-CN = ${CERT_SUBJECT_CN}
+CN = ${SUBJECT_CN}
 
 [client_ext]
 basicConstraints = critical, CA:FALSE
@@ -83,25 +129,19 @@ subjectKeyIdentifier = hash
 subjectAltName = @san
 
 [san]
+URI.1 = firezone://serial/${serial}
 EOF
 
-if [ "$CERT_KIND" = "user" ]; then
+if [ "$kind" = "user" ]; then
     cat >>"${OUT_DIR}/client.cnf" <<EOF
-URI.1 = firezone://email/${ACTOR_EMAIL}
-URI.2 = firezone://account-id/${ACCOUNT_ID}
-URI.3 = firezone://intune-id/${MDM_DEVICE_ID}
-URI.4 = firezone://serial/${DEVICE_SERIAL}
-EOF
-else
-    cat >>"${OUT_DIR}/client.cnf" <<EOF
-URI.1 = firezone://intune-id/${MDM_DEVICE_ID}
-URI.2 = firezone://serial/${DEVICE_SERIAL}
+URI.2 = firezone://email/${usage_email:?}
+URI.3 = firezone://account-id/${usage_account_id:?}
 EOF
 fi
 
 # The CA outlives a single run: it is the trust anchor registered in the portal, and issuing a
 # second certificate must not invalidate the one that is already registered there.
-if [ "$REGENERATE_CA" = "1" ] || [ ! -f "$ca_crt" ] || [ ! -f "$ca_key" ]; then
+if [ "${usage_regenerate_ca:-}" = "true" ] || [ ! -f "$ca_crt" ] || [ ! -f "$ca_key" ]; then
     echo "==> Generating a test CA in ${OUT_DIR}..."
     rm -f "${OUT_DIR}/ca.srl"
     openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
@@ -112,7 +152,7 @@ else
     echo "==> Reusing the test CA in ${OUT_DIR}"
 fi
 
-echo "==> Issuing a ${CERT_KIND} certificate as ${CERT_SUBJECT_CN}..."
+echo "==> Issuing a ${kind} certificate as ${SUBJECT_CN}..."
 openssl req -new -newkey rsa:2048 -nodes \
     -config "${OUT_DIR}/client.cnf" \
     -keyout "$client_key" \
@@ -137,8 +177,8 @@ pkcs12_args=(
     -inkey "$client_key"
     -in "$client_crt"
     -certfile "$ca_crt"
-    -name "$CERT_ALIAS"
-    -passout "pass:${P12_PASSWORD}"
+    -name "$alias"
+    -passout "pass:${password}"
     -out "$p12"
 )
 
@@ -154,11 +194,11 @@ openssl x509 -in "$client_crt" -noout -text |
     sed 's/^[[:blank:]]*/    /'
 
 echo
-echo "Register this as a trust anchor in the portal, under Settings -> Trust Anchors:"
+echo "Register the CA as a trust anchor in the portal, under Settings -> Trust Anchors:"
 echo
-echo "    ${ca_crt}"
+echo "    mise run //:x509:print-ca | pbcopy"
 echo
-echo "The certificate itself is ${p12} (password: ${P12_PASSWORD}). Install it with:"
+echo "The certificate itself is ${p12} (password: ${password}). Install it with:"
 echo
 echo "    mise run //:x509:install-linux"
 echo "    mise run //:x509:install-windows"

@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 #MISE description="Import the test X.509 client certificate into a SoftHSM PKCS#11 token"
+#USAGE flag "--alias <alias>" help="Name `//:x509:gen-certificate` stored the key under [default: firezone-client]"
+#USAGE flag "--password <password>" help="PKCS#12 export password [default: firezone]"
 set -euo pipefail
 
-CERT_ALIAS="${CERT_ALIAS:-firezone-client}"
-P12_PASSWORD="${P12_PASSWORD:-firezone}"
-P12_PATH="${P12_PATH:-${XDG_CACHE_HOME:-${HOME}/.cache}/firezone/x509/${CERT_ALIAS}.p12}"
+CERT_ALIAS="${usage_alias:-firezone-client}"
+P12_PASSWORD="${usage_password:-firezone}"
+P12_PATH="${XDG_CACHE_HOME:-${HOME}/.cache}/firezone/x509/${CERT_ALIAS}.p12"
 
 # One task per platform, so running the wrong one is a mistake worth naming rather than a
 # confusing failure further down.

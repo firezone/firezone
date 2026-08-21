@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Write a .mobileconfig that gives the Client the test X.509 identity"
+#USAGE flag "--alias <alias>" help="Name `//:x509:gen-certificate` stored the key under [default: firezone-client]"
+#USAGE flag "--password <password>" help="PKCS#12 export password [default: firezone]"
 set -euo pipefail
 
 # The profile embeds a private key, so nobody else on the machine may read it.
@@ -9,11 +11,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APPLE_DIR="${SCRIPT_DIR}/.."
 XCCONFIG="${APPLE_DIR}/Firezone/xcconfig/config.xcconfig"
 
-CERT_ALIAS="${CERT_ALIAS:-firezone-client}"
-P12_PASSWORD="${P12_PASSWORD:-firezone}"
+CERT_ALIAS="${usage_alias:-firezone-client}"
+P12_PASSWORD="${usage_password:-firezone}"
 OUT_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/firezone/x509"
-P12_PATH="${P12_PATH:-${OUT_DIR}/${CERT_ALIAS}.p12}"
-PROFILE_PATH="${PROFILE_PATH:-${OUT_DIR}/${CERT_ALIAS}.mobileconfig}"
+P12_PATH="${OUT_DIR}/${CERT_ALIAS}.p12"
+PROFILE_PATH="${OUT_DIR}/${CERT_ALIAS}.mobileconfig"
 
 FIREZONE_APP="${FIREZONE_APP:-/Applications/Firezone.app}"
 

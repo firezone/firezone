@@ -1,5 +1,7 @@
 #!/usr/bin/env pwsh
 #MISE description="Import the test X.509 client certificate into the Windows certificate store"
+#USAGE flag "--alias <alias>" help="Name `//:x509:gen-certificate` stored the key under [default: firezone-client]"
+#USAGE flag "--password <password>" help="PKCS#12 export password [default: firezone]"
 
 $ErrorActionPreference = 'Stop'
 
@@ -17,10 +19,10 @@ if (-not $onWindows) {
 }
 
 # Defaults matching the ones `//:x509:gen-certificate` writes with.
-$certAlias = if ($env:CERT_ALIAS) { $env:CERT_ALIAS } else { 'firezone-client' }
-$p12Password = if ($env:P12_PASSWORD) { $env:P12_PASSWORD } else { 'firezone' }
+$certAlias = if ($env:usage_alias) { $env:usage_alias } else { 'firezone-client' }
+$p12Password = if ($env:usage_password) { $env:usage_password } else { 'firezone' }
 $cacheHome = if ($env:XDG_CACHE_HOME) { $env:XDG_CACHE_HOME } else { Join-Path $HOME '.cache' }
-$p12Path = if ($env:P12_PATH) { $env:P12_PATH } else { Join-Path $cacheHome "firezone\x509\$certAlias.p12" }
+$p12Path = Join-Path $cacheHome "firezone\x509\$certAlias.p12"
 
 if (-not (Test-Path -LiteralPath $p12Path -PathType Leaf)) {
     [Console]::Error.WriteLine("error: $p12Path does not exist; run 'mise run //:x509:gen-certificate' first")
