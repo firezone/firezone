@@ -8,7 +8,7 @@ defmodule Portal.PostureProvider do
   schema "posture_providers" do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true
-    field :type, Ecto.Enum, values: ~w[intune iru]a
+    field :type, Ecto.Enum, values: ~w[intune iru defender]a
 
     # Names the provider to an admin whatever its type, so it is unique across
     # the account rather than per type.
@@ -21,6 +21,10 @@ defmodule Portal.PostureProvider do
       foreign_key: :id
 
     has_one :iru_posture_provider, Portal.Iru.PostureProvider,
+      references: :id,
+      foreign_key: :id
+
+    has_one :defender_posture_provider, Portal.Defender.PostureProvider,
       references: :id,
       foreign_key: :id
   end

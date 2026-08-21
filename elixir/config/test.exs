@@ -173,6 +173,17 @@ config :portal, Portal.Microsoft.Graph.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Defender.APIClient,
+  endpoint: "https://api.security.microsoft.com",
+  token_base_url: "https://login.microsoftonline.com",
+  token_scope: "https://api.securitycenter.microsoft.com/.default",
+  client_id: "test_defender_client_id",
+  client_secret: "test_defender_client_secret",
+  req_opts: [
+    plug: {Req.Test, Portal.Defender.APIClient},
+    retry: false
+  ]
+
 config :portal, Portal.Iru.APIClient,
   api_domains: [us: "api.kandji.io", eu: "api.eu.kandji.io"],
   req_opts: [

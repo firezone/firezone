@@ -123,5 +123,23 @@ defmodule Portal.Mailer.SyncErrorEmailTest do
       assert email_body.text_body =~ ~r/Region:\s*EU/
       assert email_body.text_body =~ "Iru API token"
     end
+
+    test "a Defender provider names its tenant by tenant id", %{account: account} do
+      provider =
+        [account: account]
+        |> Portal.DefenderFixtures.defender_posture_provider_fixture()
+        |> Ecto.Changeset.change(
+          error_message: "403 - Forbidden",
+          errored_at: DateTime.utc_now()
+        )
+        |> Repo.update!()
+        |> Repo.preload(:account)
+
+      email_body = posture_provider_error_email(provider, "admin@example.com")
+
+      assert email_body.text_body =~ "403 - Forbidden"
+      assert email_body.text_body =~ ~r/Tenant ID:\s*#{provider.tenant_id}/
+      assert email_body.text_body =~ "admin consent in Microsoft Entra"
+    end
   end
 end

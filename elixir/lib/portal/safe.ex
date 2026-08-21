@@ -886,6 +886,10 @@ defmodule Portal.Safe do
   def permit(:read, Portal.Iru.PostureProvider, :api_client), do: :ok
   def permit(:read, Portal.Iru.Device, :account_admin_user), do: :ok
   def permit(:read, Portal.Iru.Device, :api_client), do: :ok
+  def permit(_action, Portal.Defender.PostureProvider, :account_admin_user), do: :ok
+  def permit(:read, Portal.Defender.PostureProvider, :api_client), do: :ok
+  def permit(:read, Portal.Defender.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.Defender.Device, :api_client), do: :ok
   def permit(_action, Portal.Google.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Google.Directory, :api_client), do: :ok
   def permit(_action, Portal.Okta.Directory, :account_admin_user), do: :ok
