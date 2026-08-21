@@ -13,7 +13,7 @@ use std::{
     time::SystemTime,
 };
 
-use anyhow::{Context as _, Result, anyhow, bail};
+use anyhow::{Context as _, Result, bail};
 use cryptoki::{
     context::{CInitializeArgs, CInitializeFlags, Pkcs11},
     error::RvError,
@@ -42,16 +42,32 @@ const PROXY_MODULE: &str = "p11-kit-proxy.so";
 /// The file a token's PIN is read from.
 const PIN_FILE: &str = "/etc/firezone/pkcs11-pin";
 
-pub(crate) fn status(subject_cn: &str) -> Result<Status> {
-    let status = status_on(&proxy_module()?, Path::new(PIN_FILE), subject_cn)?;
+/// What the diagnostics screen says on a machine that cannot reach a PKCS#11 token at all.
+///
+/// The packages recommend p11-kit rather than depend on it, so a client without it is a supported
+/// installation and has to be told what is missing instead of failing to connect.
+const MISSING_P11_KIT: &str = "No PKCS#11 module is installed, so no X.509 client identity certificate can be found. Firezone reads tokens through p11-kit: install it to use one (the `p11-kit-modules` package on Debian and Ubuntu, `p11-kit` on Fedora and RHEL).";
 
-    Ok(status)
+pub(crate) fn status(subject_cn: &str) -> Result<Status> {
+    let Some(module) = proxy_module() else {
+        return Ok(Status {
+            summary: MISSING_P11_KIT.to_owned(),
+            sections: Vec::new(),
+        });
+    };
+
+    status_on(&module, Path::new(PIN_FILE), subject_cn)
 }
 
 pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
-    let identity = identity_on(&proxy_module()?, Path::new(PIN_FILE), subject_cn)?;
+    // A machine with no PKCS#11 stack has nowhere to hold a client identity, which is how most
+    // of them are set up rather than a misconfiguration. A token that does hold a certificate
+    // and cannot sign with it still fails the connect.
+    let Some(module) = proxy_module() else {
+        return Ok(None);
+    };
 
-    Ok(identity)
+    identity_on(&module, Path::new(PIN_FILE), subject_cn)
 }
 
 fn status_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Status> {
@@ -359,22 +375,11 @@ fn encode_der_length(output: &mut Vec<u8>, length: usize) {
     }
 }
 
-/// Returns the path of the p11-kit proxy module.
-///
-/// # Errors
-///
-/// Returns an error if p11-kit is not installed, because it is how Firezone reaches every token.
-fn proxy_module() -> Result<PathBuf> {
-    let module = module_directories()
+/// Returns the path of the p11-kit proxy module, [`None`] if p11-kit is not installed.
+fn proxy_module() -> Option<PathBuf> {
+    module_directories()
         .map(|directory| directory.join(PROXY_MODULE))
         .find(|candidate| candidate.is_file())
-        .ok_or_else(|| {
-            anyhow!(
-                "Failed to find {PROXY_MODULE}: Firezone reads PKCS#11 tokens through p11-kit, which has to be installed (the `p11-kit-modules` package on Debian)"
-            )
-        })?;
-
-    Ok(module)
 }
 
 /// The directories a distribution may have installed PKCS#11 modules into.

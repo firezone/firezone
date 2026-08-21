@@ -65,6 +65,11 @@ modules registered with p11-kit expose. A token that requires a PIN takes it
 from `/etc/firezone/pkcs11-pin`, which must be owned by root and readable by
 nobody else.
 
+p11-kit is not required to run the Client. Without it there is no token to hold
+a certificate, which `--check` reports rather than fails on. Install
+`p11-kit-modules` on Debian and Ubuntu, `p11-kit` on Fedora and RHEL, to present
+a certificate from a token.
+
 ## Building
 
 Assuming you have Rust installed, you can build the headless Client with:

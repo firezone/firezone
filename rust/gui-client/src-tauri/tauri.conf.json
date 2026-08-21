@@ -10,6 +10,7 @@
     "shortDescription": "Firezone",
     "linux": {
       "deb": {
+        "recommends": ["p11-kit-modules"],
         "preInstallScript": "./linux_package/preinst",
         "postInstallScript": "./linux_package/postinst",
         "preRemoveScript": "./linux_package/prerm_deb",
@@ -22,6 +23,7 @@
         "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
       },
       "rpm": {
+        "recommends": ["p11-kit"],
         "postInstallScript": "./linux_package/postinst",
         "preRemoveScript": "./linux_package/prerm_rpm",
         "files": {
