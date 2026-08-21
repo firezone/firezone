@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import uniffi.x509claims.ClaimValue
 import uniffi.x509claims.DetailField
 import javax.inject.Inject
 
@@ -122,6 +123,6 @@ internal class X509SettingsViewModel
  */
 private fun LoadedX509Identity.detailFields(): List<DetailField> =
     listOf(
-        DetailField("KeyChain Alias", alias),
-        DetailField("Certificates In Chain", certificateCount.toString()),
+        DetailField("KeyChain Alias", ClaimValue.Present(alias)),
+        DetailField("Certificates In Chain", ClaimValue.Present(certificateCount.toString())),
     ) + certificate?.detailFields.orEmpty()

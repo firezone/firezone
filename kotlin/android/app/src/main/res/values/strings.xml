@@ -55,6 +55,15 @@
 		It cannot be used to prove this device is enrolled: %1$s.
 	</string>
 	<string name="x509_contact_admin">Contact your administrator for support.</string>
+	<string name="x509_claim_absent">Not present</string>
+	<string name="x509_claim_invalid">Ignored: %1$s</string>
+	<string name="x509_claim_empty">empty</string>
+	<string name="x509_claim_too_long">longer than 255 characters</string>
+	<string name="x509_claim_not_an_email_address">not an email address</string>
+	<string name="x509_claim_not_a_uuid">not a UUID</string>
+	<string name="x509_claim_ambiguous">more than one value was given</string>
+	<string name="x509_claim_placeholder_identifier">a placeholder identifier</string>
+	<string name="x509_claim_unknown_attribute">not an attribute we understand</string>
 
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>
