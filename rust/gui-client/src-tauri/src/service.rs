@@ -104,6 +104,11 @@ pub enum ServerMsg {
     /// Result of an `ApplyAdvancedSettings` from the GUI. `Ok` echoes the
     /// persisted struct so the GUI is certain about what landed.
     AdvancedSettingsApplied(Result<AdvancedSettings, String>),
+    /// What the platform keystore holds, pushed whenever it may have changed.
+    ///
+    /// The GUI never asks for this: it arrives after `Hello` and again whenever we read the
+    /// keystore to sign in, which covers everything the diagnostics screen renders.
+    X509Status(Result<x509_keystore::Status, String>),
     /// The Tunnel service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -318,6 +323,15 @@ impl Session {
     }
 }
 
+/// Reads what the platform keystore holds, off the runtime because it may block on a TPM.
+async fn x509_status() -> Result<x509_keystore::Status, String> {
+    tokio::task::spawn_blocking(x509_keystore::status)
+        .await
+        .context("Failed to join the keystore task")
+        .and_then(|result| result)
+        .map_err(|error| format!("{error:#}"))
+}
+
 /// Shuts down the session and waits until its eventloop has exited.
 ///
 /// The eventloop owns the TUN device; only once the event stream ends is the
@@ -428,6 +442,11 @@ impl<'a> Handler<'a> {
             .await
             .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
 
+        ipc_tx
+            .send(&ServerMsg::X509Status(x509_status().await))
+            .await
+            .context("Failed to send the keystore status to the new GUI process")?;
+
         Ok(Self {
             device_id,
             dns_controller,
@@ -509,7 +528,7 @@ impl<'a> Handler<'a> {
 
                         let token = token.clone();
                         let is_internet_resource_active = *is_internet_resource_active;
-                        let result = self.try_connect(token, is_internet_resource_active);
+                        let result = self.try_connect(token, is_internet_resource_active).await;
 
                         if let Some(e) = result
                             .as_ref()
@@ -651,7 +670,14 @@ impl<'a> Handler<'a> {
                     shut_down_session(mem::take(&mut self.session)).await;
                 }
 
-                let result = self.try_connect(token.clone(), is_internet_resource_active);
+                let result = self
+                    .try_connect(token.clone(), is_internet_resource_active)
+                    .await;
+
+                // Connecting is the only other moment the keystore is read, so it is also the
+                // only one where the diagnostics the GUI holds can have gone stale.
+                self.send_ipc(ServerMsg::X509Status(x509_status().await))
+                    .await?;
 
                 if let Some(e) = result
                     .as_ref()
@@ -751,7 +777,9 @@ impl<'a> Handler<'a> {
             .unwrap_or_else(|| self.advanced_settings.api_url.as_str())
     }
 
-    fn try_connect(
+    /// Reads the keystore off the runtime, because it can block on a TPM or a smart card and the
+    /// connlib eventloop shares this runtime's single worker.
+    async fn try_connect(
         &mut self,
         token: SecretString,
         is_internet_resource_active: bool,
@@ -762,6 +790,10 @@ impl<'a> Handler<'a> {
             device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
         let api_url = self.api_url().to_string();
+        let certificate = tokio::task::spawn_blocking(x509_keystore::certificate)
+            .await
+            .context("Failed to join the keystore task")?
+            .context("Failed to read the platform keystore")?;
         let url = LoginUrl::client(
             Url::parse(&api_url).context("Failed to parse URL")?,
             device_id.id.clone(),
@@ -771,7 +803,7 @@ impl<'a> Handler<'a> {
                 device_uuid: device_info::uuid(),
                 ..Default::default()
             },
-            None,
+            certificate,
         )
         .context("Failed to create `LoginUrl`")?;
 

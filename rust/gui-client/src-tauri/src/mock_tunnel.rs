@@ -75,6 +75,14 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
         })
         .await?;
 
+    ipc_tx
+        .send(&ServerMsg::X509Status(Ok(x509_keystore::Status {
+            severity: x509_keystore::StatusSeverity::Warning,
+            summary: "This platform has no X.509 keystore backend.".to_owned(),
+            sections: vec![],
+        })))
+        .await?;
+
     while let Some(msg) = ipc_rx.next().await {
         match msg? {
             ClientMsg::Connect { .. } => {

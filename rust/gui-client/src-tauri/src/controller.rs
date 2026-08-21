@@ -44,6 +44,11 @@ pub struct Controller<I: GuiIntegration> {
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
+    /// What the Tunnel service last reported about the platform keystore.
+    ///
+    /// The service pushes this; we keep it so the GUI can be told again whenever it asks for the
+    /// current state, e.g. after a window reload.
+    x509_status: Option<x509_keystore::Status>,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
     ipc_rx: ipc::ClientRead<service::ServerMsg>,
     integration: I,
@@ -75,6 +80,7 @@ pub trait GuiIntegration {
         advanced_settings: AdvancedSettings,
     ) -> Result<()>;
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
+    fn notify_x509_status_changed(&self, status: &x509_keystore::Status) -> Result<()>;
 
     /// Also opens non-URLs
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
@@ -231,6 +237,7 @@ impl<I: GuiIntegration> Controller<I> {
             legacy_advanced_settings_path,
             auth,
             clear_logs_callback: None,
+            x509_status: None,
             ipc_client,
             ipc_rx,
             integration,
@@ -624,6 +631,7 @@ impl<I: GuiIntegration> Controller<I> {
             }
             UpdateState => {
                 self.notify_settings_changed()?;
+                self.notify_x509_status_changed()?;
 
                 let file_count = logging::count_logs().await?;
                 self.integration.notify_logs_recounted(&file_count)?;
@@ -746,6 +754,16 @@ impl<I: GuiIntegration> Controller<I> {
                 tracing::error!("Tunnel service failed to save advanced settings: {err}");
                 self.integration
                     .show_notification("Failed to save settings", &err)?;
+            }
+            service::ServerMsg::X509Status(result) => {
+                match result {
+                    Ok(status) => self.x509_status = Some(status),
+                    // A keystore we cannot read is not a reason to bring the GUI down; the
+                    // diagnostics screen keeps showing whatever we last knew.
+                    Err(e) => tracing::warn!("Failed to read the platform keystore: {e}"),
+                }
+
+                self.notify_x509_status_changed()?;
             }
             service::ServerMsg::GatewayVersionMismatch { resource_id } => {
                 let (resource, site) = self.resource_by_id(resource_id)?;
@@ -989,6 +1007,17 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
+    /// Tells the GUI what the keystore holds, if the Tunnel service has said so yet.
+    fn notify_x509_status_changed(&self) -> Result<()> {
+        let Some(status) = self.x509_status.as_ref() else {
+            return Ok(());
+        };
+
+        self.integration.notify_x509_status_changed(status)?;
+
+        Ok(())
+    }
+
     fn auth_url(&self) -> &Url {
         self.mdm_settings
             .auth_url
@@ -1113,6 +1142,29 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         assert_eq!(test_controller.integration().shown_overview_page.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn forwards_the_pushed_x509_status_to_the_gui() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        let expected = x509_keystore::Status {
+            severity: x509_keystore::StatusSeverity::Ok,
+            summary: "One identity is available.".to_owned(),
+            sections: vec![],
+        };
+        mock_tunnel
+            .tx
+            .send(&service::ServerMsg::X509Status(Ok(expected.clone())))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        assert_eq!(test_controller.integration().x509_statuses, vec![expected]);
     }
 
     #[tokio::test]
@@ -1483,6 +1535,7 @@ mod tests {
         general_settings: Vec<GeneralSettings>,
         advanced_settings: Vec<AdvancedSettings>,
         file_counts: Vec<FileCount>,
+        x509_statuses: Vec<x509_keystore::Status>,
         opened_urls: Vec<String>,
         tray_icons: Vec<system_tray::Icon>,
         tray_states: Vec<system_tray::AppState>,
@@ -1524,6 +1577,12 @@ mod tests {
 
         fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()> {
             self.lock().file_counts.push(file_count.clone());
+
+            Ok(())
+        }
+
+        fn notify_x509_status_changed(&self, status: &x509_keystore::Status) -> Result<()> {
+            self.lock().x509_statuses.push(status.clone());
 
             Ok(())
         }

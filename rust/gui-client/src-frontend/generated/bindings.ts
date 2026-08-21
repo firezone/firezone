@@ -104,11 +104,13 @@ export const events = __makeEvents__<{
   generalSettingsChanged: GeneralSettingsChanged;
   logsRecounted: LogsRecounted;
   sessionChanged: SessionChanged;
+  x509StatusChanged: X509StatusChanged;
 }>({
   advancedSettingsChanged: "advanced-settings-changed",
   generalSettingsChanged: "general-settings-changed",
   logsRecounted: "logs-recounted",
   sessionChanged: "session-changed",
+  x509StatusChanged: "x509-status-changed",
 });
 
 /** user-defined constants **/
@@ -152,6 +154,22 @@ export type SessionViewModel =
   | { SignedIn: { account_slug: string; actor_name: string } }
   | "Loading"
   | "SignedOut";
+export type X509DetailField = { label: string; value: X509FieldValue };
+export type X509DetailSection = { title: string; fields: X509DetailField[] };
+/**
+ * Mirrors [`x509_keystore::FieldValue`] so the frontend can tell a refusal from a value.
+ */
+export type X509FieldValue =
+  | { Present: string }
+  | "Absent"
+  | { Invalid: string };
+export type X509Status = {
+  severity: X509StatusSeverity;
+  summary: string;
+  sections: X509DetailSection[];
+};
+export type X509StatusChanged = X509Status;
+export type X509StatusSeverity = "Ok" | "Warning";
 
 /** tauri-specta globals **/
 

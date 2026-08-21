@@ -42,6 +42,86 @@ pub struct AdvancedSettingsChanged(pub AdvancedSettingsViewModel);
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct LogsRecounted(pub FileCount);
 
+/// The keystore diagnostics as the settings page renders them.
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct X509StatusChanged(pub X509Status);
+
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub struct X509Status {
+    pub severity: X509StatusSeverity,
+    pub summary: String,
+    pub sections: Vec<X509DetailSection>,
+}
+
+#[derive(Clone, Copy, serde::Serialize, specta::Type)]
+pub enum X509StatusSeverity {
+    Ok,
+    Warning,
+}
+
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub struct X509DetailSection {
+    pub title: String,
+    pub fields: Vec<X509DetailField>,
+}
+
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub struct X509DetailField {
+    pub label: String,
+    pub value: X509FieldValue,
+}
+
+/// Mirrors [`x509_keystore::FieldValue`] so the frontend can tell a refusal from a value.
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509FieldValue {
+    Present(String),
+    Absent,
+    Invalid(String),
+}
+
+impl From<&x509_keystore::Status> for X509Status {
+    fn from(status: &x509_keystore::Status) -> Self {
+        Self {
+            severity: status.severity.into(),
+            summary: status.summary.clone(),
+            sections: status
+                .sections
+                .iter()
+                .map(|section| X509DetailSection {
+                    title: section.title.clone(),
+                    fields: section
+                        .fields
+                        .iter()
+                        .map(|field| X509DetailField {
+                            label: field.label.clone(),
+                            value: field.value.clone().into(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<x509_keystore::FieldValue> for X509FieldValue {
+    fn from(value: x509_keystore::FieldValue) -> Self {
+        match value {
+            x509_keystore::FieldValue::Present(value) => Self::Present(value),
+            x509_keystore::FieldValue::Absent => Self::Absent,
+            x509_keystore::FieldValue::Invalid(message) => Self::Invalid(message),
+        }
+    }
+}
+
+impl From<x509_keystore::StatusSeverity> for X509StatusSeverity {
+    fn from(severity: x509_keystore::StatusSeverity) -> Self {
+        match severity {
+            x509_keystore::StatusSeverity::Ok => Self::Ok,
+            x509_keystore::StatusSeverity::Warning => Self::Warning,
+        }
+    }
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {

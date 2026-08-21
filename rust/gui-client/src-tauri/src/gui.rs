@@ -16,7 +16,7 @@ use crate::{
     updates,
     view::{
         AdvancedSettingsChanged, GeneralSettingsChanged, LogsRecounted, SessionChanged,
-        SessionViewModel,
+        SessionViewModel, X509StatusChanged,
     },
 };
 use anyhow::{Context, Result, bail};
@@ -140,6 +140,14 @@ impl GuiIntegration for TauriIntegration {
         LogsRecounted(file_count.clone())
             .emit(&self.app)
             .context("Failed to emit `logs_recounted` event")?;
+
+        Ok(())
+    }
+
+    fn notify_x509_status_changed(&self, status: &x509_keystore::Status) -> Result<()> {
+        X509StatusChanged(status.into())
+            .emit(&self.app)
+            .context("Failed to emit `x509_status_changed` event")?;
 
         Ok(())
     }
@@ -396,6 +404,7 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
             crate::view::GeneralSettingsChanged,
             crate::view::AdvancedSettingsChanged,
             crate::view::LogsRecounted,
+            crate::view::X509StatusChanged,
         ])
         .commands(tauri_specta::collect_commands![
             crate::view::clear_logs,
