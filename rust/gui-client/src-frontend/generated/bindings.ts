@@ -156,8 +156,13 @@ export type SessionViewModel =
   | "SignedOut";
 export type X509DetailField = { label: string; value: string };
 export type X509DetailSection = { title: string; fields: X509DetailField[] };
-export type X509Status = { summary: string; sections: X509DetailSection[] };
+export type X509Status = {
+  severity: X509StatusSeverity;
+  summary: string;
+  sections: X509DetailSection[];
+};
 export type X509StatusChanged = X509Status;
+export type X509StatusSeverity = "Ok" | "Warning";
 
 /** tauri-specta globals **/
 
