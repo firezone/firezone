@@ -97,12 +97,29 @@ struct X509SettingsView: View {
           Text(field.label)
             .font(.caption)
             .foregroundStyle(.secondary)
-          Text(field.value)
-            .font(.system(.caption, design: .monospaced))
-            .textSelection(.enabled)
+          claimValue(field.value)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
       }
+    }
+  }
+
+  @ViewBuilder
+  private func claimValue(_ claim: X509ClaimValue) -> some View {
+    switch claim {
+    case .present(let value):
+      Text(value)
+        .font(.system(.caption, design: .monospaced))
+        .textSelection(.enabled)
+
+    case .absent:
+      Text("Not present")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+
+    case .invalid(let rejection):
+      Label("Ignored: \(rejection.reason)", systemImage: "exclamationmark.triangle")
+        .font(.caption)
     }
   }
 
