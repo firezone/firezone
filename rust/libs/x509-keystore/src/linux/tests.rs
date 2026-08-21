@@ -374,7 +374,7 @@ fn section<'a>(status: &'a Status, title: &str) -> &'a DetailSection {
 fn field_value<'a>(section: &'a DetailSection, label: &str) -> Option<&'a str> {
     let field = section.fields.iter().find(|field| field.label == label)?;
 
-    Some(field.value.as_str())
+    Some(field.value.text())
 }
 
 /// Signs [`MESSAGE`] with every scheme the key advertises and verifies each signature against the
