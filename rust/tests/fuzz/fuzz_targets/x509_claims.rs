@@ -13,7 +13,9 @@ use std::{
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use sha2::{Digest as _, Sha256};
-use x509_claims::{ParsedCertificate, RejectedClaim, UnusableReason, parse_certificate};
+use x509_claims::{
+    ClaimValue, ParsedCertificate, RejectionReason, UnusableReason, parse_certificate,
+};
 
 fuzz_target!(|input: Input| {
     let Some(certificate) = parse_certificate(input.der, instant(input.seconds_since_epoch)) else {
@@ -40,7 +42,8 @@ fuzz_target!(|input: Input| {
     assert_actor_email_is_addressable(&certificate);
     assert_mdm_device_id_is_normalised(&certificate);
     assert_device_serial_is_printable(&certificate);
-    assert_rejected_claims_are_not_attested(&certificate);
+    assert_claims_are_rendered_as_they_were_read(&certificate);
+    assert_unrecognised_claims_are_shown(&certificate);
     assert_fingerprint_covers_the_input(&certificate, input.der);
     assert_serial_is_bounded(&certificate);
     assert_detail_fields_are_labelled(&certificate);
@@ -159,7 +162,7 @@ fn assert_user_identity_agrees_with_its_fields(certificate: &ParsedCertificate) 
 
     assert_eq!(
         user_identity.is_some(),
-        certificate.actor_email.is_some() && certificate.account_id.is_some()
+        certificate.actor_email.attested().is_some() && certificate.account_id.attested().is_some()
     );
 
     let Some(user_identity) = user_identity else {
@@ -167,34 +170,34 @@ fn assert_user_identity_agrees_with_its_fields(certificate: &ParsedCertificate) 
     };
 
     assert_eq!(
-        certificate.actor_email.as_deref(),
+        certificate.actor_email.attested(),
         Some(user_identity.email.as_str())
     );
     assert_eq!(
-        certificate.account_id.as_deref(),
+        certificate.account_id.attested(),
         Some(user_identity.account_id.as_str())
     );
 }
 
 /// Asserts that an account ID reaches the portal as a hyphenated, lower-case UUID.
 fn assert_account_id_is_a_uuid(certificate: &ParsedCertificate) {
-    let Some(account_id) = &certificate.account_id else {
+    let Some(account_id) = certificate.account_id.attested() else {
         return;
     };
 
     assert!(uuid::Uuid::parse_str(account_id).is_ok());
-    assert_eq!(*account_id, account_id.to_lowercase());
+    assert_eq!(account_id, account_id.to_lowercase());
     assert_eq!(account_id.len(), 36);
 }
 
 /// Asserts that an actor email is a lower-case address the portal can look an actor up by.
 fn assert_actor_email_is_addressable(certificate: &ParsedCertificate) {
-    let Some(actor_email) = &certificate.actor_email else {
+    let Some(actor_email) = certificate.actor_email.attested() else {
         return;
     };
     let (local, domain) = actor_email.split_once('@').expect("an email has a domain");
 
-    assert_eq!(*actor_email, actor_email.to_lowercase());
+    assert_eq!(actor_email, actor_email.to_lowercase());
     assert!(!actor_email.chars().any(char::is_whitespace));
     assert!(!local.is_empty());
     assert!(!domain.is_empty());
@@ -204,17 +207,17 @@ fn assert_actor_email_is_addressable(certificate: &ParsedCertificate) {
 
 /// Asserts that an MDM device ID is already in the form devices are matched by.
 fn assert_mdm_device_id_is_normalised(certificate: &ParsedCertificate) {
-    let Some(mdm_device_id) = &certificate.mdm_device_id else {
+    let Some(mdm_device_id) = certificate.mdm_device_id.attested() else {
         return;
     };
 
-    assert_eq!(*mdm_device_id, mdm_device_id.trim().to_ascii_lowercase());
+    assert_eq!(mdm_device_id, mdm_device_id.trim().to_ascii_lowercase());
     assert!(mdm_device_id.len() <= 255);
 }
 
 /// Asserts that a device serial carries something to show.
 fn assert_device_serial_is_printable(certificate: &ParsedCertificate) {
-    let Some(device_serial) = &certificate.device_serial else {
+    let Some(device_serial) = certificate.device_serial.attested() else {
         return;
     };
 
@@ -222,48 +225,44 @@ fn assert_device_serial_is_printable(certificate: &ParsedCertificate) {
     assert!(device_serial.len() <= 255);
 }
 
-/// Asserts that a claim the parser attests is never also reported as rejected.
+/// Asserts that every claim reaches the diagnostics screen as the state it was read in.
 ///
-/// Both end up on the same diagnostics screen, so a value in each would tell an administrator
-/// that their certificate is at once accepted and refused.
-fn assert_rejected_claims_are_not_attested(certificate: &ParsedCertificate) {
-    for claim in &certificate.rejected_claims {
-        assert!(claim.value.chars().count() <= 96, "{}", claim.value);
-        assert!(!claim.reason.label().is_empty());
+/// The clients call out the invalid ones, so a row that disagrees with the claim it was built
+/// from sends an administrator after the wrong part of their certificate template.
+fn assert_claims_are_rendered_as_they_were_read(certificate: &ParsedCertificate) {
+    let fields = certificate.detail_fields();
+    let claims = [
+        ("Actor Email", &certificate.actor_email),
+        ("Account ID", &certificate.account_id),
+        ("MDM Device ID", &certificate.mdm_device_id),
+        ("Device Serial", &certificate.device_serial),
+    ];
+
+    for (label, claim) in claims {
+        let field = fields
+            .iter()
+            .find(|field| field.label == label)
+            .unwrap_or_else(|| panic!("diagnostics should show {label}"));
+
+        assert_eq!(field.value, *claim);
     }
-
-    let claims = certificate.rejected_claims.as_slice();
-
-    assert_not_rejected(claims, &certificate.actor_email, &["email"]);
-    assert_not_rejected(claims, &certificate.account_id, &["account-id"]);
-    assert_not_rejected(
-        claims,
-        &certificate.mdm_device_id,
-        &["intune-id", "entra-id", "ws1-uuid", "jamf-id", "kandji-id"],
-    );
-    assert_not_rejected(
-        claims,
-        &certificate.device_serial,
-        &["serial", "apple-serial"],
-    );
 }
 
-/// Asserts that no rejected claim under one of `attributes` carries the attested value.
-fn assert_not_rejected(claims: &[RejectedClaim], attested: &Option<String>, attributes: &[&str]) {
-    let Some(attested) = attested else {
-        return;
-    };
+/// Asserts that a `firezone://` name the parser does not read gets a bounded row of its own.
+///
+/// The name is copied out of the certificate, so one that spends its whole size on a single
+/// name would otherwise take longer to display than to parse.
+fn assert_unrecognised_claims_are_shown(certificate: &ParsedCertificate) {
+    let unrecognised = certificate
+        .detail_fields()
+        .into_iter()
+        .filter(|field| field.value == ClaimValue::Invalid(RejectionReason::UnknownAttribute))
+        .map(|field| field.label)
+        .collect::<HashSet<_>>();
 
-    for claim in claims {
-        if !attributes.contains(&claim.attribute.as_str()) {
-            continue;
-        }
-
-        assert!(
-            !claim.value.eq_ignore_ascii_case(attested),
-            "{attested} is attested and rejected as {}",
-            claim.reason.label()
-        );
+    for claim in &certificate.unrecognised_claims {
+        assert!(claim.chars().count() <= 96, "{claim}");
+        assert!(unrecognised.contains(claim), "{claim} has no row");
     }
 }
 
@@ -287,16 +286,13 @@ fn assert_serial_is_bounded(certificate: &ParsedCertificate) {
     assert!(certificate.serial.len() <= 96, "{}", certificate.serial);
 }
 
-/// Asserts that the diagnostics rows can be rendered and indexed by their labels.
+/// Asserts that every diagnostics row carries a label to render it under.
 ///
-/// A certificate may carry an empty subject, issuer or common name, so only the labels are
-/// guaranteed to hold text.
+/// A certificate may carry an empty subject, issuer or common name, and a claim it leaves out
+/// has no value at all, so only the label is guaranteed to hold text.
 fn assert_detail_fields_are_labelled(certificate: &ParsedCertificate) {
-    let mut labels = HashSet::new();
-
     for field in certificate.detail_fields() {
         assert!(!field.label.is_empty());
-        assert!(labels.insert(field.label));
     }
 }
 

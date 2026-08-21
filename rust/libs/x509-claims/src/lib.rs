@@ -11,7 +11,6 @@
 
 use std::{
     collections::HashSet,
-    hash::Hash,
     net::{Ipv4Addr, Ipv6Addr},
     time::SystemTime,
 };
@@ -67,17 +66,35 @@ impl UnusableReason {
     }
 }
 
-/// A `firezone://` claim the parser found in a subject alternative name but will not attest.
-///
-/// A claim left out of the parsed certificate is indistinguishable from one the certificate never
-/// carried, and an administrator fixing a certificate template needs to tell the two apart.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct RejectedClaim {
-    /// The attribute as it appeared in the URI, lower-cased, e.g. `email`.
-    pub attribute: String,
-    /// The value as it appeared, percent-decoded and trimmed, truncated for display.
-    pub value: String,
-    pub reason: RejectionReason,
+/// What a certificate says about one of the claims the clients read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaimValue {
+    /// Exactly one value, which the clients will attest.
+    Present(String),
+    /// The certificate carries no `firezone://` name for this claim.
+    Absent,
+    /// The certificate carries one, but not one the clients will attest.
+    Invalid(RejectionReason),
+}
+
+impl ClaimValue {
+    /// The value the clients will attest, [`None`] for a claim they will not.
+    pub fn attested(&self) -> Option<&str> {
+        match self {
+            Self::Present(value) => Some(value),
+            Self::Absent => None,
+            Self::Invalid(_) => None,
+        }
+    }
+}
+
+impl From<Option<String>> for ClaimValue {
+    fn from(value: Option<String>) -> Self {
+        match value {
+            Some(value) => Self::Present(value),
+            None => Self::Absent,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -111,11 +128,12 @@ pub struct ParsedCertificate {
     pub subject_cn: Option<String>,
     pub subject: String,
     pub subject_alternative_names: Vec<String>,
-    pub actor_email: Option<String>,
-    pub account_id: Option<String>,
-    pub mdm_device_id: Option<String>,
-    pub device_serial: Option<String>,
-    pub rejected_claims: Vec<RejectedClaim>,
+    pub actor_email: ClaimValue,
+    pub account_id: ClaimValue,
+    pub mdm_device_id: ClaimValue,
+    pub device_serial: ClaimValue,
+    /// `firezone://` names whose attribute this parser does not read, e.g. a typo in a template.
+    pub unrecognised_claims: Vec<String>,
     pub issuer: String,
     pub serial: String,
     pub has_client_auth_eku: bool,
@@ -165,45 +183,31 @@ impl ParsedCertificate {
     }
 
     pub fn detail_fields(&self) -> Vec<DetailField> {
+        let subject_alternative_names = match self.subject_alternative_names.as_slice() {
+            [] => ClaimValue::Absent,
+            names => ClaimValue::Present(names.join("\n")),
+        };
         let mut fields = vec![
             field(
                 "Usable as a Client Identity",
                 self.unusable_summary()
                     .map_or_else(|| "Yes".to_owned(), |reasons| format!("No: {reasons}")),
             ),
-            field(
-                "Common Name",
-                self.subject_cn.as_deref().unwrap_or("Unavailable"),
-            ),
+            claim_field("Common Name", ClaimValue::from(self.subject_cn.clone())),
             field("Subject", &self.subject),
+            claim_field("Actor Email", self.actor_email.clone()),
+            claim_field("Account ID", self.account_id.clone()),
+            claim_field("MDM Device ID", self.mdm_device_id.clone()),
+            claim_field("Device Serial", self.device_serial.clone()),
         ];
-        if let Some(actor_email) = &self.actor_email {
-            fields.push(field("Actor Email", actor_email));
-        }
-        if let Some(account_id) = &self.account_id {
-            fields.push(field("Account ID", account_id));
-        }
-        if let Some(mdm_device_id) = &self.mdm_device_id {
-            fields.push(field("MDM Device ID", mdm_device_id));
-        }
-        if let Some(device_serial) = &self.device_serial {
-            fields.push(field("Device Serial", device_serial));
-        }
-        if !self.rejected_claims.is_empty() {
-            fields.push(field(
-                "Rejected Claims",
-                format_rejected_claims(&self.rejected_claims),
-            ));
-        }
+        fields.extend(self.unrecognised_claims.iter().map(|claim| {
+            claim_field(
+                claim,
+                ClaimValue::Invalid(RejectionReason::UnknownAttribute),
+            )
+        }));
         fields.extend([
-            field(
-                "Subject Alternative Names",
-                if self.subject_alternative_names.is_empty() {
-                    "None".to_owned()
-                } else {
-                    self.subject_alternative_names.join("\n")
-                },
-            ),
+            claim_field("Subject Alternative Names", subject_alternative_names),
             field("Issuer", &self.issuer),
             field("Serial Number", &self.serial),
             field("Not Before", &self.not_before),
@@ -258,8 +262,8 @@ impl ParsedCertificate {
 
     pub fn user_identity(&self) -> Option<UserIdentity> {
         Some(UserIdentity {
-            email: self.actor_email.clone()?,
-            account_id: self.account_id.clone()?,
+            email: self.actor_email.attested()?.to_owned(),
+            account_id: self.account_id.attested()?.to_owned(),
         })
     }
 }
@@ -271,11 +275,11 @@ pub struct UserIdentity {
     pub account_id: String,
 }
 
-/// A label-value pair for the clients' certificate diagnostics screens.
+/// A row for the clients' certificate diagnostics screens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DetailField {
     pub label: String,
-    pub value: String,
+    pub value: ClaimValue,
 }
 
 pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificate> {
@@ -319,17 +323,11 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificat
         })
         .flat_map(split_comma_joined_uris)
         .collect::<Vec<_>>();
-    let mut rejected_claims = Vec::new();
-    let actor_email = extract_actor_email(&uri_subject_alternative_names, &mut rejected_claims);
-    let account_id = extract_account_id(&uri_subject_alternative_names, &mut rejected_claims);
-    let mdm_device_id = extract_mdm_device_id(
-        uri_subject_alternative_names.iter().copied(),
-        &mut rejected_claims,
-    );
-    let device_serial = extract_device_serial(&uri_subject_alternative_names, &mut rejected_claims);
-    // Serial numbers are read twice, as a device serial and as an MDM identifier, so a claim
-    // both of them refuse arrives here from both.
-    let rejected_claims = distinct(rejected_claims);
+    let actor_email = extract_actor_email(&uri_subject_alternative_names);
+    let account_id = extract_account_id(&uri_subject_alternative_names);
+    let mdm_device_id = extract_mdm_device_id(&uri_subject_alternative_names);
+    let device_serial = extract_device_serial(&uri_subject_alternative_names);
+    let unrecognised_claims = extract_unrecognised_claims(&uri_subject_alternative_names);
     // RFC 5280 permits Key Usage to be omitted. When present, it must allow
     // digitalSignature, matching the portal's verification policy.
     let digital_signature_allowed = certificate
@@ -389,7 +387,7 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificat
         account_id,
         mdm_device_id,
         device_serial,
-        rejected_claims,
+        unrecognised_claims,
         issuer: certificate.issuer().to_string(),
         serial: format_serial(certificate.raw_serial()),
         has_client_auth_eku,
@@ -405,128 +403,108 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificat
     })
 }
 
-fn extract_actor_email(uris: &[&str], rejected: &mut Vec<RejectedClaim>) -> Option<String> {
-    let mut emails = Vec::new();
+fn extract_actor_email(uris: &[&str]) -> ClaimValue {
+    let emails = firezone_attribute_values(uris, "email")
+        .into_iter()
+        .map(|value| {
+            let value = value?;
+            if !valid_email(&value) {
+                return Err(RejectionReason::NotAnEmailAddress);
+            }
 
-    for value in firezone_attribute_values(uris, "email", rejected) {
-        if !valid_email(&value) {
-            rejected.push(rejected_claim(
-                "email",
-                &value,
-                RejectionReason::NotAnEmailAddress,
-            ));
-            continue;
-        }
+            Ok(value.to_lowercase())
+        })
+        .collect();
 
-        emails.push(value.to_lowercase());
-    }
-
-    unambiguous("email", emails, rejected)
+    resolve_claim(emails, str::to_owned)
 }
 
-fn extract_account_id(uris: &[&str], rejected: &mut Vec<RejectedClaim>) -> Option<String> {
-    let mut account_ids = Vec::new();
+fn extract_account_id(uris: &[&str]) -> ClaimValue {
+    let account_ids = firezone_attribute_values(uris, "account-id")
+        .into_iter()
+        .map(|value| {
+            let value = value?;
+            let Ok(account_id) = uuid::Uuid::parse_str(&value) else {
+                return Err(RejectionReason::NotAUuid);
+            };
 
-    for value in firezone_attribute_values(uris, "account-id", rejected) {
-        let Ok(account_id) = uuid::Uuid::parse_str(&value) else {
-            rejected.push(rejected_claim(
-                "account-id",
-                &value,
-                RejectionReason::NotAUuid,
-            ));
-            continue;
-        };
+            Ok(account_id.hyphenated().to_string().to_lowercase())
+        })
+        .collect();
 
-        account_ids.push(account_id.hyphenated().to_string().to_lowercase());
-    }
-
-    unambiguous("account-id", account_ids, rejected)
+    resolve_claim(account_ids, str::to_owned)
 }
 
-fn extract_device_serial(uris: &[&str], rejected: &mut Vec<RejectedClaim>) -> Option<String> {
-    let mut serials = firezone_attribute_values(uris, "serial", rejected);
-    serials.extend(firezone_attribute_values(uris, "apple-serial", rejected));
+fn extract_device_serial(uris: &[&str]) -> ClaimValue {
+    let mut serials = firezone_attribute_values(uris, "serial");
+    serials.extend(firezone_attribute_values(uris, "apple-serial"));
 
-    // A serial is compared case-insensitively but shown the way the certificate spells it, so
-    // the lower-cased values only decide whether there is a single one.
-    let lower_cased = serials
-        .iter()
-        .map(|serial| serial.to_lowercase())
-        .collect::<Vec<_>>();
-    unambiguous("serial", lower_cased, rejected)?;
-
-    serials.into_iter().next()
+    // A serial is compared case-insensitively but shown the way the certificate spells it.
+    resolve_claim(serials, str::to_lowercase)
 }
 
 fn firezone_attribute_values(
     uris: &[&str],
     expected_attribute: &str,
-    rejected: &mut Vec<RejectedClaim>,
-) -> Vec<String> {
+) -> Vec<Result<String, RejectionReason>> {
     let mut values = Vec::new();
 
     for uri in uris {
-        let Some((scheme, remainder)) = uri.split_once("://") else {
+        let Some((attribute, raw_value)) = firezone_claim(uri) else {
             continue;
         };
-        if !scheme.eq_ignore_ascii_case("firezone") {
-            continue;
-        }
-        let Some((attribute, raw_value)) = remainder.split_once('/') else {
-            continue;
-        };
-        if !attribute.eq_ignore_ascii_case(expected_attribute) {
+        if attribute != expected_attribute {
             continue;
         }
 
         let decoded = percent_decode(raw_value).unwrap_or_else(|| raw_value.to_owned());
         let value = decoded.trim();
         if !valid_identifier(value) {
-            rejected.push(rejected_claim(
-                expected_attribute,
-                value,
-                invalid_identifier_reason(value),
-            ));
+            values.push(Err(invalid_identifier_reason(value)));
             continue;
         }
 
-        values.push(value.to_owned());
+        values.push(Ok(value.to_owned()));
     }
 
     values
 }
 
-/// The single value an attribute resolves to, [`None`] when a certificate gives several.
+/// The state a claim resolves to, comparing the values a certificate gave it by `key`.
 ///
 /// Repeating the same value is not a conflict. Giving two different ones is, and neither is
 /// attested: picking one would let a certificate decide which identity it is read as.
-fn unambiguous(
-    attribute: &str,
-    values: Vec<String>,
-    rejected: &mut Vec<RejectedClaim>,
-) -> Option<String> {
-    let values = distinct(values);
-    if values.len() > 1 {
-        rejected.extend(
-            values
-                .iter()
-                .map(|value| rejected_claim(attribute, value, RejectionReason::Ambiguous)),
-        );
+fn resolve_claim(
+    values: Vec<Result<String, RejectionReason>>,
+    key: impl Fn(&str) -> String,
+) -> ClaimValue {
+    let rejection = values
+        .iter()
+        .find_map(|value| value.as_ref().err().copied());
+    let mut seen = HashSet::new();
+    let accepted = values
+        .into_iter()
+        .flatten()
+        .filter(|value| seen.insert(key(value)))
+        .collect::<Vec<_>>();
 
-        return None;
+    match (accepted.as_slice(), rejection) {
+        ([value], _) => ClaimValue::Present(value.clone()),
+        ([], None) => ClaimValue::Absent,
+        ([], Some(reason)) => ClaimValue::Invalid(reason),
+        (_, _) => ClaimValue::Invalid(RejectionReason::Ambiguous),
     }
-
-    values.into_iter().next()
 }
 
-/// Drops repeated values, keeping the order they were found in.
-fn distinct<T: Clone + Eq + Hash>(values: Vec<T>) -> Vec<T> {
-    let mut seen = HashSet::new();
+/// The lower-cased attribute and the raw value of a `firezone://` name, [`None`] for other URIs.
+fn firezone_claim(uri: &str) -> Option<(String, &str)> {
+    let (scheme, remainder) = uri.split_once("://")?;
+    if !scheme.eq_ignore_ascii_case("firezone") {
+        return None;
+    }
+    let (attribute, value) = remainder.split_once('/')?;
 
-    values
-        .into_iter()
-        .filter(|value| seen.insert(value.clone()))
-        .collect()
+    Some((attribute.to_ascii_lowercase(), value))
 }
 
 fn valid_email(value: &str) -> bool {
@@ -564,12 +542,10 @@ fn hex_value(value: u8) -> Option<u8> {
     }
 }
 
-fn extract_mdm_device_id<'a>(
-    uris: impl IntoIterator<Item = &'a str>,
-    rejected: &mut Vec<RejectedClaim>,
-) -> Option<String> {
+fn extract_mdm_device_id(uris: &[&str]) -> ClaimValue {
     let uris = uris
-        .into_iter()
+        .iter()
+        .copied()
         .flat_map(split_comma_joined_uris)
         .filter(|uri| {
             !uri.to_ascii_lowercase()
@@ -578,39 +554,24 @@ fn extract_mdm_device_id<'a>(
         .collect::<Vec<_>>();
     let mut saw_typed_identifier = false;
     let mut typed_mdm_device_id = None;
+    let mut rejection = None;
 
     for uri in &uris {
-        let Some((scheme, remainder)) = uri.split_once("://") else {
+        let Some((id_type, value)) = firezone_claim(uri) else {
             continue;
         };
-        if !scheme.eq_ignore_ascii_case("firezone") {
+        if !mdm_attribute(&id_type) {
             continue;
         }
-        let Some((id_type, value)) = remainder.split_once('/') else {
-            continue;
-        };
-        let id_type = id_type.to_ascii_lowercase();
         // The same escaping the other typed claims go through: an MDM that percent-encodes its
         // identifier must not end up attesting the literal escape sequence.
         let value = percent_decode(value).unwrap_or_else(|| value.to_owned());
         let value = value.as_str();
-        if !mdm_attribute(&id_type) {
-            if !known_attribute(&id_type) {
-                rejected.push(rejected_claim(
-                    &id_type,
-                    value,
-                    RejectionReason::UnknownAttribute,
-                ));
+        if !valid_identifier(value) {
+            if device_id_attribute(&id_type) {
+                rejection.get_or_insert(invalid_identifier_reason(value));
             }
 
-            continue;
-        }
-        if !valid_identifier(value) {
-            rejected.push(rejected_claim(
-                &id_type,
-                value,
-                invalid_identifier_reason(value),
-            ));
             continue;
         }
 
@@ -621,24 +582,36 @@ fn extract_mdm_device_id<'a>(
 
         typed_mdm_device_id = normalize_mdm_device_id(value);
         if typed_mdm_device_id.is_none() {
-            rejected.push(rejected_claim(
-                &id_type,
-                value,
-                RejectionReason::PlaceholderIdentifier,
-            ));
+            rejection.get_or_insert(RejectionReason::PlaceholderIdentifier);
         }
     }
 
-    if saw_typed_identifier {
-        return typed_mdm_device_id;
-    }
+    let device_id = if saw_typed_identifier {
+        typed_mdm_device_id
+    } else {
+        uris.into_iter().find_map(|uri| {
+            let value = uri.trim();
+            (value.len() == 36 && uuid::Uuid::parse_str(value).is_ok())
+                .then(|| normalize_mdm_device_id(value))
+                .flatten()
+        })
+    };
 
-    uris.into_iter().find_map(|uri| {
-        let value = uri.trim();
-        (value.len() == 36 && uuid::Uuid::parse_str(value).is_ok())
-            .then(|| normalize_mdm_device_id(value))
-            .flatten()
-    })
+    match (device_id, rejection) {
+        (Some(device_id), _) => ClaimValue::Present(device_id),
+        (None, Some(reason)) => ClaimValue::Invalid(reason),
+        (None, None) => ClaimValue::Absent,
+    }
+}
+
+fn extract_unrecognised_claims(uris: &[&str]) -> Vec<String> {
+    uris.iter()
+        .copied()
+        .filter(|uri| {
+            firezone_claim(uri).is_some_and(|(attribute, _)| !known_attribute(&attribute))
+        })
+        .map(format_claim_value)
+        .collect()
 }
 
 /// Whether the parser reads this `firezone://` attribute at all, however it uses the value.
@@ -732,21 +705,6 @@ fn normalize_mdm_device_id(value: &str) -> Option<String> {
     Some(normalized)
 }
 
-fn format_rejected_claims(claims: &[RejectedClaim]) -> String {
-    claims
-        .iter()
-        .map(|claim| {
-            format!(
-                "firezone://{}/{}: {}",
-                claim.attribute,
-                claim.value,
-                claim.reason.label()
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 fn format_subject_alternative_name(name: &GeneralName<'_>) -> Vec<String> {
     let value = match name {
         GeneralName::OtherName(oid, value) => format!(
@@ -813,17 +771,9 @@ fn format_serial(raw: &[u8]) -> String {
     format!("{rendered} (+{elided} octets)")
 }
 
-/// A claim is rejected for, among other reasons, being arbitrarily long, and its value goes
-/// straight into a diagnostics row.
+/// A `firezone://` name the parser does not read goes straight into a diagnostics row, and a
+/// certificate can spend its whole size on one.
 const MAX_RENDERED_CLAIM_CHARS: usize = 64;
-
-fn rejected_claim(attribute: &str, value: &str, reason: RejectionReason) -> RejectedClaim {
-    RejectedClaim {
-        attribute: attribute.to_owned(),
-        value: format_claim_value(value.trim()),
-        reason,
-    }
-}
 
 fn format_claim_value(value: &str) -> String {
     let rendered = value
@@ -842,8 +792,12 @@ fn format_claim_value(value: &str) -> String {
 }
 
 fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
+    claim_field(label, ClaimValue::Present(value.into()))
+}
+
+fn claim_field(label: impl Into<String>, value: ClaimValue) -> DetailField {
     DetailField {
         label: label.into(),
-        value: value.into(),
+        value,
     }
 }
