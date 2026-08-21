@@ -36,7 +36,10 @@ use windows::{
 use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
 use x509_credential::{PrivateKey, SigningError};
 
-use crate::{DetailField, DetailSection, FieldValue, Identity, Status, StatusSeverity};
+use crate::{
+    DetailField, DetailSection, Identity, Status, StatusSeverity, absent_field, field,
+    invalid_field,
+};
 
 /// The store MDM-provisioned identities land in.
 ///
@@ -462,10 +465,11 @@ impl Certificate {
             } else {
                 absent_field("Private Key Access")
             },
-            field(
-                "Usable With Its Private Key",
-                if self.usable { "Yes" } else { "No" },
-            ),
+            if self.usable {
+                field("Usable With Its Private Key", "Yes")
+            } else {
+                invalid_field("Usable With Its Private Key", "No")
+            },
         ];
         if let Some(error) = &self.key_error {
             fields.push(invalid_field("Private Key Error", error));
@@ -902,27 +906,6 @@ unsafe fn wide_string(value: windows_core::PWSTR) -> Option<String> {
     }
 
     unsafe { value.to_string().ok() }
-}
-
-fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
-    DetailField {
-        label: label.into(),
-        value: FieldValue::Present(value.into()),
-    }
-}
-
-fn absent_field(label: impl Into<String>) -> DetailField {
-    DetailField {
-        label: label.into(),
-        value: FieldValue::Absent,
-    }
-}
-
-fn invalid_field(label: impl Into<String>, message: impl Into<String>) -> DetailField {
-    DetailField {
-        label: label.into(),
-        value: FieldValue::Invalid(message.into()),
-    }
 }
 
 fn classify_private_key_storage(

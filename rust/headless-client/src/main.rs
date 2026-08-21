@@ -756,6 +756,13 @@ mod tests {
     }
 
     #[test]
+    fn x509_is_a_subcommand() {
+        let actual = Cli::try_parse_from(["firezone-headless-client", "x509"]).unwrap();
+
+        assert!(matches!(actual._command, Some(Cmd::X509)));
+    }
+
+    #[test]
     fn sign_in_bare() {
         let actual = Cli::try_parse_from(["firezone-headless-client", "sign-in"]).unwrap();
         match actual._command {

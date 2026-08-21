@@ -15,14 +15,19 @@ use rustls::pki_types::CertificateDer;
 use serde::{Deserialize, Serialize};
 use x509_credential::{ClientCertificate, PrivateKey};
 
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+use linux as keystore;
+
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
 use windows as keystore;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 mod unsupported;
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 use unsupported as keystore;
 
 /// The subject common name of the certificates Firezone's MDM integrations provision.
@@ -139,6 +144,31 @@ impl Status {
     }
 }
 
+pub(crate) fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: FieldValue::Present(value.into()),
+    }
+}
+
+/// A row for something the keystore looked for and did not find.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub(crate) fn absent_field(label: impl Into<String>) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: FieldValue::Absent,
+    }
+}
+
+/// A row for something the keystore found and cannot use.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub(crate) fn invalid_field(label: impl Into<String>, message: impl Into<String>) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: FieldValue::Invalid(message.into()),
+    }
+}
+
 impl From<x509_claims::DetailField> for DetailField {
     fn from(field: x509_claims::DetailField) -> Self {
         Self {
@@ -169,10 +199,7 @@ mod tests {
             summary: "One identity is available.".to_owned(),
             sections: vec![DetailSection {
                 title: "Certificate".to_owned(),
-                fields: vec![DetailField {
-                    label: "Subject".to_owned(),
-                    value: FieldValue::Present("CN=one\nOU=two".to_owned()),
-                }],
+                fields: vec![field("Subject", "CN=one\nOU=two")],
             }],
         };
 
