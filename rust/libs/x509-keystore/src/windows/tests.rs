@@ -66,6 +66,7 @@ fn describes_a_minted_certificate_in_the_diagnostics() {
     let status =
         super::status(&subject_cn).expect("the Windows certificate stores should be readable");
 
+    assert_eq!(status.severity, StatusSeverity::Ok);
     assert_eq!(
         status.summary,
         "1 X.509 client identity certificate(s) are available for mutual TLS."
@@ -79,6 +80,10 @@ fn describes_a_minted_certificate_in_the_diagnostics() {
     assert_eq!(
         field_value(section, "Private Key Access"),
         Some("Available through Windows CNG")
+    );
+    assert_eq!(
+        field_value(section, "Usable With Its Private Key"),
+        Some("Yes")
     );
     assert_eq!(
         field_value(section, "Usable as a Client Identity"),
@@ -113,6 +118,7 @@ fn reports_no_identity_when_no_certificate_matches() {
         super::status(&subject_cn).expect("the Windows certificate stores should be readable");
 
     assert!(identity.is_none());
+    assert_eq!(status.severity, StatusSeverity::Warning);
     assert_eq!(
         status.summary,
         format!(
