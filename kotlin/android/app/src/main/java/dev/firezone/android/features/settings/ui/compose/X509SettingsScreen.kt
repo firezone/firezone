@@ -19,6 +19,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
@@ -112,30 +113,46 @@ internal fun X509SettingsScreen(
         }
 
         if (state.error != null) {
-            Surface(
+            Notice(
+                title = stringResource(R.string.x509_error_title),
+                body = state.error,
                 color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(
-                    Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.x509_error_title),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(text = state.error, style = MaterialTheme.typography.bodySmall)
-                    Text(
-                        text = stringResource(R.string.x509_contact_admin),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
+            )
+        }
+
+        if (state.unusableSummary != null) {
+            Notice(
+                title = stringResource(R.string.x509_unusable_title),
+                body = stringResource(R.string.x509_unusable_reason, state.unusableSummary),
+                color = MaterialTheme.colorScheme.errorContainer,
+            )
         }
 
         state.details.forEach { field ->
             HorizontalDivider()
             DetailField(field)
+        }
+    }
+}
+
+/** How the screen says that something is wrong with the certificate. */
+@Composable
+private fun Notice(
+    title: String,
+    body: String,
+    color: Color,
+) {
+    Surface(color = color, modifier = Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium)
+            Text(text = body, style = MaterialTheme.typography.bodySmall)
+            Text(
+                text = stringResource(R.string.x509_contact_admin),
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }
@@ -170,6 +187,32 @@ private fun X509SettingsScreenPreview() {
                         listOf(
                             DetailField("KeyChain Alias", "firezone-device"),
                             DetailField("Subject", "CN=alice@example.com"),
+                        ),
+                ),
+            onSelectCertificate = {},
+            onForgetCertificate = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun X509SettingsScreenUnusablePreview() {
+    FirezoneTheme {
+        X509SettingsScreen(
+            state =
+                X509SettingsViewModel.UiState(
+                    alias = "firezone-device",
+                    isManaged = true,
+                    isUsable = true,
+                    unusableSummary = "expired or not yet valid, unsupported key algorithm",
+                    details =
+                        listOf(
+                            DetailField("KeyChain Alias", "firezone-device"),
+                            DetailField(
+                                "Usable as a Client Identity",
+                                "No: expired or not yet valid, unsupported key algorithm",
+                            ),
                         ),
                 ),
             onSelectCertificate = {},
