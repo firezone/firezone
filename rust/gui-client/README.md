@@ -193,6 +193,11 @@ configured: the Tunnel service loads `p11-kit-proxy.so` and searches every token
 the modules registered with p11-kit expose. Register the token's driver with
 p11-kit, as `tpm2-pkcs11`, OpenSC and SoftHSM all do when installed.
 
+The packages recommend p11-kit rather than depend on it, so a Client installed
+without it works and reports on its diagnostics screen that no PKCS#11 module is
+installed. Install `p11-kit-modules` on Debian and Ubuntu, `p11-kit` on Fedora
+and RHEL, to present a certificate from a token.
+
 A token that requires a PIN takes it from `/etc/firezone/pkcs11-pin`, which must
 be owned by root and readable by nobody else. Readers that ask for the PIN on
 their own keypad are not supported: the Tunnel service runs in the background
