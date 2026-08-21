@@ -90,6 +90,24 @@ fn extracts_typed_mdm_device_id_like_the_portal() {
 }
 
 #[test]
+fn percent_decodes_typed_mdm_identifiers() {
+    // The portal runs every typed claim through `URI.decode`, so a client that reported the
+    // escape sequence verbatim would attest a device the portal has never heard of.
+    let der = certificate_with_uri_sans(&[
+        "firezone://intune-id/5F2E7B7A%2D9D54%2D4BD2%2D9D4F%2D8F6C2A01F9D3",
+        "firezone://serial/C02XK1%5AGJGH5",
+    ]);
+
+    let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+
+    assert_eq!(
+        metadata.mdm_device_id.as_deref(),
+        Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
+    );
+    assert_eq!(metadata.device_serial.as_deref(), Some("C02XK1ZGJGH5"));
+}
+
+#[test]
 fn extracts_mdm_device_id_from_intune_comma_joined_uri() {
     let der = certificate_with_uri_sans(&[
         "tag:microsoft.com,2022-09-14:sid:S-1-12-1-1, firezone://serial/C02XK1ZGJGH5, firezone://intune-id/5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3",
