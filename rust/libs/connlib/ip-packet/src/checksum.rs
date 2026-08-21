@@ -18,19 +18,19 @@ pub fn sum(bytes: &[u8], initial: u64) -> u64 {
     // 16-bit halves separately: the high bits just carry down later in [`fold`]. A `u64`
     // accumulator holds the sum of ~8k such words without overflowing, so no intermediate
     // fold is needed for a single packet (at most 65535 bytes).
-    let mut chunks = bytes.chunks_exact(8);
-    for chunk in chunks.by_ref() {
-        let word = u64::from_be_bytes(chunk.try_into().expect("chunk is 8 bytes"));
+    let (chunks, rest) = bytes.as_chunks::<8>();
+    for chunk in chunks {
+        let word = u64::from_be_bytes(*chunk);
         acc += word >> 32;
         acc += word & 0xFFFF_FFFF;
     }
 
-    let mut tail = chunks.remainder().chunks_exact(2);
-    for chunk in tail.by_ref() {
-        acc += u64::from(u16::from_be_bytes([chunk[0], chunk[1]]));
+    let (words, tail) = rest.as_chunks::<2>();
+    for word in words {
+        acc += u64::from(u16::from_be_bytes(*word));
     }
 
-    if let [last] = tail.remainder() {
+    if let [last] = tail {
         acc += u64::from(u16::from_be_bytes([*last, 0]));
     }
 
@@ -129,11 +129,11 @@ mod tests {
         // across every chunk / tail / remainder combination.
         fn naive(bytes: &[u8]) -> u16 {
             let mut acc = 0u64;
-            let mut words = bytes.chunks_exact(2);
-            for word in words.by_ref() {
-                acc += u64::from(u16::from_be_bytes([word[0], word[1]]));
+            let (words, remainder) = bytes.as_chunks::<2>();
+            for word in words {
+                acc += u64::from(u16::from_be_bytes(*word));
             }
-            if let [last] = words.remainder() {
+            if let [last] = remainder {
                 acc += u64::from(u16::from_be_bytes([*last, 0]));
             }
             fold(acc)

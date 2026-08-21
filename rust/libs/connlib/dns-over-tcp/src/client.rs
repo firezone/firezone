@@ -787,7 +787,7 @@ mod tests {
         assert_eq!(query_result.server, server);
         assert_eq!(
             query_result.result.unwrap_err().to_string(),
-            format!("DNS query timed out after 10s"),
+            "DNS query timed out after 10s",
         );
     }
 
