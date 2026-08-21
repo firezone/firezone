@@ -563,7 +563,7 @@ impl<'a> Handler<'a> {
 
                 let token = token.clone();
                 let is_internet_resource_active = *is_internet_resource_active;
-                let result = self.try_connect(token, is_internet_resource_active);
+                let result = self.try_connect(token, is_internet_resource_active).await;
 
                 if let Some(e) = result
                     .as_ref()
@@ -708,7 +708,7 @@ impl<'a> Handler<'a> {
                 // there must not report the previous one's.
                 telemetry::set_account_slug(None);
 
-                let result = self.try_connect(token.clone(), is_internet_resource_active);
+                let result = self.try_connect(token.clone(), is_internet_resource_active).await;
 
                 // Connecting is the only other moment the keystore is read, so it is also the
                 // only one where the diagnostics the GUI holds can have gone stale.
@@ -810,7 +810,9 @@ impl<'a> Handler<'a> {
             .unwrap_or_else(|| self.advanced_settings.api_url.as_str())
     }
 
-    fn try_connect(
+    /// Reads the keystore off the runtime, because it can block on a TPM or a smart card and the
+    /// connlib eventloop shares this runtime's single worker.
+    async fn try_connect(
         &mut self,
         token: SecretString,
         is_internet_resource_active: bool,
@@ -821,8 +823,10 @@ impl<'a> Handler<'a> {
             device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
         let api_url = self.api_url().to_string();
-        let certificate =
-            x509_keystore::certificate().context("Failed to read the platform keystore")?;
+        let certificate = tokio::task::spawn_blocking(x509_keystore::certificate)
+            .await
+            .context("Failed to join the keystore task")?
+            .context("Failed to read the platform keystore")?;
         let url = LoginUrl::client(
             Url::parse(&api_url).context("Failed to parse URL")?,
             device_id.id.clone(),
