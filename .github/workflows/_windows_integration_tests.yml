@@ -1,0 +1,297 @@
+name: Windows Integration Tests
+run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
+on:
+  workflow_call:
+    inputs:
+      id:
+        description: "Unique identifier for this invocation. Used to namespace the artifact holding the pre-pulled images so that concurrent invocations within the same run don't collide."
+        required: true
+        type: string
+      profile:
+        description: "The Rust profile the data plane components were built with. Selects the binary cache entry of the headless Client."
+        required: false
+        type: string
+        default: "debug"
+      portal_image:
+        required: false
+        type: string
+        default: "ghcr.io/firezone/portal"
+      portal_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      elixir_image:
+        required: false
+        type: string
+        default: "ghcr.io/firezone/elixir"
+      elixir_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      relay_image:
+        required: false
+        type: string
+        default: "ghcr.io/firezone/debug/relay"
+      relay_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      gateway_image:
+        required: false
+        type: string
+        default: "ghcr.io/firezone/debug/gateway"
+      gateway_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      http_test_server_image:
+        required: false
+        type: string
+        default: "ghcr.io/firezone/debug/http-test-server"
+      http_test_server_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+
+jobs:
+  collect-images:
+    uses: ./.github/workflows/_collect_images.yml
+    permissions:
+      contents: read
+    with:
+      id: ${{ inputs.id }}
+      # Only the services used by scripts/compose/windows-client-test.yml. The
+      # `*-router` images are not needed because the Windows host and the WSL2
+      # VM already provide two separate network stacks.
+      pull_services: "postgres portal elixir relay-1 gateway download.httpbin"
+      build_services: ""
+      portal_image: ${{ inputs.portal_image }}
+      portal_tag: ${{ inputs.portal_tag }}
+      elixir_image: ${{ inputs.elixir_image }}
+      elixir_tag: ${{ inputs.elixir_tag }}
+      relay_image: ${{ inputs.relay_image }}
+      relay_tag: ${{ inputs.relay_tag }}
+      gateway_image: ${{ inputs.gateway_image }}
+      gateway_tag: ${{ inputs.gateway_tag }}
+      http_test_server_image: ${{ inputs.http_test_server_image }}
+      http_test_server_tag: ${{ inputs.http_test_server_tag }}
+
+  integration-tests:
+    name: ${{ matrix.test.script }}
+    runs-on: windows-2022
+    needs: collect-images
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: ${{ github.event_name == 'merge_group' }}
+      matrix:
+        test:
+          # Runs scripts/tests/windows-<script>.ps1.
+          - script: download
+    env:
+      # Interpolated into `run:` scripts via `${{ env.COMPOSE_ARGS }}` because
+      # `wsl.exe` does not forward Windows environment variables into the
+      # `wsl-bash` steps. The `.env` file is loaded explicitly because the
+      # project directory of this compose file is not the repository root.
+      COMPOSE_ARGS: "--env-file .env -p windows-integration-tests -f scripts/compose/windows-client-test.yml"
+      CLIENT_BINARY: rust/target/x86_64-pc-windows-msvc/${{ inputs.profile }}/firezone-headless-client.exe
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Built and uploaded by the `data-plane` workflow, which this job
+      # depends on.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: firezone-headless-client-x86_64-pc-windows-msvc-${{ inputs.profile }}
+          path: rust/target/x86_64-pc-windows-msvc/${{ inputs.profile }}
+      - uses: ./.github/actions/setup-wsl
+        id: wsl
+      - name: Write the compose env file
+        shell: bash
+        # Compose reads these from the environment, which does not reach the
+        # project inside WSL2: `wsl.exe` does not forward Windows environment
+        # variables into the VM. They are passed as environment rather than
+        # interpolated into the script so that a value cannot end a quote and
+        # run as shell.
+        env:
+          PORTAL_IMAGE: ${{ inputs.portal_image }}
+          PORTAL_TAG: ${{ inputs.portal_tag }}
+          ELIXIR_IMAGE: ${{ inputs.elixir_image }}
+          ELIXIR_TAG: ${{ inputs.elixir_tag }}
+          RELAY_IMAGE: ${{ inputs.relay_image }}
+          RELAY_TAG: ${{ inputs.relay_tag }}
+          GATEWAY_IMAGE: ${{ inputs.gateway_image }}
+          GATEWAY_TAG: ${{ inputs.gateway_tag }}
+          HTTP_TEST_SERVER_IMAGE: ${{ inputs.http_test_server_image }}
+          HTTP_TEST_SERVER_TAG: ${{ inputs.http_test_server_tag }}
+          RELAY_PUBLIC_IP4_ADDR: ${{ steps.wsl.outputs.ip }}
+        run: |
+          for var in PORTAL_IMAGE PORTAL_TAG ELIXIR_IMAGE ELIXIR_TAG \
+            RELAY_IMAGE RELAY_TAG GATEWAY_IMAGE GATEWAY_TAG \
+            HTTP_TEST_SERVER_IMAGE HTTP_TEST_SERVER_TAG RELAY_PUBLIC_IP4_ADDR; do
+            printf '%s=%s\n' "$var" "${!var}"
+          done > .env
+      - name: Route the Client to the gateway's network
+        run: |
+          # The gateway offers its container address as ICE candidate. Without
+          # a route it is unreachable from the Windows host, leaving only
+          # paths that depend on the docker NAT keeping a conntrack entry
+          # alive, which breaks as soon as a flow idles.
+          route add 192.168.223.0 mask 255.255.255.0 ${{ steps.wsl.outputs.ip }} | Out-Null
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: images-${{ inputs.id }}
+      - name: Load images into the WSL2 Docker daemon
+        shell: wsl-bash {0}
+        run: zstd -dc --long=30 images.tar.zst | docker load
+      - name: Seed the database
+        shell: wsl-bash {0}
+        run: docker compose ${{ env.COMPOSE_ARGS }} run --rm --pull never elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
+      - name: Start the Linux half of the topology
+        shell: wsl-bash {0}
+        run: docker compose ${{ env.COMPOSE_ARGS }} up -d --wait --pull never portal relay gateway httpbin
+      - name: Let the gateway's network talk to the Client
+        shell: wsl-bash {0}
+        run: |
+          set -xe
+
+          # Docker only forwards traffic from outside the VM to a container
+          # for published ports; DOCKER-USER is the supported hook to widen
+          # that. Masquerading towards the Client on top of it would hide the
+          # gateway behind the VM's address again and defeat the route added
+          # on the Windows side, so skip it for that destination. Docker
+          # prepends its own masquerade rule whenever it creates a network,
+          # hence this runs once the topology is up.
+          iptables -I DOCKER-USER -d 192.168.223.0/24 -j ACCEPT
+          iptables -I DOCKER-USER -s 192.168.223.0/24 -j ACCEPT
+          iptables -t nat -I POSTROUTING -s 192.168.223.0/24 -d ${{ steps.wsl.outputs.host-ip }} -j ACCEPT
+      - name: Verify the portal is reachable from the host
+        run: |
+          # The Client can only work if the WSL2 VM accepts traffic from the
+          # host, so fail here rather than midway through the test.
+          $ip = "${{ steps.wsl.outputs.ip }}"
+          $probe = Test-NetConnection $ip -Port 8081 -WarningAction SilentlyContinue
+          if (-not $probe.TcpTestSucceeded) {
+            throw "The portal (${ip}:8081) is not reachable from the host"
+          }
+      - name: Allow the Client through the Windows firewall
+        run: |
+          $binary = (Resolve-Path $env:CLIENT_BINARY).Path
+          New-NetFirewallRule -DisplayName "firezone-headless-client" -Direction Inbound -Program $binary -Action Allow | Out-Null
+      - name: "Integration test: ${{ matrix.test.script }}"
+        env:
+          # Same seeded token and ID as client-1 in docker-compose.yml.
+          FIREZONE_TOKEN: "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAR_ywiZQBYgABUYA.PLNlzyqMSgZlbQb1QX5EzZgYNuY9oeOddP0qDkTwtGg"
+          FIREZONE_ID: d24e46a4f96d4859bd8f7ff40100493b06b28ebfae3f8dcb0503bbe3131bfbcd
+          FIREZONE_API_URL: ws://${{ steps.wsl.outputs.ip }}:8081
+          # The test reaches the CIDR resource by IP; NRPT would intercept the
+          # runner's own DNS and can cut it off from GitHub.
+          FIREZONE_DNS_CONTROL: disabled
+          RUST_LOG: debug
+        # The Client runs for the duration of this step: the runner kills the
+        # processes a step spawned once it ends, so it cannot be started in a
+        # step of its own.
+        run: |
+          New-Item -ItemType Directory -Path windows-client-logs -Force | Out-Null
+
+          # TEMPORARY: samples the host's view of the WSL2 VM alongside the
+          # Client, to tell apart the VM becoming unreachable from the Client
+          # mis-routing its own traffic once the tunnel is up.
+          $probe = Start-Job -ArgumentList "${{ steps.wsl.outputs.ip }}" -ScriptBlock {
+            param($ip)
+
+            while ($true) {
+              $tcp = $false
+              try {
+                $client = [System.Net.Sockets.TcpClient]::new()
+                $tcp = $client.ConnectAsync($ip, 8081).Wait(1000)
+              }
+              catch { }
+              finally { $client.Dispose() }
+
+              $adapter = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+                Where-Object InterfaceAlias -like "*WSL*" |
+                ForEach-Object { "$($_.InterfaceAlias)=$($_.IPAddress)/$($_.PrefixLength)" }) -join " "
+              $route = (Get-NetRoute -DestinationPrefix "$ip/32" -ErrorAction SilentlyContinue |
+                ForEach-Object { "if$($_.InterfaceIndex)->$($_.NextHop)" }) -join " "
+              $ping = Test-Connection $ip -Count 1 -Quiet -ErrorAction SilentlyContinue
+
+              "$((Get-Date).ToString('HH:mm:ss.fff')) tcp8081=$tcp icmp=$ping route=[$route] adapter=[$adapter]"
+
+              Start-Sleep -Milliseconds 500
+            }
+          }
+
+          $client = Start-Process -FilePath (Resolve-Path $env:CLIENT_BINARY).Path -NoNewWindow -PassThru `
+            -RedirectStandardOutput windows-client-logs\client-stdout.log `
+            -RedirectStandardError windows-client-logs\client-stderr.log
+
+          try {
+            # Wait for the Client to route the seeded CIDR resource into the
+            # tunnel, i.e. until it has applied the configuration the portal
+            # sent it. The Linux Client's healthcheck waits for the tunnel
+            # interface, but on Windows the interface exists before its
+            # routes do. Connecting to the gateway happens on demand, i.e.
+            # when the test sends its first packet towards the resource.
+            $deadline = (Get-Date).AddSeconds(60)
+            while (-not (Get-NetRoute -DestinationPrefix "10.20.0.0/16" -ErrorAction SilentlyContinue)) {
+              if ((Get-Date) -ge $deadline) {
+                throw "Client did not route the resource into the tunnel within 60 seconds"
+              }
+              if ($client.HasExited) {
+                throw "Client exited prematurely with code $($client.ExitCode)"
+              }
+
+              Start-Sleep -Seconds 1
+            }
+
+            Start-Sleep -Seconds 3 # Let everything settle for a bit
+
+            ./scripts/tests/windows-${{ matrix.test.script }}.ps1
+          }
+          finally {
+            if (-not $client.HasExited) {
+              Stop-Process -Id $client.Id -Force
+              $client.WaitForExit()
+            }
+
+            Write-Host "::group::Host view of the WSL2 VM"
+            Stop-Job $probe -ErrorAction SilentlyContinue
+            Receive-Job $probe -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+            Remove-Job $probe -Force -ErrorAction SilentlyContinue
+            Write-Host "::endgroup::"
+
+            # TEMPORARY: tells apart the distribution having been restarted
+            # from the Docker daemon alone having been restarted.
+            Write-Host "::group::WSL2 VM state"
+            wsl -u root -- bash -c 'uptime; ps -o pid,etimes,comm -p 1; ps -o pid,etimes,args -C dockerd; docker ps -a --format "{{.Names}} {{.Status}}"; journalctl --no-pager -n 40 -u docker.service; dmesg | tail -n 20; true'
+            Write-Host "::endgroup::"
+          }
+      - name: Ensure the Client emitted no errors
+        if: "!cancelled()"
+        run: |
+          # Nothing to assert if the job failed before the Client ever ran;
+          # erroring out here would only bury the actual failure.
+          if (-not (Test-Path windows-client-logs)) {
+            return
+          }
+
+          $logErrors = Select-String -Path windows-client-logs\*.log -Pattern " ERROR " -ErrorAction SilentlyContinue
+          if ($logErrors) {
+            $logErrors | ForEach-Object { Write-Host $_.Line }
+            throw "Client emitted ERROR logs"
+          }
+      - name: Show Client logs
+        if: "!cancelled()"
+        run: Get-Content windows-client-logs\*.log -ErrorAction SilentlyContinue
+      - uses: ./.github/actions/show-compose-logs
+        if: "!cancelled()"
+        with:
+          compose-args: ${{ env.COMPOSE_ARGS }}
+          services: relay gateway portal postgres
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: "!success()"
+        with:
+          overwrite: true
+          name: windows-client-logs-${{ matrix.test.script }}
+          path: windows-client-logs/
