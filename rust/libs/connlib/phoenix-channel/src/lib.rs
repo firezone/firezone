@@ -205,11 +205,8 @@ pub enum Error {
     #[error("X.509 client certificate signing failed: {0}")]
     ClientCertificateSigningFailed(String),
     /// The portal refused the X.509 client certificate we presented.
-    ///
-    /// `code` is the portal's machine-readable reason, kept so the clients can tell a revoked
-    /// certificate from an untrusted one without matching on prose.
-    #[error("The portal rejected the client certificate: {detail}")]
-    CertificateRejected { code: String, detail: String },
+    #[error("The portal rejected the client certificate: {0}")]
+    CertificateRejected(String),
     #[error(
         "Got disconnected from portal and hit the max-retry limit. Last connection error: {final_error}"
     )]
@@ -232,7 +229,24 @@ impl Error {
             Error::AuthenticationFailed(_) => false,
             Error::ClientCertificateSigningFailed(_) => false,
             // The certificate is the credential the portal refused, so a new token cannot help.
-            Error::CertificateRejected { .. } => false,
+            Error::CertificateRejected(_) => false,
+            Error::MaxRetriesReached { .. } => false,
+            Error::LoginFailed(_) => false,
+            Error::FatalIo(_) => false,
+        }
+    }
+
+    /// Returns whether the X.509 client certificate is what failed.
+    ///
+    /// Lets a client word its error and choose what to offer from what actually went wrong,
+    /// rather than from how it happened to authenticate: a session that presented a certificate
+    /// can still fail for reasons that have nothing to do with it.
+    pub fn is_certificate_error(&self) -> bool {
+        match self {
+            Error::CertificateRejected(_) => true,
+            Error::ClientCertificateSigningFailed(_) => true,
+            Error::InvalidToken => false,
+            Error::AuthenticationFailed(_) => false,
             Error::MaxRetriesReached { .. } => false,
             Error::LoginFailed(_) => false,
             Error::FatalIo(_) => false,
@@ -254,12 +268,11 @@ impl Error {
             return None;
         }
 
-        Some(Error::CertificateRejected {
-            code,
-            detail: problem
+        Some(Error::CertificateRejected(
+            problem
                 .detail
                 .unwrap_or_else(|| "no reason provided".to_owned()),
-        })
+        ))
     }
 
     /// Classifies a rejected connection attempt by the reason the portal reported.
@@ -1279,13 +1292,13 @@ mod tests {
         let error = Error::from_certificate_rejection(&response)
             .expect("a certificate code should be recognised");
 
-        let Error::CertificateRejected { code, detail } = &error else {
+        let Error::CertificateRejected(detail) = &error else {
             panic!("expected `CertificateRejected`, got {error:?}");
         };
-        assert_eq!(code, "certificate_revoked");
         assert_eq!(detail, "This device's certificate has been revoked.");
         // A new token cannot replace the credential the portal refused.
         assert!(!error.requires_sign_in());
+        assert!(error.is_certificate_error());
     }
 
     #[test]
