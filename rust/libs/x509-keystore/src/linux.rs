@@ -88,11 +88,27 @@ pub(crate) fn identity(config: &Config, subject_cn: &str) -> Result<Option<Ident
     // so the chain is assembled from every certificate on the token.
     let issuers = certificate_objects(&session, &uri, IncludeIssuers::Yes)?;
 
+    let unusable = certificates
+        .iter()
+        .filter(|certificate| !certificate.usable)
+        .map(unusable_reason)
+        .collect::<Vec<_>>();
+
     let Some(certificate) = certificates
         .into_iter()
         .filter(|certificate| certificate.usable)
         .max_by_key(|certificate| certificate.metadata.not_before_timestamp)
     else {
+        // A token that holds nothing for us is the ordinary no-certificate case. Skipping one that
+        // was provisioned for Firezone reads to an administrator as if none had been, so say which
+        // rule it failed instead of connecting without it.
+        if !unusable.is_empty() {
+            bail!(
+                "The PKCS#11 token holds no usable Firezone client identity: {}",
+                unusable.join("; ")
+            );
+        }
+
         return Ok(None);
     };
 
@@ -436,6 +452,27 @@ struct Certificate {
     metadata: ParsedCertificate,
     key_available: bool,
     usable: bool,
+}
+
+/// Says why a certificate that matched the subject common name cannot be used.
+fn unusable_reason(certificate: &Certificate) -> String {
+    let metadata = &certificate.metadata;
+
+    let reason = if !metadata.has_client_auth_eku {
+        "it has no TLS client authentication extended key usage"
+    } else if !metadata.digital_signature_allowed {
+        "its key usage does not allow digital signatures"
+    } else if !metadata.is_currently_valid {
+        "it is expired or not yet valid"
+    } else if metadata.signing_algorithm.is_none() {
+        "it holds a key algorithm we cannot sign with"
+    } else if !certificate.key_available {
+        "the token holds no private key for it"
+    } else {
+        "it does not match the requested common name"
+    };
+
+    format!("{} is unusable because {reason}", metadata.fingerprint)
 }
 
 impl Certificate {
