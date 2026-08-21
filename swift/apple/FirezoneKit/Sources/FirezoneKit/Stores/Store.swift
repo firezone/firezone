@@ -290,23 +290,51 @@ public final class Store: ObservableObject {
       if vpnStatus == .disconnected {
         do {
           try manager().session()?.fetchLastDisconnectError { error in
-            if let nsError = error as NSError?,
-              nsError.domain == ConnlibError.errorDomain,
+            guard let error else { return }
+
+            // Logged before it is classified: every early return in the provider's
+            // `startTunnel` reports a `PacketTunnelProviderError`, which carries
+            // neither a reason nor an id and would otherwise be dropped silently.
+            Log.error(error)
+
+            let nsError = error as NSError
+
+            guard nsError.domain == ConnlibError.errorDomain,
               let code = ConnlibError.Code(rawValue: nsError.code),
               let reason = nsError.userInfo["reason"] as? String,
               let id = nsError.userInfo["id"] as? String
-            {
-              // Only show the alert if we haven't shown this specific error before
+            else {
+              // Deduplicated on the error itself, since only connlib mints an id.
+              let id = "\(nsError.domain):\(nsError.code)"
+              let message = error.localizedDescription
+
               Task { @MainActor in
                 guard !self.shownAlertIds.contains(id) else { return }
-                switch code {
-                case .sessionExpired:
-                  await self.sessionNotification.showSignedOutAlertMacOS(reason)
-                case .disconnected:
-                  await self.sessionNotification.showDisconnectedAlertMacOS(reason)
-                }
+                await self.sessionNotification.showDisconnectedAlertMacOS(
+                  message,
+                  isCertificateError: false
+                )
                 self.markAlertAsShown(id)
               }
+
+              return
+            }
+
+            let isCertificateError = Store.isCertificateError(of: nsError)
+
+            // Only show the alert if we haven't shown this specific error before
+            Task { @MainActor in
+              guard !self.shownAlertIds.contains(id) else { return }
+              switch code {
+              case .sessionExpired:
+                await self.sessionNotification.showSignedOutAlertMacOS(reason)
+              case .disconnected:
+                await self.sessionNotification.showDisconnectedAlertMacOS(
+                  reason,
+                  isCertificateError: isCertificateError
+                )
+              }
+              self.markAlertAsShown(id)
             }
           }
         } catch {
@@ -463,6 +491,11 @@ public final class Store: ObservableObject {
 
     try await setupTunnelObservers()
     SharedAccess.markAppRunning()
+  }
+
+  /// Whether the client certificate is what failed, defaulting to `false` for older payloads.
+  nonisolated private static func isCertificateError(of error: NSError) -> Bool {
+    error.userInfo[ConnlibError.isCertificateErrorKey] as? Bool ?? false
   }
 
   func manager() throws -> VPNConfigurationManager {

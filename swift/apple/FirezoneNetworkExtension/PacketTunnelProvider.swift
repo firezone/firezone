@@ -73,14 +73,24 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let passedToken = options?["token"] as? String
 
     // Load token synchronously - Keychain access is thread-safe
-    guard let token = loadToken(passedToken: passedToken)
+    let token = loadToken(passedToken: passedToken)
+
+    // MDM installs the mutual-TLS identity on the VPN profile itself. When one is
+    // present it authenticates the session, so a token is no longer required.
+    let identityReference =
+      (protocolConfiguration as? NETunnelProviderProtocol)?.identityReference
+    Log.info(
+      "VPN client certificate "
+        + (identityReference.map { "is configured (\($0.count) bytes)" } ?? "is not configured"))
+
+    guard token != nil || identityReference != nil
     else {
       completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
       return
     }
 
     // Try to save the token back to the Keychain but continue if we can't
-    handleTokenSave(token)
+    if let token { handleTokenSave(token) }
 
     // The firezone id should be initialized by now
     guard let rawId = defaults.string(forKey: "firezoneId")
@@ -126,6 +136,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       logFilter: logFilter,
       accountSlug: accountSlug,
       internetResourceEnabled: internetResourceEnabled,
+      identityReference: identityReference,
       providerCommandSender: commandSender
     )
 
@@ -190,7 +201,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   override func stopTunnel(
     with reason: NEProviderStopReason, completionHandler: @escaping @Sendable () -> Void
   ) {
-    Log.log("stopTunnel: Reason: \(reason)")
+    Log.log("stopTunnel: Reason: \(Self.describe(reason))")
 
     logCleanupTask = nil
 
@@ -203,6 +214,37 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       await adapter?.stop()
       completionHandler()
     }
+  }
+
+  /// Names a stop reason, which otherwise logs as `NEProviderStopReason(rawValue: 1)`.
+  ///
+  /// `userInitiated` is the one worth recognising on sight: it means something asked the
+  /// session to stop rather than the tunnel failing, so the cause is in the app, not here.
+  private static func describe(_ reason: NEProviderStopReason) -> String {
+    let name =
+      switch reason {
+      case .none: "none"
+      case .userInitiated: "userInitiated"
+      case .providerFailed: "providerFailed"
+      case .noNetworkAvailable: "noNetworkAvailable"
+      case .unrecoverableNetworkChange: "unrecoverableNetworkChange"
+      case .providerDisabled: "providerDisabled"
+      case .authenticationCanceled: "authenticationCanceled"
+      case .configurationFailed: "configurationFailed"
+      case .idleTimeout: "idleTimeout"
+      case .configurationDisabled: "configurationDisabled"
+      case .configurationRemoved: "configurationRemoved"
+      case .superceded: "superceded"
+      case .userLogout: "userLogout"
+      case .userSwitch: "userSwitch"
+      case .connectionFailed: "connectionFailed"
+      case .sleep: "sleep"
+      case .appUpdate: "appUpdate"
+      case .internalError: "internalError"
+      @unknown default: "unknown"
+      }
+
+    return "\(name) (\(reason.rawValue))"
   }
 
   // It would be helpful to be able to encapsulate Errors here. To do that
@@ -444,7 +486,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       let error: Error =
         sendableError.requiresSignIn
         ? FirezoneKit.ConnlibError.sessionExpired(sendableError.message)
-        : FirezoneKit.ConnlibError.disconnected(sendableError.message)
+        : FirezoneKit.ConnlibError.disconnected(
+          sendableError.message,
+          isCertificateError: sendableError.isCertificateError
+        )
       cancelTunnelWithError(error)
 
     case .setReasserting(let value):
