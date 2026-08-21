@@ -27,7 +27,9 @@ import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.settings.ui.X509SettingsViewModel
+import uniffi.x509claims.ClaimValue
 import uniffi.x509claims.DetailField
+import uniffi.x509claims.RejectionReason
 
 /**
  * Shows which client certificate this device signs in with and what it contains.
@@ -165,13 +167,49 @@ private fun DetailField(field: DetailField) {
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(
-            text = field.value,
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-        )
+
+        when (val value = field.value) {
+            is ClaimValue.Present -> {
+                Text(
+                    text = value.value,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+
+            ClaimValue.Absent -> {
+                Text(
+                    text = stringResource(R.string.x509_claim_absent),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            is ClaimValue.Invalid -> {
+                Text(
+                    text = stringResource(R.string.x509_claim_invalid, value.reason.phrase()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
     }
 }
+
+/** The wording for a rejection, which the parser leaves to each client. */
+@Composable
+private fun RejectionReason.phrase(): String =
+    stringResource(
+        when (this) {
+            RejectionReason.EMPTY -> R.string.x509_claim_empty
+            RejectionReason.TOO_LONG -> R.string.x509_claim_too_long
+            RejectionReason.NOT_AN_EMAIL_ADDRESS -> R.string.x509_claim_not_an_email_address
+            RejectionReason.NOT_A_UUID -> R.string.x509_claim_not_a_uuid
+            RejectionReason.AMBIGUOUS -> R.string.x509_claim_ambiguous
+            RejectionReason.PLACEHOLDER_IDENTIFIER -> R.string.x509_claim_placeholder_identifier
+            RejectionReason.UNKNOWN_ATTRIBUTE -> R.string.x509_claim_unknown_attribute
+        },
+    )
 
 @Preview
 @Composable
@@ -185,8 +223,9 @@ private fun X509SettingsScreenPreview() {
                     isUsable = true,
                     details =
                         listOf(
-                            DetailField("KeyChain Alias", "firezone-device"),
-                            DetailField("Subject", "CN=alice@example.com"),
+                            DetailField("KeyChain Alias", ClaimValue.Present("firezone-device")),
+                            DetailField("Subject", ClaimValue.Present("CN=alice@example.com")),
+                            DetailField("Account ID", ClaimValue.Absent),
                         ),
                 ),
             onSelectCertificate = {},
@@ -208,11 +247,12 @@ private fun X509SettingsScreenUnusablePreview() {
                     unusableSummary = "expired or not yet valid, unsupported key algorithm",
                     details =
                         listOf(
-                            DetailField("KeyChain Alias", "firezone-device"),
                             DetailField(
                                 "Usable as a Client Identity",
-                                "No: expired or not yet valid, unsupported key algorithm",
+                                ClaimValue.Present("No: expired or not yet valid, unsupported key algorithm"),
                             ),
+                            DetailField("Actor Email", ClaimValue.Invalid(RejectionReason.NOT_AN_EMAIL_ADDRESS)),
+                            DetailField("Account ID", ClaimValue.Absent),
                         ),
                 ),
             onSelectCertificate = {},
