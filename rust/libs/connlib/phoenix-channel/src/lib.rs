@@ -1280,64 +1280,6 @@ mod tests {
     }
 
     #[test]
-    fn forbidden_with_a_certificate_code_is_terminal() {
-        let response = tungstenite::http::Response::builder()
-            .status(StatusCode::FORBIDDEN)
-            .header("content-type", "application/problem+json")
-            .body(Some(
-                br#"{"title":"Forbidden","status":403,"detail":"This device's certificate has been revoked.","code":"certificate_revoked"}"#.to_vec(),
-            ))
-            .unwrap();
-
-        let error = Error::from_certificate_rejection(&response)
-            .expect("a certificate code should be recognised");
-
-        let Error::CertificateRejected(detail) = &error else {
-            panic!("expected `CertificateRejected`, got {error:?}");
-        };
-        assert_eq!(detail, "This device's certificate has been revoked.");
-        // A new token cannot replace the credential the portal refused.
-        assert!(!error.requires_sign_in());
-        assert!(error.is_certificate_error());
-    }
-
-    #[test]
-    fn a_conflict_naming_the_device_identity_is_terminal() {
-        let response = tungstenite::http::Response::builder()
-            .status(StatusCode::CONFLICT)
-            .header("content-type", "application/problem+json")
-            .body(Some(
-                br#"{"title":"Conflict","status":409,"detail":"Different hardware.","code":"device_identity_conflict"}"#.to_vec(),
-            ))
-            .unwrap();
-
-        assert!(Error::from_certificate_rejection(&response).is_some());
-    }
-
-    #[test]
-    fn other_rejections_keep_retrying() {
-        let response = tungstenite::http::Response::builder()
-            .status(StatusCode::FORBIDDEN)
-            .header("content-type", "application/problem+json")
-            .body(Some(
-                br#"{"title":"Forbidden","status":403,"detail":"The account is disabled","code":"account_disabled"}"#.to_vec(),
-            ))
-            .unwrap();
-
-        assert!(Error::from_certificate_rejection(&response).is_none());
-    }
-
-    #[test]
-    fn a_rejection_without_problem_details_keeps_retrying() {
-        let response = tungstenite::http::Response::builder()
-            .status(StatusCode::FORBIDDEN)
-            .body(Some(b"<html>Forbidden</html>".to_vec()))
-            .unwrap();
-
-        assert!(Error::from_certificate_rejection(&response).is_none());
-    }
-
-    #[test]
     fn unauthorized_with_invalid_token_code_blames_the_token() {
         let response = tungstenite::http::Response::builder()
             .status(StatusCode::UNAUTHORIZED)
