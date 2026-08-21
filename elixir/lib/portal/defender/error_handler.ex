@@ -44,17 +44,24 @@ defmodule Portal.Defender.ErrorHandler do
 
   defp format(%Req.TransportError{} = error), do: SharedErrorHandler.format_transport_error(error)
 
-  # The token endpoint reports a bad secret with the OAuth error shape, so
-  # error_description is what separates that from a grant the admin revoked.
-  defp format(%Req.Response{status: status, body: body}) when status in [401, 403] do
-    case error_description(body) do
-      nil ->
-        "Access denied. Please verify the Firezone app registration still has admin consent " <>
-          "for Machine.Read.All in Microsoft Entra."
+  # The token endpoint reports a bad secret with the OAuth error shape.
+  defp format(%Req.Response{status: status, body: %{"error_description" => description}})
+       when status in [401, 403] and is_binary(description) do
+    "Authentication failed: #{truncate(description)}"
+  end
 
-      description ->
-        "Authentication failed: #{truncate(description)}"
-    end
+  # Defender's own envelope carries something usable, such as "Account mode is
+  # inactive" for a tenant that never onboarded to Defender for Endpoint.
+  # Falling straight through to the consent advice below would send an admin off
+  # to fix a grant that was never the problem.
+  defp format(%Req.Response{status: status, body: %{"error" => %{"message" => message}}})
+       when status in [401, 403] and is_binary(message) do
+    "Access denied: #{truncate(message)}"
+  end
+
+  defp format(%Req.Response{status: status}) when status in [401, 403] do
+    "Access denied. Please verify the Firezone app registration still has admin consent " <>
+      "for Machine.Read.All in Microsoft Entra."
   end
 
   # An onboarded tenant with no machines still answers 200 with an empty list,
@@ -86,11 +93,6 @@ defmodule Portal.Defender.ErrorHandler do
     do: "Microsoft Defender for Endpoint returned a device without an ID."
 
   defp format(error), do: format_generic(error)
-
-  defp error_description(%{"error_description" => description}) when is_binary(description),
-    do: description
-
-  defp error_description(_), do: nil
 
   defp truncate(message) when byte_size(message) > 500 do
     String.slice(message, 0, 500) <> "..."

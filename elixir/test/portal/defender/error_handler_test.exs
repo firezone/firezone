@@ -31,6 +31,27 @@ defmodule Portal.Defender.ErrorHandlerTest do
     assert reload(provider).error_message =~ "AADSTS7000215"
   end
 
+  # The real body a tenant with no Defender for Endpoint onboarding answers with.
+  test "repeats Defender's own reason instead of blaming admin consent" do
+    provider = defender_posture_provider_fixture()
+
+    response = %Req.Response{
+      status: 403,
+      body: %{
+        "error" => %{
+          "code" => "Unauthorized",
+          "message" => "Unauthorized request - reason of failure: Account mode is inactive"
+        }
+      }
+    }
+
+    ErrorHandler.handle(sync_error(response), provider.id)
+
+    message = reload(provider).error_message
+    assert message =~ "Account mode is inactive"
+    refute message =~ "admin consent"
+  end
+
   test "explains a tenant that never set Defender for Endpoint up" do
     provider = defender_posture_provider_fixture()
 
