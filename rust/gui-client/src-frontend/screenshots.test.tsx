@@ -1,29 +1,36 @@
+import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 // Teaches `cdp()` the Playwright session shape; the provider augments `vitest/browser`.
 import type {} from "@vitest/browser-playwright";
-import { cdp, page } from "vitest/browser";
 import React, { act } from "react";
 import { createRoot, Root } from "react-dom/client";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, test } from "vitest";
+import { cdp, page } from "vitest/browser";
+import App from "./components/App";
 import {
   AdvancedSettingsViewModel,
+  events,
+  FileCount,
   GeneralSettingsViewModel,
   SessionViewModel,
 } from "./generated/bindings";
-import AboutPage from "./components/AboutPage";
-import AdvancedSettingsPage from "./components/AdvancedSettingsPage";
-import DiagnosticsPage from "./components/DiagnosticsPage";
-import GeneralSettingsPage from "./components/GeneralSettingsPage";
-import OverviewPage from "./components/OverviewPage";
 import "./main.css";
 
-// The window is 900x500 (see `tauri.conf.json`) and the shell spends 224px of that
-// on the sidebar and 40px on the title bar, which the harness below leaves out.
-const CONTENT_WIDTH = 676;
-const CONTENT_HEIGHT = 460;
+// The window the client actually opens, from `tauri.conf.json`.
+const WINDOW_WIDTH = 900;
+const WINDOW_HEIGHT = 500;
 
 const COLOR_SCHEMES = ["light", "dark"] as const;
 
-const noop = () => {};
+// The state the Tunnel service would have pushed by the time the window is shown. A screen
+// leaves a field out to render what the user sees before that event arrives.
+interface Screen {
+  route: string;
+  session?: SessionViewModel;
+  generalSettings?: GeneralSettingsViewModel;
+  advancedSettings?: AdvancedSettingsViewModel;
+  logCount?: FileCount;
+}
 
 const generalSettings: GeneralSettingsViewModel = {
   start_minimized: true,
@@ -43,70 +50,43 @@ const advancedSettings: AdvancedSettingsViewModel = {
   log_filter_is_managed: false,
 };
 
-const signedIn: SessionViewModel = {
-  SignedIn: { account_slug: "acme-corp", actor_name: "Jane Doe" },
-};
-
 // Every screen the client can show, in the states worth eyeballing. Add an entry here
 // to have it rendered; nothing else needs to change.
-const screens: Record<string, React.ReactElement> = {
-  "overview-signed-out": (
-    <OverviewPage session="SignedOut" signIn={noop} signOut={noop} />
-  ),
-  "overview-loading": (
-    <OverviewPage session="Loading" signIn={noop} signOut={noop} />
-  ),
-  "overview-signed-in": (
-    <OverviewPage session={signedIn} signIn={noop} signOut={noop} />
-  ),
-  "general-settings": (
-    <GeneralSettingsPage
-      resetSettings={noop}
-      saveSettings={noop}
-      settings={generalSettings}
-    />
-  ),
-  "general-settings-managed": (
-    <GeneralSettingsPage
-      resetSettings={noop}
-      saveSettings={noop}
-      settings={{
-        ...generalSettings,
-        account_slug_is_managed: true,
-        connect_on_start_is_managed: true,
-      }}
-    />
-  ),
-  "advanced-settings": (
-    <AdvancedSettingsPage
-      resetSettings={noop}
-      saveSettings={noop}
-      settings={advancedSettings}
-    />
-  ),
-  "advanced-settings-managed": (
-    <AdvancedSettingsPage
-      resetSettings={noop}
-      saveSettings={noop}
-      settings={{
-        ...advancedSettings,
-        api_url_is_managed: true,
-        auth_url_is_managed: true,
-        log_filter_is_managed: true,
-      }}
-    />
-  ),
-  "diagnostics-no-logs": (
-    <DiagnosticsPage clearLogs={noop} exportLogs={noop} logCount={null} />
-  ),
-  diagnostics: (
-    <DiagnosticsPage
-      clearLogs={noop}
-      exportLogs={noop}
-      logCount={{ bytes: 3_400_000, files: 12 }}
-    />
-  ),
-  about: <AboutPage />,
+const screens: Record<string, Screen> = {
+  "overview-signed-out": { route: "/overview", session: "SignedOut" },
+  "overview-loading": { route: "/overview", session: "Loading" },
+  "overview-signed-in": {
+    route: "/overview",
+    session: {
+      SignedIn: { account_slug: "acme-corp", actor_name: "Jane Doe" },
+    },
+  },
+  "general-settings": { route: "/general-settings", generalSettings },
+  "general-settings-managed": {
+    route: "/general-settings",
+    generalSettings: {
+      ...generalSettings,
+      account_slug_is_managed: true,
+      connect_on_start_is_managed: true,
+    },
+  },
+  "advanced-settings": { route: "/advanced-settings", advancedSettings },
+  "advanced-settings-managed": {
+    route: "/advanced-settings",
+    advancedSettings: {
+      ...advancedSettings,
+      api_url_is_managed: true,
+      auth_url_is_managed: true,
+      log_filter_is_managed: true,
+    },
+  },
+  "diagnostics-no-logs": { route: "/diagnostics" },
+  diagnostics: {
+    route: "/diagnostics",
+    logCount: { bytes: 3_400_000, files: 12 },
+  },
+  about: { route: "/about" },
+  "colour-palette": { route: "/colour-palette" },
 };
 
 // `act` refuses to run unless the environment opts in.
@@ -116,26 +96,44 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(async () => {
-  await page.viewport(CONTENT_WIDTH, CONTENT_HEIGHT);
+  await page.viewport(WINDOW_WIDTH, WINDOW_HEIGHT);
+
+  // The app talks to the Tunnel service over Tauri's IPC, which a browser does not have.
+  // Every command is answered with `undefined`; the screens are driven by events instead.
+  mockIPC(() => {}, { shouldMockEvents: true });
+  mockWindows("main");
 
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
 });
 
-afterEach(() => {
-  act(() => root.unmount());
+afterEach(async () => {
+  // The unmount detaches the event listeners asynchronously, so the mocks have to outlive it.
+  await act(async () => {
+    root.unmount();
+  });
   container.remove();
+  clearMocks();
 });
 
 for (const [name, screen] of Object.entries(screens)) {
   test(name, async () => {
     await act(async () => {
       root.render(
-        <div className="app-shell">
-          <main className="min-w-0 flex-1 overflow-auto bg-page">{screen}</main>
-        </div>
+        <MemoryRouter initialEntries={[screen.route]}>
+          <App />
+        </MemoryRouter>
       );
+    });
+
+    await act(async () => {
+      if (screen.session) await events.sessionChanged.emit(screen.session);
+      if (screen.generalSettings)
+        await events.generalSettingsChanged.emit(screen.generalSettings);
+      if (screen.advancedSettings)
+        await events.advancedSettingsChanged.emit(screen.advancedSettings);
+      if (screen.logCount) await events.logsRecounted.emit(screen.logCount);
     });
 
     for (const colorScheme of COLOR_SCHEMES) {
