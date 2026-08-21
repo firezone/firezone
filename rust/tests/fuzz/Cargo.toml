@@ -65,6 +65,7 @@ stun_codec = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tunnel-proto = { workspace = true, features = ["malicious-behaviour"] }
+uuid = { workspace = true }
 x509-claims = { workspace = true }
 
 [lints]
