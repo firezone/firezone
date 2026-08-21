@@ -106,6 +106,7 @@ class TunnelService : VpnService() {
 
     var startedByUser: Boolean = false
     private var commandChannel: Channel<TunnelCommand>? = null
+
     // A `SupervisorJob` keeps one failed child from cancelling its siblings, but an exception it
     // does not handle still reaches the thread's default handler and takes the process with it.
     // Reporting the failure and leaving the service to reset its own state is always better than
