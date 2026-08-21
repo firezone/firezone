@@ -471,7 +471,7 @@ fn find_token(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Option
             matches,
         } = candidate;
 
-        unlock(&session, pin_file)?;
+        unlock(&session, &info, pin_file)?;
 
         let certificates = matches
             .into_iter()
@@ -539,17 +539,92 @@ fn search_slot(pkcs11: &Pkcs11, slot: Slot, subject_cn: &str) -> Result<Option<C
     }))
 }
 
-/// Unlocks the token with the PIN Firezone keeps on disk, when there is one.
-fn unlock(session: &Session, pin_file: &Path) -> Result<()> {
-    if !pin_file.exists() {
-        return Ok(());
+/// Unlocks the token, if it asks to be, with the PIN Firezone keeps on disk.
+fn unlock(session: &Session, info: &TokenInfo, pin_file: &Path) -> Result<()> {
+    let flags = LoginFlags::from(info);
+
+    match login_requirement(flags)? {
+        Login::NotRequired => {
+            tracing::debug!("The PKCS#11 token hands out its keys without a login");
+        }
+        Login::Pin => {
+            let pin = read_pin(pin_file)?;
+
+            log_in(session, &pin).with_context(|| rejected_pin_reason(flags))?;
+        }
     }
 
-    let pin = read_pin(pin_file)?;
-
-    log_in(session, &pin).context("Failed to unlock the PKCS#11 token")?;
-
     Ok(())
+}
+
+/// What a token asks for before it hands out the private key of an identity.
+#[derive(Debug)]
+enum Login {
+    /// The token's keys are usable as they are.
+    NotRequired,
+    /// The token wants the PIN Firezone keeps on disk.
+    Pin,
+}
+
+/// The `C_GetTokenInfo` flags that decide whether and how Firezone logs into a token.
+#[derive(Clone, Copy)]
+struct LoginFlags {
+    login_required: bool,
+    protected_authentication_path: bool,
+    user_pin_locked: bool,
+    user_pin_final_try: bool,
+    user_pin_count_low: bool,
+}
+
+impl From<&TokenInfo> for LoginFlags {
+    fn from(info: &TokenInfo) -> Self {
+        Self {
+            login_required: info.login_required(),
+            protected_authentication_path: info.protected_authentication_path(),
+            user_pin_locked: info.user_pin_locked(),
+            user_pin_final_try: info.user_pin_final_try(),
+            user_pin_count_low: info.user_pin_count_low(),
+        }
+    }
+}
+
+/// Decides how Firezone logs into a token from what the token says about itself.
+///
+/// # Errors
+///
+/// Returns an error for a token Firezone cannot log into at all: one that wants its PIN typed on
+/// the reader's own keypad, or one that has already locked its user PIN.
+fn login_requirement(flags: LoginFlags) -> Result<Login> {
+    if !flags.login_required {
+        return Ok(Login::NotRequired);
+    }
+
+    if flags.protected_authentication_path {
+        bail!(
+            "The PKCS#11 token wants its PIN typed on the reader's own keypad, which Firezone cannot do: the Tunnel service runs in the background and prompts nobody"
+        );
+    }
+
+    if flags.user_pin_locked {
+        bail!(
+            "The PKCS#11 token has locked its user PIN, which has to be unblocked with the token's PUK before Firezone can use it"
+        );
+    }
+
+    Ok(Login::Pin)
+}
+
+/// Says how much of the token's patience the PIN it just rejected used up.
+fn rejected_pin_reason(flags: LoginFlags) -> String {
+    if flags.user_pin_final_try {
+        return "Failed to unlock the PKCS#11 token, which had one attempt left before locking its user PIN".to_owned();
+    }
+
+    if flags.user_pin_count_low {
+        return "Failed to unlock the PKCS#11 token, which was already counting down to locking its user PIN".to_owned();
+    }
+
+    "Failed to unlock the PKCS#11 token".to_owned()
 }
 
 /// Logs into the token, treating a login an overlapping session already did as success.
@@ -622,11 +697,14 @@ fn ensure_root_only(mode: u32, uid: u32, path: &Path) -> Result<()> {
 /// Opens a read-only session on `slot`, unlocking its token.
 fn open_session(module: &Path, slot: Slot, pin_file: &Path) -> Result<Session> {
     let pkcs11 = context(module)?;
+    let info = pkcs11
+        .get_token_info(slot)
+        .context("Failed to read the PKCS#11 token information")?;
     let session = pkcs11
         .open_ro_session(slot)
         .context("Failed to open the PKCS#11 token")?;
 
-    unlock(&session, pin_file)?;
+    unlock(&session, &info, pin_file)?;
 
     Ok(session)
 }

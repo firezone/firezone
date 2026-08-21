@@ -145,6 +145,109 @@ fn signs_while_another_session_is_open() {
 }
 
 #[test]
+#[ignore = "Requires the SoftHSM PKCS#11 module and writes to a temporary token store"]
+fn refuses_an_identity_whose_token_it_cannot_unlock() {
+    let _serialized = serialize_token_access();
+    let token = provision_token("no-pin", KeyAlgorithm::Rsa);
+    fs::remove_file(&token.pin_file).expect("the PIN file should be removable");
+
+    let Err(refused) = token.identity() else {
+        panic!("a token that wants a PIN it cannot read should not yield an identity");
+    };
+
+    assert!(
+        format!("{refused:#}").contains(&token.pin_file.display().to_string()),
+        "{refused:#} should name the PIN file it could not read"
+    );
+}
+
+#[test]
+#[ignore = "Requires the SoftHSM PKCS#11 module and writes to a temporary token store"]
+fn refuses_an_identity_whose_pin_the_token_rejects() {
+    let _serialized = serialize_token_access();
+    let token = provision_token("wrong-pin", KeyAlgorithm::Rsa);
+    write_pin_file(&token.pin_file, "not-the-pin");
+
+    let Err(refused) = token.identity() else {
+        panic!("a token that rejects the PIN should not yield an identity");
+    };
+
+    assert!(
+        format!("{refused:#}").contains("Failed to unlock the PKCS#11 token"),
+        "{refused:#} should say the token turned the PIN down"
+    );
+}
+
+#[test]
+fn reads_no_pin_for_a_token_that_wants_none() {
+    let flags = LoginFlags {
+        login_required: false,
+        ..pin_protected()
+    };
+
+    assert!(matches!(
+        login_requirement(flags).expect("a token without a login is usable"),
+        Login::NotRequired
+    ));
+}
+
+#[test]
+fn refuses_a_token_that_asks_for_its_pin_on_a_keypad() {
+    let flags = LoginFlags {
+        protected_authentication_path: true,
+        ..pin_protected()
+    };
+
+    let refused = login_requirement(flags).expect_err("Firezone prompts nobody for a PIN");
+
+    assert!(
+        refused.to_string().contains("keypad"),
+        "{refused} should say why the reader cannot be used"
+    );
+}
+
+#[test]
+fn refuses_a_token_that_already_locked_its_pin() {
+    let flags = LoginFlags {
+        user_pin_locked: true,
+        ..pin_protected()
+    };
+
+    let refused = login_requirement(flags).expect_err("a locked PIN cannot be spent again");
+
+    assert!(
+        refused.to_string().contains("PUK"),
+        "{refused} should say how the token is unblocked"
+    );
+}
+
+#[test]
+fn counts_down_the_attempts_a_rejected_pin_leaves() {
+    let final_try = rejected_pin_reason(LoginFlags {
+        user_pin_final_try: true,
+        ..pin_protected()
+    });
+    let count_low = rejected_pin_reason(LoginFlags {
+        user_pin_count_low: true,
+        ..pin_protected()
+    });
+
+    assert!(final_try.contains("one attempt left"), "{final_try}");
+    assert!(count_low.contains("counting down"), "{count_low}");
+}
+
+/// Returns the flags of a token that wants a PIN and has all of its attempts left.
+fn pin_protected() -> LoginFlags {
+    LoginFlags {
+        login_required: true,
+        protected_authentication_path: false,
+        user_pin_locked: false,
+        user_pin_final_try: false,
+        user_pin_count_low: false,
+    }
+}
+
+#[test]
 fn refuses_a_pin_file_others_can_read() {
     let refused = ensure_root_only(0o640, 0, Path::new("/etc/firezone/pkcs11-pin"))
         .expect_err("a group-readable PIN file should be refused");
