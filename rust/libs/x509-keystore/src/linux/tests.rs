@@ -245,17 +245,6 @@ fn counts_down_the_attempts_a_rejected_pin_leaves() {
     assert!(count_low.contains("counting down"), "{count_low}");
 }
 
-/// Returns the flags of a token that wants a PIN and has all of its attempts left.
-fn pin_protected() -> LoginFlags {
-    LoginFlags {
-        login_required: true,
-        protected_authentication_path: false,
-        user_pin_locked: false,
-        user_pin_final_try: false,
-        user_pin_count_low: false,
-    }
-}
-
 #[test]
 fn refuses_a_pin_file_others_can_read() {
     let refused = ensure_root_only(0o640, 0, Path::new("/etc/firezone/pkcs11-pin"))
@@ -275,11 +264,11 @@ fn refuses_a_pin_file_root_does_not_own() {
 }
 
 #[test]
-fn keeps_the_spaces_around_a_pin() {
+fn strips_only_the_line_ending_of_a_pin() {
     let directory = std::env::temp_dir().join(format!("keystore-pin-{}", std::process::id()));
     fs::create_dir_all(&directory).expect("the PIN directory should be creatable");
     let path = directory.join("pin");
-    write_pin_file(&path, " space ");
+    write_pin_file(&path, " space \r\n");
 
     let pin = read_pin(&path).expect("the PIN file should be readable");
 
@@ -292,6 +281,10 @@ fn keeps_the_spaces_around_a_pin() {
 fn names_the_cause_behind_a_token_failure() {
     assert!(matches!(
         classify_return_value(RvError::DeviceRemoved, String::new()),
+        SigningError::KeyUnavailable(_)
+    ));
+    assert!(matches!(
+        classify_return_value(RvError::SessionHandleInvalid, String::new()),
         SigningError::KeyUnavailable(_)
     ));
     assert!(matches!(
@@ -314,6 +307,17 @@ fn ecdsa_signature_is_der_encoded() {
         der_encode_ecdsa_signature(&raw).expect("signature should encode"),
         vec![0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02]
     );
+}
+
+/// Returns the flags of a token that wants a PIN and has all of its attempts left.
+fn pin_protected() -> LoginFlags {
+    LoginFlags {
+        login_required: true,
+        protected_authentication_path: false,
+        user_pin_locked: false,
+        user_pin_final_try: false,
+        user_pin_count_low: false,
+    }
 }
 
 /// The bytes the tests ask the token to sign, standing in for a TLS handshake transcript.
