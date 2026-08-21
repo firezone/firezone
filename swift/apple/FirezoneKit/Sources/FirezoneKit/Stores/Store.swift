@@ -338,7 +338,7 @@ public final class Store: ObservableObject {
                 guard !self.shownAlertIds.contains(id) else { return }
                 await self.sessionNotification.showDisconnectedAlertMacOS(
                   message,
-                  authenticationMode: .token
+                  isCertificateError: false
                 )
                 self.markAlertAsShown(id)
               }
@@ -346,7 +346,7 @@ public final class Store: ObservableObject {
               return
             }
 
-            let authenticationMode = Store.authenticationMode(of: nsError)
+            let isCertificateError = Store.isCertificateError(of: nsError)
 
             // Only show the alert if we haven't shown this specific error before
             Task { @MainActor in
@@ -357,7 +357,7 @@ public final class Store: ObservableObject {
               case .disconnected:
                 await self.sessionNotification.showDisconnectedAlertMacOS(
                   reason,
-                  authenticationMode: authenticationMode
+                  isCertificateError: isCertificateError
                 )
               }
               self.markAlertAsShown(id)
@@ -517,15 +517,9 @@ public final class Store: ObservableObject {
     SharedAccess.markAppRunning()
   }
 
-  /// How the disconnected session authenticated, defaulting to a token for older payloads.
-  nonisolated private static func authenticationMode(of error: NSError)
-    -> SessionAuthenticationMode
-  {
-    guard let raw = error.userInfo[ConnlibError.authenticationModeKey] as? String,
-      let mode = SessionAuthenticationMode(rawValue: raw)
-    else { return .token }
-
-    return mode
+  /// Whether the client certificate is what failed, defaulting to `false` for older payloads.
+  nonisolated private static func isCertificateError(of error: NSError) -> Bool {
+    error.userInfo[ConnlibError.isCertificateErrorKey] as? Bool ?? false
   }
 
   func manager() throws -> VPNConfigurationManager {

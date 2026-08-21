@@ -495,7 +495,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         ? FirezoneKit.ConnlibError.sessionExpired(sendableError.message)
         : FirezoneKit.ConnlibError.disconnected(
           sendableError.message,
-          authenticationMode: sendableError.authenticationMode
+          isCertificateError: sendableError.isCertificateError
         )
       cancelTunnelWithError(error)
 

@@ -338,25 +338,25 @@
     /// Shows a disconnected alert explaining why Firezone disconnected.
     public static func showDisconnectedAlert(
       _ message: String?,
-      authenticationMode: SessionAuthenticationMode = .token
+      isCertificateError: Bool = false
     ) async {
       let alert = NSAlert()
       alert.messageText = "Firezone disconnected"
-      alert.informativeText = disconnectedText(message, authenticationMode: authenticationMode)
+      alert.informativeText = disconnectedText(message, isCertificateError: isCertificateError)
       alert.addButton(withTitle: "OK")
       NSApp.activate(ignoringOtherApps: true)
 
       _ = await show(alert)
     }
 
-    /// A certificate session has no sign-in to retry, so it points at the administrator instead.
+    /// A failed certificate has no sign-in to retry, so it points at the administrator instead.
     static func disconnectedText(
       _ message: String?,
-      authenticationMode: SessionAuthenticationMode
+      isCertificateError: Bool
     ) -> String {
       let reason = message ?? "Firezone has been disconnected."
 
-      guard authenticationMode == .certificate else { return reason }
+      guard isCertificateError else { return reason }
 
       return """
         \(reason)
