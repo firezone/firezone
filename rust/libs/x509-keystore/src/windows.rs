@@ -20,12 +20,12 @@ use windows::{
             CERT_CHAIN_DISABLE_AIA, CERT_CHAIN_PARA, CERT_CONTEXT, CERT_KEY_PROV_INFO_PROP_ID,
             CERT_KEY_SPEC, CERT_OPEN_STORE_FLAGS, CERT_QUERY_ENCODING_TYPE,
             CERT_STORE_OPEN_EXISTING_FLAG, CERT_STORE_PROV_SYSTEM_W, CERT_STORE_READONLY_FLAG,
-            CERT_SYSTEM_STORE_CURRENT_USER, CERT_SYSTEM_STORE_LOCAL_MACHINE,
-            CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG, CRYPT_ACQUIRE_SILENT_FLAG, CRYPT_KEY_PROV_INFO,
-            CertCloseStore, CertDuplicateCertificateContext, CertEnumCertificatesInStore,
-            CertFreeCertificateChain, CertFreeCertificateContext, CertGetCertificateChain,
-            CertGetCertificateContextProperty, CertOpenStore, CryptAcquireCertificatePrivateKey,
-            HCERTSTORE, HCRYPTPROV_OR_NCRYPT_KEY_HANDLE, NCRYPT_FLAGS, NCRYPT_HANDLE,
+            CERT_SYSTEM_STORE_LOCAL_MACHINE, CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG,
+            CRYPT_ACQUIRE_SILENT_FLAG, CRYPT_KEY_PROV_INFO, CertCloseStore,
+            CertDuplicateCertificateContext, CertEnumCertificatesInStore, CertFreeCertificateChain,
+            CertFreeCertificateContext, CertGetCertificateChain, CertGetCertificateContextProperty,
+            CertOpenStore, CryptAcquireCertificatePrivateKey, HCERTSTORE,
+            HCRYPTPROV_OR_NCRYPT_KEY_HANDLE, NCRYPT_FLAGS, NCRYPT_HANDLE,
             NCRYPT_IMPL_HARDWARE_FLAG, NCRYPT_IMPL_SOFTWARE_FLAG, NCRYPT_IMPL_TYPE_PROPERTY,
             NCRYPT_KEY_HANDLE, NCRYPT_PAD_PKCS1_FLAG, NCRYPT_PAD_PSS_FLAG, NCRYPT_PROV_HANDLE,
             NCRYPT_PROVIDER_HANDLE_PROPERTY, NCryptFreeObject, NCryptGetProperty, NCryptSignHash,
@@ -38,17 +38,18 @@ use x509_credential::{PrivateKey, SigningError};
 
 use crate::{DetailField, DetailSection, Identity, Status, field};
 
-/// The stores that MDM-provisioned identities land in, most privileged first.
-const STORES: &[(u32, &str)] = &[
-    (CERT_SYSTEM_STORE_LOCAL_MACHINE, "LocalMachine\\My"),
-    (CERT_SYSTEM_STORE_CURRENT_USER, "CurrentUser\\My"),
-];
+/// The store MDM-provisioned identities land in.
+///
+/// The Tunnel service runs as LocalSystem, so `CERT_SYSTEM_STORE_CURRENT_USER` would resolve to
+/// the SYSTEM profile rather than to the signed-in user, and reading it would only ever find
+/// certificates nobody provisioned there. Device-scope profiles write here.
+const STORE: (u32, &str) = (CERT_SYSTEM_STORE_LOCAL_MACHINE, "LocalMachine\\My");
 
 pub(crate) fn status(subject_cn: &str) -> Result<Status> {
     let (certificates, store_errors) = enumerate_matching(subject_cn);
-    if certificates.is_empty() && store_errors.len() == STORES.len() {
+    if certificates.is_empty() && !store_errors.is_empty() {
         bail!(
-            "The Windows certificate stores could not be read: {}",
+            "The Windows certificate store could not be read: {}",
             store_errors.join("; ")
         );
     }
@@ -60,7 +61,7 @@ pub(crate) fn status(subject_cn: &str) -> Result<Status> {
     let mut sections = vec![DetailSection {
         title: "Windows Certificate Store".to_owned(),
         fields: vec![
-            field("Searched Stores", "LocalMachine\\My\nCurrentUser\\My"),
+            field("Searched Store", STORE.1),
             field("Requested Common Name", subject_cn),
             field(
                 "Store Read Errors",
@@ -99,9 +100,9 @@ pub(crate) fn status(subject_cn: &str) -> Result<Status> {
 
 pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
     let (certificates, store_errors) = enumerate_matching(subject_cn);
-    if certificates.is_empty() && store_errors.len() == STORES.len() {
+    if certificates.is_empty() && !store_errors.is_empty() {
         bail!(
-            "The Windows certificate stores could not be read: {}",
+            "The Windows certificate store could not be read: {}",
             store_errors.join("; ")
         );
     }
@@ -505,17 +506,17 @@ fn enumerate_matching(subject_cn: &str) -> (Vec<Certificate>, Vec<String>) {
     let mut certificates = Vec::new();
     let mut errors = Vec::new();
 
-    for &(location, label) in STORES {
-        match unsafe { enumerate_store(location, label, subject_cn) } {
-            Ok(mut found) => certificates.append(&mut found),
-            Err(error) => {
-                tracing::warn!(
-                    store = label,
-                    ?error,
-                    "Failed to read Windows certificate store"
-                );
-                errors.push(format!("{label}: {error:#}"));
-            }
+    let (location, label) = STORE;
+
+    match unsafe { enumerate_store(location, label, subject_cn) } {
+        Ok(mut found) => certificates.append(&mut found),
+        Err(error) => {
+            tracing::warn!(
+                store = label,
+                ?error,
+                "Failed to read Windows certificate store"
+            );
+            errors.push(format!("{label}: {error:#}"));
         }
     }
 

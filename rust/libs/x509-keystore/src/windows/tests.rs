@@ -1,8 +1,9 @@
 //! Tests for the Windows certificate-store backend, including its calls into CNG.
 //!
-//! The tests that reach into CNG mint their own certificate in `CurrentUser\My`, which needs no
-//! administrator rights, and look it up by a subject CN that is unique to the test process. That
-//! keeps them off whatever real certificate the machine holds.
+//! The tests that reach into CNG mint their own certificate in `LocalMachine\My`, the one store
+//! the keystore reads, and look it up by a subject CN that is unique to the test process. That
+//! keeps them off whatever real certificate the machine holds. Writing there needs administrator
+//! rights, which the CI runner has.
 
 use std::{
     process::Command,
@@ -20,7 +21,7 @@ use x509_parser::prelude::{FromDer as _, X509Certificate};
 use super::*;
 
 #[test]
-#[ignore = "Writes to the CurrentUser certificate store"]
+#[ignore = "Writes to the LocalMachine certificate store"]
 fn signs_with_the_cng_key_of_an_rsa_certificate() {
     let _serialized = serialize_certificate_store_access();
     let subject_cn = unique_subject_cn("rsa");
@@ -36,7 +37,7 @@ fn signs_with_the_cng_key_of_an_rsa_certificate() {
 }
 
 #[test]
-#[ignore = "Writes to the CurrentUser certificate store"]
+#[ignore = "Writes to the LocalMachine certificate store"]
 fn signs_with_the_cng_key_of_an_ecdsa_certificate() {
     let _serialized = serialize_certificate_store_access();
     let subject_cn = unique_subject_cn("ecdsa");
@@ -56,7 +57,7 @@ fn signs_with_the_cng_key_of_an_ecdsa_certificate() {
 }
 
 #[test]
-#[ignore = "Writes to the CurrentUser certificate store"]
+#[ignore = "Writes to the LocalMachine certificate store"]
 fn describes_a_minted_certificate_in_the_diagnostics() {
     let _serialized = serialize_certificate_store_access();
     let subject_cn = unique_subject_cn("status");
@@ -74,7 +75,7 @@ fn describes_a_minted_certificate_in_the_diagnostics() {
         .iter()
         .find(|section| section.title == "Matching Certificate 1")
         .expect("the diagnostics should describe the minted certificate");
-    assert_eq!(field_value(section, "Store"), Some("CurrentUser\\My"));
+    assert_eq!(field_value(section, "Store"), Some("LocalMachine\\My"));
     assert_eq!(
         field_value(section, "Private Key Access"),
         Some("Available through Windows CNG")
@@ -101,7 +102,7 @@ fn describes_a_minted_certificate_in_the_diagnostics() {
 }
 
 #[test]
-#[ignore = "Reads the CurrentUser certificate store"]
+#[ignore = "Reads the LocalMachine certificate store"]
 fn reports_no_identity_when_no_certificate_matches() {
     let _serialized = serialize_certificate_store_access();
     let subject_cn = unique_subject_cn("absent");
@@ -171,7 +172,7 @@ fn ecdsa_signature_is_der_encoded() {
 /// The bytes the tests ask CNG to sign, standing in for a TLS handshake transcript.
 const MESSAGE: &[u8] = b"x509-keystore Windows CNG signing test";
 
-/// Serialises the tests, which all add to and remove from the shared `CurrentUser\My` store.
+/// Serialises the tests, which all add to and remove from the shared `LocalMachine\My` store.
 ///
 /// [`enumerate_store`] walks that store while a concurrent test mints or removes its own
 /// certificate in it, which makes both what the walk observes and what PowerShell reports depend
@@ -256,7 +257,7 @@ fn verification_algorithm(scheme: SignatureScheme) -> &'static dyn VerificationA
     }
 }
 
-/// A certificate in `CurrentUser\My` that is removed again when the test ends.
+/// A certificate in `LocalMachine\My` that is removed again when the test ends.
 struct MintedCertificate {
     thumbprint: String,
     der: Vec<u8>,
