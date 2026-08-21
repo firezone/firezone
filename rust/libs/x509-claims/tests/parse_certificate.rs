@@ -7,7 +7,9 @@ use rcgen::{
     CertificateParams, DnType, ExtendedKeyUsagePurpose, KeyPair, KeyUsagePurpose, SanType,
     string::Ia5String,
 };
-use x509_claims::{SigningAlgorithm, UserIdentity, parse_certificate};
+use x509_claims::{
+    ParsedCertificate, SigningAlgorithm, UnusableReason, UserIdentity, parse_certificate,
+};
 
 const RSA_LEAF: &[u8] =
     include_bytes!("../../../../elixir/test/support/fixtures/trust_anchors/leaf_cert.der");
@@ -230,6 +232,83 @@ fn diagnostics_show_derived_firezone_attributes() {
     );
 }
 
+#[test]
+fn reports_every_rule_an_unusable_certificate_fails() {
+    let der = certificate_without_client_identity_extensions();
+
+    let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+
+    assert!(!metadata.is_usable(SUBJECT_CN));
+    assert_eq!(
+        metadata.unusable_reasons(),
+        [
+            UnusableReason::NoClientAuthEku,
+            UnusableReason::NoDigitalSignatureKeyUsage,
+            UnusableReason::UnsupportedKeyAlgorithm,
+        ]
+    );
+    assert_eq!(
+        metadata.unusable_summary().as_deref(),
+        Some(
+            "no TLS client authentication extended key usage, key usage does not allow digital signatures, unsupported key algorithm"
+        )
+    );
+}
+
+#[test]
+fn diagnostics_lead_with_why_a_certificate_cannot_be_presented() {
+    let usable = parse_certificate(RSA_LEAF, now()).expect("fixture should parse");
+    let expired = parse_certificate(RSA_LEAF, after(usable.not_after_timestamp))
+        .expect("fixture should parse at any instant");
+
+    assert!(usable.unusable_reasons().is_empty());
+    assert_eq!(usable.unusable_summary(), None);
+    assert_eq!(
+        detail_value(&usable, "Usable as a Client Identity"),
+        "Yes",
+        "an administrator should see the verdict without reading the rows below it"
+    );
+    assert_eq!(
+        expired.unusable_reasons(),
+        [UnusableReason::OutsideValidityPeriod]
+    );
+    assert_eq!(
+        detail_value(&expired, "Usable as a Client Identity"),
+        "No: expired or not yet valid"
+    );
+}
+
+fn detail_value(metadata: &ParsedCertificate, label: &str) -> String {
+    metadata
+        .detail_fields()
+        .into_iter()
+        .find(|field| field.label == label)
+        .unwrap_or_else(|| panic!("diagnostics should show {label}"))
+        .value
+}
+
+/// A certificate that fails every rule a client identity has to satisfy but the validity window.
+fn certificate_without_client_identity_extensions() -> Vec<u8> {
+    let key = KeyPair::generate_for(&rcgen::PKCS_ED25519).expect("should generate a key pair");
+
+    let mut params = CertificateParams::default();
+    // `rcgen` writes the extension block only for a certificate that carries a subject
+    // alternative name, so the DNS name is what gets the key usage onto the wire at all.
+    params.subject_alt_names = vec![SanType::DnsName(
+        Ia5String::try_from("host.test.invalid").expect("SAN should be an IA5 string"),
+    )];
+    params.key_usages = vec![KeyUsagePurpose::KeyEncipherment];
+    params
+        .distinguished_name
+        .push(DnType::CommonName, SUBJECT_CN);
+
+    let certificate = params
+        .self_signed(&key)
+        .expect("should self-sign the certificate");
+
+    certificate.der().to_vec()
+}
+
 fn certificate_with_uri_sans(uris: &[&str]) -> Vec<u8> {
     let subject_alt_names = uris
         .iter()
@@ -257,6 +336,11 @@ fn certificate_with_sans(subject_alt_names: Vec<SanType>) -> Vec<u8> {
         .expect("should self-sign the certificate");
 
     certificate.der().to_vec()
+}
+
+fn after(timestamp: i64) -> SystemTime {
+    SystemTime::UNIX_EPOCH
+        + Duration::from_secs(u64::try_from(timestamp).expect("a valid instant") + 1)
 }
 
 fn now() -> SystemTime {
