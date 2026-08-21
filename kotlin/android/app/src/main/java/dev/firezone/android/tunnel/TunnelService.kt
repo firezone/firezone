@@ -704,6 +704,13 @@ class TunnelService : VpnService() {
                                     if (event.error.requiresSignIn()) {
                                         repo.clearToken()
                                         repo.clearActorName()
+                                    } else if (event.error.isCertificateError()) {
+                                        // Nothing the user can retry their way out of, so name the
+                                        // certificate and point them at whoever installed it.
+                                        showErrorNotification(
+                                            "Your Firezone session has ended",
+                                            "${event.error.message()}\n\nContact your administrator for support.",
+                                        )
                                     }
 
                                     stopReason = StopReason.Disconnected
