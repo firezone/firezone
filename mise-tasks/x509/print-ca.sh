@@ -5,7 +5,7 @@ set -euo pipefail
 ca_crt="${XDG_CACHE_HOME:-${HOME}/.cache}/firezone/x509/ca.crt"
 
 if [ ! -f "$ca_crt" ]; then
-    echo "error: ${ca_crt} does not exist; run 'mise run //:x509:gen-certificate' first" >&2
+    echo "error: ${ca_crt} does not exist; run 'mise run //:x509:create-ca' first" >&2
     exit 1
 fi
 

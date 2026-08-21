@@ -6,13 +6,11 @@
 #USAGE     flag "--serial <serial>" help="Device serial to attest as; read from this machine when omitted"
 #USAGE     flag "--alias <alias>" help="Name the key is stored under [default: firezone-client]"
 #USAGE     flag "--password <password>" help="PKCS#12 export password [default: firezone]"
-#USAGE     flag "--regenerate-ca" help="Throw the existing CA away; invalidates certificates the portal already trusts"
 #USAGE }
 #USAGE cmd "device" help="Carries no actor, so the certificate can only attest the device" {
 #USAGE     flag "--serial <serial>" help="Device serial to attest as; read from this machine when omitted"
 #USAGE     flag "--alias <alias>" help="Name the key is stored under [default: firezone-client]"
 #USAGE     flag "--password <password>" help="PKCS#12 export password [default: firezone]"
-#USAGE     flag "--regenerate-ca" help="Throw the existing CA away; invalidates certificates the portal already trusts"
 #USAGE }
 set -euo pipefail
 
@@ -92,26 +90,15 @@ client_crt="${OUT_DIR}/${alias}.crt"
 client_key="${OUT_DIR}/${alias}.key"
 p12="${OUT_DIR}/${alias}.p12"
 
-mkdir -p "$OUT_DIR"
+# The CA is the trust anchor registered in the portal, so it outlives every certificate issued
+# from it and is created once, by hand.
+if [ ! -f "$ca_crt" ] || [ ! -f "$ca_key" ]; then
+    echo "error: no test CA in ${OUT_DIR}; run 'mise run //:x509:create-ca' first" >&2
+    exit 1
+fi
 
-# Everything goes through config files rather than `-addext`, so this also runs against the
+# Everything goes through a config file rather than `-addext`, so this also runs against the
 # LibreSSL that macOS ships as /usr/bin/openssl.
-cat >"${OUT_DIR}/ca.cnf" <<EOF
-[req]
-distinguished_name = dn
-prompt = no
-x509_extensions = ca_ext
-
-[dn]
-O = Firezone
-CN = Firezone Test CA
-
-[ca_ext]
-basicConstraints = critical, CA:TRUE, pathlen:0
-keyUsage = critical, keyCertSign, cRLSign
-subjectKeyIdentifier = hash
-EOF
-
 cat >"${OUT_DIR}/client.cnf" <<EOF
 [req]
 distinguished_name = dn
@@ -137,19 +124,6 @@ if [ "$kind" = "user" ]; then
 URI.2 = firezone://email/${usage_email:?}
 URI.3 = firezone://account-id/${usage_account_id:?}
 EOF
-fi
-
-# The CA outlives a single run: it is the trust anchor registered in the portal, and issuing a
-# second certificate must not invalidate the one that is already registered there.
-if [ "${usage_regenerate_ca:-}" = "true" ] || [ ! -f "$ca_crt" ] || [ ! -f "$ca_key" ]; then
-    echo "==> Generating a test CA in ${OUT_DIR}..."
-    rm -f "${OUT_DIR}/ca.srl"
-    openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
-        -config "${OUT_DIR}/ca.cnf" \
-        -keyout "$ca_key" \
-        -out "$ca_crt" 2>/dev/null
-else
-    echo "==> Reusing the test CA in ${OUT_DIR}"
 fi
 
 echo "==> Issuing a ${kind} certificate as ${SUBJECT_CN}..."
