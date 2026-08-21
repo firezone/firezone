@@ -36,7 +36,7 @@ use windows::{
 use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
 use x509_credential::{PrivateKey, SigningError};
 
-use crate::{DetailField, DetailSection, Identity, Status, field};
+use crate::{DetailField, DetailSection, Identity, Status, StatusSeverity, field};
 
 /// The store MDM-provisioned identities land in.
 ///
@@ -58,44 +58,45 @@ pub(crate) fn status(subject_cn: &str) -> Result<Status> {
         .iter()
         .filter(|certificate| certificate.usable)
         .count();
-    let mut sections = vec![DetailSection {
-        title: "Windows Certificate Store".to_owned(),
-        fields: vec![
-            field("Searched Store", STORE.1),
-            field("Requested Common Name", subject_cn),
-            field(
-                "Store Read Errors",
-                if store_errors.is_empty() {
-                    "None".to_owned()
-                } else {
-                    store_errors.join("\n")
-                },
-            ),
-        ],
-    }];
-    sections.extend(
-        certificates
-            .iter()
-            .enumerate()
-            .map(|(index, certificate)| DetailSection {
-                title: format!("Matching Certificate {}", index + 1),
-                fields: certificate.detail_fields(),
-            }),
-    );
+    let sections = certificates
+        .iter()
+        .enumerate()
+        .map(|(index, certificate)| DetailSection {
+            title: format!("Matching Certificate {}", index + 1),
+            fields: certificate.detail_fields(),
+        })
+        .collect();
 
-    let summary = match (usable, certificates.len()) {
+    let certificate_summary = match (usable, certificates.len()) {
         (0, 0) => format!(
             "No X.509 certificate with subject CN '{subject_cn}' is in the Windows certificate stores."
         ),
         (0, count) => format!(
-            "Found {count} matching X.509 certificate(s), but none of them are usable as a client identity."
+            "Found {count} matching X.509 certificate(s), but none of them are usable as a client identity: {}",
+            unusable_reasons(&certificates).join("; ")
         ),
         (count, _) => {
             format!("{count} X.509 client identity certificate(s) are available for mutual TLS.")
         }
     };
+    let summary = match store_errors.is_empty() {
+        true => certificate_summary,
+        false => format!(
+            "{certificate_summary} Some Windows certificate stores could not be read: {}",
+            store_errors.join("; ")
+        ),
+    };
+    let severity = match (usable, store_errors.is_empty()) {
+        (0, _) => StatusSeverity::Warning,
+        (_, false) => StatusSeverity::Warning,
+        (_, true) => StatusSeverity::Ok,
+    };
 
-    Ok(Status { summary, sections })
+    Ok(Status {
+        severity,
+        summary,
+        sections,
+    })
 }
 
 pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
@@ -107,11 +108,7 @@ pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
         );
     }
 
-    let unusable = certificates
-        .iter()
-        .filter(|certificate| !certificate.usable)
-        .map(unusable_reason)
-        .collect::<Vec<_>>();
+    let unusable = unusable_reasons(&certificates);
 
     let Some(certificate) = certificates
         .into_iter()
@@ -469,7 +466,7 @@ impl Certificate {
                 },
             ),
             field(
-                "Usable as a Client Identity",
+                "Usable With Its Private Key",
                 if self.usable { "Yes" } else { "No" },
             ),
         ];
@@ -508,6 +505,22 @@ impl Certificate {
 
         fields
     }
+
+    /// Says why this certificate cannot be presented for mutual TLS.
+    fn unusable_reason(&self) -> String {
+        let fingerprint = &self.metadata.fingerprint;
+
+        let Some(summary) = self.metadata.unusable_summary() else {
+            // CNG refuses a key held by a legacy CSP rather than a KSP, which is what an older
+            // certificate template provisions.
+            return match &self.key_error {
+                Some(error) => format!("{fingerprint} has a private key CNG will not use: {error}"),
+                None => format!("{fingerprint} has no usable private key"),
+            };
+        };
+
+        format!("{fingerprint} is unusable: {summary}")
+    }
 }
 
 impl Drop for Certificate {
@@ -518,33 +531,13 @@ impl Drop for Certificate {
     }
 }
 
-/// Says why a certificate that matched the subject common name cannot be used.
-fn unusable_reason(certificate: &Certificate) -> String {
-    let metadata = &certificate.metadata;
-
-    let reason = if !metadata.has_client_auth_eku {
-        "it has no TLS client authentication extended key usage"
-    } else if !metadata.digital_signature_allowed {
-        "its key usage does not allow digital signatures"
-    } else if !metadata.is_currently_valid {
-        "it is expired or not yet valid"
-    } else if metadata.signing_algorithm.is_none() {
-        "it holds a key algorithm we cannot sign with"
-    } else if !certificate.key_available {
-        // CNG refuses a key held by a legacy CSP rather than a KSP, which is what an older
-        // certificate template provisions.
-        return match &certificate.key_error {
-            Some(error) => format!(
-                "{} has a private key CNG will not use: {error}",
-                metadata.fingerprint
-            ),
-            None => format!("{} has no usable private key", metadata.fingerprint),
-        };
-    } else {
-        "it does not match the requested common name"
-    };
-
-    format!("{} is unusable because {reason}", metadata.fingerprint)
+/// Says why each certificate that matched the subject common name cannot be used.
+fn unusable_reasons(certificates: &[Certificate]) -> Vec<String> {
+    certificates
+        .iter()
+        .filter(|certificate| !certificate.usable)
+        .map(Certificate::unusable_reason)
+        .collect()
 }
 
 fn enumerate_matching(subject_cn: &str) -> (Vec<Certificate>, Vec<String>) {
