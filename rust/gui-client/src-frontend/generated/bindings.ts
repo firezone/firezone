@@ -154,8 +154,15 @@ export type SessionViewModel =
   | { SignedIn: { account_slug: string; actor_name: string } }
   | "Loading"
   | "SignedOut";
-export type X509DetailField = { label: string; value: string };
+export type X509DetailField = { label: string; value: X509FieldValue };
 export type X509DetailSection = { title: string; fields: X509DetailField[] };
+/**
+ * Mirrors [`x509_keystore::FieldValue`] so the frontend can tell a refusal from a value.
+ */
+export type X509FieldValue =
+  | { Present: string }
+  | "Absent"
+  | { Invalid: string };
 export type X509Status = {
   severity: X509StatusSeverity;
   summary: string;

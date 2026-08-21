@@ -83,7 +83,29 @@ pub struct DetailSection {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct DetailField {
     pub label: String,
-    pub value: String,
+    pub value: FieldValue,
+}
+
+/// What the keystore knows about one row.
+///
+/// A platform refusal is a free-form message rather than one of the parser's rules, so this
+/// carries text where [`x509_claims::ClaimValue`] carries a [`x509_claims::RejectionReason`].
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub enum FieldValue {
+    Present(String),
+    Absent,
+    Invalid(String),
+}
+
+impl FieldValue {
+    /// The text a caller with nowhere to show a state renders instead.
+    pub fn text(&self) -> &str {
+        match self {
+            Self::Present(value) => value,
+            Self::Absent => "Not present",
+            Self::Invalid(message) => message,
+        }
+    }
 }
 
 impl Status {
@@ -101,7 +123,7 @@ impl Status {
             for field in &section.fields {
                 let _ = writeln!(output, "{}:", field.label);
 
-                for line in field.value.split('\n') {
+                for line in field.value.text().split('\n') {
                     let _ = writeln!(output, "  {line}");
                 }
             }
@@ -115,7 +137,17 @@ impl From<x509_claims::DetailField> for DetailField {
     fn from(field: x509_claims::DetailField) -> Self {
         Self {
             label: field.label,
-            value: field.value,
+            value: field.value.into(),
+        }
+    }
+}
+
+impl From<x509_claims::ClaimValue> for FieldValue {
+    fn from(value: x509_claims::ClaimValue) -> Self {
+        match value {
+            x509_claims::ClaimValue::Present(value) => Self::Present(value),
+            x509_claims::ClaimValue::Absent => Self::Absent,
+            x509_claims::ClaimValue::Invalid(reason) => Self::Invalid(reason.label().to_owned()),
         }
     }
 }
@@ -133,7 +165,7 @@ mod tests {
                 title: "Certificate".to_owned(),
                 fields: vec![DetailField {
                     label: "Subject".to_owned(),
-                    value: "CN=one\nOU=two".to_owned(),
+                    value: FieldValue::Present("CN=one\nOU=two".to_owned()),
                 }],
             }],
         };
