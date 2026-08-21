@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Removes a certificate and its private key from the CurrentUser\My store.
+    Removes a certificate and its private key from the LocalMachine\My store.
 #>
 
 param(
@@ -13,4 +13,4 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-Remove-Item -Path "Cert:\CurrentUser\My\$Thumbprint" -DeleteKey -Confirm:$false
+Remove-Item -Path "Cert:\LocalMachine\My\$Thumbprint" -DeleteKey -Confirm:$false
