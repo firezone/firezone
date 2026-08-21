@@ -13,7 +13,7 @@ use std::{
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use sha2::{Digest as _, Sha256};
-use x509_claims::{ParsedCertificate, parse_certificate};
+use x509_claims::{ParsedCertificate, UnusableReason, parse_certificate};
 
 fuzz_target!(|input: Input| {
     let Some(certificate) = parse_certificate(input.der, instant(input.seconds_since_epoch)) else {
@@ -27,6 +27,7 @@ fuzz_target!(|input: Input| {
         input.other_seconds_since_epoch,
     );
     assert_usable_is_the_conjunction(&certificate);
+    assert_unusable_reasons_mirror_the_rules(&certificate);
     // An arbitrary common name almost never matches, so it covers the rejection while the
     // certificate's own one covers the match.
     assert_usable_requires_an_exact_common_name(&certificate, input.expected_subject_cn);
@@ -91,6 +92,54 @@ fn assert_usable_is_the_conjunction(certificate: &ParsedCertificate) {
             && certificate.is_currently_valid
             && certificate.signing_algorithm.is_some()
     );
+    assert_eq!(
+        certificate.is_usable(subject_cn),
+        certificate.subject_cn.as_deref() == Some(subject_cn)
+            && certificate.unusable_reasons().is_empty()
+    );
+}
+
+/// Asserts that every rule reports itself exactly when the field it is derived from fails.
+///
+/// The clients show these to an administrator, so a reason that is missing or spurious sends
+/// them after the wrong part of their certificate template.
+fn assert_unusable_reasons_mirror_the_rules(certificate: &ParsedCertificate) {
+    let reasons = certificate.unusable_reasons();
+    let rules = [
+        (
+            UnusableReason::NoClientAuthEku,
+            !certificate.has_client_auth_eku,
+        ),
+        (
+            UnusableReason::NoDigitalSignatureKeyUsage,
+            !certificate.digital_signature_allowed,
+        ),
+        (
+            UnusableReason::OutsideValidityPeriod,
+            !certificate.is_currently_valid,
+        ),
+        (
+            UnusableReason::UnsupportedKeyAlgorithm,
+            certificate.signing_algorithm.is_none(),
+        ),
+    ];
+
+    for (reason, failed) in rules {
+        assert!(!reason.label().is_empty());
+        assert_eq!(reasons.contains(&reason), failed);
+    }
+
+    let summary = certificate.unusable_summary();
+
+    assert_eq!(summary.is_some(), !reasons.is_empty());
+
+    let Some(summary) = summary else {
+        return;
+    };
+
+    for reason in reasons {
+        assert!(summary.contains(reason.label()));
+    }
 }
 
 /// Asserts that `is_usable` accepts a common name only on an exact match.
