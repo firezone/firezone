@@ -25,6 +25,8 @@ import dev.firezone.android.core.Telemetry
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
+import dev.firezone.android.core.x509.X509Identity
+import dev.firezone.android.core.x509.X509IdentityException
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.ConnectedDevice
 import dev.firezone.android.tunnel.model.Resource
@@ -32,6 +34,7 @@ import dev.firezone.android.tunnel.model.ResourceType
 import dev.firezone.android.tunnel.model.Site
 import dev.firezone.android.tunnel.model.StatusEnum
 import dev.firezone.android.tunnel.model.isInternetResource
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -46,6 +49,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.withContext
 import uniffi.connlib.AndroidSessionConfig
 import uniffi.connlib.ConnlibException
 import uniffi.connlib.DeviceInfo
@@ -77,6 +81,9 @@ class TunnelService : VpnService() {
     @Inject
     internal lateinit var moshi: Moshi
 
+    @Inject
+    internal lateinit var x509Identity: X509Identity
+
     private var tunnelIpv4Address: String? = null
     private var tunnelIpv6Address: String? = null
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
@@ -95,7 +102,16 @@ class TunnelService : VpnService() {
 
     var startedByUser: Boolean = false
     private var commandChannel: Channel<TunnelCommand>? = null
-    private val serviceScope = CoroutineScope(SupervisorJob())
+
+    // A `SupervisorJob` keeps one failed child from cancelling its siblings, but an exception it
+    // does not handle still reaches the thread's default handler and takes the process with it.
+    // Reporting the failure and leaving the service to reset its own state is always better than
+    // killing the app underneath the user.
+    private val serviceExceptionHandler =
+        CoroutineExceptionHandler { _, throwable ->
+            Log.e(TAG, "Unhandled exception in the tunnel service", throwable)
+        }
+    private val serviceScope = CoroutineScope(SupervisorJob() + serviceExceptionHandler)
 
     var tunnelResources: List<Resource>
         get() = _tunnelResources
@@ -215,10 +231,12 @@ class TunnelService : VpnService() {
                 val newAppRestrictions = restrictionsManager.applicationRestrictions
                 serviceScope.launch { repo.saveManagedConfiguration(newAppRestrictions).collect {} }
                 val changed = MANAGED_CONFIGURATIONS.any { newAppRestrictions.getString(it) != appRestrictions.getString(it) }
+                // The next `connect()` reads the token and the certificate alias off this bundle,
+                // so refresh it even when the tunnel itself stays as it is.
+                appRestrictions = newAppRestrictions
                 if (!changed) {
                     return
                 }
-                appRestrictions = newAppRestrictions
 
                 buildVpnService()
             }
@@ -294,11 +312,15 @@ class TunnelService : VpnService() {
     }
 
     private fun connect() {
-        val token = appRestrictions.getString("token") ?: repo.getTokenSync()
+        val token =
+            (appRestrictions.getString("token") ?: repo.getTokenSync())
+                ?.takeUnless(String::isBlank)
+        val certificateAlias = repo.getX509CertificateAliasSync(appRestrictions)
         val config = repo.getConfigSync()
         resourceState = repo.getInternetResourceStateSync()
 
-        if (!token.isNullOrBlank()) {
+        // A client certificate authenticates on its own, so either credential is enough.
+        if (token != null || certificateAlias != null) {
             tunnelState = State.CONNECTING
             // Dismiss any previous disconnected notifications
             TunnelNotification.dismissDisconnectedNotification(this)
@@ -330,6 +352,11 @@ class TunnelService : VpnService() {
                     Telemetry.setFirezoneId(deviceIdValue)
                     Telemetry.setAccountSlug(config.accountSlug)
 
+                    // The KeyChain blocks on a system service and connlib reads the identity while
+                    // it constructs the session, so load it before we get there.
+                    val identity =
+                        withContext(Dispatchers.IO) { x509Identity.load(certificateAlias) }
+
                     Session
                         .newAndroid(
                             config =
@@ -346,7 +373,7 @@ class TunnelService : VpnService() {
                                     deviceInfo = deviceInfo,
                                 ),
                             protectSocket = protectSocketCallback,
-                            tlsIdentity = null,
+                            tlsIdentity = identity?.tlsIdentity,
                         ).use { session ->
                             startNetworkMonitoring()
                             startLogCleanup()
@@ -364,6 +391,12 @@ class TunnelService : VpnService() {
                 } catch (e: ConnlibException) {
                     Log.e(TAG, "Failed to start session", e)
                     e.close()
+                } catch (e: X509IdentityException) {
+                    Log.e(TAG, "Failed to load the client certificate", e)
+                    showErrorNotification(
+                        "Client certificate unavailable",
+                        "${e.message} Contact your administrator for support.",
+                    )
                 } finally {
                     commandChannel = null
                     tunnelState = State.DOWN
@@ -664,9 +697,21 @@ class TunnelService : VpnService() {
                                 }
 
                                 is Event.Disconnected -> {
-                                    // Clear any user tokens and actorNames
-                                    repo.clearToken()
-                                    repo.clearActorName()
+                                    Log.i(TAG, "Disconnected by connlib: ${event.error.message()}")
+
+                                    // Certificate failures leave the saved token usable, so only
+                                    // discard it when connlib says a new sign-in is required.
+                                    if (event.error.requiresSignIn()) {
+                                        repo.clearToken()
+                                        repo.clearActorName()
+                                    } else if (event.error.isCertificateError()) {
+                                        // Nothing the user can retry their way out of, so name the
+                                        // certificate and point them at whoever installed it.
+                                        showErrorNotification(
+                                            "Your Firezone session has ended",
+                                            "${event.error.message()}\n\nContact your administrator for support.",
+                                        )
+                                    }
 
                                     stopReason = StopReason.Disconnected
                                 }

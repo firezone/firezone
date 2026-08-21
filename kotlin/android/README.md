@@ -85,6 +85,38 @@ directly. For example:
 export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
+## Work profile test device
+
+The `work-profile:*` tasks stand up an emulator that behaves like a personally
+owned phone carrying a work profile: an administrator has configured a client
+certificate, but only the user can grant the app access to the key. That is the
+state the certificate selection screen exists for, and it is awkward to reach on
+real hardware.
+
+```bash
+mise run //kotlin/android:work-profile:setup
+```
+
+That chains building Google's [TestDPC](https://github.com/googlesamples/android-testdpc),
+booting an account-free AOSP emulator, creating the managed profile, installing
+the app into it, issuing a certificate and pointing the managed configuration at
+it. Each step also runs on its own; `mise tasks` lists them.
+
+Two steps are yours, because only a profile owner can install a key pair or push
+managed configuration and neither has an `adb` equivalent. The tasks print
+instructions when they get there:
+
+1. TestDPC, "Manage certificates", "Install KeyPair", pick the staged `.p12`. Do
+   **not** grant the key to the app afterwards: withholding that grant is the
+   point of the exercise.
+1. TestDPC, "Manage app restrictions", `dev.firezone.android`, add the string
+   `x509CertificateAlias` with the certificate's alias as its value.
+
+The certificate carries the same `firezone://<attribute>/<value>` URI subject
+alternative names a real one does. Override `ACTOR_EMAIL`, `ACCOUNT_ID`,
+`MDM_DEVICE_ID`, `DEVICE_SERIAL`, `CERT_ALIAS` or `TESTDPC_APK` to change what it
+issues.
+
 ## Release Setup
 
 We release from GitHub CI, so this shouldn't be necessary. But if you're looking

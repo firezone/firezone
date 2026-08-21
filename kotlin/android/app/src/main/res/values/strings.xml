@@ -20,13 +20,54 @@
 	<string name="log_filter">Log Filter</string>
 	<string name="button_reset_to_defaults">Reset to Defaults</string>
 	<!-- Diagnostic Logs Settings -->
+	<string name="x509_settings_title">Certificate</string>
 	<string name="log_settings_title">Logs</string>
 	<string name="share_diagnostic_logs">Export Logs</string>
 	<string name="log_directory_size">Log directory size: %1$s</string>
 	<string name="clear_log_directory">Clear Log Directory</string>
 
+	<!-- Client Certificate -->
+	<string name="x509_claims_title">Client Certificate</string>
+	<string name="x509_managed_description">
+		Your organization configured this certificate. Firezone will use it to authenticate you.
+	</string>
+	<string name="x509_user_description">
+		Pick a certificate once. Android asks you to confirm access and Firezone remembers the alias
+		for future connections.
+	</string>
+	<string name="x509_select_certificate">Select Certificate</string>
+	<string name="x509_selection_title">Select your client certificate</string>
+	<string name="x509_selection_description">
+		Firezone signs you in with a certificate from the system KeyChain, and Android only releases
+		it once you choose it. You are asked this once: Android remembers your choice.
+	</string>
+	<string name="x509_forget_certificate">Forget Selection</string>
+	<string name="x509_loading">Reading the KeyChain…</string>
+	<string name="x509_no_certificate_selected">No RSA or EC certificate was selected.</string>
+	<string name="x509_not_configured">No client certificate is configured.</string>
+	<string name="x509_alias_configured">KeyChain alias: %1$s</string>
+	<string name="x509_not_released">
+		Android has not released this certificate to Firezone. Selecting it grants access.
+	</string>
+	<string name="x509_error_title">Unable to read the client certificate</string>
+	<string name="x509_unusable_title">Firezone will not present this certificate</string>
+	<string name="x509_unusable_reason">
+		It cannot be used to prove this device is enrolled: %1$s.
+	</string>
+	<string name="x509_contact_admin">Contact your administrator for support.</string>
+	<string name="x509_claim_absent">Not present</string>
+	<string name="x509_claim_invalid">Ignored: %1$s</string>
+	<string name="x509_claim_empty">empty</string>
+	<string name="x509_claim_too_long">longer than 255 characters</string>
+	<string name="x509_claim_not_an_email_address">not an email address</string>
+	<string name="x509_claim_not_a_uuid">not a UUID</string>
+	<string name="x509_claim_ambiguous">more than one value was given</string>
+	<string name="x509_claim_placeholder_identifier">a placeholder identifier</string>
+	<string name="x509_claim_unknown_attribute">not an attribute we understand</string>
+
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>
+	<string name="connect_as">Connect as %1$s</string>
 	<string name="settings">Settings</string>
 	<string name="signed_out">Signed Out</string>
 
@@ -34,6 +75,7 @@
 	<string name="resources">Resources</string>
 	<string name="connected_devices">Connected Devices</string>
 	<string name="sign_out">Sign Out</string>
+	<string name="connected_as">Connected as %1$s</string>
 
 	<!-- Auth -->
 	<string name="launching_auth_flow">Launching Browser to sign in…</string>
@@ -111,6 +153,12 @@
 	<string name="config_connect_on_start_title">Connect on Start</string>
 	<string name="config_connect_on_start_description">
 		Whether Firezone should automatically try to connect when the app is launched.
+	</string>
+	<string name="config_x509_certificate_alias_title">Client Certificate Alias</string>
+	<string name="config_x509_certificate_alias_description">
+		The system KeyChain alias of the client certificate used for mutual TLS. The device policy
+		controller must install the key pair and grant dev.firezone.android access to it. Leave
+		empty to disable certificate authentication.
 	</string>
 
 	<string name="managed_setting_info_description">
