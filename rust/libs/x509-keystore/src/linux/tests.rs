@@ -1,22 +1,24 @@
 //! Tests for the PKCS#11 backend, including its calls into a token.
 //!
-//! The tests that reach into a token run against SoftHSM, which the backend loads through the same
-//! URI a deployment configures. Each of them initialises its own token below a temporary directory
-//! that `SOFTHSM2_CONF` names, so they never touch a developer's real token store and cannot
-//! collide with one another.
+//! The tests that reach into a token run against SoftHSM, loaded directly rather than through the
+//! p11-kit proxy a deployment goes through. Each of them initialises its own token below a
+//! temporary directory that `SOFTHSM2_CONF` names, so they never touch a developer's real token
+//! store and cannot collide with one another.
 
 use std::{
     fs,
+    os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
     sync::{Mutex, MutexGuard, PoisonError},
 };
 
-use cryptoki::types::Ulong;
+use cryptoki::{slot::Slot, types::Ulong};
 use ring::signature::{
     ECDSA_P256_SHA256_ASN1, RSA_PKCS1_2048_8192_SHA256, RSA_PKCS1_2048_8192_SHA384,
     RSA_PKCS1_2048_8192_SHA512, RSA_PSS_2048_8192_SHA256, RSA_PSS_2048_8192_SHA384,
     RSA_PSS_2048_8192_SHA512, UnparsedPublicKey, VerificationAlgorithm,
 };
+use secrecy::ExposeSecret as _;
 use x509_parser::prelude::{FromDer as _, X509Certificate};
 
 use super::*;
@@ -27,7 +29,8 @@ fn signs_with_the_token_key_of_an_rsa_certificate() {
     let _serialized = serialize_token_access();
     let token = provision_token("rsa", KeyAlgorithm::Rsa);
 
-    let identity = super::identity(&token.config(), &token.subject_cn)
+    let identity = token
+        .identity()
         .expect("the SoftHSM token should be readable")
         .expect("the provisioned certificate should be selected as the client identity");
 
@@ -42,7 +45,8 @@ fn signs_with_the_token_key_of_an_ecdsa_certificate() {
     let _serialized = serialize_token_access();
     let token = provision_token("ecdsa", KeyAlgorithm::EcdsaP256);
 
-    let identity = super::identity(&token.config(), &token.subject_cn)
+    let identity = token
+        .identity()
         .expect("the SoftHSM token should be readable")
         .expect("the provisioned certificate should be selected as the client identity");
 
@@ -61,26 +65,24 @@ fn describes_a_provisioned_certificate_in_the_diagnostics() {
     let _serialized = serialize_token_access();
     let token = provision_token("status", KeyAlgorithm::Rsa);
 
-    let status = super::status(&token.config(), &token.subject_cn)
+    let status = token
+        .status()
         .expect("the SoftHSM token should be readable");
 
     assert_eq!(
         status.summary,
         "1 X.509 client identity certificate(s) are available for mutual TLS."
     );
-    let configuration = section(&status, "PKCS#11 Configuration");
+    let found = section(&status, "PKCS#11 Token");
     assert_eq!(
-        field_value(configuration, "Certificate Storage"),
+        field_value(found, "Certificate Storage"),
         Some("PKCS#11 token")
     );
     assert_eq!(
-        field_value(configuration, "Token Label"),
+        field_value(found, "Token Label"),
         Some(token.label.as_str())
     );
-    assert_eq!(
-        field_value(configuration, "Object Label"),
-        Some(token.label.as_str())
-    );
+    assert_eq!(field_value(found, "Login Required"), Some("Yes"));
     let certificate = section(&status, "Matching Certificate 1");
     assert_eq!(
         field_value(certificate, "Object Label"),
@@ -107,17 +109,17 @@ fn reports_no_identity_when_no_certificate_matches() {
     let token = provision_token("absent", KeyAlgorithm::Rsa);
     let subject_cn = unique_subject_cn("absent-other");
 
-    let identity = super::identity(&token.config(), &subject_cn)
+    let identity = token
+        .identity_of(&subject_cn)
         .expect("the SoftHSM token should be readable");
-    let status =
-        super::status(&token.config(), &subject_cn).expect("the SoftHSM token should be readable");
+    let status = token
+        .status_of(&subject_cn)
+        .expect("the SoftHSM token should be readable");
 
     assert!(identity.is_none());
     assert_eq!(
         status.summary,
-        format!(
-            "No X.509 certificate with subject CN '{subject_cn}' is on the configured PKCS#11 token."
-        )
+        format!("No PKCS#11 token holds an X.509 certificate with subject CN '{subject_cn}'.")
     );
 }
 
@@ -126,13 +128,15 @@ fn reports_no_identity_when_no_certificate_matches() {
 fn signs_while_another_session_is_open() {
     let _serialized = serialize_token_access();
     let token = provision_token("overlapping", KeyAlgorithm::Rsa);
-    let uri = Pkcs11Uri::parse(&token.uri).expect("the token's URI should be valid");
 
-    let identity = super::identity(&token.config(), &token.subject_cn)
+    let identity = token
+        .identity()
         .expect("the SoftHSM token should be readable")
         .expect("the provisioned certificate should be selected as the client identity");
     // Stands in for a diagnostics screen reading the token while a handshake signs.
-    let _open = open_session(&uri).expect("the token should open a second session");
+    let _open = token
+        .status()
+        .expect("the token should be readable while the identity is held");
 
     identity
         .key
@@ -141,21 +145,35 @@ fn signs_while_another_session_is_open() {
 }
 
 #[test]
-fn parses_pkcs11_uri() {
-    let uri = "pkcs11:token=Firezone;object=device%20identity?module-path=/usr/lib/libpkcs11.so&pin-source=file:/etc/firezone/pin";
+fn refuses_a_pin_file_others_can_read() {
+    let refused = ensure_root_only(0o640, 0, Path::new("/etc/firezone/pkcs11-pin"))
+        .expect_err("a group-readable PIN file should be refused");
 
-    let parsed = Pkcs11Uri::parse(uri).expect("URI should be valid");
-
-    assert_eq!(parsed.module_path, PathBuf::from("/usr/lib/libpkcs11.so"));
-    assert_eq!(parsed.token_label.as_deref(), Some("Firezone"));
-    assert_eq!(parsed.object_label.as_deref(), Some("device identity"));
-    assert_eq!(parsed.pin_source.as_deref(), Some("file:/etc/firezone/pin"));
+    assert!(
+        refused.to_string().contains("Permissions 0640"),
+        "{refused} should report the mode the way ssh does"
+    );
 }
 
 #[test]
-fn rejects_inline_pin_and_missing_module() {
-    assert!(Pkcs11Uri::parse("pkcs11:token=Firezone?pin-value=1234").is_err());
-    assert!(Pkcs11Uri::parse("pkcs11:token=Firezone").is_err());
+fn refuses_a_pin_file_root_does_not_own() {
+    assert!(ensure_root_only(0o600, 1000, Path::new("/etc/firezone/pkcs11-pin")).is_err());
+    assert!(ensure_root_only(0o600, 0, Path::new("/etc/firezone/pkcs11-pin")).is_ok());
+    assert!(ensure_root_only(0o400, 0, Path::new("/etc/firezone/pkcs11-pin")).is_ok());
+}
+
+#[test]
+fn keeps_the_spaces_around_a_pin() {
+    let directory = std::env::temp_dir().join(format!("keystore-pin-{}", std::process::id()));
+    fs::create_dir_all(&directory).expect("the PIN directory should be creatable");
+    let path = directory.join("pin");
+    write_pin_file(&path, " space ");
+
+    let pin = read_pin(&path).expect("the PIN file should be readable");
+
+    assert_eq!(pin.expose_secret(), " space ");
+
+    fs::remove_dir_all(&directory).expect("the PIN directory should be removable");
 }
 
 #[test]
@@ -288,16 +306,26 @@ struct Token {
     directory: PathBuf,
     label: String,
     subject_cn: String,
-    uri: String,
+    module: PathBuf,
+    pin_file: PathBuf,
     certificate: Vec<u8>,
 }
 
 impl Token {
-    /// Returns the configuration that points the backend at this token.
-    fn config(&self) -> Config {
-        Config {
-            pkcs11_uri: Some(self.uri.clone()),
-        }
+    fn identity(&self) -> Result<Option<Identity>> {
+        self.identity_of(&self.subject_cn)
+    }
+
+    fn identity_of(&self, subject_cn: &str) -> Result<Option<Identity>> {
+        super::identity_on(&self.module, &self.pin_file, subject_cn)
+    }
+
+    fn status(&self) -> Result<Status> {
+        self.status_of(&self.subject_cn)
+    }
+
+    fn status_of(&self, subject_cn: &str) -> Result<Status> {
+        super::status_on(&self.module, &self.pin_file, subject_cn)
     }
 }
 
@@ -324,7 +352,7 @@ fn provision_token(suffix: &str, algorithm: KeyAlgorithm) -> Token {
     let subject_cn = unique_subject_cn(suffix);
     let directory = std::env::temp_dir().join(&label);
     let configuration = directory.join("softhsm2.conf");
-    let pin = directory.join("pin");
+    let pin_file = directory.join("pin");
 
     let _ = fs::remove_dir_all(&directory);
     fs::create_dir_all(directory.join("tokens")).expect("the token store should be creatable");
@@ -336,7 +364,7 @@ fn provision_token(suffix: &str, algorithm: KeyAlgorithm) -> Token {
         ),
     )
     .expect("the SoftHSM configuration should be writable");
-    fs::write(&pin, PIN).expect("the PIN file should be writable");
+    write_pin_file(&pin_file, PIN);
 
     // SAFETY: `serialize_token_access` holds off every other test that sets or reads this variable,
     // and the remaining tests in this binary are pure functions that never touch the environment.
@@ -344,19 +372,24 @@ fn provision_token(suffix: &str, algorithm: KeyAlgorithm) -> Token {
     unload_module();
 
     let certificate = initialize_token(&module, &label, &subject_cn, algorithm);
-    let uri = format!(
-        "pkcs11:token={label};object={label}?module-path={}&pin-source=file:{}",
-        module.display(),
-        pin.display()
-    );
 
     Token {
         directory,
         label,
         subject_cn,
-        uri,
+        module,
+        pin_file,
         certificate,
     }
+}
+
+/// Writes a PIN file the backend accepts, which means one only its owner can read.
+///
+/// The tests run as root, both here and in CI, so the file is root's as the backend demands.
+fn write_pin_file(path: &Path, pin: &str) {
+    fs::write(path, pin).expect("the PIN file should be writable");
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+        .expect("the PIN file should be lockable down");
 }
 
 /// Returns the SoftHSM module the tests load.
@@ -414,7 +447,7 @@ fn initialize_token(
         .init_token(free, &AuthPin::new(PIN.into()), label)
         .expect("SoftHSM should initialize the token");
 
-    let slot = find_slot(&pkcs11, Some(label)).expect("the initialized token should be found");
+    let slot = slot_of(&pkcs11, label);
     let session = pkcs11
         .open_rw_session(slot)
         .expect("the token should open a read-write session");
@@ -436,6 +469,20 @@ fn initialize_token(
     drop(session);
 
     certificate
+}
+
+/// Returns the slot of the token labelled `label`.
+fn slot_of(pkcs11: &Pkcs11, label: &str) -> Slot {
+    pkcs11
+        .get_slots_with_token()
+        .expect("SoftHSM should report its tokens")
+        .into_iter()
+        .find(|slot| {
+            pkcs11
+                .get_token_info(*slot)
+                .is_ok_and(|info| info.label().trim() == label)
+        })
+        .unwrap_or_else(|| panic!("the token labelled '{label}' should be in a slot"))
 }
 
 /// Generates the key pair on the token and stores a certificate that addresses it.
