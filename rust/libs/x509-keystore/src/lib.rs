@@ -15,8 +15,14 @@ use rustls::pki_types::CertificateDer;
 use serde::{Deserialize, Serialize};
 use x509_credential::{ClientCertificate, PrivateKey};
 
-mod unsupported;
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+use windows as keystore;
 
+#[cfg(not(target_os = "windows"))]
+mod unsupported;
+#[cfg(not(target_os = "windows"))]
 use unsupported as keystore;
 
 /// The subject common name of the certificates Firezone's MDM integrations provision.
