@@ -41,6 +41,7 @@ fuzz_target!(|input: Input| {
     assert_mdm_device_id_is_normalised(&certificate);
     assert_device_serial_is_printable(&certificate);
     assert_fingerprint_covers_the_input(&certificate, input.der);
+    assert_serial_is_bounded(&certificate);
     assert_detail_fields_are_labelled(&certificate);
     assert_parsing_is_deterministic(&certificate, input.der, input.seconds_since_epoch);
 });
@@ -230,6 +231,14 @@ fn assert_fingerprint_covers_the_input(certificate: &ParsedCertificate, der: &[u
 
     assert_eq!(certificate.fingerprint, digest);
     assert_eq!(certificate.der_bytes, der.len());
+}
+
+/// Asserts that the serial number row stays a row however long the serial number is.
+///
+/// Rendering costs three characters per octet, so a certificate that spends its whole size on
+/// a serial number would otherwise take longer to display than to parse.
+fn assert_serial_is_bounded(certificate: &ParsedCertificate) {
+    assert!(certificate.serial.len() <= 96, "{}", certificate.serial);
 }
 
 /// Asserts that the diagnostics rows can be rendered and indexed by their labels.

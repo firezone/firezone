@@ -5,7 +5,7 @@ use std::{
 
 use rcgen::{
     CertificateParams, DnType, ExtendedKeyUsagePurpose, KeyPair, KeyUsagePurpose, SanType,
-    string::Ia5String,
+    SerialNumber, string::Ia5String,
 };
 use x509_claims::{
     ParsedCertificate, SigningAlgorithm, UnusableReason, UserIdentity, parse_certificate,
@@ -278,6 +278,29 @@ fn diagnostics_lead_with_why_a_certificate_cannot_be_presented() {
     );
 }
 
+#[test]
+fn elides_a_serial_number_no_issuer_would_have_produced() {
+    // A high bit in the leading octet makes DER pad the serial number to keep it positive, so
+    // the largest RFC 5280 permits reaches the parser as 21 octets rather than 20.
+    let compliant = certificate_with_serial(&[0xab; 20]);
+    let oversized = certificate_with_serial(&[0xab; 4096]);
+
+    let compliant =
+        parse_certificate(&compliant, now()).expect("generated certificate should parse");
+    let oversized =
+        parse_certificate(&oversized, now()).expect("generated certificate should parse");
+
+    assert_eq!(
+        compliant.serial,
+        format!("00:{}", ["ab"; 20].join(":")),
+        "the longest compliant serial number should still be shown in full"
+    );
+    assert_eq!(
+        oversized.serial,
+        format!("00:{} (+4076 octets)", ["ab"; 20].join(":"))
+    );
+}
+
 fn detail_value(metadata: &ParsedCertificate, label: &str) -> String {
     metadata
         .detail_fields()
@@ -318,6 +341,22 @@ fn certificate_with_uri_sans(uris: &[&str]) -> Vec<u8> {
         .collect();
 
     certificate_with_sans(subject_alt_names)
+}
+
+fn certificate_with_serial(serial: &[u8]) -> Vec<u8> {
+    let key = KeyPair::generate().expect("should generate a key pair");
+
+    let mut params = CertificateParams::default();
+    params.serial_number = Some(SerialNumber::from_slice(serial));
+    params
+        .distinguished_name
+        .push(DnType::CommonName, SUBJECT_CN);
+
+    let certificate = params
+        .self_signed(&key)
+        .expect("should self-sign the certificate");
+
+    certificate.der().to_vec()
 }
 
 fn certificate_with_sans(subject_alt_names: Vec<SanType>) -> Vec<u8> {

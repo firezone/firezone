@@ -40,8 +40,8 @@ enum Case {
     /// The cap spent on distinguished name attributes, which a self-signed certificate
     /// carries as both its subject and its issuer, and the parser formats as both.
     ManyDnAttributes,
-    /// The cap spent on the serial number, which RFC 5280 bounds to 20 octets but the
-    /// parser accepts at any length and formats one byte at a time.
+    /// The cap spent on the serial number, which RFC 5280 bounds to 20 octets and the parser
+    /// renders only that far into.
     LongSerial,
     /// The most expensive certificate with its signature cut off, so the parser walks
     /// everything before rejecting it.
