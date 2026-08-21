@@ -151,6 +151,8 @@ config :portal, Portal.Changes.Consumer,
     gateway_tokens
     sites
     policies
+    trust_anchors
+    trust_anchor_certificates
     resources
     static_device_pool_members
     client_tokens

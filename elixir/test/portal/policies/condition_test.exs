@@ -176,4 +176,30 @@ defmodule Portal.Policies.ConditionTest do
       assert cs.errors[:values]
     end
   end
+  describe "changeset/3 with device_attested" do
+    test "valid with is and true" do
+      cs = changeset(%{property: :device_attested, operator: :is, values: ["true"]})
+      assert cs.valid?
+    end
+
+    test "valid with is and false" do
+      cs = changeset(%{property: :device_attested, operator: :is, values: ["false"]})
+      assert cs.valid?
+    end
+
+    test "invalid operator returns error" do
+      cs = changeset(%{property: :device_attested, operator: :is_in, values: ["true"]})
+      assert cs.errors[:operator]
+    end
+
+    test "more than one value returns length error" do
+      cs = changeset(%{property: :device_attested, operator: :is, values: ["true", "false"]})
+      assert cs.errors[:values]
+    end
+
+    test "empty values list returns length error" do
+      cs = changeset(%{property: :device_attested, operator: :is, values: []})
+      assert cs.errors[:values]
+    end
+  end
 end

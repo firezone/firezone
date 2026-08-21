@@ -4418,7 +4418,7 @@
         "type": "object"
       },
       "PolicyCondition": {
-        "description": "A condition that must be satisfied for the Policy to grant access.\n\nAll conditions on a Policy must evaluate to true for access to be\ngranted. A condition is made up of a `property`, an `operator`, and a\nlist of `values`. The valid operators and the meaning of `values`\ndepend on the `property`:\n\n* `remote_ip_location_region` with `is_in` / `is_not_in`: `values` are\n  ISO 3166-1 alpha-2 country codes, e.g. `[\"US\", \"CA\"]`.\n* `remote_ip` with `is_in_cidr` / `is_not_in_cidr`: `values` are CIDR\n  ranges (IPv4 or IPv6), e.g. `[\"10.0.0.0/8\", \"2607:f8b0::/32\"]`.\n* `auth_provider_id` with `is_in` / `is_not_in`: `values` are\n  authentication provider IDs (UUIDs).\n* `current_utc_datetime` with `is_in_day_of_week_time_ranges`: each\n  value is a `DAY/TIME_RANGES/TIMEZONE` string where `DAY` is one of\n  `M T W R F S U` (Monday through Sunday), `TIME_RANGES` is a\n  comma-separated list of `HH:MM-HH:MM` ranges, and `TIMEZONE` is an\n  IANA timezone name, e.g. `\"M/09:00-17:00/America/New_York\"`.\n* `client_verified` with `is`: `values` is a single-element list\n  containing `\"true\"` or `\"false\"`.\n",
+        "description": "A condition that must be satisfied for the Policy to grant access.\n\nAll conditions on a Policy must evaluate to true for access to be\ngranted. A condition is made up of a `property`, an `operator`, and a\nlist of `values`. The valid operators and the meaning of `values`\ndepend on the `property`:\n\n* `remote_ip_location_region` with `is_in` / `is_not_in`: `values` are\n  ISO 3166-1 alpha-2 country codes, e.g. `[\"US\", \"CA\"]`.\n* `remote_ip` with `is_in_cidr` / `is_not_in_cidr`: `values` are CIDR\n  ranges (IPv4 or IPv6), e.g. `[\"10.0.0.0/8\", \"2607:f8b0::/32\"]`.\n* `auth_provider_id` with `is_in` / `is_not_in`: `values` are\n  authentication provider IDs (UUIDs).\n* `current_utc_datetime` with `is_in_day_of_week_time_ranges`: each\n  value is a `DAY/TIME_RANGES/TIMEZONE` string where `DAY` is one of\n  `M T W R F S U` (Monday through Sunday), `TIME_RANGES` is a\n  comma-separated list of `HH:MM-HH:MM` ranges, and `TIMEZONE` is an\n  IANA timezone name, e.g. `\"M/09:00-17:00/America/New_York\"`.\n* `client_verified` with `is`: `values` is a single-element list\n  containing `\"true\"` or `\"false\"`. An administrator marks a Client\n  verified by hand.\n* `device_attested` with `is`: `values` is a single-element list\n  containing `\"true\"` or `\"false\"`. A device is attested when the\n  connection itself proved possession of an MDM-issued client\n  certificate, so this is evaluated per connection rather than from\n  anything stored on the device. It supersedes `client_verified`.\n",
         "example": {
           "operator": "is_in",
           "property": "remote_ip_location_region",
@@ -4447,7 +4447,8 @@
               "remote_ip",
               "auth_provider_id",
               "current_utc_datetime",
-              "client_verified"
+              "client_verified",
+              "device_attested"
             ],
             "type": "string"
           },
