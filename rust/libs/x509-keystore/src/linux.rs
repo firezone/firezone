@@ -13,7 +13,7 @@ use std::{
     time::SystemTime,
 };
 
-use anyhow::{Context as _, ErrorExt as _, Result, anyhow, bail};
+use anyhow::{Context as _, Result, anyhow, bail};
 use cryptoki::{
     context::{CInitializeArgs, CInitializeFlags, Pkcs11},
     error::RvError,
@@ -104,15 +104,19 @@ fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Optio
 
         return Ok(None);
     };
-    let unusable = token
-        .certificates
+    let Token {
+        session,
+        objects,
+        certificates,
+        ..
+    } = token;
+    let unusable = certificates
         .iter()
         .filter(|certificate| !certificate.usable)
         .map(unusable_reason)
         .collect::<Vec<_>>();
 
-    let Some(certificate) = token
-        .certificates
+    let Some(certificate) = certificates
         .into_iter()
         .filter(|certificate| certificate.usable)
         .max_by_key(|certificate| certificate.metadata.not_before_timestamp)
@@ -129,16 +133,16 @@ fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Optio
         .metadata
         .signing_algorithm
         .context("The selected PKCS#11 certificate uses an unsupported key algorithm")?;
-    let chain = certificate_chain(&certificate.der, &token.objects)
+    let private_key = certificate
+        .key
+        .context("The PKCS#11 token holds no private key for the selected certificate")?;
+    let chain = certificate_chain(&certificate.der, &objects)
         .into_iter()
         .map(CertificateDer::from)
         .collect();
     let key = Arc::new(Pkcs11Key {
-        module: module.to_owned(),
-        pin_file: pin_file.to_owned(),
-        slot: token.slot,
-        key_id: certificate.id,
-        key_label: certificate.label,
+        session: Mutex::new(session),
+        key: private_key,
         algorithm,
     });
 
@@ -150,16 +154,18 @@ fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Optio
     Ok(Some(Identity { chain, key }))
 }
 
-/// A private key on a PKCS#11 token, addressed by the attributes its certificate shares with it.
+/// A private key on a PKCS#11 token, reached through the session that unlocked it.
 ///
-/// Sessions cannot be shared between threads, so each signature opens its own.
+/// The session is opened and logged into once, while the identity is discovered, and lives as long
+/// as the identity does. A token that wants a PIN would otherwise want one for every handshake
+/// signature, including the ones a reconnect or a change of network makes. `Session` is `Send` but
+/// not `Sync`, so the mutex is what lets rustls sign from whichever thread drives the handshake.
+/// Holding a session also holds the module's context open, which is what keeps `C_Finalize` from
+/// running underneath it.
 #[derive(Debug)]
 struct Pkcs11Key {
-    module: PathBuf,
-    pin_file: PathBuf,
-    slot: Slot,
-    key_id: Option<Vec<u8>>,
-    key_label: Option<String>,
+    session: Mutex<Session>,
+    key: ObjectHandle,
     algorithm: SigningAlgorithm,
 }
 
@@ -178,21 +184,8 @@ impl PrivateKey for Pkcs11Key {
     }
 
     fn sign(&self, scheme: SignatureScheme, message: &[u8]) -> Result<Vec<u8>, SigningError> {
-        let session = open_session(&self.module, self.slot, &self.pin_file)
-            .map_err(classify_signing_error)?;
-        let key = find_private_key(
-            &session,
-            self.key_id.as_deref(),
-            self.key_label.as_deref(),
-            Some(self.algorithm),
-        )
-        .map_err(classify_signing_error)?
-        .ok_or_else(|| {
-            SigningError::KeyUnavailable(
-                "the PKCS#11 token no longer holds the private key".to_owned(),
-            )
-        })?;
-        let signature = sign_with_key(&session, key, scheme, message)?;
+        let session = self.session.lock().unwrap_or_else(PoisonError::into_inner);
+        let signature = sign_with_key(&session, self.key, scheme, message)?;
 
         Ok(signature)
     }
@@ -284,17 +277,6 @@ fn sign_with_key(
 }
 
 /// Names the cause behind a failure that carries a PKCS#11 return value.
-fn classify_signing_error(error: anyhow::Error) -> SigningError {
-    let reason = format!("{error:#}");
-    let Some(cryptoki::error::Error::Pkcs11(value, _)) =
-        error.any_downcast_ref::<cryptoki::error::Error>()
-    else {
-        return SigningError::Keystore(reason);
-    };
-
-    classify_return_value(*value, reason)
-}
-
 fn pkcs11_error(error: cryptoki::error::Error) -> SigningError {
     let reason = error.to_string();
     let cryptoki::error::Error::Pkcs11(value, _) = error else {
@@ -318,6 +300,8 @@ fn classify_return_value(value: RvError, reason: String) -> SigningError {
         RvError::TokenNotPresent => SigningError::KeyUnavailable(reason),
         RvError::KeyHandleInvalid => SigningError::KeyUnavailable(reason),
         RvError::ObjectHandleInvalid => SigningError::KeyUnavailable(reason),
+        RvError::SessionHandleInvalid => SigningError::KeyUnavailable(reason),
+        RvError::SessionClosed => SigningError::KeyUnavailable(reason),
         RvError::PinIncorrect => SigningError::AccessDenied(reason),
         RvError::PinExpired => SigningError::AccessDenied(reason),
         RvError::PinLocked => SigningError::AccessDenied(reason),
@@ -436,8 +420,9 @@ fn context(module_path: &Path) -> Result<Pkcs11> {
 
 /// The token Firezone authenticates with, and everything it holds that bears on that.
 struct Token {
-    slot: Slot,
     info: TokenInfo,
+    /// The unlocked session every signature made with this token goes through.
+    session: Session,
     /// Every X.509 object on the token, which is what the chain of a certificate is built from.
     objects: Vec<CertificateObject>,
     /// The objects whose subject common name is the one Firezone looks for.
@@ -481,8 +466,8 @@ fn find_token(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Option
             .collect::<Result<Vec<_>>>()?;
 
         return Ok(Some(Token {
-            slot,
             info,
+            session,
             objects,
             certificates,
         }));
@@ -694,25 +679,9 @@ fn ensure_root_only(mode: u32, uid: u32, path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Opens a read-only session on `slot`, unlocking its token.
-fn open_session(module: &Path, slot: Slot, pin_file: &Path) -> Result<Session> {
-    let pkcs11 = context(module)?;
-    let info = pkcs11
-        .get_token_info(slot)
-        .context("Failed to read the PKCS#11 token information")?;
-    let session = pkcs11
-        .open_ro_session(slot)
-        .context("Failed to open the PKCS#11 token")?;
-
-    unlock(&session, &info, pin_file)?;
-
-    Ok(session)
-}
-
 /// A certificate on the token whose subject CN is the one we look for.
 struct Certificate {
     der: Vec<u8>,
-    id: Option<Vec<u8>>,
     label: Option<String>,
     metadata: ParsedCertificate,
     key: Option<ObjectHandle>,
@@ -735,7 +704,6 @@ fn describe_certificate(
 
     Ok(Certificate {
         der: object.der.clone(),
-        id: object.id.clone(),
         label: object.label.clone(),
         usable: metadata.is_usable(subject_cn) && key.is_some(),
         metadata,
