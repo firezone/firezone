@@ -170,12 +170,16 @@ fn user_identity_requires_unambiguous_valid_attributes() {
 
     assert_eq!(
         conflicting_emails.actor_email,
-        ClaimValue::Invalid(RejectionReason::Ambiguous)
+        ClaimValue::Invalid {
+            reason: RejectionReason::Ambiguous
+        }
     );
     assert_eq!(conflicting_emails.user_identity(), None);
     assert_eq!(
         malformed_account_id.account_id,
-        ClaimValue::Invalid(RejectionReason::NotAUuid)
+        ClaimValue::Invalid {
+            reason: RejectionReason::NotAUuid
+        }
     );
     assert_eq!(malformed_account_id.user_identity(), None);
     assert_eq!(
@@ -321,15 +325,21 @@ fn reports_every_firezone_claim_it_will_not_attest() {
 
     assert_eq!(
         metadata.actor_email,
-        ClaimValue::Invalid(RejectionReason::NotAnEmailAddress)
+        ClaimValue::Invalid {
+            reason: RejectionReason::NotAnEmailAddress
+        }
     );
     assert_eq!(
         metadata.account_id,
-        ClaimValue::Invalid(RejectionReason::NotAUuid)
+        ClaimValue::Invalid {
+            reason: RejectionReason::NotAUuid
+        }
     );
     assert_eq!(
         metadata.mdm_device_id,
-        ClaimValue::Invalid(RejectionReason::PlaceholderIdentifier)
+        ClaimValue::Invalid {
+            reason: RejectionReason::PlaceholderIdentifier
+        }
     );
     assert_eq!(metadata.device_serial, ClaimValue::Absent);
     assert_eq!(
@@ -350,7 +360,9 @@ fn reports_conflicting_claims_rather_than_picking_one() {
 
     assert_eq!(
         metadata.actor_email,
-        ClaimValue::Invalid(RejectionReason::Ambiguous),
+        ClaimValue::Invalid {
+            reason: RejectionReason::Ambiguous
+        },
         "a certificate naming two actors should authenticate as neither"
     );
     assert_eq!(metadata.user_identity(), None);
@@ -402,11 +414,15 @@ fn diagnostics_show_why_a_claim_was_not_attested() {
 
     assert_eq!(
         detail_value(&metadata, "Actor Email"),
-        ClaimValue::Invalid(RejectionReason::NotAnEmailAddress)
+        ClaimValue::Invalid {
+            reason: RejectionReason::NotAnEmailAddress
+        }
     );
     assert_eq!(
         detail_value(&metadata, "firezone://not-a-real-attribute/x"),
-        ClaimValue::Invalid(RejectionReason::UnknownAttribute)
+        ClaimValue::Invalid {
+            reason: RejectionReason::UnknownAttribute
+        }
     );
     assert!(
         position(&fields, "firezone://not-a-real-attribute/x")
@@ -430,7 +446,9 @@ fn diagnostics_distinguish_an_invalid_claim_from_a_valid_one() {
     );
     assert_eq!(
         detail_value(&metadata, "Account ID"),
-        ClaimValue::Invalid(RejectionReason::NotAUuid)
+        ClaimValue::Invalid {
+            reason: RejectionReason::NotAUuid
+        }
     );
 }
 
@@ -457,12 +475,10 @@ fn diagnostics_omit_unrecognised_claims_when_there_are_none() {
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
 
     assert!(metadata.unrecognised_claims.is_empty());
-    assert!(
-        !metadata
-            .detail_fields()
-            .iter()
-            .any(|field| field.value == ClaimValue::Invalid(RejectionReason::UnknownAttribute))
-    );
+    assert!(!metadata.detail_fields().iter().any(|field| field.value
+        == ClaimValue::Invalid {
+            reason: RejectionReason::UnknownAttribute
+        }));
 }
 
 fn position(fields: &[DetailField], label: &str) -> usize {
@@ -482,7 +498,9 @@ fn detail_value(metadata: &ParsedCertificate, label: &str) -> ClaimValue {
 }
 
 fn present(value: &str) -> ClaimValue {
-    ClaimValue::Present(value.to_owned())
+    ClaimValue::Present {
+        value: value.to_owned(),
+    }
 }
 
 /// A certificate that fails every rule a client identity has to satisfy but the validity window.
