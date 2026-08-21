@@ -76,6 +76,15 @@ dir = "gui-client"
 raw = true
 run = "cargo tauri dev -- -- --skip-peer-verification"
 
+[tasks.gui-screenshots]
+description = "Render every GUI client screen to a PNG in `rust/gui-client/screenshots`"
+dir = "gui-client"
+run = [
+    "pnpm install",
+    "pnpm exec playwright install chromium",
+    "pnpm exec vitest run",
+]
+
 [tasks.tunnel]
 description = "Run the Tunnel service interactively for local GUI dev. `--skip-peer-verification` skips the peer check so it accepts a non-installed GUI build; must be run from an elevated shell (Administrator on Windows, root on Unix)."
 dir = "gui-client"
