@@ -36,6 +36,10 @@ data class LoadedX509Identity(
     /** The portal user this certificate authenticates, if it names a complete one. */
     val userIdentity: UserIdentity?
         get() = certificate?.userIdentity
+
+    /** Why this certificate cannot be presented for mutual TLS, `null` if it can. */
+    val unusableSummary: String?
+        get() = certificate?.unusableSummary
 }
 
 /**

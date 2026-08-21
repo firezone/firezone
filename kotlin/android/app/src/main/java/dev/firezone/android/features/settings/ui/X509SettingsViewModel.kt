@@ -67,6 +67,7 @@ internal class X509SettingsViewModel
                         uiMutableStateFlow.value.copy(
                             isLoading = false,
                             isUsable = identity != null,
+                            unusableSummary = identity?.unusableSummary,
                             details = identity?.detailFields().orEmpty(),
                         )
                 }
@@ -105,6 +106,8 @@ internal class X509SettingsViewModel
             val error: String? = null,
             /** Whether the KeyChain released the key for [alias]. */
             val isUsable: Boolean = false,
+            /** Why the certificate cannot be presented for mutual TLS, `null` if it can. */
+            val unusableSummary: String? = null,
         )
 
         private companion object {
