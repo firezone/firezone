@@ -708,7 +708,9 @@ impl<'a> Handler<'a> {
                 // there must not report the previous one's.
                 telemetry::set_account_slug(None);
 
-                let result = self.try_connect(token.clone(), is_internet_resource_active).await;
+                let result = self
+                    .try_connect(token.clone(), is_internet_resource_active)
+                    .await;
 
                 // Connecting is the only other moment the keystore is read, so it is also the
                 // only one where the diagnostics the GUI holds can have gone stale.
