@@ -68,7 +68,15 @@ pub struct X509DetailSection {
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub struct X509DetailField {
     pub label: String,
-    pub value: String,
+    pub value: X509FieldValue,
+}
+
+/// Mirrors [`x509_keystore::FieldValue`] so the frontend can tell a refusal from a value.
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509FieldValue {
+    Present(String),
+    Absent,
+    Invalid(String),
 }
 
 impl From<&x509_keystore::Status> for X509Status {
@@ -86,11 +94,21 @@ impl From<&x509_keystore::Status> for X509Status {
                         .iter()
                         .map(|field| X509DetailField {
                             label: field.label.clone(),
-                            value: field.value.clone(),
+                            value: field.value.clone().into(),
                         })
                         .collect(),
                 })
                 .collect(),
+        }
+    }
+}
+
+impl From<x509_keystore::FieldValue> for X509FieldValue {
+    fn from(value: x509_keystore::FieldValue) -> Self {
+        match value {
+            x509_keystore::FieldValue::Present(value) => Self::Present(value),
+            x509_keystore::FieldValue::Absent => Self::Absent,
+            x509_keystore::FieldValue::Invalid(message) => Self::Invalid(message),
         }
     }
 }

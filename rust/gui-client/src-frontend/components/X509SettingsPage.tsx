@@ -1,6 +1,23 @@
 import React from "react";
-import { X509Status } from "../generated/bindings";
+import { X509FieldValue, X509Status } from "../generated/bindings";
 import RemixIcon from "./RemixIcon";
+
+function FieldValue({ value }: { value: X509FieldValue }) {
+  if (value === "Absent") {
+    return <span className="text-subtle">Not present</span>;
+  }
+
+  if ("Invalid" in value) {
+    return (
+      <span className="flex gap-1.5 text-warning">
+        <RemixIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" name="alert" />
+        {value.Invalid}
+      </span>
+    );
+  }
+
+  return <>{value.Present}</>;
+}
 
 export default function X509SettingsPage({
   status,
@@ -46,7 +63,7 @@ export default function X509SettingsPage({
                   >
                     <dt className="text-xs text-subtle">{field.label}</dt>
                     <dd className="whitespace-pre-wrap break-all font-mono text-xs text-body">
-                      {field.value}
+                      <FieldValue value={field.value} />
                     </dd>
                   </div>
                 ))}
