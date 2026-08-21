@@ -653,8 +653,16 @@ actor Adapter {
       "Presenting client certificate "
         + "(fingerprint=\(parsed.fingerprint), valid=\(parsed.isCurrentlyValid), "
         + "notAfter=\(parsed.notAfter), clientAuthEku=\(parsed.hasClientAuthEku), "
-        + "mdmDeviceId=\(parsed.mdmDeviceId ?? "none"), schemes=\(identity.signatureSchemes))"
+        + "mdmDeviceId=\(Self.describe(parsed.mdmDeviceId)), schemes=\(identity.signatureSchemes))"
     )
+  }
+
+  private static func describe(_ claim: ClaimValue) -> String {
+    switch claim {
+    case .present(let value): return value
+    case .absent: return "none"
+    case .invalid(let reason): return "invalid (\(reason))"
+    }
   }
 
   private func setSystemDefaultResolvers(_ path: Network.NWPath) async {

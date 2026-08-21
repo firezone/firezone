@@ -33,7 +33,9 @@ struct FirezoneApp: App {
 
       return X509CertificateSummary(
         unusableSummary: parsed.unusableSummary,
-        fields: parsed.detailFields.map { X509CertificateField(label: $0.label, value: $0.value) }
+        fields: parsed.detailFields.map {
+          X509CertificateField(label: $0.label, value: X509ClaimValue($0.value))
+        }
       )
     }
 
@@ -138,6 +140,31 @@ struct FirezoneApp: App {
         .eraseToAnyPublisher()
     }
   #endif
+}
+
+/// Bridges the parser's claim value into the model the settings screen renders.
+extension X509ClaimValue {
+  init(_ value: ClaimValue) {
+    switch value {
+    case .present(let value): self = .present(value)
+    case .absent: self = .absent
+    case .invalid(let reason): self = .invalid(X509ClaimRejection(reason))
+    }
+  }
+}
+
+extension X509ClaimRejection {
+  init(_ reason: RejectionReason) {
+    switch reason {
+    case .empty: self = .empty
+    case .tooLong: self = .tooLong
+    case .notAnEmailAddress: self = .notAnEmailAddress
+    case .notAUuid: self = .notAUuid
+    case .ambiguous: self = .ambiguous
+    case .placeholderIdentifier: self = .placeholderIdentifier
+    case .unknownAttribute: self = .unknownAttribute
+    }
+  }
 }
 
 #if os(macOS)

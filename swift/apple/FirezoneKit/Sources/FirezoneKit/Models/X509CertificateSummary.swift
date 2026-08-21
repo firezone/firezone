@@ -6,12 +6,46 @@
 
 import Foundation
 
+/// Why a `firezone://` claim the certificate carries was not attested.
+///
+/// Mirrors `RejectionReason` of the `x509claims` bindings, which FirezoneKit cannot import.
+/// The parser ships the reason rather than a sentence so that each client words it itself.
+public enum X509ClaimRejection: Hashable, Sendable {
+  case empty
+  case tooLong
+  case notAnEmailAddress
+  case notAUuid
+  case ambiguous
+  case placeholderIdentifier
+  case unknownAttribute
+
+  /// A phrase that reads after the claim it explains.
+  public var reason: String {
+    switch self {
+    case .empty: return "empty"
+    case .tooLong: return "longer than 255 characters"
+    case .notAnEmailAddress: return "not an email address"
+    case .notAUuid: return "not a UUID"
+    case .ambiguous: return "more than one value was given"
+    case .placeholderIdentifier: return "a placeholder identifier"
+    case .unknownAttribute: return "not an attribute we understand"
+    }
+  }
+}
+
+/// What the certificate says about one row of the diagnostics screen.
+public enum X509ClaimValue: Hashable, Sendable {
+  case present(String)
+  case absent
+  case invalid(X509ClaimRejection)
+}
+
 /// One row of the certificate diagnostics screen.
 public struct X509CertificateField: Hashable, Sendable {
   public let label: String
-  public let value: String
+  public let value: X509ClaimValue
 
-  public init(label: String, value: String) {
+  public init(label: String, value: X509ClaimValue) {
     self.label = label
     self.value = value
   }
