@@ -193,33 +193,49 @@ url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/ca
 url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/395392416"
 provenance = "github-attestations"
 
-[[tools."github:mozilla/dump_syms"]]
-version = "2.3.7"
-backend = "github:mozilla/dump_syms"
+[[tools."github:getsentry/sentry-cli"]]
+version = "3.6.2"
+backend = "github:getsentry/sentry-cli"
 
-[tools."github:mozilla/dump_syms"."platforms.linux-x64"]
-checksum = "sha256:928f9902244f63be4b3b0acf56963ecad97b7227ecfd9ee645d73683f75a9285"
-url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-unknown-linux-gnu.tar.xz"
+[tools."github:getsentry/sentry-cli"."platforms.linux-arm64"]
+checksum = "sha256:e21f19f0880bdb624cd9d603184a09a4211ac96117953571234a0349ee28511d"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-linux-arm64-3.6.2.tgz"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164026"
 
-[tools."github:mozilla/dump_syms"."platforms.linux-x64-musl"]
-checksum = "sha256:928f9902244f63be4b3b0acf56963ecad97b7227ecfd9ee645d73683f75a9285"
-url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-unknown-linux-gnu.tar.xz"
+[tools."github:getsentry/sentry-cli"."platforms.linux-arm64-musl"]
+checksum = "sha256:e21f19f0880bdb624cd9d603184a09a4211ac96117953571234a0349ee28511d"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-linux-arm64-3.6.2.tgz"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164026"
 
-[tools."github:mozilla/dump_syms"."platforms.macos-arm64"]
-checksum = "sha256:a96949068ccc62d5dfe9f642e15ecc62910217c661e256eb91e2d0e6266895e7"
-url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-aarch64-apple-darwin.tar.xz"
+[tools."github:getsentry/sentry-cli"."platforms.linux-x64"]
+checksum = "sha256:6d32e314a2745b340a9e9f6d22b760b206217316495a360b3fb3f667a6167e73"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-linux-x64-3.6.2.tgz"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164029"
 
-[tools."github:mozilla/dump_syms"."platforms.macos-x64"]
-checksum = "sha256:4aded3cddac80aed06db65bab1c3d8228c0608296d7fa4168ab0eb12f2022683"
-url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-apple-darwin.tar.xz"
+[tools."github:getsentry/sentry-cli"."platforms.linux-x64-musl"]
+checksum = "sha256:6d32e314a2745b340a9e9f6d22b760b206217316495a360b3fb3f667a6167e73"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-linux-x64-3.6.2.tgz"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164029"
 
-[tools."github:mozilla/dump_syms"."platforms.windows-arm64"]
-checksum = "sha256:bd42a87409c39be18709b788f793fcdbfe1fde79511404112358b18511bb24f8"
-url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-pc-windows-msvc.zip"
+[tools."github:getsentry/sentry-cli"."platforms.macos-arm64"]
+checksum = "sha256:5a497deb1e388cc6445c09ddd6d2da4fc2aae8295405d6393c2e0ee635ca3687"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Darwin-arm64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164028"
 
-[tools."github:mozilla/dump_syms"."platforms.windows-x64"]
-checksum = "sha256:bd42a87409c39be18709b788f793fcdbfe1fde79511404112358b18511bb24f8"
-url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-pc-windows-msvc.zip"
+[tools."github:getsentry/sentry-cli"."platforms.macos-x64"]
+checksum = "sha256:efe0a5289cdd0ea8ff727b1228a1bea6c840f2da38152e8f9f5ced05bd6659cd"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Darwin-x86_64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164033"
+
+[tools."github:getsentry/sentry-cli"."platforms.windows-arm64"]
+checksum = "sha256:93ee7916c05c113a35daccf107c034af96f279561c103aa832668e4eecca3fb4"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Windows-aarch64.exe"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164036"
+
+[tools."github:getsentry/sentry-cli"."platforms.windows-x64"]
+checksum = "sha256:5c90cb0045cef3d3c36113c2aa21a7dcae11627d2d6e3098b679dea5b6681be3"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Windows-x86_64.exe"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164038"
 
 [[tools."github:taiki-e/cargo-llvm-cov"]]
 version = "0.6.21"
