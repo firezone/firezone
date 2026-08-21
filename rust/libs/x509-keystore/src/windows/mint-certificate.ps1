@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Creates a self-signed client identity certificate in the CurrentUser\My store.
+    Creates a self-signed client identity certificate in the LocalMachine\My store.
 
 .DESCRIPTION
     Writes the thumbprint of the new certificate on the first line of standard output and its
@@ -22,7 +22,7 @@ $ErrorActionPreference = 'Stop'
 $parameters = @{
     Type              = 'Custom'
     Subject           = "CN=$SubjectCn"
-    CertStoreLocation = 'Cert:\CurrentUser\My'
+    CertStoreLocation = 'Cert:\LocalMachine\My'
     Provider          = 'Microsoft Software Key Storage Provider'
     KeyExportPolicy   = 'NonExportable'
     KeyUsage          = 'DigitalSignature'
