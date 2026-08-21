@@ -36,7 +36,7 @@ use windows::{
 use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
 use x509_credential::{PrivateKey, SigningError};
 
-use crate::{DetailField, DetailSection, Identity, Status, StatusSeverity};
+use crate::{DetailField, DetailSection, FieldValue, Identity, Status, StatusSeverity};
 
 /// The store MDM-provisioned identities land in.
 ///
@@ -457,33 +457,30 @@ impl Certificate {
     fn detail_fields(&self) -> Vec<DetailField> {
         let mut fields = vec![
             field("Store", self.store),
-            field(
-                "Private Key Access",
-                if self.key_available {
-                    "Available through Windows CNG"
-                } else {
-                    "Unavailable"
-                },
-            ),
+            if self.key_available {
+                field("Private Key Access", "Available through Windows CNG")
+            } else {
+                absent_field("Private Key Access")
+            },
             field(
                 "Usable With Its Private Key",
                 if self.usable { "Yes" } else { "No" },
             ),
         ];
         if let Some(error) = &self.key_error {
-            fields.push(field("Private Key Error", error));
+            fields.push(invalid_field("Private Key Error", error));
         }
         if let Some(metadata) = &self.key_metadata {
-            fields.push(field(
-                "Private Key Provider",
-                metadata.provider.as_deref().unwrap_or("Unavailable"),
-            ));
+            fields.push(match metadata.provider.as_deref() {
+                Some(provider) => field("Private Key Provider", provider),
+                None => absent_field("Private Key Provider"),
+            });
             fields.push(field("Private Key Storage", metadata.storage));
             if let Some(container) = &metadata.container {
                 fields.push(field("Private Key Container", container));
             }
             if !metadata.errors.is_empty() {
-                fields.push(field(
+                fields.push(invalid_field(
                     "Private Key Metadata Errors",
                     metadata.errors.join("\n"),
                 ));
@@ -494,7 +491,7 @@ impl Certificate {
             self.chain.len().to_string(),
         ));
         if let Some(error) = &self.chain_error {
-            fields.push(field("Certificate Chain Error", error));
+            fields.push(invalid_field("Certificate Chain Error", error));
         }
         fields.extend(
             self.metadata
@@ -910,7 +907,21 @@ unsafe fn wide_string(value: windows_core::PWSTR) -> Option<String> {
 fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
     DetailField {
         label: label.into(),
-        value: value.into(),
+        value: FieldValue::Present(value.into()),
+    }
+}
+
+fn absent_field(label: impl Into<String>) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: FieldValue::Absent,
+    }
+}
+
+fn invalid_field(label: impl Into<String>, message: impl Into<String>) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: FieldValue::Invalid(message.into()),
     }
 }
 
