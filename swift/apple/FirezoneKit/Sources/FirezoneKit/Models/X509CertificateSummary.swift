@@ -19,13 +19,13 @@ public struct X509CertificateField: Hashable, Sendable {
 
 /// What the parser made of the client certificate the VPN profile references.
 public struct X509CertificateSummary: Equatable, Sendable {
-  /// Whether the certificate is inside its validity period right now.
-  public let isCurrentlyValid: Bool
+  /// Why this certificate cannot be presented for mutual TLS, `nil` if it can.
+  public let unusableSummary: String?
   /// Rows to render, in the order the parser produced them.
   public let fields: [X509CertificateField]
 
-  public init(isCurrentlyValid: Bool, fields: [X509CertificateField]) {
-    self.isCurrentlyValid = isCurrentlyValid
+  public init(unusableSummary: String?, fields: [X509CertificateField]) {
+    self.unusableSummary = unusableSummary
     self.fields = fields
   }
 }
