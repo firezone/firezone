@@ -78,17 +78,15 @@ softhsm_module() {
     return 1
 }
 
+# Only the directories the Client itself searches. A proxy module anywhere else is one it would
+# not load, so finding it here would say the token is reachable when it is not.
 p11_kit_proxy() {
     local candidate
 
     for candidate in \
-        /usr/lib/p11-kit-proxy.so \
-        /usr/lib64/p11-kit-proxy.so \
-        /usr/lib64/pkcs11/p11-kit-proxy.so \
-        /usr/lib/x86_64-linux-gnu/p11-kit-proxy.so \
-        /usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-proxy.so \
-        /usr/lib/aarch64-linux-gnu/p11-kit-proxy.so \
-        /usr/lib/aarch64-linux-gnu/pkcs11/p11-kit-proxy.so; do
+        /usr/lib/*/pkcs11/p11-kit-proxy.so \
+        /usr/lib/pkcs11/p11-kit-proxy.so \
+        /usr/lib64/pkcs11/p11-kit-proxy.so; do
         if [ -f "$candidate" ]; then
             printf '%s\n' "$candidate"
             return 0
