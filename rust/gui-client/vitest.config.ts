@@ -11,6 +11,12 @@ export default mergeConfig(
       strictPort: false,
     },
 
+    // Vitest pre-bundles the dependency graph it discovers from the test file; React has to
+    // ride along or the components end up talking to a second, hook-less copy of it.
+    optimizeDeps: {
+      include: ["react", "react/jsx-dev-runtime", "react-dom/client"],
+    },
+
     test: {
       include: ["src-frontend/**/*.test.tsx"],
       browser: {
@@ -18,6 +24,7 @@ export default mergeConfig(
         headless: true,
         provider: playwright(),
         instances: [{ browser: "chromium" }],
+        screenshotFailures: false,
       },
     },
   })
