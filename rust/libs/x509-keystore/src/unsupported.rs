@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use crate::{Identity, Status};
+use crate::{Identity, Status, StatusSeverity};
 
 #[expect(
     clippy::unnecessary_wraps,
@@ -18,6 +18,7 @@ pub(crate) fn identity(_subject_cn: &str) -> Result<Option<Identity>> {
 )]
 pub(crate) fn status(_subject_cn: &str) -> Result<Status> {
     Ok(Status {
+        severity: StatusSeverity::Warning,
         summary: "This platform has no X.509 keystore backend.".to_owned(),
         sections: Vec::new(),
     })

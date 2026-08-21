@@ -60,8 +60,16 @@ pub(crate) struct Identity {
 /// Read-only diagnostics about the keystore's X.509 identities.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Status {
+    pub severity: StatusSeverity,
     pub summary: String,
     pub sections: Vec<DetailSection>,
+}
+
+/// Whether a [`Status`] reports a usable client identity or a problem to fix.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+pub enum StatusSeverity {
+    Ok,
+    Warning,
 }
 
 /// A group of related diagnostic rows, e.g. one certificate.
@@ -119,6 +127,7 @@ mod tests {
     #[test]
     fn renders_sections_as_indented_text() {
         let status = Status {
+            severity: StatusSeverity::Ok,
             summary: "One identity is available.".to_owned(),
             sections: vec![DetailSection {
                 title: "Certificate".to_owned(),
