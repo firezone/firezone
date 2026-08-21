@@ -257,7 +257,12 @@ fn assert_unrecognised_claims_are_shown(certificate: &ParsedCertificate) {
     let unrecognised = certificate
         .detail_fields()
         .into_iter()
-        .filter(|field| field.value == ClaimValue::Invalid(RejectionReason::UnknownAttribute))
+        .filter(|field| {
+            field.value
+                == ClaimValue::Invalid {
+                    reason: RejectionReason::UnknownAttribute,
+                }
+        })
         .map(|field| field.label)
         .collect::<HashSet<_>>();
 

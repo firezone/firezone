@@ -70,20 +70,20 @@ impl UnusableReason {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimValue {
     /// Exactly one value, which the clients will attest.
-    Present(String),
+    Present { value: String },
     /// The certificate carries no `firezone://` name for this claim.
     Absent,
     /// The certificate carries one, but not one the clients will attest.
-    Invalid(RejectionReason),
+    Invalid { reason: RejectionReason },
 }
 
 impl ClaimValue {
     /// The value the clients will attest, [`None`] for a claim they will not.
     pub fn attested(&self) -> Option<&str> {
         match self {
-            Self::Present(value) => Some(value),
+            Self::Present { value } => Some(value),
             Self::Absent => None,
-            Self::Invalid(_) => None,
+            Self::Invalid { .. } => None,
         }
     }
 }
@@ -91,7 +91,7 @@ impl ClaimValue {
 impl From<Option<String>> for ClaimValue {
     fn from(value: Option<String>) -> Self {
         match value {
-            Some(value) => Self::Present(value),
+            Some(value) => Self::Present { value },
             None => Self::Absent,
         }
     }
@@ -185,7 +185,9 @@ impl ParsedCertificate {
     pub fn detail_fields(&self) -> Vec<DetailField> {
         let subject_alternative_names = match self.subject_alternative_names.as_slice() {
             [] => ClaimValue::Absent,
-            names => ClaimValue::Present(names.join("\n")),
+            names => ClaimValue::Present {
+                value: names.join("\n"),
+            },
         };
         let mut fields = vec![
             field(
@@ -203,7 +205,9 @@ impl ParsedCertificate {
         fields.extend(self.unrecognised_claims.iter().map(|claim| {
             claim_field(
                 claim,
-                ClaimValue::Invalid(RejectionReason::UnknownAttribute),
+                ClaimValue::Invalid {
+                    reason: RejectionReason::UnknownAttribute,
+                },
             )
         }));
         fields.extend([
@@ -489,10 +493,14 @@ fn resolve_claim(
         .collect::<Vec<_>>();
 
     match (accepted.as_slice(), rejection) {
-        ([value], _) => ClaimValue::Present(value.clone()),
+        ([value], _) => ClaimValue::Present {
+            value: value.clone(),
+        },
         ([], None) => ClaimValue::Absent,
-        ([], Some(reason)) => ClaimValue::Invalid(reason),
-        (_, _) => ClaimValue::Invalid(RejectionReason::Ambiguous),
+        ([], Some(reason)) => ClaimValue::Invalid { reason },
+        (_, _) => ClaimValue::Invalid {
+            reason: RejectionReason::Ambiguous,
+        },
     }
 }
 
@@ -598,8 +606,8 @@ fn extract_mdm_device_id(uris: &[&str]) -> ClaimValue {
     };
 
     match (device_id, rejection) {
-        (Some(device_id), _) => ClaimValue::Present(device_id),
-        (None, Some(reason)) => ClaimValue::Invalid(reason),
+        (Some(device_id), _) => ClaimValue::Present { value: device_id },
+        (None, Some(reason)) => ClaimValue::Invalid { reason },
         (None, None) => ClaimValue::Absent,
     }
 }
@@ -792,7 +800,12 @@ fn format_claim_value(value: &str) -> String {
 }
 
 fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
-    claim_field(label, ClaimValue::Present(value.into()))
+    claim_field(
+        label,
+        ClaimValue::Present {
+            value: value.into(),
+        },
+    )
 }
 
 fn claim_field(label: impl Into<String>, value: ClaimValue) -> DetailField {

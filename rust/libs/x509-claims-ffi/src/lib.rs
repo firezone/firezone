@@ -27,11 +27,11 @@ pub struct DetailField {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum ClaimValue {
     /// Exactly one value, which the clients will attest.
-    Present(String),
+    Present { value: String },
     /// The certificate carries no `firezone://` name for this claim.
     Absent,
     /// The certificate carries one, but not one the clients will attest.
-    Invalid(RejectionReason),
+    Invalid { reason: RejectionReason },
 }
 
 /// Why a `firezone://` claim was not attested, mirroring [`x509_claims::RejectionReason`].
@@ -149,11 +149,11 @@ impl From<x509_claims::DetailField> for DetailField {
 impl From<x509_claims::ClaimValue> for ClaimValue {
     fn from(value: x509_claims::ClaimValue) -> Self {
         match value {
-            x509_claims::ClaimValue::Present(value) => Self::Present(value),
+            x509_claims::ClaimValue::Present { value } => Self::Present { value },
             x509_claims::ClaimValue::Absent => Self::Absent,
-            x509_claims::ClaimValue::Invalid(reason) => {
-                Self::Invalid(RejectionReason::from(reason))
-            }
+            x509_claims::ClaimValue::Invalid { reason } => Self::Invalid {
+                reason: RejectionReason::from(reason),
+            },
         }
     }
 }
