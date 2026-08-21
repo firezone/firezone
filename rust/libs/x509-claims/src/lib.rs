@@ -336,7 +336,7 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificat
         mdm_device_id,
         device_serial,
         issuer: certificate.issuer().to_string(),
-        serial: certificate.raw_serial_as_string(),
+        serial: format_serial(certificate.raw_serial()),
         has_client_auth_eku,
         digital_signature_allowed,
         is_currently_valid,
@@ -611,6 +611,28 @@ fn format_ip_address(value: &[u8]) -> String {
         }
         value => format!("DER/Base64 {}", BASE64_STANDARD.encode(value)),
     }
+}
+
+/// RFC 5280 bounds a serial number to 20 octets, which a leading sign padding byte pushes to 21.
+///
+/// Nothing past that came from an issuer we would trust, and rendering it costs three characters
+/// and an allocation per octet, so a certificate that spends its whole size on a serial number
+/// would take longer to display than to parse.
+const MAX_RENDERED_SERIAL_OCTETS: usize = 21;
+
+fn format_serial(raw: &[u8]) -> String {
+    let rendered = raw
+        .iter()
+        .take(MAX_RENDERED_SERIAL_OCTETS)
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<Vec<_>>()
+        .join(":");
+    let elided = raw.len().saturating_sub(MAX_RENDERED_SERIAL_OCTETS);
+    if elided == 0 {
+        return rendered;
+    }
+
+    format!("{rendered} (+{elided} octets)")
 }
 
 fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
