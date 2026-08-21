@@ -159,7 +159,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Check sentry-cli runs
         shell: bash
-        run: sentry-cli --version
+        run: mise exec -- sentry-cli --version
       - name: Install pnpm deps
         run: pnpm install
       - uses: ./.github/actions/setup-azure-sign-tool
@@ -245,7 +245,9 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: firezone-inc
         shell: bash
-        run: ${{ env.SYMBOLS_SCRIPT }}
+        # `mise exec` puts `sentry-cli` on PATH for the script. The shims the
+        # mise action sets up are regenerated before it installs, not after.
+        run: mise exec -- bash ${{ env.SYMBOLS_SCRIPT }}
 
       - name: Upload Release Assets
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
