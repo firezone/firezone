@@ -32,7 +32,7 @@ struct FirezoneApp: App {
       guard let parsed = parseClientCertificate(der: der) else { return nil }
 
       return X509CertificateSummary(
-        isCurrentlyValid: parsed.isCurrentlyValid,
+        unusableSummary: parsed.unusableSummary,
         fields: parsed.detailFields.map { X509CertificateField(label: $0.label, value: $0.value) }
       )
     }

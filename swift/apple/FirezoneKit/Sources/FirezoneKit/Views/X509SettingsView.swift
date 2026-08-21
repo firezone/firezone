@@ -38,7 +38,7 @@ struct X509SettingsView: View {
           .foregroundStyle(.secondary)
 
       case .failed(let message):
-        failure(message)
+        notice("The client certificate could not be read", message)
 
       case .loaded(let summary):
         details(summary)
@@ -69,9 +69,10 @@ struct X509SettingsView: View {
     }
   }
 
-  private func failure(_ message: String) -> some View {
+  /// How the screen says that something is wrong with the certificate.
+  private func notice(_ title: String, _ message: String) -> some View {
     VStack(alignment: .leading, spacing: 6) {
-      Label("The client certificate could not be read", systemImage: "exclamationmark.triangle")
+      Label(title, systemImage: "exclamationmark.triangle")
         .font(.callout)
       Text(message)
         .font(.callout)
@@ -84,9 +85,11 @@ struct X509SettingsView: View {
 
   private func details(_ summary: X509CertificateSummary) -> some View {
     VStack(alignment: .leading, spacing: 8) {
-      if !summary.isCurrentlyValid {
-        Label("This certificate is not currently valid", systemImage: "exclamationmark.triangle")
-          .font(.callout)
+      if let unusableSummary = summary.unusableSummary {
+        notice(
+          "Firezone will not present this certificate",
+          "It cannot be used to prove this device is enrolled: \(unusableSummary)."
+        )
       }
 
       ForEach(summary.fields, id: \.self) { field in
