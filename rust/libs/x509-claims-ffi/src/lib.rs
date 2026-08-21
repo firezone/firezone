@@ -46,6 +46,8 @@ pub struct ParsedCertificate {
     /// Colon-separated uppercase hex SHA-256 fingerprint of the DER bytes.
     pub fingerprint: String,
     pub der_bytes: u64,
+    /// Why this certificate cannot be presented for mutual TLS, `None` if it can.
+    pub unusable_summary: Option<String>,
     pub user_identity: Option<UserIdentity>,
     /// Ready-to-display diagnostics rows derived from the fields above.
     pub detail_fields: Vec<DetailField>,
@@ -63,6 +65,7 @@ pub fn parse_client_certificate(der: Vec<u8>) -> Option<ParsedCertificate> {
 
 impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
     fn from(parsed: x509_claims::ParsedCertificate) -> Self {
+        let unusable_summary = parsed.unusable_summary();
         let user_identity = parsed.user_identity().map(UserIdentity::from);
         let detail_fields = parsed
             .detail_fields()
@@ -91,6 +94,7 @@ impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
                 .map(|algorithm| algorithm.label().to_owned()),
             fingerprint: parsed.fingerprint,
             der_bytes: parsed.der_bytes as u64,
+            unusable_summary,
             user_identity,
             detail_fields,
         }

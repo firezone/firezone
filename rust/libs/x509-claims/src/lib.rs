@@ -42,6 +42,30 @@ impl SigningAlgorithm {
     }
 }
 
+/// A rule a certificate has to satisfy before a client can present it for mutual TLS.
+///
+/// Whether the platform keystore holds a private key for the certificate is not part of this:
+/// only what the certificate itself says is in scope here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnusableReason {
+    NoClientAuthEku,
+    NoDigitalSignatureKeyUsage,
+    OutsideValidityPeriod,
+    UnsupportedKeyAlgorithm,
+}
+
+impl UnusableReason {
+    /// A phrase that reads both on its own and after "is unusable: ".
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::NoClientAuthEku => "no TLS client authentication extended key usage",
+            Self::NoDigitalSignatureKeyUsage => "key usage does not allow digital signatures",
+            Self::OutsideValidityPeriod => "expired or not yet valid",
+            Self::UnsupportedKeyAlgorithm => "unsupported key algorithm",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ParsedCertificate {
     pub subject_cn: Option<String>,
@@ -70,16 +94,42 @@ impl ParsedCertificate {
         self.subject_cn.as_deref() == Some(expected_subject_cn)
     }
 
+    /// Every rule this certificate fails, empty if it can be presented for mutual TLS.
+    ///
+    /// The clients show these to an administrator whose certificate was found but skipped, which
+    /// is why all of them are reported rather than just the first.
+    pub fn unusable_reasons(&self) -> Vec<UnusableReason> {
+        [
+            (UnusableReason::NoClientAuthEku, !self.has_client_auth_eku),
+            (
+                UnusableReason::NoDigitalSignatureKeyUsage,
+                !self.digital_signature_allowed,
+            ),
+            (
+                UnusableReason::OutsideValidityPeriod,
+                !self.is_currently_valid,
+            ),
+            (
+                UnusableReason::UnsupportedKeyAlgorithm,
+                self.signing_algorithm.is_none(),
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(reason, failed)| failed.then_some(reason))
+        .collect()
+    }
+
     pub fn is_usable(&self, expected_subject_cn: &str) -> bool {
-        self.matches_subject(expected_subject_cn)
-            && self.has_client_auth_eku
-            && self.digital_signature_allowed
-            && self.is_currently_valid
-            && self.signing_algorithm.is_some()
+        self.matches_subject(expected_subject_cn) && self.unusable_reasons().is_empty()
     }
 
     pub fn detail_fields(&self) -> Vec<DetailField> {
         let mut fields = vec![
+            field(
+                "Usable as a Client Identity",
+                self.unusable_summary()
+                    .map_or_else(|| "Yes".to_owned(), |reasons| format!("No: {reasons}")),
+            ),
             field(
                 "Common Name",
                 self.subject_cn.as_deref().unwrap_or("Unavailable"),
@@ -141,6 +191,22 @@ impl ParsedCertificate {
             field("DER Byte Count", self.der_bytes.to_string()),
         ]);
         fields
+    }
+
+    /// Why this certificate cannot be presented for mutual TLS, [`None`] if it can.
+    pub fn unusable_summary(&self) -> Option<String> {
+        let reasons = self.unusable_reasons();
+        if reasons.is_empty() {
+            return None;
+        }
+
+        Some(
+            reasons
+                .into_iter()
+                .map(UnusableReason::label)
+                .collect::<Vec<_>>()
+                .join(", "),
+        )
     }
 
     pub fn user_identity(&self) -> Option<UserIdentity> {
