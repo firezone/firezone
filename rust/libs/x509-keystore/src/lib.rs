@@ -152,6 +152,7 @@ pub(crate) fn field(label: impl Into<String>, value: impl Into<String>) -> Detai
 }
 
 /// A row for something the keystore looked for and did not find.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub(crate) fn absent_field(label: impl Into<String>) -> DetailField {
     DetailField {
         label: label.into(),
@@ -160,6 +161,7 @@ pub(crate) fn absent_field(label: impl Into<String>) -> DetailField {
 }
 
 /// A row for something the keystore found and cannot use.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub(crate) fn invalid_field(label: impl Into<String>, message: impl Into<String>) -> DetailField {
     DetailField {
         label: label.into(),
