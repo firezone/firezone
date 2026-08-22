@@ -19,5 +19,9 @@ includes = ["mise-tasks"]
 description = "Run unit tests"
 run = "./gradlew test"
 
+[tasks.screenshots]
+description = "Render the app's screens to PNGs in `kotlin/android/screenshots`"
+run = "./gradlew recordRoborazziDebug"
+
 [tools]
 "aqua:firebase/firebase-tools" = "15.18.0"
