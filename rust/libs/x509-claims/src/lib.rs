@@ -1,0 +1,816 @@
+//! X.509 client identity certificates for the Firezone clients.
+//!
+//! This crate reads certificates and evaluates Firezone's rules for them: [`parse_certificate`]
+//! turns DER bytes into a [`ParsedCertificate`] plus the label-value rows the clients render on
+//! their diagnostics screens. Discovering certificates in a platform keystore and signing with
+//! them happens elsewhere.
+//!
+//! Nothing here depends on `uniffi`, so the GUI and headless clients can link it
+//! directly. `x509-claims-ffi` wraps this crate for the mobile and Apple clients and is
+//! the only place the binding types live.
+
+use std::{
+    collections::HashSet,
+    net::{Ipv4Addr, Ipv6Addr},
+    time::SystemTime,
+};
+
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use sha2::{Digest as _, Sha256};
+use x509_parser::{
+    extensions::{GeneralName, ParsedExtension},
+    oid_registry::{OID_KEY_TYPE_EC_PUBLIC_KEY, OID_PKCS1_RSAENCRYPTION},
+    prelude::{FromDer as _, X509Certificate},
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SigningAlgorithm {
+    RsaSha256,
+    EcdsaSha256,
+    EcdsaSha384,
+    EcdsaSha512,
+}
+
+impl SigningAlgorithm {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::RsaSha256 => "SHA256withRSA",
+            Self::EcdsaSha256 => "SHA256withECDSA",
+            Self::EcdsaSha384 => "SHA384withECDSA",
+            Self::EcdsaSha512 => "SHA512withECDSA",
+        }
+    }
+}
+
+/// A rule a certificate has to satisfy before a client can present it for mutual TLS.
+///
+/// Whether the platform keystore holds a private key for the certificate is not part of this:
+/// only what the certificate itself says is in scope here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnusableReason {
+    NoClientAuthEku,
+    NoDigitalSignatureKeyUsage,
+    OutsideValidityPeriod,
+    UnsupportedKeyAlgorithm,
+}
+
+impl UnusableReason {
+    /// A phrase that reads both on its own and after "is unusable: ".
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::NoClientAuthEku => "no TLS client authentication extended key usage",
+            Self::NoDigitalSignatureKeyUsage => "key usage does not allow digital signatures",
+            Self::OutsideValidityPeriod => "expired or not yet valid",
+            Self::UnsupportedKeyAlgorithm => "unsupported key algorithm",
+        }
+    }
+}
+
+/// What a certificate says about one of the claims the clients read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaimValue {
+    /// Exactly one value, which the clients will attest.
+    Present { value: String },
+    /// The certificate carries no `firezone://` name for this claim.
+    Absent,
+    /// The certificate carries one, but not one the clients will attest.
+    Invalid { reason: RejectionReason },
+}
+
+impl ClaimValue {
+    /// The value the clients will attest, [`None`] for a claim they will not.
+    pub fn attested(&self) -> Option<&str> {
+        match self {
+            Self::Present { value } => Some(value),
+            Self::Absent => None,
+            Self::Invalid { .. } => None,
+        }
+    }
+}
+
+impl From<Option<String>> for ClaimValue {
+    fn from(value: Option<String>) -> Self {
+        match value {
+            Some(value) => Self::Present { value },
+            None => Self::Absent,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RejectionReason {
+    Empty,
+    TooLong,
+    NotAnEmailAddress,
+    NotAUuid,
+    Ambiguous,
+    PlaceholderIdentifier,
+    UnknownAttribute,
+}
+
+impl RejectionReason {
+    /// A phrase that reads on its own and after the claim it explains.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Empty => "empty",
+            Self::TooLong => "longer than 255 characters",
+            Self::NotAnEmailAddress => "not an email address",
+            Self::NotAUuid => "not a UUID",
+            Self::Ambiguous => "more than one value was given",
+            Self::PlaceholderIdentifier => "a placeholder identifier",
+            Self::UnknownAttribute => "not an attribute we understand",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedCertificate {
+    pub subject_cn: Option<String>,
+    pub subject: String,
+    pub subject_alternative_names: Vec<String>,
+    pub actor_email: ClaimValue,
+    pub account_id: ClaimValue,
+    pub mdm_device_id: ClaimValue,
+    pub device_serial: ClaimValue,
+    /// `firezone://` names whose attribute this parser does not read, e.g. a typo in a template.
+    pub unrecognised_claims: Vec<String>,
+    pub issuer: String,
+    pub serial: String,
+    pub has_client_auth_eku: bool,
+    pub digital_signature_allowed: bool,
+    pub is_currently_valid: bool,
+    pub not_before: String,
+    pub not_before_timestamp: i64,
+    pub not_after: String,
+    pub not_after_timestamp: i64,
+    pub signing_algorithm: Option<SigningAlgorithm>,
+    pub fingerprint: String,
+    pub der_bytes: usize,
+}
+
+impl ParsedCertificate {
+    fn matches_subject(&self, expected_subject_cn: &str) -> bool {
+        self.subject_cn.as_deref() == Some(expected_subject_cn)
+    }
+
+    /// Every rule this certificate fails, empty if it can be presented for mutual TLS.
+    ///
+    /// The clients show these to an administrator whose certificate was found but skipped, which
+    /// is why all of them are reported rather than just the first.
+    pub fn unusable_reasons(&self) -> Vec<UnusableReason> {
+        [
+            (UnusableReason::NoClientAuthEku, !self.has_client_auth_eku),
+            (
+                UnusableReason::NoDigitalSignatureKeyUsage,
+                !self.digital_signature_allowed,
+            ),
+            (
+                UnusableReason::OutsideValidityPeriod,
+                !self.is_currently_valid,
+            ),
+            (
+                UnusableReason::UnsupportedKeyAlgorithm,
+                self.signing_algorithm.is_none(),
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(reason, failed)| failed.then_some(reason))
+        .collect()
+    }
+
+    pub fn is_usable(&self, expected_subject_cn: &str) -> bool {
+        self.matches_subject(expected_subject_cn) && self.unusable_reasons().is_empty()
+    }
+
+    pub fn detail_fields(&self) -> Vec<DetailField> {
+        let subject_alternative_names = match self.subject_alternative_names.as_slice() {
+            [] => ClaimValue::Absent,
+            names => ClaimValue::Present {
+                value: names.join("\n"),
+            },
+        };
+        let mut fields = vec![
+            field(
+                "Usable as a Client Identity",
+                self.unusable_summary()
+                    .map_or_else(|| "Yes".to_owned(), |reasons| format!("No: {reasons}")),
+            ),
+            claim_field("Common Name", ClaimValue::from(self.subject_cn.clone())),
+            field("Subject", &self.subject),
+            claim_field("Actor Email", self.actor_email.clone()),
+            claim_field("Account ID", self.account_id.clone()),
+            claim_field("MDM Device ID", self.mdm_device_id.clone()),
+            claim_field("Device Serial", self.device_serial.clone()),
+        ];
+        fields.extend(self.unrecognised_claims.iter().map(|claim| {
+            claim_field(
+                claim,
+                ClaimValue::Invalid {
+                    reason: RejectionReason::UnknownAttribute,
+                },
+            )
+        }));
+        fields.extend([
+            claim_field("Subject Alternative Names", subject_alternative_names),
+            field("Issuer", &self.issuer),
+            field("Serial Number", &self.serial),
+            field("Not Before", &self.not_before),
+            field("Not After", &self.not_after),
+            field(
+                "Currently Valid",
+                if self.is_currently_valid { "Yes" } else { "No" },
+            ),
+            field(
+                "TLS Client Authentication EKU",
+                if self.has_client_auth_eku {
+                    "Yes"
+                } else {
+                    "No"
+                },
+            ),
+            field(
+                "Digital Signature Key Usage",
+                if self.digital_signature_allowed {
+                    "Allowed"
+                } else {
+                    "Not allowed"
+                },
+            ),
+            field(
+                "Signing Algorithm",
+                self.signing_algorithm
+                    .map(SigningAlgorithm::label)
+                    .unwrap_or("Unsupported"),
+            ),
+            field("SHA-256 Fingerprint", &self.fingerprint),
+            field("DER Byte Count", self.der_bytes.to_string()),
+        ]);
+        fields
+    }
+
+    /// Why this certificate cannot be presented for mutual TLS, [`None`] if it can.
+    pub fn unusable_summary(&self) -> Option<String> {
+        let reasons = self.unusable_reasons();
+        if reasons.is_empty() {
+            return None;
+        }
+
+        Some(
+            reasons
+                .into_iter()
+                .map(UnusableReason::label)
+                .collect::<Vec<_>>()
+                .join(", "),
+        )
+    }
+
+    pub fn user_identity(&self) -> Option<UserIdentity> {
+        Some(UserIdentity {
+            email: self.actor_email.attested()?.to_owned(),
+            account_id: self.account_id.attested()?.to_owned(),
+        })
+    }
+}
+
+/// A portal user identity encoded in a managed certificate's URI SANs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserIdentity {
+    pub email: String,
+    pub account_id: String,
+}
+
+/// A row for the clients' certificate diagnostics screens.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DetailField {
+    pub label: String,
+    pub value: ClaimValue,
+}
+
+pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificate> {
+    let (_, certificate) = X509Certificate::from_der(der).ok()?;
+
+    let subject_cn = certificate
+        .subject()
+        .iter_common_name()
+        .next()
+        .and_then(|cn| cn.as_str().ok().map(str::to_owned));
+    let has_client_auth_eku = certificate.extensions().iter().any(|extension| {
+        matches!(
+            extension.parsed_extension(),
+            ParsedExtension::ExtendedKeyUsage(eku) if eku.client_auth
+        )
+    });
+    let general_names = certificate
+        .extensions()
+        .iter()
+        .filter_map(|extension| {
+            if let ParsedExtension::SubjectAlternativeName(names) = extension.parsed_extension() {
+                Some(names.general_names.iter())
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .collect::<Vec<_>>();
+    let subject_alternative_names = general_names
+        .iter()
+        .flat_map(|name| format_subject_alternative_name(name))
+        .collect();
+    let uri_subject_alternative_names = general_names
+        .iter()
+        .filter_map(|name| {
+            if let GeneralName::URI(value) = name {
+                Some(*value)
+            } else {
+                None
+            }
+        })
+        .flat_map(split_comma_joined_uris)
+        .collect::<Vec<_>>();
+    let actor_email = extract_actor_email(&uri_subject_alternative_names);
+    let account_id = extract_account_id(&uri_subject_alternative_names);
+    let mdm_device_id = extract_mdm_device_id(&uri_subject_alternative_names);
+    let device_serial = extract_device_serial(&uri_subject_alternative_names);
+    let unrecognised_claims = extract_unrecognised_claims(&uri_subject_alternative_names);
+    // RFC 5280 permits Key Usage to be omitted. When present, it must allow
+    // digitalSignature, matching the portal's verification policy.
+    let digital_signature_allowed = certificate
+        .extensions()
+        .iter()
+        .find_map(|extension| {
+            if let ParsedExtension::KeyUsage(key_usage) = extension.parsed_extension() {
+                Some(key_usage.digital_signature())
+            } else {
+                None
+            }
+        })
+        .unwrap_or(true);
+
+    let not_before_timestamp = certificate.validity().not_before.timestamp();
+    let not_after_timestamp = certificate.validity().not_after.timestamp();
+    let now_timestamp = now
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_secs()).ok());
+    let is_currently_valid = now_timestamp.is_some_and(|timestamp| {
+        timestamp >= not_before_timestamp && timestamp <= not_after_timestamp
+    });
+
+    let signing_algorithm = {
+        let algorithm = &certificate.subject_pki.algorithm;
+        if algorithm.algorithm == OID_PKCS1_RSAENCRYPTION {
+            Some(SigningAlgorithm::RsaSha256)
+        } else if algorithm.algorithm == OID_KEY_TYPE_EC_PUBLIC_KEY {
+            let curve = algorithm
+                .parameters
+                .as_ref()
+                .and_then(|parameters| parameters.as_oid().ok())
+                .map(|oid| oid.to_id_string());
+            match curve.as_deref() {
+                Some("1.3.132.0.34") => Some(SigningAlgorithm::EcdsaSha384),
+                Some("1.3.132.0.35") => Some(SigningAlgorithm::EcdsaSha512),
+                Some("1.2.840.10045.3.1.7") => Some(SigningAlgorithm::EcdsaSha256),
+                Some(_) | None => None,
+            }
+        } else {
+            None
+        }
+    };
+
+    let fingerprint = Sha256::digest(der)
+        .iter()
+        .map(|byte| format!("{byte:02X}"))
+        .collect::<Vec<_>>()
+        .join(":");
+
+    Some(ParsedCertificate {
+        subject_cn,
+        subject: certificate.subject().to_string(),
+        subject_alternative_names,
+        actor_email,
+        account_id,
+        mdm_device_id,
+        device_serial,
+        unrecognised_claims,
+        issuer: certificate.issuer().to_string(),
+        serial: format_serial(certificate.raw_serial()),
+        has_client_auth_eku,
+        digital_signature_allowed,
+        is_currently_valid,
+        not_before: certificate.validity().not_before.to_string(),
+        not_before_timestamp,
+        not_after: certificate.validity().not_after.to_string(),
+        not_after_timestamp,
+        signing_algorithm,
+        fingerprint,
+        der_bytes: der.len(),
+    })
+}
+
+fn extract_actor_email(uris: &[&str]) -> ClaimValue {
+    let emails = firezone_attribute_values(uris, "email")
+        .into_iter()
+        .map(|value| {
+            let value = value?;
+            if !valid_email(&value) {
+                return Err(RejectionReason::NotAnEmailAddress);
+            }
+
+            Ok(value.to_lowercase())
+        })
+        .collect();
+
+    resolve_claim(emails, str::to_owned)
+}
+
+fn extract_account_id(uris: &[&str]) -> ClaimValue {
+    let account_ids = firezone_attribute_values(uris, "account-id")
+        .into_iter()
+        .map(|value| {
+            let value = value?;
+            let Ok(account_id) = uuid::Uuid::parse_str(&value) else {
+                return Err(RejectionReason::NotAUuid);
+            };
+
+            Ok(account_id.hyphenated().to_string().to_lowercase())
+        })
+        .collect();
+
+    resolve_claim(account_ids, str::to_owned)
+}
+
+fn extract_device_serial(uris: &[&str]) -> ClaimValue {
+    let mut serials = firezone_attribute_values(uris, "serial");
+    serials.extend(firezone_attribute_values(uris, "apple-serial"));
+
+    // A serial is compared case-insensitively but shown the way the certificate spells it.
+    resolve_claim(serials, str::to_lowercase)
+}
+
+fn firezone_attribute_values(
+    uris: &[&str],
+    expected_attribute: &str,
+) -> Vec<Result<String, RejectionReason>> {
+    let mut values = Vec::new();
+
+    for uri in uris {
+        let Some((attribute, raw_value)) = firezone_claim(uri) else {
+            continue;
+        };
+        if attribute != expected_attribute {
+            continue;
+        }
+
+        let decoded = percent_decode(raw_value).unwrap_or_else(|| raw_value.to_owned());
+        let value = decoded.trim();
+        if !valid_identifier(value) {
+            values.push(Err(invalid_identifier_reason(value)));
+            continue;
+        }
+
+        values.push(Ok(value.to_owned()));
+    }
+
+    values
+}
+
+/// The state a claim resolves to, comparing the values a certificate gave it by `key`.
+///
+/// Repeating the same value is not a conflict. Giving two different ones is, and neither is
+/// attested: picking one would let a certificate decide which identity it is read as.
+fn resolve_claim(
+    values: Vec<Result<String, RejectionReason>>,
+    key: impl Fn(&str) -> String,
+) -> ClaimValue {
+    let rejection = values
+        .iter()
+        .find_map(|value| value.as_ref().err().copied());
+    let mut seen = HashSet::new();
+    let accepted = values
+        .into_iter()
+        .flatten()
+        .filter(|value| seen.insert(key(value)))
+        .collect::<Vec<_>>();
+
+    match (accepted.as_slice(), rejection) {
+        ([value], _) => ClaimValue::Present {
+            value: value.clone(),
+        },
+        ([], None) => ClaimValue::Absent,
+        ([], Some(reason)) => ClaimValue::Invalid { reason },
+        (_, _) => ClaimValue::Invalid {
+            reason: RejectionReason::Ambiguous,
+        },
+    }
+}
+
+/// The lower-cased attribute and the raw value of a `firezone://` name, [`None`] for other URIs.
+fn firezone_claim(uri: &str) -> Option<(String, &str)> {
+    let (scheme, remainder) = uri.split_once("://")?;
+    if !scheme.eq_ignore_ascii_case("firezone") {
+        return None;
+    }
+    let (attribute, value) = remainder.split_once('/')?;
+
+    Some((attribute.to_ascii_lowercase(), value))
+}
+
+fn valid_email(value: &str) -> bool {
+    if !valid_identifier(value) || value.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let mut parts = value.split('@');
+    matches!((parts.next(), parts.next(), parts.next()), (Some(local), Some(domain), None) if !local.is_empty() && !domain.is_empty())
+}
+
+fn percent_decode(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'%' {
+            decoded.push(bytes[index]);
+            index += 1;
+            continue;
+        }
+        let high = *bytes.get(index + 1)?;
+        let low = *bytes.get(index + 2)?;
+        decoded.push(hex_value(high)? << 4 | hex_value(low)?);
+        index += 3;
+    }
+    String::from_utf8(decoded).ok()
+}
+
+fn hex_value(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn extract_mdm_device_id(uris: &[&str]) -> ClaimValue {
+    let uris = uris
+        .iter()
+        .copied()
+        .flat_map(split_comma_joined_uris)
+        .filter(|uri| {
+            !uri.to_ascii_lowercase()
+                .starts_with("tag:microsoft.com,2022-09-14:sid:")
+        })
+        .collect::<Vec<_>>();
+    let mut saw_typed_identifier = false;
+    let mut typed_mdm_device_id = None;
+    let mut rejection = None;
+
+    for uri in &uris {
+        let Some((id_type, value)) = firezone_claim(uri) else {
+            continue;
+        };
+        if !mdm_attribute(&id_type) {
+            continue;
+        }
+        // The same escaping the other typed claims go through: an MDM that percent-encodes its
+        // identifier must not end up attesting the literal escape sequence.
+        let value = percent_decode(value).unwrap_or_else(|| value.to_owned());
+        let value = value.as_str();
+        if !valid_identifier(value) {
+            if device_id_attribute(&id_type) {
+                rejection.get_or_insert(invalid_identifier_reason(value));
+            }
+
+            continue;
+        }
+
+        saw_typed_identifier = true;
+        if !device_id_attribute(&id_type) || typed_mdm_device_id.is_some() {
+            continue;
+        }
+
+        typed_mdm_device_id = normalize_mdm_device_id(value);
+        if typed_mdm_device_id.is_none() {
+            rejection.get_or_insert(RejectionReason::PlaceholderIdentifier);
+        }
+    }
+
+    let device_id = if saw_typed_identifier {
+        typed_mdm_device_id
+    } else {
+        uris.into_iter().find_map(|uri| {
+            let value = uri.trim();
+            (value.len() == 36 && uuid::Uuid::parse_str(value).is_ok())
+                .then(|| normalize_mdm_device_id(value))
+                .flatten()
+        })
+    };
+
+    match (device_id, rejection) {
+        (Some(device_id), _) => ClaimValue::Present { value: device_id },
+        (None, Some(reason)) => ClaimValue::Invalid { reason },
+        (None, None) => ClaimValue::Absent,
+    }
+}
+
+fn extract_unrecognised_claims(uris: &[&str]) -> Vec<String> {
+    uris.iter()
+        .copied()
+        .filter(|uri| {
+            firezone_claim(uri).is_some_and(|(attribute, _)| !known_attribute(&attribute))
+        })
+        .map(format_claim_value)
+        .collect()
+}
+
+/// Whether the parser reads this `firezone://` attribute at all, however it uses the value.
+fn known_attribute(attribute: &str) -> bool {
+    matches!(attribute, "email" | "account-id") || mdm_attribute(attribute)
+}
+
+/// Whether the attribute is an identifier an MDM writes into a certificate, including the ones
+/// that only say a device was enrolled.
+fn mdm_attribute(attribute: &str) -> bool {
+    matches!(
+        attribute,
+        "serial" | "apple-serial" | "udid" | "apple-udid" | "smbios-uuid"
+    ) || device_id_attribute(attribute)
+}
+
+/// Whether the attribute is one the portal matches a device by.
+fn device_id_attribute(attribute: &str) -> bool {
+    matches!(
+        attribute,
+        "intune-id" | "entra-id" | "ws1-uuid" | "jamf-id" | "kandji-id"
+    )
+}
+
+/// Intune encodes all configured SAN URI rows into one comma-joined value.
+/// Only split where the text following a comma begins with another URI scheme,
+/// preserving the comma in Microsoft's SID URI.
+fn split_comma_joined_uris(value: &str) -> Vec<&str> {
+    let mut values = Vec::new();
+    let mut start = 0;
+
+    for (comma, _) in value.match_indices(',') {
+        let remainder = &value[comma + 1..];
+        let next = remainder.trim_start();
+        if !starts_with_uri_scheme(next) {
+            continue;
+        }
+
+        values.push(value[start..comma].trim());
+        start = comma + 1 + (remainder.len() - next.len());
+    }
+    values.push(value[start..].trim());
+
+    values
+}
+
+fn starts_with_uri_scheme(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphabetic() {
+        return false;
+    }
+
+    bytes
+        .take_while(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'.' | b'-' | b':')
+        })
+        .any(|byte| byte == b':')
+}
+
+fn valid_identifier(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty() && value.len() <= 255
+}
+
+/// Why [`valid_identifier`] refused a value.
+fn invalid_identifier_reason(value: &str) -> RejectionReason {
+    if value.trim().is_empty() {
+        return RejectionReason::Empty;
+    }
+
+    RejectionReason::TooLong
+}
+
+fn normalize_mdm_device_id(value: &str) -> Option<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if !valid_identifier(&normalized)
+        || matches!(
+            normalized.as_str(),
+            "0" | "00000000-0000-0000-0000-000000000000"
+                | "ffffffff-ffff-ffff-ffff-ffffffffffff"
+                | "03000200-0400-0500-0006-000700080009"
+                | "idnotpresentbutsettable"
+        )
+    {
+        return None;
+    }
+
+    Some(normalized)
+}
+
+fn format_subject_alternative_name(name: &GeneralName<'_>) -> Vec<String> {
+    let value = match name {
+        GeneralName::OtherName(oid, value) => format!(
+            "Other name ({oid}): DER/Base64 {}",
+            BASE64_STANDARD.encode(value)
+        ),
+        GeneralName::RFC822Name(value) => format!("Email: {value}"),
+        GeneralName::DNSName(value) => format!("DNS: {value}"),
+        GeneralName::X400Address(value) => format!(
+            "X.400 address: DER/Base64 {}",
+            BASE64_STANDARD.encode(value.data)
+        ),
+        GeneralName::DirectoryName(value) => format!("Directory name: {value}"),
+        GeneralName::EDIPartyName(value) => format!(
+            "EDI party name: DER/Base64 {}",
+            BASE64_STANDARD.encode(value.data)
+        ),
+        GeneralName::URI(value) => {
+            return split_comma_joined_uris(value)
+                .into_iter()
+                .map(|value| format!("URI: {value}"))
+                .collect();
+        }
+        GeneralName::IPAddress(value) => format!("IP address: {}", format_ip_address(value)),
+        GeneralName::RegisteredID(value) => format!("Registered ID: {value}"),
+        GeneralName::Invalid(tag, value) => format!(
+            "Invalid SAN (tag {tag}): DER/Base64 {}",
+            BASE64_STANDARD.encode(value)
+        ),
+    };
+    vec![value]
+}
+
+fn format_ip_address(value: &[u8]) -> String {
+    match value {
+        [a, b, c, d] => Ipv4Addr::new(*a, *b, *c, *d).to_string(),
+        value if value.len() == 16 => {
+            let octets = <[u8; 16]>::try_from(value).expect("length was checked");
+            Ipv6Addr::from(octets).to_string()
+        }
+        value => format!("DER/Base64 {}", BASE64_STANDARD.encode(value)),
+    }
+}
+
+/// RFC 5280 bounds a serial number to 20 octets, which a leading sign padding byte pushes to 21.
+///
+/// Nothing past that came from an issuer we would trust, and rendering it costs three characters
+/// and an allocation per octet, so a certificate that spends its whole size on a serial number
+/// would take longer to display than to parse.
+const MAX_RENDERED_SERIAL_OCTETS: usize = 21;
+
+fn format_serial(raw: &[u8]) -> String {
+    let rendered = raw
+        .iter()
+        .take(MAX_RENDERED_SERIAL_OCTETS)
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<Vec<_>>()
+        .join(":");
+    let elided = raw.len().saturating_sub(MAX_RENDERED_SERIAL_OCTETS);
+    if elided == 0 {
+        return rendered;
+    }
+
+    format!("{rendered} (+{elided} octets)")
+}
+
+/// A `firezone://` name the parser does not read goes straight into a diagnostics row, and a
+/// certificate can spend its whole size on one.
+const MAX_RENDERED_CLAIM_CHARS: usize = 64;
+
+fn format_claim_value(value: &str) -> String {
+    let rendered = value
+        .chars()
+        .take(MAX_RENDERED_CLAIM_CHARS)
+        .collect::<String>();
+    let elided = value
+        .chars()
+        .count()
+        .saturating_sub(MAX_RENDERED_CLAIM_CHARS);
+    if elided == 0 {
+        return rendered;
+    }
+
+    format!("{rendered} (+{elided} characters)")
+}
+
+fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
+    claim_field(
+        label,
+        ClaimValue::Present {
+            value: value.into(),
+        },
+    )
+}
+
+fn claim_field(label: impl Into<String>, value: ClaimValue) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value,
+    }
+}

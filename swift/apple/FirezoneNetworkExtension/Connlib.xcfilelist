@@ -1,2 +1,4 @@
 $(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/connlib.swift
 $(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/connlibFFI.h
+$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/x509claims.swift
+$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/x509claimsFFI.h

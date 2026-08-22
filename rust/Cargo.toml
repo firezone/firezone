@@ -45,6 +45,8 @@ members = [
     "libs/telemetry",
     "libs/tunnel-bypass-resolver",
     "libs/windows-security",
+    "libs/x509-claims",
+    "libs/x509-claims-ffi",
     "libs/x509-credential",
     "relay/ebpf-shared",
     "relay/ebpf-turn-router",
@@ -179,6 +181,7 @@ quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
 rand = "0.10.1"
 rangemap = "1.7.1"
+rcgen = { version = "0.14.9", default-features = false, features = ["ring"] }
 relay-proto = { path = "relay/proto" }
 reqwest = { version = "0.13.4", default-features = false }
 resolv-conf = "0.7.6"
@@ -260,7 +263,10 @@ windows-native-keyring-store = "1.1.0"
 windows-security = { path = "libs/windows-security" }
 windows-service = "0.8.1"
 winreg = "0.56.0"
+x509-claims = { path = "libs/x509-claims" }
+x509-claims-ffi = { path = "libs/x509-claims-ffi" }
 x509-credential = { path = "libs/x509-credential" }
+x509-parser = "0.18.0"
 zbus = "5.15.0"
 zip = { version = "8.6.0", default-features = false }
 

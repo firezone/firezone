@@ -7,6 +7,12 @@ static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 mod fd;
 mod platform;
 
+// Links the `x509claims` UniFFI scaffolding into `libconnlib`, so that one Rust
+// library serves both namespaces. A binary can only carry a single Rust staticlib
+// without duplicating the runtime, so the bindings ship inside `libconnlib` instead
+// of a second library.
+use x509claims as _;
+
 use crate::fd::RawFd;
 
 use std::{

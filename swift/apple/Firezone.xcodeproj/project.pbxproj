@@ -45,6 +45,9 @@
 		C1892134991C462C8E137DE3 /* Channel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C09DC14A4A04715A37BC04C /* Channel.swift */; };
 		C4B08E1145E04823BC25E00D /* SessionEventLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */; };
 		CCC04BEF428B758D9BB5F842 /* connlib.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2847ACC9D73EA6F356F2DEE1 /* connlib.swift */; };
+		D7C0DE012E90000000000002 /* x509claims.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C0DE012E90000000000001 /* x509claims.swift */; };
+		D7C0DE012E90000000000003 /* x509claims.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C0DE012E90000000000001 /* x509claims.swift */; };
+		D7C0DE012E90000000000004 /* x509claims.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C0DE012E90000000000001 /* x509claims.swift */; };
 		FZ0CLI012E80000000000001 /* FirezoneCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000010 /* FirezoneCLI.swift */; platformFilters = (macos, ); };
 		FZ0CLI012E80000000000006 /* SignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000014 /* SignIn.swift */; platformFilters = (macos, ); };
 		FZ0CLI012E80000000000008 /* ConnectCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000016 /* ConnectCommand.swift */; platformFilters = (macos, ); };
@@ -140,6 +143,8 @@
 		9A1000032F10000100BEEF01 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9A1000042F10000100BEEF01 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		9A1000052F10000100BEEF01 /* KeepFirezoneRunning.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeepFirezoneRunning.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D7C0DE012E90000000000001 /* x509claims.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = x509claims.swift; path = FirezoneNetworkExtension/Connlib/Generated/x509claims.swift; sourceTree = "<group>"; };
+		D7C0DE012E90000000000007 /* Firezone-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Firezone-Bridging-Header.h"; sourceTree = "<group>"; };
 		E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SessionEventLoop.swift; sourceTree = "<group>"; };
 		FZ0CLI012E80000000000010 /* FirezoneCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirezoneCLI.swift; sourceTree = "<group>"; };
 		FZ0CLI012E80000000000014 /* SignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignIn.swift; sourceTree = "<group>"; };
@@ -231,6 +236,7 @@
 			isa = PBXGroup;
 			children = (
 				2847ACC9D73EA6F356F2DEE1 /* connlib.swift */,
+				D7C0DE012E90000000000001 /* x509claims.swift */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -280,6 +286,7 @@
 			children = (
 				8D1D405C2CFF6F5200E669F9 /* Firezone.entitlements */,
 				8D1D405D2CFF6F5D00E669F9 /* Info.plist */,
+				D7C0DE012E90000000000007 /* Firezone-Bridging-Header.h */,
 				8DDD0E8B2ADC6657001FA7E9 /* config.xcconfig */,
 				05E1505F28FF398000170F82 /* Application */,
 				FZ0CLI012E80000000000071 /* CLI */,
@@ -631,6 +638,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6F0EDF212E79A15700D6D632 /* connlib.swift in Sources */,
+				D7C0DE012E90000000000002 /* x509claims.swift in Sources */,
 				6F0EDF1F2E79A13800D6D632 /* Adapter.swift in Sources */,
 				8DC08BD72B297DB400675F46 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */,
 				8D41B9A52D15DD6800D16065 /* TunnelLogArchive.swift in Sources */,
@@ -658,6 +666,7 @@
 				6571861AB9324D6A9395BDB3 /* SessionEventLoop.swift in Sources */,
 				858AA13A09A55E3B1DD5DEDA /* Adapter.swift in Sources */,
 				CCC04BEF428B758D9BB5F842 /* connlib.swift in Sources */,
+				D7C0DE012E90000000000003 /* x509claims.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -667,6 +676,7 @@
 			files = (
 				8DCC021D28D512AC007E12D2 /* FirezoneApp.swift in Sources */,
 				8D0F0A022E9A000100BEEF02 /* main.swift in Sources */,
+				D7C0DE012E90000000000004 /* x509claims.swift in Sources */,
 				FZ0CLI012E80000000000001 /* FirezoneCLI.swift in Sources */,
 				FZ0CLI012E80000000000006 /* SignIn.swift in Sources */,
 				FZ0CLI012E80000000000007 /* TunnelSupervisor.swift in Sources */,
@@ -1075,8 +1085,12 @@
 				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-ios/debug";
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-ios-sim/debug";
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-ios/debug";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/debug";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=arm64e]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/debug";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-darwin/debug";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = "$(inherited)";
+				OTHER_LDFLAGS = "-lconnlib";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROFILE_ID)";
@@ -1086,6 +1100,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_INSTALL_MODULE = YES;
 				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "Firezone/Firezone-Bridging-Header.h";
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.2;
@@ -1132,8 +1147,12 @@
 				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-ios/release";
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-ios-sim/release";
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-ios/release";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/release";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=arm64e]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/release";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-darwin/release";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = "$(inherited)";
+				OTHER_LDFLAGS = "-lconnlib";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited)";
 				PRODUCT_MODULE_NAME = "$(PRODUCT_NAME:c99extidentifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1144,6 +1163,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_INSTALL_MODULE = NO;
 				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "Firezone/Firezone-Bridging-Header.h";
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
 				SWIFT_VERSION = 6.2;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1430,8 +1450,12 @@
 				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-ios/release";
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-ios-sim/release";
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-ios/release";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/release";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=arm64e]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/release";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-darwin/release";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = "$(inherited)";
+				OTHER_LDFLAGS = "-lconnlib";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited)";
 				PRODUCT_MODULE_NAME = "$(PRODUCT_NAME:c99extidentifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1442,6 +1466,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_INSTALL_MODULE = NO;
 				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "Firezone/Firezone-Bridging-Header.h";
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.2;
