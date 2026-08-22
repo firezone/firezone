@@ -35,5 +35,3 @@ dist
 # Some new generated files in Tauri v2
 src-tauri/gen
 
-# Rendered by the screenshot test
-screenshots
