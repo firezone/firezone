@@ -1,6 +1,7 @@
 defmodule Portal.EmailSuppression do
   use Ecto.Schema
   import Ecto.Changeset, only: [validate_required: 2, unique_constraint: 2]
+  alias Portal.Email
 
   @primary_key false
   @timestamps_opts [type: :utc_datetime_usec]
@@ -18,8 +19,9 @@ defmodule Portal.EmailSuppression do
   end
 
   def normalize_email(email) when is_binary(email) do
-    email
-    |> String.trim()
-    |> String.downcase()
+    case Email.normalize_for_match(email) do
+      {:ok, email} -> email
+      :error -> email |> String.trim() |> String.downcase()
+    end
   end
 end

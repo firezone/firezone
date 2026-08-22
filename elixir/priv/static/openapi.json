@@ -2687,6 +2687,61 @@
         "title": "GatewayProvisionResponse",
         "type": "object"
       },
+      "X509AuthProvider": {
+        "description": "X.509 Auth Provider",
+        "example": {
+          "context": "clients_only",
+          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "is_disabled": true,
+          "name": "X.509"
+        },
+        "properties": {
+          "account_id": {
+            "description": "Account ID",
+            "format": "uuid",
+            "type": "string"
+          },
+          "context": {
+            "description": "Context",
+            "enum": [
+              "clients_only"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "description": "Provider ID",
+            "format": "uuid",
+            "type": "string"
+          },
+          "inserted_at": {
+            "description": "Creation timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "is_disabled": {
+            "description": "Whether provider is disabled",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Provider name",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "Update timestamp",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "name",
+          "context",
+          "is_disabled"
+        ],
+        "title": "X509AuthProvider",
+        "type": "object"
+      },
       "ActorsResponse": {
         "description": "Response schema for multiple Actors",
         "example": {
@@ -3098,6 +3153,16 @@
           "type"
         ],
         "title": "Resource",
+        "type": "object"
+      },
+      "X509AuthProviderResponse": {
+        "description": "Response schema for a single X.509 Auth Provider",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/X509AuthProvider"
+          }
+        },
+        "title": "X509AuthProviderResponse",
         "type": "object"
       },
       "ClientTokenCreate": {
@@ -10186,6 +10251,93 @@
         "summary": "Show an Intune posture provider",
         "tags": [
           "Intune Posture Providers"
+        ]
+      }
+    },
+    "/x509_auth_provider": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.X509AuthProviderController.show",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/X509AuthProviderResponse"
+                }
+              }
+            },
+            "description": "X.509 Auth Provider Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show X.509 Auth Provider",
+        "tags": [
+          "X.509 Auth Providers"
         ]
       }
     },

@@ -12,13 +12,14 @@ defmodule Portal.AuthProvider do
     "entra" => Portal.Entra.AuthProvider,
     "oidc" => Portal.OIDC.AuthProvider,
     "email_otp" => Portal.EmailOTP.AuthProvider,
-    "userpass" => Portal.Userpass.AuthProvider
+    "userpass" => Portal.Userpass.AuthProvider,
+    "x509" => Portal.X509.AuthProvider
   }
 
   schema "auth_providers" do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true
-    field :type, Ecto.Enum, values: ~w[google okta entra oidc email_otp userpass]a
+    field :type, Ecto.Enum, values: ~w[google okta entra oidc email_otp userpass x509]a
 
     has_one :email_otp_auth_provider, Portal.EmailOTP.AuthProvider,
       references: :id,
@@ -49,6 +50,11 @@ defmodule Portal.AuthProvider do
       references: :id,
       foreign_key: :id,
       where: [type: :oidc]
+
+    has_one :x509_auth_provider, Portal.X509.AuthProvider,
+      references: :id,
+      foreign_key: :id,
+      where: [type: :x509]
   end
 
   def module!(type) do
@@ -69,6 +75,10 @@ defmodule Portal.AuthProvider do
     |> validate_required(~w[type]a)
     |> assoc_constraint(:account)
     |> unique_constraint(:id, name: :auth_providers_pkey)
+    |> unique_constraint(:account_id,
+      name: :auth_providers_account_id_x509_index,
+      message: "already has an X.509 authentication provider"
+    )
     |> check_constraint(:type, name: :type_must_be_valid, message: "is not valid")
   end
 end

@@ -63,6 +63,15 @@ defmodule PortalAPI.Sockets do
           "authority. Please contact your administrator."
       )
 
+  def handle_error(conn, :x509_user_not_authorized),
+    do:
+      ProblemDetails.send(
+        conn,
+        403,
+        "This device's certificate does not identify an active user authorized to access " <>
+          "this Firezone account. Please contact your administrator."
+      )
+
   def handle_error(conn, :device_identity_conflict),
     do:
       ProblemDetails.send_with_code(

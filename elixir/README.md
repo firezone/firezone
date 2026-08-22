@@ -43,7 +43,7 @@ Inside the `/elixir` directory run the following commands:
 The web and API endpoints should now be running:
 
 - Web -> https://localhost:13443/
-- API -> ws://localhost:13001/
+- API -> wss://localhost:13001/
 
 ### Stripe integration for local development
 

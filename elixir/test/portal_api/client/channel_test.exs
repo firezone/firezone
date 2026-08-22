@@ -10,6 +10,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.AuthProviderFixtures
   import Portal.DeviceFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
@@ -1041,6 +1042,80 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _init_payload
 
       PG.deliver(client.id, :disconnect)
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "disconnects an X.509 channel when actor CDC reports it disabled", %{
+      account: account,
+      actor: actor,
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+      provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      credential = %Portal.Authentication.Credential{
+        id: Ecto.UUID.generate(),
+        type: :x509,
+        auth_provider_id: provider.id
+      }
+
+      join_channel(client, %{subject | credential: credential})
+      assert_push "init", _init_payload
+
+      actor |> Ecto.Changeset.change(is_disabled: true) |> Repo.update!()
+
+      old_data = %{
+        "id" => actor.id,
+        "account_id" => account.id,
+        "type" => actor.type,
+        "is_disabled" => false
+      }
+
+      assert :ok =
+               Portal.Changes.Hooks.Actors.on_update(
+                 1,
+                 old_data,
+                 %{old_data | "is_disabled" => true}
+               )
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "disconnects an X.509 channel when provider CDC reports it disabled", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+      provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      credential = %Portal.Authentication.Credential{
+        id: Ecto.UUID.generate(),
+        type: :x509,
+        auth_provider_id: provider.id
+      }
+
+      join_channel(client, %{subject | credential: credential})
+      assert_push "init", _init_payload
+
+      provider |> Ecto.Changeset.change(is_disabled: true) |> Repo.update!()
+
+      old_data = %{
+        "id" => provider.id,
+        "account_id" => account.id,
+        "is_disabled" => false
+      }
+
+      assert :ok =
+               Portal.Changes.Hooks.X509AuthProviders.on_update(
+                 1,
+                 old_data,
+                 %{old_data | "is_disabled" => true}
+               )
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}

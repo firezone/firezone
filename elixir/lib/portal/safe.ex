@@ -874,6 +874,8 @@ defmodule Portal.Safe do
   def permit(:read, Portal.EmailOTP.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Userpass.AuthProvider, :account_admin_user), do: :ok
   def permit(:read, Portal.Userpass.AuthProvider, :api_client), do: :ok
+  def permit(_action, Portal.X509.AuthProvider, :account_admin_user), do: :ok
+  def permit(:read, Portal.X509.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Entra.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Entra.Directory, :api_client), do: :ok
   def permit(_action, Portal.PostureProvider, :account_admin_user), do: :ok

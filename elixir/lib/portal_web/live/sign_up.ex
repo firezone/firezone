@@ -847,7 +847,8 @@ defmodule PortalWeb.SignUp do
       Actor,
       AuthProvider,
       EmailOTP,
-      Safe
+      Safe,
+      X509
     }
 
     @spec find_account_by_owner_email(String.t()) :: Portal.Account.t() | nil
@@ -891,7 +892,8 @@ defmodule PortalWeb.SignUp do
     end
 
     # OTP 28 dialyzer is stricter about opaque types (MapSet) inside Ecto.Multi
-    @dialyzer {:no_opaque, [register_account: 6, create_email_provider: 1]}
+    @dialyzer {:no_opaque,
+               [register_account: 6, create_email_provider: 1, create_x509_provider: 1]}
     @spec register_account(any(), String.t(), any(), map(), any(), any()) ::
             {:ok, map()} | {:error, atom(), any(), map()}
     def register_account(
@@ -920,6 +922,9 @@ defmodule PortalWeb.SignUp do
       end)
       |> Ecto.Multi.run(:provider, fn _repo, %{account: account} ->
         create_email_provider(account)
+      end)
+      |> Ecto.Multi.run(:x509_provider, fn _repo, %{account: account} ->
+        create_x509_provider(account)
       end)
       |> Ecto.Multi.run(:actor, fn _repo, %{account: account} ->
         create_admin(account, registration.email, registration.actor.name)
@@ -974,6 +979,42 @@ defmodule PortalWeb.SignUp do
       |> Safe.transact()
       |> case do
         {:ok, %{email_otp_provider: email_provider}} -> {:ok, email_provider}
+        {:error, _step, changeset, _changes} -> {:error, changeset}
+      end
+    end
+
+    @spec create_x509_provider(Portal.Account.t()) ::
+            {:ok, Portal.X509.AuthProvider.t()} | {:error, Ecto.Changeset.t()}
+    def create_x509_provider(account) do
+      id = Ecto.UUID.generate()
+
+      parent_changeset =
+        cast(
+          %AuthProvider{},
+          %{account_id: account.id, id: id, type: :x509},
+          ~w[id account_id type]a
+        )
+
+      x509_changeset =
+        %X509.AuthProvider{}
+        |> cast(
+          %{
+            id: id,
+            account_id: account.id,
+            name: "X.509",
+            context: :clients_only,
+            is_disabled: true
+          },
+          ~w[id account_id name context is_disabled]a
+        )
+        |> X509.AuthProvider.changeset()
+
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:auth_provider, parent_changeset)
+      |> Ecto.Multi.insert(:x509_provider, x509_changeset)
+      |> Safe.transact()
+      |> case do
+        {:ok, %{x509_provider: provider}} -> {:ok, provider}
         {:error, _step, changeset, _changes} -> {:error, changeset}
       end
     end
