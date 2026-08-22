@@ -230,6 +230,14 @@ jobs:
         run: |
           set -euo pipefail
 
+          # A render that is not perfectly reproducible would otherwise chain: every push
+          # starts a run that pushes again. One re-render per human commit is the most this
+          # can ever produce.
+          if [ "$(git log -1 --format=%ae)" = "github-bot@firezone.dev" ]; then
+            echo "The head commit is already a re-render; not pushing on top of it."
+            exit 0
+          fi
+
           git config --local user.email "github-bot@firezone.dev"
           git config --local user.name "Firezone Bot"
           git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
