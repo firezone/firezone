@@ -4,7 +4,7 @@ import type {} from "@vitest/browser-playwright";
 import React, { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { MemoryRouter } from "react-router";
-import { afterEach, beforeEach, test } from "vitest";
+import { afterEach, beforeEach, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import App from "./components/App";
 import {
@@ -89,6 +89,13 @@ const screens: Record<string, Screen> = {
   "colour-palette": { route: "/colour-palette" },
 };
 
+// An animation makes the captured frame depend on wall-clock timing: the overview's
+// loading spinner would sit at a different angle in every run and its image would churn.
+const frozen = document.createElement("style");
+frozen.textContent =
+  "*, *::before, *::after { animation: none !important; transition: none !important; }";
+document.head.append(frozen);
+
 // `act` refuses to run unless the environment opts in.
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -117,33 +124,54 @@ afterEach(async () => {
   clearMocks();
 });
 
+// A screenshot taken straight after the last DOM mutation can catch the frame before it,
+// and the emulated colour scheme reaches the page a moment after the CDP call returns.
+// Both make an image differ from run to run, which would show up as a spurious diff.
+async function settle() {
+  await document.fonts.ready;
+  await new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  );
+}
+
+async function useColorScheme(colorScheme: (typeof COLOR_SCHEMES)[number]) {
+  await cdp().send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-color-scheme", value: colorScheme }],
+  });
+
+  const query = window.matchMedia(`(prefers-color-scheme: ${colorScheme})`);
+  await vi.waitUntil(() => query.matches);
+}
+
 for (const [name, screen] of Object.entries(screens)) {
-  test(name, async () => {
-    await act(async () => {
-      root.render(
-        <MemoryRouter initialEntries={[screen.route]}>
-          <App />
-        </MemoryRouter>
-      );
-    });
+  for (const colorScheme of COLOR_SCHEMES) {
+    // The scheme is emulated before anything mounts, so no screen is ever captured
+    // mid-way through a theme change.
+    test(`${name}-${colorScheme}`, async () => {
+      await useColorScheme(colorScheme);
 
-    await act(async () => {
-      if (screen.session) await events.sessionChanged.emit(screen.session);
-      if (screen.generalSettings)
-        await events.generalSettingsChanged.emit(screen.generalSettings);
-      if (screen.advancedSettings)
-        await events.advancedSettingsChanged.emit(screen.advancedSettings);
-      if (screen.logCount) await events.logsRecounted.emit(screen.logCount);
-    });
-
-    for (const colorScheme of COLOR_SCHEMES) {
-      await cdp().send("Emulation.setEmulatedMedia", {
-        features: [{ name: "prefers-color-scheme", value: colorScheme }],
+      await act(async () => {
+        root.render(
+          <MemoryRouter initialEntries={[screen.route]}>
+            <App />
+          </MemoryRouter>
+        );
       });
+
+      await act(async () => {
+        if (screen.session) await events.sessionChanged.emit(screen.session);
+        if (screen.generalSettings)
+          await events.generalSettingsChanged.emit(screen.generalSettings);
+        if (screen.advancedSettings)
+          await events.advancedSettingsChanged.emit(screen.advancedSettings);
+        if (screen.logCount) await events.logsRecounted.emit(screen.logCount);
+      });
+
+      await settle();
 
       await page.screenshot({
         path: `../screenshots/${name}-${colorScheme}.png`,
       });
-    }
-  });
+    });
+  }
 }
