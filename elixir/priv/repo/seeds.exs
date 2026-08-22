@@ -973,7 +973,6 @@ defmodule Portal.Repo.Seeds do
       |> put_change(:features, %{
         policy_conditions: true,
         idp_sync: true,
-        rest_api: true,
         internet_resource: true,
         iceless: System.get_env("FEATURE_ICELESS_ENABLED") == "true",
         log_sinks: true,

@@ -852,6 +852,26 @@ defmodule PortalAPI.ActorControllerTest do
     end
   end
 
+  describe "Database.delete_actor_by_id/2" do
+    test "returns unauthorized for a subject that may not delete Actors", %{account: account} do
+      # Not reachable through the REST API today - tokens only decode under the
+      # api_client salt - but Safe.delete_all/2 can still return this, and it
+      # has to surface as a 403 rather than crashing the request.
+      subject =
+        Portal.SubjectFixtures.subject_fixture(
+          account: account,
+          actor: [type: :service_account]
+        )
+
+      actor = actor_fixture(account: account)
+
+      assert PortalAPI.ActorController.Database.delete_actor_by_id(actor.id, subject) ==
+               {:error, :unauthorized}
+
+      assert Repo.get_by(Actor, id: actor.id, account_id: account.id)
+    end
+  end
+
   describe "update/2 is_disabled" do
     test "disables an actor", %{
       conn: conn,

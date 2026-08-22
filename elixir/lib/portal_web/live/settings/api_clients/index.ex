@@ -73,23 +73,19 @@ defmodule PortalWeb.Settings.ApiClients.Index do
   end
 
   def mount(_params, _session, socket) do
-    if Portal.Account.rest_api_enabled?(socket.assigns.account) do
-      actors_with_tokens = Database.list_actors_with_token(socket.assigns.subject)
+    actors_with_tokens = Database.list_actors_with_token(socket.assigns.subject)
 
-      socket =
-        socket
-        |> assign(page_title: "API Tokens")
-        |> assign(actors_with_tokens: actors_with_tokens)
-        |> assign(selected_actor: nil)
-        |> assign(form: nil, encoded_token: nil)
-        |> assign(pending_confirm: nil, open_actor_actions_id: nil)
-        |> assign(trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?())
-        |> assign(device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?())
+    socket =
+      socket
+      |> assign(page_title: "API Tokens")
+      |> assign(actors_with_tokens: actors_with_tokens)
+      |> assign(selected_actor: nil)
+      |> assign(form: nil, encoded_token: nil)
+      |> assign(pending_confirm: nil, open_actor_actions_id: nil)
+      |> assign(trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?())
+      |> assign(device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?())
 
-      {:ok, socket}
-    else
-      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
-    end
+    {:ok, socket}
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :new}} = socket) do

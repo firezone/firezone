@@ -571,7 +571,6 @@ defmodule Portal.Mocks.Stripe do
       "internet_resource" => true,
       "monthly_active_users_count" => "unlimited",
       "policy_conditions" => true,
-      "rest_api" => true,
       "service_accounts_count" => "unlimited",
       "support_type" => "email_and_slack",
       "users_count" => "unlimited"

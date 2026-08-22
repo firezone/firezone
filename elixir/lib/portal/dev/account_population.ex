@@ -33,7 +33,6 @@ defmodule Portal.Dev.AccountPopulation do
       features: %{
         policy_conditions: false,
         idp_sync: false,
-        rest_api: false,
         internet_resource: false
       },
       limits: %{
@@ -85,7 +84,6 @@ defmodule Portal.Dev.AccountPopulation do
       features: %{
         policy_conditions: true,
         idp_sync: false,
-        rest_api: false,
         internet_resource: true
       },
       limits: %{
@@ -137,7 +135,6 @@ defmodule Portal.Dev.AccountPopulation do
       features: %{
         policy_conditions: true,
         idp_sync: true,
-        rest_api: true,
         internet_resource: true
       },
       limits: %{

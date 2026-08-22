@@ -153,13 +153,6 @@ defmodule Portal.Account do
   defp account_feature_enabled?(account, feature) do
     Map.fetch!(account.features || %Portal.Accounts.Features{}, feature) || false
   end
-
-  @spec rest_api_access_requested?(t()) :: boolean()
-  def rest_api_access_requested?(%__MODULE__{metadata: %{rest_api_requested_at: at}})
-      when not is_nil(at),
-      do: true
-
-  def rest_api_access_requested?(%__MODULE__{}), do: false
 end
 
 defmodule Portal.Account.Metadata do
@@ -168,13 +161,13 @@ defmodule Portal.Account.Metadata do
 
   @primary_key false
   embedded_schema do
-    field :rest_api_requested_at, :utc_datetime_usec
     embeds_one :stripe, Portal.Account.Metadata.Stripe, on_replace: :update
   end
 
   def changeset(metadata \\ %__MODULE__{}, attrs) do
     metadata
-    |> cast(attrs, [:rest_api_requested_at])
+    # No scalar fields to cast, but cast/3 is required to populate params for cast_embed.
+    |> cast(attrs, [])
     |> cast_embed(:stripe, with: &Portal.Account.Metadata.Stripe.changeset/2)
   end
 end

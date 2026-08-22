@@ -30,7 +30,6 @@ defmodule Portal.AccountFixtures do
       features: %{
         policy_conditions: true,
         idp_sync: true,
-        rest_api: true,
         iceless: false
       },
       limits: %{
