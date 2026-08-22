@@ -8,6 +8,9 @@ import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.core.data.Favorites
+import dev.firezone.android.features.session.ui.ResourceUiModel
+import dev.firezone.android.tunnel.model.ConnectedDevice
+import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,41 +32,35 @@ import org.robolectric.annotation.GraphicsMode
 )
 class ScreenshotTest {
     @Test
-    fun sessionScreen() =
-        capture("session-screen") {
-            SampleSessionScreen(favorites = Favorites(HashSet()))
-        }
+    fun sessionScreen() = captureSessionScreen("session-screen")
 
     @Test
     fun sessionScreenWithFavorites() =
-        capture("session-screen-favorites") {
-            SampleSessionScreen(favorites = Favorites(hashSetOf("gitlab")))
-        }
+        captureSessionScreen(
+            "session-screen-favorites",
+            favorites = Favorites(hashSetOf("gitlab")),
+        )
 
     // Signing in before the portal has sent any resources, which is also what an account
     // with nothing shared with it looks like.
     @Test
     fun sessionScreenWithoutResources() =
-        capture("session-screen-no-resources") {
-            SessionScreen(
-                actorName = "Jane Doe",
-                resources = persistentListOf(),
-                connectedDevices = persistentListOf(),
-                favorites = Favorites(HashSet()),
-                onToggleInternet = {},
-                onAddFavorite = {},
-                onRemoveFavorite = {},
-                onSettings = {},
-                onSignOut = {},
-            )
-        }
+        captureSessionScreen(
+            "session-screen-no-resources",
+            resources = persistentListOf(),
+            connectedDevices = persistentListOf(),
+        )
 
-    @Composable
-    private fun SampleSessionScreen(favorites: Favorites) {
+    private fun captureSessionScreen(
+        name: String,
+        resources: ImmutableList<ResourceUiModel> = sampleResources,
+        connectedDevices: ImmutableList<ConnectedDevice> = sampleConnectedDevices,
+        favorites: Favorites = Favorites(HashSet()),
+    ) = capture(name) {
         SessionScreen(
             actorName = "Jane Doe",
-            resources = sampleResources,
-            connectedDevices = sampleConnectedDevices,
+            resources = resources,
+            connectedDevices = connectedDevices,
             favorites = favorites,
             onToggleInternet = {},
             onAddFavorite = {},
