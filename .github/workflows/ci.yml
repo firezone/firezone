@@ -193,6 +193,77 @@ jobs:
             exit 1
           fi
 
+  # Puts a UI change in the diff of the pull request that causes it, where GitHub renders
+  # it side by side, rather than in an artifact a reviewer has to go looking for. CI is the
+  # only writer, so the images are always drawn by the same runner and a change that does
+  # not touch the UI cannot produce a spurious diff. A changed image is never an error.
+  commit-screenshots:
+    name: commit-screenshots
+    needs: [kotlin, swift, tauri]
+    if: "!cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+      # A platform the planner skipped uploads nothing, which leaves its images as committed.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: gui-client-screenshots
+          path: rust/gui-client/screenshots
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: android-screenshots
+          path: kotlin/android/screenshots
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: macos-screenshots
+          path: swift/apple/screenshots
+      - name: Set up GnuPG for the screenshot commit
+        uses: ./.github/actions/setup-gpg
+        id: setup-gpg
+        with:
+          key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
+          email: github-bot@firezone.dev
+      - name: Push the re-rendered screenshots
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+
+          git config --local user.email "github-bot@firezone.dev"
+          git config --local user.name "Firezone Bot"
+          git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
+          git config --local commit.gpgsign true
+
+          git add -A rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
+          if git diff --cached --quiet; then
+            echo "The screenshots are unchanged; nothing to push."
+            exit 0
+          fi
+          git commit -m "chore(ci): re-render the screenshots"
+
+          # Do not use checkout's GITHUB_TOKEN for the push: pushes made with
+          # it do not trigger the pull request's workflows.
+          git config --local http.https://github.com/.extraheader ""
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          # The branch may have moved while the clients were building.
+          for _ in 1 2 3; do
+            git fetch origin "$HEAD_REF"
+            git rebase "origin/$HEAD_REF"
+            if git push origin "HEAD:$HEAD_REF"; then
+              exit 0
+            fi
+          done
+
+          echo "Could not push the screenshots after three attempts." >&2
+          exit 1
+
   shell:
     name: shell-tests
     runs-on: ubuntu-24.04
