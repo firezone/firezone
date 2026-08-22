@@ -45,6 +45,17 @@ defmodule PortalAPI.ConnCase do
     Plug.Conn.put_req_header(conn, "authorization", "Bearer " <> encoded_fragment)
   end
 
+  @doc """
+  Authorizes a connection for the MCP endpoint, which takes OAuth access tokens
+  rather than the API tokens the REST API accepts.
+  """
+  def authorize_mcp_conn(conn, %Portal.Actor{account: account} = actor, scopes \\ ["mcp:read"]) do
+    {_token, encoded, _refresh} =
+      Portal.OAuthFixtures.oauth_token_fixture(account: account, actor: actor, scopes: scopes)
+
+    Plug.Conn.put_req_header(conn, "authorization", "Bearer " <> encoded)
+  end
+
   def equal_ids?(list1, list2) do
     MapSet.equal?(MapSet.new(list1), MapSet.new(list2))
   end
