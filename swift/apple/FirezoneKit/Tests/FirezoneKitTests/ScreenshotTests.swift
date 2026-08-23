@@ -44,12 +44,21 @@
       try render("settings", width: 800, height: 600) { store in SettingsView(store: store) }
     }
 
-    // A menu bar view is the *content* of a menu, so this renders its items stacked rather
-    // than the macOS menu that normally frames them.
-    @Test("Menu bar contents")
+    // A menu bar view is the *content* of a menu, so these render its items stacked rather
+    // than the macOS menu that normally frames them. A submenu is a row here, not a list:
+    // the resources and the connected devices appear as the rows that open them.
+    @Test("Menu bar before sign in")
     @MainActor
     func menuBarContents() throws {
-      try render("menu-bar-contents", width: 400, height: 600) { _ in
+      try render("menu-bar-contents", width: 400, height: 350) { _ in
+        VStack(alignment: .leading) { MenuBarView() }
+      }
+    }
+
+    @Test("Menu bar when signed in")
+    @MainActor
+    func menuBarSignedIn() throws {
+      try render("menu-bar-signed-in", width: 400, height: 600, store: .mockConnected()) { _ in
         VStack(alignment: .leading) { MenuBarView() }
       }
     }
@@ -60,10 +69,9 @@
       _ name: String,
       width: CGFloat,
       height: CGFloat,
+      store: Store = .mock(),
       @ViewBuilder content: (Store) -> some View
     ) throws {
-      let store = Store.mock()
-
       let renderer = ImageRenderer(
         content:
           content(store)
