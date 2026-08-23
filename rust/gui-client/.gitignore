@@ -34,3 +34,6 @@ dist
 
 # Some new generated files in Tauri v2
 src-tauri/gen
+
+# Screenshots Vitest attaches to a failing test's results
+.vitest-attachments
