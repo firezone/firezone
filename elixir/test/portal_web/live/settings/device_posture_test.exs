@@ -757,6 +757,19 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert Portal.Repo.aggregate(Portal.Iru.PostureProvider, :count) == 0
     end
 
+    test "keeps a pasted token when another field triggers validation", %{lv: lv} do
+      render_hook(lv, "validate", %{
+        "provider" => %{"api_token" => "pasted-token"}
+      })
+
+      html =
+        render_hook(lv, "validate", %{
+          "provider" => %{"name" => "Acme Iru"}
+        })
+
+      assert html =~ ~s(value="pasted-token")
+    end
+
     test "drops the verification when the tenant changes", %{lv: lv} do
       Req.Test.stub(Portal.Iru.APIClient, fn conn -> Req.Test.json(conn, []) end)
       Req.Test.allow(Portal.Iru.APIClient, self(), lv.pid)
