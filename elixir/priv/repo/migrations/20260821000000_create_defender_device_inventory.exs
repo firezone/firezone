@@ -70,7 +70,6 @@ defmodule Portal.Repo.Migrations.CreateDefenderDeviceInventory do
 
       # Operating system
       add(:os_platform, :string)
-      add(:os_version, :string)
       add(:version, :string)
       add(:os_build, :bigint)
       add(:os_processor, :string)
@@ -102,7 +101,7 @@ defmodule Portal.Repo.Migrations.CreateDefenderDeviceInventory do
       add(:is_excluded, :boolean)
       add(:exclusion_reason, :text)
 
-      # Azure virtual machine, flattened from the `vm_metadata` object
+      # Azure virtual machine, flattened from the `vmMetadata` object
       add(:vm_id, :string)
       add(:vm_cloud_provider, :string)
       add(:vm_resource_id, :text)

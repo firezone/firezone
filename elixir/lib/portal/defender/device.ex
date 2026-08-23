@@ -30,11 +30,9 @@ defmodule Portal.Defender.Device do
     field :machine_tags, {:array, :string}
 
     field :os_platform, :string
-    field :os_version, :string
 
-    # Defender reports the operating system twice. `osVersion` is the full
-    # version string, such as "10.0.0.0", and `version` is the Windows feature
-    # release the build belongs to, such as "1709".
+    # The Windows feature release the build belongs to, such as "1709". Named
+    # `version` on the machine entity, which has no other OS version property.
     field :version, :string
     field :os_build, :integer
     field :os_processor, :string

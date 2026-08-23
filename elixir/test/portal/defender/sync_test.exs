@@ -57,7 +57,6 @@ defmodule Portal.Defender.SyncTest do
     assert device.first_seen_at == ~U[2018-08-02 14:55:03.779185Z]
     assert device.last_seen_at == ~U[2021-01-25 07:27:36.052313Z]
     assert device.os_platform == "Windows10"
-    assert device.os_version == "10.0.0.0"
     assert device.version == "1901"
     assert device.os_processor == "x64"
     assert device.os_architecture == "64-bit"
@@ -100,17 +99,16 @@ defmodule Portal.Defender.SyncTest do
            ]
   end
 
-  # Defender documents both as strings but answers with numbers.
-  test "stores a numeric device group id and OS version as text" do
+  # The entity types rbacGroupId as Int32 while the reference table calls it a
+  # String, so the column has to take either.
+  test "stores a numeric device group id as text" do
     provider = defender_posture_provider_fixture()
 
-    stub_machines([machine(%{"rbacGroupId" => 140, "osVersion" => 10})])
+    stub_machines([machine(%{"rbacGroupId" => 140})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
-    device = Repo.get_by!(Device, defender_id: "machine-1")
-    assert device.rbac_group_id == "140"
-    assert device.os_version == "10"
+    assert Repo.get_by!(Device, defender_id: "machine-1").rbac_group_id == "140"
   end
 
   # The endpoint sends no next link, so a full page is the only signal that more
@@ -301,7 +299,6 @@ defmodule Portal.Defender.SyncTest do
       "firstSeen" => "2018-08-02T14:55:03.7791856Z",
       "lastSeen" => "2021-01-25T07:27:36.052313Z",
       "osPlatform" => "Windows10",
-      "osVersion" => "10.0.0.0",
       "version" => "1901",
       "osProcessor" => "x64",
       "osArchitecture" => "64-bit",
@@ -337,7 +334,7 @@ defmodule Portal.Defender.SyncTest do
           "operationalStatus" => "Up"
         }
       ],
-      "vm_metadata" => %{
+      "vmMetadata" => %{
         "vmId" => "vm-id-value",
         "cloudProvider" => "Azure",
         "resourceId" => "/subscriptions/sub-id/resourceGroups/rg/vm",

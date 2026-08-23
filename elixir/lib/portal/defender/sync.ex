@@ -116,7 +116,6 @@ defmodule Portal.Defender.Sync do
     {:defender_id, "id"},
     {:computer_dns_name, "computerDnsName"},
     {:os_platform, "osPlatform"},
-    {:os_version, "osVersion"},
     {:version, "version"},
     {:os_processor, "osProcessor"},
     {:os_architecture, "osArchitecture"},
@@ -156,7 +155,10 @@ defmodule Portal.Defender.Sync do
   ]
 
   defp device_attrs(machine, provider, synced_at) do
-    vm_metadata = machine["vm_metadata"] || %{}
+    # The service's own EDM schema calls this `vmMetadata`, while Elastic's
+    # client reads `vm_metadata`. Accept either rather than silently storing
+    # nothing, since we have no live tenant to settle it against.
+    vm_metadata = machine["vmMetadata"] || machine["vm_metadata"] || %{}
 
     %{
       account_id: provider.account_id,
@@ -216,8 +218,8 @@ defmodule Portal.Defender.Sync do
   defp text_or_nil(value) when value in [nil, ""], do: nil
   defp text_or_nil(value) when is_binary(value), do: value
 
-  # Defender documents the device group id and the OS version as strings but
-  # answers with numbers for both, so a run would otherwise fail on the insert.
+  # The machine entity types the device group id as Int32 while the reference
+  # table calls it a String, so both shapes have to land in the same column.
   defp text_or_nil(value) when is_integer(value), do: Integer.to_string(value)
   defp text_or_nil(value) when is_float(value), do: Float.to_string(value)
   defp text_or_nil(_value), do: nil

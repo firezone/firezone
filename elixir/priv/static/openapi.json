@@ -3325,10 +3325,6 @@
             "nullable": true,
             "type": "string"
           },
-          "os_version": {
-            "nullable": true,
-            "type": "string"
-          },
           "computer_dns_name": {
             "nullable": true,
             "type": "string"

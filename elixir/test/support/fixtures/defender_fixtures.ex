@@ -48,7 +48,6 @@ defmodule Portal.DefenderFixtures do
       entra_joined: Map.get(attrs, :entra_joined, true),
       machine_tags: Map.get(attrs, :machine_tags),
       os_platform: Map.get(attrs, :os_platform, "Windows11"),
-      os_version: Map.get(attrs, :os_version, "10.0.0.0"),
       version: Map.get(attrs, :version, "23H2"),
       os_build: Map.get(attrs, :os_build, 22_631),
       os_architecture: Map.get(attrs, :os_architecture, "64-bit"),
