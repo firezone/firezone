@@ -30,6 +30,8 @@ interface Screen {
   generalSettings?: GeneralSettingsViewModel;
   advancedSettings?: AdvancedSettingsViewModel;
   logCount?: FileCount;
+  /// Label of a field to leave the pointer over, for a screen whose tooltip is the point.
+  hover?: string;
 }
 
 const generalSettings: GeneralSettingsViewModel = {
@@ -79,6 +81,7 @@ const screens: Record<string, Screen> = {
       auth_url_is_managed: true,
       log_filter_is_managed: true,
     },
+    hover: "Auth Base URL",
   },
   "diagnostics-no-logs": { route: "/diagnostics" },
   diagnostics: {
@@ -167,6 +170,11 @@ for (const [name, screen] of Object.entries(screens)) {
       });
 
       await settle();
+
+      if (screen.hover) {
+        await page.getByLabelText(screen.hover).hover();
+        await settle();
+      }
 
       await page.screenshot({
         path: `../screenshots/${name}-${colorScheme}.png`,
