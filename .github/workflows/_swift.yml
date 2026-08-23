@@ -40,6 +40,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: mise run //swift/apple:test-coverage
+      # TEMPORARY: sketches each rendered screen into the log. Remove before merging.
+      - name: Sketch the screenshots
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          for image in swift/apple/screenshots/*.png; do
+            echo "===== $image"
+            sips --resampleWidth 100 "$image" --out /tmp/sketch.png > /dev/null
+            python3 .github/sketch.py /tmp/sketch.png
+          done
       # The test run renders the macOS screens to PNGs so UI changes can be reviewed
       # without installing the client. The images are not compared against references.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

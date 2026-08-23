@@ -194,24 +194,6 @@ public final class Store: ObservableObject {
     await initNotifications()
   }
 
-  #if DEBUG
-    /// Puts the store in the state the mock tunnel settles into.
-    ///
-    /// The app reaches it through `start()`, which needs the app group container and the
-    /// system extension that only exist inside the installed app. Screenshots want the
-    /// state, not the journey.
-    func fillWithMockState(
-      actorName: String,
-      resources: [Resource],
-      connectedDevices: [ConnectedDevice]
-    ) {
-      self.actorName = actorName
-      self.vpnStatus = .connected
-      self.resourceList = .loaded(resources)
-      self.connectedDevices = connectedDevices
-    }
-  #endif
-
   #if os(macOS)
     /// Returns the appropriate menu bar icon name for the current state
     public var menuBarIconName: String {

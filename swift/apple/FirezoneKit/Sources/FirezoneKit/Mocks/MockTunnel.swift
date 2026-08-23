@@ -35,19 +35,6 @@
         )
       }
     #endif
-
-    /// A `Store` already showing what the mock tunnel serves.
-    public static func mockConnected() -> Store {
-      let store = mock()
-
-      store.fillWithMockState(
-        actorName: "Jane Doe",
-        resources: MockFixtures.resources,
-        connectedDevices: MockFixtures.connectedDevices
-      )
-
-      return store
-    }
   }
 
   /// Answers `pollUpdates` with the canned snapshot and reports a connected tunnel.

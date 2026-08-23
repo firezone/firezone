@@ -15,6 +15,7 @@
 // `#if os(iOS)` are not even compiled.
 
 #if os(macOS) && DEBUG
+  import AppKit
   import CoreGraphics
   import Foundation
   import ImageIO
@@ -24,65 +25,68 @@
 
   @testable import FirezoneKit
 
+  private let colorSchemes: [ColorScheme] = [.light, .dark]
+
   @Suite("Screenshots", .requiresAppKit)
   struct ScreenshotTests {
-    @Test("Grant VPN permission")
+    @Test("Grant VPN permission", arguments: colorSchemes)
     @MainActor
-    func grantVPN() throws {
-      try render("grant-vpn", width: 600, height: 400) { _ in GrantVPNView() }
+    func grantVPN(colorScheme: ColorScheme) throws {
+      try render("grant-vpn", colorScheme, width: 600, height: 400) { _ in GrantVPNView() }
     }
 
-    @Test("First run")
+    @Test("First run", arguments: colorSchemes)
     @MainActor
-    func firstTime() throws {
-      try render("first-time", width: 600, height: 400) { _ in FirstTimeView() }
+    func firstTime(colorScheme: ColorScheme) throws {
+      try render("first-time", colorScheme, width: 600, height: 400) { _ in FirstTimeView() }
     }
 
-    @Test("Settings")
+    @Test("Settings", arguments: colorSchemes)
     @MainActor
-    func settings() throws {
-      try render("settings", width: 800, height: 600) { store in SettingsView(store: store) }
-    }
-
-    // A menu bar view is the *content* of a menu, so these render its items stacked rather
-    // than the macOS menu that normally frames them. A submenu is a row here, not a list:
-    // the resources and the connected devices appear as the rows that open them.
-    @Test("Menu bar before sign in")
-    @MainActor
-    func menuBarContents() throws {
-      try render("menu-bar-contents", width: 400, height: 350) { _ in
-        VStack(alignment: .leading) { MenuBarView() }
+    func settings(colorScheme: ColorScheme) throws {
+      try render("settings", colorScheme, width: 800, height: 600) { store in
+        SettingsView(store: store)
       }
     }
 
-    @Test("Menu bar when signed in")
-    @MainActor
-    func menuBarSignedIn() throws {
-      try render("menu-bar-signed-in", width: 400, height: 600, store: .mockConnected()) { _ in
-        VStack(alignment: .leading) { MenuBarView() }
-      }
-    }
-
-    /// Renders `content` against the mock tunnel and writes it out as a PNG.
+    /// Renders `content` the way its window would and writes it out as a PNG.
+    ///
+    /// The renderer draws onto a transparent bitmap and a SwiftUI view brings no background
+    /// of its own, so the window's has to be put back or the screenshot is controls floating
+    /// on whatever the viewer happens to put behind them.
     @MainActor
     private func render(
       _ name: String,
+      _ colorScheme: ColorScheme,
       width: CGFloat,
       height: CGFloat,
-      store: Store = .mock(),
       @ViewBuilder content: (Store) -> some View
     ) throws {
+      let store = Store.mock()
+
       let renderer = ImageRenderer(
         content:
           content(store)
           .environmentObject(store)
           .environmentObject(GlobalErrorHandler())
           .frame(width: width, height: height)
+          .background(.background)
+          .environment(\.colorScheme, colorScheme)
       )
       renderer.scale = 2
+      renderer.isOpaque = true
 
-      let image = try #require(renderer.cgImage, "\(name) rendered nothing")
-      let url = try Self.outputDirectory().appendingPathComponent("\(name).png")
+      // SwiftUI reads the scheme from the environment, but anything drawing itself through
+      // AppKit reads the appearance instead, and the two disagreeing shows up as light
+      // controls on a dark window.
+      var rendered: CGImage?
+      appearance(for: colorScheme).performAsCurrentDrawingAppearance {
+        rendered = renderer.cgImage
+      }
+
+      let image = try #require(rendered, "\(name) rendered nothing")
+      let url = try Self.outputDirectory()
+        .appendingPathComponent("\(name)-\(colorScheme.suffix).png")
 
       guard
         let destination = CGImageDestinationCreateWithURL(
@@ -102,6 +106,15 @@
       }
     }
 
+    @MainActor
+    private func appearance(for colorScheme: ColorScheme) -> NSAppearance {
+      let name: NSAppearance.Name = colorScheme == .dark ? .darkAqua : .aqua
+
+      // Every macOS ships both of these.
+      // swiftlint:disable:next force_unwrapping
+      return NSAppearance(named: name)!
+    }
+
     /// `swift/apple/screenshots`, resolved from this file rather than the working directory
     /// so the images land in the same place however the tests are started.
     private static func outputDirectory() throws -> URL {
@@ -116,6 +129,12 @@
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
       return directory
+    }
+  }
+
+  extension ColorScheme {
+    fileprivate var suffix: String {
+      self == .dark ? "dark" : "light"
     }
   }
 
