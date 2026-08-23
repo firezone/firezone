@@ -32,55 +32,54 @@
     @Test("Grant VPN permission", arguments: colorSchemes)
     @MainActor
     func grantVPN(colorScheme: ColorScheme) throws {
-      try render("grant-vpn", colorScheme, width: 600, height: 400) { _ in GrantVPNView() }
+      let window = try makeWindow(colorScheme, width: 800, height: 500) { _ in GrantVPNView() }
+      try capture(window, as: "grant-vpn", colorScheme)
     }
 
     @Test("First run", arguments: colorSchemes)
     @MainActor
     func firstTime(colorScheme: ColorScheme) throws {
-      try render("first-time", colorScheme, width: 600, height: 400) { _ in FirstTimeView() }
+      let window = try makeWindow(colorScheme, width: 800, height: 500) { _ in FirstTimeView() }
+      try capture(window, as: "first-time", colorScheme)
     }
 
-    // A `TabView` is one of the views `ImageRenderer` cannot draw: it renders as the
-    // "not allowed" symbol over the whole frame. Each tab is drawn on its own instead.
-    @Test("General settings", arguments: colorSchemes)
+    // One window, three captures: the settings screen is photographed whole, tab bar and
+    // all, and the test pages through its tabs the way a user would. SwiftUI offers no
+    // handle on the selection, so the test reaches for the `NSTabView` underneath.
+    @Test("Settings", arguments: colorSchemes)
     @MainActor
-    func generalSettings(colorScheme: ColorScheme) throws {
-      try render("settings-general", colorScheme, width: 800, height: 500) { store in
-        SettingsView(store: store).generalTab
+    func settings(colorScheme: ColorScheme) throws {
+      let window = try makeWindow(colorScheme, width: 800, height: 600) { store in
+        SettingsView(store: store)
+      }
+
+      let tabView = try #require(
+        firstTabView(under: try #require(window.contentView)),
+        "the settings screen shows no tab view"
+      )
+
+      let tabs = ["general", "advanced", "logs"]
+      try #require(tabView.numberOfTabViewItems == tabs.count)
+
+      for (index, tab) in tabs.enumerated() {
+        tabView.selectTabViewItem(at: index)
+        window.contentView?.layoutSubtreeIfNeeded()
+        try capture(window, as: "settings-\(tab)", colorScheme)
       }
     }
 
-    @Test("Advanced settings", arguments: colorSchemes)
-    @MainActor
-    func advancedSettings(colorScheme: ColorScheme) throws {
-      try render("settings-advanced", colorScheme, width: 800, height: 500) { store in
-        SettingsView(store: store).advancedTab
-      }
-    }
-
-    @Test("Diagnostic logs settings", arguments: colorSchemes)
-    @MainActor
-    func logsSettings(colorScheme: ColorScheme) throws {
-      try render("settings-logs", colorScheme, width: 800, height: 500) { store in
-        SettingsView(store: store).logsTab
-      }
-    }
-
-    /// Draws `content` in an off-screen window and writes it out as a PNG.
+    /// Puts `content` in an off-screen window the size the app would use.
     ///
     /// `ImageRenderer` looks like the obvious tool and is not: a text field, a checkbox and
     /// a tab view are all AppKit underneath, and it draws each of them as the "not allowed"
-    /// symbol. Hosting the view in a real window and asking that to draw itself gets the
-    /// controls the app actually shows.
+    /// symbol. A real window hosting the view draws the controls the app actually shows.
     @MainActor
-    private func render(
-      _ name: String,
+    private func makeWindow(
       _ colorScheme: ColorScheme,
       width: CGFloat,
       height: CGFloat,
       @ViewBuilder content: (Store) -> some View
-    ) throws {
+    ) throws -> NSWindow {
       let store = Store.mock()
 
       let view = NSHostingView(
@@ -99,9 +98,17 @@
         backing: .buffered,
         defer: false
       )
-      window.appearance = appearance(for: colorScheme)
+      window.appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
       window.contentView = view
       view.layoutSubtreeIfNeeded()
+
+      return window
+    }
+
+    /// Draws the window's content as it stands and writes it out as a PNG.
+    @MainActor
+    private func capture(_ window: NSWindow, as name: String, _ colorScheme: ColorScheme) throws {
+      let view = try #require(window.contentView)
 
       guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
         throw ScreenshotError.cannotRender(name)
@@ -131,12 +138,12 @@
     }
 
     @MainActor
-    private func appearance(for colorScheme: ColorScheme) -> NSAppearance {
-      let name: NSAppearance.Name = colorScheme == .dark ? .darkAqua : .aqua
-
-      // Every macOS ships both of these.
-      // swiftlint:disable:next force_unwrapping
-      return NSAppearance(named: name)!
+    private func firstTabView(under view: NSView) -> NSTabView? {
+      for subview in view.subviews {
+        if let tabView = subview as? NSTabView { return tabView }
+        if let nested = firstTabView(under: subview) { return nested }
+      }
+      return nil
     }
 
     /// `swift/apple/screenshots`, resolved from this file rather than the working directory

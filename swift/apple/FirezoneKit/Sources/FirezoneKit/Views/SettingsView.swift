@@ -73,9 +73,6 @@ extension FileManager {
 }
 
 // TODO: Move business logic to ViewModel to remove dependency on Store and fix body length
-//
-// The three tabs are not private because `ImageRenderer` cannot draw a `TabView`, so the
-// screenshot test renders each of them on its own.
 public struct SettingsView: View {
   @StateObject private var viewModel: SettingsViewModel
   @Environment(\.dismiss) var dismiss
@@ -285,7 +282,7 @@ public struct SettingsView: View {
     #endif
   }
 
-  var generalTab: some View {
+  private var generalTab: some View {
     #if os(macOS)
       VStack {
         Spacer()
@@ -357,7 +354,7 @@ public struct SettingsView: View {
     #endif
   }
 
-  var advancedTab: some View {
+  private var advancedTab: some View {
     #if os(macOS)
       VStack {
         Spacer()
@@ -496,7 +493,7 @@ public struct SettingsView: View {
     #endif
   }
 
-  var logsTab: some View {
+  private var logsTab: some View {
     #if os(iOS)
       VStack {
         Form {
