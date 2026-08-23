@@ -97,7 +97,10 @@
   /// session for the lifetime of the app.
   @MainActor
   private final class MockTunnelProviderManagerFactory: TunnelProviderManagerFactory {
-    private let manager = MockTunnelProviderManager()
+    // Built on demand: the manager derives the network extension's identifier from the main
+    // bundle, which only exists once the app is running. Creating the factory must stay free
+    // of that so a `Store` can be built in a test.
+    private lazy var manager = MockTunnelProviderManager()
 
     func loadAllFromPreferences() async throws -> [any TunnelProviderManager] { [manager] }
     func createManager() -> any TunnelProviderManager { manager }
