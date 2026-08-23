@@ -25,9 +25,14 @@ public enum BundleHelper {
     return String(gitSha.prefix(8))
   }
 
+  /// The app group the app shares with its extensions, or `nil` where there is no bundle to
+  /// read it from.
+  static var appGroupIdIfPresent: String? {
+    Bundle.main.object(forInfoDictionaryKey: "AppGroupIdentifier") as? String
+  }
+
   public static var appGroupId: String {
-    guard let appGroupId = Bundle.main.object(forInfoDictionaryKey: "AppGroupIdentifier") as? String
-    else {
+    guard let appGroupId = appGroupIdIfPresent else {
       fatalError("AppGroupIdentifier missing in app's Info.plist")
     }
     return appGroupId

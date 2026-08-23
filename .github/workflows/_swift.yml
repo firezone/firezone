@@ -58,8 +58,24 @@ jobs:
           flag-name: swift-test
           parallel: true
           fail-on-error: false
+      # TEMPORARY: checks that a second render is byte-identical. Remove before merging.
+      - name: Re-render the screenshots
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          shasum -a 256 swift/apple/screenshots/*.png > /tmp/first.sha256
+          mise run //swift/apple:test-coverage > /dev/null 2>&1
+          shasum -a 256 swift/apple/screenshots/*.png > /tmp/second.sha256
+          if diff /tmp/first.sha256 /tmp/second.sha256; then
+            echo "Both renders match."
+          else
+            echo "The renders differ; committing these would churn." >&2
+            exit 1
+          fi
       # TEMPORARY: sketches each rendered screen into the log. Remove before merging.
       - name: Sketch the screenshots
+        if: always()
         continue-on-error: true
         run: |
           set -euo pipefail
