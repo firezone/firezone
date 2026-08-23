@@ -141,6 +141,8 @@ defmodule PortalWeb.Settings.DevicePosture do
     changeset = socket.assigns.form.source
     type = socket.assigns.type
 
+    attrs = carry_form_changes(attrs, changeset, type)
+
     attrs =
       Enum.reduce(@programmatic_fields[type], attrs, fn field, attrs ->
         case get_field(changeset, field) do
@@ -149,13 +151,8 @@ defmodule PortalWeb.Settings.DevicePosture do
         end
       end)
 
-    base =
-      if socket.assigns.live_action == :edit,
-        do: changeset.data,
-        else: apply_changes(changeset)
-
     changeset =
-      base
+      changeset.data
       |> provider_changeset(type, attrs)
       |> clear_verification_if_trigger_fields_changed(type)
       |> Map.put(:action, :validate)
@@ -1104,6 +1101,16 @@ defmodule PortalWeb.Settings.DevicePosture do
   end
 
   defp drop_blank_api_token(attrs), do: attrs
+
+  # Debounced inputs are not always included when a different input triggers
+  # validation. Keep values already received from the browser until that input
+  # sends a newer value of its own.
+  defp carry_form_changes(attrs, changeset, type) do
+    changeset.changes
+    |> Map.take(@form_fields[type])
+    |> Map.new(fn {field, value} -> {Atom.to_string(field), value} end)
+    |> Map.merge(attrs)
+  end
 
   defp base_changeset(changeset, "intune"), do: Intune.PostureProvider.changeset(changeset)
   defp base_changeset(changeset, "iru"), do: Iru.PostureProvider.changeset(changeset)
