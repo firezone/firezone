@@ -41,11 +41,29 @@
       try render("first-time", colorScheme, width: 600, height: 400) { _ in FirstTimeView() }
     }
 
-    @Test("Settings", arguments: colorSchemes)
+    // A `TabView` is one of the views `ImageRenderer` cannot draw: it renders as the
+    // "not allowed" symbol over the whole frame. Each tab is drawn on its own instead.
+    @Test("General settings", arguments: colorSchemes)
     @MainActor
-    func settings(colorScheme: ColorScheme) throws {
-      try render("settings", colorScheme, width: 800, height: 600) { store in
-        SettingsView(store: store)
+    func generalSettings(colorScheme: ColorScheme) throws {
+      try render("settings-general", colorScheme, width: 800, height: 500) { store in
+        SettingsView(store: store).generalTab
+      }
+    }
+
+    @Test("Advanced settings", arguments: colorSchemes)
+    @MainActor
+    func advancedSettings(colorScheme: ColorScheme) throws {
+      try render("settings-advanced", colorScheme, width: 800, height: 500) { store in
+        SettingsView(store: store).advancedTab
+      }
+    }
+
+    @Test("Diagnostic logs settings", arguments: colorSchemes)
+    @MainActor
+    func logsSettings(colorScheme: ColorScheme) throws {
+      try render("settings-logs", colorScheme, width: 800, height: 500) { store in
+        SettingsView(store: store).logsTab
       }
     }
 

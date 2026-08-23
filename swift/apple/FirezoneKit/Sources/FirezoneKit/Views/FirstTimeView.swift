@@ -16,7 +16,7 @@ import SwiftUI
         alignment: .center,
         content: {
           Spacer()
-          Image("LogoText")
+          Image("LogoText", bundle: .module)
             .resizable()
             .scaledToFit()
             .frame(maxWidth: 320)

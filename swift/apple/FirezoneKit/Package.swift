@@ -21,7 +21,8 @@ let package = Package(
       dependencies: [
         .product(name: "SystemPackage", package: "swift-system"),
         .product(name: "Sentry", package: "sentry-cocoa"),
-      ]
+      ],
+      resources: [.process("Resources")]
     ),
     .testTarget(
       name: "FirezoneKitTests",
