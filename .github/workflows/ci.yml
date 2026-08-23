@@ -243,7 +243,18 @@ jobs:
           git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
           git config --local commit.gpgsign true
 
-          git add -A rust/gui-client/screenshots kotlin/android/screenshots
+          # A platform whose job failed uploaded nothing, so its directory is not here.
+          directories=()
+          for directory in rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots; do
+            if [ -d "$directory" ]; then directories+=("$directory"); fi
+          done
+
+          if [ ${#directories[@]} -eq 0 ]; then
+            echo "Nothing was rendered; nothing to push."
+            exit 0
+          fi
+
+          git add -A "${directories[@]}"
           if git diff --cached --quiet; then
             echo "The screenshots are unchanged; nothing to push."
             exit 0
