@@ -87,7 +87,7 @@
           content(store)
           .environmentObject(store)
           .environmentObject(GlobalErrorHandler())
-          .frame(width: width, height: height, alignment: .top)
+          .frame(width: width, height: height)
           .background(.background)
           .environment(\.colorScheme, colorScheme)
       )
