@@ -58,19 +58,6 @@ jobs:
           flag-name: swift-test
           parallel: true
           fail-on-error: false
-      # TEMPORARY: answers what is left open about the render. Remove before merging.
-      - name: Check the render
-        if: always()
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-
-          for image in grant-vpn-light settings-general-light settings-logs-light; do
-            echo "--- $image"
-            sips --resampleWidth 100 "swift/apple/screenshots/$image.png" \
-              --out /tmp/sketch.png > /dev/null
-            python3 .github/sketch.py /tmp/sketch.png
-          done
 
   static-analysis:
     runs-on: macos-26
