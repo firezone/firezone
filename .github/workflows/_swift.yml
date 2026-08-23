@@ -65,23 +65,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "--- did the logo reach the test bundle?"
-          find swift/apple/FirezoneKit/.build -name "Assets.car" | head -5 || true
-
-          echo "--- does a second render match the first?"
-          shasum -a 256 swift/apple/screenshots/*.png > /tmp/first.sha256
-          mise run //swift/apple:test-coverage > /dev/null 2>&1
-          shasum -a 256 swift/apple/screenshots/*.png > /tmp/second.sha256
-          if diff /tmp/first.sha256 /tmp/second.sha256; then
-            echo "Both renders match."
-          else
-            echo "The renders differ; committing these would churn."
-          fi
-
-          echo "--- grant-vpn-light"
-          sips --resampleWidth 100 swift/apple/screenshots/grant-vpn-light.png \
-            --out /tmp/sketch.png > /dev/null
-          python3 .github/sketch.py /tmp/sketch.png
+          for image in grant-vpn-light settings-general-light settings-logs-light; do
+            echo "--- $image"
+            sips --resampleWidth 100 "swift/apple/screenshots/$image.png" \
+              --out /tmp/sketch.png > /dev/null
+            python3 .github/sketch.py /tmp/sketch.png
+          done
 
   static-analysis:
     runs-on: macos-26
