@@ -86,7 +86,6 @@ const screens: Record<string, Screen> = {
     logCount: { bytes: 3_400_000, files: 12 },
   },
   about: { route: "/about" },
-  "colour-palette": { route: "/colour-palette" },
 };
 
 // An animation makes the captured frame depend on wall-clock timing: the overview's
