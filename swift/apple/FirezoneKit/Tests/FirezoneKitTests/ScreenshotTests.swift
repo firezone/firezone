@@ -67,11 +67,12 @@
       }
     }
 
-    /// Renders `content` the way its window would and writes it out as a PNG.
+    /// Draws `content` in an off-screen window and writes it out as a PNG.
     ///
-    /// The renderer draws onto a transparent bitmap and a SwiftUI view brings no background
-    /// of its own, so the window's has to be put back or the screenshot is controls floating
-    /// on whatever the viewer happens to put behind them.
+    /// `ImageRenderer` looks like the obvious tool and is not: a text field, a checkbox and
+    /// a tab view are all AppKit underneath, and it draws each of them as the "not allowed"
+    /// symbol. Hosting the view in a real window and asking that to draw itself gets the
+    /// controls the app actually shows.
     @MainActor
     private func render(
       _ name: String,
@@ -82,27 +83,32 @@
     ) throws {
       let store = Store.mock()
 
-      let renderer = ImageRenderer(
-        content:
+      let view = NSHostingView(
+        rootView:
           content(store)
           .environmentObject(store)
           .environmentObject(GlobalErrorHandler())
           .frame(width: width, height: height)
-          .background(.background)
           .environment(\.colorScheme, colorScheme)
       )
-      renderer.scale = 2
-      renderer.isOpaque = true
+      view.frame = CGRect(x: 0, y: 0, width: width, height: height)
 
-      // SwiftUI reads the scheme from the environment, but anything drawing itself through
-      // AppKit reads the appearance instead, and the two disagreeing shows up as light
-      // controls on a dark window.
-      var rendered: CGImage?
-      appearance(for: colorScheme).performAsCurrentDrawingAppearance {
-        rendered = renderer.cgImage
+      let window = NSWindow(
+        contentRect: view.frame,
+        styleMask: [.titled, .closable],
+        backing: .buffered,
+        defer: false
+      )
+      window.appearance = appearance(for: colorScheme)
+      window.contentView = view
+      view.layoutSubtreeIfNeeded()
+
+      guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+        throw ScreenshotError.cannotRender(name)
       }
+      view.cacheDisplay(in: view.bounds, to: bitmap)
 
-      let image = try #require(rendered, "\(name) rendered nothing")
+      let image = try #require(bitmap.cgImage, "\(name) rendered nothing")
       let url = try Self.outputDirectory()
         .appendingPathComponent("\(name)-\(colorScheme.suffix).png")
 
@@ -157,6 +163,7 @@
   }
 
   private enum ScreenshotError: Error {
+    case cannotRender(String)
     case cannotWrite(URL)
   }
 #endif
