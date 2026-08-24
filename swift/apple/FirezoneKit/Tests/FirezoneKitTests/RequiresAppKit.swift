@@ -14,7 +14,10 @@
   /// `swift test` processes run without `NSApplication`, so GUI objects like
   /// `NSAlert` crash when loading nibs (CoreUI's system appearance renderer
   /// is uninitialised). This trait sets `.accessory` activation policy on
-  /// `@MainActor` to bootstrap the connection before the suite runs.
+  /// `@MainActor` to bootstrap the connection before the suite runs, then
+  /// activates the app: stoplight buttons and titlebar text style themselves
+  /// after `NSApp.isActive`, and an accessory app starts inactive, which would
+  /// gray them out in the screenshot captures.
   ///
   /// An observer on `NSWindow.didUpdateNotification` sets `alphaValue = 0`
   /// on every window as it appears, keeping tests invisible. This does not
@@ -38,6 +41,7 @@
     ) async throws {
       await MainActor.run {
         _ = NSApplication.shared.setActivationPolicy(.accessory)
+        _ = NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
       }
 
       nonisolated(unsafe) let observer = await MainActor.run {
