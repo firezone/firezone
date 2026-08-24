@@ -22,6 +22,10 @@
   /// so assertions and interactions still work normally. If a test crashes,
   /// only invisible windows remain — nothing to manually dismiss.
   ///
+  /// Windows identified as `.screenshotCapture` keep their alpha: the window
+  /// server does not composite a fully transparent window, and the titlebar's
+  /// glass materials render as a flat block without that compositing.
+  ///
   /// Usage:
   ///
   ///     @Suite("My Tests", .requiresAppKit)
@@ -44,6 +48,7 @@
         ) { notification in
           let window = notification.object as? NSWindow
           MainActor.assumeIsolated {
+            guard window?.identifier != .screenshotCapture else { return }
             window?.alphaValue = 0
           }
         }
@@ -56,5 +61,11 @@
 
   extension Trait where Self == RequiresAppKitTrait {
     static var requiresAppKit: Self { Self() }
+  }
+
+  extension NSUserInterfaceItemIdentifier {
+    /// Marks a window a screenshot test is about to photograph, exempting it
+    /// from the alpha-zeroing above.
+    static let screenshotCapture = Self("screenshot-capture")
   }
 #endif

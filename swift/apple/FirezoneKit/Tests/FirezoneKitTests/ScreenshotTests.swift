@@ -100,6 +100,7 @@
         defer: false
       )
       window.appearance = appearance
+      window.identifier = .screenshotCapture
       window.contentView = view
       view.layoutSubtreeIfNeeded()
 
@@ -114,8 +115,9 @@
     private func capture(_ window: NSWindow, as name: String, _ colorScheme: ColorScheme) throws {
       // A window that never reaches the screen has no backing for the titlebar's
       // materials, which draw as a light block whatever the appearance says. Order it
-      // front for the capture; the suite trait zeroes every window's alpha, so nothing
-      // shows on the runner's screen.
+      // front for the capture; its identifier exempts it from the suite trait's
+      // alpha-zeroing, because the server does not composite a transparent window and
+      // the titlebar's glass needs that compositing to render in the right appearance.
       window.orderFrontRegardless()
       RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
       defer { window.orderOut(nil) }
