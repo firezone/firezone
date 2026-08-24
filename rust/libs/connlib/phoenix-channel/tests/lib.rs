@@ -607,7 +607,7 @@ async fn http_403_with_another_code_triggers_retry() {
     // Only the codes that name the certificate are terminal; the rest stay retryable.
     assert!(
         matches!(result, Ok(Event::Hiccup { .. })),
-        "expected Event::Hiccup for a 403 without a certificate code, got {result:?}"
+        "expected Event::Hiccup for a 403 whose code does not name the certificate, got {result:?}"
     );
 }
 
