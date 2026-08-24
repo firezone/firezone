@@ -105,6 +105,10 @@ fn describes_a_provisioned_certificate_in_the_diagnostics() {
         field_value(certificate, "Signing Algorithm"),
         Some("SHA256withRSA")
     );
+    assert!(
+        position(certificate, "SHA-256 Fingerprint") < position(certificate, "Object Label"),
+        "what the certificate says should read before where the token keeps it"
+    );
 }
 
 #[test]
@@ -368,6 +372,15 @@ fn section<'a>(status: &'a Status, title: &str) -> &'a DetailSection {
         .iter()
         .find(|section| section.title == title)
         .unwrap_or_else(|| panic!("the diagnostics should have a '{title}' section"))
+}
+
+/// Returns the position of the diagnostics row labelled `label` in the section.
+fn position(section: &DetailSection, label: &str) -> usize {
+    section
+        .fields
+        .iter()
+        .position(|field| field.label == label)
+        .unwrap_or_else(|| panic!("the diagnostics should show {label}"))
 }
 
 /// Returns the value of the diagnostics row labelled `label`, if the section has one.
