@@ -60,10 +60,17 @@ internal fun X509SettingsScreen(
         // read. The wording is shared across the clients.
         val explainer =
             when {
-                state.isLoading -> null
-                state.isUsable && state.unusableSummary == null && state.error == null ->
+                state.isLoading -> {
+                    null
+                }
+
+                state.isUsable && state.unusableSummary == null && state.error == null -> {
                     stringResource(R.string.x509_explainer_present)
-                else -> stringResource(R.string.x509_explainer_absent)
+                }
+
+                else -> {
+                    stringResource(R.string.x509_explainer_absent)
+                }
             }
         if (explainer != null) {
             Text(
