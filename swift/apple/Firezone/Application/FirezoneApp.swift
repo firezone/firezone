@@ -143,8 +143,10 @@ struct FirezoneApp: App {
       enforceSingleInstance()
 
       #if DEBUG
-        // Before any window exists, so the titlebars draw in the right one.
+        // Before any window exists, so the titlebars draw in the right appearance
+        // and no window is missed by the focus clearing.
         NSApplication.applyMockAppearance()
+        NSApplication.clearMockWindowFocus()
       #endif
     }
 

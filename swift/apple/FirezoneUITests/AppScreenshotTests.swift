@@ -67,11 +67,10 @@
 
         let window = try openWindow(named: "settings", title: Self.settingsWindowTitle, in: app)
 
-        // The window opens on the General tab, which is clicked anyway: the click
-        // is what ends the editing session below.
+        // The window opens on the General tab, which is clicked anyway so that
+        // every tab arrives the same way.
         for tab in Self.settingsTabs {
           try selectTab(tab.label, in: window)
-          endEditing(in: window)
           capture(window, as: "settings-\(tab.name)", in: appearance)
         }
       }
@@ -169,16 +168,6 @@
       }
 
       tab.click()
-    }
-
-    /// Ends the editing session AppKit opens in a window's first text field, so
-    /// no insertion point blinks through a capture and the image is the same on
-    /// every run.
-    ///
-    /// Nothing outside the app can reach its first responder, but Escape reaches
-    /// the field editor, which is what holds the blinking caret.
-    private func endEditing(in window: XCUIElement) {
-      window.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
     }
   }
 

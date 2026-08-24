@@ -224,6 +224,9 @@
   }
 
   #if os(macOS)
+    /// Holds the focus-clearing observer below for the life of the process.
+    @MainActor private var mockFocusObserver: (any NSObjectProtocol)?
+
     extension NSApplication {
       /// Draws the app in the appearance `--mock-appearance` names, when it names
       /// one, rather than in the system's.
@@ -244,6 +247,37 @@
           NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
         default:
           Log.warning("Ignoring unknown --mock-appearance '\(name)'")
+        }
+      }
+
+      /// Keeps a blinking insertion point out of a mocked run's windows.
+      ///
+      /// AppKit hands a freshly opened window's first text field the focus, which
+      /// starts editing and blinks a caret. Two captures half a second apart then
+      /// never match, and the gallery would carry a diff for every run.
+      ///
+      /// The clearing is scheduled behind SwiftUI rather than done as the window
+      /// becomes key, because SwiftUI claims the focus while the window settles
+      /// and would take it straight back.
+      @MainActor
+      public static func clearMockWindowFocus(_ arguments: [String] = CommandLine.arguments) {
+        guard arguments.contains("--mock-tunnel") else { return }
+
+        mockFocusObserver = NotificationCenter.default.addObserver(
+          forName: NSWindow.didBecomeKeyNotification,
+          object: nil,
+          queue: .main
+        ) { notification in
+          guard let window = notification.object as? NSWindow else { return }
+
+          MainActor.assumeIsolated {
+            // Twice: the next turn covers the focus SwiftUI takes as the window
+            // settles, the later one whatever it takes after that.
+            DispatchQueue.main.async { window.makeFirstResponder(nil) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+              window.makeFirstResponder(nil)
+            }
+          }
         }
       }
     }
