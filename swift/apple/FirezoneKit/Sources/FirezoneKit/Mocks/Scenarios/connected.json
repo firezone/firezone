@@ -1,0 +1,237 @@
+{
+  "hasVPNConfiguration": true,
+  "vpnStatus": "connected",
+  "systemExtension": "installed",
+  "notifications": "authorized",
+  "actorName": "Demo User",
+  "resources": [
+    {
+      "id": "internet-resource",
+      "name": "Internet Resource",
+      "address": null,
+      "addressDescription": null,
+      "status": "Online",
+      "sites": [
+        {
+          "id": "demo-site",
+          "name": "Demo Site"
+        }
+      ],
+      "type": "internet"
+    },
+    {
+      "id": "office-network",
+      "name": "Office network",
+      "address": "10.0.0.0/16",
+      "addressDescription": "CIDR resource",
+      "status": "Online",
+      "sites": [
+        {
+          "id": "demo-site",
+          "name": "Demo Site"
+        }
+      ],
+      "type": "cidr"
+    },
+    {
+      "id": "demo-gitlab",
+      "name": "Demo GitLab",
+      "address": "gitlab.demo.example",
+      "addressDescription": "https://gitlab.demo.example",
+      "status": "Online",
+      "sites": [
+        {
+          "id": "demo-site",
+          "name": "Demo Site"
+        }
+      ],
+      "type": "dns"
+    },
+    {
+      "id": "lab-network",
+      "name": "Lab network (offline)",
+      "address": "192.168.50.0/24",
+      "addressDescription": "Gateway offline",
+      "status": "Offline",
+      "sites": [
+        {
+          "id": "demo-site",
+          "name": "Demo Site"
+        }
+      ],
+      "type": "cidr"
+    },
+    {
+      "id": "demo-wiki",
+      "name": "Demo Wiki (unknown)",
+      "address": "wiki.demo.example",
+      "addressDescription": "Gateway state unknown",
+      "status": "Unknown",
+      "sites": [
+        {
+          "id": "demo-site",
+          "name": "Demo Site"
+        }
+      ],
+      "type": "dns"
+    }
+  ],
+  "connectedDevices": [
+    {
+      "id": "client-1",
+      "name": "Demo Device 1",
+      "tunIPv4": "100.96.0.1",
+      "tunIPv6": "fd00:2021:1111::1",
+      "pools": ["Engineering Pool"]
+    },
+    {
+      "id": "client-2",
+      "name": "Demo Device 2",
+      "tunIPv4": "100.96.0.2",
+      "tunIPv6": "fd00:2021:1111::2",
+      "pools": ["Engineering Pool", "QA Pool"]
+    },
+    {
+      "id": "client-3",
+      "name": "Demo Device 3",
+      "tunIPv4": "100.96.0.3",
+      "tunIPv6": "fd00:2021:1111::3",
+      "pools": ["QA Pool"]
+    },
+    {
+      "id": "client-4",
+      "name": "Demo Device 4",
+      "tunIPv4": "100.96.0.4",
+      "tunIPv6": "fd00:2021:1111::4",
+      "pools": ["Sales Pool"]
+    },
+    {
+      "id": "client-5",
+      "name": "Demo Device 5",
+      "tunIPv4": "100.96.0.5",
+      "tunIPv6": "fd00:2021:1111::5",
+      "pools": ["Engineering Pool"]
+    },
+    {
+      "id": "client-6",
+      "name": "Demo Device 6",
+      "tunIPv4": "100.96.0.6",
+      "tunIPv6": "fd00:2021:1111::6",
+      "pools": ["Engineering Pool", "QA Pool"]
+    },
+    {
+      "id": "client-7",
+      "name": "Demo Device 7",
+      "tunIPv4": "100.96.0.7",
+      "tunIPv6": "fd00:2021:1111::7",
+      "pools": ["QA Pool"]
+    },
+    {
+      "id": "client-8",
+      "name": "Demo Device 8",
+      "tunIPv4": "100.96.0.8",
+      "tunIPv6": "fd00:2021:1111::8",
+      "pools": ["Sales Pool"]
+    },
+    {
+      "id": "client-9",
+      "name": "Demo Device 9",
+      "tunIPv4": "100.96.0.9",
+      "tunIPv6": "fd00:2021:1111::9",
+      "pools": ["Engineering Pool"]
+    },
+    {
+      "id": "client-10",
+      "name": "Demo Device 10",
+      "tunIPv4": "100.96.0.10",
+      "tunIPv6": "fd00:2021:1111::a",
+      "pools": ["Engineering Pool", "QA Pool"]
+    },
+    {
+      "id": "client-11",
+      "name": "Demo Device 11",
+      "tunIPv4": "100.96.0.11",
+      "tunIPv6": "fd00:2021:1111::b",
+      "pools": ["QA Pool"]
+    },
+    {
+      "id": "client-12",
+      "name": "Demo Device 12",
+      "tunIPv4": "100.96.0.12",
+      "tunIPv6": "fd00:2021:1111::c",
+      "pools": ["Sales Pool"]
+    },
+    {
+      "id": "client-13",
+      "name": "Demo Device 13",
+      "tunIPv4": "100.96.0.13",
+      "tunIPv6": "fd00:2021:1111::d",
+      "pools": ["Engineering Pool"]
+    },
+    {
+      "id": "client-14",
+      "name": "Demo Device 14",
+      "tunIPv4": "100.96.0.14",
+      "tunIPv6": "fd00:2021:1111::e",
+      "pools": ["Engineering Pool", "QA Pool"]
+    },
+    {
+      "id": "client-15",
+      "name": "Demo Device 15",
+      "tunIPv4": "100.96.0.15",
+      "tunIPv6": "fd00:2021:1111::f",
+      "pools": ["QA Pool"]
+    },
+    {
+      "id": "client-16",
+      "name": "Demo Device 16",
+      "tunIPv4": "100.96.0.16",
+      "tunIPv6": "fd00:2021:1111::10",
+      "pools": ["Sales Pool"]
+    },
+    {
+      "id": "client-17",
+      "name": "Demo Device 17",
+      "tunIPv4": "100.96.0.17",
+      "tunIPv6": "fd00:2021:1111::11",
+      "pools": ["Engineering Pool"]
+    },
+    {
+      "id": "client-18",
+      "name": "Demo Device 18",
+      "tunIPv4": "100.96.0.18",
+      "tunIPv6": "fd00:2021:1111::12",
+      "pools": ["Engineering Pool", "QA Pool"]
+    },
+    {
+      "id": "client-19",
+      "name": "Demo Device 19",
+      "tunIPv4": "100.96.0.19",
+      "tunIPv6": "fd00:2021:1111::13",
+      "pools": ["QA Pool"]
+    },
+    {
+      "id": "client-20",
+      "name": "Demo Device 20",
+      "tunIPv4": "100.96.0.20",
+      "tunIPv6": "fd00:2021:1111::14",
+      "pools": ["Sales Pool"]
+    },
+    {
+      "id": "client-21",
+      "name": "Demo Device 21",
+      "tunIPv4": "100.96.0.21",
+      "tunIPv6": "fd00:2021:1111::15",
+      "pools": ["Engineering Pool"]
+    },
+    {
+      "id": "client-22",
+      "name": "Demo Device 22",
+      "tunIPv4": "100.96.0.22",
+      "tunIPv6": "fd00:2021:1111::16",
+      "pools": ["Engineering Pool", "QA Pool"]
+    }
+  ],
+  "favorites": [],
+  "providerLogFolderSize": 30000000
+}

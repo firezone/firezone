@@ -73,8 +73,7 @@
     /// Launches the app against the mock backend, presenting `scenario`.
     private func launchApp(scenario: String) -> XCUIApplication {
       let app = XCUIApplication()
-      app.launchArguments = ["--mock-tunnel"]
-      app.launchEnvironment["MOCK_SCENARIO"] = scenario
+      app.launchArguments = ["--mock-tunnel", "--mock-scenario", scenario]
       app.launch()
 
       return app

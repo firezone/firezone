@@ -76,23 +76,26 @@
 
     /// Launches the app against the mock backend, presenting `scenario` in `appearance`.
     ///
-    /// `-launchedBefore NO` reaches `UserDefaults` through the argument domain, so
-    /// the app treats every launch as the first and does not close the main window
-    /// shortly after startup the way it does for returning users.
+    /// The double-dashed arguments are the app's own flags; the single-dashed ones
+    /// reach it through `UserDefaults`' argument domain instead, which overrides
+    /// both settings for this process alone.
     ///
-    /// `-AppleInterfaceStyle Dark` arrives the same way. AppKit reads the setting
-    /// from `NSGlobalDomain`, which the argument domain overrides for this process
-    /// alone, so the whole app draws dark, window chrome included. Light is the
-    /// absence of the key, so nothing is passed for it.
+    /// `launchedBefore` keeps the app treating every launch as the first, so it
+    /// does not close the main window shortly after startup the way it does for
+    /// returning users. `AppleInterfaceStyle` is where AppKit reads the appearance
+    /// from, so setting it draws the whole app dark, window chrome included. Light
+    /// is the absence of the key, so nothing is passed for it.
     private func launchApp(scenario: String, appearance: Appearance) -> XCUIApplication {
       let app = XCUIApplication()
-      app.launchArguments = ["--mock-tunnel", "-launchedBefore", "NO"]
+      app.launchArguments = [
+        "--mock-tunnel", "--mock-scenario", scenario,
+        "-launchedBefore", "NO",
+      ]
 
       if appearance == .dark {
         app.launchArguments += ["-AppleInterfaceStyle", "Dark"]
       }
 
-      app.launchEnvironment["MOCK_SCENARIO"] = scenario
       app.launch()
 
       return app
