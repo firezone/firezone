@@ -48,15 +48,8 @@ pub struct X509StatusChanged(pub X509Status);
 
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub struct X509Status {
-    pub severity: X509StatusSeverity,
-    pub summary: String,
+    pub warning: Option<String>,
     pub sections: Vec<X509DetailSection>,
-}
-
-#[derive(Clone, Copy, serde::Serialize, specta::Type)]
-pub enum X509StatusSeverity {
-    Ok,
-    Warning,
 }
 
 #[derive(Clone, serde::Serialize, specta::Type)]
@@ -82,8 +75,7 @@ pub enum X509FieldValue {
 impl From<&x509_keystore::Status> for X509Status {
     fn from(status: &x509_keystore::Status) -> Self {
         Self {
-            severity: status.severity.into(),
-            summary: status.summary.clone(),
+            warning: status.warning.clone(),
             sections: status
                 .sections
                 .iter()
@@ -109,15 +101,6 @@ impl From<x509_keystore::FieldValue> for X509FieldValue {
             x509_keystore::FieldValue::Present(value) => Self::Present(value),
             x509_keystore::FieldValue::Absent => Self::Absent,
             x509_keystore::FieldValue::Invalid(message) => Self::Invalid(message),
-        }
-    }
-}
-
-impl From<x509_keystore::StatusSeverity> for X509StatusSeverity {
-    fn from(severity: x509_keystore::StatusSeverity) -> Self {
-        match severity {
-            x509_keystore::StatusSeverity::Ok => Self::Ok,
-            x509_keystore::StatusSeverity::Warning => Self::Warning,
         }
     }
 }
