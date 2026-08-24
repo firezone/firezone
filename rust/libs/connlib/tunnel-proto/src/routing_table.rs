@@ -391,10 +391,7 @@ mod tests {
 
     fn permit_tcp(port: u16) -> FilterEngine {
         use crate::messages::{Filter, PortRange};
-        FilterEngine::new(&[Filter::Tcp(PortRange {
-            port_range_start: port,
-            port_range_end: port,
-        })])
+        FilterEngine::new(&[Filter::Tcp(PortRange::new(port, port).unwrap())])
     }
 
     #[expect(clippy::unnecessary_wraps)]
@@ -522,9 +519,6 @@ mod benches {
     }
 
     fn permit_tcp_port(port: u16) -> FilterEngine {
-        FilterEngine::new(&[Filter::Tcp(PortRange {
-            port_range_start: port,
-            port_range_end: port,
-        })])
+        FilterEngine::new(&[Filter::Tcp(PortRange::new(port, port).unwrap())])
     }
 }

@@ -529,10 +529,7 @@ mod tests {
         let r1 = ResourceId::from_u128(1);
         let r2 = ResourceId::from_u128(2);
 
-        let tcp_443 = vec![Filter::Tcp(PortRange {
-            port_range_start: 443,
-            port_range_end: 443,
-        })];
+        let tcp_443 = vec![Filter::Tcp(PortRange::new(443, 443).unwrap())];
 
         // R1 admits only TCP 443; R2 has no filters and admits everything.
         let mut resources = ExpiringMap::default();
@@ -621,10 +618,7 @@ mod tests {
     }
 
     fn udp_port(port: u16) -> Vec<Filter> {
-        vec![Filter::Udp(PortRange {
-            port_range_start: port,
-            port_range_end: port,
-        })]
+        vec![Filter::Udp(PortRange::new(port, port).unwrap())]
     }
 
     fn is_send(result: InboundResult) -> bool {

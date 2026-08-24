@@ -7,7 +7,7 @@ use crate::messages::{
 use connlib_model::{ClientId, IceCandidate, ResourceId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
-use serde_with::{DurationSeconds, serde_as};
+use serde_with::{DurationSeconds, VecSkipError, serde_as};
 use std::{
     collections::BTreeSet,
     net::{Ipv4Addr, Ipv6Addr},
@@ -17,6 +17,7 @@ use std::{
 pub use crate::messages::Authorization;
 
 /// Description of a resource that maps to a DNS record.
+#[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
@@ -28,11 +29,12 @@ pub struct ResourceDescriptionDns {
     /// Used only for display.
     pub name: String,
 
-    #[serde(deserialize_with = "crate::messages::deserialize_filters")]
+    #[serde_as(as = "VecSkipError<_>")]
     pub filters: Vec<Filter>,
 }
 
 /// Description of a resource that maps to a CIDR.
+#[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct ResourceDescriptionCidr {
     /// Resource's id.
@@ -44,7 +46,7 @@ pub struct ResourceDescriptionCidr {
     /// Used only for display.
     pub name: String,
 
-    #[serde(deserialize_with = "crate::messages::deserialize_filters")]
+    #[serde_as(as = "VecSkipError<_>")]
     pub filters: Vec<Filter>,
 }
 
@@ -204,19 +206,14 @@ pub enum EgressMessages {
 
 #[cfg(test)]
 mod tests {
-    use crate::filter_engine::FilterEngine;
     use crate::messages::PortRange;
-    use ip_packet::Protocol;
 
     use super::*;
 
     #[test]
     fn can_deserialize_udp_filter() {
         let msg = r#"{ "protocol": "udp", "port_range_start": 10, "port_range_end": 20 }"#;
-        let expected_filter = Filter::Udp(PortRange {
-            port_range_start: 10,
-            port_range_end: 20,
-        });
+        let expected_filter = Filter::Udp(PortRange::new(10, 20).unwrap());
 
         let actual_filter = serde_json::from_str(msg).unwrap();
 
@@ -226,10 +223,7 @@ mod tests {
     #[test]
     fn can_deserialize_empty_udp_filter() {
         let msg = r#"{ "protocol": "udp" }"#;
-        let expected_filter = Filter::Udp(PortRange {
-            port_range_start: 0,
-            port_range_end: u16::MAX,
-        });
+        let expected_filter = Filter::Udp(PortRange::new(0, u16::MAX).unwrap());
 
         let actual_filter = serde_json::from_str(msg).unwrap();
 
@@ -239,10 +233,7 @@ mod tests {
     #[test]
     fn can_deserialize_tcp_filter() {
         let msg = r#"{ "protocol": "tcp", "port_range_start": 10, "port_range_end": 20 }"#;
-        let expected_filter = Filter::Tcp(PortRange {
-            port_range_start: 10,
-            port_range_end: 20,
-        });
+        let expected_filter = Filter::Tcp(PortRange::new(10, 20).unwrap());
 
         let actual_filter = serde_json::from_str(msg).unwrap();
 
@@ -252,10 +243,7 @@ mod tests {
     #[test]
     fn can_deserialize_empty_tcp_filter() {
         let msg = r#"{ "protocol": "tcp" }"#;
-        let expected_filter = Filter::Tcp(PortRange {
-            port_range_start: 0,
-            port_range_end: u16::MAX,
-        });
+        let expected_filter = Filter::Tcp(PortRange::new(0, u16::MAX).unwrap());
 
         let actual_filter = serde_json::from_str(msg).unwrap();
 
@@ -281,15 +269,16 @@ mod tests {
         assert_eq!(resource.filters(), vec![Filter::Icmp]);
     }
 
+    /// A resource whose filters are all malformed ends up with no filters at
+    /// all, which permits every protocol. The portal validates port ranges on
+    /// write, so this only happens if it is compromised or buggy.
     #[test]
-    fn only_inverted_port_range_filters_deny_all_traffic() {
+    fn resource_with_only_inverted_port_ranges_loses_all_filters() {
         let msg = r#"{"id":"57f9ebbb-21d5-4f9f-bf86-b25122fc7a43","name":"?.httpbin","type":"dns","address":"?.httpbin","filters":[{"protocol":"tcp","port_range_start":100,"port_range_end":50}]}"#;
 
         let resource = serde_json::from_str::<ResourceDescription>(msg).unwrap();
-        let filter = FilterEngine::new(&resource.filters());
 
-        assert!(filter.apply(Ok(Protocol::Tcp(75))).is_err());
-        assert!(filter.apply(Ok(Protocol::Tcp(443))).is_err());
+        assert!(resource.filters().is_empty());
     }
 
     #[test]

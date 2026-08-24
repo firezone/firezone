@@ -745,10 +745,7 @@ mod tests {
                 id: foo_resource_id(),
                 address: cidr_v4_resource().into(),
                 name: "cidr1".to_owned(),
-                filters: vec![Filter::Tcp(PortRange {
-                    port_range_start: 20,
-                    port_range_end: 100,
-                })],
+                filters: vec![Filter::Tcp(PortRange::new(20, 100).unwrap())],
             }),
             Some(then),
             now,
@@ -758,10 +755,7 @@ mod tests {
                 id: bar_resource_id(),
                 address: cidr_v4_resource().into(),
                 name: "cidr2".to_owned(),
-                filters: vec![Filter::Udp(PortRange {
-                    port_range_start: 20,
-                    port_range_end: 100,
-                })],
+                filters: vec![Filter::Udp(PortRange::new(20, 100).unwrap())],
             }),
             Some(after_then),
             now,
@@ -1385,10 +1379,9 @@ mod tests {
                 id: foo_resource_id(),
                 address: foo_name(),
                 name: "foo".to_string(),
-                filters: vec![Filter::Udp(PortRange {
-                    port_range_end: foo_allowed_port(),
-                    port_range_start: foo_allowed_port(),
-                })],
+                filters: vec![Filter::Udp(
+                    PortRange::new(foo_allowed_port(), foo_allowed_port()).unwrap(),
+                )],
             },
         )
     }
@@ -1399,10 +1392,9 @@ mod tests {
                 id: foo_resource2_id(),
                 address: foo_name(),
                 name: "foo2".to_string(),
-                filters: vec![Filter::Tcp(PortRange {
-                    port_range_end: foo_allowed_port2(),
-                    port_range_start: foo_allowed_port2(),
-                })],
+                filters: vec![Filter::Tcp(
+                    PortRange::new(foo_allowed_port2(), foo_allowed_port2()).unwrap(),
+                )],
             },
         )
     }
@@ -1424,10 +1416,9 @@ mod tests {
                 id: bar_resource_id(),
                 address: bar_address(),
                 name: "foo".to_string(),
-                filters: vec![Filter::Udp(PortRange {
-                    port_range_end: bar_allowed_port(),
-                    port_range_start: bar_allowed_port(),
-                })],
+                filters: vec![Filter::Udp(
+                    PortRange::new(bar_allowed_port(), bar_allowed_port()).unwrap(),
+                )],
             },
         )
     }
@@ -1935,12 +1926,8 @@ mod proptests {
         filters
             .into_iter()
             .filter_map(|f| match (f, protocol) {
-                (Filter::Udp(inner), ProtocolKind::Udp) => {
-                    Some(inner.port_range_start..=inner.port_range_end)
-                }
-                (Filter::Tcp(inner), ProtocolKind::Tcp) => {
-                    Some(inner.port_range_start..=inner.port_range_end)
-                }
+                (Filter::Udp(inner), ProtocolKind::Udp) => Some(inner.start()..=inner.end()),
+                (Filter::Tcp(inner), ProtocolKind::Tcp) => Some(inner.start()..=inner.end()),
                 (_, _) => None,
             })
             .collect::<RangeInclusiveSet<u16>>()
@@ -1950,16 +1937,14 @@ mod proptests {
 
     fn protocol_from_filter(f: Filter) -> impl Strategy<Value = Protocol> {
         match f {
-            Filter::Udp(PortRange {
-                port_range_end,
-                port_range_start,
-            }) => (port_range_start..=port_range_end)
+            Filter::Udp(range) => range
+                .as_range()
+                .clone()
                 .prop_map(|dport| Protocol::Udp { dport })
                 .boxed(),
-            Filter::Tcp(PortRange {
-                port_range_end,
-                port_range_start,
-            }) => (port_range_start..=port_range_end)
+            Filter::Tcp(range) => range
+                .as_range()
+                .clone()
                 .prop_map(|dport| Protocol::Tcp { dport })
                 .boxed(),
             Filter::Icmp => Just(Protocol::Icmp).boxed(),
@@ -2017,12 +2002,8 @@ mod proptests {
     }
 
     fn port_range() -> impl Strategy<Value = PortRange> {
-        any::<u16>().prop_flat_map(|s| {
-            (s..=u16::MAX).prop_map(move |d| PortRange {
-                port_range_start: s,
-                port_range_end: d,
-            })
-        })
+        any::<u16>()
+            .prop_flat_map(|s| (s..=u16::MAX).prop_map(move |d| PortRange::new(s, d).unwrap()))
     }
 
     fn supernet(ip: IpNetwork) -> Option<IpNetwork> {
@@ -2067,14 +2048,12 @@ mod proptests {
 
         fn into_filter(self, range: RangeInclusive<u16>) -> Filter {
             match self {
-                ProtocolKind::Tcp => Filter::Tcp(PortRange {
-                    port_range_start: *range.start(),
-                    port_range_end: *range.end(),
-                }),
-                ProtocolKind::Udp => Filter::Udp(PortRange {
-                    port_range_start: *range.start(),
-                    port_range_end: *range.end(),
-                }),
+                ProtocolKind::Tcp => {
+                    Filter::Tcp(PortRange::new(*range.start(), *range.end()).unwrap())
+                }
+                ProtocolKind::Udp => {
+                    Filter::Udp(PortRange::new(*range.start(), *range.end()).unwrap())
+                }
                 ProtocolKind::Icmp => Filter::Icmp,
             }
         }

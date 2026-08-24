@@ -11,6 +11,7 @@ use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationSeconds, serde_as};
 use std::fmt;
+use std::ops::RangeInclusive;
 
 pub mod client;
 pub mod gateway;
@@ -305,7 +306,7 @@ pub struct RelaysPresence {
     pub connected: Vec<Relay>,
 }
 
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(tag = "protocol", rename_all = "snake_case")]
 pub enum Filter {
     Udp(PortRange),
@@ -313,64 +314,75 @@ pub enum Filter {
     Icmp,
 }
 
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct PortRange {
-    // TODO: we can use a custom deserializer
-    // or maybe change the control plane to use start and end would suffice
-    #[serde(default = "min_port")]
-    pub port_range_start: u16,
-    #[serde(default = "max_port")]
-    pub port_range_end: u16,
-}
-
-impl Filter {
-    /// Returns whether the filter can be applied to traffic.
-    ///
-    /// A port range that starts after it ends does not describe any port and
-    /// therefore cannot be turned into an allow-rule.
-    pub fn is_valid(&self) -> bool {
-        match self {
-            Filter::Udp(range) => range.is_valid(),
-            Filter::Tcp(range) => range.is_valid(),
-            Filter::Icmp => true,
-        }
-    }
-}
+/// An inclusive range of ports.
+///
+/// The range is guaranteed to start at or before it ends, which makes it safe to
+/// hand to collections that reject inverted ranges.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PortRange(RangeInclusive<u16>);
 
 impl PortRange {
-    fn is_valid(&self) -> bool {
-        self.port_range_start <= self.port_range_end
+    /// Returns the range covering `start` to `end`, or `None` if `start` is after `end`.
+    pub fn new(start: u16, end: u16) -> Option<Self> {
+        if start > end {
+            return None;
+        }
+
+        Some(Self(start..=end))
+    }
+
+    pub fn as_range(&self) -> &RangeInclusive<u16> {
+        &self.0
+    }
+
+    pub fn start(&self) -> u16 {
+        *self.0.start()
+    }
+
+    pub fn end(&self) -> u16 {
+        *self.0.end()
     }
 }
 
-/// Deserializes a list of [`Filter`]s, dropping the ones that are not valid.
-///
-/// The portal rejects invalid filters on write but connlib cannot rely on that:
-/// a malformed filter has to be ignored rather than take down the tunnel.
-///
-/// An empty list permits all traffic, so filters are only dropped as long as at
-/// least one valid filter remains. A list of exclusively invalid filters is kept
-/// to preserve the intent of restricting access: [`FilterEngine`] skips the
-/// entries and ends up with an empty allow-set.
-///
-/// [`FilterEngine`]: crate::filter_engine::FilterEngine
-pub(crate) fn deserialize_filters<'de, D>(deserializer: D) -> Result<Vec<Filter>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let (valid, invalid): (Vec<Filter>, Vec<Filter>) = Vec::<Filter>::deserialize(deserializer)?
-        .into_iter()
-        .partition(Filter::is_valid);
-
-    for filter in &invalid {
-        tracing::warn!(?filter, "Ignoring invalid filter");
+// `RangeInclusive` is deliberately not ordered, yet resources need to be sorted.
+impl Ord for PortRange {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.start(), self.end()).cmp(&(other.start(), other.end()))
     }
+}
 
-    if valid.is_empty() {
-        return Ok(invalid);
+impl PartialOrd for PortRange {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
+}
 
-    Ok(valid)
+impl<'de> Deserialize<'de> for PortRange {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Wire {
+            #[serde(default = "min_port")]
+            port_range_start: u16,
+            #[serde(default = "max_port")]
+            port_range_end: u16,
+        }
+
+        let Wire {
+            port_range_start,
+            port_range_end,
+        } = Wire::deserialize(deserializer)?;
+
+        let range = PortRange::new(port_range_start, port_range_end).ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "port range {port_range_start}-{port_range_end} starts after it ends"
+            ))
+        })?;
+
+        Ok(range)
+    }
 }
 
 // Note: these 2 functions are needed since serde doesn't yet support default_value
@@ -386,6 +398,22 @@ fn max_port() -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inverted_port_range_cannot_be_built() {
+        assert!(PortRange::new(100, 50).is_none());
+        assert!(PortRange::new(50, 100).is_some());
+        assert!(PortRange::new(50, 50).is_some());
+    }
+
+    #[test]
+    fn inverted_port_range_fails_to_deserialize() {
+        let msg = r#"{ "protocol": "tcp", "port_range_start": 100, "port_range_end": 50 }"#;
+
+        let error = serde_json::from_str::<Filter>(msg).unwrap_err();
+
+        assert!(error.to_string().contains("starts after it ends"));
+    }
 
     #[test]
     fn flow_logs_config_ignores_unknown_fields() {

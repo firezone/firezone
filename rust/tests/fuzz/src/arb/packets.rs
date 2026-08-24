@@ -7,7 +7,7 @@ use std::{
 use connlib_model::ClientId;
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use tunnel_proto::messages::{Filter, PortRange, client::DevicePoolMember};
+use tunnel_proto::messages::{Filter, client::DevicePoolMember};
 
 use super::context::Generator;
 use crate::reference::ReferenceState;
@@ -367,28 +367,22 @@ fn arb_filtered_packet(
             Filter::Udp(_) => true,
         })
         .filter(|f| match f {
-            Filter::Udp(PortRange {
-                port_range_start: 53,
-                port_range_end: 53,
-            }) => false,
+            Filter::Udp(range) if range.as_range() == &(53..=53) => false,
             Filter::Icmp => true,
             Filter::Tcp(_) => true,
             Filter::Udp(_) => true,
         })
-        .copied()
+        .cloned()
         .collect::<Vec<_>>();
 
     let use_matching = !usable.is_empty() && g.flip(80);
 
     if use_matching {
-        let filter = usable[g.choose_index(usable.len())];
+        let filter = &usable[g.choose_index(usable.len())];
         match filter {
             Filter::Icmp => arb_icmp_packet(g, client_id, src, dst),
-            Filter::Udp(PortRange {
-                port_range_start,
-                port_range_end,
-            }) => {
-                let dport = g.u16_in(port_range_start..=port_range_end);
+            Filter::Udp(range) => {
+                let dport = g.u16_in(range.as_range().clone());
                 arb_udp_packet(g, client_id, src, dst, dport)
             }
             Filter::Tcp(_) => unreachable!("TCP filters were excluded above"),
@@ -414,7 +408,7 @@ fn arb_tcp_connection(
     let tcp_filters = filters
         .iter()
         .filter_map(|f| match f {
-            Filter::Tcp(r) => Some(*r),
+            Filter::Tcp(r) => Some(r.clone()),
             Filter::Udp(_) => None,
             Filter::Icmp => None,
         })
@@ -427,15 +421,15 @@ fn arb_tcp_connection(
             filters.is_empty()
                 || tcp_filters
                     .iter()
-                    .any(|range| (range.port_range_start..=range.port_range_end).contains(port))
+                    .any(|range| range.as_range().contains(port))
         })
         .collect::<Vec<_>>();
 
     let dport = if !matching_service_ports.is_empty() && g.flip(75) {
         matching_service_ports[g.choose_index(matching_service_ports.len())]
     } else if !tcp_filters.is_empty() {
-        let r = tcp_filters[g.choose_index(tcp_filters.len())];
-        g.u16_in(r.port_range_start..=r.port_range_end)
+        let r = &tcp_filters[g.choose_index(tcp_filters.len())];
+        g.u16_in(r.as_range().clone())
     } else {
         arb_non_dns_port(g)
     };
