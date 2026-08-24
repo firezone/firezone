@@ -45,7 +45,10 @@
 
     /// Drops to zero when a clear is acknowledged, so the settings screen shows
     /// the size a real provider would report afterwards.
-    private var providerLogFolderSize = MockFixtures.providerLogFolderSize
+    ///
+    /// nonisolated(unsafe): the session is Sendable, but the mock is only ever
+    /// driven from the main actor.
+    private nonisolated(unsafe) var providerLogFolderSize = MockFixtures.providerLogFolderSize
 
     // swiftlint:disable:next discouraged_optional_collection
     func startTunnel(options: [String: Any]?) throws {}
@@ -197,7 +200,9 @@
     /// The provider streams the bytes of a ZIP archive, so answer with the
     /// smallest valid one: an empty end-of-central-directory record. An export
     /// produced against the mock then unzips cleanly.
-    static let exportedTunnelLogs = Data([0x50, 0x4B, 0x05, 0x06] + [UInt8](repeating: 0, count: 18))
+    static let exportedTunnelLogs = Data(
+      [0x50, 0x4B, 0x05, 0x06] + [UInt8](repeating: 0, count: 18)
+    )
 
     /// A throwaway log directory seeded with two files of fixed contents, so
     /// the computed app-side log size is real and deterministic.
