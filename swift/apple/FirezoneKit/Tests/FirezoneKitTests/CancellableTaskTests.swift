@@ -10,8 +10,24 @@ private actor Flag {
     value = newValue
   }
 
-  func get() -> Bool {
-    value
+  /// The flag once it is set, or its value at `timeout`.
+  ///
+  /// What these tests wait on is a task noticing cancellation, which takes as
+  /// long as the scheduler needs. A fixed sleep either gives that away or, on a
+  /// loaded machine, ends first and reports a failure that says nothing about
+  /// the code under test.
+  func waitUntilSet(timeout: Duration = .seconds(5)) async -> Bool {
+    let deadline = ContinuousClock.now.advanced(by: timeout)
+
+    while ContinuousClock.now < deadline {
+      if value {
+        return true
+      }
+
+      try? await Task.sleep(for: .milliseconds(5))
+    }
+
+    return value
   }
 }
 
@@ -26,10 +42,7 @@ struct CancellableTaskTests {
       await executed.set(true)
     }
 
-    // Give the task time to execute
-    try? await Task.sleep(for: .milliseconds(50))
-
-    let wasExecuted = await executed.get()
+    let wasExecuted = await executed.waitUntilSet()
     #expect(wasExecuted == true)
 
     // Keep task alive until assertion
@@ -51,10 +64,7 @@ struct CancellableTaskTests {
       // CancellableTask goes out of scope here, triggering deinit -> cancel
     }
 
-    // Give the cancelled task time to handle the cancellation
-    try? await Task.sleep(for: .milliseconds(50))
-
-    let taskWasCancelled = await wasCancelled.get()
+    let taskWasCancelled = await wasCancelled.waitUntilSet()
     #expect(taskWasCancelled == true)
   }
 
@@ -73,10 +83,7 @@ struct CancellableTaskTests {
     // Set to nil, triggering cancellation
     task = nil
 
-    // Give the cancelled task time to handle the cancellation
-    try? await Task.sleep(for: .milliseconds(50))
-
-    let taskWasCancelled = await wasCancelled.get()
+    let taskWasCancelled = await wasCancelled.waitUntilSet()
     #expect(taskWasCancelled == true)
 
     // Silence unused variable warning
