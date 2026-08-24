@@ -55,14 +55,23 @@ internal fun X509SettingsScreen(
             text = stringResource(R.string.x509_claims_title),
             style = MaterialTheme.typography.titleLarge,
         )
-        Text(
-            text =
-                stringResource(
-                    if (state.isManaged) R.string.x509_managed_description else R.string.x509_user_description,
-                ),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+
+        // One line on what the certificate is for, absent while the KeyChain is still being
+        // read. The wording is shared across the clients.
+        val explainer =
+            when {
+                state.isLoading -> null
+                state.isUsable && state.unusableSummary == null && state.error == null ->
+                    stringResource(R.string.x509_explainer_present)
+                else -> stringResource(R.string.x509_explainer_absent)
+            }
+        if (explainer != null) {
+            Text(
+                text = explainer,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         // A managed alias the KeyChain will not release is the personally-owned case: only the user
         // can let the app have that key, so the chooser stays reachable even when the administrator
