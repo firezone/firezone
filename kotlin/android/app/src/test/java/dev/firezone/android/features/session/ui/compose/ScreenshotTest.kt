@@ -4,6 +4,8 @@ package dev.firezone.android.features.session.ui.compose
 import android.app.Application
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -78,40 +80,14 @@ class ScreenshotTest {
     }
 
     @Test
-    fun resourceDetailsInternet() =
-        captureSheet("resource-details-internet") {
-            ResourceDetailsSheet(
-                resource = sampleResources.first { it.id == "internet" },
-                isFavorite = false,
-                onAddFavorite = {},
-                onRemoveFavorite = {},
-                onToggleInternet = {},
-                onDismiss = {},
-            )
-        }
+    fun resourceDetailsInternet() = captureSheet("resource-details-internet", rowText = "Internet Resource")
 
     @Test
-    fun resourceDetails() =
-        captureSheet("resource-details") {
-            ResourceDetailsSheet(
-                resource = sampleResources.first { it.id == "gitlab" },
-                isFavorite = false,
-                onAddFavorite = {},
-                onRemoveFavorite = {},
-                onToggleInternet = {},
-                onDismiss = {},
-            )
-        }
+    fun resourceDetails() = captureSheet("resource-details", rowText = "GitLab")
 
     // The second sample device belongs to two pools, so the sheet shows the plural row.
     @Test
-    fun deviceDetails() =
-        captureSheet("device-details") {
-            ConnectedDeviceDetailsSheet(
-                device = sampleConnectedDevices[1],
-                onDismiss = {},
-            )
-        }
+    fun deviceDetails() = captureSheet("device-details", rowText = "Demo Device 2")
 
     @OptIn(ExperimentalRoborazziApi::class)
     private fun capture(
@@ -121,15 +97,31 @@ class ScreenshotTest {
         FirezoneTheme(content)
     }
 
-    // A `ModalBottomSheet` renders into a window of its own, which the main-window capture
-    // above misses, so the sheet captures compose through the rule, wait for the sheet to
-    // settle, and then photograph the whole screen.
+    // The detail sheets open on top of the session screen, so each capture drives the real
+    // screen and taps the row whose sheet it wants. A `ModalBottomSheet` renders into a
+    // window of its own, which the main-window capture above misses; photographing the whole
+    // screen composites the list, the scrim, and the sheet like the live app.
     @OptIn(ExperimentalRoborazziApi::class)
     private fun captureSheet(
         name: String,
-        content: @Composable () -> Unit,
+        rowText: String,
     ) {
-        composeRule.setContent { FirezoneTheme(content) }
+        composeRule.setContent {
+            FirezoneTheme {
+                SessionScreen(
+                    actorName = "Jane Doe",
+                    resources = sampleResources,
+                    connectedDevices = sampleConnectedDevices,
+                    favorites = Favorites(HashSet()),
+                    onToggleInternet = {},
+                    onAddFavorite = {},
+                    onRemoveFavorite = {},
+                    onSettings = {},
+                    onSignOut = {},
+                )
+            }
+        }
+        composeRule.onNodeWithText(rowText, substring = true).performClick()
         composeRule.waitForIdle()
         captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
     }
