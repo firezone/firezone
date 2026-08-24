@@ -176,6 +176,8 @@
       // front for the capture; its identifier exempts it from the suite trait's
       // alpha-zeroing, because the server does not composite a transparent window and
       // the titlebar's glass needs that compositing to render in the right appearance.
+      // Key, not just front: the traffic lights only draw coloured on the key window.
+      window.makeKeyAndOrderFront(nil)
       window.orderFrontRegardless()
 
       // The glass also blends in whatever lies behind the window, so a solid backdrop
