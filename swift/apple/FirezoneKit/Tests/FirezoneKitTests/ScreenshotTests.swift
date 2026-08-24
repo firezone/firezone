@@ -76,6 +76,12 @@
       _ colorScheme: ColorScheme,
       @ViewBuilder content: (Store) -> some View
     ) throws -> NSWindow {
+      // Before any view exists: SwiftUI resolves its environment when the hosting view is
+      // built, and the titlebar tab picker follows the application appearance, so setting
+      // it later leaves a light capsule on the dark captures.
+      let appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
+      NSApplication.shared.appearance = appearance
+
       let store = Store.mock()
 
       let view = NSHostingView(
@@ -93,10 +99,6 @@
         backing: .buffered,
         defer: false
       )
-      // The titlebar tab picker draws through materials that follow the application
-      // appearance, not the window's; without this the dark captures keep a light capsule.
-      let appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
-      NSApplication.shared.appearance = appearance
       window.appearance = appearance
       window.contentView = view
       view.layoutSubtreeIfNeeded()
