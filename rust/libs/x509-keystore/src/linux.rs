@@ -26,14 +26,14 @@ use cryptoki::{
     slot::{Slot, TokenInfo},
     types::AuthPin,
 };
-use rustls::{SignatureAlgorithm, SignatureScheme, pki_types::CertificateDer};
+use rustls::{SignatureScheme, pki_types::CertificateDer};
 use sha2::{Digest as _, Sha256, Sha384, Sha512};
 use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
-use x509_credential::{PrivateKey, SigningError};
+use x509_credential::SigningError;
 
 use crate::{
     DetailField, DetailSection, Identity, Status, StatusSeverity, absent_field, field,
-    invalid_field,
+    invalid_field, sign,
 };
 
 /// The only PKCS#11 module Firezone loads.
@@ -163,11 +163,13 @@ fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Optio
         .into_iter()
         .map(CertificateDer::from)
         .collect();
-    let key = Arc::new(Pkcs11Key {
-        session: Mutex::new(session),
-        key: private_key,
+    let key = Arc::new(sign::Key::new(
         algorithm,
-    });
+        Pkcs11Key {
+            session: Mutex::new(session),
+            key: private_key,
+        },
+    ));
 
     tracing::info!(
         fingerprint = %certificate.metadata.fingerprint,
@@ -189,44 +191,14 @@ fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Optio
 struct Pkcs11Key {
     session: Mutex<Session>,
     key: ObjectHandle,
-    algorithm: SigningAlgorithm,
 }
 
-impl PrivateKey for Pkcs11Key {
-    fn supported_schemes(&self) -> Vec<SignatureScheme> {
-        signature_schemes(self.algorithm).to_vec()
-    }
-
-    fn algorithm(&self) -> SignatureAlgorithm {
-        match self.algorithm {
-            SigningAlgorithm::RsaSha256 => SignatureAlgorithm::RSA,
-            SigningAlgorithm::EcdsaSha256 => SignatureAlgorithm::ECDSA,
-            SigningAlgorithm::EcdsaSha384 => SignatureAlgorithm::ECDSA,
-            SigningAlgorithm::EcdsaSha512 => SignatureAlgorithm::ECDSA,
-        }
-    }
-
+impl sign::Signer for Pkcs11Key {
     fn sign(&self, scheme: SignatureScheme, message: &[u8]) -> Result<Vec<u8>, SigningError> {
         let session = self.session.lock().unwrap_or_else(PoisonError::into_inner);
         let signature = sign_with_key(&session, self.key, scheme, message)?;
 
         Ok(signature)
-    }
-}
-
-fn signature_schemes(algorithm: SigningAlgorithm) -> &'static [SignatureScheme] {
-    match algorithm {
-        SigningAlgorithm::RsaSha256 => &[
-            SignatureScheme::RSA_PSS_SHA512,
-            SignatureScheme::RSA_PSS_SHA384,
-            SignatureScheme::RSA_PSS_SHA256,
-            SignatureScheme::RSA_PKCS1_SHA512,
-            SignatureScheme::RSA_PKCS1_SHA384,
-            SignatureScheme::RSA_PKCS1_SHA256,
-        ],
-        SigningAlgorithm::EcdsaSha256 => &[SignatureScheme::ECDSA_NISTP256_SHA256],
-        SigningAlgorithm::EcdsaSha384 => &[SignatureScheme::ECDSA_NISTP384_SHA384],
-        SigningAlgorithm::EcdsaSha512 => &[SignatureScheme::ECDSA_NISTP521_SHA512],
     }
 }
 
@@ -272,25 +244,13 @@ fn sign_with_key(
         SignatureScheme::RSA_PKCS1_SHA384 => session.sign(&Mechanism::Sha384RsaPkcs, key, message),
         SignatureScheme::RSA_PKCS1_SHA512 => session.sign(&Mechanism::Sha512RsaPkcs, key, message),
         SignatureScheme::ECDSA_NISTP256_SHA256 => {
-            let raw = session
-                .sign(&Mechanism::Ecdsa, key, &Sha256::digest(message))
-                .map_err(pkcs11_error)?;
-
-            return der_encode_ecdsa_signature(&raw);
+            session.sign(&Mechanism::Ecdsa, key, &Sha256::digest(message))
         }
         SignatureScheme::ECDSA_NISTP384_SHA384 => {
-            let raw = session
-                .sign(&Mechanism::Ecdsa, key, &Sha384::digest(message))
-                .map_err(pkcs11_error)?;
-
-            return der_encode_ecdsa_signature(&raw);
+            session.sign(&Mechanism::Ecdsa, key, &Sha384::digest(message))
         }
         SignatureScheme::ECDSA_NISTP521_SHA512 => {
-            let raw = session
-                .sign(&Mechanism::Ecdsa, key, &Sha512::digest(message))
-                .map_err(pkcs11_error)?;
-
-            return der_encode_ecdsa_signature(&raw);
+            session.sign(&Mechanism::Ecdsa, key, &Sha512::digest(message))
         }
         _ => return Err(SigningError::UnsupportedScheme(scheme)),
     }
@@ -332,53 +292,6 @@ fn classify_return_value(value: RvError, reason: String) -> SigningError {
         RvError::KeyFunctionNotPermitted => SigningError::AccessDenied(reason),
         RvError::FunctionCanceled => SigningError::AccessDenied(reason),
         _ => SigningError::Keystore(reason),
-    }
-}
-
-/// Wraps the fixed-width `r` and `s` values the token returns into the DER sequence TLS expects.
-fn der_encode_ecdsa_signature(raw: &[u8]) -> Result<Vec<u8>, SigningError> {
-    if raw.is_empty() || !raw.len().is_multiple_of(2) {
-        return Err(SigningError::Keystore(format!(
-            "the token returned a {}-byte ECDSA signature",
-            raw.len()
-        )));
-    }
-
-    let half = raw.len() / 2;
-    let r = der_integer(&raw[..half]);
-    let s = der_integer(&raw[half..]);
-    let mut output = vec![0x30];
-    encode_der_length(&mut output, r.len() + s.len());
-    output.extend(r);
-    output.extend(s);
-
-    Ok(output)
-}
-
-fn der_integer(value: &[u8]) -> Vec<u8> {
-    let first_nonzero = value
-        .iter()
-        .position(|byte| *byte != 0)
-        .unwrap_or(value.len().saturating_sub(1));
-    let value = &value[first_nonzero..];
-    let needs_padding = value.first().is_some_and(|byte| byte & 0x80 != 0);
-    let mut output = vec![0x02];
-    encode_der_length(&mut output, value.len() + usize::from(needs_padding));
-    if needs_padding {
-        output.push(0);
-    }
-    output.extend(value);
-
-    output
-}
-
-fn encode_der_length(output: &mut Vec<u8>, length: usize) {
-    if length < 0x80 {
-        output.push(length as u8);
-    } else if length < 0x100 {
-        output.extend([0x81, length as u8]);
-    } else {
-        output.extend([0x82, (length >> 8) as u8, length as u8]);
     }
 }
 
