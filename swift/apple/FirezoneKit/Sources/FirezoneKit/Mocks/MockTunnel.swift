@@ -97,10 +97,7 @@
   /// session for the lifetime of the app.
   @MainActor
   private final class MockTunnelProviderManagerFactory: TunnelProviderManagerFactory {
-    // Built on demand: the manager derives the network extension's identifier from the main
-    // bundle, which only exists once the app is running. Creating the factory must stay free
-    // of that so a `Store` can be built in a test.
-    private lazy var manager = MockTunnelProviderManager()
+    private let manager = MockTunnelProviderManager()
 
     func loadAllFromPreferences() async throws -> [any TunnelProviderManager] { [manager] }
     func createManager() -> any TunnelProviderManager { manager }
@@ -118,12 +115,9 @@
     init() {
       let proto = NETunnelProviderProtocol()
       proto.providerConfiguration = Configuration().toProviderConfiguration()
-      // `VPNConfigurationManager.bundleIdentifier` force-unwraps the main bundle, which a
-      // test process does not have. The mock derives the identifier the same way and
-      // settles for the shipped one when there is no bundle to ask.
-      proto.providerBundleIdentifier =
-        Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
-        ?? "dev.firezone.firezone.network-extension"
+      // Only the system would read this, to launch the extension; the mock never talks to
+      // the system, so the shipped identifier serves as well as a derived one.
+      proto.providerBundleIdentifier = "dev.firezone.firezone.network-extension"
       proto.serverAddress = "Firezone"
       protocolConfiguration = proto
     }
