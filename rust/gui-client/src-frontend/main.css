@@ -104,11 +104,11 @@
   color-scheme: light dark;
 
   /* Brand — identical to the portal */
-  --brand: oklch(71.74% 0.192 48.75);
-  --brand-secondary: oklch(77.69% 0.154 56.87);
-  --brand-tertiary: oklch(96.59% 0.022 63.21);
-  --brand-muted: oklch(98.56% 0.0084 56.32);
-  --brand-hover: oklch(58.23% 0.1574 48.48);
+  --brand: oklch(71.74% 0.192 298.75);
+  --brand-secondary: oklch(77.69% 0.154 306.87);
+  --brand-tertiary: oklch(96.59% 0.022 313.21);
+  --brand-muted: oklch(98.56% 0.0084 306.32);
+  --brand-hover: oklch(58.23% 0.1574 298.48);
 
   /* Accent */
   --accent: oklch(48.06% 0.2976 276);
@@ -176,11 +176,11 @@
     --text-inverse: oklch(20.77% 0.0398 265.75);
 
     /* Brand */
-    --brand: oklch(77.69% 0.154 56.87);
-    --brand-secondary: oklch(71.74% 0.192 48.75 / 60%);
-    --brand-tertiary: oklch(71.74% 0.192 48.75 / 30%);
-    --brand-muted: oklch(71.74% 0.192 48.75 / 12%);
-    --brand-hover: oklch(82.64% 0.1259 64.15);
+    --brand: oklch(77.69% 0.154 306.87);
+    --brand-secondary: oklch(71.74% 0.192 298.75 / 60%);
+    --brand-tertiary: oklch(71.74% 0.192 298.75 / 30%);
+    --brand-muted: oklch(71.74% 0.192 298.75 / 12%);
+    --brand-hover: oklch(82.64% 0.1259 314.15);
 
     /* Status */
     --success-light: oklch(80.03% 0.1821 151.71 / 10%);
