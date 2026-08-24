@@ -58,6 +58,7 @@ struct FirezoneApp: App {
       .handlesExternalEvents(
         matching: [AppView.WindowDefinition.main.externalEventMatchString]
       )
+      .defaultSize(AppView.WindowDefinition.defaultSize)
       // macOS doesn't have Sheets, need to use another Window group to show settings
       WindowGroup(
         "Settings",
