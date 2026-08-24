@@ -10,30 +10,35 @@ public struct SharedAccess {
   private static let applicationSupportFolderName = "Application Support"
   private static let keepAppRunningSentinelFileName = ".running"
 
-  public static var baseFolderURL: URL {
-    guard
-      let url = FileManager.default.containerURL(
-        forSecurityApplicationGroupIdentifier: BundleHelper.appGroupId)
-    else {
-      fatalError("Shared folder unavailable")
-    }
-    return url
+  /// The container the app shares with its extensions, or `nil` when no app group is
+  /// declared or the system cannot provide its container, as without the entitlement.
+  ///
+  /// Everything below it is already optional and its callers already carry on without it, so
+  /// this reports the container's absence rather than ending the process over it.
+  public static var baseFolderURL: URL? {
+    guard let appGroupId = BundleHelper.appGroupIdIfPresent else { return nil }
+
+    return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId)
   }
 
   public static var applicationSupportFolderURL: URL? {
-    let url =
-      baseFolderURL
-      .appendingPathComponent("Library")
-      .appendingPathComponent(applicationSupportFolderName)
-    guard ensureDirectoryExists(at: url.path) else {
+    guard
+      let url =
+        baseFolderURL?
+        .appendingPathComponent("Library")
+        .appendingPathComponent(applicationSupportFolderName),
+      ensureDirectoryExists(at: url.path)
+    else {
       return nil
     }
     return url
   }
 
   public static var cacheFolderURL: URL? {
-    let url = baseFolderURL.appendingPathComponent("Library").appendingPathComponent("Caches")
-    guard ensureDirectoryExists(at: url.path) else {
+    guard
+      let url = baseFolderURL?.appendingPathComponent("Library").appendingPathComponent("Caches"),
+      ensureDirectoryExists(at: url.path)
+    else {
       return nil
     }
     return url
@@ -96,8 +101,8 @@ public struct SharedAccess {
     return nil
   }
 
-  public static var providerStopReasonURL: URL {
-    baseFolderURL.appendingPathComponent("reason")
+  public static var providerStopReasonURL: URL? {
+    baseFolderURL?.appendingPathComponent("reason")
   }
 
   public static var keepAppRunningSentinelURL: URL? {
