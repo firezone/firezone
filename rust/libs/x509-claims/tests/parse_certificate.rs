@@ -537,6 +537,129 @@ fn diagnostics_omit_unrecognised_claims_when_there_are_none() {
         }));
 }
 
+#[test]
+fn diagnostics_read_from_the_identity_down_to_the_encoding() {
+    let mut names = [
+        "firezone://email/alice@example.com",
+        "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+        "firezone://intune-id/0d5a1c9e-3b72-4f60-8a4d-2e9b7c1f5a38",
+        "firezone://serial/C02XK1ZGJGH5",
+        "firezone://not-a-real-attribute/x",
+    ]
+    .map(|uri| SanType::URI(Ia5String::try_from(uri).expect("SAN URI should be an IA5 string")))
+    .to_vec();
+    names.push(SanType::DnsName(
+        Ia5String::try_from("host.test.invalid").expect("SAN should be an IA5 string"),
+    ));
+    let der = certificate_with_sans(names);
+
+    let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+    for claim in [
+        &metadata.actor_email,
+        &metadata.account_id,
+        &metadata.mdm_device_id,
+        &metadata.device_serial,
+    ] {
+        assert!(
+            claim.attested().is_some(),
+            "this certificate should carry every claim"
+        );
+    }
+
+    let labels = metadata
+        .detail_fields()
+        .into_iter()
+        .map(|field| field.label)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        labels,
+        [
+            "Common Name",
+            "Subject",
+            "Issuer",
+            "Actor Email",
+            "Account ID",
+            "MDM Device ID",
+            "Device Serial",
+            "firezone://not-a-real-attribute/x",
+            "Subject Alternative Names",
+            "Serial Number",
+            "Not Before",
+            "Not After",
+            "TLS Client Authentication EKU",
+            "Digital Signature Key Usage",
+            "Signing Algorithm",
+            "SHA-256 Fingerprint",
+        ],
+    );
+}
+
+#[test]
+fn sparse_diagnostics_keep_the_order_without_leaving_gaps() {
+    let der = certificate_with_uri_sans(&["firezone://email/alice@example.com"]);
+
+    let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+    assert_eq!(metadata.actor_email.attested(), Some("alice@example.com"));
+
+    let labels = metadata
+        .detail_fields()
+        .into_iter()
+        .map(|field| field.label)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        labels,
+        [
+            "Common Name",
+            "Subject",
+            "Issuer",
+            "Actor Email",
+            "Account ID",
+            "MDM Device ID",
+            "Device Serial",
+            "Serial Number",
+            "Not Before",
+            "Not After",
+            "TLS Client Authentication EKU",
+            "Digital Signature Key Usage",
+            "Signing Algorithm",
+            "SHA-256 Fingerprint",
+        ],
+        "a claim without a value keeps its row, a row with nothing to say leaves no gap"
+    );
+}
+
+#[test]
+fn the_issuer_reads_directly_after_the_subject() {
+    let metadata = parse_certificate(RSA_LEAF, now()).expect("fixture should parse");
+
+    let fields = metadata.detail_fields();
+
+    assert_eq!(
+        position(&fields, "Issuer"),
+        position(&fields, "Subject") + 1,
+        "who issued the certificate belongs beside whom it names"
+    );
+}
+
+#[test]
+fn the_alternative_names_remainder_reads_after_the_claims() {
+    let metadata =
+        parse_certificate(P384_LEAF, now()).expect("fixture should be a valid P-384 certificate");
+
+    let fields = metadata.detail_fields();
+
+    assert!(
+        position(&fields, "Device Serial") < position(&fields, "Subject Alternative Names"),
+        "the remainder should follow the claim rows it was filtered against"
+    );
+    assert!(
+        position(&fields, "Subject Alternative Names") < position(&fields, "Serial Number"),
+        "the remainder belongs to the identity, not to the certificate facts below"
+    );
+}
+
 fn position(fields: &[DetailField], label: &str) -> usize {
     fields
         .iter()

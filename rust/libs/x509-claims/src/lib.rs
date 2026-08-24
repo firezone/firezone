@@ -186,6 +186,7 @@ impl ParsedCertificate {
         let mut fields = vec![
             claim_field("Common Name", ClaimValue::from(self.subject_cn.clone())),
             field("Subject", &self.subject),
+            field("Issuer", &self.issuer),
             claim_field("Actor Email", self.actor_email.clone()),
             claim_field("Account ID", self.account_id.clone()),
             claim_field("MDM Device ID", self.mdm_device_id.clone()),
@@ -204,7 +205,6 @@ impl ParsedCertificate {
             fields.push(field("Subject Alternative Names", remaining.join("\n")));
         }
         fields.extend([
-            field("Issuer", &self.issuer),
             field("Serial Number", &self.serial),
             field("Not Before", &self.not_before),
             field("Not After", &self.not_after),
