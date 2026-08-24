@@ -123,7 +123,7 @@ import SwiftUI
             Text(resourceTitle(resource: resource))
           }
         }
-        .navigationTitle("All Resources")
+        .navigationTitle("Your Resources")
       }
     }
   }
