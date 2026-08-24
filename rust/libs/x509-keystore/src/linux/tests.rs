@@ -31,16 +31,25 @@ fn an_unloadable_module_is_no_identity_rather_than_an_error() {
     let pin_file = Path::new("/nonexistent/pkcs11-pin");
 
     let identity = identity_on(module, pin_file, "dev.firezone.device-trust")
-        .expect("an unloadable module is a machine without a keystore, not an error");
+        .expect("an unreadable keystore is a machine without one, not an error");
     assert!(identity.is_none());
 
     let status = status_on(module, pin_file, "dev.firezone.device-trust")
-        .expect("an unloadable module is a machine without a keystore, not an error");
+        .expect("an unreadable keystore is a machine without one, not an error");
     assert!(matches!(status.severity, StatusSeverity::Warning));
     assert!(
-        status.summary.contains("PKCS#11 module cannot be used"),
+        status.summary.contains("PKCS#11 keystore cannot be read"),
         "{}",
         status.summary
+    );
+    let section = section(&status, "PKCS#11 Module");
+    assert_eq!(
+        field_value(section, "Module Path"),
+        Some("/nonexistent/p11-kit-proxy.so")
+    );
+    assert!(
+        field_value(section, "Error").is_some_and(|error| error.contains("Failed to load")),
+        "the diagnostics should carry the error chain"
     );
 }
 
