@@ -114,6 +114,10 @@ jobs:
             arch: x86_64
             os: windows
             pkg-extension: msi
+          - runs-on: windows-11-arm
+            arch: aarch64
+            os: windows
+            pkg-extension: msi
     env:
       # mark:next-gui-version
       ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.17_${{ matrix.arch }}
