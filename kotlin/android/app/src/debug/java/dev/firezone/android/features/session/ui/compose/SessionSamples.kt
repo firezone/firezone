@@ -11,6 +11,7 @@ import dev.firezone.android.features.session.ui.ResourceUiModel
 import dev.firezone.android.tunnel.model.ConnectedDevice
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.ResourceType
+import dev.firezone.android.tunnel.model.Site
 import dev.firezone.android.tunnel.model.StatusEnum
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
@@ -66,6 +67,10 @@ internal val sampleConnectedDevices: ImmutableList<ConnectedDevice> =
         )
     }.toImmutableList()
 
+// The gateway site the mocked resources are served through, so the resource details
+// sheet has a site section to show.
+private val sampleSite = Site(id = "site-1", name = "Sydney office")
+
 internal val sampleResources: ImmutableList<ResourceUiModel> =
     listOf(
         Resource(
@@ -82,7 +87,7 @@ internal val sampleResources: ImmutableList<ResourceUiModel> =
             id = "gitlab",
             address = "gitlab.example.com",
             addressDescription = null,
-            sites = null,
+            sites = listOf(sampleSite),
             name = "GitLab",
             status = StatusEnum.ONLINE,
         ),
@@ -91,7 +96,7 @@ internal val sampleResources: ImmutableList<ResourceUiModel> =
             id = "prod-network",
             address = "10.0.0.0/24",
             addressDescription = null,
-            sites = null,
+            sites = listOf(sampleSite),
             name = "Prod network",
             status = StatusEnum.ONLINE,
         ),
