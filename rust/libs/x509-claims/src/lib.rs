@@ -231,7 +231,6 @@ impl ParsedCertificate {
                     .unwrap_or("Unsupported"),
             ),
             field("SHA-256 Fingerprint", &self.fingerprint),
-            field("DER Byte Count", self.der_bytes.to_string()),
         ]);
         fields
     }
