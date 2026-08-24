@@ -9,7 +9,7 @@ import Overview from "./OverviewPage";
 import ReactRouterSidebarItem from "./ReactRouterSidebarItem";
 import RemixIcon from "./RemixIcon";
 import Titlebar from "./Titlebar";
-import X509SettingsPage from "./X509SettingsPage";
+import X509Page from "./X509Page";
 import {
   AdvancedSettingsViewModel,
   commands,
@@ -142,13 +142,13 @@ export default function App() {
                         Advanced
                       </ReactRouterSidebarItem>
                     </li>
-                    <li>
-                      <ReactRouterSidebarItem icon="information" href="/x509">
-                        X.509 Identity
-                      </ReactRouterSidebarItem>
-                    </li>
                   </ul>
                 )}
+              </li>
+              <li>
+                <ReactRouterSidebarItem icon="certificate" href="/x509">
+                  X.509 Identity
+                </ReactRouterSidebarItem>
               </li>
               <li>
                 <ReactRouterSidebarItem icon="database" href="/diagnostics">
@@ -203,10 +203,7 @@ export default function App() {
                 />
               }
             />
-            <Route
-              path="/x509"
-              element={<X509SettingsPage status={x509Status} />}
-            />
+            <Route path="/x509" element={<X509Page status={x509Status} />} />
             <Route
               path="/diagnostics"
               element={
