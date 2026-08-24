@@ -28,9 +28,15 @@ To compile natively for x86_64 Windows, install the following (winget commands s
    `winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`
 1. rustup — `winget install Rustlang.Rustup`
 1. mise — `winget install jdx.mise`
-1. A `sudo` for elevating the Tunnel service: either **Sudo for Windows** (Windows 11
-   24H2 or later), enabled under Settings > System > Advanced, or
-   `winget install gerardog.gsudo`, whose installer registers the same `sudo` name.
+1. A `sudo` that elevates **in the current console**, for the Tunnel service: either
+   **Sudo for Windows** (Windows 11 24H2 or later), enabled under Settings > System >
+   Advanced and then switched to inline with `sudo config --enable normal` from an
+   elevated console, or `winget install gerardog.gsudo`, which is inline already and
+   registers the same `sudo` name. Sudo for Windows defaults to running the command in
+   a new console, which leaves the service's ANSI escapes unprocessed and turns its
+   coloured logs into garbage. Read
+   [Microsoft's security note](https://learn.microsoft.com/en-us/windows/advanced-settings/sudo/#security-considerations)
+   on inline mode before enabling it.
 1. An editor of your choice (see [Recommended IDE Setup](#recommended-ide-setup))
 
 `node` and `pnpm` are pinned in [`rust/.tool-versions`](../.tool-versions) and provided
@@ -38,12 +44,25 @@ by mise — you don't install them separately. After installing mise, activate i
 PowerShell 7 and install the toolchain from `rust/`:
 
 ```powershell
-# Activate mise for the current session (add to $PROFILE to persist)
+# Activate mise for the current session
 mise activate pwsh | Out-String | Invoke-Expression
+
+# Persist it. `-Force` also creates the profile and its directory, which do not
+# exist on a fresh install, so appending to `$PROFILE` fails until you do this.
+New-Item -ItemType File -Path $PROFILE -Force
+Add-Content $PROFILE 'mise activate pwsh | Out-String | Invoke-Expression'
+
+# Tab completions. This writes the completion script and prints the one
+# dot-source line to add to `$PROFILE` yourself.
+mise completion pwsh --install
 
 # Install the pinned tools (node, pnpm, cargo-tauri, etc.)
 mise install
 ```
+
+If `$PROFILE` points somewhere under `Documents\WindowsPowerShell\`, you are in
+Windows PowerShell 5.1 rather than PowerShell 7, which uses `Documents\PowerShell\`.
+Start `pwsh`, not `powershell`.
 
 ### Recommended IDE Setup
 
@@ -116,12 +135,6 @@ PowerShell 7 terminal. Make sure mise is activated in each (`mise activate pwsh 
    debug build serves the Tunnel IPC pipe without pinning it to `LocalSystem`, so the
    unprivileged, non-installed GUI below can connect. Drop the flag to exercise the
    pipe-owner check against an installed GUI.
-
-   Sudo for Windows runs the elevated process in a new window by default, so the service
-   gets its own console. `sudo config --enable normal` (from an elevated console) keeps it
-   inline in this terminal instead; read
-   [Microsoft's security note](https://learn.microsoft.com/en-us/windows/advanced-settings/sudo/#security-considerations)
-   on that mode first.
 
 2. **GUI client** — from a normal (non-elevated) terminal. Connects to the Tunnel
    service above, skipping the pipe-owner check so it accepts the non-`LocalSystem` pipe:
