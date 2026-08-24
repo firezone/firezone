@@ -27,19 +27,24 @@
 
   private let colorSchemes: [ColorScheme] = [.light, .dark]
 
+  /// The title the app's main window scene declares in `FirezoneApp.swift`. The
+  /// settings captures stay untitled: that window's titlebar shows the tab picker
+  /// and no title text, in the app as in the captures.
+  private let mainWindowTitle = "Welcome to Firezone"
+
   @Suite("Screenshots", .requiresAppKit)
   struct ScreenshotTests {
     @Test("Grant VPN permission", arguments: colorSchemes)
     @MainActor
     func grantVPN(colorScheme: ColorScheme) throws {
-      let window = try makeWindow(colorScheme) { _ in GrantVPNView() }
+      let window = try makeWindow(colorScheme, title: mainWindowTitle) { _ in GrantVPNView() }
       try capture(window, as: "grant-vpn", colorScheme)
     }
 
     @Test("First run", arguments: colorSchemes)
     @MainActor
     func firstTime(colorScheme: ColorScheme) throws {
-      let window = try makeWindow(colorScheme) { _ in FirstTimeView() }
+      let window = try makeWindow(colorScheme, title: mainWindowTitle) { _ in FirstTimeView() }
       try capture(window, as: "first-time", colorScheme)
     }
 
@@ -74,6 +79,7 @@
     @MainActor
     private func makeWindow(
       _ colorScheme: ColorScheme,
+      title: String? = nil,
       @ViewBuilder content: (Store) -> some View
     ) throws -> NSWindow {
       // Before any view exists: SwiftUI resolves its environment when the hosting view is
@@ -101,6 +107,9 @@
       )
       window.appearance = appearance
       window.identifier = .screenshotCapture
+      if let title {
+        window.title = title
+      }
       window.contentView = view
       view.layoutSubtreeIfNeeded()
 
