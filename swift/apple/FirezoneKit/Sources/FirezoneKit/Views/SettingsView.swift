@@ -56,14 +56,8 @@ public struct SettingsView: View {
     }
   }
 
-  @State private var isCalculatingLogsSize = false
-  @State private var calculatedLogsSize = "Unknown"
-  @State private var isClearingLogs = false
-  @State private var isExportingLogs = false
   @State private var isShowingConfirmationAlert = false
   @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
-
-  @State private var calculateLogSizeTask: Task<(), Never>?
 
   @State private var selectedTab: Tab
 
@@ -98,7 +92,7 @@ public struct SettingsView: View {
   public init(store: Store, selectedTab: Tab = .general) {
     self.store = store
     self.configuration = store.configuration
-    _viewModel = StateObject(wrappedValue: SettingsViewModel())
+    _viewModel = StateObject(wrappedValue: SettingsViewModel(store: store))
     _selectedTab = State(initialValue: selectedTab)
   }
 
@@ -456,24 +450,21 @@ public struct SettingsView: View {
       VStack {
         Form {
           Section(header: Text("Logs")) {
-            LogDirectorySizeView(
-              isProcessing: $isCalculatingLogsSize,
-              sizeString: $calculatedLogsSize
-            )
-            .onAppear {
-              self.refreshLogSize()
-            }
-            .onDisappear {
-              self.cancelRefreshLogSize()
-            }
+            LogDirectorySizeView(sizeText: viewModel.logDirectorySizeText)
+              .onAppear {
+                viewModel.refreshLogDirectorySize()
+              }
+              .onDisappear {
+                viewModel.cancelLogDirectorySizeRefresh()
+              }
             HStack {
               Spacer()
               ButtonWithProgress(
                 systemImageName: "trash",
                 title: "Clear Log Directory",
-                isProcessing: $isClearingLogs,
+                isProcessing: viewModel.isClearingLogs,
                 action: {
-                  self.clearLogFiles()
+                  viewModel.clearLogs()
                 }
               )
               Spacer()
@@ -485,15 +476,17 @@ public struct SettingsView: View {
               ButtonWithProgress(
                 systemImageName: "arrow.up.doc",
                 title: "Export Logs",
-                isProcessing: $isExportingLogs,
+                isProcessing: viewModel.isExportingLogs,
                 action: {
-                  self.isExportingLogs = true
-                  Task.detached(priority: .background) {
-                    let archiveURL = try LogExporter.tempFile()
-                    try await LogExporter.export(to: archiveURL)
-                    await MainActor.run {
+                  viewModel.isExportingLogs = true
+                  Task {
+                    do {
+                      let archiveURL = try await store.exportLogs()
                       self.logTempZipFileURL = archiveURL
                       self.isPresentingExportLogShareSheet = true
+                    } catch {
+                      Log.error(error)
+                      viewModel.isExportingLogs = false
                     }
                   }
                 }
@@ -504,13 +497,13 @@ public struct SettingsView: View {
                     localFileURL: logfileURL,
                     completionHandler: {
                       self.isPresentingExportLogShareSheet = false
-                      self.isExportingLogs = false
+                      viewModel.isExportingLogs = false
                       self.logTempZipFileURL = nil
                     }
                   )
                   .onDisappear {
                     self.isPresentingExportLogShareSheet = false
-                    self.isExportingLogs = false
+                    viewModel.isExportingLogs = false
                     self.logTempZipFileURL = nil
                   }
                 }
@@ -523,29 +516,26 @@ public struct SettingsView: View {
     #elseif os(macOS)
       VStack {
         VStack(alignment: .leading, spacing: 10) {
-          LogDirectorySizeView(
-            isProcessing: $isCalculatingLogsSize,
-            sizeString: $calculatedLogsSize
-          )
-          .onAppear {
-            self.refreshLogSize()
-          }
-          .onDisappear {
-            self.cancelRefreshLogSize()
-          }
+          LogDirectorySizeView(sizeText: viewModel.logDirectorySizeText)
+            .onAppear {
+              viewModel.refreshLogDirectorySize()
+            }
+            .onDisappear {
+              viewModel.cancelLogDirectorySizeRefresh()
+            }
           HStack(spacing: 30) {
             ButtonWithProgress(
               systemImageName: "trash",
               title: "Clear Log Directory",
-              isProcessing: $isClearingLogs,
+              isProcessing: viewModel.isClearingLogs,
               action: {
-                self.clearLogFiles()
+                viewModel.clearLogs()
               }
             )
             ButtonWithProgress(
               systemImageName: "arrow.up.doc",
               title: "Export Logs",
-              isProcessing: $isExportingLogs,
+              isProcessing: viewModel.isExportingLogs,
               action: {
                 self.exportLogsWithSavePanelOnMac()
               }
@@ -565,44 +555,36 @@ public struct SettingsView: View {
 
   #if os(macOS)
     private func exportLogsWithSavePanelOnMac() {
-      self.isExportingLogs = true
+      viewModel.isExportingLogs = true
 
       let savePanel = NSSavePanel()
       savePanel.prompt = "Save"
       savePanel.nameFieldLabel = "Save log archive to:"
-      let fileName = "firezone_logs_\(LogExporter.now()).zip"
-
-      savePanel.nameFieldStringValue = fileName
+      savePanel.nameFieldStringValue = viewModel.logArchiveFileName()
 
       guard
         let window = NSApp.windows.first(where: {
           $0.identifier?.rawValue.hasPrefix("firezone-settings") ?? false
         })
       else {
-        self.isExportingLogs = false
+        viewModel.isExportingLogs = false
         Log.log("Settings window not found. Can't show save panel.")
         return
       }
 
       savePanel.beginSheetModal(for: window) { response in
         guard response == .OK else {
-          self.isExportingLogs = false
+          viewModel.isExportingLogs = false
           return
         }
         guard let destinationURL = savePanel.url else {
-          self.isExportingLogs = false
+          viewModel.isExportingLogs = false
           return
         }
 
         Task {
           do {
-            guard let session = try store.manager().session() else {
-              throw VPNConfigurationManagerError.managerNotInitialized
-            }
-            try await LogExporter.export(
-              to: destinationURL,
-              session: session
-            )
+            try await store.exportLogs(to: destinationURL)
 
             window.contentViewController?.presentingViewController?.dismiss(self)
           } catch {
@@ -618,113 +600,14 @@ public struct SettingsView: View {
             MacOSAlert.show(for: error)
           }
 
-          self.isExportingLogs = false
+          viewModel.isExportingLogs = false
         }
       }
     }
   #endif
 
-  private func refreshLogSize() {
-    guard !self.isCalculatingLogsSize else {
-      return
-    }
-    self.isCalculatingLogsSize = true
-    self.calculateLogSizeTask =
-      Task.detached(priority: .background) {
-        let calculatedLogsSize = await calculateLogDirSize()
-        await MainActor.run {
-          self.calculatedLogsSize = calculatedLogsSize
-          self.isCalculatingLogsSize = false
-          self.calculateLogSizeTask = nil
-        }
-      }
-  }
-
-  private func cancelRefreshLogSize() {
-    self.calculateLogSizeTask?.cancel()
-  }
-
-  private func clearLogFiles() {
-    self.isClearingLogs = true
-    self.cancelRefreshLogSize()
-    Task.detached(priority: .background) {
-      do { try await clearAllLogs() } catch { Log.error(error) }
-      await MainActor.run {
-        self.isClearingLogs = false
-        if !self.isCalculatingLogsSize {
-          self.refreshLogSize()
-        }
-      }
-    }
-  }
-
   private func saveSettings() async throws {
     try await viewModel.save()
-  }
-
-  // Calculates the total size of our logs by summing the size of the
-  // app, tunnel, and connlib log directories.
-  //
-  // On iOS, SharedAccess.logFolderURL is a single folder that contains all
-  // three directories, but on macOS, the app log directory lives in a different
-  // Group Container than tunnel and connlib directories, so we use IPC to make
-  // a call to sum both the tunnel and connlib directories.
-  //
-  // Unfortunately the IPC method doesn't work on iOS because the tunnel process
-  // is not started on demand, so the IPC calls hang. Thus, we use separate code
-  // paths for iOS and macOS.
-  private func calculateLogDirSize() async -> String {
-    Log.log("\(#function)")
-
-    guard let logFilesFolderURL = SharedAccess.logFolderURL else {
-      return "Unknown"
-    }
-
-    let logFolderSize = await Log.size(of: logFilesFolderURL)
-
-    do {
-      #if os(macOS)
-        guard let session = try store.manager().session() else {
-          throw VPNConfigurationManagerError.managerNotInitialized
-        }
-        let providerLogFolderSize = try await IPCClient.getLogFolderSize(session: session)
-        let totalSize = logFolderSize + providerLogFolderSize
-      #else
-        let totalSize = logFolderSize
-      #endif
-
-      let byteCountFormatter = ByteCountFormatter()
-      byteCountFormatter.countStyle = .file
-      byteCountFormatter.allowsNonnumericFormatting = false
-      byteCountFormatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB, .usePB]
-
-      return byteCountFormatter.string(fromByteCount: Int64(totalSize))
-
-    } catch {
-      if let error = error as? IPCClient.Error,
-        case IPCClient.Error.noIPCData = error
-      {
-        // Will happen if the extension is not enabled
-        Log.warning("\(#function): Unable to count logs: \(error). Is the XPC service running?")
-      } else {
-        Log.error(error)
-      }
-
-      return "Unknown"
-    }
-  }
-
-  // On iOS, all the logs are stored in one directory.
-  // On macOS, we need to clear logs from the app process, then call over IPC
-  // to clear the provider's log directory.
-  private func clearAllLogs() async throws {
-    Log.log("\(#function)")
-
-    try Log.clear(in: SharedAccess.logFolderURL)
-
-    #if os(macOS)
-      try await store.clearLogs()
-    #endif
   }
 
   private func withErrorHandler(action: @escaping () async throws -> Void) {
@@ -746,7 +629,7 @@ public struct SettingsView: View {
 struct ButtonWithProgress: View {
   let systemImageName: String
   let title: String
-  @Binding var isProcessing: Bool
+  let isProcessing: Bool
   let action: () -> Void
 
   var body: some View {
@@ -774,8 +657,8 @@ struct ButtonWithProgress: View {
 }
 
 struct LogDirectorySizeView: View {
-  @Binding var isProcessing: Bool
-  @Binding var sizeString: String
+  /// nil while the size is being computed.
+  let sizeText: String?
 
   var body: some View {
     HStack(spacing: 10) {
@@ -794,14 +677,10 @@ struct LogDirectorySizeView: View {
       #endif
       Label(
         title: {
-          if isProcessing {
-            Text("")
-          } else {
-            Text(sizeString)
-          }
+          Text(sizeText ?? "")
         },
         icon: {
-          if isProcessing {
+          if sizeText == nil {
             ProgressView().controlSize(.small)
               .frame(maxWidth: 12, maxHeight: 12)
           }

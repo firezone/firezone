@@ -10,7 +10,9 @@ import Foundation
 @MainActor
 class SettingsViewModel: ObservableObject {
   private let configuration: Configuration
+  private let store: Store?
   private var cancellables: Set<AnyCancellable> = []
+  private var logDirectorySizeTask: Task<Void, Never>?
 
   @Published private(set) var shouldDisableApplyButton = false
   @Published private(set) var shouldDisableResetButton = false
@@ -21,8 +23,27 @@ class SettingsViewModel: ObservableObject {
   @Published var connectOnStart: Bool
   @Published var startOnLogin: Bool
 
-  init(configuration: Configuration? = nil) {
-    self.configuration = configuration ?? Configuration.shared
+  /// Formatted size of the log directories; nil while a computation is running.
+  @Published private(set) var logDirectorySizeText: String?
+  @Published private(set) var isClearingLogs = false
+
+  // Spans the whole export interaction, so the presentation flows (save panel,
+  // share sheet) drive it from the view.
+  @Published var isExportingLogs = false
+
+  private static let logSizeFormatter: ByteCountFormatter = {
+    let formatter = ByteCountFormatter()
+    formatter.countStyle = .file
+    formatter.allowsNonnumericFormatting = false
+    formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB, .usePB]
+    return formatter
+  }()
+
+  /// `store` powers the diagnostic logs actions; without one they report an
+  /// unknown size and clear nothing.
+  init(configuration: Configuration? = nil, store: Store? = nil) {
+    self.configuration = configuration ?? store?.configuration ?? Configuration.shared
+    self.store = store
 
     authURL = self.configuration.authURL
     apiURL = self.configuration.apiURL
@@ -87,6 +108,46 @@ class SettingsViewModel: ObservableObject {
     if !configuration.isStartOnLoginForced { configuration.startOnLogin = startOnLogin }
 
     updateDerivedState()
+  }
+
+  func refreshLogDirectorySize() {
+    logDirectorySizeTask?.cancel()
+    logDirectorySizeText = nil
+
+    logDirectorySizeTask = Task {
+      let size = await store?.logDirectorySize()
+
+      guard !Task.isCancelled else { return }
+
+      logDirectorySizeText =
+        size.map { Self.logSizeFormatter.string(fromByteCount: Int64(clamping: $0)) } ?? "Unknown"
+    }
+  }
+
+  func cancelLogDirectorySizeRefresh() {
+    logDirectorySizeTask?.cancel()
+  }
+
+  func clearLogs() {
+    guard !isClearingLogs else { return }
+
+    isClearingLogs = true
+    logDirectorySizeTask?.cancel()
+
+    Task {
+      do {
+        try await store?.clearLogs()
+      } catch {
+        Log.error(error)
+      }
+
+      isClearingLogs = false
+      refreshLogDirectorySize()
+    }
+  }
+
+  func logArchiveFileName() -> String {
+    "firezone_logs_\(LogExporter.now()).zip"
   }
 
   func isAllForced() -> Bool {
