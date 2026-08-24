@@ -8,9 +8,14 @@
 // scenario per launch (see MockTunnel.swift for the scenarios). Nothing is
 // compared against a reference; the images are the output.
 //
-// The PNGs land in `SCREENSHOT_DIR` when that variable is set (CI passes it as
+// Every capture is attached to the test: Xcode signs the UI-test runner with
+// the App Sandbox whatever the target's settings say, so the runner's own file
+// writes are denied on CI, while testmanagerd persists attachments into the
+// result bundle regardless, from where CI exports them. The PNGs are also
+// written to `SCREENSHOT_DIR` when that variable is set (CI passes it as
 // `TEST_RUNNER_SCREENSHOT_DIR`, which xcodebuild forwards with the prefix
-// stripped), and in `swift/apple/app-screenshots` otherwise.
+// stripped), or to `swift/apple/app-screenshots` otherwise, on a best-effort
+// basis for unsandboxed local runs.
 
 import AppKit
 import XCTest
@@ -34,7 +39,7 @@ final class AppScreenshotTests: XCTestCase {
     defer { app.terminate() }
 
     let window = try openWindow(named: "main", title: Self.mainWindowTitle, in: app)
-    try capture(window, as: "grant-vpn")
+    capture(window, as: "grant-vpn")
   }
 
   func testWelcome() throws {
@@ -42,7 +47,7 @@ final class AppScreenshotTests: XCTestCase {
     defer { app.terminate() }
 
     let window = try openWindow(named: "main", title: Self.mainWindowTitle, in: app)
-    try capture(window, as: "welcome")
+    capture(window, as: "welcome")
   }
 
   func testSettings() throws {
@@ -52,13 +57,13 @@ final class AppScreenshotTests: XCTestCase {
     let window = try openWindow(named: "settings", title: Self.settingsWindowTitle, in: app)
 
     // The window opens on the General tab, so capture it before paging.
-    try capture(window, as: "settings-general")
+    capture(window, as: "settings-general")
 
     try selectTab("Advanced", in: window)
-    try capture(window, as: "settings-advanced")
+    capture(window, as: "settings-advanced")
 
     try selectTab("Diagnostic Logs", in: window)
-    try capture(window, as: "settings-logs")
+    capture(window, as: "settings-logs")
   }
 
   /// Launches the app against the mock backend, presenting `scenario`.
@@ -136,12 +141,14 @@ final class AppScreenshotTests: XCTestCase {
     tab.click()
   }
 
-  /// Photographs the window, attaches the image to the test, and writes it out
-  /// as a PNG.
+  /// Photographs the window, attaches the image to the test, and best-effort
+  /// writes it out as a PNG.
   ///
-  /// The attachment is kept unconditionally so the image also lands in the
-  /// result bundle, which survives even when writing the file does not.
-  private func capture(_ window: XCUIElement, as name: String) throws {
+  /// The attachment is the delivery that always works: the sandboxed runner
+  /// cannot write files of its own, while testmanagerd persists attachments
+  /// into the result bundle regardless. The direct write serves unsandboxed
+  /// local runs, so its failure is only logged.
+  private func capture(_ window: XCUIElement, as name: String) {
     // XCUITest waits for quiescence before events, but a capture is not an
     // event, so give freshly presented content a moment to settle.
     Thread.sleep(forTimeInterval: 0.5)
@@ -153,10 +160,13 @@ final class AppScreenshotTests: XCTestCase {
     attachment.lifetime = .keepAlways
     add(attachment)
 
-    let file = try Self.outputDirectory().appendingPathComponent("\(name).png")
-    try screenshot.pngRepresentation.write(to: file)
-
-    print("Screenshot \(name).png written to \(file.path)")
+    do {
+      let file = try Self.outputDirectory().appendingPathComponent("\(name).png")
+      try screenshot.pngRepresentation.write(to: file)
+      print("Screenshot \(name).png written to \(file.path)")
+    } catch {
+      print("Screenshot \(name).png attached only; writing the file failed: \(error)")
+    }
   }
 
   /// `SCREENSHOT_DIR` when set, or `swift/apple/app-screenshots` resolved from
