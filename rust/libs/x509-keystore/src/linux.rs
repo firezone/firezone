@@ -36,68 +36,100 @@ use crate::{
     absent_field, field, invalid_field, selected_certificate, sign, unusable_reasons,
 };
 
-/// The only PKCS#11 module Firezone loads.
+/// The directories p11-kit module configuration is read from, the administrator's first.
 ///
-/// p11-kit's proxy federates every module registered on the system, so whichever driver an
-/// administrator installed for their token is reachable without Firezone being told about it.
-const PROXY_MODULE: &str = "p11-kit-proxy.so";
+/// Whichever driver an administrator installed for their token registers itself here, so it is
+/// reachable without Firezone being told about it.
+const MODULE_CONFIGURATION_DIRECTORIES: [&str; 2] =
+    ["/etc/pkcs11/modules", "/usr/share/p11-kit/modules"];
 
 /// The file a token's PIN is read from.
 const PIN_FILE: &str = "/etc/firezone/pkcs11-pin";
 
-/// What the diagnostics screen says on a machine that cannot reach a PKCS#11 token at all.
+/// What the diagnostics screen says on a machine with no PKCS#11 module registered at all.
 ///
-/// The packages recommend p11-kit rather than depend on it, so a client without it is a supported
-/// installation and has to be told what is missing instead of failing to connect.
-const MISSING_P11_KIT: &str = "No PKCS#11 module is installed, so no X.509 client identity certificate can be found. Firezone reads tokens through p11-kit: install it to use one (the `p11-kit-modules` package on Debian and Ubuntu, `p11-kit` on Fedora and RHEL).";
+/// The packages recommend p11-kit rather than depend on it, so a client without its module
+/// configuration is a supported installation and has to be told what is missing instead of
+/// failing to connect.
+const MISSING_P11_KIT: &str = "No PKCS#11 module is registered, so no X.509 client identity certificate can be found. Firezone reads tokens through the modules registered with p11-kit: install it together with your token's driver to use one (the `p11-kit-modules` package on Debian and Ubuntu, `p11-kit` on Fedora and RHEL).";
 
 pub(crate) fn status(subject_cn: &str) -> Result<Status> {
-    let Some(module) = proxy_module() else {
+    let modules = registered_modules();
+
+    if modules.is_empty() {
         return Ok(Status {
             severity: StatusSeverity::Warning,
             summary: MISSING_P11_KIT.to_owned(),
             sections: Vec::new(),
         });
-    };
+    }
 
-    status_on(&module, Path::new(PIN_FILE), subject_cn)
+    status_on(&modules, Path::new(PIN_FILE), subject_cn)
 }
 
 pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
     // A machine with no PKCS#11 stack has nowhere to hold a client identity, which is how most
     // of them are set up rather than a misconfiguration. A token that does hold a certificate
     // and cannot sign with it still fails the connect.
-    let Some(module) = proxy_module() else {
-        return Ok(None);
-    };
+    let modules = registered_modules();
 
-    identity_on(&module, Path::new(PIN_FILE), subject_cn)
+    if modules.is_empty() {
+        return Ok(None);
+    }
+
+    identity_on(&modules, Path::new(PIN_FILE), subject_cn)
 }
 
-fn status_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Status> {
-    // A keystore that cannot be read leaves the machine without a reachable identity, the same
-    // as having none: the module may be unloadable, as for a statically linked client, or fail
-    // to enumerate its tokens, as when the service behind a driver is not running.
-    let found = match find_token(module, subject_cn) {
-        Ok(found) => found,
-        Err(error) => return Ok(unreadable_keystore_status(module, &error)),
+fn status_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<Status> {
+    let mut sections = Vec::new();
+    let mut failures = 0;
+
+    for module in modules {
+        // A module that cannot be read leaves its tokens out of reach, the same as holding
+        // none: it may be unloadable, as for a statically linked client, or fail to enumerate,
+        // as when the service behind a driver is not running. One broken module must not hide
+        // the tokens of the others.
+        let found = match find_token(module, subject_cn) {
+            Ok(found) => found,
+            Err(error) => {
+                tracing::debug!(module = %module.display(), "Skipping a PKCS#11 module: {error:#}");
+                sections.push(module_section(module, Some(&error)));
+                failures += 1;
+
+                continue;
+            }
+        };
+
+        let Some(candidate) = found else {
+            sections.push(module_section(module, None));
+
+            continue;
+        };
+
+        let token = unlock_token(candidate, pin_file, subject_cn)?;
+
+        return Ok(token_status(module, token));
+    }
+
+    // A machine whose every module failed has an unreadable keystore, not a missing
+    // certificate, and which of the two the administrator reads decides what they fix.
+    let summary = if failures == modules.len() {
+        "The PKCS#11 keystore cannot be read, so no X.509 client identity certificate can be \
+         found."
+            .to_owned()
+    } else {
+        format!("No PKCS#11 token holds an X.509 certificate with subject CN '{subject_cn}'.")
     };
 
-    let Some(candidate) = found else {
-        return Ok(Status {
-            severity: StatusSeverity::Warning,
-            summary: format!(
-                "No PKCS#11 token holds an X.509 certificate with subject CN '{subject_cn}'."
-            ),
-            sections: vec![DetailSection {
-                title: "PKCS#11 Token".to_owned(),
-                fields: vec![field("Module Path", module.display().to_string())],
-            }],
-        });
-    };
+    Ok(Status {
+        severity: StatusSeverity::Warning,
+        summary,
+        sections,
+    })
+}
 
-    let token = unlock_token(candidate, pin_file, subject_cn)?;
-
+/// The diagnostics for the token that holds a matching certificate.
+fn token_status(module: &Path, token: Token) -> Status {
     let selected = selected_certificate(&token.certificates);
 
     let mut sections = vec![token_section(module, &token.info)];
@@ -131,48 +163,50 @@ fn status_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Status>
         ),
     };
 
-    Ok(Status {
+    Status {
         severity,
         summary,
         sections,
-    })
-}
-
-/// The diagnostics for a keystore that could not be read at all, naming what failed.
-fn unreadable_keystore_status(module: &Path, error: &anyhow::Error) -> Status {
-    Status {
-        severity: StatusSeverity::Warning,
-        summary: "The PKCS#11 keystore cannot be read, so no X.509 client identity \
-                  certificate can be found."
-            .to_owned(),
-        sections: vec![DetailSection {
-            title: "PKCS#11 Module".to_owned(),
-            fields: vec![
-                field("Module Path", module.display().to_string()),
-                field("Error", format!("{error:#}")),
-            ],
-        }],
     }
 }
 
-fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Option<Identity>> {
-    let candidate = match find_token(module, subject_cn) {
-        Ok(Some(candidate)) => candidate,
-        Ok(None) => {
-            tracing::debug!("No PKCS#11 token holds a Firezone client identity");
+/// The diagnostics section naming one registered module, and what failed on it, if anything.
+fn module_section(module: &Path, error: Option<&anyhow::Error>) -> DetailSection {
+    let mut fields = vec![field("Module Path", module.display().to_string())];
+    fields.extend(error.map(|error| field("Error", format!("{error:#}"))));
 
-            return Ok(None);
-        }
-        Err(error) => {
-            tracing::warn!(
-                module = %module.display(),
-                "Connecting without an X.509 client identity, the PKCS#11 keystore cannot be read: {error:#}"
-            );
+    DetailSection {
+        title: "PKCS#11 Module".to_owned(),
+        fields,
+    }
+}
 
-            return Ok(None);
-        }
-    };
+fn identity_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<Option<Identity>> {
+    for module in modules {
+        let candidate = match find_token(module, subject_cn) {
+            Ok(Some(candidate)) => candidate,
+            Ok(None) => continue,
+            Err(error) => {
+                tracing::debug!(module = %module.display(), "Skipping a PKCS#11 module: {error:#}");
 
+                continue;
+            }
+        };
+
+        // A matching token's verdict is final: a certificate that was provisioned for Firezone
+        // and cannot be used fails the connect rather than falling through to another module.
+        let identity = select_identity(candidate, pin_file, subject_cn)?;
+
+        return Ok(Some(identity));
+    }
+
+    tracing::debug!("No PKCS#11 token holds a Firezone client identity");
+
+    Ok(None)
+}
+
+/// Unlocks the candidate's token and selects the certificate it presents for mutual TLS.
+fn select_identity(candidate: Candidate, pin_file: &Path, subject_cn: &str) -> Result<Identity> {
     let Token {
         session,
         objects,
@@ -215,7 +249,7 @@ fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Optio
         "Selected a PKCS#11 X.509 identity for mutual TLS"
     );
 
-    Ok(Some(Identity { chain, key }))
+    Ok(Identity { chain, key })
 }
 
 /// A private key on a PKCS#11 token, reached through the session that unlocked it.
@@ -334,43 +368,132 @@ fn classify_return_value(value: RvError, reason: String) -> SigningError {
     }
 }
 
-/// Returns the path of the p11-kit proxy module, [`None`] if p11-kit is not installed.
-/// Returns the path the distribution installed the p11-kit proxy at.
-fn proxy_module() -> Option<PathBuf> {
-    // Debian keeps libraries below a directory named after the architecture triplet, e.g.
-    // `/usr/lib/x86_64-linux-gnu`.
-    let multiarch = std::fs::read_dir("/usr/lib")
+/// Returns every PKCS#11 module registered on this machine, most preferred first.
+///
+/// The modules are read from p11-kit's configuration rather than through its proxy: the proxy
+/// collapses every module into one `C_GetSlotList`, so a single broken module would take the
+/// tokens of all the others down with it. Loading each module individually keeps them
+/// independent.
+fn registered_modules() -> Vec<PathBuf> {
+    let directories = module_directories(multiarch_directories());
+    let files = MODULE_CONFIGURATION_DIRECTORIES
+        .into_iter()
+        .flat_map(|directory| configuration_files(Path::new(directory)))
+        .filter_map(|file| {
+            std::fs::read_to_string(&file)
+                .inspect_err(|error| {
+                    tracing::debug!(
+                        file = %file.display(),
+                        "Skipping an unreadable p11-kit module configuration: {error}"
+                    );
+                })
+                .ok()
+        });
+
+    configured_modules(files, &directories, &|module| module.is_file())
+}
+
+/// Returns the `*.module` files below `directory` in name order, none for a missing directory.
+fn configuration_files(directory: &Path) -> Vec<PathBuf> {
+    let mut files = std::fs::read_dir(directory)
         .into_iter()
         .flatten()
         .flatten()
         .map(|entry| entry.path())
-        .collect();
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "module")
+        })
+        .collect::<Vec<_>>();
 
-    proxy_module_candidates(multiarch)
-        .into_iter()
-        .find(|candidate| candidate.is_file())
+    files.sort();
+
+    files
 }
 
-/// Every path a distribution may have installed the p11-kit proxy at, most preferred first.
+/// Returns the modules `files` register, resolved and deduplicated, in the order given.
 ///
-/// The proxy is a regular library and lands in the library directory itself: `/usr/lib64` on
-/// Fedora and RHEL, the multiarch directory on Debian and Ubuntu. Only registered driver
-/// modules live below the `pkcs11` subdirectories, but each is probed as a fallback. `/usr/lib64`
-/// has to come before `/usr/lib`, whose proxy is the 32-bit build on a Fedora machine with the
-/// i686 package installed.
-fn proxy_module_candidates(multiarch_directories: Vec<PathBuf>) -> Vec<PathBuf> {
+/// Two configuration files may name one module, e.g. the administrator's copy of a packaged
+/// file; the first mention wins.
+fn configured_modules(
+    files: impl IntoIterator<Item = String>,
+    directories: &[PathBuf],
+    installed: &dyn Fn(&Path) -> bool,
+) -> Vec<PathBuf> {
+    let mut modules = Vec::new();
+
+    for contents in files {
+        let Some(module) = configured_module(&contents, directories, installed) else {
+            continue;
+        };
+
+        if !modules.contains(&module) {
+            modules.push(module);
+        }
+    }
+
+    modules
+}
+
+/// Returns the module one p11-kit configuration file names, as a path to load.
+///
+/// Only the `module:` setting matters here. In particular, `disable-in: p11-kit-proxy` hides a
+/// module from the proxy, which we are not, so it stays loaded. A relative value is looked up in
+/// `directories`, most preferred first; one that is nowhere `installed` resolves against the most
+/// preferred directory, so that loading it fails under the path the configuration meant.
+fn configured_module(
+    contents: &str,
+    directories: &[PathBuf],
+    installed: &dyn Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let value = contents.lines().find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+
+        (key.trim() == "module").then(|| value.trim())
+    })?;
+
+    if value.is_empty() {
+        return None;
+    }
+
+    let module = Path::new(value);
+
+    if module.is_absolute() {
+        return Some(module.to_owned());
+    }
+
+    directories
+        .iter()
+        .map(|directory| directory.join(module))
+        .find(|candidate| installed(candidate))
+        .or_else(|| Some(directories.first()?.join(module)))
+}
+
+/// The directories a registered PKCS#11 module may be installed into, most preferred first.
+///
+/// Distributions keep driver modules below a `pkcs11` subdirectory of the library directory:
+/// `/usr/lib64/pkcs11` on Fedora and RHEL, below the multiarch directory on Debian and Ubuntu.
+/// `/usr/lib64` has to come before `/usr/lib`, whose modules are the 32-bit builds on a machine
+/// with the i686 packages installed.
+fn module_directories(multiarch_directories: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut directories = vec![PathBuf::from("/usr/lib64")];
     directories.extend(multiarch_directories);
     directories.push(PathBuf::from("/usr/lib"));
 
     directories
         .into_iter()
-        .flat_map(|directory| {
-            [
-                directory.join(PROXY_MODULE),
-                directory.join("pkcs11").join(PROXY_MODULE),
-            ]
-        })
+        .map(|directory| directory.join("pkcs11"))
+        .collect()
+}
+
+/// Debian keeps libraries below a directory named after the architecture triplet, e.g.
+/// `/usr/lib/x86_64-linux-gnu`.
+fn multiarch_directories() -> Vec<PathBuf> {
+    std::fs::read_dir("/usr/lib")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
         .collect()
 }
 
