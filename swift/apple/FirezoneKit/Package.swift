@@ -26,7 +26,8 @@ let package = Package(
     ),
     .testTarget(
       name: "FirezoneKitTests",
-      dependencies: ["FirezoneKit"]
+      dependencies: ["FirezoneKit"],
+      resources: [.process("Resources")]
     ),
   ]
 )
