@@ -118,7 +118,12 @@
     init() {
       let proto = NETunnelProviderProtocol()
       proto.providerConfiguration = Configuration().toProviderConfiguration()
-      proto.providerBundleIdentifier = VPNConfigurationManager.bundleIdentifier
+      // `VPNConfigurationManager.bundleIdentifier` force-unwraps the main bundle, which a
+      // test process does not have. The mock derives the identifier the same way and
+      // settles for the shipped one when there is no bundle to ask.
+      proto.providerBundleIdentifier =
+        Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
+        ?? "dev.firezone.firezone.network-extension"
       proto.serverAddress = "Firezone"
       protocolConfiguration = proto
     }
