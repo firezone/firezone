@@ -204,7 +204,7 @@ jobs:
           # The action downloads each library from GitHub and only authenticates
           # when given this input, so without it the runner shares an anonymous
           # rate limit and `tar` chokes on the error page it gets instead.
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - run: bats scripts/tests/bats
         env:
           BATS_LIB_PATH: ${{ steps.setup-bats.outputs.lib-path }}
