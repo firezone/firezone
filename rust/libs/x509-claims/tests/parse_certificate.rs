@@ -267,7 +267,7 @@ fn reports_every_rule_an_unusable_certificate_fails() {
 }
 
 #[test]
-fn diagnostics_lead_with_why_a_certificate_cannot_be_presented() {
+fn leaves_the_usability_verdict_to_the_summary() {
     let usable = parse_certificate(RSA_LEAF, now()).expect("fixture should parse");
     let expired = parse_certificate(RSA_LEAF, after(usable.not_after_timestamp))
         .expect("fixture should parse at any instant");
@@ -275,18 +275,22 @@ fn diagnostics_lead_with_why_a_certificate_cannot_be_presented() {
     assert!(usable.unusable_reasons().is_empty());
     assert_eq!(usable.unusable_summary(), None);
     assert_eq!(
-        detail_value(&usable, "Usable as a Client Identity"),
-        present("Yes"),
-        "an administrator should see the verdict without reading the rows below it"
-    );
-    assert_eq!(
         expired.unusable_reasons(),
         [UnusableReason::OutsideValidityPeriod]
     );
     assert_eq!(
-        detail_value(&expired, "Usable as a Client Identity"),
-        present("No: expired or not yet valid")
+        expired.unusable_summary().as_deref(),
+        Some("expired or not yet valid")
     );
+    for fields in [usable.detail_fields(), expired.detail_fields()] {
+        assert!(
+            fields
+                .iter()
+                .all(|field| field.label != "Usable as a Client Identity"
+                    && field.label != "Currently Valid"),
+            "usability should surface as a warning, not as an attribute row"
+        );
+    }
 }
 
 #[test]
