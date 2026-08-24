@@ -115,6 +115,10 @@
       }
       window.contentView = view
       view.layoutSubtreeIfNeeded()
+      // SwiftUI hands focus to the first text field on attachment, taking the
+      // window's word that it is key, and a focused field draws its insertion
+      // caret into the capture.
+      _ = window.makeFirstResponder(nil)
 
       return window
     }
