@@ -204,7 +204,9 @@ pub enum EgressMessages {
 
 #[cfg(test)]
 mod tests {
+    use crate::filter_engine::FilterEngine;
     use crate::messages::PortRange;
+    use ip_packet::Protocol;
 
     use super::*;
 
@@ -277,6 +279,17 @@ mod tests {
         let resource = serde_json::from_str::<ResourceDescription>(msg).unwrap();
 
         assert_eq!(resource.filters(), vec![Filter::Icmp]);
+    }
+
+    #[test]
+    fn only_inverted_port_range_filters_deny_all_traffic() {
+        let msg = r#"{"id":"57f9ebbb-21d5-4f9f-bf86-b25122fc7a43","name":"?.httpbin","type":"dns","address":"?.httpbin","filters":[{"protocol":"tcp","port_range_start":100,"port_range_end":50}]}"#;
+
+        let resource = serde_json::from_str::<ResourceDescription>(msg).unwrap();
+        let filter = FilterEngine::new(&resource.filters());
+
+        assert!(filter.apply(Ok(Protocol::Tcp(75))).is_err());
+        assert!(filter.apply(Ok(Protocol::Tcp(443))).is_err());
     }
 
     #[test]

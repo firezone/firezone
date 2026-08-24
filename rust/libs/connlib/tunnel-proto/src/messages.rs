@@ -343,23 +343,34 @@ impl PortRange {
     }
 }
 
-/// Deserializes a list of [`Filter`]s, discarding the ones that are not valid.
+/// Deserializes a list of [`Filter`]s, dropping the ones that are not valid.
 ///
-/// The portal rejects invalid filters on write but we cannot rely on that:
-/// applying a malformed filter must not take down the tunnel.
+/// The portal rejects invalid filters on write but connlib cannot rely on that:
+/// a malformed filter has to be ignored rather than take down the tunnel.
+///
+/// An empty list permits all traffic, so filters are only dropped as long as at
+/// least one valid filter remains. A list of exclusively invalid filters is kept
+/// to preserve the intent of restricting access: [`FilterEngine`] skips the
+/// entries and ends up with an empty allow-set.
+///
+/// [`FilterEngine`]: crate::filter_engine::FilterEngine
 pub(crate) fn deserialize_filters<'de, D>(deserializer: D) -> Result<Vec<Filter>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let (filters, invalid): (Vec<Filter>, Vec<Filter>) = Vec::<Filter>::deserialize(deserializer)?
+    let (valid, invalid): (Vec<Filter>, Vec<Filter>) = Vec::<Filter>::deserialize(deserializer)?
         .into_iter()
         .partition(Filter::is_valid);
 
-    for filter in invalid {
-        tracing::warn!(?filter, "Discarding invalid filter");
+    for filter in &invalid {
+        tracing::warn!(?filter, "Ignoring invalid filter");
     }
 
-    Ok(filters)
+    if valid.is_empty() {
+        return Ok(invalid);
+    }
+
+    Ok(valid)
 }
 
 // Note: these 2 functions are needed since serde doesn't yet support default_value
