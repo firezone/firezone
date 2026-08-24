@@ -88,36 +88,36 @@ fn status_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Status>
         });
     };
 
-    let usable = token
-        .certificates
-        .iter()
-        .filter(|certificate| certificate.usable)
-        .count();
+    let selected = selected_certificate(&token.certificates);
 
     let mut sections = vec![token_section(module, &token.info)];
+    sections.extend(selected.map(|index| DetailSection {
+        title: "Certificate".to_owned(),
+        fields: token.certificates[index].detail_fields(),
+    }));
     sections.extend(
         token
             .certificates
             .iter()
             .enumerate()
-            .map(|(index, certificate)| DetailSection {
-                title: format!("Matching Certificate {}", index + 1),
+            .filter(|(index, _)| Some(*index) != selected)
+            .map(|(_, certificate)| DetailSection {
+                title: "Unused Certificate".to_owned(),
                 fields: certificate.detail_fields(),
             }),
     );
 
-    let (severity, summary) = match usable {
-        0 => (
+    let (severity, summary) = match selected {
+        None => (
             StatusSeverity::Warning,
             format!(
-                "Found {} matching X.509 certificate(s), but none of them are usable as a client identity: {}",
-                token.certificates.len(),
+                "Matching certificates are on the PKCS#11 token, but none is usable as a client identity: {}",
                 unusable_reasons(&token.certificates).join("; ")
             ),
         ),
-        count => (
+        Some(_) => (
             StatusSeverity::Ok,
-            format!("{count} X.509 client identity certificate(s) are available for mutual TLS."),
+            "An X.509 client identity is available for mutual TLS.".to_owned(),
         ),
     };
 
@@ -137,16 +137,12 @@ fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Optio
     let Token {
         session,
         objects,
-        certificates,
+        mut certificates,
         ..
     } = token;
     let unusable = unusable_reasons(&certificates);
 
-    let Some(certificate) = certificates
-        .into_iter()
-        .filter(|certificate| certificate.usable)
-        .max_by_key(|certificate| certificate.metadata.not_before_timestamp)
-    else {
+    let Some(index) = selected_certificate(&certificates) else {
         // Skipping a certificate that was provisioned for Firezone reads to an administrator as if
         // none had been, so say which rule it failed instead of connecting without it.
         bail!(
@@ -154,6 +150,7 @@ fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Optio
             unusable.join("; ")
         );
     };
+    let certificate = certificates.swap_remove(index);
 
     let algorithm = certificate
         .metadata
@@ -724,6 +721,19 @@ fn describe_certificate(
         metadata,
         key,
     })
+}
+
+/// The certificate [`identity`] presents, as an index into `certificates`.
+///
+/// The most recently issued usable certificate wins, so a rotation hands over the renewal
+/// rather than the certificate it replaced.
+fn selected_certificate(certificates: &[Certificate]) -> Option<usize> {
+    certificates
+        .iter()
+        .enumerate()
+        .filter(|(_, certificate)| certificate.usable)
+        .max_by_key(|(_, certificate)| certificate.metadata.not_before_timestamp)
+        .map(|(index, _)| index)
 }
 
 /// Says why each certificate that matched the subject common name cannot be used.
