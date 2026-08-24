@@ -151,6 +151,7 @@ jobs:
         # Installing new packages can take time
         timeout-minutes: 15
       - uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
+        if: ${{ !(runner.os == 'Windows' && matrix.arch == 'aarch64') }}
         with:
           token: ${{ secrets.SENTRY_AUTH_TOKEN }}
           organization: firezone-inc
@@ -234,7 +235,8 @@ jobs:
         run: cat 'C:/ProgramData/dev.firezone.client/data/logs/register-sparse.latest' || true
 
       - name: Upload debug symbols to Sentry
-        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        # setup-sentry-cli does not provide a win32/arm64 binary.
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && !(runner.os == 'Windows' && matrix.arch == 'aarch64') }}"
         shell: bash
         run: ${{ env.SYMBOLS_SCRIPT }}
 
