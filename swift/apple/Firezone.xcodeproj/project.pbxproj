@@ -54,6 +54,7 @@
 		FZ0CLI012E80000000000003 /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = FZ0CLI012E80000000000030 /* ArgumentParser */; platformFilters = (macos, ); };
 		FZUIT0012E90000000000001 /* AppScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZUIT0012E90000000000010 /* AppScreenshotTests.swift */; };
 		FZUIT0012E90000000000002 /* ScreenshotDelivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZUIT0012E90000000000012 /* ScreenshotDelivery.swift */; };
+		FZUIT0012E90000000000003 /* IOSScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZUIT0012E90000000000013 /* IOSScreenshotTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -158,6 +159,7 @@
 		FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelSupervisor.swift; sourceTree = "<group>"; };
 		FZUIT0012E90000000000010 /* AppScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppScreenshotTests.swift; sourceTree = "<group>"; };
 		FZUIT0012E90000000000012 /* ScreenshotDelivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotDelivery.swift; sourceTree = "<group>"; };
+		FZUIT0012E90000000000013 /* IOSScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSScreenshotTests.swift; sourceTree = "<group>"; };
 		FZUIT0012E90000000000011 /* FirezoneUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FirezoneUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -353,6 +355,7 @@
 			isa = PBXGroup;
 			children = (
 				FZUIT0012E90000000000010 /* AppScreenshotTests.swift */,
+				FZUIT0012E90000000000013 /* IOSScreenshotTests.swift */,
 				FZUIT0012E90000000000012 /* ScreenshotDelivery.swift */,
 			);
 			path = FirezoneUITests;
@@ -751,6 +754,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				FZUIT0012E90000000000001 /* AppScreenshotTests.swift in Sources */,
+				FZUIT0012E90000000000003 /* IOSScreenshotTests.swift in Sources */,
 				FZUIT0012E90000000000002 /* ScreenshotDelivery.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1537,7 +1541,13 @@
 				DEVELOPMENT_TEAM = "$(inherited)";
 				ENABLE_APP_SANDBOX = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
@@ -1546,10 +1556,11 @@
 				MARKETING_VERSION = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = "dev.firezone.firezone.ui-tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
-				SUPPORTED_PLATFORMS = macosx;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Firezone;
 			};
 			name = Debug;
@@ -1564,7 +1575,13 @@
 				DEVELOPMENT_TEAM = "$(inherited)";
 				ENABLE_APP_SANDBOX = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
@@ -1573,9 +1590,10 @@
 				MARKETING_VERSION = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = "dev.firezone.firezone.ui-tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
-				SUPPORTED_PLATFORMS = macosx;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_VERSION = 6.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Firezone;
 			};
 			name = Release;
@@ -1590,7 +1608,13 @@
 				DEVELOPMENT_TEAM = "$(inherited)";
 				ENABLE_APP_SANDBOX = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
@@ -1599,10 +1623,11 @@
 				MARKETING_VERSION = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = "dev.firezone.firezone.ui-tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
-				SUPPORTED_PLATFORMS = macosx;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Firezone;
 			};
 			name = Profile;

@@ -25,7 +25,7 @@ extension XCTestCase {
   func capture(_ element: XCUIElement, as name: String, in appearance: Appearance) {
     let fileName = "\(name)-\(appearance.rawValue).png"
 
-    let attachment = XCTAttachment(screenshot: settledScreenshot(of: element, named: fileName))
+    let attachment = XCTAttachment(screenshot: settledScreenshot(of: element, as: fileName))
     attachment.name = fileName
     attachment.lifetime = .keepAlways
     add(attachment)
@@ -37,9 +37,7 @@ extension XCTestCase {
   /// spins while it adds up the log directory, and windows fade in. An image
   /// that catches a frame of that differs on every run, which the gallery would
   /// carry as a diff on every commit.
-  private func settledScreenshot(of element: XCUIElement, named fileName: String)
-    -> XCUIScreenshot
-  {
+  private func settledScreenshot(of element: XCUIElement, as fileName: String) -> XCUIScreenshot {
     var previous = element.screenshot()
 
     for _ in 0..<8 {

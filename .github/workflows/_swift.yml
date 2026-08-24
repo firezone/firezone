@@ -125,6 +125,113 @@ jobs:
           name: macos-screenshots-xcresult
           path: ${{ runner.temp }}/FirezoneUITests.xcresult
 
+  # The iOS half of the gallery. The app target builds for the simulator, where
+  # a Network Extension cannot run at all, so the mocked backend is what makes
+  # the screens reachable there.
+  #
+  # A simulator's appearance belongs to the device rather than to a launch, so
+  # the suite runs once per appearance with `simctl ui` in between, rather than
+  # switching appearance per launch the way the macOS lane does.
+  ios-screenshots:
+    runs-on: macos-26
+    env:
+      XCODE_VERSION: "26.2"
+      # Pinned to the Xcode above rather than resolved as "latest": a runner
+      # image that adds a runtime would otherwise redraw the whole gallery.
+      SIMULATOR_NAME: iPhone 17
+      SIMULATOR_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      # The app target embeds the network extension, whose build phase compiles
+      # connlib for the simulator.
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: aarch64-apple-ios-sim
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - name: Boot the simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | jq -r \
+            --arg name "${SIMULATOR_NAME}" --arg runtime "${SIMULATOR_RUNTIME}" \
+            '.devices[$runtime] // [] | map(select(.name == $name)) | first | .udid // empty')
+
+          if [ -z "${udid}" ]; then
+            echo "No ${SIMULATOR_NAME} on ${SIMULATOR_RUNTIME}; the runner has:" >&2
+            xcrun simctl list devices available >&2
+            exit 1
+          fi
+
+          xcrun simctl boot "${udid}"
+          xcrun simctl bootstatus "${udid}"
+
+          # The captures include the status bar, whose clock and battery would
+          # otherwise differ on every run.
+          xcrun simctl status_bar "${udid}" override \
+            --time "9:41" \
+            --dataNetwork wifi \
+            --wifiMode active \
+            --wifiBars 3 \
+            --cellularMode active \
+            --cellularBars 4 \
+            --batteryState charged \
+            --batteryLevel 100
+
+          echo "SIMULATOR_UDID=${udid}" >> "${GITHUB_ENV}"
+      # Signing is skipped outright: the simulator asks for none, and the
+      # entitlements would need a provisioning profile the runner has not got.
+      #
+      # GIT_SHA is left unset on purpose. The settings screens print it as their
+      # build string, so passing the commit would change two of the images on
+      # every commit; without it the app falls back to the fixed "unknown".
+      - name: Build the app screenshot UI tests
+        working-directory: swift/apple
+        run: |
+          xcodebuild build-for-testing \
+            -project Firezone.xcodeproj \
+            -scheme FirezoneUITests \
+            -configuration Debug \
+            -destination "id=${SIMULATOR_UDID}" \
+            -derivedDataPath "${RUNNER_TEMP}/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_ENTITLEMENTS= \
+            DEVELOPMENT_TEAM= \
+            PROVISIONING_PROFILE_SPECIFIER= \
+            ONLY_ACTIVE_ARCH=YES
+      - name: Photograph the iOS screens
+        working-directory: swift/apple
+        run: |
+          for appearance in light dark; do
+            xcrun simctl ui "${SIMULATOR_UDID}" appearance "${appearance}"
+
+            # xcodebuild forwards TEST_RUNNER_-prefixed variables to the test
+            # runner process with the prefix stripped.
+            TEST_RUNNER_SCREENSHOT_APPEARANCE="${appearance}" \
+              xcodebuild test-without-building \
+                -project Firezone.xcodeproj \
+                -scheme FirezoneUITests \
+                -configuration Debug \
+                -destination "id=${SIMULATOR_UDID}" \
+                -derivedDataPath "${RUNNER_TEMP}/DerivedData" \
+                -resultBundlePath "${RUNNER_TEMP}/FirezoneUITests-${appearance}.xcresult"
+
+            mise-tasks/export-screenshots.sh \
+              "${RUNNER_TEMP}/FirezoneUITests-${appearance}.xcresult" \
+              screenshots/ios
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ios-screenshots
+          path: swift/apple/screenshots/ios
+      # The result bundles hold XCUITest's own failure screenshots and logs.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: ios-screenshots-xcresult
+          path: ${{ runner.temp }}/FirezoneUITests-*.xcresult
+
   static-analysis:
     runs-on: macos-26
     permissions:
