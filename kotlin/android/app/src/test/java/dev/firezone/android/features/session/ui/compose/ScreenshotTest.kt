@@ -3,15 +3,18 @@ package dev.firezone.android.features.session.ui.compose
 
 import android.app.Application
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.test.junit4.createComposeRule
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.features.session.ui.ResourceUiModel
 import dev.firezone.android.tunnel.model.ConnectedDevice
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -31,6 +34,10 @@ import org.robolectric.annotation.GraphicsMode
     qualifiers = RobolectricDeviceQualifiers.Pixel5,
 )
 class ScreenshotTest {
+    // Only the sheet captures drive composition through this rule; see `captureSheet`.
+    @get:Rule
+    val composeRule = createComposeRule()
+
     @Test
     fun sessionScreen() = captureSessionScreen("session-screen")
 
@@ -70,11 +77,60 @@ class ScreenshotTest {
         )
     }
 
+    @Test
+    fun resourceDetailsInternet() =
+        captureSheet("resource-details-internet") {
+            ResourceDetailsSheet(
+                resource = sampleResources.first { it.id == "internet" },
+                isFavorite = false,
+                onAddFavorite = {},
+                onRemoveFavorite = {},
+                onToggleInternet = {},
+                onDismiss = {},
+            )
+        }
+
+    @Test
+    fun resourceDetails() =
+        captureSheet("resource-details") {
+            ResourceDetailsSheet(
+                resource = sampleResources.first { it.id == "gitlab" },
+                isFavorite = false,
+                onAddFavorite = {},
+                onRemoveFavorite = {},
+                onToggleInternet = {},
+                onDismiss = {},
+            )
+        }
+
+    // The second sample device belongs to two pools, so the sheet shows the plural row.
+    @Test
+    fun deviceDetails() =
+        captureSheet("device-details") {
+            ConnectedDeviceDetailsSheet(
+                device = sampleConnectedDevices[1],
+                onDismiss = {},
+            )
+        }
+
     @OptIn(ExperimentalRoborazziApi::class)
     private fun capture(
         name: String,
         content: @Composable () -> Unit,
     ) = captureRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png") {
         FirezoneTheme(content)
+    }
+
+    // A `ModalBottomSheet` renders into a window of its own, which the main-window capture
+    // above misses, so the sheet captures compose through the rule, wait for the sheet to
+    // settle, and then photograph the whole screen.
+    @OptIn(ExperimentalRoborazziApi::class)
+    private fun captureSheet(
+        name: String,
+        content: @Composable () -> Unit,
+    ) {
+        composeRule.setContent { FirezoneTheme(content) }
+        composeRule.waitForIdle()
+        captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
     }
 }
