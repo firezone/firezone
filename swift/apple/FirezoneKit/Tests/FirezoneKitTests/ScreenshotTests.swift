@@ -100,10 +100,16 @@
       return window
     }
 
-    /// Draws the window's content as it stands and writes it out as a PNG.
+    /// Draws the window as it stands, titlebar included, and writes it out as a PNG.
+    ///
+    /// The frame view rather than the content view: current macOS shows the settings
+    /// tabs in the titlebar, which a capture of the content alone cuts off.
     @MainActor
     private func capture(_ window: NSWindow, as name: String, _ colorScheme: ColorScheme) throws {
-      let view = try #require(window.contentView)
+      let view = try #require(
+        window.contentView?.superview,
+        "the window has no frame view"
+      )
 
       guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
         throw ScreenshotError.cannotRender(name)
