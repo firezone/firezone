@@ -82,13 +82,15 @@ struct X509SettingsView: View {
         )
       }
 
-      ForEach(summary.fields, id: \.self) { field in
-        VStack(alignment: .leading, spacing: 2) {
-          Text(field.label)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          claimValue(field.value)
-            .frame(maxWidth: .infinity, alignment: .leading)
+      Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
+        ForEach(summary.fields, id: \.self) { field in
+          GridRow {
+            Text(field.label)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            claimValue(field.value)
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
         }
       }
     }
