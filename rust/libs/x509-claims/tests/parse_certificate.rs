@@ -429,6 +429,58 @@ fn diagnostics_show_why_a_claim_was_not_attested() {
             < position(&fields, "Subject Alternative Names"),
         "an unrecognised claim should sit with the other Firezone claims"
     );
+    assert_eq!(
+        detail_value(&metadata, "Subject Alternative Names"),
+        present("URI: firezone://email/not-an-address"),
+        "a value no claim row attests should stay visible"
+    );
+}
+
+#[test]
+fn lists_only_the_alternative_names_no_claim_row_shows() {
+    let metadata =
+        parse_certificate(P384_LEAF, now()).expect("fixture should be a valid P-384 certificate");
+
+    assert_eq!(metadata.device_serial.attested(), Some("C02XK1ZGJGH5"));
+    assert_eq!(
+        detail_value(&metadata, "Subject Alternative Names"),
+        present(
+            "URI: firezone://udid/7a461ff9-0be2-64a9-a418-539d9a21827b\nDNS: UDID=7A461FF9\nDNS: host.test.invalid"
+        ),
+        "the serial the Device Serial row shows should not be repeated"
+    );
+}
+
+#[test]
+fn omits_the_alternative_names_row_when_the_claim_rows_show_them_all() {
+    let every_name_is_a_claim = certificate_with_uri_sans(&[
+        "firezone://email/alice@example.com",
+        "firezone://serial/C02XK1ZGJGH5",
+    ]);
+    let bare_guid = certificate_with_uri_sans(&["5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3"]);
+
+    let every_name_is_a_claim = parse_certificate(&every_name_is_a_claim, now())
+        .expect("generated certificate should parse");
+    let bare_guid =
+        parse_certificate(&bare_guid, now()).expect("generated certificate should parse");
+
+    assert!(
+        !every_name_is_a_claim
+            .detail_fields()
+            .iter()
+            .any(|field| field.label == "Subject Alternative Names")
+    );
+    assert_eq!(
+        bare_guid.mdm_device_id.attested(),
+        Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
+    );
+    assert!(
+        !bare_guid
+            .detail_fields()
+            .iter()
+            .any(|field| field.label == "Subject Alternative Names"),
+        "a bare device ID the MDM Device ID row shows should not be repeated"
+    );
 }
 
 #[test]
