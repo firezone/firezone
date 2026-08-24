@@ -89,14 +89,8 @@ public final class Store: ObservableObject {
   /// UserDefaults instance for persisting GUI state.
   let userDefaults: UserDefaults
 
-  /// Overrides the app-side log directory; `SharedAccess.logFolderURL` applies when nil.
-  private let logDirectoryOverride: URL?
-
-  // Resolved lazily: the app group container behind `SharedAccess.logFolderURL` is
-  // unavailable outside a provisioned app bundle.
-  private var logDirectory: URL? {
-    logDirectoryOverride ?? SharedAccess.logFolderURL
-  }
+  /// The app-side log directory; nil when the app group container is unavailable.
+  private let logDirectory: URL?
 
   // Task consuming VPN status updates; its presence means observers are active.
   private var vpnStatusTask: CancellableTask?
@@ -108,7 +102,7 @@ public final class Store: ObservableObject {
       systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil,
       updateChecker: (any UpdateCheckerProtocol)? = nil,
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
-      logDirectory: URL? = nil,
+      logDirectory: URL? = SharedAccess.logFolderURL,
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
     ) {
@@ -118,7 +112,7 @@ public final class Store: ObservableObject {
       self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
       self.tunnelManagerFactory = tunnelManagerFactory
-      self.logDirectoryOverride = logDirectory
+      self.logDirectory = logDirectory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
       self.actorName = self.configuration.actorName
@@ -130,14 +124,14 @@ public final class Store: ObservableObject {
       configuration: Configuration? = nil,
       sessionNotification: SessionNotificationProtocol = SessionNotification(),
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
-      logDirectory: URL? = nil,
+      logDirectory: URL? = SharedAccess.logFolderURL,
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
     ) {
       self.configuration = configuration ?? Configuration.shared
       self.sessionNotification = sessionNotification
       self.tunnelManagerFactory = tunnelManagerFactory
-      self.logDirectoryOverride = logDirectory
+      self.logDirectory = logDirectory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
       self.actorName = self.configuration.actorName
