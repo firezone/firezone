@@ -22,7 +22,9 @@ export default mergeConfig(
     // not anything about the UI moved.
     define: {
       __APP_VERSION__: JSON.stringify("0.0.0"),
-      __GIT_VERSION__: JSON.stringify("0000000000000000000000000000000000000000"),
+      __GIT_VERSION__: JSON.stringify(
+        "0000000000000000000000000000000000000000"
+      ),
     },
 
     test: {
