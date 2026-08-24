@@ -26,18 +26,22 @@ fi
 
 mkdir -p "${OUTPUT_DIR}"
 
+# Only the captures are taken, by the shape of the name the tests give them.
+# XCUITest attaches its own diagnostics beside them, and a name it decorated
+# rather than passed through would land in the gallery under the wrong one, so
+# anything else is left behind and an empty run fails below.
 copied=0
 while IFS="$(printf '\t')" read -r exported suggested; do
-    # XCUITest attaches its own diagnostics next to the captures; only the
-    # captures are named for the gallery.
     case "${suggested}" in
-    *.png) ;;
+    *-light.png | *-dark.png) name="${suggested}" ;;
+    *-light | *-dark) name="${suggested}.png" ;;
     *) continue ;;
     esac
 
     [ -e "${STAGING_DIR}/${exported}" ] || continue
 
-    cp "${STAGING_DIR}/${exported}" "${OUTPUT_DIR}/${suggested}"
+    cp "${STAGING_DIR}/${exported}" "${OUTPUT_DIR}/${name}"
+    echo "  ${name}"
     copied=$((copied + 1))
 done < <(jq -r '
   .. | objects | select(has("exportedFileName"))
@@ -46,7 +50,9 @@ done < <(jq -r '
 ' "${manifest}")
 
 if [ "${copied}" -eq 0 ]; then
-    echo "No screenshots in ${XCRESULT}" >&2
+    echo "No screenshots in ${XCRESULT}; the attachments it holds are:" >&2
+    jq -r '.. | objects | select(has("exportedFileName"))
+      | (.suggestedHumanReadableName // .configuredName // .exportedFileName)' "${manifest}" >&2
     exit 1
 fi
 

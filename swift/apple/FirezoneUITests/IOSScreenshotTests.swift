@@ -109,11 +109,14 @@
     /// `XCUIDevice.appearance` is ignored when the tests run under `xcodebuild`,
     /// so CI sets the simulator's appearance itself and names it here.
     private func currentAppearance() throws -> Appearance {
-      let name = ProcessInfo.processInfo.environment["SCREENSHOT_APPEARANCE"]
+      let name = try XCTUnwrap(
+        ProcessInfo.processInfo.environment["SCREENSHOT_APPEARANCE"],
+        "SCREENSHOT_APPEARANCE is not set"
+      )
 
       return try XCTUnwrap(
-        name.flatMap(Appearance.init(rawValue:)),
-        "SCREENSHOT_APPEARANCE names no appearance: \(name ?? "unset")"
+        Appearance(rawValue: name),
+        "SCREENSHOT_APPEARANCE names no appearance: \(name)"
       )
     }
   }

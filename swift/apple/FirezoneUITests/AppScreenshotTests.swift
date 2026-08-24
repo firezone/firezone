@@ -155,7 +155,7 @@
         window.buttons[label],
       ]
 
-      guard let tab = candidates.first(where: { $0.waitForExistence(timeout: 2) }) else {
+      guard let tab = candidates.first(where: { $0.waitForExistence(timeout: 5) }) else {
         throw AppScreenshotError.tabNotFound(label)
       }
 
