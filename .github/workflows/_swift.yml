@@ -99,6 +99,11 @@ jobs:
             ENABLE_APP_SANDBOX=NO \
             ENABLE_HARDENED_RUNTIME=NO \
             ONLY_ACTIVE_ARCH=YES
+      # Vibrancy and window chrome do not rasterise identically from one runner
+      # to the next, which reaches the gallery as a diff no one can see. Drawing
+      # them opaque takes that source of noise out of the captures.
+      - name: Draw materials opaque
+        run: defaults write com.apple.universalaccess reduceTransparency -bool true
       - name: Run the app screenshot UI tests
         working-directory: swift/apple
         run: |
@@ -177,6 +182,14 @@ jobs:
             --cellularBars 4 \
             --batteryState charged \
             --batteryLevel 100
+
+          # Materials behind the sheet toolbars do not rasterise identically
+          # from one run to the next, which reaches the gallery as a diff no one
+          # can see. Drawing them opaque takes that source of noise out of the
+          # captures. Each test launches the app afresh, so the setting is read
+          # at launch.
+          xcrun simctl spawn "${udid}" defaults write \
+            com.apple.Accessibility ReduceTransparencyEnabled -bool true
 
           echo "SIMULATOR_UDID=${udid}" >> "${GITHUB_ENV}"
       # Signing is skipped outright: the simulator asks for none, and the
