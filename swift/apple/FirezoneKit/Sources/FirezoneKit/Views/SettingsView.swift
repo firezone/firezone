@@ -107,6 +107,8 @@ public struct SettingsView: View {
 
   @State private var calculateLogSizeTask: Task<(), Never>?
 
+  @State private var selectedTab: Tab
+
   #if os(iOS)
     @State private var logTempZipFileURL: URL?
     @State private var isPresentingExportLogShareSheet = false
@@ -134,8 +136,6 @@ public struct SettingsView: View {
     case advanced
     case logs
   }
-
-  @State private var selectedTab: Tab
 
   public init(store: Store, selectedTab: Tab = .general) {
     self.store = store
