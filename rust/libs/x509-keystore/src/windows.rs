@@ -351,7 +351,6 @@ struct Certificate {
     chain: Vec<Vec<u8>>,
     chain_error: Option<String>,
     metadata: ParsedCertificate,
-    key_available: bool,
     key_error: Option<String>,
     key_metadata: Option<PrivateKeyMetadata>,
     usable: bool,
@@ -374,16 +373,6 @@ impl Certificate {
             .collect::<Vec<_>>();
 
         fields.push(field("Store", self.store));
-        fields.push(if self.key_available {
-            field("Private Key Access", "Available through Windows CNG")
-        } else {
-            absent_field("Private Key Access")
-        });
-        fields.push(if self.usable {
-            field("Usable With Its Private Key", "Yes")
-        } else {
-            invalid_field("Usable With Its Private Key", "No")
-        });
         if let Some(error) = &self.key_error {
             fields.push(invalid_field("Private Key Error", error));
         }
@@ -536,7 +525,6 @@ unsafe fn enumerate_store(
             chain_error,
             usable: metadata.is_usable(subject_cn) && key_available,
             metadata,
-            key_available,
             key_error,
             key_metadata,
         });
