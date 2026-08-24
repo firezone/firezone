@@ -19,19 +19,21 @@
   extension Store {
     /// A `Store` wired to mock dependencies for the `--mock-tunnel` demo.
     #if os(macOS)
-      public static func mock() -> Store {
+      public static func mock(logDirectory: URL? = nil) -> Store {
         Store(
           sessionNotification: MockSessionNotification(),
           systemExtensionManager: MockSystemExtensionManager(),
           updateChecker: MockUpdateChecker(),
-          tunnelManagerFactory: MockTunnelProviderManagerFactory()
+          tunnelManagerFactory: MockTunnelProviderManagerFactory(),
+          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
         )
       }
     #else
-      public static func mock() -> Store {
+      public static func mock(logDirectory: URL? = nil) -> Store {
         Store(
           sessionNotification: MockSessionNotification(),
-          tunnelManagerFactory: MockTunnelProviderManagerFactory()
+          tunnelManagerFactory: MockTunnelProviderManagerFactory(),
+          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
         )
       }
     #endif
@@ -40,6 +42,13 @@
   /// Answers `pollUpdates` with the canned snapshot and reports a connected tunnel.
   private final class MockTunnelSession: TunnelSessionProtocol {
     var status: NEVPNStatus { .connected }
+
+    /// Drops to zero when a clear is acknowledged, so the settings screen shows
+    /// the size a real provider would report afterwards.
+    ///
+    /// nonisolated(unsafe): the session is Sendable, but the mock is only ever
+    /// driven from the main actor.
+    nonisolated(unsafe) private var providerLogFolderSize = MockFixtures.providerLogFolderSize
 
     // swiftlint:disable:next discouraged_optional_collection
     func startTunnel(options: [String: Any]?) throws {}
@@ -85,8 +94,27 @@
           Log.warning("MockTunnelSession: failed to encode state updates: \(error)")
           responseHandler(nil)
         }
-      case .setInternetResourceEnabled, .signOut, .clearLogs, .getLogFolderSize, .exportLogs,
-        .getEncodedFirezoneId, .drainFlowLogs:
+      case .getLogFolderSize:
+        // The provider answers with the raw bytes of an `Int64`.
+        responseHandler(withUnsafeBytes(of: providerLogFolderSize) { Data($0) })
+      case .clearLogs:
+        // The provider answers a successful clear with an empty response.
+        providerLogFolderSize = 0
+        responseHandler(nil)
+      case .exportLogs:
+        // The provider streams plist-encoded `LogChunk`s; everything fits in one
+        // final chunk here.
+        do {
+          responseHandler(
+            try PropertyListEncoder().encode(
+              LogChunk(done: true, data: MockFixtures.exportedTunnelLogs)
+            )
+          )
+        } catch {
+          Log.warning("MockTunnelSession: failed to encode the log chunk: \(error)")
+          responseHandler(nil)
+        }
+      case .setInternetResourceEnabled, .signOut, .getEncodedFirezoneId, .drainFlowLogs:
         responseHandler(nil)
       }
     }
@@ -166,6 +194,36 @@
   }
 
   private enum MockFixtures {
+    /// 30 MB, so the settings screen shows a believable provider-side log size.
+    static let providerLogFolderSize: Int64 = 30_000_000
+
+    /// The provider streams the bytes of a ZIP archive, so answer with the
+    /// smallest valid one: an empty end-of-central-directory record. An export
+    /// produced against the mock then unzips cleanly.
+    static let exportedTunnelLogs = Data(
+      [0x50, 0x4B, 0x05, 0x06] + [UInt8](repeating: 0, count: 18)
+    )
+
+    /// A throwaway log directory seeded with two files of fixed contents, so
+    /// the computed app-side log size is real and deterministic.
+    static func makeLogDirectory() -> URL {
+      let fileManager = FileManager.default
+      let directory = fileManager.temporaryDirectory
+        .appendingPathComponent("firezone-mock-logs-\(UUID().uuidString)")
+
+      do {
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("2026-01-01T00:00:00 INFO Connected to the portal\n".utf8)
+          .write(to: directory.appendingPathComponent("app.log"))
+        try Data("2026-01-01T00:00:00 DEBUG Tunnel interface is up\n".utf8)
+          .write(to: directory.appendingPathComponent("connlib.log"))
+      } catch {
+        Log.warning("MockFixtures: failed to seed the log directory: \(error)")
+      }
+
+      return directory
+    }
+
     static let resources: [Resource] = {
       let site = Site(id: "demo-site", name: "Demo Site")
       return [
