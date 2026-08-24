@@ -83,6 +83,8 @@
     /// the app treating every launch as the first, so it does not close the main
     /// window shortly after startup the way it does for returning users.
     private func launchApp(scenario: String, appearance: Appearance) -> XCUIApplication {
+      waitForNoRunningInstance()
+
       let app = XCUIApplication()
       app.launchArguments = [
         "--mock-tunnel", "--mock-scenario", scenario,
@@ -92,6 +94,28 @@
       app.launch()
 
       return app
+    }
+
+    /// Blocks until no process carrying the app's bundle identifier is left.
+    ///
+    /// `XCUIApplication.terminate()` returns before the process is gone. A launch
+    /// that overlaps a dying instance puts two of them under one bundle
+    /// identifier, and the element tree then holds the old instance's windows as
+    /// well: a query matches a window that is about to disappear, and the capture
+    /// or the URL that opens it lands on the wrong process.
+    private func waitForNoRunningInstance() {
+      let deadline = Date().addingTimeInterval(30)
+
+      while Date() < deadline {
+        if NSRunningApplication.runningApplications(withBundleIdentifier: Self.appBundleID).isEmpty
+        {
+          return
+        }
+
+        Thread.sleep(forTimeInterval: 0.1)
+      }
+
+      XCTFail("An instance of \(Self.appBundleID) outlived its test and never exited")
     }
 
     /// Photographs the window and pins that its dark capture is actually dark.
@@ -145,10 +169,12 @@
       named name: String, title: String, in app: XCUIApplication
     ) throws -> XCUIElement {
       let url = try XCTUnwrap(URL(string: "firezone://\(name)"))
-      let runningApp = try XCTUnwrap(
-        NSRunningApplication.runningApplications(withBundleIdentifier: Self.appBundleID).first,
-        "the app under test is not running"
+      let running = NSRunningApplication.runningApplications(withBundleIdentifier: Self.appBundleID)
+      XCTAssertEqual(
+        running.count, 1,
+        "\(running.count) instances share the bundle identifier, so a window cannot be attributed"
       )
+      let runningApp = try XCTUnwrap(running.first, "the app under test is not running")
       let applicationURL = try XCTUnwrap(runningApp.bundleURL)
 
       // The identifier alternative covers a window whose title accessibility
