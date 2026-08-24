@@ -15,6 +15,9 @@ use rustls::pki_types::CertificateDer;
 use serde::{Deserialize, Serialize};
 use x509_credential::{ClientCertificate, PrivateKey};
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+mod sign;
+
 mod unsupported;
 
 use unsupported as keystore;
@@ -55,6 +58,56 @@ pub(crate) struct Identity {
     /// The end-entity certificate first, then as many issuers as the keystore could resolve.
     pub(crate) chain: Vec<CertificateDer<'static>>,
     pub(crate) key: Arc<dyn PrivateKey>,
+}
+
+/// What [`selected_certificate`] and [`unusable_reasons`] read from a backend's certificate.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[allow(
+    dead_code,
+    reason = "only the keystore backends rank candidates, and not every build compiles one"
+)]
+pub(crate) trait CandidateCertificate {
+    /// Whether the certificate and its private key can authenticate the client.
+    fn usable(&self) -> bool;
+
+    /// When the certificate's validity begins, as seconds since the Unix epoch.
+    fn not_before_timestamp(&self) -> i64;
+
+    /// Says why this certificate cannot be presented for mutual TLS.
+    fn unusable_reason(&self) -> String;
+}
+
+/// Returns the certificate a backend presents as the client identity, as an index into
+/// `certificates`.
+///
+/// The most recently issued usable certificate wins, so a rotation hands over the renewal
+/// rather than the certificate it replaced.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[allow(
+    dead_code,
+    reason = "only the keystore backends rank candidates, and not every build compiles one"
+)]
+pub(crate) fn selected_certificate<C: CandidateCertificate>(certificates: &[C]) -> Option<usize> {
+    certificates
+        .iter()
+        .enumerate()
+        .filter(|(_, certificate)| certificate.usable())
+        .max_by_key(|(_, certificate)| certificate.not_before_timestamp())
+        .map(|(index, _)| index)
+}
+
+/// Says why each certificate that matched the subject common name cannot be used.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[allow(
+    dead_code,
+    reason = "only the keystore backends rank candidates, and not every build compiles one"
+)]
+pub(crate) fn unusable_reasons<C: CandidateCertificate>(certificates: &[C]) -> Vec<String> {
+    certificates
+        .iter()
+        .filter(|certificate| !certificate.usable())
+        .map(C::unusable_reason)
+        .collect()
 }
 
 /// Read-only diagnostics about the keystore's X.509 identities.
@@ -133,6 +186,39 @@ impl Status {
     }
 }
 
+pub(crate) fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: FieldValue::Present(value.into()),
+    }
+}
+
+/// A row for something the keystore looked for and did not find.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[allow(
+    dead_code,
+    reason = "only the keystore backends build these rows, and not every build compiles one"
+)]
+pub(crate) fn absent_field(label: impl Into<String>) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: FieldValue::Absent,
+    }
+}
+
+/// A row for something the keystore found and cannot use.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[allow(
+    dead_code,
+    reason = "only the keystore backends build these rows, and not every build compiles one"
+)]
+pub(crate) fn invalid_field(label: impl Into<String>, message: impl Into<String>) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: FieldValue::Invalid(message.into()),
+    }
+}
+
 impl From<x509_claims::DetailField> for DetailField {
     fn from(field: x509_claims::DetailField) -> Self {
         Self {
@@ -163,10 +249,7 @@ mod tests {
             summary: "One identity is available.".to_owned(),
             sections: vec![DetailSection {
                 title: "Certificate".to_owned(),
-                fields: vec![DetailField {
-                    label: "Subject".to_owned(),
-                    value: FieldValue::Present("CN=one\nOU=two".to_owned()),
-                }],
+                fields: vec![field("Subject", "CN=one\nOU=two")],
             }],
         };
 
@@ -174,5 +257,50 @@ mod tests {
             status.text_description(),
             "One identity is available.\n\n[Certificate]\nSubject:\n  CN=one\n  OU=two\n"
         );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    fn the_newest_usable_certificate_wins() {
+        struct Candidate {
+            usable: bool,
+            not_before: i64,
+        }
+
+        impl CandidateCertificate for Candidate {
+            fn usable(&self) -> bool {
+                self.usable
+            }
+
+            fn not_before_timestamp(&self) -> i64 {
+                self.not_before
+            }
+
+            fn unusable_reason(&self) -> String {
+                format!("certificate {} is unusable", self.not_before)
+            }
+        }
+
+        let certificates = [
+            Candidate {
+                usable: true,
+                not_before: 1,
+            },
+            Candidate {
+                usable: false,
+                not_before: 3,
+            },
+            Candidate {
+                usable: true,
+                not_before: 2,
+            },
+        ];
+
+        assert_eq!(selected_certificate(&certificates), Some(2));
+        assert_eq!(
+            unusable_reasons(&certificates),
+            ["certificate 3 is unusable"]
+        );
+        assert_eq!(selected_certificate::<Candidate>(&[]), None);
     }
 }
