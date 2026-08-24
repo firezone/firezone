@@ -27,8 +27,8 @@
     /// window's accessibility title.
     private static let settingsWindowTitle = "Settings"
 
-    /// The captures this test has taken, by file name.
-    private var images: [String: Data] = [:]
+    /// How bright each capture came out, by file name.
+    private var brightness: [String: Double] = [:]
 
     /// The settings tabs, by the label the app gives each and the name its
     /// images carry in the gallery.
@@ -94,19 +94,45 @@
       return app
     }
 
-    /// Photographs the window and pins that the two appearances differ.
+    /// Photographs the window and pins that its dark capture is actually dark.
     ///
-    /// An appearance the app quietly ignored would put one picture in the gallery
-    /// twice, which is what happened while the appearance came from a launch
-    /// argument AppKit does not read.
+    /// Brightness rather than equality: an appearance the app ignored puts a light
+    /// picture in the gallery under both names, and those two still differ by the
+    /// odd pixel, so comparing them tells nothing. The measurements are printed so
+    /// a run says which appearance it drew rather than leaving it to be inferred.
     private func capture(_ window: XCUIElement, as name: String, in appearance: Appearance) {
-      images["\(name)-\(appearance.rawValue)"] = deliver(window, as: name, in: appearance)
+      let image = deliver(window, as: name, in: appearance)
+      brightness["\(name)-\(appearance.rawValue)"] = meanBrightness(of: image)
 
-      guard let light = images["\(name)-light"], let dark = images["\(name)-dark"] else {
-        return
+      guard
+        let light = brightness["\(name)-light"],
+        let dark = brightness["\(name)-dark"]
+      else { return }
+
+      print("Brightness of \(name): light \(light), dark \(dark)")
+
+      XCTAssertLessThan(dark, light - 50, "\(name) is no darker in the dark appearance")
+    }
+
+    /// The mean brightness of a PNG, from every eighth pixel, on a 0 to 255 scale.
+    private func meanBrightness(of image: Data) -> Double {
+      guard let bitmap = NSBitmapImageRep(data: image) else { return 0 }
+
+      var total = 0.0
+      var samples = 0.0
+
+      for y in stride(from: 0, to: bitmap.pixelsHigh, by: 8) {
+        for x in stride(from: 0, to: bitmap.pixelsWide, by: 8) {
+          guard let pixel = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
+            continue
+          }
+
+          total += (pixel.redComponent + pixel.greenComponent + pixel.blueComponent) / 3
+          samples += 1
+        }
       }
 
-      XCTAssertNotEqual(light, dark, "\(name) is the same picture in both appearances")
+      return samples > 0 ? total / samples * 255 : 0
     }
 
     /// Opens the app's `name` window by sending it the matching `firezone://` URL

@@ -26,6 +26,13 @@ struct FirezoneApp: App {
       // `--mock-tunnel` runs the real Store against a canned backend, and
       // `--mock-scenario` picks the state it presents (see MockTunnel.swift).
       let store = Store.mockFromCommandLine() ?? Store()
+
+      #if os(macOS)
+        // Here rather than in the app delegate: SwiftUI installs the delegate
+        // late enough to miss `applicationWillFinishLaunching`, and this has to
+        // run before the scenes create their windows.
+        NSApplication.applyMockPresentation()
+      #endif
     #else
       let store = Store()
     #endif
@@ -141,13 +148,6 @@ struct FirezoneApp: App {
     func applicationWillFinishLaunching(_ notification: Notification) {
       // Enforce single instance BEFORE the app fully launches
       enforceSingleInstance()
-
-      #if DEBUG
-        // Before any window exists, so the titlebars draw in the right appearance
-        // and no window is missed by the focus clearing.
-        NSApplication.applyMockAppearance()
-        NSApplication.clearMockWindowFocus()
-      #endif
     }
 
     func applicationDidFinishLaunching(_: Notification) {

@@ -224,60 +224,62 @@
   }
 
   #if os(macOS)
-    /// Holds the focus-clearing observer below for the life of the process.
-    @MainActor private var mockFocusObserver: (any NSObjectProtocol)?
+    /// Holds the window observer below for the life of the process.
+    @MainActor private var mockWindowObserver: (any NSObjectProtocol)?
 
     extension NSApplication {
-      /// Draws the app in the appearance `--mock-appearance` names, when it names
-      /// one, rather than in the system's.
+      /// Presents a mocked run the way a capture of it needs.
       ///
-      /// Nothing outside the app can pin its appearance for one process: AppKit
-      /// resolves it from the system setting through `CFPreferences`, which does
-      /// not read `UserDefaults`' argument domain, so an `-AppleInterfaceStyle`
-      /// argument reaches the app and changes nothing. Photographing both
-      /// appearances therefore means asking the app itself.
+      /// Two things, both per window rather than once for the app. `NSApp` alone
+      /// is not enough for either: SwiftUI creates the windows afterwards, and a
+      /// window carries its own appearance and its own first responder.
+      ///
+      /// The appearance is what `--mock-appearance` names. Nothing outside the app
+      /// can pin it: AppKit resolves the appearance from the system setting through
+      /// `CFPreferences`, which does not read `UserDefaults`' argument domain, so an
+      /// `-AppleInterfaceStyle` argument reaches the app and changes nothing.
+      ///
+      /// The focus is cleared whenever a window is editing text, because AppKit
+      /// hands a freshly shown text field the focus, and the insertion point it
+      /// blinks keeps two captures half a second apart from ever matching.
       @MainActor
-      public static func applyMockAppearance(_ arguments: [String] = CommandLine.arguments) {
-        guard let name = flagValue("--mock-appearance", in: arguments) else { return }
+      public static func applyMockPresentation(_ arguments: [String] = CommandLine.arguments) {
+        let appearance = mockAppearance(arguments)
+        shared.appearance = appearance
 
-        switch name {
-        case "light":
-          NSApplication.shared.appearance = NSAppearance(named: .aqua)
-        case "dark":
-          NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
-        default:
-          Log.warning("Ignoring unknown --mock-appearance '\(name)'")
-        }
-      }
+        guard appearance != nil || arguments.contains("--mock-tunnel") else { return }
 
-      /// Keeps a blinking insertion point out of a mocked run's windows.
-      ///
-      /// AppKit hands a freshly opened window's first text field the focus, which
-      /// starts editing and blinks a caret. Two captures half a second apart then
-      /// never match, and the gallery would carry a diff for every run.
-      ///
-      /// The clearing is scheduled behind SwiftUI rather than done as the window
-      /// becomes key, because SwiftUI claims the focus while the window settles
-      /// and would take it straight back.
-      @MainActor
-      public static func clearMockWindowFocus(_ arguments: [String] = CommandLine.arguments) {
-        guard arguments.contains("--mock-tunnel") else { return }
-
-        mockFocusObserver = NotificationCenter.default.addObserver(
-          forName: NSWindow.didBecomeKeyNotification,
+        mockWindowObserver = NotificationCenter.default.addObserver(
+          forName: NSWindow.didUpdateNotification,
           object: nil,
           queue: .main
         ) { notification in
           guard let window = notification.object as? NSWindow else { return }
 
           MainActor.assumeIsolated {
-            // Twice: the next turn covers the focus SwiftUI takes as the window
-            // settles, the later one whatever it takes after that.
-            DispatchQueue.main.async { window.makeFirstResponder(nil) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if let appearance, window.appearance?.name != appearance.name {
+              window.appearance = appearance
+            }
+
+            // Only an editing session, so a focus ring on anything else stays as
+            // the app draws it.
+            if window.firstResponder is NSTextView {
               window.makeFirstResponder(nil)
             }
           }
+        }
+      }
+
+      /// The appearance `--mock-appearance` names, or `nil` when it names none.
+      private static func mockAppearance(_ arguments: [String]) -> NSAppearance? {
+        guard let name = flagValue("--mock-appearance", in: arguments) else { return nil }
+
+        switch name {
+        case "light": return NSAppearance(named: .aqua)
+        case "dark": return NSAppearance(named: .darkAqua)
+        default:
+          Log.warning("Ignoring unknown --mock-appearance '\(name)'")
+          return nil
         }
       }
     }
