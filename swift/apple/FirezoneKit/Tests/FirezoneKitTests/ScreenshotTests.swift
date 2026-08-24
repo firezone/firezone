@@ -118,7 +118,6 @@
       // SwiftUI hands focus to the first text field on attachment, taking the
       // window's word that it is key, and a focused field draws its insertion
       // caret into the capture.
-      _ = window.makeFirstResponder(nil)
 
       return window
     }
@@ -149,6 +148,11 @@
       }
 
       RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+
+      // After the runloop turn: SwiftUI's focus engine claims the first field while
+      // the window settles, so clearing focus any earlier does not stick.
+      _ = window.makeFirstResponder(nil)
+      window.display()
 
       let fileName = "\(name)-\(colorScheme.suffix).png"
       let url = try Self.outputDirectory().appendingPathComponent(fileName)

@@ -40,7 +40,10 @@
       performing function: @Sendable () async throws -> Void
     ) async throws {
       await MainActor.run {
-        _ = NSApplication.shared.setActivationPolicy(.accessory)
+        // Regular rather than accessory: the window server refuses to activate an
+        // accessory app that never presented UI, and the stoplights and titlebar only
+        // draw in their active style once the app genuinely is.
+        _ = NSApplication.shared.setActivationPolicy(.regular)
         _ = NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
       }
 
