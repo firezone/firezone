@@ -75,6 +75,24 @@ pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
 }
 
 fn status_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Status> {
+    // A module that cannot be loaded leaves the machine without a reachable keystore, the
+    // same as having none: a statically linked client cannot load shared modules at all.
+    if let Err(error) = context(module) {
+        return Ok(Status {
+            severity: StatusSeverity::Warning,
+            summary: "The PKCS#11 module cannot be used, so no X.509 client identity \
+                      certificate can be found."
+                .to_owned(),
+            sections: vec![DetailSection {
+                title: "PKCS#11 Module".to_owned(),
+                fields: vec![
+                    field("Module Path", module.display().to_string()),
+                    field("Error", format!("{error:#}")),
+                ],
+            }],
+        });
+    }
+
     let Some(token) = find_token(module, pin_file, subject_cn)? else {
         return Ok(Status {
             severity: StatusSeverity::Warning,
@@ -129,6 +147,15 @@ fn status_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Status>
 }
 
 fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Option<Identity>> {
+    if let Err(error) = context(module) {
+        tracing::warn!(
+            module = %module.display(),
+            "Connecting without an X.509 client identity, the PKCS#11 module cannot be used: {error:#}"
+        );
+
+        return Ok(None);
+    }
+
     let Some(token) = find_token(module, pin_file, subject_cn)? else {
         tracing::debug!("No PKCS#11 token holds a Firezone client identity");
 
