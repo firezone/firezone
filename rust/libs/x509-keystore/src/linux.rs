@@ -107,7 +107,7 @@ fn status_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<S
 
         let token = unlock_token(candidate, pin_file, subject_cn)?;
 
-        return Ok(token_status(module, token));
+        return Ok(token_status(token));
     }
 
     // A machine whose every module failed has an unreadable keystore, not a missing
@@ -127,10 +127,10 @@ fn status_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<S
 }
 
 /// The diagnostics for the token that holds a matching certificate.
-fn token_status(module: &Path, token: Token) -> Status {
+fn token_status(token: Token) -> Status {
     let selected = selected_certificate(&token.certificates);
 
-    let mut sections = vec![token_section(module, &token.info)];
+    let mut sections = Vec::new();
     sections.extend(selected.map(|index| DetailSection {
         title: "Certificate".to_owned(),
         fields: token.certificates[index].detail_fields(),
@@ -149,7 +149,7 @@ fn token_status(module: &Path, token: Token) -> Status {
 
     let warning = selected.is_none().then(|| {
         format!(
-            "Matching certificates are on the PKCS#11 token, but none is usable as a client identity: {}",
+            "Matching certificates were found, but none is usable as a client identity: {}",
             unusable_reasons(&token.certificates).join("; ")
         )
     });
@@ -514,7 +514,6 @@ fn context(module_path: &Path) -> Result<Pkcs11> {
 
 /// The token Firezone authenticates with, and everything it holds that bears on that.
 struct Token {
-    info: TokenInfo,
     /// The unlocked session every signature made with this token goes through.
     session: Session,
     /// Every X.509 object on the token, which is what the chain of a certificate is built from.
@@ -569,7 +568,6 @@ fn unlock_token(candidate: Candidate, pin_file: &Path, subject_cn: &str) -> Resu
         .collect::<Result<Vec<_>>>()?;
 
     Ok(Token {
-        info,
         session,
         objects,
         certificates,
@@ -974,24 +972,4 @@ fn certificate_chain(leaf: &[u8], issuers: &[CertificateObject]) -> Vec<Vec<u8>>
     }
 
     chain
-}
-
-fn token_section(module: &Path, info: &TokenInfo) -> DetailSection {
-    DetailSection {
-        title: "PKCS#11 Token".to_owned(),
-        fields: vec![
-            field("Certificate Storage", "PKCS#11 token"),
-            field(
-                "Private Key Storage",
-                "PKCS#11 token (hardware backing is provider-specific)",
-            ),
-            field("Module Path", module.display().to_string()),
-            field("Token Label", info.label().trim()),
-            field("Token Model", info.model().trim()),
-            field(
-                "Login Required",
-                if info.login_required() { "Yes" } else { "No" },
-            ),
-        ],
-    }
 }

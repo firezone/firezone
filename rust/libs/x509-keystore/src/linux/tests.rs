@@ -162,16 +162,6 @@ fn describes_a_provisioned_certificate_in_the_diagnostics() {
         .expect("the SoftHSM token should be readable");
 
     assert_eq!(status.warning, None);
-    let found = section(&status, "PKCS#11 Token");
-    assert_eq!(
-        field_value(found, "Certificate Storage"),
-        Some("PKCS#11 token")
-    );
-    assert_eq!(
-        field_value(found, "Token Label"),
-        Some(token.label.as_str())
-    );
-    assert_eq!(field_value(found, "Login Required"), Some("Yes"));
     let certificate = section(&status, "Certificate");
     assert_eq!(
         field_value(certificate, "Object Label"),
