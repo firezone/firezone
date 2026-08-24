@@ -230,18 +230,20 @@
     extension NSApplication {
       /// Presents a mocked run the way a capture of it needs.
       ///
-      /// Two things, both per window rather than once for the app. `NSApp` alone
-      /// is not enough for either: SwiftUI creates the windows afterwards, and a
-      /// window carries its own appearance and its own first responder.
-      ///
       /// The appearance is what `--mock-appearance` names. Nothing outside the app
       /// can pin it: AppKit resolves the appearance from the system setting through
       /// `CFPreferences`, which does not read `UserDefaults`' argument domain, so an
       /// `-AppleInterfaceStyle` argument reaches the app and changes nothing.
       ///
-      /// The focus is cleared whenever a window is editing text, because AppKit
-      /// hands a freshly shown text field the focus, and the insertion point it
-      /// blinks keeps two captures half a second apart from ever matching.
+      /// The focus is cleared because AppKit hands a freshly shown text field the
+      /// focus, and the insertion point it blinks keeps two captures half a second
+      /// apart from ever matching. It is cleared a turn behind SwiftUI, which
+      /// claims the focus while the window settles and would take it straight back
+      /// from an earlier attempt.
+      ///
+      /// Both are done as a window becomes key rather than on every window update:
+      /// setting a window's appearance makes it update, so the firehose would feed
+      /// itself and leave the app with no main thread to present windows on.
       @MainActor
       public static func applyMockPresentation(_ arguments: [String] = CommandLine.arguments) {
         let appearance = mockAppearance(arguments)
@@ -250,7 +252,7 @@
         guard appearance != nil || arguments.contains("--mock-tunnel") else { return }
 
         mockWindowObserver = NotificationCenter.default.addObserver(
-          forName: NSWindow.didUpdateNotification,
+          forName: NSWindow.didBecomeKeyNotification,
           object: nil,
           queue: .main
         ) { notification in
@@ -261,9 +263,8 @@
               window.appearance = appearance
             }
 
-            // Only an editing session, so a focus ring on anything else stays as
-            // the app draws it.
-            if window.firstResponder is NSTextView {
+            DispatchQueue.main.async { window.makeFirstResponder(nil) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
               window.makeFirstResponder(nil)
             }
           }
