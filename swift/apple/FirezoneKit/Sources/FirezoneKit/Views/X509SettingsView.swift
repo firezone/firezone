@@ -49,13 +49,28 @@ struct X509SettingsView: View {
 
   private var header: some View {
     VStack(alignment: .leading, spacing: 4) {
-      Text("Client Certificate")
+      Text("Certificate")
         .font(.headline)
-      Text(
-        "Firezone proves this device is enrolled with the certificate your administrator installed. Its private key never leaves the keychain."
-      )
-      .font(.caption)
-      .foregroundStyle(.secondary)
+      if let explainer {
+        Text(explainer)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+  }
+
+  /// One line on what the certificate is for, absent while the keychain is still being read.
+  ///
+  /// The wording is shared across the clients.
+  private var explainer: String? {
+    switch loadState {
+    case .loading:
+      return nil
+    case .loaded(let summary, let keyProblem)
+    where summary.unusableSummary == nil && keyProblem == nil:
+      return "Firezone uses this certificate to identify this device."
+    case .loaded, .notConfigured, .failed:
+      return "Firezone did not find a certificate to identify this device."
     }
   }
 
