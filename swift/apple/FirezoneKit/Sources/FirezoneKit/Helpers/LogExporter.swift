@@ -32,15 +32,18 @@ import SystemPackage
       from logFolderURL: URL,
       session: any TunnelSessionProtocol
     ) async throws {
-      // 1. Create a temporary working directory to stage app and tunnel archives
-      let sharedLogFolderURL = fileManager
+      // 1. Create a temporary working directory to stage app and tunnel archives.
+      // Uniquely named per export so concurrent exports cannot clobber each other;
+      // the stable "firezone_logs" component names the folder inside the archive.
+      let stagingRootURL = fileManager
         .temporaryDirectory
-        .appendingPathComponent("firezone_logs")
-      try? fileManager.removeItem(at: sharedLogFolderURL)
+        .appendingPathComponent("firezone_logs_staging_\(UUID().uuidString)")
+      let sharedLogFolderURL = stagingRootURL.appendingPathComponent("firezone_logs")
       try fileManager.createDirectory(
         at: sharedLogFolderURL,
         withIntermediateDirectories: true
       )
+      defer { try? fileManager.removeItem(at: stagingRootURL) }
 
       // 2. Create tunnel log archive from tunnel process
       let tunnelLogURL =
@@ -61,7 +64,6 @@ import SystemPackage
       try await archive(
         appLogs: logFolderURL,
         staging: sharedLogFolderURL,
-        tunnelArchive: tunnelLogURL,
         to: archiveURL
       )
     }
@@ -71,7 +73,6 @@ import SystemPackage
     private static func archive(
       appLogs logFolderURL: URL,
       staging sharedLogFolderURL: URL,
-      tunnelArchive tunnelLogURL: URL,
       to archiveURL: URL
     ) async throws {
       let appLogURL = sharedLogFolderURL.appendingPathComponent("app.zip")
@@ -88,10 +89,6 @@ import SystemPackage
         source: sharedLogFolderURL,
         to: archiveURL
       )
-
-      // Remove intermediate log archives
-      try? fileManager.removeItem(at: tunnelLogURL)
-      try? fileManager.removeItem(at: appLogURL)
     }
   }
 #endif
