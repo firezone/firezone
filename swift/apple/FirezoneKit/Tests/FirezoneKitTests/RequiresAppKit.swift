@@ -43,8 +43,12 @@
         // Regular rather than accessory: the window server refuses to activate an
         // accessory app that never presented UI, and the stoplights and titlebar only
         // draw in their active style once the app genuinely is.
-        _ = NSApplication.shared.setActivationPolicy(.regular)
-        _ = NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
+        let becameRegular = NSApplication.shared.setActivationPolicy(.regular)
+        let activated = NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
+        print(
+          "requiresAppKit: policy->regular=\(becameRegular) activate=\(activated) "
+            + "isActive=\(NSApplication.shared.isActive)"
+        )
       }
 
       nonisolated(unsafe) let observer = await MainActor.run {
