@@ -70,8 +70,8 @@
 
     /// Puts `content` in an off-screen window the size the app would use.
     ///
-    /// The app's window scenes declare no size, so macOS opens them at the content's
-    /// ideal size; the capture sizes its window the same way.
+    /// The app's window scenes open at `AppView.WindowDefinition.defaultSize`, and
+    /// the capture pins its window to the same size.
     ///
     /// `ImageRenderer` looks like the obvious tool and is not: a text field, a checkbox and
     /// a tab view are all AppKit underneath, and it draws each of them as the "not allowed"
@@ -97,6 +97,9 @@
           .environmentObject(GlobalErrorHandler())
           .environment(\.colorScheme, colorScheme)
       )
+      // Left to itself, the hosting view resizes the window to the content's ideal
+      // size once attached; every capture must come out at the app's default size.
+      view.sizingOptions = []
       view.frame = CGRect(origin: .zero, size: AppView.WindowDefinition.defaultSize)
 
       let window = ScreenshotWindow(
