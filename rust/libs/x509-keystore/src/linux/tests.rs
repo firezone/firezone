@@ -44,14 +44,19 @@ fn an_unloadable_module_is_no_identity_rather_than_an_error() {
         warning.contains("PKCS#11 keystore cannot be read"),
         "{warning}"
     );
+    assert!(
+        warning.contains("https://www.firezone.dev/kb/reference/device-certificates"),
+        "{warning} should point at the knowledge base"
+    );
     let section = section(&status, "PKCS#11 Module");
     assert_eq!(
         field_value(section, "Module Path"),
         Some("/nonexistent/example-pkcs11.so")
     );
-    assert!(
-        field_value(section, "Error").is_some_and(|error| error.contains("Failed to load")),
-        "the diagnostics should carry the error chain"
+    assert_eq!(
+        field_value(section, "Error"),
+        Some("Failed to load /nonexistent/example-pkcs11.so"),
+        "the diagnostics show the short cause; the log carries the full chain"
     );
 }
 

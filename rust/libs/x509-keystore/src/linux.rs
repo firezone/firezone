@@ -51,7 +51,7 @@ const PIN_FILE: &str = "/etc/firezone/pkcs11-pin";
 /// The packages recommend p11-kit rather than depend on it, so a client without its module
 /// configuration is a supported installation and has to be told what is missing instead of
 /// failing to connect.
-const MISSING_P11_KIT: &str = "No PKCS#11 module is registered, so no X.509 client identity certificate can be found. Firezone reads tokens through the modules registered with p11-kit: install it together with your token's driver to use one (the `p11-kit-modules` package on Debian and Ubuntu, `p11-kit` on Fedora and RHEL).";
+const MISSING_P11_KIT: &str = "No PKCS#11 module is registered, so no X.509 client identity certificate can be found. Firezone reads certificates through PKCS#11 modules registered with p11-kit. See https://www.firezone.dev/kb/reference/device-certificates for what to install.";
 
 pub(crate) fn status(subject_cn: &str) -> Result<Status> {
     let modules = registered_modules();
@@ -114,7 +114,8 @@ fn status_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<S
     // certificate, and which of the two the administrator reads decides what they fix.
     let warning = if failures == modules.len() {
         "The PKCS#11 keystore cannot be read, so no X.509 client identity certificate can be \
-         found."
+         found. See https://www.firezone.dev/kb/reference/device-certificates for what the \
+         keystore needs installed and running."
             .to_owned()
     } else {
         format!("No PKCS#11 token holds an X.509 certificate with subject CN '{subject_cn}'.")
@@ -158,9 +159,12 @@ fn token_status(token: Token) -> Status {
 }
 
 /// The diagnostics section naming one registered module, and what failed on it, if anything.
+///
+/// The error row shows only the short top-level cause: the raw loader and driver messages
+/// behind it are long, and the log carries the full chain.
 fn module_section(module: &Path, error: Option<&anyhow::Error>) -> DetailSection {
     let mut fields = vec![field("Module Path", module.display().to_string())];
-    fields.extend(error.map(|error| field("Error", format!("{error:#}"))));
+    fields.extend(error.map(|error| field("Error", error.to_string())));
 
     DetailSection {
         title: "PKCS#11 Module".to_owned(),
