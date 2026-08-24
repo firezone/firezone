@@ -20,6 +20,10 @@
   @preconcurrency import NetworkExtension
   import UserNotifications
 
+  #if os(macOS)
+    import AppKit
+  #endif
+
   /// The state the `--mock-tunnel` backend presents, as a fixture describes it.
   ///
   /// Every field is terminal: the mock reports it unchanged for the life of the
@@ -202,22 +206,48 @@
         )
       #endif
     }
+  }
 
-    /// The argument following `flag`, or the value it carries after an `=`.
-    private static func flagValue(_ flag: String, in arguments: [String]) -> String? {
-      for (index, argument) in arguments.enumerated() {
-        if argument == flag, index + 1 < arguments.count {
-          return arguments[index + 1]
-        }
-
-        if argument.hasPrefix("\(flag)=") {
-          return String(argument.dropFirst(flag.count + 1))
-        }
+  /// The argument following `flag`, or the value it carries after an `=`.
+  private func flagValue(_ flag: String, in arguments: [String]) -> String? {
+    for (index, argument) in arguments.enumerated() {
+      if argument == flag, index + 1 < arguments.count {
+        return arguments[index + 1]
       }
 
-      return nil
+      if argument.hasPrefix("\(flag)=") {
+        return String(argument.dropFirst(flag.count + 1))
+      }
     }
+
+    return nil
   }
+
+  #if os(macOS)
+    extension NSApplication {
+      /// Draws the app in the appearance `--mock-appearance` names, when it names
+      /// one, rather than in the system's.
+      ///
+      /// Nothing outside the app can pin its appearance for one process: AppKit
+      /// resolves it from the system setting through `CFPreferences`, which does
+      /// not read `UserDefaults`' argument domain, so an `-AppleInterfaceStyle`
+      /// argument reaches the app and changes nothing. Photographing both
+      /// appearances therefore means asking the app itself.
+      @MainActor
+      public static func applyMockAppearance(_ arguments: [String] = CommandLine.arguments) {
+        guard let name = flagValue("--mock-appearance", in: arguments) else { return }
+
+        switch name {
+        case "light":
+          NSApplication.shared.appearance = NSAppearance(named: .aqua)
+        case "dark":
+          NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+        default:
+          Log.warning("Ignoring unknown --mock-appearance '\(name)'")
+        }
+      }
+    }
+  #endif
 
   /// Answers `pollUpdates` with the scenario's snapshot and reports its tunnel status.
   private final class MockTunnelSession: TunnelSessionProtocol {

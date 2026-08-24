@@ -32,7 +32,7 @@
       defer { app.terminate() }
 
       try waitFor(app.buttons["Grant VPN Permission"], on: "grant-vpn")
-      capture(app, as: "grant-vpn", in: appearance)
+      deliver(app, as: "grant-vpn", in: appearance)
     }
 
     func testWelcome() throws {
@@ -41,7 +41,7 @@
       defer { app.terminate() }
 
       try waitFor(app.buttons["Sign in"], on: "welcome")
-      capture(app, as: "welcome", in: appearance)
+      deliver(app, as: "welcome", in: appearance)
     }
 
     func testSession() throws {
@@ -52,7 +52,7 @@
       // A resource from the mock's canned list, so the capture waits for the
       // list rather than for the spinner it replaces.
       try waitFor(app.staticTexts["Office network"], on: "session")
-      capture(app, as: "session", in: appearance)
+      deliver(app, as: "session", in: appearance)
     }
 
     func testSettings() throws {
@@ -66,7 +66,7 @@
 
       for tab in Self.settingsTabs {
         try selectTab(tab.label, in: app)
-        capture(app, as: "settings-\(tab.name)", in: appearance)
+        deliver(app, as: "settings-\(tab.name)", in: appearance)
       }
     }
 

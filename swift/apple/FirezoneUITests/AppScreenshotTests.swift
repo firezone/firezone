@@ -27,6 +27,9 @@
     /// window's accessibility title.
     private static let settingsWindowTitle = "Settings"
 
+    /// The captures this test has taken, by file name.
+    private var images: [String: Data] = [:]
+
     /// The settings tabs, by the label the app gives each and the name its
     /// images carry in the gallery.
     private static let settingsTabs = [
@@ -76,29 +79,35 @@
 
     /// Launches the app against the mock backend, presenting `scenario` in `appearance`.
     ///
-    /// The double-dashed arguments are the app's own flags; the single-dashed ones
-    /// reach it through `UserDefaults`' argument domain instead, which overrides
-    /// both settings for this process alone.
-    ///
-    /// `launchedBefore` keeps the app treating every launch as the first, so it
-    /// does not close the main window shortly after startup the way it does for
-    /// returning users. `AppleInterfaceStyle` is where AppKit reads the appearance
-    /// from, so setting it draws the whole app dark, window chrome included. Light
-    /// is the absence of the key, so nothing is passed for it.
+    /// The double-dashed arguments are the app's own flags. `-launchedBefore NO`
+    /// is not: it reaches `UserDefaults` through the argument domain, which keeps
+    /// the app treating every launch as the first, so it does not close the main
+    /// window shortly after startup the way it does for returning users.
     private func launchApp(scenario: String, appearance: Appearance) -> XCUIApplication {
       let app = XCUIApplication()
       app.launchArguments = [
         "--mock-tunnel", "--mock-scenario", scenario,
+        "--mock-appearance", appearance.rawValue,
         "-launchedBefore", "NO",
       ]
-
-      if appearance == .dark {
-        app.launchArguments += ["-AppleInterfaceStyle", "Dark"]
-      }
-
       app.launch()
 
       return app
+    }
+
+    /// Photographs the window and pins that the two appearances differ.
+    ///
+    /// An appearance the app quietly ignored would put one picture in the gallery
+    /// twice, which is what happened while the appearance came from a launch
+    /// argument AppKit does not read.
+    private func capture(_ window: XCUIElement, as name: String, in appearance: Appearance) {
+      images["\(name)-\(appearance.rawValue)"] = deliver(window, as: name, in: appearance)
+
+      guard let light = images["\(name)-light"], let dark = images["\(name)-dark"] else {
+        return
+      }
+
+      XCTAssertNotEqual(light, dark, "\(name) is the same picture in both appearances")
     }
 
     /// Opens the app's `name` window by sending it the matching `firezone://` URL

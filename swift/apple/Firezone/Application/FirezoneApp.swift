@@ -141,6 +141,11 @@ struct FirezoneApp: App {
     func applicationWillFinishLaunching(_ notification: Notification) {
       // Enforce single instance BEFORE the app fully launches
       enforceSingleInstance()
+
+      #if DEBUG
+        // Before any window exists, so the titlebars draw in the right one.
+        NSApplication.applyMockAppearance()
+      #endif
     }
 
     func applicationDidFinishLaunching(_: Notification) {

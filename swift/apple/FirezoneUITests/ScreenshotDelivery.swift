@@ -23,15 +23,19 @@ enum Appearance: String, CaseIterable {
 // the resulting image.
 @MainActor
 extension XCTestCase {
-  /// Photographs `element` once it holds still and delivers the image as
-  /// `<name>-<appearance>.png`.
-  func capture(_ element: XCUIElement, as name: String, in appearance: Appearance) {
+  /// Photographs `element` once it holds still, delivers the image as
+  /// `<name>-<appearance>.png`, and hands back its bytes.
+  @discardableResult
+  func deliver(_ element: XCUIElement, as name: String, in appearance: Appearance) -> Data {
     let fileName = "\(name)-\(appearance.rawValue).png"
+    let screenshot = settledScreenshot(of: element, as: fileName)
 
-    let attachment = XCTAttachment(screenshot: settledScreenshot(of: element, as: fileName))
+    let attachment = XCTAttachment(screenshot: screenshot)
     attachment.name = fileName
     attachment.lifetime = .keepAlways
     add(attachment)
+
+    return screenshot.pngRepresentation
   }
 
   /// The element as it looks once two captures in a row agree.
