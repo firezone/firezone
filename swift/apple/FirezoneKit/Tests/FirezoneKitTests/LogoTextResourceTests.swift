@@ -10,11 +10,11 @@
 import Foundation
 import Testing
 
+@testable import FirezoneKit
+
 #if os(macOS)
   import AppKit
 #endif
-
-@testable import FirezoneKit
 
 struct LogoTextResourceTests {
   @Test("Wordmark PNGs are in the package bundle", arguments: ["LogoText", "LogoTextDark"])
