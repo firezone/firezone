@@ -67,11 +67,7 @@ fn describes_a_minted_certificate_in_the_diagnostics() {
     let status =
         super::status(&subject_cn).expect("the Windows certificate stores should be readable");
 
-    assert_eq!(status.severity, StatusSeverity::Ok);
-    assert_eq!(
-        status.summary,
-        "An X.509 client identity is available for mutual TLS."
-    );
+    assert_eq!(status.warning, None);
     let section = status
         .sections
         .iter()
@@ -119,12 +115,11 @@ fn reports_no_identity_when_no_certificate_matches() {
         super::status(&subject_cn).expect("the Windows certificate stores should be readable");
 
     assert!(identity.is_none());
-    assert_eq!(status.severity, StatusSeverity::Warning);
     assert_eq!(
-        status.summary,
-        format!(
+        status.warning,
+        Some(format!(
             "No X.509 certificate with subject CN '{subject_cn}' is in the Windows certificate stores."
-        )
+        ))
     );
 }
 

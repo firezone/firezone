@@ -37,8 +37,8 @@ use x509_claims::{ParsedCertificate, parse_certificate};
 use x509_credential::SigningError;
 
 use crate::{
-    CandidateCertificate, DetailField, DetailSection, Identity, Status, StatusSeverity,
-    absent_field, field, invalid_field, selected_certificate, sign, unusable_reasons,
+    CandidateCertificate, DetailField, DetailSection, Identity, Status, absent_field, field,
+    invalid_field, selected_certificate, sign, unusable_reasons,
 };
 
 /// The store MDM-provisioned identities land in.
@@ -75,34 +75,29 @@ pub(crate) fn status(subject_cn: &str) -> Result<Status> {
         .chain(unused_sections)
         .collect();
 
-    let certificate_summary = match (selected, certificates.len()) {
-        (None, 0) => format!(
+    let certificate_warning = match (selected, certificates.len()) {
+        (None, 0) => Some(format!(
             "No X.509 certificate with subject CN '{subject_cn}' is in the Windows certificate stores."
-        ),
-        (None, _) => format!(
+        )),
+        (None, _) => Some(format!(
             "Matching certificates are in the Windows certificate store, but none is usable as a client identity: {}",
             unusable_reasons(&certificates).join("; ")
-        ),
-        (Some(_), _) => "An X.509 client identity is available for mutual TLS.".to_owned(),
+        )),
+        (Some(_), _) => None,
     };
-    let summary = match store_errors.is_empty() {
-        true => certificate_summary,
-        false => format!(
-            "{certificate_summary} Some Windows certificate stores could not be read: {}",
+    let store_warning = (!store_errors.is_empty()).then(|| {
+        format!(
+            "Some Windows certificate stores could not be read: {}",
             store_errors.join("; ")
-        ),
-    };
-    let severity = match (selected, store_errors.is_empty()) {
-        (None, _) => StatusSeverity::Warning,
-        (Some(_), false) => StatusSeverity::Warning,
-        (Some(_), true) => StatusSeverity::Ok,
+        )
+    });
+    let warning = match (certificate_warning, store_warning) {
+        (Some(certificate), Some(store)) => Some(format!("{certificate} {store}")),
+        (Some(certificate), None) => Some(certificate),
+        (None, store) => store,
     };
 
-    Ok(Status {
-        severity,
-        summary,
-        sections,
-    })
+    Ok(Status { warning, sections })
 }
 
 pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
