@@ -17,17 +17,33 @@
   @MainActor
   @Suite("Store diagnostic logs", .serialized)
   struct StoreDiagnosticLogsTests {
-    /// The mock provider reports 30 MB; the mock log directory holds two 49-byte lines.
-    private static let mockLogBytes: UInt64 = 30_000_000 + 98
+    /// What the mock provider reports over IPC.
+    private static let providerLogBytes: UInt64 = 30_000_000
 
-    @Test("sums the app logs and the provider's report")
-    func sumsAppAndProviderSizes() async throws {
-      let store = Store.mock()
+    @Test("reports exactly the provider's size for an empty app log directory")
+    func reportsTheProviderSize() async throws {
+      let emptyDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("firezone-empty-logs-\(UUID().uuidString)")
+      try FileManager.default.createDirectory(at: emptyDirectory, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: emptyDirectory) }
+
+      let store = Store.mock(logDirectory: emptyDirectory)
       try await store.installVPNConfiguration()
 
       let size = await store.logDirectorySize()
 
-      #expect(size == Self.mockLogBytes)
+      #expect(size == Self.providerLogBytes)
+    }
+
+    @Test("counts the app logs into the total")
+    func countsAppLogsIntoTheTotal() async throws {
+      let store = Store.mock()
+      try await store.installVPNConfiguration()
+
+      // The exact app-side number depends on filesystem allocation, so only the
+      // provider baseline is pinned.
+      let size = try #require(await store.logDirectorySize())
+      #expect(size > Self.providerLogBytes)
     }
 
     @Test("reports no size without a VPN configuration")
