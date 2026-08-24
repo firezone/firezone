@@ -128,10 +128,20 @@ public struct SettingsView: View {
     )
   }
 
-  public init(store: Store) {
+  /// The tabs of the settings screen.
+  public enum Tab {
+    case general
+    case advanced
+    case logs
+  }
+
+  @State private var selectedTab: Tab
+
+  public init(store: Store, selectedTab: Tab = .general) {
     self.store = store
     self.configuration = store.configuration
     _viewModel = StateObject(wrappedValue: SettingsViewModel())
+    _selectedTab = State(initialValue: selectedTab)
   }
 
   public var body: some View {
@@ -200,19 +210,22 @@ public struct SettingsView: View {
       }
     #elseif os(macOS)
       VStack {
-        TabView {
+        TabView(selection: $selectedTab) {
           generalTab
             .tabItem {
               Text("General")
             }
+            .tag(Tab.general)
           advancedTab
             .tabItem {
               Text("Advanced")
             }
+            .tag(Tab.advanced)
           logsTab
             .tabItem {
               Text("Diagnostic Logs")
             }
+            .tag(Tab.logs)
         }
         .padding(20)
         Spacer()
