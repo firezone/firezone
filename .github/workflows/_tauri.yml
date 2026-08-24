@@ -100,6 +100,7 @@ jobs:
     permissions:
       contents: write # for attaching the build artifacts to the release
       id-token: write # OIDC auth
+      security-events: write # for Trivy SARIF upload in setup-mise
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
