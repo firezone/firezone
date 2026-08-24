@@ -75,25 +75,15 @@ pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
 }
 
 fn status_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Status> {
-    // A module that cannot be loaded leaves the machine without a reachable keystore, the
-    // same as having none: a statically linked client cannot load shared modules at all.
-    if let Err(error) = context(module) {
-        return Ok(Status {
-            severity: StatusSeverity::Warning,
-            summary: "The PKCS#11 module cannot be used, so no X.509 client identity \
-                      certificate can be found."
-                .to_owned(),
-            sections: vec![DetailSection {
-                title: "PKCS#11 Module".to_owned(),
-                fields: vec![
-                    field("Module Path", module.display().to_string()),
-                    field("Error", format!("{error:#}")),
-                ],
-            }],
-        });
-    }
+    // A keystore that cannot be read leaves the machine without a reachable identity, the same
+    // as having none: the module may be unloadable, as for a statically linked client, or fail
+    // to enumerate its tokens, as when the service behind a driver is not running.
+    let found = match find_token(module, subject_cn) {
+        Ok(found) => found,
+        Err(error) => return Ok(unreadable_keystore_status(module, &error)),
+    };
 
-    let Some(token) = find_token(module, pin_file, subject_cn)? else {
+    let Some(candidate) = found else {
         return Ok(Status {
             severity: StatusSeverity::Warning,
             summary: format!(
@@ -105,6 +95,8 @@ fn status_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Status>
             }],
         });
     };
+
+    let token = unlock_token(candidate, pin_file, subject_cn)?;
 
     let selected = selected_certificate(&token.certificates);
 
@@ -146,27 +138,47 @@ fn status_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Status>
     })
 }
 
-fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Option<Identity>> {
-    if let Err(error) = context(module) {
-        tracing::warn!(
-            module = %module.display(),
-            "Connecting without an X.509 client identity, the PKCS#11 module cannot be used: {error:#}"
-        );
-
-        return Ok(None);
+/// The diagnostics for a keystore that could not be read at all, naming what failed.
+fn unreadable_keystore_status(module: &Path, error: &anyhow::Error) -> Status {
+    Status {
+        severity: StatusSeverity::Warning,
+        summary: "The PKCS#11 keystore cannot be read, so no X.509 client identity \
+                  certificate can be found."
+            .to_owned(),
+        sections: vec![DetailSection {
+            title: "PKCS#11 Module".to_owned(),
+            fields: vec![
+                field("Module Path", module.display().to_string()),
+                field("Error", format!("{error:#}")),
+            ],
+        }],
     }
+}
 
-    let Some(token) = find_token(module, pin_file, subject_cn)? else {
-        tracing::debug!("No PKCS#11 token holds a Firezone client identity");
+fn identity_on(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Option<Identity>> {
+    let candidate = match find_token(module, subject_cn) {
+        Ok(Some(candidate)) => candidate,
+        Ok(None) => {
+            tracing::debug!("No PKCS#11 token holds a Firezone client identity");
 
-        return Ok(None);
+            return Ok(None);
+        }
+        Err(error) => {
+            tracing::warn!(
+                module = %module.display(),
+                "Connecting without an X.509 client identity, the PKCS#11 keystore cannot be read: {error:#}"
+            );
+
+            return Ok(None);
+        }
     };
+
     let Token {
         session,
         objects,
         mut certificates,
         ..
-    } = token;
+    } = unlock_token(candidate, pin_file, subject_cn)?;
     let unusable = unusable_reasons(&certificates);
 
     let Some(index) = selected_certificate(&certificates) else {
@@ -401,12 +413,13 @@ struct Token {
     certificates: Vec<Certificate>,
 }
 
-/// Returns the first token holding a certificate for `subject_cn`, unlocked and ready to sign.
+/// Returns the first token holding a certificate for `subject_cn`, not yet unlocked.
 ///
-/// Certificates are public objects, so every token can be searched without logging in, and only
-/// the one that turns out to hold ours is unlocked. Logging into each token in turn would instead
-/// spend the PIN attempts of tokens that have nothing to do with Firezone.
-fn find_token(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Option<Token>> {
+/// Certificates are public objects, so every token can be searched without logging in, and
+/// [`unlock_token`] then unlocks only the one that turns out to hold ours. Logging into each
+/// token in turn would instead spend the PIN attempts of tokens that have nothing to do with
+/// Firezone.
+fn find_token(module: &Path, subject_cn: &str) -> Result<Option<Candidate>> {
     let pkcs11 = context(module)?;
     let slots = pkcs11
         .get_slots_with_token()
@@ -421,31 +434,36 @@ fn find_token(module: &Path, pin_file: &Path, subject_cn: &str) -> Result<Option
             continue;
         };
 
-        let Candidate {
-            info,
-            session,
-            objects,
-            matches,
-        } = candidate;
-
-        unlock(&session, &info, pin_file)?;
-
-        let certificates = matches
-            .into_iter()
-            .map(|(object, metadata)| {
-                describe_certificate(&session, &objects[object], metadata, subject_cn)
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        return Ok(Some(Token {
-            info,
-            session,
-            objects,
-            certificates,
-        }));
+        return Ok(Some(candidate));
     }
 
     Ok(None)
+}
+
+/// Unlocks the candidate's token and reads how each matching certificate can be used.
+fn unlock_token(candidate: Candidate, pin_file: &Path, subject_cn: &str) -> Result<Token> {
+    let Candidate {
+        info,
+        session,
+        objects,
+        matches,
+    } = candidate;
+
+    unlock(&session, &info, pin_file)?;
+
+    let certificates = matches
+        .into_iter()
+        .map(|(object, metadata)| {
+            describe_certificate(&session, &objects[object], metadata, subject_cn)
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(Token {
+        info,
+        session,
+        objects,
+        certificates,
+    })
 }
 
 /// A token that holds at least one certificate for the subject common name we look for.

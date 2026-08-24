@@ -56,8 +56,9 @@ firezone-headless-client x509
 
 The command prints the matching certificates with their validity, client-auth
 EKU, private-key access, signing algorithm and SHA-256 fingerprint. A keystore
-without a matching identity is reported as a normal status; a keystore that
-cannot be read exits non-zero.
+without a matching identity is reported as a normal status, and so is a PKCS#11
+keystore that cannot be read; a matching identity the keystore cannot use exits
+non-zero.
 
 On Linux the keystore is a PKCS#11 token, reached through p11-kit rather than
 configured: the Client loads `p11-kit-proxy.so` and searches every token the

@@ -43,8 +43,10 @@ const SUBJECT_COMMON_NAME: &str = "dev.firezone.device-trust";
 ///
 /// # Errors
 ///
-/// Returns an error if the keystore cannot be read at all. A readable keystore that holds no
-/// usable identity yields [`None`], because running without mTLS is the normal case.
+/// Returns an error if the keystore holds a matching identity that cannot be used, e.g. a token
+/// that rejects its PIN. A keystore that holds no usable identity yields [`None`], because
+/// running without mTLS is the normal case; on Linux an unreadable PKCS#11 keystore counts as
+/// holding none, so a broken module cannot keep the client from connecting.
 pub fn certificate() -> Result<Option<ClientCertificate>> {
     let Some(identity) = keystore::identity(SUBJECT_COMMON_NAME)? else {
         return Ok(None);
@@ -60,7 +62,8 @@ pub fn certificate() -> Result<Option<ClientCertificate>> {
 ///
 /// # Errors
 ///
-/// Returns an error if the keystore cannot be read.
+/// Returns an error if the keystore cannot describe a matching identity it holds. On Linux an
+/// unreadable PKCS#11 keystore is itself described, as a warning [`Status`] naming what failed.
 pub fn status() -> Result<Status> {
     let status = keystore::status(SUBJECT_COMMON_NAME)?;
 
