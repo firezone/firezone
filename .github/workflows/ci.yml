@@ -200,6 +200,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: bats-core/bats-action@77d6fb60505b4d0d1d73e48bd035b55074bbfb43 # v4.0.0
         id: setup-bats
+        with:
+          # The action downloads each library from GitHub and only authenticates
+          # when given this input, so without it the runner shares an anonymous
+          # rate limit and `tar` chokes on the error page it gets instead.
+          github-token: ${{ github.token }}
       - run: bats scripts/tests/bats
         env:
           BATS_LIB_PATH: ${{ steps.setup-bats.outputs.lib-path }}
