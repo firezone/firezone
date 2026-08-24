@@ -37,13 +37,11 @@ export default function X509Page({ status }: { status: X509Status | null }) {
         </div>
       ) : (
         <>
-          {status.severity === "Warning" ? (
+          {status.warning !== null && (
             <div className="flex gap-2.5 rounded border border-warning/30 bg-warning-light p-3 text-sm text-warning">
               <RemixIcon className="mt-0.5 h-4 w-4" name="alert" />
-              <p>{status.summary}</p>
+              <p>{status.warning}</p>
             </div>
-          ) : (
-            <p className="text-body">{status.summary}</p>
           )}
           {status.sections.map((section, sectionIndex) => (
             <section

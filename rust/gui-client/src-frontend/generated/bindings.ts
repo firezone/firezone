@@ -164,12 +164,10 @@ export type X509FieldValue =
   | "Absent"
   | { Invalid: string };
 export type X509Status = {
-  severity: X509StatusSeverity;
-  summary: string;
+  warning: string | null;
   sections: X509DetailSection[];
 };
 export type X509StatusChanged = X509Status;
-export type X509StatusSeverity = "Ok" | "Warning";
 
 /** tauri-specta globals **/
 
