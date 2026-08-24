@@ -16,6 +16,7 @@ use ring::signature::{
     RSA_PKCS1_2048_8192_SHA512, RSA_PSS_2048_8192_SHA256, RSA_PSS_2048_8192_SHA384,
     RSA_PSS_2048_8192_SHA512, UnparsedPublicKey, VerificationAlgorithm,
 };
+use rustls::SignatureAlgorithm;
 use x509_parser::prelude::{FromDer as _, X509Certificate};
 
 use super::*;
@@ -161,18 +162,6 @@ fn names_the_cause_behind_a_cng_failure() {
         classify_signing_error(windows::Win32::Foundation::E_UNEXPECTED.into()),
         SigningError::Keystore(_)
     ));
-}
-
-#[test]
-fn ecdsa_signature_is_der_encoded() {
-    let mut raw = vec![0; 64];
-    raw[31] = 1;
-    raw[63] = 2;
-
-    assert_eq!(
-        der_encode_ecdsa_signature(&raw).expect("signature should encode"),
-        vec![0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02]
-    );
 }
 
 /// The bytes the tests ask CNG to sign, standing in for a TLS handshake transcript.

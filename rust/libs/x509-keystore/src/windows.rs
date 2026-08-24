@@ -6,7 +6,7 @@ mod tests;
 use std::{ffi::c_void, fmt, ptr, slice, sync::Arc, time::SystemTime};
 
 use anyhow::{Context as _, Result, bail};
-use rustls::{SignatureAlgorithm, SignatureScheme, pki_types::CertificateDer};
+use rustls::{SignatureScheme, pki_types::CertificateDer};
 use sha2::{Digest as _, Sha256, Sha384, Sha512};
 use windows::{
     Win32::{
@@ -33,10 +33,13 @@ use windows::{
     },
     core::w,
 };
-use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
-use x509_credential::{PrivateKey, SigningError};
+use x509_claims::{ParsedCertificate, parse_certificate};
+use x509_credential::SigningError;
 
-use crate::{DetailField, DetailSection, Identity, Status, StatusSeverity, absent_field, field, invalid_field};
+use crate::{
+    DetailField, DetailSection, Identity, Status, StatusSeverity, absent_field, field,
+    invalid_field, sign,
+};
 
 /// The store MDM-provisioned identities land in.
 ///
@@ -143,10 +146,12 @@ pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
         .cloned()
         .map(CertificateDer::from)
         .collect();
-    let key = Arc::new(CngKey {
-        context: Arc::new(CertificateContext(signing_context)),
+    let key = Arc::new(sign::Key::new(
         algorithm,
-    });
+        CngKey {
+            context: Arc::new(CertificateContext(signing_context)),
+        },
+    ));
 
     tracing::info!(
         store = certificate.store,
@@ -163,43 +168,13 @@ pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
 #[derive(Debug)]
 struct CngKey {
     context: Arc<CertificateContext>,
-    algorithm: SigningAlgorithm,
 }
 
-impl PrivateKey for CngKey {
-    fn supported_schemes(&self) -> Vec<SignatureScheme> {
-        signature_schemes(self.algorithm).to_vec()
-    }
-
-    fn algorithm(&self) -> SignatureAlgorithm {
-        match self.algorithm {
-            SigningAlgorithm::RsaSha256 => SignatureAlgorithm::RSA,
-            SigningAlgorithm::EcdsaSha256 => SignatureAlgorithm::ECDSA,
-            SigningAlgorithm::EcdsaSha384 => SignatureAlgorithm::ECDSA,
-            SigningAlgorithm::EcdsaSha512 => SignatureAlgorithm::ECDSA,
-        }
-    }
-
+impl sign::Signer for CngKey {
     fn sign(&self, scheme: SignatureScheme, message: &[u8]) -> Result<Vec<u8>, SigningError> {
         let signature = unsafe { sign_with_certificate(self.context.0, scheme, message) }?;
 
         Ok(signature)
-    }
-}
-
-fn signature_schemes(algorithm: SigningAlgorithm) -> &'static [SignatureScheme] {
-    match algorithm {
-        SigningAlgorithm::RsaSha256 => &[
-            SignatureScheme::RSA_PSS_SHA512,
-            SignatureScheme::RSA_PSS_SHA384,
-            SignatureScheme::RSA_PSS_SHA256,
-            SignatureScheme::RSA_PKCS1_SHA512,
-            SignatureScheme::RSA_PKCS1_SHA384,
-            SignatureScheme::RSA_PKCS1_SHA256,
-        ],
-        SigningAlgorithm::EcdsaSha256 => &[SignatureScheme::ECDSA_NISTP256_SHA256],
-        SigningAlgorithm::EcdsaSha384 => &[SignatureScheme::ECDSA_NISTP384_SHA384],
-        SigningAlgorithm::EcdsaSha512 => &[SignatureScheme::ECDSA_NISTP521_SHA512],
     }
 }
 
@@ -257,42 +232,30 @@ unsafe fn sign_with_certificate(
                 &Sha512::digest(message),
             )
         },
-        SignatureScheme::ECDSA_NISTP256_SHA256 => {
-            let raw = unsafe {
-                sign_hash(
-                    key.handle,
-                    None,
-                    &Sha256::digest(message),
-                    NCRYPT_FLAGS::default(),
-                )
-            }?;
-
-            der_encode_ecdsa_signature(&raw)
-        }
-        SignatureScheme::ECDSA_NISTP384_SHA384 => {
-            let raw = unsafe {
-                sign_hash(
-                    key.handle,
-                    None,
-                    &Sha384::digest(message),
-                    NCRYPT_FLAGS::default(),
-                )
-            }?;
-
-            der_encode_ecdsa_signature(&raw)
-        }
-        SignatureScheme::ECDSA_NISTP521_SHA512 => {
-            let raw = unsafe {
-                sign_hash(
-                    key.handle,
-                    None,
-                    &Sha512::digest(message),
-                    NCRYPT_FLAGS::default(),
-                )
-            }?;
-
-            der_encode_ecdsa_signature(&raw)
-        }
+        SignatureScheme::ECDSA_NISTP256_SHA256 => unsafe {
+            sign_hash(
+                key.handle,
+                None,
+                &Sha256::digest(message),
+                NCRYPT_FLAGS::default(),
+            )
+        },
+        SignatureScheme::ECDSA_NISTP384_SHA384 => unsafe {
+            sign_hash(
+                key.handle,
+                None,
+                &Sha384::digest(message),
+                NCRYPT_FLAGS::default(),
+            )
+        },
+        SignatureScheme::ECDSA_NISTP521_SHA512 => unsafe {
+            sign_hash(
+                key.handle,
+                None,
+                &Sha512::digest(message),
+                NCRYPT_FLAGS::default(),
+            )
+        },
         _ => Err(SigningError::UnsupportedScheme(scheme)),
     }
 }
@@ -384,53 +347,6 @@ unsafe fn sign_hash(
     signature.truncate(written as usize);
 
     Ok(signature)
-}
-
-/// Wraps the fixed-width `r` and `s` values CNG returns into the DER sequence TLS expects.
-fn der_encode_ecdsa_signature(raw: &[u8]) -> Result<Vec<u8>, SigningError> {
-    if raw.is_empty() || !raw.len().is_multiple_of(2) {
-        return Err(SigningError::Keystore(format!(
-            "CNG returned a {}-byte ECDSA signature",
-            raw.len()
-        )));
-    }
-
-    let half = raw.len() / 2;
-    let r = der_integer(&raw[..half]);
-    let s = der_integer(&raw[half..]);
-    let mut output = vec![0x30];
-    encode_der_length(&mut output, r.len() + s.len());
-    output.extend(r);
-    output.extend(s);
-
-    Ok(output)
-}
-
-fn der_integer(value: &[u8]) -> Vec<u8> {
-    let first_nonzero = value
-        .iter()
-        .position(|byte| *byte != 0)
-        .unwrap_or(value.len().saturating_sub(1));
-    let value = &value[first_nonzero..];
-    let needs_padding = value.first().is_some_and(|byte| byte & 0x80 != 0);
-    let mut output = vec![0x02];
-    encode_der_length(&mut output, value.len() + usize::from(needs_padding));
-    if needs_padding {
-        output.push(0);
-    }
-    output.extend(value);
-
-    output
-}
-
-fn encode_der_length(output: &mut Vec<u8>, length: usize) {
-    if length < 0x80 {
-        output.push(length as u8);
-    } else if length < 0x100 {
-        output.extend([0x81, length as u8]);
-    } else {
-        output.extend([0x82, (length >> 8) as u8, length as u8]);
-    }
 }
 
 /// A certificate in one of the searched stores whose subject CN is the one we look for.
