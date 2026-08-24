@@ -202,6 +202,8 @@ jobs:
     needs: [kotlin, tauri]
     if: "!cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository"
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -225,18 +227,9 @@ jobs:
           email: github-bot@firezone.dev
       - name: Push the re-rendered screenshots
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
           HEAD_REF: ${{ github.head_ref }}
         run: |
           set -euo pipefail
-
-          # A render that is not perfectly reproducible would otherwise chain: every push
-          # starts a run that pushes again. One re-render per human commit is the most this
-          # can ever produce.
-          if [ "$(git log -1 --format=%ae)" = "github-bot@firezone.dev" ]; then
-            echo "The head commit is already a re-render; not pushing on top of it."
-            exit 0
-          fi
 
           git config --local user.email "github-bot@firezone.dev"
           git config --local user.name "Firezone Bot"
@@ -261,10 +254,9 @@ jobs:
           fi
           git commit -m "chore(ci): re-render the screenshots"
 
-          # Do not use checkout's GITHUB_TOKEN for the push: pushes made with
-          # it do not trigger the pull request's workflows.
-          git config --local http.https://github.com/.extraheader ""
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # Pushing with the checkout's GITHUB_TOKEN is deliberate: GitHub starts no
+          # workflows for its pushes, so a re-render neither re-runs the suite nor
+          # chains into the next render.
 
           # The branch may have moved while the clients were building.
           for _ in 1 2 3; do
