@@ -7,7 +7,7 @@
 // Launches the real macOS app with `--mock-tunnel` and photographs its windows,
 // one scenario and appearance per launch (see MockTunnel.swift for the
 // scenarios). Nothing is compared against a reference; the images are the
-// output, and CI commits them to `swift/apple/screenshots`.
+// output, and CI commits them to `swift/apple/screenshots/macos`.
 
 #if os(macOS)
   import AppKit

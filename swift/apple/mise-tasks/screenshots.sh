@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Photograph the macOS screens into swift/apple/screenshots"
+#MISE description="Photograph the macOS screens into swift/apple/screenshots/macos"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -16,4 +16,4 @@ xcodebuild test \
     -destination "platform=macOS,arch=$(uname -m)" \
     -resultBundlePath "${RESULT_BUNDLE}"
 
-"${SCRIPT_DIR}/export-screenshots.sh" "${RESULT_BUNDLE}" "${APPLE_DIR}/screenshots"
+"${SCRIPT_DIR}/export-screenshots.sh" "${RESULT_BUNDLE}" "${APPLE_DIR}/screenshots/macos"

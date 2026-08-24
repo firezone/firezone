@@ -113,11 +113,11 @@ jobs:
         run: |
           swift/apple/mise-tasks/export-screenshots.sh \
             "${RUNNER_TEMP}/FirezoneUITests.xcresult" \
-            swift/apple/screenshots
+            swift/apple/screenshots/macos
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-screenshots
-          path: swift/apple/screenshots
+          path: swift/apple/screenshots/macos
       # The result bundle holds XCUITest's own failure screenshots and logs.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()

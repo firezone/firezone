@@ -223,7 +223,7 @@ jobs:
         continue-on-error: true
         with:
           name: macos-screenshots
-          path: swift/apple/screenshots
+          path: swift/apple/screenshots/macos
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         continue-on-error: true
         with:
