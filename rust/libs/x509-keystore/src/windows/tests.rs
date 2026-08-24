@@ -100,6 +100,10 @@ fn describes_a_minted_certificate_in_the_diagnostics() {
     assert_eq!(field_value(section, "Private Key Error"), None);
     assert_eq!(field_value(section, "Certificate Chain Error"), None);
     assert_eq!(field_value(section, "Private Key Metadata Errors"), None);
+    assert!(
+        position(section, "SHA-256 Fingerprint") < position(section, "Store"),
+        "what the certificate says should read before where Windows keeps it"
+    );
 }
 
 #[test]
@@ -204,6 +208,15 @@ fn leaf_of(identity: &Identity) -> Vec<u8> {
         .expect("the identity should carry a certificate chain");
 
     leaf.to_vec()
+}
+
+/// Returns the position of the diagnostics row labelled `label` in the section.
+fn position(section: &DetailSection, label: &str) -> usize {
+    section
+        .fields
+        .iter()
+        .position(|field| field.label == label)
+        .unwrap_or_else(|| panic!("the diagnostics should show {label}"))
 }
 
 /// Returns the value of the diagnostics row labelled `label`, if the section has one.
