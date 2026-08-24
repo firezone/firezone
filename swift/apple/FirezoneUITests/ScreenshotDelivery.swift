@@ -39,11 +39,13 @@ extension XCTestCase {
   /// Freshly presented content is often still moving: the diagnostic logs tab
   /// spins while it adds up the log directory, and windows fade in. An image
   /// that catches a frame of that differs on every run, which the gallery would
-  /// carry as a diff on every commit.
+  /// carry as a diff on every commit. A capture that never agrees with itself
+  /// is delivered anyway, and says so, because an image the gallery can show is
+  /// worth more than a failed run.
   private func settledScreenshot(of element: XCUIElement, as fileName: String) -> XCUIScreenshot {
     var previous = element.screenshot()
 
-    for _ in 0..<8 {
+    for _ in 0..<12 {
       Thread.sleep(forTimeInterval: 0.5)
 
       let current = element.screenshot()

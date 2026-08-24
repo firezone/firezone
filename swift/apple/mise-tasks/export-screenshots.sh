@@ -26,22 +26,24 @@ fi
 
 mkdir -p "${OUTPUT_DIR}"
 
-# Only the captures are taken, by the shape of the name the tests give them.
-# XCUITest attaches its own diagnostics beside them, and a name it decorated
-# rather than passed through would land in the gallery under the wrong one, so
-# anything else is left behind and an empty run fails below.
+# XCTest hands back the name a test gave its attachment with an index and a
+# UUID appended, so take those off to get the gallery's file name. Only the
+# captures are taken, by the shape of that name: XCUITest attaches its own
+# diagnostics beside them, and an empty run fails below.
 copied=0
 while IFS="$(printf '\t')" read -r exported suggested; do
-    case "${suggested}" in
-    *-light.png | *-dark.png) name="${suggested}" ;;
-    *-light | *-dark) name="${suggested}.png" ;;
+    name="${suggested%.png}"
+    name="${name%%_[0-9]*_*}"
+
+    case "${name}" in
+    *-light | *-dark) ;;
     *) continue ;;
     esac
 
     [ -e "${STAGING_DIR}/${exported}" ] || continue
 
-    cp "${STAGING_DIR}/${exported}" "${OUTPUT_DIR}/${name}"
-    echo "  ${name}"
+    cp "${STAGING_DIR}/${exported}" "${OUTPUT_DIR}/${name}.png"
+    echo "  ${name}.png"
     copied=$((copied + 1))
 done < <(jq -r '
   .. | objects | select(has("exportedFileName"))
