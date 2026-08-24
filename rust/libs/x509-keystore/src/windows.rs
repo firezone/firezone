@@ -455,19 +455,24 @@ struct PrivateKeyMetadata {
 
 impl Certificate {
     fn detail_fields(&self) -> Vec<DetailField> {
-        let mut fields = vec![
-            field("Store", self.store),
-            if self.key_available {
-                field("Private Key Access", "Available through Windows CNG")
-            } else {
-                absent_field("Private Key Access")
-            },
-            if self.usable {
-                field("Usable With Its Private Key", "Yes")
-            } else {
-                invalid_field("Usable With Its Private Key", "No")
-            },
-        ];
+        let mut fields = self
+            .metadata
+            .detail_fields()
+            .into_iter()
+            .map(DetailField::from)
+            .collect::<Vec<_>>();
+
+        fields.push(field("Store", self.store));
+        fields.push(if self.key_available {
+            field("Private Key Access", "Available through Windows CNG")
+        } else {
+            absent_field("Private Key Access")
+        });
+        fields.push(if self.usable {
+            field("Usable With Its Private Key", "Yes")
+        } else {
+            invalid_field("Usable With Its Private Key", "No")
+        });
         if let Some(error) = &self.key_error {
             fields.push(invalid_field("Private Key Error", error));
         }
@@ -494,12 +499,6 @@ impl Certificate {
         if let Some(error) = &self.chain_error {
             fields.push(invalid_field("Certificate Chain Error", error));
         }
-        fields.extend(
-            self.metadata
-                .detail_fields()
-                .into_iter()
-                .map(DetailField::from),
-        );
 
         fields
     }
