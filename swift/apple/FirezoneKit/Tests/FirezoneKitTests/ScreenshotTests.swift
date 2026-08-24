@@ -93,7 +93,7 @@
       )
       view.frame = CGRect(origin: .zero, size: AppView.WindowDefinition.defaultSize)
 
-      let window = NSWindow(
+      let window = ScreenshotWindow(
         contentRect: view.frame,
         styleMask: [.titled, .closable],
         backing: .buffered,
@@ -175,6 +175,15 @@
     fileprivate var suffix: String {
       self == .dark ? "dark" : "light"
     }
+  }
+
+  /// Reports itself as key and main so AppKit draws active chrome: colored traffic
+  /// lights and undimmed titlebar controls. The test process is a background app
+  /// whose windows never really gain key status, so every capture would otherwise
+  /// show the grayed-out chrome of an inactive window.
+  private final class ScreenshotWindow: NSWindow {
+    override var isKeyWindow: Bool { true }
+    override var isMainWindow: Bool { true }
   }
 
   private enum ScreenshotError: Error {
