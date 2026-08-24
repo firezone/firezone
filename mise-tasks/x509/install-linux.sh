@@ -63,11 +63,16 @@ softhsm_module() {
         return 0
     fi
 
+    # Debian keeps the module under softhsm/, Fedora under pkcs11/ and without the 2.
     for candidate in \
         /usr/lib/softhsm/libsofthsm2.so \
         /usr/lib64/softhsm/libsofthsm2.so \
         /usr/lib/x86_64-linux-gnu/softhsm/libsofthsm2.so \
         /usr/lib/aarch64-linux-gnu/softhsm/libsofthsm2.so \
+        /usr/lib64/pkcs11/libsofthsm2.so \
+        /usr/lib64/pkcs11/libsofthsm.so \
+        /usr/lib/pkcs11/libsofthsm2.so \
+        /usr/lib/pkcs11/libsofthsm.so \
         /usr/local/lib/softhsm/libsofthsm2.so; do
         if [ -f "$candidate" ]; then
             printf '%s\n' "$candidate"
@@ -78,12 +83,17 @@ softhsm_module() {
     return 1
 }
 
-# Only the directories the Client itself searches. A proxy module anywhere else is one it would
-# not load, so finding it here would say the token is reachable when it is not.
+# Only the paths the Client itself searches, in the same order. p11-kit installs the proxy into
+# the library directory itself (/usr/lib64 on Fedora, the multiarch directory on Debian); only
+# registered driver modules live under pkcs11/. /usr/lib64 is probed before /usr/lib because a
+# 32-bit p11-kit package leaves a proxy of the wrong architecture in /usr/lib.
 p11_kit_proxy() {
     local candidate
 
     for candidate in \
+        /usr/lib64/p11-kit-proxy.so \
+        /usr/lib/*/p11-kit-proxy.so \
+        /usr/lib/p11-kit-proxy.so \
         /usr/lib/*/pkcs11/p11-kit-proxy.so \
         /usr/lib/pkcs11/p11-kit-proxy.so \
         /usr/lib64/pkcs11/p11-kit-proxy.so; do
@@ -98,7 +108,7 @@ p11_kit_proxy() {
 
 # The proxy offers up whatever these two directories register, and nothing else.
 p11_kit_registers_softhsm() {
-    grep -rqs '^[[:blank:]]*module:.*libsofthsm2\.so' \
+    grep -rqsE '^[[:blank:]]*module:.*libsofthsm2?\.so' \
         /usr/share/p11-kit/modules /etc/pkcs11/modules
 }
 
@@ -115,7 +125,7 @@ system_token_dir() {
 }
 
 command -v softhsm2-util >/dev/null && command -v pkcs11-tool >/dev/null || {
-    echo "error: softhsm2-util and pkcs11-tool are required (Debian: apt install softhsm2 opensc)" >&2
+    echo "error: softhsm2-util and pkcs11-tool are required (Debian: apt install softhsm2 opensc; Fedora: dnf install softhsm opensc)" >&2
     exit 1
 }
 
@@ -142,7 +152,7 @@ module="$(softhsm_module)" || {
 # This configuration is the one the Client's SoftHSM module reads, so the token it describes is
 # the only token the Client can find. On Debian it belongs to the `softhsm` group, hence root.
 as_root test -f "$SOFTHSM_CONF" || {
-    echo "error: no system SoftHSM configuration at ${SOFTHSM_CONF} (Debian: apt install softhsm2)" >&2
+    echo "error: no system SoftHSM configuration at ${SOFTHSM_CONF} (Debian: apt install softhsm2; Fedora: dnf install softhsm)" >&2
     exit 1
 }
 
@@ -199,14 +209,14 @@ as_root install -m 0400 -o root -g root "${work}/pin" "$PIN_PATH"
 
 if ! p11_kit_registers_softhsm; then
     echo "warning: no p11-kit module file registers SoftHSM, so the proxy will not offer the" >&2
-    echo "token to the Client (Debian: apt install softhsm2)" >&2
+    echo "token to the Client (Debian: apt install softhsm2; Fedora: dnf install softhsm)" >&2
 fi
 
 # Listing through the proxy is what proves the Client can find the token, because the proxy is
 # the only module it loads.
 list_module="$(p11_kit_proxy)" || {
     echo "warning: no p11-kit-proxy.so found, so the listing below goes through SoftHSM directly" >&2
-    echo "rather than through the module the Client loads (Debian: apt install p11-kit-modules)" >&2
+    echo "rather than through the module the Client loads (Debian: apt install p11-kit-modules; Fedora: dnf install p11-kit)" >&2
     list_module="$module"
 }
 
