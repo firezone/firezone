@@ -63,8 +63,8 @@
       let archive = try Data(contentsOf: destination)
       #expect(archive.prefix(4) == Data([0x50, 0x4B, 0x03, 0x04]))
       // ZIP entry names are stored uncompressed, so the members are findable as bytes.
-      #expect(archive.range(of: Data("tunnel.zip".utf8)) != nil)
-      #expect(archive.range(of: Data("app.zip".utf8)) != nil)
+      #expect(archive.firstRange(of: Data("tunnel.zip".utf8)) != nil)
+      #expect(archive.firstRange(of: Data("app.zip".utf8)) != nil)
     }
 
     @Test("the view model publishes the size and the clearing state")
