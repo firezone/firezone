@@ -27,14 +27,9 @@
 	<string name="clear_log_directory">Clear Log Directory</string>
 
 	<!-- Client Certificate -->
-	<string name="x509_claims_title">Client Certificate</string>
-	<string name="x509_managed_description">
-		Your organization configured this certificate. Firezone will use it to authenticate you.
-	</string>
-	<string name="x509_user_description">
-		Pick a certificate once. Android asks you to confirm access and Firezone remembers the alias
-		for future connections.
-	</string>
+	<string name="x509_claims_title">Certificate</string>
+	<string name="x509_explainer_present">Firezone uses this certificate to identify this device.</string>
+	<string name="x509_explainer_absent">Firezone did not find a certificate to identify this device.</string>
 	<string name="x509_select_certificate">Select Certificate</string>
 	<string name="x509_selection_title">Select your client certificate</string>
 	<string name="x509_selection_description">
