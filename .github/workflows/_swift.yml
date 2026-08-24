@@ -79,23 +79,20 @@ jobs:
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-      - name: Run the app screenshot UI tests
+      # Ad-hoc signing with the entitlements dropped: the runner has no
+      # signing certificate, and the mocked app touches none of the
+      # facilities the entitlements gate. Restricted entitlements without a
+      # provisioning profile would keep the app from launching, and a
+      # sandboxed test runner cannot write the screenshots out.
+      - name: Build the app screenshot UI tests
         working-directory: swift/apple
-        env:
-          # xcodebuild forwards TEST_RUNNER_-prefixed variables to the test
-          # runner process with the prefix stripped.
-          TEST_RUNNER_SCREENSHOT_DIR: ${{ runner.temp }}/app-screenshots
-        # Ad-hoc signing with the entitlements dropped: the runner has no
-        # signing certificate, and the mocked app touches none of the
-        # facilities the entitlements gate. Restricted entitlements without a
-        # provisioning profile would keep the app from launching.
         run: |
-          xcodebuild test \
+          xcodebuild build-for-testing \
             -project Firezone.xcodeproj \
             -scheme FirezoneUITests \
             -configuration Debug \
             -destination "platform=macOS,arch=$(uname -m)" \
-            -resultBundlePath "${RUNNER_TEMP}/FirezoneUITests.xcresult" \
+            -derivedDataPath "${RUNNER_TEMP}/DerivedData" \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_STYLE=Manual \
@@ -106,6 +103,30 @@ jobs:
             ENABLE_HARDENED_RUNTIME=NO \
             GIT_SHA="${GITHUB_SHA}" \
             ONLY_ACTIVE_ARCH=YES
+      # Proof of what actually got signed, sandbox entitlements included.
+      - name: Show the signed entitlements
+        run: |
+          for bundle in \
+            "${RUNNER_TEMP}/DerivedData/Build/Products/Debug/FirezoneUITests-Runner.app" \
+            "${RUNNER_TEMP}/DerivedData/Build/Products/Debug/Firezone.app"; do
+            echo "=== ${bundle}"
+            codesign -d --entitlements - "${bundle}" || true
+          done
+      - name: Run the app screenshot UI tests
+        working-directory: swift/apple
+        env:
+          # xcodebuild forwards TEST_RUNNER_-prefixed variables to the test
+          # runner process with the prefix stripped.
+          TEST_RUNNER_SCREENSHOT_DIR: ${{ runner.temp }}/app-screenshots
+        run: |
+          mkdir -p "${TEST_RUNNER_SCREENSHOT_DIR}"
+          xcodebuild test-without-building \
+            -project Firezone.xcodeproj \
+            -scheme FirezoneUITests \
+            -configuration Debug \
+            -destination "platform=macOS,arch=$(uname -m)" \
+            -derivedDataPath "${RUNNER_TEMP}/DerivedData" \
+            -resultBundlePath "${RUNNER_TEMP}/FirezoneUITests.xcresult"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: "!cancelled()"
         with:

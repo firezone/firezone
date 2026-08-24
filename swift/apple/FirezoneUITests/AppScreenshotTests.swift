@@ -136,14 +136,25 @@ final class AppScreenshotTests: XCTestCase {
     tab.click()
   }
 
-  /// Photographs the window and writes it out as a PNG.
+  /// Photographs the window, attaches the image to the test, and writes it out
+  /// as a PNG.
+  ///
+  /// The attachment is kept unconditionally so the image also lands in the
+  /// result bundle, which survives even when writing the file does not.
   private func capture(_ window: XCUIElement, as name: String) throws {
     // XCUITest waits for quiescence before events, but a capture is not an
     // event, so give freshly presented content a moment to settle.
     Thread.sleep(forTimeInterval: 0.5)
 
+    let screenshot = window.screenshot()
+
+    let attachment = XCTAttachment(screenshot: screenshot)
+    attachment.name = name
+    attachment.lifetime = .keepAlways
+    add(attachment)
+
     let file = try Self.outputDirectory().appendingPathComponent("\(name).png")
-    try window.screenshot().pngRepresentation.write(to: file)
+    try screenshot.pngRepresentation.write(to: file)
 
     print("Screenshot \(name).png written to \(file.path)")
   }
