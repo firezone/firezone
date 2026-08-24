@@ -118,6 +118,30 @@
       XCTFail("An instance of \(Self.appBundleID) outlived its test and never exited")
     }
 
+    /// The app under test, once it is the only instance and has finished launching.
+    ///
+    /// `NSWorkspace.open` starts a second copy when LaunchServices does not yet
+    /// count the app as running, and two processes under one bundle identifier
+    /// put both their windows into the same element tree.
+    private func singleRunningInstance() -> NSRunningApplication? {
+      let deadline = Date().addingTimeInterval(30)
+
+      while Date() < deadline {
+        let running = NSRunningApplication.runningApplications(
+          withBundleIdentifier: Self.appBundleID
+        )
+        if running.count == 1, let instance = running.first, instance.isFinishedLaunching {
+          return instance
+        }
+
+        Thread.sleep(forTimeInterval: 0.1)
+      }
+
+      XCTFail("The app under test never settled to one finished instance")
+
+      return nil
+    }
+
     /// Photographs the window and pins that its dark capture is actually dark.
     ///
     /// Brightness rather than equality: an appearance the app ignored puts a light
@@ -169,12 +193,9 @@
       named name: String, title: String, in app: XCUIApplication
     ) throws -> XCUIElement {
       let url = try XCTUnwrap(URL(string: "firezone://\(name)"))
-      let running = NSRunningApplication.runningApplications(withBundleIdentifier: Self.appBundleID)
-      XCTAssertEqual(
-        running.count, 1,
-        "\(running.count) instances share the bundle identifier, so a window cannot be attributed"
+      let runningApp = try XCTUnwrap(
+        singleRunningInstance(), "the app under test is not the only instance running"
       )
-      let runningApp = try XCTUnwrap(running.first, "the app under test is not running")
       let applicationURL = try XCTUnwrap(runningApp.bundleURL)
 
       // The identifier alternative covers a window whose title accessibility
@@ -185,15 +206,25 @@
       )
       let window = app.windows.matching(matcher).firstMatch
 
+      // Reusing the instance already under test is the whole point: a second
+      // copy would put its own windows in the same element tree.
+      let configuration = NSWorkspace.OpenConfiguration()
+      configuration.createsNewApplicationInstance = false
+
       // The first open can race the app still wiring up its scenes, so ask again
-      // rather than spending the whole timeout on one attempt.
+      // rather than spending the whole timeout on one attempt. Each open is
+      // waited out, because one still in flight when the next arrives is how a
+      // second instance gets started.
       for _ in 0..<3 {
+        let opened = expectation(description: "opened \(url)")
         NSWorkspace.shared.open(
           [url],
           withApplicationAt: applicationURL,
-          configuration: NSWorkspace.OpenConfiguration(),
-          completionHandler: nil
-        )
+          configuration: configuration
+        ) { _, _ in
+          opened.fulfill()
+        }
+        wait(for: [opened], timeout: 30)
 
         if window.waitForExistence(timeout: 10) {
           return window
