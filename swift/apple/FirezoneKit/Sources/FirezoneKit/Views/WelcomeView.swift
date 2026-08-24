@@ -17,7 +17,7 @@ struct WelcomeView: View {
       alignment: .center,
       content: {
         Spacer()
-        Image("LogoText", bundle: .module)
+        Image("LogoText", bundle: Bundle.module)
           .resizable()
           .scaledToFit()
           .frame(maxWidth: 300)
