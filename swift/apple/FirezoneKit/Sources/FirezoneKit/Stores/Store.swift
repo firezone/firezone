@@ -89,6 +89,15 @@ public final class Store: ObservableObject {
   /// UserDefaults instance for persisting GUI state.
   let userDefaults: UserDefaults
 
+  /// Overrides the app-side log directory; `SharedAccess.logFolderURL` applies when nil.
+  private let logDirectoryOverride: URL?
+
+  // Resolved lazily: the app group container behind `SharedAccess.logFolderURL` is
+  // unavailable outside a provisioned app bundle.
+  private var logDirectory: URL? {
+    logDirectoryOverride ?? SharedAccess.logFolderURL
+  }
+
   // Task consuming VPN status updates; its presence means observers are active.
   private var vpnStatusTask: CancellableTask?
 
@@ -99,6 +108,7 @@ public final class Store: ObservableObject {
       systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil,
       updateChecker: (any UpdateCheckerProtocol)? = nil,
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
+      logDirectory: URL? = nil,
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
     ) {
@@ -108,6 +118,7 @@ public final class Store: ObservableObject {
       self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
       self.tunnelManagerFactory = tunnelManagerFactory
+      self.logDirectoryOverride = logDirectory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
       self.actorName = self.configuration.actorName
@@ -119,12 +130,14 @@ public final class Store: ObservableObject {
       configuration: Configuration? = nil,
       sessionNotification: SessionNotificationProtocol = SessionNotification(),
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
+      logDirectory: URL? = nil,
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
     ) {
       self.configuration = configuration ?? Configuration.shared
       self.sessionNotification = sessionNotification
       self.tunnelManagerFactory = tunnelManagerFactory
+      self.logDirectoryOverride = logDirectory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
       self.actorName = self.configuration.actorName
@@ -622,12 +635,82 @@ public final class Store: ObservableObject {
     try await IPCClient.signOut(session: session)
   }
 
-  func clearLogs() async throws {
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    try await IPCClient.clearLogs(session: session)
+  // Calculates the total size of our logs by summing the size of the
+  // app, tunnel, and connlib log directories.
+  //
+  // On iOS, the log directory is a single folder that contains all three
+  // directories, but on macOS, the app log directory lives in a different
+  // Group Container than tunnel and connlib directories, so we use IPC to make
+  // a call to sum both the tunnel and connlib directories.
+  //
+  // Unfortunately the IPC method doesn't work on iOS because the tunnel process
+  // is not started on demand, so the IPC calls hang. Thus, we use separate code
+  // paths for iOS and macOS.
+  func logDirectorySize() async -> UInt64? {
+    guard let logDirectory else { return nil }
+
+    let appLogSize = await Log.size(of: logDirectory)
+
+    #if os(macOS)
+      do {
+        guard let session = try manager().session() else {
+          throw VPNConfigurationManagerError.managerNotInitialized
+        }
+
+        let providerLogSize = try await IPCClient.getLogFolderSize(session: session)
+
+        return UInt64(clamping: appLogSize + providerLogSize)
+      } catch {
+        if let error = error as? IPCClient.Error,
+          case IPCClient.Error.noIPCData = error
+        {
+          // Will happen if the extension is not enabled
+          Log.warning("\(#function): Unable to count logs: \(error). Is the XPC service running?")
+        } else {
+          Log.error(error)
+        }
+
+        return nil
+      }
+    #else
+      return UInt64(clamping: appLogSize)
+    #endif
   }
+
+  // On iOS, all the logs are stored in one directory.
+  // On macOS, we clear logs from the app process, then call over IPC
+  // to clear the provider's log directory.
+  func clearLogs() async throws {
+    try Log.clear(in: logDirectory)
+
+    #if os(macOS)
+      guard let session = try manager().session() else {
+        throw VPNConfigurationManagerError.managerNotInitialized
+      }
+
+      try await IPCClient.clearLogs(session: session)
+    #endif
+  }
+
+  #if os(macOS)
+    func exportLogs(to destination: URL) async throws {
+      guard let session = try manager().session() else {
+        throw VPNConfigurationManagerError.managerNotInitialized
+      }
+
+      try await LogExporter.export(to: destination, session: session)
+    }
+  #endif
+
+  #if os(iOS)
+    /// Exports the logs to a temporary archive and returns its URL.
+    func exportLogs() async throws -> URL {
+      let archiveURL = try LogExporter.tempFile()
+      try await LogExporter.export(to: archiveURL)
+
+      return archiveURL
+    }
+  #endif
 
   // MARK: Private functions
 

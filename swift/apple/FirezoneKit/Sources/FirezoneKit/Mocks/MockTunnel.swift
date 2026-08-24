@@ -24,14 +24,16 @@
           sessionNotification: MockSessionNotification(),
           systemExtensionManager: MockSystemExtensionManager(),
           updateChecker: MockUpdateChecker(),
-          tunnelManagerFactory: MockTunnelProviderManagerFactory()
+          tunnelManagerFactory: MockTunnelProviderManagerFactory(),
+          logDirectory: MockFixtures.makeLogDirectory()
         )
       }
     #else
       public static func mock() -> Store {
         Store(
           sessionNotification: MockSessionNotification(),
-          tunnelManagerFactory: MockTunnelProviderManagerFactory()
+          tunnelManagerFactory: MockTunnelProviderManagerFactory(),
+          logDirectory: MockFixtures.makeLogDirectory()
         )
       }
     #endif
@@ -166,6 +168,26 @@
   }
 
   private enum MockFixtures {
+    /// A throwaway log directory seeded with two files of fixed contents, so
+    /// the computed app-side log size is real and deterministic.
+    static func makeLogDirectory() -> URL {
+      let fileManager = FileManager.default
+      let directory = fileManager.temporaryDirectory
+        .appendingPathComponent("firezone-mock-logs-\(UUID().uuidString)")
+
+      do {
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("2026-01-01T00:00:00 INFO Connected to the portal\n".utf8)
+          .write(to: directory.appendingPathComponent("app.log"))
+        try Data("2026-01-01T00:00:00 DEBUG Tunnel interface is up\n".utf8)
+          .write(to: directory.appendingPathComponent("connlib.log"))
+      } catch {
+        Log.warning("MockFixtures: failed to seed the log directory: \(error)")
+      }
+
+      return directory
+    }
+
     static let resources: [Resource] = {
       let site = Site(id: "demo-site", name: "Demo Site")
       return [
