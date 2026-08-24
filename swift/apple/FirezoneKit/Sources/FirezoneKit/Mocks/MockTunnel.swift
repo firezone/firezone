@@ -19,21 +19,21 @@
   extension Store {
     /// A `Store` wired to mock dependencies for the `--mock-tunnel` demo.
     #if os(macOS)
-      public static func mock(logDirectory: URL = MockFixtures.makeLogDirectory()) -> Store {
+      public static func mock(logDirectory: URL? = nil) -> Store {
         Store(
           sessionNotification: MockSessionNotification(),
           systemExtensionManager: MockSystemExtensionManager(),
           updateChecker: MockUpdateChecker(),
           tunnelManagerFactory: MockTunnelProviderManagerFactory(),
-          logDirectory: logDirectory
+          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
         )
       }
     #else
-      public static func mock(logDirectory: URL = MockFixtures.makeLogDirectory()) -> Store {
+      public static func mock(logDirectory: URL? = nil) -> Store {
         Store(
           sessionNotification: MockSessionNotification(),
           tunnelManagerFactory: MockTunnelProviderManagerFactory(),
-          logDirectory: logDirectory
+          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
         )
       }
     #endif
