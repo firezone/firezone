@@ -18,22 +18,36 @@
 
   extension Store {
     /// A `Store` wired to mock dependencies for the `--mock-tunnel` demo.
+    ///
+    /// Each mock `Store` owns its own `Configuration` and an ephemeral `UserDefaults`
+    /// suite, so instances built in parallel (e.g. by tests) never observe each other
+    /// and nothing leaks into the process-wide state.
     #if os(macOS)
       public static func mock(logDirectory: URL? = nil) -> Store {
-        Store(
+        let userDefaults = MockFixtures.makeUserDefaults()
+        let configuration = Configuration(userDefaults: userDefaults)
+
+        return Store(
+          configuration: configuration,
           sessionNotification: MockSessionNotification(),
           systemExtensionManager: MockSystemExtensionManager(),
           updateChecker: MockUpdateChecker(),
-          tunnelManagerFactory: MockTunnelProviderManagerFactory(),
-          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
+          tunnelManagerFactory: MockTunnelProviderManagerFactory(configuration: configuration),
+          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory(),
+          userDefaults: userDefaults
         )
       }
     #else
       public static func mock(logDirectory: URL? = nil) -> Store {
-        Store(
+        let userDefaults = MockFixtures.makeUserDefaults()
+        let configuration = Configuration(userDefaults: userDefaults)
+
+        return Store(
+          configuration: configuration,
           sessionNotification: MockSessionNotification(),
-          tunnelManagerFactory: MockTunnelProviderManagerFactory(),
-          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
+          tunnelManagerFactory: MockTunnelProviderManagerFactory(configuration: configuration),
+          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory(),
+          userDefaults: userDefaults
         )
       }
     #endif
@@ -125,7 +139,11 @@
   /// session for the lifetime of the app.
   @MainActor
   private final class MockTunnelProviderManagerFactory: TunnelProviderManagerFactory {
-    private let manager = MockTunnelProviderManager()
+    private let manager: MockTunnelProviderManager
+
+    init(configuration: Configuration) {
+      manager = MockTunnelProviderManager(configuration: configuration)
+    }
 
     func loadAllFromPreferences() async throws -> [any TunnelProviderManager] { [manager] }
     func createManager() -> any TunnelProviderManager { manager }
@@ -143,9 +161,9 @@
 
     private let session = MockTunnelSession()
 
-    init() {
+    init(configuration: Configuration) {
       let proto = NETunnelProviderProtocol()
-      proto.providerConfiguration = Configuration().toProviderConfiguration()
+      proto.providerConfiguration = configuration.toProviderConfiguration()
       proto.providerBundleIdentifier = extensionBundleIdentifier
       proto.serverAddress = "Firezone"
       protocolConfiguration = proto
@@ -203,6 +221,17 @@
     static let exportedTunnelLogs = Data(
       [0x50, 0x4B, 0x05, 0x06] + [UInt8](repeating: 0, count: 18)
     )
+
+    /// An ephemeral `UserDefaults` backed by a uniquely named suite, so no state
+    /// leaks between mock `Store`s or into the app's real defaults.
+    static func makeUserDefaults() -> UserDefaults {
+      let suiteName = "dev.firezone.firezone.mock.\(UUID().uuidString)"
+      guard let defaults = UserDefaults(suiteName: suiteName) else {
+        fatalError("A UUID-suffixed suite name cannot collide with the bundle id")
+      }
+      defaults.removePersistentDomain(forName: suiteName)
+      return defaults
+    }
 
     /// A throwaway log directory seeded with two files of fixed contents, so
     /// the computed app-side log size is real and deterministic.
