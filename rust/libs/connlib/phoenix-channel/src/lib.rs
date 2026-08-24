@@ -253,43 +253,29 @@ impl Error {
         }
     }
 
-    /// Classifies a refusal of the certificate we presented, if that is what the portal reported.
-    ///
-    /// The portal answers these with 403 and 409 rather than 401, so without this they would be
-    /// indistinguishable from a transient failure and retried until the backoff gave up, long
-    /// after the portal had said something the user could act on.
-    fn from_certificate_rejection(
-        response: &tungstenite::handshake::client::Response,
-    ) -> Option<Self> {
-        let problem = ProblemDetails::from_response(response)?;
-        let code = problem.code?;
-
-        if !CERTIFICATE_REJECTION_CODES.contains(&code.as_str()) {
-            return None;
-        }
-
-        Some(Error::CertificateRejected(
-            problem
-                .detail
-                .unwrap_or_else(|| "no reason provided".to_owned()),
-        ))
-    }
-
     /// Classifies a rejected connection attempt by the reason the portal reported.
     ///
-    /// Reasons the client cannot act on specifically map to [`Error::AuthenticationFailed`],
-    /// as do responses without problem details, e.g. an error page from an intermediary proxy.
-    fn from_unauthorized(response: &tungstenite::handshake::client::Response) -> Self {
+    /// Returns `None` when nothing in the response marks the failure as permanent, so the
+    /// caller keeps retrying. The portal names permanent rejections with a problem code:
+    /// an unusable token, or a refused client certificate, which it answers with 403 and
+    /// 409 rather than 401. A 401 without a specific code maps to
+    /// [`Error::AuthenticationFailed`], as does one without problem details at all,
+    /// e.g. an error page from an intermediary proxy.
+    fn from_rejection(response: &tungstenite::handshake::client::Response) -> Option<Self> {
         let problem = ProblemDetails::from_response(response).unwrap_or_default();
+        let detail = problem
+            .detail
+            .unwrap_or_else(|| "no reason provided".to_owned());
 
         match problem.code.as_deref() {
-            Some("invalid_token") => Error::InvalidToken,
-            Some("missing_token") => Error::InvalidToken,
-            _ => Error::AuthenticationFailed(
-                problem
-                    .detail
-                    .unwrap_or_else(|| "no reason provided".to_owned()),
-            ),
+            Some("invalid_token" | "missing_token") => Some(Error::InvalidToken),
+            Some(code) if CERTIFICATE_REJECTION_CODES.contains(&code) => {
+                Some(Error::CertificateRejected(detail))
+            }
+            _ if response.status() == StatusCode::UNAUTHORIZED => {
+                Some(Error::AuthenticationFailed(detail))
+            }
+            _ => None,
         }
     }
 }
@@ -700,14 +686,8 @@ where
 
                         continue;
                     }
-                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
-                        if r.status() == StatusCode::UNAUTHORIZED =>
-                    {
-                        self.state = State::Closed;
-                        return Poll::Ready(Err(Error::from_unauthorized(&r)));
-                    }
                     Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(ref r))))
-                        if let Some(error) = Error::from_certificate_rejection(r) =>
+                        if let Some(error) = Error::from_rejection(r) =>
                     {
                         self.state = State::Closed;
                         return Poll::Ready(Err(error));
@@ -1289,7 +1269,7 @@ mod tests {
             ))
             .unwrap();
 
-        let error = Error::from_unauthorized(&response);
+        let error = Error::from_rejection(&response).expect("a 401 naming the token is terminal");
 
         assert!(matches!(error, Error::InvalidToken), "got {error:?}");
     }
@@ -1304,7 +1284,7 @@ mod tests {
             ))
             .unwrap();
 
-        let error = Error::from_unauthorized(&response);
+        let error = Error::from_rejection(&response).expect("a plain 401 is terminal");
 
         assert!(!error.requires_sign_in());
         assert_eq!(
