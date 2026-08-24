@@ -22,11 +22,12 @@ let package = Package(
         .product(name: "SystemPackage", package: "swift-system"),
         .product(name: "Sentry", package: "sentry-cocoa"),
       ],
-      resources: [.process("Resources")]
+      resources: [.process("Assets.xcassets")]
     ),
     .testTarget(
       name: "FirezoneKitTests",
-      dependencies: ["FirezoneKit"]
+      dependencies: ["FirezoneKit"],
+      resources: [.process("Resources")]
     ),
   ]
 )

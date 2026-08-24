@@ -104,6 +104,7 @@
           .environmentObject(store)
           .environmentObject(GlobalErrorHandler())
           .environment(\.colorScheme, colorScheme)
+          .environment(\.logoTextImage, Self.wordmark(colorScheme))
       )
       switch sizing {
       case .appDefault:
@@ -130,6 +131,22 @@
       view.layoutSubtreeIfNeeded()
 
       return window
+    }
+
+    /// The wordmark for the captures, from the SVG originals this test target
+    /// ships: the views' own catalogue lookup resolves nothing under `swift test`,
+    /// where the catalogue is copied verbatim instead of compiled.
+    private static func wordmark(_ colorScheme: ColorScheme) -> Image? {
+      let name = colorScheme == .dark ? "LogoTextDark" : "LogoText"
+
+      guard
+        let url = Bundle.module.url(forResource: name, withExtension: "svg"),
+        let nsImage = NSImage(contentsOf: url)
+      else {
+        return nil
+      }
+
+      return Image(nsImage: nsImage)
     }
 
     /// Photographs the window, titlebar included, and writes it out as a PNG.
