@@ -184,11 +184,6 @@ impl ParsedCertificate {
 
     pub fn detail_fields(&self) -> Vec<DetailField> {
         let mut fields = vec![
-            field(
-                "Usable as a Client Identity",
-                self.unusable_summary()
-                    .map_or_else(|| "Yes".to_owned(), |reasons| format!("No: {reasons}")),
-            ),
             claim_field("Common Name", ClaimValue::from(self.subject_cn.clone())),
             field("Subject", &self.subject),
             claim_field("Actor Email", self.actor_email.clone()),
@@ -213,10 +208,6 @@ impl ParsedCertificate {
             field("Serial Number", &self.serial),
             field("Not Before", &self.not_before),
             field("Not After", &self.not_after),
-            field(
-                "Currently Valid",
-                if self.is_currently_valid { "Yes" } else { "No" },
-            ),
             field(
                 "TLS Client Authentication EKU",
                 if self.has_client_auth_eku {
