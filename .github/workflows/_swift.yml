@@ -99,11 +99,22 @@ jobs:
             ENABLE_APP_SANDBOX=NO \
             ENABLE_HARDENED_RUNTIME=NO \
             ONLY_ACTIVE_ARCH=YES
-      # Vibrancy and window chrome do not rasterise identically from one runner
-      # to the next, which reaches the gallery as a diff no one can see. Drawing
-      # them opaque takes that source of noise out of the captures.
-      - name: Draw materials opaque
-        run: defaults write com.apple.universalaccess reduceTransparency -bool true
+      # The captures include each window's rounded corners, where the screen
+      # behind the window bleeds into the corner's falloff. macOS ships
+      # wallpapers that shift over the day, so an uncontrolled desktop puts a
+      # different colour in those pixels from one run to the next, and a
+      # screensaver would replace the screen outright partway through.
+      - name: Pin what is behind the windows
+        run: |
+          python3 -c 'import base64, pathlib, sys; pathlib.Path(sys.argv[2]).write_bytes(base64.b64decode(sys.argv[1]))' \
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mOQk5MDAAC4AFu7ANa+AAAAAElFTkSuQmCC' \
+            "${RUNNER_TEMP}/backdrop.png"
+
+          defaults -currentHost write com.apple.screensaver idleTime -int 0
+
+          osascript -e "tell application \"System Events\" to tell every desktop \
+            to set picture to \"${RUNNER_TEMP}/backdrop.png\"" \
+            || echo "::warning::Could not set the desktop picture; the window corners stay at the mercy of the wallpaper"
       - name: Run the app screenshot UI tests
         working-directory: swift/apple
         run: |
