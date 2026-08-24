@@ -183,12 +183,6 @@ impl ParsedCertificate {
     }
 
     pub fn detail_fields(&self) -> Vec<DetailField> {
-        let subject_alternative_names = match self.subject_alternative_names.as_slice() {
-            [] => ClaimValue::Absent,
-            names => ClaimValue::Present {
-                value: names.join("\n"),
-            },
-        };
         let mut fields = vec![
             field(
                 "Usable as a Client Identity",
@@ -210,8 +204,11 @@ impl ParsedCertificate {
                 },
             )
         }));
+        let remaining = self.remaining_subject_alternative_names();
+        if !remaining.is_empty() {
+            fields.push(field("Subject Alternative Names", remaining.join("\n")));
+        }
         fields.extend([
-            claim_field("Subject Alternative Names", subject_alternative_names),
             field("Issuer", &self.issuer),
             field("Serial Number", &self.serial),
             field("Not Before", &self.not_before),
@@ -269,6 +266,49 @@ impl ParsedCertificate {
             email: self.actor_email.attested()?.to_owned(),
             account_id: self.account_id.attested()?.to_owned(),
         })
+    }
+
+    /// The subject alternative names that no claim row shows.
+    ///
+    /// The claim rows are parsed out of the URI names, so a name one of them displays would
+    /// only be repeated here.
+    fn remaining_subject_alternative_names(&self) -> Vec<&str> {
+        self.subject_alternative_names
+            .iter()
+            .map(String::as_str)
+            .filter(|name| !self.shown_in_a_claim_row(name))
+            .collect()
+    }
+
+    /// Whether one of the claim rows displays this formatted subject alternative name.
+    fn shown_in_a_claim_row(&self, name: &str) -> bool {
+        let Some(uri) = name.strip_prefix(URI_PREFIX) else {
+            return false;
+        };
+        let Some((attribute, value)) = firezone_claim(uri) else {
+            // A bare device ID has no attribute and is matched by the URI as a whole.
+            return self.attests(uri);
+        };
+        if !known_attribute(&attribute) {
+            // An unrecognised claim gets a row of its own.
+            return true;
+        }
+        let value = percent_decode(value).unwrap_or_else(|| value.to_owned());
+
+        self.attests(value.trim())
+    }
+
+    /// Whether one of the claim rows attests `value`, compared the way the claims are matched.
+    fn attests(&self, value: &str) -> bool {
+        [
+            &self.actor_email,
+            &self.account_id,
+            &self.mdm_device_id,
+            &self.device_serial,
+        ]
+        .into_iter()
+        .filter_map(|claim| claim.attested())
+        .any(|attested| attested.to_lowercase() == value.to_lowercase())
     }
 }
 
@@ -713,6 +753,9 @@ fn normalize_mdm_device_id(value: &str) -> Option<String> {
     Some(normalized)
 }
 
+/// Marks a URI entry in the formatted subject alternative names.
+const URI_PREFIX: &str = "URI: ";
+
 fn format_subject_alternative_name(name: &GeneralName<'_>) -> Vec<String> {
     let value = match name {
         GeneralName::OtherName(oid, value) => format!(
@@ -733,7 +776,7 @@ fn format_subject_alternative_name(name: &GeneralName<'_>) -> Vec<String> {
         GeneralName::URI(value) => {
             return split_comma_joined_uris(value)
                 .into_iter()
-                .map(|value| format!("URI: {value}"))
+                .map(|value| format!("{URI_PREFIX}{value}"))
                 .collect();
         }
         GeneralName::IPAddress(value) => format!("IP address: {}", format_ip_address(value)),
