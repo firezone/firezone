@@ -91,7 +91,7 @@
           .environmentObject(GlobalErrorHandler())
           .environment(\.colorScheme, colorScheme)
       )
-      view.frame = CGRect(origin: .zero, size: view.fittingSize)
+      view.frame = CGRect(origin: .zero, size: AppView.WindowDefinition.defaultSize)
 
       let window = NSWindow(
         contentRect: view.frame,
