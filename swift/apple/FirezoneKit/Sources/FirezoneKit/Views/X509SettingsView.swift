@@ -15,7 +15,7 @@ struct X509SettingsView: View {
     case loading
     case notConfigured
     case failed(String)
-    case loaded(X509CertificateSummary)
+    case loaded(X509CertificateSummary, keyProblem: String?)
   }
 
   @State private var loadState: LoadState = .loading
@@ -40,8 +40,8 @@ struct X509SettingsView: View {
       case .failed(let message):
         notice("The client certificate could not be read", message)
 
-      case .loaded(let summary):
-        details(summary)
+      case .loaded(let summary, let keyProblem):
+        details(summary, keyProblem: keyProblem)
       }
     }
     .onAppear { Task { await reload() } }
@@ -73,13 +73,17 @@ struct X509SettingsView: View {
     }
   }
 
-  private func details(_ summary: X509CertificateSummary) -> some View {
+  private func details(_ summary: X509CertificateSummary, keyProblem: String?) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       if let unusableSummary = summary.unusableSummary {
         notice(
           "Firezone will not present this certificate",
           "It cannot be used to prove this device is enrolled: \(unusableSummary)."
         )
+      }
+
+      if let keyProblem {
+        notice("Firezone cannot use the certificate's private key", keyProblem)
       }
 
       Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
@@ -122,8 +126,14 @@ struct X509SettingsView: View {
     do {
       let reference = try identityReference()
       // Reading the keychain can block, and this runs while the settings window is open.
-      let certificate = try await Task.detached(priority: .userInitiated) {
-        try X509Identity.leafCertificate(persistentReference: reference)
+      let (certificate, keyProblem) = try await Task.detached(priority: .userInitiated) {
+        let certificate = try X509Identity.leafCertificate(persistentReference: reference)
+        let keyProblem =
+          certificate == nil
+          ? nil
+          : reference.flatMap(X509Identity.privateKeyProblem(persistentReference:))
+
+        return (certificate, keyProblem)
       }.value
 
       guard let certificate else {
@@ -138,7 +148,7 @@ struct X509SettingsView: View {
         return
       }
 
-      loadState = .loaded(summary)
+      loadState = .loaded(summary, keyProblem: keyProblem)
     } catch {
       Log.error("Failed to read the client certificate: \(error.localizedDescription)")
       loadState = .failed(error.localizedDescription)
