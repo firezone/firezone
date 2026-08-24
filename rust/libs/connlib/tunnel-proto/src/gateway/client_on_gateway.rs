@@ -1379,9 +1379,7 @@ mod tests {
                 id: foo_resource_id(),
                 address: foo_name(),
                 name: "foo".to_string(),
-                filters: vec![Filter::Udp(
-                    PortRange::new(foo_allowed_port(), foo_allowed_port()).unwrap(),
-                )],
+                filters: vec![Filter::Udp(PortRange::single(foo_allowed_port()))],
             },
         )
     }
@@ -1392,9 +1390,7 @@ mod tests {
                 id: foo_resource2_id(),
                 address: foo_name(),
                 name: "foo2".to_string(),
-                filters: vec![Filter::Tcp(
-                    PortRange::new(foo_allowed_port2(), foo_allowed_port2()).unwrap(),
-                )],
+                filters: vec![Filter::Tcp(PortRange::single(foo_allowed_port2()))],
             },
         )
     }
@@ -1416,9 +1412,7 @@ mod tests {
                 id: bar_resource_id(),
                 address: bar_address(),
                 name: "foo".to_string(),
-                filters: vec![Filter::Udp(
-                    PortRange::new(bar_allowed_port(), bar_allowed_port()).unwrap(),
-                )],
+                filters: vec![Filter::Udp(PortRange::single(bar_allowed_port()))],
             },
         )
     }
@@ -1938,13 +1932,11 @@ mod proptests {
     fn protocol_from_filter(f: Filter) -> impl Strategy<Value = Protocol> {
         match f {
             Filter::Udp(range) => range
-                .as_range()
-                .clone()
+                .to_range()
                 .prop_map(|dport| Protocol::Udp { dport })
                 .boxed(),
             Filter::Tcp(range) => range
-                .as_range()
-                .clone()
+                .to_range()
                 .prop_map(|dport| Protocol::Tcp { dport })
                 .boxed(),
             Filter::Icmp => Just(Protocol::Icmp).boxed(),
@@ -2048,12 +2040,8 @@ mod proptests {
 
         fn into_filter(self, range: RangeInclusive<u16>) -> Filter {
             match self {
-                ProtocolKind::Tcp => {
-                    Filter::Tcp(PortRange::new(*range.start(), *range.end()).unwrap())
-                }
-                ProtocolKind::Udp => {
-                    Filter::Udp(PortRange::new(*range.start(), *range.end()).unwrap())
-                }
+                ProtocolKind::Tcp => Filter::Tcp(range.try_into().unwrap()),
+                ProtocolKind::Udp => Filter::Udp(range.try_into().unwrap()),
                 ProtocolKind::Icmp => Filter::Icmp,
             }
         }

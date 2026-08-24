@@ -2,7 +2,7 @@
 
 use crate::messages::{
     Filter, FlowLogsConfig, IceCredentials, IceRole, IngestToken, Interface, Key, Relay,
-    RelaysPresence, SecretKey, SnownetCapabilities,
+    RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
 use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -34,7 +34,7 @@ pub struct ResourceDescriptionDns {
     #[serde(default)]
     pub ip_stack: Option<IpStack>,
 
-    #[serde_as(as = "VecSkipError<_>")]
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     #[serde(default)]
     pub filters: Vec<Filter>,
 }
@@ -56,7 +56,7 @@ pub struct ResourceDescriptionCidr {
     #[serde(rename = "gateway_groups", alias = "sites")]
     pub sites: Vec<Site>,
 
-    #[serde_as(as = "VecSkipError<_>")]
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     #[serde(default)]
     pub filters: Vec<Filter>,
 }
@@ -72,7 +72,7 @@ pub struct ResourceDescriptionStaticDevicePool {
     pub name: String,
     #[serde(default)]
     pub devices: Vec<DevicePoolMember>,
-    #[serde_as(as = "VecSkipError<_>")]
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     #[serde(default)]
     pub filters: Vec<Filter>,
 }
@@ -218,7 +218,7 @@ pub struct ClientDeviceAccessAuthorized {
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct AuthorizedResource {
     pub id: ResourceId,
-    #[serde_as(as = "VecSkipError<_>")]
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     #[serde(default)]
     pub filters: Vec<Filter>,
 }
@@ -245,7 +245,7 @@ pub struct ResourceAuthorization {
 #[derive(Debug, Deserialize, Clone)]
 pub struct ResourceFiltersUpdated {
     pub id: ResourceId,
-    #[serde_as(as = "VecSkipError<_>")]
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     pub filters: Vec<Filter>,
 }
 

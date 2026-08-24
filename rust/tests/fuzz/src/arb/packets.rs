@@ -7,7 +7,7 @@ use std::{
 use connlib_model::ClientId;
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use tunnel_proto::messages::{Filter, client::DevicePoolMember};
+use tunnel_proto::messages::{Filter, PortRange, client::DevicePoolMember};
 
 use super::context::Generator;
 use crate::reference::ReferenceState;
@@ -367,7 +367,7 @@ fn arb_filtered_packet(
             Filter::Udp(_) => true,
         })
         .filter(|f| match f {
-            Filter::Udp(range) if range.as_range() == &(53..=53) => false,
+            Filter::Udp(range) if range == &PortRange::single(53) => false,
             Filter::Icmp => true,
             Filter::Tcp(_) => true,
             Filter::Udp(_) => true,
@@ -382,7 +382,7 @@ fn arb_filtered_packet(
         match filter {
             Filter::Icmp => arb_icmp_packet(g, client_id, src, dst),
             Filter::Udp(range) => {
-                let dport = g.u16_in(range.as_range().clone());
+                let dport = g.u16_in(range.to_range());
                 arb_udp_packet(g, client_id, src, dst, dport)
             }
             Filter::Tcp(_) => unreachable!("TCP filters were excluded above"),
@@ -429,7 +429,7 @@ fn arb_tcp_connection(
         matching_service_ports[g.choose_index(matching_service_ports.len())]
     } else if !tcp_filters.is_empty() {
         let r = &tcp_filters[g.choose_index(tcp_filters.len())];
-        g.u16_in(r.as_range().clone())
+        g.u16_in(r.to_range())
     } else {
         arb_non_dns_port(g)
     };

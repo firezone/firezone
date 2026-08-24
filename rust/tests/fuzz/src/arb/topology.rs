@@ -313,8 +313,8 @@ fn arb_cidr_resources(
                         .chain(
                             allow_do53
                                 .then_some([
-                                    Filter::Udp(PortRange::new(53, 53).unwrap()),
-                                    Filter::Tcp(PortRange::new(53, 53).unwrap()),
+                                    Filter::Udp(PortRange::single(53)),
+                                    Filter::Tcp(PortRange::single(53)),
                                 ])
                                 .into_iter()
                                 .flatten(),

@@ -91,10 +91,10 @@ impl AllowRules {
     fn add_filter(&mut self, filter: &Filter) {
         match filter {
             Filter::Udp(range) => {
-                self.udp.insert(range.as_range().clone());
+                self.udp.insert(range.to_range());
             }
             Filter::Tcp(range) => {
-                self.tcp.insert(range.as_range().clone());
+                self.tcp.insert(range.to_range());
             }
             Filter::Icmp => {
                 self.icmp = true;

@@ -314,6 +314,18 @@ pub enum Filter {
     Icmp,
 }
 
+/// Reports filters that were discarded because they failed to deserialize.
+///
+/// The portal validates filters on write, so a malformed one means it is buggy
+/// or compromised. Traffic keeps flowing, hence `WARN` rather than `ERROR`.
+pub(crate) struct WarnOnInvalidFilter;
+
+impl serde_with::InspectError for WarnOnInvalidFilter {
+    fn inspect_error(error: impl serde::de::Error) {
+        tracing::warn!(%error, "Ignoring invalid filter");
+    }
+}
+
 /// An inclusive range of ports.
 ///
 /// The range is guaranteed to start at or before it ends, which makes it safe to
@@ -331,8 +343,17 @@ impl PortRange {
         Some(Self(start..=end))
     }
 
+    /// Returns the range covering exactly `port`.
+    pub fn single(port: u16) -> Self {
+        Self(port..=port)
+    }
+
     pub fn as_range(&self) -> &RangeInclusive<u16> {
         &self.0
+    }
+
+    pub fn to_range(&self) -> RangeInclusive<u16> {
+        self.0.clone()
     }
 
     pub fn start(&self) -> u16 {
@@ -343,6 +364,26 @@ impl PortRange {
         *self.0.end()
     }
 }
+
+impl TryFrom<RangeInclusive<u16>> for PortRange {
+    type Error = InvertedPortRange;
+
+    fn try_from(range: RangeInclusive<u16>) -> Result<Self, Self::Error> {
+        let range = Self::new(*range.start(), *range.end()).ok_or(InvertedPortRange)?;
+
+        Ok(range)
+    }
+}
+
+impl From<PortRange> for RangeInclusive<u16> {
+    fn from(range: PortRange) -> Self {
+        range.0
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("port range starts after it ends")]
+pub struct InvertedPortRange;
 
 // `RangeInclusive` is deliberately not ordered, yet resources need to be sorted.
 impl Ord for PortRange {
@@ -403,7 +444,19 @@ mod tests {
     fn inverted_port_range_cannot_be_built() {
         assert!(PortRange::new(100, 50).is_none());
         assert!(PortRange::new(50, 100).is_some());
+        assert_eq!(PortRange::single(50), PortRange::new(50, 50).unwrap());
         assert!(PortRange::new(50, 50).is_some());
+    }
+
+    #[test]
+    fn port_range_converts_to_and_from_a_range() {
+        assert_eq!(
+            PortRange::try_from(50..=100).unwrap(),
+            PortRange::new(50, 100).unwrap()
+        );
+        let (start, end) = (100, 50); // A literal reversed range trips a lint.
+        assert!(PortRange::try_from(start..=end).is_err());
+        assert_eq!(RangeInclusive::from(PortRange::single(53)), 53..=53);
     }
 
     #[test]

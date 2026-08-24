@@ -1652,7 +1652,7 @@ mod tests {
             name: "specific".to_owned(),
             address_description: None,
             sites: vec![site],
-            filters: vec![Filter::Udp(PortRange::new(80, 80).unwrap())],
+            filters: vec![Filter::Udp(PortRange::single(80))],
         });
 
         let dst = Destination::IpAddr("10.0.0.1".parse().unwrap());

@@ -2,7 +2,7 @@
 
 use crate::messages::{
     Filter, FlowLogsConfig, IceCredentials, IngestToken, Interface, Key, Relay, RelaysPresence,
-    SecretKey, SnownetCapabilities,
+    SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
 use connlib_model::{ClientId, IceCandidate, ResourceId};
 use ip_network::IpNetwork;
@@ -29,7 +29,7 @@ pub struct ResourceDescriptionDns {
     /// Used only for display.
     pub name: String,
 
-    #[serde_as(as = "VecSkipError<_>")]
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     pub filters: Vec<Filter>,
 }
 
@@ -46,7 +46,7 @@ pub struct ResourceDescriptionCidr {
     /// Used only for display.
     pub name: String,
 
-    #[serde_as(as = "VecSkipError<_>")]
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     pub filters: Vec<Filter>,
 }
 
