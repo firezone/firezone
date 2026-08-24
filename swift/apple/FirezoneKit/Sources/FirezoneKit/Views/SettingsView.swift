@@ -129,7 +129,7 @@ public struct SettingsView: View {
   }
 
   /// The tabs of the settings screen.
-  public enum Tab {
+  public enum Tab: Hashable {
     case general
     case advanced
     case logs
@@ -152,23 +152,26 @@ public struct SettingsView: View {
             .ignoresSafeArea()
 
           VStack {
-            TabView {
+            TabView(selection: $selectedTab) {
               generalTab
                 .tabItem {
                   Image(systemName: "slider.horizontal.3")
                   Text("General")
                 }
+                .tag(Tab.general)
               advancedTab
                 .tabItem {
                   Image(systemName: "gearshape.2")
                   Text("Advanced")
                 }
                 .badge(viewModel.isValid() ? nil : "!")
+                .tag(Tab.advanced)
               logsTab
                 .tabItem {
                   Image(systemName: "doc.text")
                   Text("Diagnostic Logs")
                 }
+                .tag(Tab.logs)
             }
           }
           .padding(.bottom, 10)
