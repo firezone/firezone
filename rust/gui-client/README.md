@@ -9,6 +9,15 @@ To compile natively for x86_64 Linux:
 1. [Install rustup](https://rustup.rs/)
 1. Install [pnpm](https://pnpm.io/installation)
 1. `sudo apt-get install build-essential curl file pkg-config libgtk-3-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev wget`
+1. Create the `firezone-client` group and join it, then log back in so the membership
+   applies. The installer does this in production; without it the GUI refuses to start,
+   and the Tunnel service's socket (mode `0660`, group `firezone-client`) is unreadable
+   to it:
+
+   ```bash
+   sudo groupadd --system firezone-client
+   sudo usermod -aG firezone-client "$USER"
+   ```
 
 ## Setup (Windows)
 
