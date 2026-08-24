@@ -32,8 +32,8 @@ use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
 use x509_credential::SigningError;
 
 use crate::{
-    CandidateCertificate, DetailField, DetailSection, Identity, Status, StatusSeverity,
-    absent_field, field, invalid_field, selected_certificate, sign, unusable_reasons,
+    CandidateCertificate, DetailField, DetailSection, Identity, Status, absent_field, field,
+    invalid_field, selected_certificate, sign, unusable_reasons,
 };
 
 /// The directories p11-kit module configuration is read from, the administrator's first.
@@ -58,8 +58,7 @@ pub(crate) fn status(subject_cn: &str) -> Result<Status> {
 
     if modules.is_empty() {
         return Ok(Status {
-            severity: StatusSeverity::Warning,
-            summary: MISSING_P11_KIT.to_owned(),
+            warning: Some(MISSING_P11_KIT.to_owned()),
             sections: Vec::new(),
         });
     }
@@ -113,7 +112,7 @@ fn status_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<S
 
     // A machine whose every module failed has an unreadable keystore, not a missing
     // certificate, and which of the two the administrator reads decides what they fix.
-    let summary = if failures == modules.len() {
+    let warning = if failures == modules.len() {
         "The PKCS#11 keystore cannot be read, so no X.509 client identity certificate can be \
          found."
             .to_owned()
@@ -122,8 +121,7 @@ fn status_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<S
     };
 
     Ok(Status {
-        severity: StatusSeverity::Warning,
-        summary,
+        warning: Some(warning),
         sections,
     })
 }
@@ -149,25 +147,14 @@ fn token_status(module: &Path, token: Token) -> Status {
             }),
     );
 
-    let (severity, summary) = match selected {
-        None => (
-            StatusSeverity::Warning,
-            format!(
-                "Matching certificates are on the PKCS#11 token, but none is usable as a client identity: {}",
-                unusable_reasons(&token.certificates).join("; ")
-            ),
-        ),
-        Some(_) => (
-            StatusSeverity::Ok,
-            "An X.509 client identity is available for mutual TLS.".to_owned(),
-        ),
-    };
+    let warning = selected.is_none().then(|| {
+        format!(
+            "Matching certificates are on the PKCS#11 token, but none is usable as a client identity: {}",
+            unusable_reasons(&token.certificates).join("; ")
+        )
+    });
 
-    Status {
-        severity,
-        summary,
-        sections,
-    }
+    Status { warning, sections }
 }
 
 /// The diagnostics section naming one registered module, and what failed on it, if anything.
