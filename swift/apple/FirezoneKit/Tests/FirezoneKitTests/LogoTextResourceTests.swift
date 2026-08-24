@@ -5,7 +5,8 @@
 //
 
 // Pins that the wordmark SVGs ship with this test target and that NSImage can
-// load them: the screenshot captures inject exactly these into the views.
+// load them: they are what a renderer without a compiled asset catalogue hands
+// `LogoText` through `\.logoTextImage`.
 
 #if os(macOS)
   import AppKit

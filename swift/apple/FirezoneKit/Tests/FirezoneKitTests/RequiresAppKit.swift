@@ -14,20 +14,13 @@
   /// `swift test` processes run without `NSApplication`, so GUI objects like
   /// `NSAlert` crash when loading nibs (CoreUI's system appearance renderer
   /// is uninitialised). This trait sets `.accessory` activation policy on
-  /// `@MainActor` to bootstrap the connection before the suite runs, then
-  /// activates the app: stoplight buttons and titlebar text style themselves
-  /// after `NSApp.isActive`, and an accessory app starts inactive, which would
-  /// gray them out in the screenshot captures.
+  /// `@MainActor` to bootstrap the connection before the suite runs.
   ///
   /// An observer on `NSWindow.didUpdateNotification` sets `alphaValue = 0`
   /// on every window as it appears, keeping tests invisible. This does not
   /// affect `NSWindow.isVisible` or programmatic `performClick(nil)` calls,
   /// so assertions and interactions still work normally. If a test crashes,
   /// only invisible windows remain — nothing to manually dismiss.
-  ///
-  /// Windows identified as `.screenshotCapture` keep their alpha: the window
-  /// server does not composite a fully transparent window, and the titlebar's
-  /// glass materials render as a flat block without that compositing.
   ///
   /// Usage:
   ///
@@ -40,14 +33,7 @@
       performing function: @Sendable () async throws -> Void
     ) async throws {
       await MainActor.run {
-        // Regular rather than accessory: the window server refuses to activate an
-        // accessory app that never presented UI, and the stoplights and titlebar only
-        // draw in their active style once the app genuinely is.
-        // On a real Mac this succeeds and the stoplights draw coloured. GitHub's
-        // runner denies the activation (`activate` returns false), so CI captures
-        // render them in their inactive gray; nothing window-level overrides that.
-        _ = NSApplication.shared.setActivationPolicy(.regular)
-        _ = NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
+        _ = NSApplication.shared.setActivationPolicy(.accessory)
       }
 
       nonisolated(unsafe) let observer = await MainActor.run {
@@ -58,7 +44,6 @@
         ) { notification in
           let window = notification.object as? NSWindow
           MainActor.assumeIsolated {
-            guard window?.identifier != .screenshotCapture else { return }
             window?.alphaValue = 0
           }
         }
@@ -71,11 +56,5 @@
 
   extension Trait where Self == RequiresAppKitTrait {
     static var requiresAppKit: Self { Self() }
-  }
-
-  extension NSUserInterfaceItemIdentifier {
-    /// Marks a window a screenshot test is about to photograph, exempting it
-    /// from the alpha-zeroing above.
-    static let screenshotCapture = Self("screenshot-capture")
   }
 #endif

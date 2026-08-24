@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
-#MISE description="Render the macOS screens to PNGs in swift/apple/screenshots"
+#MISE description="Photograph the macOS screens into swift/apple/screenshots"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APPLE_DIR="${SCRIPT_DIR}/.."
+RESULT_BUNDLE="$(mktemp -d)/FirezoneUITests.xcresult"
 
-echo "Rendering screenshots..."
-cd "${APPLE_DIR}/FirezoneKit" && swift test --filter Screenshots
+cd "${APPLE_DIR}"
 
-echo "Wrote ${APPLE_DIR}/screenshots"
+echo "Photographing the macOS screens..."
+xcodebuild test \
+    -project Firezone.xcodeproj \
+    -scheme FirezoneUITests \
+    -configuration Debug \
+    -destination "platform=macOS,arch=$(uname -m)" \
+    -resultBundlePath "${RESULT_BUNDLE}"
+
+"${SCRIPT_DIR}/export-screenshots.sh" "${RESULT_BUNDLE}" "${APPLE_DIR}/screenshots"

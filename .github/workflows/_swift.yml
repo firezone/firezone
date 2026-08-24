@@ -40,12 +40,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: mise run //swift/apple:test-coverage
-      # The test run renders the macOS screens to PNGs so UI changes can be reviewed
-      # without installing the client. The images are not compared against references.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: macos-screenshots
-          path: swift/apple/screenshots
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         env:
@@ -59,12 +53,12 @@ jobs:
           parallel: true
           fail-on-error: false
 
-  # Prototype for photographing the real app: builds the macOS app, launches it
-  # against the mocked backend (`--mock-tunnel`, one scenario per launch; see
-  # MockTunnel.swift) through the FirezoneUITests bundle and uploads the window
-  # captures. Artifact only; the images are not part of the committed
-  # screenshot gallery.
-  app-screenshots:
+  # Photographs the real app so a UI change lands in the diff of the pull request
+  # that causes it: builds the macOS app, launches it against the mocked backend
+  # (`--mock-tunnel`, one scenario and appearance per launch; see MockTunnel.swift)
+  # through the FirezoneUITests bundle, and hands the captures to
+  # commit-screenshots. The images are not compared against references.
+  macos-screenshots:
     runs-on: macos-26
     env:
       XCODE_VERSION: "26.2"
@@ -79,14 +73,14 @@ jobs:
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-      # Ad-hoc signing with the entitlements dropped: the runner has no
-      # signing certificate, and the mocked app touches none of the
-      # facilities the entitlements gate. Restricted entitlements without a
-      # provisioning profile would keep the app from launching. Xcode signs
-      # the UI-test runner app with the App Sandbox regardless of the
-      # target's settings, which denies the runner's own file writes, so the
-      # tests deliver every screenshot as an attachment and a later step
-      # exports them from the result bundle.
+      # Ad-hoc signing with the entitlements dropped: the runner has no signing
+      # certificate, and the mocked app touches none of the facilities the
+      # entitlements gate. Restricted entitlements without a provisioning profile
+      # would keep the app from launching.
+      #
+      # GIT_SHA is left unset on purpose. The settings screens print it as their
+      # build string, so passing the commit would change two of the images on
+      # every commit; without it the app falls back to the fixed "unknown".
       - name: Build the app screenshot UI tests
         working-directory: swift/apple
         run: |
@@ -104,19 +98,7 @@ jobs:
             CODE_SIGN_ENTITLEMENTS= \
             ENABLE_APP_SANDBOX=NO \
             ENABLE_HARDENED_RUNTIME=NO \
-            GIT_SHA="${GITHUB_SHA}" \
             ONLY_ACTIVE_ARCH=YES
-      # Proof of what actually got signed, sandbox entitlements included.
-      # stderr is merged per call so each Executable= line stays next to its
-      # entitlements instead of interleaving across bundles.
-      - name: Show the signed entitlements
-        run: |
-          for bundle in \
-            "${RUNNER_TEMP}/DerivedData/Build/Products/Debug/FirezoneUITests-Runner.app" \
-            "${RUNNER_TEMP}/DerivedData/Build/Products/Debug/Firezone.app"; do
-            echo "=== ${bundle}"
-            codesign -d --entitlements - "${bundle}" 2>&1 || true
-          done
       - name: Run the app screenshot UI tests
         working-directory: swift/apple
         run: |
@@ -127,56 +109,20 @@ jobs:
             -destination "platform=macOS,arch=$(uname -m)" \
             -derivedDataPath "${RUNNER_TEMP}/DerivedData" \
             -resultBundlePath "${RUNNER_TEMP}/FirezoneUITests.xcresult"
-      # The screenshots travel as test attachments (see above), so pull them
-      # out of the result bundle into the artifact directory. The exported
-      # files are named by UUID; the manifest maps them back to the attachment
-      # names, so rename where the manifest parses.
       - name: Export the screenshots from the result bundle
-        if: "!cancelled()"
-        env:
-          XCRESULT: ${{ runner.temp }}/FirezoneUITests.xcresult
-          OUTPUT_DIR: ${{ runner.temp }}/app-screenshots
         run: |
-          if [ ! -e "${XCRESULT}" ]; then
-            echo "No result bundle; nothing to export."
-            exit 0
-          fi
-
-          mkdir -p "${OUTPUT_DIR}"
-
-          if ! xcrun xcresulttool export attachments \
-            --path "${XCRESULT}" \
-            --output-path "${OUTPUT_DIR}"; then
-            echo "Exporting failed; asking xcresulttool for its syntax:"
-            xcrun xcresulttool export attachments --help 2>&1 || true
-            xcrun xcresulttool --help 2>&1 || true
-            exit 1
-          fi
-
-          manifest="${OUTPUT_DIR}/manifest.json"
-          if [ -f "${manifest}" ]; then
-            jq -r '
-              .. | objects | select(has("exportedFileName"))
-              | [.exportedFileName, (.suggestedHumanReadableName // .configuredName // empty)]
-              | select(length == 2) | @tsv
-            ' "${manifest}" | while IFS="$(printf '\t')" read -r exported suggested; do
-              if [ -e "${OUTPUT_DIR}/${exported}" ] && [ "${exported}" != "${suggested}" ]; then
-                mv "${OUTPUT_DIR}/${exported}" "${OUTPUT_DIR}/${suggested}"
-              fi
-            done || echo "Keeping the exported names; the manifest did not parse as expected."
-          fi
-
-          ls -la "${OUTPUT_DIR}"
+          swift/apple/mise-tasks/export-screenshots.sh \
+            "${RUNNER_TEMP}/FirezoneUITests.xcresult" \
+            swift/apple/screenshots
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: "!cancelled()"
         with:
-          name: app-screenshots
-          path: ${{ runner.temp }}/app-screenshots
+          name: macos-screenshots
+          path: swift/apple/screenshots
       # The result bundle holds XCUITest's own failure screenshots and logs.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
-          name: app-screenshots-xcresult
+          name: macos-screenshots-xcresult
           path: ${{ runner.temp }}/FirezoneUITests.xcresult
 
   static-analysis:
