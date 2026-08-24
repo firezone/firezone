@@ -19,20 +19,20 @@ import dev.firezone.android.R
 import dev.firezone.android.databinding.ActivitySettingsBinding
 import kotlinx.coroutines.launch
 
+/** The navigation item and the page it shows, in order. */
+internal val settingsPages: List<Pair<Int, () -> Fragment>> =
+    listOf(
+        R.id.settingsGeneral to { GeneralSettingsFragment() },
+        R.id.settingsAdvanced to { AdvancedSettingsFragment() },
+        R.id.settingsLogs to { LogSettingsFragment() },
+    )
+
 @AndroidEntryPoint
 internal class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private val viewModel: SettingsViewModel by viewModels()
     private var lastFocusedView: View? = null
     private var lastSelectedPage = -1
-
-    /** The navigation item and the page it shows, in order. */
-    private val pages: List<Pair<Int, () -> Fragment>> =
-        listOf(
-            R.id.settingsGeneral to { GeneralSettingsFragment() },
-            R.id.settingsAdvanced to { AdvancedSettingsFragment() },
-            R.id.settingsLogs to { LogSettingsFragment() },
-        )
 
     private val navigationSelectionSync =
         object : ViewPager2.OnPageChangeCallback() {
@@ -41,7 +41,7 @@ internal class SettingsActivity : AppCompatActivity() {
                 // the pager. Checking the item rather than assigning `selectedItemId`, which would
                 // call back into the item listener and drive the pager again.
                 binding.bottomNavigation.menu
-                    .findItem(pages[position].first)
+                    .findItem(settingsPages[position].first)
                     .isChecked = true
             }
         }
@@ -95,7 +95,7 @@ internal class SettingsActivity : AppCompatActivity() {
             viewPager.registerOnPageChangeCallback(navigationSelectionSync)
 
             bottomNavigation.setOnItemSelectedListener { item ->
-                val position = pages.indexOfFirst { it.first == item.itemId }
+                val position = settingsPages.indexOfFirst { it.first == item.itemId }
 
                 if (position < 0) {
                     return@setOnItemSelectedListener false
@@ -171,8 +171,8 @@ internal class SettingsActivity : AppCompatActivity() {
     private inner class SettingsPagerAdapter(
         activity: FragmentActivity,
     ) : FragmentStateAdapter(activity) {
-        override fun getItemCount(): Int = pages.size
+        override fun getItemCount(): Int = settingsPages.size
 
-        override fun createFragment(position: Int): Fragment = pages[position].second()
+        override fun createFragment(position: Int): Fragment = settingsPages[position].second()
     }
 }
