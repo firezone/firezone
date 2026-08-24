@@ -109,13 +109,16 @@
     var localizedDescription: String? = VPNConfigurationManager.bundleDescription
     var protocolConfiguration: NEVPNProtocol?
     var tunnelSession: (any TunnelSessionProtocol)? { session }
+    // Only the system would read this, to launch the extension; the mock never talks to
+    // the system, so the shipped identifier serves as well as a derived one.
+    let extensionBundleIdentifier = "dev.firezone.firezone.network-extension"
 
     private let session = MockTunnelSession()
 
     init() {
       let proto = NETunnelProviderProtocol()
       proto.providerConfiguration = Configuration().toProviderConfiguration()
-      proto.providerBundleIdentifier = VPNConfigurationManager.bundleIdentifier
+      proto.providerBundleIdentifier = extensionBundleIdentifier
       proto.serverAddress = "Firezone"
       protocolConfiguration = proto
     }

@@ -5,6 +5,7 @@
 //
 
 #if os(macOS)
+  import NetworkExtension
   import SystemExtensions
 
   enum SystemExtensionError: Error, CustomStringConvertible, LocalizedError {
@@ -185,7 +186,7 @@
       try await withCheckedThrowingContinuation { continuation in
         sendRequest(
           requestType: .check,
-          identifier: VPNConfigurationManager.bundleIdentifier,
+          identifier: NETunnelProviderManager.extensionBundleIdentifier,
           continuation: continuation
         )
       }
@@ -195,7 +196,7 @@
       try await withCheckedThrowingContinuation { continuation in
         sendRequest(
           requestType: .install,
-          identifier: VPNConfigurationManager.bundleIdentifier,
+          identifier: NETunnelProviderManager.extensionBundleIdentifier,
           continuation: continuation
         )
       }

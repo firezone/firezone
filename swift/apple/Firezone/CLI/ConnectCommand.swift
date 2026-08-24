@@ -95,7 +95,7 @@ extension FirezoneCLI {
         vpnManager = existing
       } else {
         Log.info("Creating VPN configuration...")
-        vpnManager = try await VPNConfigurationManager(manager: factory.createManager())
+        vpnManager = try await VPNConfigurationManager.create(using: factory)
       }
 
       // The extension reads providerConfiguration at start, so save before starting.

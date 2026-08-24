@@ -20,6 +20,9 @@ public protocol TunnelProviderManager: AnyObject {
   /// The tunnel session backing this manager, if its connection is a provider
   /// session. Mockable counterpart of the concrete, un-mockable `connection`.
   var tunnelSession: (any TunnelSessionProtocol)? { get }
+  /// The identifier of the network extension this manager launches; production
+  /// derives it from the app bundle, so a test can substitute a fixed one.
+  var extensionBundleIdentifier: String { get }
 
   func saveToPreferences() async throws
   func loadFromPreferences() async throws
@@ -34,9 +37,19 @@ public protocol TunnelProviderManagerFactory {
 // MARK: - NetworkExtension Conformances
 
 extension NETunnelProviderManager: TunnelProviderManager {
+  /// The identifier of the network extension the app ships, in one place for every
+  /// caller that must name it.
+  public static var extensionBundleIdentifier: String {
+    // App cannot run without bundle identifier - force unwrap is safe
+    // swiftlint:disable:next force_unwrapping
+    "\(Bundle.main.bundleIdentifier!).network-extension"
+  }
+
   public var tunnelSession: (any TunnelSessionProtocol)? {
     connection as? NETunnelProviderSession
   }
+
+  public var extensionBundleIdentifier: String { Self.extensionBundleIdentifier }
 }
 
 @MainActor
@@ -74,20 +87,24 @@ enum VPNConfigurationManagerError: Error {
 public final class VPNConfigurationManager {
   let manager: any TunnelProviderManager
 
-  // App cannot run without bundle identifier - force unwrap is safe
-  // swiftlint:disable:next force_unwrapping
-  public static let bundleIdentifier: String = "\(Bundle.main.bundleIdentifier!).network-extension"
   static let bundleDescription = "Firezone"
 
-  // Initialize and save a new VPN configuration in system Preferences
-  public init(manager: any TunnelProviderManager) async throws {
+  init(from manager: any TunnelProviderManager) {
+    self.manager = manager
+  }
+
+  // Create and save a new VPN configuration in system Preferences
+  public static func create(using factory: TunnelProviderManagerFactory) async throws
+    -> VPNConfigurationManager
+  {
+    let manager = factory.createManager()
     let protocolConfiguration = NETunnelProviderProtocol()
 
     // Seed with defaults (and any forced overrides) but don't mark migrated;
     // the migrator runs separately and is responsible for flipping the flag.
     protocolConfiguration.providerConfiguration =
       Configuration().toProviderConfiguration(markUserDefaultsMigrated: false)
-    protocolConfiguration.providerBundleIdentifier = VPNConfigurationManager.bundleIdentifier
+    protocolConfiguration.providerBundleIdentifier = manager.extensionBundleIdentifier
     protocolConfiguration.serverAddress = "Firezone"  // can be any non-empty string
     manager.localizedDescription = VPNConfigurationManager.bundleDescription
     manager.protocolConfiguration = protocolConfiguration
@@ -95,11 +112,7 @@ public final class VPNConfigurationManager {
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
 
-    self.manager = manager
-  }
-
-  init(from manager: any TunnelProviderManager) {
-    self.manager = manager
+    return VPNConfigurationManager(from: manager)
   }
 
   public static func load(using factory: TunnelProviderManagerFactory) async throws
