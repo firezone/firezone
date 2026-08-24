@@ -25,8 +25,9 @@ public enum BundleHelper {
     return String(gitSha.prefix(8))
   }
 
-  /// The app group the app shares with its extensions, or `nil` where there is no bundle to
-  /// read it from.
+  /// The app group the app shares with its extensions, or `nil` when the bundle's
+  /// Info.plist declares no `AppGroupIdentifier`, which is every process except the app
+  /// and its extensions (a test, most obviously).
   static var appGroupIdIfPresent: String? {
     Bundle.main.object(forInfoDictionaryKey: "AppGroupIdentifier") as? String
   }

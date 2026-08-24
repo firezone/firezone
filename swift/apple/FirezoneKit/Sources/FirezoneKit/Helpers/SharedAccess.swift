@@ -10,7 +10,8 @@ public struct SharedAccess {
   private static let applicationSupportFolderName = "Application Support"
   private static let keepAppRunningSentinelFileName = ".running"
 
-  /// The container the app shares with its extensions, or `nil` outside an app that has one.
+  /// The container the app shares with its extensions, or `nil` when no app group is
+  /// declared or the system cannot provide its container, as without the entitlement.
   ///
   /// Everything below it is already optional and its callers already carry on without it, so
   /// this reports the container's absence rather than ending the process over it.
