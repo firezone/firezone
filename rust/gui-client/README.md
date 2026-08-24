@@ -108,7 +108,7 @@ PowerShell 7 terminal. Make sure mise is activated in each (`mise activate pwsh 
    service above, skipping the pipe-owner check so it accepts the non-`LocalSystem` pipe:
 
    ```powershell
-   mise run tauri-dev
+   mise run dev
    # equivalent to: cargo tauri dev -- -- --skip-peer-verification
 
    # You can call debug subcommands on the exe this way too, e.g.

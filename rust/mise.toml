@@ -64,24 +64,6 @@ run = "cargo deny check --hide-inclusion-graph --deny unnecessary-skip"
 description = "Run tests (CI check)"
 run = "cargo test --all-features -- --include-ignored --nocapture"
 
-[tasks.tauri-mock]
-description = "Run the GUI client for rapid UI iteration with an in-process mock Tunnel service (--mock-tunnel) and the portal decoupled (--skip-portal-auth). Self-contained: no root, no separate process."
-dir = "gui-client"
-raw = true
-run = "cargo tauri dev -- -- --skip-portal-auth --mock-tunnel"
-
-[tasks.tauri-dev]
-description = "Run the GUI client in dev against a dev tunnel service"
-dir = "gui-client"
-raw = true
-run = "cargo tauri dev -- -- --skip-peer-verification"
-
-[tasks.tunnel]
-description = "Run the Tunnel service interactively for local GUI dev. `--skip-peer-verification` skips the peer check so it accepts a non-installed GUI build; must be run from an elevated shell (Administrator on Windows, root on Unix)."
-dir = "gui-client"
-raw = true
-run = "cargo run -p firezone-gui-client --bin firezone-client-tunnel -- run-interactive --skip-peer-verification"
-
 # =============================================================================
 # Profiling
 # =============================================================================

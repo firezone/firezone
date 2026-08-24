@@ -1,0 +1,9 @@
+# Firezone GUI client tasks
+#
+# Usage: mise run <task> (from this directory) or mise run //rust/gui-client:<task> (from repo root)
+#
+# Tasks are auto-discovered from the mise-tasks/ directory.
+# Task names match filenames (e.g. mise-tasks/dev.sh -> //rust/gui-client:dev)
+
+[task_config]
+includes = ["mise-tasks"]
