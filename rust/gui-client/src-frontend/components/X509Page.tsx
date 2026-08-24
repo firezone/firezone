@@ -19,11 +19,7 @@ function FieldValue({ value }: { value: X509FieldValue }) {
   return <>{value.Present}</>;
 }
 
-export default function X509SettingsPage({
-  status,
-}: {
-  status: X509Status | null;
-}) {
+export default function X509Page({ status }: { status: X509Status | null }) {
   return (
     <div className="page max-w-3xl space-y-4">
       <div>
