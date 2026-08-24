@@ -69,7 +69,6 @@ struct FirezoneApp: App {
       .handlesExternalEvents(
         matching: [AppView.WindowDefinition.settings.externalEventMatchString]
       )
-      .defaultSize(AppView.WindowDefinition.defaultSize)
 
       MenuBarExtra {
         MenuBarView()

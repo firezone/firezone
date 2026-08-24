@@ -52,9 +52,10 @@ public struct AppView: View {
       case main
       case settings
 
-      /// The size a window opens at: about two thirds the width and half the height
-      /// of a MacBook Air display, the smallest screen the app is designed for.
-      /// The screenshot tests render at this size so the captures match the app.
+      /// The size the main window opens at: about two thirds the width and half the
+      /// height of a MacBook Air display, the smallest screen the app is designed
+      /// for. The settings window declares no size and wraps its content instead;
+      /// the screenshot tests mirror both behaviours.
       public static let defaultSize = CGSize(width: 960, height: 540)
 
       public var identifier: String { "firezone-\(rawValue)" }
