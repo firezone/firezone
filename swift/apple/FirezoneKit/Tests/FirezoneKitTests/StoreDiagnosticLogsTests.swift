@@ -13,9 +13,10 @@
   /// Exercises the diagnostic-log operations end to end against the mocked extension:
   /// through `Store`, `IPCClient`'s provider messages, and the mock session's answers.
   ///
-  /// Serialised because every `Store` loads into the process-wide `Configuration`.
+  /// Safe to run in parallel: each mock `Store` owns its own `Configuration` and an
+  /// ephemeral `UserDefaults` suite (see `Store.mock`).
   @MainActor
-  @Suite("Store diagnostic logs", .serialized)
+  @Suite("Store diagnostic logs")
   struct StoreDiagnosticLogsTests {
     /// What the mock provider reports over IPC.
     private static let providerLogBytes: UInt64 = 30_000_000
