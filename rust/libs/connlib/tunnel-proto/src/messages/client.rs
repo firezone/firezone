@@ -33,7 +33,7 @@ pub struct ResourceDescriptionDns {
     #[serde(default)]
     pub ip_stack: Option<IpStack>,
 
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::messages::deserialize_filters")]
     pub filters: Vec<Filter>,
 }
 
@@ -53,7 +53,7 @@ pub struct ResourceDescriptionCidr {
     #[serde(rename = "gateway_groups", alias = "sites")]
     pub sites: Vec<Site>,
 
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::messages::deserialize_filters")]
     pub filters: Vec<Filter>,
 }
 
@@ -67,7 +67,7 @@ pub struct ResourceDescriptionStaticDevicePool {
     pub name: String,
     #[serde(default)]
     pub devices: Vec<DevicePoolMember>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::messages::deserialize_filters")]
     pub filters: Vec<Filter>,
 }
 
@@ -211,7 +211,7 @@ pub struct ClientDeviceAccessAuthorized {
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct AuthorizedResource {
     pub id: ResourceId,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::messages::deserialize_filters")]
     pub filters: Vec<Filter>,
 }
 
@@ -236,6 +236,7 @@ pub struct ResourceAuthorization {
 #[derive(Debug, Deserialize, Clone)]
 pub struct ResourceFiltersUpdated {
     pub id: ResourceId,
+    #[serde(deserialize_with = "crate::messages::deserialize_filters")]
     pub filters: Vec<Filter>,
 }
 

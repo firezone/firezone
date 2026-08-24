@@ -89,6 +89,13 @@ impl AllowRules {
     }
 
     fn add_filter(&mut self, filter: &Filter) {
+        // `rangemap` panics on inverted ranges, so an invalid filter must never reach it.
+        if !filter.is_valid() {
+            tracing::warn!(?filter, "Ignoring invalid filter");
+
+            return;
+        }
+
         match filter {
             Filter::Udp(range) => {
                 self.udp
@@ -110,6 +117,41 @@ mod tests {
     use ip_packet::{Icmpv4Type, Icmpv6Type, icmpv4, icmpv6};
 
     use super::*;
+    use crate::messages::PortRange;
+
+    #[test]
+    fn inverted_port_range_is_skipped() {
+        let filter = FilterEngine::new(&[
+            Filter::Tcp(PortRange {
+                port_range_start: 100,
+                port_range_end: 50,
+            }),
+            Filter::Udp(PortRange {
+                port_range_start: 100,
+                port_range_end: 50,
+            }),
+        ]);
+
+        assert!(filter.apply(Ok(Protocol::Tcp(75))).is_err());
+        assert!(filter.apply(Ok(Protocol::Udp(75))).is_err());
+    }
+
+    #[test]
+    fn inverted_port_range_does_not_affect_valid_filters() {
+        let filter = FilterEngine::new(&[
+            Filter::Tcp(PortRange {
+                port_range_start: 100,
+                port_range_end: 50,
+            }),
+            Filter::Tcp(PortRange {
+                port_range_start: 80,
+                port_range_end: 90,
+            }),
+        ]);
+
+        assert!(filter.apply(Ok(Protocol::Tcp(85))).is_ok());
+        assert!(filter.apply(Ok(Protocol::Tcp(60))).is_err());
+    }
 
     #[test]
     fn allows_icmpv4_destination_unreachable() {

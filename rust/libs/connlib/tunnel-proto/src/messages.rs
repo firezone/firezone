@@ -323,6 +323,45 @@ pub struct PortRange {
     pub port_range_end: u16,
 }
 
+impl Filter {
+    /// Returns whether the filter can be applied to traffic.
+    ///
+    /// A port range that starts after it ends does not describe any port and
+    /// therefore cannot be turned into an allow-rule.
+    pub fn is_valid(&self) -> bool {
+        match self {
+            Filter::Udp(range) => range.is_valid(),
+            Filter::Tcp(range) => range.is_valid(),
+            Filter::Icmp => true,
+        }
+    }
+}
+
+impl PortRange {
+    fn is_valid(&self) -> bool {
+        self.port_range_start <= self.port_range_end
+    }
+}
+
+/// Deserializes a list of [`Filter`]s, discarding the ones that are not valid.
+///
+/// The portal rejects invalid filters on write but we cannot rely on that:
+/// applying a malformed filter must not take down the tunnel.
+pub(crate) fn deserialize_filters<'de, D>(deserializer: D) -> Result<Vec<Filter>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let (filters, invalid): (Vec<Filter>, Vec<Filter>) = Vec::<Filter>::deserialize(deserializer)?
+        .into_iter()
+        .partition(Filter::is_valid);
+
+    for filter in invalid {
+        tracing::warn!(?filter, "Discarding invalid filter");
+    }
+
+    Ok(filters)
+}
+
 // Note: these 2 functions are needed since serde doesn't yet support default_value
 // see serde-rs/serde#368
 fn min_port() -> u16 {

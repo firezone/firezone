@@ -28,6 +28,7 @@ pub struct ResourceDescriptionDns {
     /// Used only for display.
     pub name: String,
 
+    #[serde(deserialize_with = "crate::messages::deserialize_filters")]
     pub filters: Vec<Filter>,
 }
 
@@ -43,6 +44,7 @@ pub struct ResourceDescriptionCidr {
     /// Used only for display.
     pub name: String,
 
+    #[serde(deserialize_with = "crate::messages::deserialize_filters")]
     pub filters: Vec<Filter>,
 }
 
@@ -266,6 +268,15 @@ mod tests {
         let actual_filter = serde_json::from_str(msg).unwrap();
 
         assert_eq!(expected_filter, actual_filter);
+    }
+
+    #[test]
+    fn skips_inverted_port_range_filter() {
+        let msg = r#"{"id":"57f9ebbb-21d5-4f9f-bf86-b25122fc7a43","name":"?.httpbin","type":"dns","address":"?.httpbin","filters":[{"protocol":"tcp","port_range_start":100,"port_range_end":50},{"protocol":"icmp"}]}"#;
+
+        let resource = serde_json::from_str::<ResourceDescription>(msg).unwrap();
+
+        assert_eq!(resource.filters(), vec![Filter::Icmp]);
     }
 
     #[test]
