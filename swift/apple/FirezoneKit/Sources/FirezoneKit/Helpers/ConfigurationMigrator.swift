@@ -55,10 +55,13 @@ enum ConfigurationMigrator {
       return
     }
 
-    var userDomain = userDefaults.persistentDomain(forName: userDefaultsDomain) ?? [:]
-    for key in keys {
-      userDomain.removeValue(forKey: key)
-    }
-    userDefaults.setPersistentDomain(userDomain, forName: userDefaultsDomain)
+    let userDomain = userDefaults.persistentDomain(forName: userDefaultsDomain) ?? [:]
+    let cleanedDomain = userDomain.filter { !keys.contains($0.key) }
+
+    // Persistent domains are process-wide, keyed by name alone, so only write when a
+    // legacy key was actually present rather than rewriting identical content.
+    guard cleanedDomain.count != userDomain.count else { return }
+
+    userDefaults.setPersistentDomain(cleanedDomain, forName: userDefaultsDomain)
   }
 }
