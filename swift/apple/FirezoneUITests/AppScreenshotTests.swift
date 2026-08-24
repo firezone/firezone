@@ -4,193 +4,174 @@
 //  LICENSE: Apache-2.0
 //
 
-// Launches the real app with `--mock-tunnel` and photographs its windows, one
-// scenario per launch (see MockTunnel.swift for the scenarios). Nothing is
-// compared against a reference; the images are the output.
-//
-// Every capture is attached to the test: Xcode signs the UI-test runner with
-// the App Sandbox whatever the target's settings say, so the runner's own file
-// writes are denied on CI, while testmanagerd persists attachments into the
-// result bundle regardless, from where CI exports them. The PNGs are also
-// written to `SCREENSHOT_DIR` when that variable is set (CI passes it as
-// `TEST_RUNNER_SCREENSHOT_DIR`, which xcodebuild forwards with the prefix
-// stripped), or to `swift/apple/app-screenshots` otherwise, on a best-effort
-// basis for unsandboxed local runs.
+// Launches the real macOS app with `--mock-tunnel` and photographs its windows,
+// one scenario and appearance per launch (see MockTunnel.swift for the
+// scenarios). Nothing is compared against a reference; the images are the
+// output, and CI commits them to `swift/apple/screenshots`.
 
-import AppKit
-import XCTest
+#if os(macOS)
+  import AppKit
+  import XCTest
 
-@MainActor
-final class AppScreenshotTests: XCTestCase {
-  /// `MAIN_APP_BUNDLE_ID` from `config.xcconfig`; the runner needs it to hand
-  /// URLs to the app under test.
-  private static let appBundleID = "dev.firezone.firezone"
+  @MainActor
+  final class AppScreenshotTests: XCTestCase {
+    /// `MAIN_APP_BUNDLE_ID` from `config.xcconfig`; the runner needs it to hand
+    /// URLs to the app under test.
+    private static let appBundleID = "dev.firezone.firezone"
 
-  /// The title the app's main window scene declares in `FirezoneApp.swift`.
-  private static let mainWindowTitle = "Welcome to Firezone"
+    /// The title the app's main window scene declares in `FirezoneApp.swift`.
+    private static let mainWindowTitle = "Welcome to Firezone"
 
-  /// The title the app's settings window scene declares in `FirezoneApp.swift`.
-  /// The titlebar shows the tab picker instead of drawing it, but it stays the
-  /// window's accessibility title.
-  private static let settingsWindowTitle = "Settings"
+    /// The title the app's settings window scene declares in `FirezoneApp.swift`.
+    /// The titlebar shows the tab picker instead of drawing it, but it stays the
+    /// window's accessibility title.
+    private static let settingsWindowTitle = "Settings"
 
-  func testGrantVPN() throws {
-    let app = launchApp(scenario: "grant-vpn")
-    defer { app.terminate() }
+    /// The settings tabs, by the label the app gives each and the name its
+    /// images carry in the gallery.
+    private static let settingsTabs = [
+      (label: "General", name: "general"),
+      (label: "Advanced", name: "advanced"),
+      (label: "Diagnostic Logs", name: "logs"),
+    ]
 
-    let window = try openWindow(named: "main", title: Self.mainWindowTitle, in: app)
-    capture(window, as: "grant-vpn")
-  }
+    func testGrantVPN() throws {
+      for appearance in Appearance.allCases {
+        let app = launchApp(scenario: "grant-vpn", appearance: appearance)
+        defer { app.terminate() }
 
-  func testWelcome() throws {
-    let app = launchApp(scenario: "welcome")
-    defer { app.terminate() }
-
-    let window = try openWindow(named: "main", title: Self.mainWindowTitle, in: app)
-    capture(window, as: "welcome")
-  }
-
-  func testSettings() throws {
-    let app = launchApp(scenario: "connected")
-    defer { app.terminate() }
-
-    let window = try openWindow(named: "settings", title: Self.settingsWindowTitle, in: app)
-
-    // The window opens on the General tab, so capture it before paging.
-    capture(window, as: "settings-general")
-
-    try selectTab("Advanced", in: window)
-    capture(window, as: "settings-advanced")
-
-    try selectTab("Diagnostic Logs", in: window)
-    capture(window, as: "settings-logs")
-  }
-
-  /// Launches the app against the mock backend, presenting `scenario`.
-  ///
-  /// `-launchedBefore NO` reaches `UserDefaults` through the argument domain, so
-  /// the app treats every launch as the first and does not close the main window
-  /// shortly after startup the way it does for returning users.
-  private func launchApp(scenario: String) -> XCUIApplication {
-    let app = XCUIApplication()
-    app.launchArguments = ["--mock-tunnel", "-launchedBefore", "NO"]
-    app.launchEnvironment["MOCK_SCENARIO"] = scenario
-    app.launch()
-
-    return app
-  }
-
-  /// Opens the app's `name` window by sending it the matching `firezone://` URL
-  /// and returns the window element once it exists.
-  ///
-  /// The URL goes to the app under test by its bundle URL rather than through
-  /// LaunchServices' scheme resolution, which could reach another Firezone on the
-  /// machine. Opening a window the app already shows just orders it front.
-  private func openWindow(
-    named name: String, title: String, in app: XCUIApplication
-  ) throws -> XCUIElement {
-    let url = try XCTUnwrap(URL(string: "firezone://\(name)"))
-    let runningApp = try XCTUnwrap(
-      NSRunningApplication.runningApplications(withBundleIdentifier: Self.appBundleID).first,
-      "the app under test is not running"
-    )
-    let applicationURL = try XCTUnwrap(runningApp.bundleURL)
-
-    // The identifier alternative covers a window whose title accessibility
-    // attribute is empty; the app assigns its scene windows identifiers with
-    // these prefixes (see `AppView.WindowDefinition`).
-    let matcher = NSPredicate(
-      format: "title == %@ OR identifier BEGINSWITH %@", title, "firezone-\(name)"
-    )
-    let window = app.windows.matching(matcher).firstMatch
-
-    // The first open can race the app still wiring up its scenes, so ask again
-    // rather than spending the whole timeout on one attempt.
-    for _ in 0..<3 {
-      NSWorkspace.shared.open(
-        [url],
-        withApplicationAt: applicationURL,
-        configuration: NSWorkspace.OpenConfiguration(),
-        completionHandler: nil
-      )
-
-      if window.waitForExistence(timeout: 10) {
-        return window
+        let window = try openWindow(named: "main", title: Self.mainWindowTitle, in: app)
+        capture(window, as: "grant-vpn", in: appearance)
       }
     }
 
-    throw AppScreenshotError.windowDidNotAppear(name)
-  }
+    /// The screen a signed-out user meets. macOS draws it as `FirstTimeView`, so
+    /// the images keep that name while the scenario keeps the state's name.
+    func testFirstTime() throws {
+      for appearance in Appearance.allCases {
+        let app = launchApp(scenario: "welcome", appearance: appearance)
+        defer { app.terminate() }
 
-  /// Clicks the settings tab labelled `label`.
-  ///
-  /// SwiftUI has drawn the macOS tab picker as different controls across
-  /// releases, so the first control kind that answers to the label wins.
-  private func selectTab(_ label: String, in window: XCUIElement) throws {
-    let candidates = [
-      window.tabGroups.buttons[label],
-      window.toolbars.buttons[label],
-      window.radioButtons[label],
-      window.buttons[label],
-    ]
-
-    guard let tab = candidates.first(where: { $0.waitForExistence(timeout: 2) }) else {
-      throw AppScreenshotError.tabNotFound(label)
+        let window = try openWindow(named: "main", title: Self.mainWindowTitle, in: app)
+        capture(window, as: "first-time", in: appearance)
+      }
     }
 
-    tab.click()
-  }
+    func testSettings() throws {
+      for appearance in Appearance.allCases {
+        let app = launchApp(scenario: "connected", appearance: appearance)
+        defer { app.terminate() }
 
-  /// Photographs the window, attaches the image to the test, and best-effort
-  /// writes it out as a PNG.
-  ///
-  /// The attachment is the delivery that always works: the sandboxed runner
-  /// cannot write files of its own, while testmanagerd persists attachments
-  /// into the result bundle regardless. The direct write serves unsandboxed
-  /// local runs, so its failure is only logged.
-  private func capture(_ window: XCUIElement, as name: String) {
-    // XCUITest waits for quiescence before events, but a capture is not an
-    // event, so give freshly presented content a moment to settle.
-    Thread.sleep(forTimeInterval: 0.5)
+        let window = try openWindow(named: "settings", title: Self.settingsWindowTitle, in: app)
 
-    let screenshot = window.screenshot()
+        // The window opens on the General tab, which is clicked anyway: the click
+        // is what ends the editing session below.
+        for tab in Self.settingsTabs {
+          try selectTab(tab.label, in: window)
+          endEditing(in: window)
+          capture(window, as: "settings-\(tab.name)", in: appearance)
+        }
+      }
+    }
 
-    let attachment = XCTAttachment(screenshot: screenshot)
-    attachment.name = name
-    attachment.lifetime = .keepAlways
-    add(attachment)
+    /// Launches the app against the mock backend, presenting `scenario` in `appearance`.
+    ///
+    /// `-launchedBefore NO` reaches `UserDefaults` through the argument domain, so
+    /// the app treats every launch as the first and does not close the main window
+    /// shortly after startup the way it does for returning users.
+    ///
+    /// `-AppleInterfaceStyle Dark` arrives the same way. AppKit reads the setting
+    /// from `NSGlobalDomain`, which the argument domain overrides for this process
+    /// alone, so the whole app draws dark, window chrome included. Light is the
+    /// absence of the key, so nothing is passed for it.
+    private func launchApp(scenario: String, appearance: Appearance) -> XCUIApplication {
+      let app = XCUIApplication()
+      app.launchArguments = ["--mock-tunnel", "-launchedBefore", "NO"]
 
-    do {
-      let file = try Self.outputDirectory().appendingPathComponent("\(name).png")
-      try screenshot.pngRepresentation.write(to: file)
-      print("Screenshot \(name).png written to \(file.path)")
-    } catch {
-      print("Screenshot \(name).png attached only; writing the file failed: \(error)")
+      if appearance == .dark {
+        app.launchArguments += ["-AppleInterfaceStyle", "Dark"]
+      }
+
+      app.launchEnvironment["MOCK_SCENARIO"] = scenario
+      app.launch()
+
+      return app
+    }
+
+    /// Opens the app's `name` window by sending it the matching `firezone://` URL
+    /// and returns the window element once it exists.
+    ///
+    /// The URL goes to the app under test by its bundle URL rather than through
+    /// LaunchServices' scheme resolution, which could reach another Firezone on the
+    /// machine. Opening a window the app already shows just orders it front.
+    private func openWindow(
+      named name: String, title: String, in app: XCUIApplication
+    ) throws -> XCUIElement {
+      let url = try XCTUnwrap(URL(string: "firezone://\(name)"))
+      let runningApp = try XCTUnwrap(
+        NSRunningApplication.runningApplications(withBundleIdentifier: Self.appBundleID).first,
+        "the app under test is not running"
+      )
+      let applicationURL = try XCTUnwrap(runningApp.bundleURL)
+
+      // The identifier alternative covers a window whose title accessibility
+      // attribute is empty; the app assigns its scene windows identifiers with
+      // these prefixes (see `AppView.WindowDefinition`).
+      let matcher = NSPredicate(
+        format: "title == %@ OR identifier BEGINSWITH %@", title, "firezone-\(name)"
+      )
+      let window = app.windows.matching(matcher).firstMatch
+
+      // The first open can race the app still wiring up its scenes, so ask again
+      // rather than spending the whole timeout on one attempt.
+      for _ in 0..<3 {
+        NSWorkspace.shared.open(
+          [url],
+          withApplicationAt: applicationURL,
+          configuration: NSWorkspace.OpenConfiguration(),
+          completionHandler: nil
+        )
+
+        if window.waitForExistence(timeout: 10) {
+          return window
+        }
+      }
+
+      throw AppScreenshotError.windowDidNotAppear(name)
+    }
+
+    /// Clicks the settings tab labelled `label`.
+    ///
+    /// SwiftUI has drawn the macOS tab picker as different controls across
+    /// releases, so the first control kind that answers to the label wins.
+    private func selectTab(_ label: String, in window: XCUIElement) throws {
+      let candidates = [
+        window.tabGroups.buttons[label],
+        window.toolbars.buttons[label],
+        window.radioButtons[label],
+        window.buttons[label],
+      ]
+
+      guard let tab = candidates.first(where: { $0.waitForExistence(timeout: 2) }) else {
+        throw AppScreenshotError.tabNotFound(label)
+      }
+
+      tab.click()
+    }
+
+    /// Ends the editing session AppKit opens in a window's first text field, so
+    /// no insertion point blinks through a capture and the image is the same on
+    /// every run.
+    ///
+    /// Nothing outside the app can reach its first responder, but Escape reaches
+    /// the field editor, which is what holds the blinking caret.
+    private func endEditing(in window: XCUIElement) {
+      window.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
     }
   }
 
-  /// `SCREENSHOT_DIR` when set, or `swift/apple/app-screenshots` resolved from
-  /// this file so local runs need no configuration.
-  private static func outputDirectory() throws -> URL {
-    let directory: URL
-
-    if let path = ProcessInfo.processInfo.environment["SCREENSHOT_DIR"], !path.isEmpty {
-      directory = URL(fileURLWithPath: path, isDirectory: true)
-    } else {
-      directory =
-        URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()  // FirezoneUITests
-        .deletingLastPathComponent()  // apple
-        .appendingPathComponent("app-screenshots")
-    }
-
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-
-    return directory
+  private enum AppScreenshotError: Error {
+    case windowDidNotAppear(String)
+    case tabNotFound(String)
   }
-}
-
-private enum AppScreenshotError: Error {
-  case windowDidNotAppear(String)
-  case tabNotFound(String)
-}
+#endif

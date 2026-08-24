@@ -119,12 +119,7 @@ jobs:
           done
       - name: Run the app screenshot UI tests
         working-directory: swift/apple
-        env:
-          # xcodebuild forwards TEST_RUNNER_-prefixed variables to the test
-          # runner process with the prefix stripped.
-          TEST_RUNNER_SCREENSHOT_DIR: ${{ runner.temp }}/app-screenshots
         run: |
-          mkdir -p "${TEST_RUNNER_SCREENSHOT_DIR}"
           xcodebuild test-without-building \
             -project Firezone.xcodeproj \
             -scheme FirezoneUITests \

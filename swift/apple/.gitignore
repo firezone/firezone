@@ -2,7 +2,6 @@
 .build/
 build/
 DerivedData/
-app-screenshots/
 xcuserdata/
 **/*.xcuserstate
 Firezone/xcconfig/dynamic_build_number.xcconfig
