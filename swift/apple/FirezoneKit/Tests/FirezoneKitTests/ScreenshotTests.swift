@@ -53,8 +53,9 @@
         SettingsView(store: store)
       }
 
+      let contentView = try #require(window.contentView)
       let tabView = try #require(
-        firstTabView(under: try #require(window.contentView)),
+        firstTabView(under: contentView),
         "the settings screen shows no tab view"
       )
 
