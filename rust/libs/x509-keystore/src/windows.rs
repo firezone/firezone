@@ -54,30 +54,33 @@ pub(crate) fn status(subject_cn: &str) -> Result<Status> {
         );
     }
 
-    let usable = certificates
-        .iter()
-        .filter(|certificate| certificate.usable)
-        .count();
-    let sections = certificates
+    let selected = selected_certificate(&certificates);
+    let selected_section = selected.map(|index| DetailSection {
+        title: "Certificate".to_owned(),
+        fields: certificates[index].detail_fields(),
+    });
+    let unused_sections = certificates
         .iter()
         .enumerate()
-        .map(|(index, certificate)| DetailSection {
-            title: format!("Matching Certificate {}", index + 1),
+        .filter(|(index, _)| Some(*index) != selected)
+        .map(|(_, certificate)| DetailSection {
+            title: "Unused Certificate".to_owned(),
             fields: certificate.detail_fields(),
-        })
+        });
+    let sections = selected_section
+        .into_iter()
+        .chain(unused_sections)
         .collect();
 
-    let certificate_summary = match (usable, certificates.len()) {
-        (0, 0) => format!(
+    let certificate_summary = match (selected, certificates.len()) {
+        (None, 0) => format!(
             "No X.509 certificate with subject CN '{subject_cn}' is in the Windows certificate stores."
         ),
-        (0, count) => format!(
-            "Found {count} matching X.509 certificate(s), but none of them are usable as a client identity: {}",
+        (None, _) => format!(
+            "Matching certificates are in the Windows certificate store, but none is usable as a client identity: {}",
             unusable_reasons(&certificates).join("; ")
         ),
-        (count, _) => {
-            format!("{count} X.509 client identity certificate(s) are available for mutual TLS.")
-        }
+        (Some(_), _) => "An X.509 client identity is available for mutual TLS.".to_owned(),
     };
     let summary = match store_errors.is_empty() {
         true => certificate_summary,
@@ -86,10 +89,10 @@ pub(crate) fn status(subject_cn: &str) -> Result<Status> {
             store_errors.join("; ")
         ),
     };
-    let severity = match (usable, store_errors.is_empty()) {
-        (0, _) => StatusSeverity::Warning,
-        (_, false) => StatusSeverity::Warning,
-        (_, true) => StatusSeverity::Ok,
+    let severity = match (selected, store_errors.is_empty()) {
+        (None, _) => StatusSeverity::Warning,
+        (Some(_), false) => StatusSeverity::Warning,
+        (Some(_), true) => StatusSeverity::Ok,
     };
 
     Ok(Status {
@@ -100,7 +103,7 @@ pub(crate) fn status(subject_cn: &str) -> Result<Status> {
 }
 
 pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
-    let (certificates, store_errors) = enumerate_matching(subject_cn);
+    let (mut certificates, store_errors) = enumerate_matching(subject_cn);
     if certificates.is_empty() && !store_errors.is_empty() {
         bail!(
             "The Windows certificate store could not be read: {}",
@@ -110,11 +113,7 @@ pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
 
     let unusable = unusable_reasons(&certificates);
 
-    let Some(certificate) = certificates
-        .into_iter()
-        .filter(|certificate| certificate.usable)
-        .max_by_key(|certificate| certificate.metadata.not_before_timestamp)
-    else {
+    let Some(index) = selected_certificate(&certificates) else {
         // Only a store that holds nothing for us is the ordinary no-certificate case. Skipping a
         // certificate that was provisioned for Firezone reads to an administrator as if none had
         // been, so say which rule it failed instead of connecting without it.
@@ -127,6 +126,7 @@ pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
 
         return Ok(None);
     };
+    let certificate = certificates.swap_remove(index);
 
     let algorithm = certificate
         .metadata
@@ -526,6 +526,19 @@ impl Drop for Certificate {
             let _ = CertFreeCertificateContext(Some(self.context));
         }
     }
+}
+
+/// The certificate [`identity`] presents, as an index into `certificates`.
+///
+/// The most recently issued usable certificate wins, so a rotation hands over the renewal
+/// rather than the certificate it replaced.
+fn selected_certificate(certificates: &[Certificate]) -> Option<usize> {
+    certificates
+        .iter()
+        .enumerate()
+        .filter(|(_, certificate)| certificate.usable)
+        .max_by_key(|(_, certificate)| certificate.metadata.not_before_timestamp)
+        .map(|(index, _)| index)
 }
 
 /// Says why each certificate that matched the subject common name cannot be used.
