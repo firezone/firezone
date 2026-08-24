@@ -43,44 +43,23 @@
       try capture(window, as: "first-time", colorScheme)
     }
 
-    // One window, three captures: the settings screen is photographed whole, tab bar and
-    // all, and the test pages through its tabs the way a user would. SwiftUI offers no
-    // handle on the selection, so the test reaches for the `NSTabView` underneath.
+    // One capture per tab, each of the whole window. SwiftUI draws the tab view itself
+    // and offers no outside handle on its selection, so the test seeds the tab the
+    // screen opens on instead of paging an existing window.
     @Test("Settings", arguments: colorSchemes)
     @MainActor
     func settings(colorScheme: ColorScheme) throws {
-      let window = try makeWindow(colorScheme, width: 800, height: 600) { store in
-        SettingsView(store: store)
-      }
+      let tabs: [(SettingsView.Tab, String)] = [
+        (.general, "general"),
+        (.advanced, "advanced"),
+        (.logs, "logs"),
+      ]
 
-      let contentView = try #require(window.contentView)
-      try spin(until: { firstTabView(under: contentView) != nil })
-      let tabView = try #require(
-        firstTabView(under: contentView),
-        "the settings screen shows no tab view"
-      )
-
-      let tabs = ["general", "advanced", "logs"]
-      try #require(tabView.numberOfTabViewItems == tabs.count)
-
-      for (index, tab) in tabs.enumerated() {
-        tabView.selectTabViewItem(at: index)
-        contentView.layoutSubtreeIfNeeded()
-        try spin(until: { tabView.selectedTabViewItem?.view?.subviews.isEmpty == false })
-        try capture(window, as: "settings-\(tab)", colorScheme)
-      }
-    }
-
-    /// Turns the main run loop until `condition` holds.
-    ///
-    /// SwiftUI hangs its AppKit-backed views under the hosting view lazily, after the
-    /// window exists; straight after attaching, a walk over the subviews finds nothing.
-    @MainActor
-    private func spin(until condition: () -> Bool) throws {
-      let deadline = Date(timeIntervalSinceNow: 10)
-      while !condition() {
-        try #require(Date() < deadline, "the view did not settle in time")
-        RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+      for (tab, name) in tabs {
+        let window = try makeWindow(colorScheme, width: 800, height: 600) { store in
+          SettingsView(store: store, selectedTab: tab)
+        }
+        try capture(window, as: "settings-\(name)", colorScheme)
       }
     }
 
@@ -151,15 +130,6 @@
       guard CGImageDestinationFinalize(destination) else {
         throw ScreenshotError.cannotWrite(url)
       }
-    }
-
-    @MainActor
-    private func firstTabView(under view: NSView) -> NSTabView? {
-      for subview in view.subviews {
-        if let tabView = subview as? NSTabView { return tabView }
-        if let nested = firstTabView(under: subview) { return nested }
-      }
-      return nil
     }
 
     /// `swift/apple/screenshots`, resolved from this file rather than the working directory
