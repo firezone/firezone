@@ -93,6 +93,9 @@
         backing: .buffered,
         defer: false
       )
+      // The titlebar tab picker draws through materials that follow the application
+      // appearance, not the window's; without this the dark captures keep a light capsule.
+      NSApplication.shared.appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
       window.appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
       window.contentView = view
       view.layoutSubtreeIfNeeded()
