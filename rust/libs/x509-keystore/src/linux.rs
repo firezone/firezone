@@ -737,28 +737,27 @@ fn unusable_reasons(certificates: &[Certificate]) -> Vec<String> {
 
 impl Certificate {
     fn detail_fields(&self) -> Vec<DetailField> {
-        let mut fields = vec![
-            match self.label.as_deref() {
-                Some(label) => field("Object Label", label),
-                None => absent_field("Object Label"),
-            },
-            if self.key.is_some() {
-                field("Private Key Access", "Available")
-            } else {
-                absent_field("Private Key Access")
-            },
-            if self.usable {
-                field("Usable With Its Private Key", "Yes")
-            } else {
-                invalid_field("Usable With Its Private Key", "No")
-            },
-        ];
-        fields.extend(
-            self.metadata
-                .detail_fields()
-                .into_iter()
-                .map(DetailField::from),
-        );
+        let mut fields = self
+            .metadata
+            .detail_fields()
+            .into_iter()
+            .map(DetailField::from)
+            .collect::<Vec<_>>();
+
+        fields.push(match self.label.as_deref() {
+            Some(label) => field("Object Label", label),
+            None => absent_field("Object Label"),
+        });
+        fields.push(if self.key.is_some() {
+            field("Private Key Access", "Available")
+        } else {
+            absent_field("Private Key Access")
+        });
+        fields.push(if self.usable {
+            field("Usable With Its Private Key", "Yes")
+        } else {
+            invalid_field("Usable With Its Private Key", "No")
+        });
 
         fields
     }
