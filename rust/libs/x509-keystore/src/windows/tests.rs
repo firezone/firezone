@@ -69,12 +69,12 @@ fn describes_a_minted_certificate_in_the_diagnostics() {
     assert_eq!(status.severity, StatusSeverity::Ok);
     assert_eq!(
         status.summary,
-        "1 X.509 client identity certificate(s) are available for mutual TLS."
+        "An X.509 client identity is available for mutual TLS."
     );
     let section = status
         .sections
         .iter()
-        .find(|section| section.title == "Matching Certificate 1")
+        .find(|section| section.title == "Certificate")
         .expect("the diagnostics should describe the minted certificate");
     assert_eq!(field_value(section, "Store"), Some("LocalMachine\\My"));
     assert_eq!(
