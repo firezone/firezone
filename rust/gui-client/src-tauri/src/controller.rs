@@ -1129,10 +1129,11 @@ async fn try_migrate_advanced_settings(
 /// The status the diagnostics screen shows when the Tunnel service could not read the keystore.
 fn unreadable_keystore_status(error: String) -> x509_keystore::Status {
     x509_keystore::Status {
-        severity: x509_keystore::StatusSeverity::Warning,
-        summary: "The platform keystore could not be read, so no X.509 client identity \
-                  certificate can be found."
-            .to_owned(),
+        warning: Some(
+            "The platform keystore could not be read, so no X.509 client identity \
+             certificate can be found."
+                .to_owned(),
+        ),
         sections: vec![x509_keystore::DetailSection {
             title: "Keystore".to_owned(),
             fields: vec![x509_keystore::DetailField {
@@ -1194,8 +1195,7 @@ mod tests {
         mock_tunnel.send_hello().await;
 
         let expected = x509_keystore::Status {
-            severity: x509_keystore::StatusSeverity::Ok,
-            summary: "One identity is available.".to_owned(),
+            warning: None,
             sections: vec![],
         };
         mock_tunnel
@@ -1228,12 +1228,11 @@ mod tests {
             .wait_integration(|i| i.x509_statuses.first().cloned())
             .await;
 
-        assert_eq!(status.severity, x509_keystore::StatusSeverity::Warning);
-        assert!(
-            status.summary.contains("could not be read"),
-            "{}",
-            status.summary
-        );
+        let warning = status
+            .warning
+            .as_deref()
+            .expect("a failed read should surface as a warning");
+        assert!(warning.contains("could not be read"), "{warning}");
         assert!(
             status
                 .sections
