@@ -44,12 +44,13 @@ extension XCTestCase {
   /// spins while it adds up the log directory, and windows fade in. An image
   /// that catches a frame of that differs on every run, which the gallery would
   /// carry as a diff on every commit. A capture that never agrees with itself
-  /// is delivered anyway, and says so, because an image the gallery can show is
-  /// worth more than a failed run.
+  /// fails the test, so a screen that will not hold still is reported rather
+  /// than photographed mid-motion and committed.
   private func settledScreenshot(of element: XCUIElement, as fileName: String) -> XCUIScreenshot {
+    let attempts = 12
     var previous = element.screenshot()
 
-    for _ in 0..<12 {
+    for _ in 0..<attempts {
       Thread.sleep(forTimeInterval: 0.5)
 
       let current = element.screenshot()
@@ -60,7 +61,7 @@ extension XCTestCase {
       previous = current
     }
 
-    print("Screenshot \(fileName) never settled; delivering the last capture")
+    XCTFail("\(fileName) never held still, across \(attempts) captures")
 
     return previous
   }
