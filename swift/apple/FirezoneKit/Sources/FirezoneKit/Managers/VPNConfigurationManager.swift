@@ -349,7 +349,7 @@ public final class VPNConfigurationManager {
       // Resolved only once a repair is needed: Bundle.main has no identifier when
       // FirezoneKit is hosted by `swift test`.
       let providerBundleIdentifier =
-        configuredProviderBundleIdentifier ?? VPNConfigurationManager.bundleIdentifier
+        configuredProviderBundleIdentifier ?? manager.extensionBundleIdentifier
 
       Log.warning(
         "Repairing the managed VPN configuration with the system extension identifier \(providerBundleIdentifier)"
