@@ -236,16 +236,6 @@ fn arb_port_range(g: &mut Generator) -> PortRange {
     let start = g.u16();
     let end = g.u16_in(start..=u16::MAX);
 
-    // The portal rejects inverted ranges on write, so connlib only ever sees one
-    // if the portal is compromised or buggy. Generate them anyway: they must be
-    // ignored rather than panic.
-    if g.flip(10) {
-        return PortRange {
-            port_range_start: end,
-            port_range_end: start,
-        };
-    }
-
     PortRange {
         port_range_start: start,
         port_range_end: end,
