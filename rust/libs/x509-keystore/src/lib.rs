@@ -113,16 +113,12 @@ pub(crate) fn unusable_reasons<C: CandidateCertificate>(certificates: &[C]) -> V
 /// Read-only diagnostics about the keystore's X.509 identities.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Status {
-    pub severity: StatusSeverity,
-    pub summary: String,
+    /// What keeps a client identity from being used, if anything.
+    ///
+    /// A status without a warning reports a usable identity: the certificate it describes says
+    /// the rest, so there is no all-good text to repeat.
+    pub warning: Option<String>,
     pub sections: Vec<DetailSection>,
-}
-
-/// Whether a [`Status`] reports a usable client identity or a problem to fix.
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-pub enum StatusSeverity {
-    Ok,
-    Warning,
 }
 
 /// A group of related diagnostic rows, e.g. one certificate.
@@ -166,11 +162,16 @@ impl Status {
     pub fn text_description(&self) -> String {
         use std::fmt::Write as _;
 
-        let mut output = self.summary.clone();
-        output.push('\n');
+        let mut output = String::new();
+
+        if let Some(warning) = &self.warning {
+            let _ = writeln!(output, "{warning}");
+        }
 
         for section in &self.sections {
-            output.push('\n');
+            if !output.is_empty() {
+                output.push('\n');
+            }
             let _ = writeln!(output, "[{}]", section.title);
 
             for field in &section.fields {
@@ -244,18 +245,26 @@ mod tests {
 
     #[test]
     fn renders_sections_as_indented_text() {
-        let status = Status {
-            severity: StatusSeverity::Ok,
-            summary: "One identity is available.".to_owned(),
-            sections: vec![DetailSection {
-                title: "Certificate".to_owned(),
-                fields: vec![field("Subject", "CN=one\nOU=two")],
-            }],
+        let sections = vec![DetailSection {
+            title: "Certificate".to_owned(),
+            fields: vec![field("Subject", "CN=one\nOU=two")],
+        }];
+        let with_warning = Status {
+            warning: Some("No identity is usable.".to_owned()),
+            sections: sections.clone(),
+        };
+        let without_warning = Status {
+            warning: None,
+            sections,
         };
 
         assert_eq!(
-            status.text_description(),
-            "One identity is available.\n\n[Certificate]\nSubject:\n  CN=one\n  OU=two\n"
+            with_warning.text_description(),
+            "No identity is usable.\n\n[Certificate]\nSubject:\n  CN=one\n  OU=two\n"
+        );
+        assert_eq!(
+            without_warning.text_description(),
+            "[Certificate]\nSubject:\n  CN=one\n  OU=two\n"
         );
     }
 
