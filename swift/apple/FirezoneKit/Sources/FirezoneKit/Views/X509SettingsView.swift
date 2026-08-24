@@ -48,24 +48,14 @@ struct X509SettingsView: View {
   }
 
   private var header: some View {
-    HStack(alignment: .firstTextBaseline) {
-      VStack(alignment: .leading, spacing: 4) {
-        Text("Client Certificate")
-          .font(.headline)
-        Text(
-          "Firezone proves this device is enrolled with the certificate your administrator installed. Its private key never leaves the keychain."
-        )
-        .font(.caption)
-        .foregroundStyle(.secondary)
-      }
-
-      Spacer()
-
-      Button {
-        Task { await reload() }
-      } label: {
-        Label("Refresh", systemImage: "arrow.clockwise")
-      }
+    VStack(alignment: .leading, spacing: 4) {
+      Text("Client Certificate")
+        .font(.headline)
+      Text(
+        "Firezone proves this device is enrolled with the certificate your administrator installed. Its private key never leaves the keychain."
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
     }
   }
 
