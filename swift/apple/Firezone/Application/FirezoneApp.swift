@@ -28,6 +28,9 @@ struct FirezoneApp: App {
     #else
       let store = Store()
     #endif
+
+    store.start()
+
     _store = StateObject(wrappedValue: store)
 
     #if os(macOS)
