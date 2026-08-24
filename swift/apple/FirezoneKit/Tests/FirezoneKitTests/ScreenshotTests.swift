@@ -61,17 +61,24 @@
       ]
 
       for (tab, name) in tabs {
-        let window = try makeWindow(colorScheme) { store in
+        let window = try makeWindow(colorScheme, sizing: .contentFitting) { store in
           SettingsView(store: store, selectedTab: tab)
         }
         try capture(window, as: "settings-\(name)", colorScheme)
       }
     }
 
-    /// Puts `content` in an off-screen window the size the app would use.
-    ///
-    /// The app's window scenes open at `AppView.WindowDefinition.defaultSize`, and
-    /// the capture pins its window to the same size.
+    /// How a capture window takes its size.
+    private enum WindowSizing {
+      /// The fixed size the app's main window scene declares.
+      case appDefault
+      /// Wrapped tight around the content, the way a window whose scene declares
+      /// no size opens; the settings window does.
+      case contentFitting
+    }
+
+    /// Puts `content` in an off-screen window the size the app would use,
+    /// per `sizing`.
     ///
     /// `ImageRenderer` looks like the obvious tool and is not: a text field, a checkbox and
     /// a tab view are all AppKit underneath, and it draws each of them as the "not allowed"
@@ -80,6 +87,7 @@
     private func makeWindow(
       _ colorScheme: ColorScheme,
       title: String? = nil,
+      sizing: WindowSizing = .appDefault,
       @ViewBuilder content: (Store) -> some View
     ) throws -> NSWindow {
       // Before any view exists: SwiftUI resolves its environment when the hosting view is
@@ -97,10 +105,15 @@
           .environmentObject(GlobalErrorHandler())
           .environment(\.colorScheme, colorScheme)
       )
-      // Left to itself, the hosting view resizes the window to the content's ideal
-      // size once attached; every capture must come out at the app's default size.
-      view.sizingOptions = []
-      view.frame = CGRect(origin: .zero, size: AppView.WindowDefinition.defaultSize)
+      switch sizing {
+      case .appDefault:
+        // The window must stay at the declared size; left to itself, the hosting
+        // view resizes the window to the content's ideal size once attached.
+        view.sizingOptions = []
+        view.frame = CGRect(origin: .zero, size: AppView.WindowDefinition.defaultSize)
+      case .contentFitting:
+        view.frame = CGRect(origin: .zero, size: view.fittingSize)
+      }
 
       let window = ScreenshotWindow(
         contentRect: view.frame,
@@ -115,9 +128,6 @@
       }
       window.contentView = view
       view.layoutSubtreeIfNeeded()
-      // SwiftUI hands focus to the first text field on attachment, taking the
-      // window's word that it is key, and a focused field draws its insertion
-      // caret into the capture.
 
       return window
     }
