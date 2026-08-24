@@ -32,6 +32,12 @@
   /// and no title text, in the app as in the captures.
   private let mainWindowTitle = "Welcome to Firezone"
 
+  /// The window sizes, measured from the app's windows on a fresh install. The
+  /// scenes declare no size, so AppKit derives one at runtime; captures pin the
+  /// measured result so the renders match what the app shows.
+  private let mainWindowSize = CGSize(width: 900, height: 450)
+  private let settingsWindowSize = CGSize(width: 750, height: 600)
+
   @Suite("Screenshots", .requiresAppKit)
   struct ScreenshotTests {
     @Test("Grant VPN permission", arguments: colorSchemes)
@@ -40,7 +46,7 @@
       let window = try makeWindow(
         colorScheme,
         title: mainWindowTitle,
-        initialSize: AppView.WindowDefinition.defaultSize
+        size: mainWindowSize
       ) { _ in GrantVPNView() }
       try capture(window, as: "grant-vpn", colorScheme)
     }
@@ -51,7 +57,7 @@
       let window = try makeWindow(
         colorScheme,
         title: mainWindowTitle,
-        initialSize: AppView.WindowDefinition.defaultSize
+        size: mainWindowSize
       ) { _ in FirstTimeView() }
       try capture(window, as: "first-time", colorScheme)
     }
@@ -69,17 +75,17 @@
       ]
 
       for (tab, name) in tabs {
-        let window = try makeWindow(colorScheme) { store in
+        let window = try makeWindow(colorScheme, size: settingsWindowSize) { store in
           SettingsView(store: store, selectedTab: tab)
         }
         try capture(window, as: "settings-\(name)", colorScheme)
       }
     }
 
-    /// Puts `content` in an off-screen window sized the way the app's scenes size
-    /// theirs: AppKit takes the window size from the content's ideal size, and
-    /// `initialSize` seeds it the way a scene's `.defaultSize` would. The settings
-    /// scene declares no size, so its captures pass none.
+    /// Puts `content` in an off-screen window of exactly `size`, the window size
+    /// measured from the app. The app's scenes declare no size and AppKit derives
+    /// one at runtime; deriving it here collapses the Spacer-heavy screens to
+    /// their minimum instead, so the captures pin the measured result.
     ///
     /// `ImageRenderer` looks like the obvious tool and is not: a text field, a checkbox and
     /// a tab view are all AppKit underneath, and it draws each of them as the "not allowed"
@@ -88,7 +94,7 @@
     private func makeWindow(
       _ colorScheme: ColorScheme,
       title: String? = nil,
-      initialSize: CGSize? = nil,
+      size: CGSize,
       @ViewBuilder content: (Store) -> some View
     ) throws -> NSWindow {
       // Before any view exists: SwiftUI resolves its environment when the hosting view is
@@ -107,10 +113,11 @@
           .environment(\.colorScheme, colorScheme)
           .environment(\.logoTextImage, Self.wordmark(colorScheme))
       )
-      controller.sizingOptions = [.preferredContentSize]
+      // Nothing may derive the window size from the content: the Spacer-heavy
+      // screens have no meaningful ideal size, and a derived window collapses
+      // toward the content's minimum.
+      controller.sizingOptions = []
 
-      // The controller's preferred content size drives the window, exactly how a
-      // SwiftUI window scene sizes itself around its content.
       let window = ScreenshotWindow(contentViewController: controller)
       window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
       window.appearance = appearance
@@ -118,10 +125,9 @@
       if let title {
         window.title = title
       }
-      if let initialSize {
-        // Mirrors `.defaultSize`, which seeds only a scene's initial size.
-        window.setContentSize(initialSize)
-      }
+      // The measured sizes include the titlebar, so the frame is set rather than
+      // the content size.
+      window.setFrame(NSRect(origin: .zero, size: size), display: false)
       controller.view.layoutSubtreeIfNeeded()
 
       return window
