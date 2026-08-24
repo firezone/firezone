@@ -185,6 +185,16 @@ async fn connect(
     Err(InternalError::SocketConnection(errors))
 }
 
+/// The problem codes the portal reports when it refuses the certificate we presented.
+///
+/// None of them can be retried into success: the certificate has to be replaced, or the portal
+/// reconfigured, before another attempt means anything.
+const CERTIFICATE_REJECTION_CODES: &[&str] = &[
+    "device_untrusted",
+    "certificate_revoked",
+    "device_identity_conflict",
+];
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Authentication token invalid")]
@@ -194,6 +204,9 @@ pub enum Error {
     AuthenticationFailed(String),
     #[error("X.509 client certificate signing failed: {0}")]
     ClientCertificateSigningFailed(String),
+    /// The portal refused the X.509 client certificate we presented.
+    #[error("The portal rejected the client certificate: {0}")]
+    CertificateRejected(String),
     #[error(
         "Got disconnected from portal and hit the max-retry limit. Last connection error: {final_error}"
     )]
@@ -215,6 +228,25 @@ impl Error {
             // The portal rejected us without naming the token, so a new one is not known to help.
             Error::AuthenticationFailed(_) => false,
             Error::ClientCertificateSigningFailed(_) => false,
+            // The certificate is the credential the portal refused, so a new token cannot help.
+            Error::CertificateRejected(_) => false,
+            Error::MaxRetriesReached { .. } => false,
+            Error::LoginFailed(_) => false,
+            Error::FatalIo(_) => false,
+        }
+    }
+
+    /// Returns whether the X.509 client certificate is what failed.
+    ///
+    /// Lets a client word its error and choose what to offer from what actually went wrong,
+    /// rather than from how it happened to authenticate: a session that presented a certificate
+    /// can still fail for reasons that have nothing to do with it.
+    pub fn is_certificate_error(&self) -> bool {
+        match self {
+            Error::CertificateRejected(_) => true,
+            Error::ClientCertificateSigningFailed(_) => true,
+            Error::InvalidToken => false,
+            Error::AuthenticationFailed(_) => false,
             Error::MaxRetriesReached { .. } => false,
             Error::LoginFailed(_) => false,
             Error::FatalIo(_) => false,
@@ -223,19 +255,27 @@ impl Error {
 
     /// Classifies a rejected connection attempt by the reason the portal reported.
     ///
-    /// Reasons the client cannot act on specifically map to [`Error::AuthenticationFailed`],
-    /// as do responses without problem details, e.g. an error page from an intermediary proxy.
-    fn from_unauthorized(response: &tungstenite::handshake::client::Response) -> Self {
+    /// Returns `None` when nothing in the response marks the failure as permanent, so the
+    /// caller keeps retrying. The portal names permanent rejections with a problem code:
+    /// an unusable token, or a refused client certificate, which it answers with 403 and
+    /// 409 rather than 401. A 401 without a specific code maps to
+    /// [`Error::AuthenticationFailed`], as does one without problem details at all,
+    /// e.g. an error page from an intermediary proxy.
+    fn from_rejection(response: &tungstenite::handshake::client::Response) -> Option<Self> {
         let problem = ProblemDetails::from_response(response).unwrap_or_default();
+        let detail = problem
+            .detail
+            .unwrap_or_else(|| "no reason provided".to_owned());
 
         match problem.code.as_deref() {
-            Some("invalid_token") => Error::InvalidToken,
-            Some("missing_token") => Error::InvalidToken,
-            _ => Error::AuthenticationFailed(
-                problem
-                    .detail
-                    .unwrap_or_else(|| "no reason provided".to_owned()),
-            ),
+            Some("invalid_token" | "missing_token") => Some(Error::InvalidToken),
+            Some(code) if CERTIFICATE_REJECTION_CODES.contains(&code) => {
+                Some(Error::CertificateRejected(detail))
+            }
+            _ if response.status() == StatusCode::UNAUTHORIZED => {
+                Some(Error::AuthenticationFailed(detail))
+            }
+            _ => None,
         }
     }
 }
@@ -646,11 +686,11 @@ where
 
                         continue;
                     }
-                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(r))))
-                        if r.status() == StatusCode::UNAUTHORIZED =>
+                    Poll::Ready(Err(InternalError::WebSocket(tungstenite::Error::Http(ref r))))
+                        if let Some(error) = Error::from_rejection(r) =>
                     {
                         self.state = State::Closed;
-                        return Poll::Ready(Err(Error::from_unauthorized(&r)));
+                        return Poll::Ready(Err(error));
                     }
                     Poll::Ready(Err(e))
                         if let Some(message) = e.client_certificate_signing_error() =>
@@ -1229,7 +1269,7 @@ mod tests {
             ))
             .unwrap();
 
-        let error = Error::from_unauthorized(&response);
+        let error = Error::from_rejection(&response).expect("a 401 naming the token is terminal");
 
         assert!(matches!(error, Error::InvalidToken), "got {error:?}");
     }
@@ -1244,7 +1284,7 @@ mod tests {
             ))
             .unwrap();
 
-        let error = Error::from_unauthorized(&response);
+        let error = Error::from_rejection(&response).expect("a plain 401 is terminal");
 
         assert!(!error.requires_sign_in());
         assert_eq!(

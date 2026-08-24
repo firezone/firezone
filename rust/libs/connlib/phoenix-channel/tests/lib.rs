@@ -518,6 +518,124 @@ async fn http_401_with_invalid_token_code_returns_invalid_token() {
 }
 
 #[tokio::test]
+async fn http_403_with_certificate_code_is_terminal() {
+    let port = http_problem_details_server(
+        http::StatusCode::FORBIDDEN,
+        r#"{"type":"about:blank","title":"Forbidden","status":403,"detail":"This device's certificate has been revoked.","code":"certificate_revoked"}"#,
+    )
+    .await;
+
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
+
+    // Without the terminal path this is an `Event::Hiccup` and the poll never resolves, so
+    // reaching the timeout is the failure this test is really guarding against.
+    let error = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not retry a rejected certificate")
+    .unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        "The portal rejected the client certificate: This device's certificate has been revoked."
+    );
+    assert!(error.is_certificate_error());
+    // A new token cannot replace the credential the portal refused.
+    assert!(!error.requires_sign_in());
+}
+
+#[tokio::test]
+async fn http_409_with_certificate_code_is_terminal() {
+    let port = http_problem_details_server(
+        http::StatusCode::CONFLICT,
+        r#"{"type":"about:blank","title":"Conflict","status":409,"detail":"Different hardware.","code":"device_identity_conflict"}"#,
+    )
+    .await;
+
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
+
+    let error = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not retry a rejected certificate")
+    .unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        "The portal rejected the client certificate: Different hardware."
+    );
+    assert!(error.is_certificate_error());
+    assert!(!error.requires_sign_in());
+}
+
+#[tokio::test]
+async fn http_403_with_another_code_triggers_retry() {
+    let port = http_problem_details_server(
+        http::StatusCode::FORBIDDEN,
+        r#"{"type":"about:blank","title":"Forbidden","status":403,"detail":"The account is disabled","code":"account_disabled"}"#,
+    )
+    .await;
+
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    // Only the codes that name the certificate are terminal; the rest stay retryable.
+    assert!(
+        matches!(result, Ok(Event::Hiccup { .. })),
+        "expected Event::Hiccup for a 403 whose code does not name the certificate, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn http_403_without_problem_details_triggers_retry() {
+    let port = http_status_server(http::StatusCode::FORBIDDEN).await;
+
+    let mut channel = make_test_channel("127.0.0.1", port, default_backoff);
+
+    channel.connect(
+        vec![IpAddr::from(Ipv4Addr::LOCALHOST)],
+        Duration::ZERO,
+        PublicKeyParam([0u8; 32]),
+    );
+
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        future::poll_fn(|cx| channel.poll(cx)).await
+    })
+    .await
+    .expect("should not timeout");
+
+    assert!(
+        matches!(result, Ok(Event::Hiccup { .. })),
+        "expected Event::Hiccup for a 403 an intermediary sent, got {result:?}"
+    );
+}
+
+#[tokio::test]
 async fn http_401_without_code_returns_authentication_failed() {
     let port = http_problem_details_server(
         http::StatusCode::UNAUTHORIZED,
