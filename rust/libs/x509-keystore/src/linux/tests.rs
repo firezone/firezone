@@ -1,9 +1,9 @@
 //! Tests for the PKCS#11 backend, including its calls into a token.
 //!
-//! The tests that reach into a token run against SoftHSM, loaded directly rather than through the
-//! p11-kit proxy a deployment goes through. Each of them initialises its own token below a
-//! temporary directory that `SOFTHSM2_CONF` names, so they never touch a developer's real token
-//! store and cannot collide with one another.
+//! The tests that reach into a token run against SoftHSM, loaded directly rather than found
+//! through the p11-kit registration a deployment goes through. Each of them initialises its own
+//! token below a temporary directory that `SOFTHSM2_CONF` names, so they never touch a
+//! developer's real token store and cannot collide with one another.
 
 use std::{
     fs,
@@ -27,14 +27,14 @@ use crate::sign::{der_encode_ecdsa_signature, der_integer, encode_der_length};
 
 #[test]
 fn an_unloadable_module_is_no_identity_rather_than_an_error() {
-    let module = Path::new("/nonexistent/p11-kit-proxy.so");
+    let modules = [PathBuf::from("/nonexistent/example-pkcs11.so")];
     let pin_file = Path::new("/nonexistent/pkcs11-pin");
 
-    let identity = identity_on(module, pin_file, "dev.firezone.device-trust")
+    let identity = identity_on(&modules, pin_file, "dev.firezone.device-trust")
         .expect("an unreadable keystore is a machine without one, not an error");
     assert!(identity.is_none());
 
-    let status = status_on(module, pin_file, "dev.firezone.device-trust")
+    let status = status_on(&modules, pin_file, "dev.firezone.device-trust")
         .expect("an unreadable keystore is a machine without one, not an error");
     assert!(matches!(status.severity, StatusSeverity::Warning));
     assert!(
@@ -45,11 +45,71 @@ fn an_unloadable_module_is_no_identity_rather_than_an_error() {
     let section = section(&status, "PKCS#11 Module");
     assert_eq!(
         field_value(section, "Module Path"),
-        Some("/nonexistent/p11-kit-proxy.so")
+        Some("/nonexistent/example-pkcs11.so")
     );
     assert!(
         field_value(section, "Error").is_some_and(|error| error.contains("Failed to load")),
         "the diagnostics should carry the error chain"
+    );
+}
+
+#[test]
+fn reads_the_module_a_configuration_file_names() {
+    let directories = [
+        PathBuf::from("/usr/lib64/pkcs11"),
+        PathBuf::from("/usr/lib/pkcs11"),
+    ];
+    let installed = |module: &Path| module == Path::new("/usr/lib/pkcs11/opensc-pkcs11.so");
+
+    let resolved = configured_module(
+        "# The OpenSC driver.\nmodule: opensc-pkcs11.so\ndisable-in: p11-kit-proxy\n",
+        &directories,
+        &installed,
+    );
+
+    assert_eq!(
+        resolved,
+        Some(PathBuf::from("/usr/lib/pkcs11/opensc-pkcs11.so")),
+        "a relative module resolves against the directory that holds it, and `disable-in` \
+         only disables a module for the proxy, which we are not"
+    );
+}
+
+#[test]
+fn an_absolute_module_is_loaded_from_where_the_configuration_says() {
+    let resolved = configured_module(
+        "module: /opt/example/example-pkcs11.so\n",
+        &[PathBuf::from("/usr/lib64/pkcs11")],
+        &|_: &Path| false,
+    );
+
+    assert_eq!(
+        resolved,
+        Some(PathBuf::from("/opt/example/example-pkcs11.so"))
+    );
+}
+
+#[test]
+fn registered_modules_are_deduplicated_by_resolved_path() {
+    let directories = [PathBuf::from("/usr/lib64/pkcs11")];
+    let files = [
+        "module: libsofthsm2.so\n".to_owned(),
+        "module: /usr/lib64/pkcs11/libsofthsm2.so\n".to_owned(),
+        "trust-policy: yes\n".to_owned(),
+        "module: p11-kit-trust.so\ndisable-in: p11-kit-proxy\n".to_owned(),
+    ];
+
+    let modules = configured_modules(files, &directories, &|_: &Path| false);
+
+    assert_eq!(
+        modules,
+        [
+            // A module that is nowhere keeps the most preferred guess, so its load failure
+            // names the path the configuration meant.
+            PathBuf::from("/usr/lib64/pkcs11/libsofthsm2.so"),
+            PathBuf::from("/usr/lib64/pkcs11/p11-kit-trust.so"),
+        ],
+        "one file without a `module:` line and one duplicate should be dropped"
     );
 }
 
@@ -286,33 +346,24 @@ fn counts_down_the_attempts_a_rejected_pin_leaves() {
 }
 
 #[test]
-fn probes_the_64_bit_library_directory_before_the_32_bit_one() {
-    let candidates = proxy_module_candidates(vec![PathBuf::from("/usr/lib/x86_64-linux-gnu")]);
+fn probes_the_64_bit_module_directory_before_the_32_bit_one() {
+    let directories = module_directories(vec![PathBuf::from("/usr/lib/x86_64-linux-gnu")]);
 
     let position = |path: &str| {
-        candidates
+        directories
             .iter()
-            .position(|candidate| candidate == Path::new(path))
+            .position(|directory| directory == Path::new(path))
             .unwrap_or_else(|| panic!("{path} should be probed"))
     };
 
     assert!(
-        position("/usr/lib64/p11-kit-proxy.so") < position("/usr/lib/p11-kit-proxy.so"),
-        "an i686 p11-kit package puts a 32-bit proxy into /usr/lib, which must not shadow /usr/lib64"
+        position("/usr/lib64/pkcs11") < position("/usr/lib/pkcs11"),
+        "an i686 package puts 32-bit modules into /usr/lib, which must not shadow /usr/lib64"
     );
     assert!(
-        position("/usr/lib/x86_64-linux-gnu/p11-kit-proxy.so")
-            < position("/usr/lib/p11-kit-proxy.so"),
-        "the multiarch directory is where Debian installs the proxy"
+        position("/usr/lib/x86_64-linux-gnu/pkcs11") < position("/usr/lib/pkcs11"),
+        "the multiarch directory is where Debian installs modules"
     );
-    // The registered-module subdirectories stay probed as a fallback.
-    for fallback in [
-        "/usr/lib64/pkcs11/p11-kit-proxy.so",
-        "/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-proxy.so",
-        "/usr/lib/pkcs11/p11-kit-proxy.so",
-    ] {
-        position(fallback);
-    }
 }
 
 #[test]
@@ -500,7 +551,11 @@ impl Token {
     }
 
     fn identity_of(&self, subject_cn: &str) -> Result<Option<Identity>> {
-        super::identity_on(&self.module, &self.pin_file, subject_cn)
+        super::identity_on(
+            std::slice::from_ref(&self.module),
+            &self.pin_file,
+            subject_cn,
+        )
     }
 
     fn status(&self) -> Result<Status> {
@@ -508,7 +563,11 @@ impl Token {
     }
 
     fn status_of(&self, subject_cn: &str) -> Result<Status> {
-        super::status_on(&self.module, &self.pin_file, subject_cn)
+        super::status_on(
+            std::slice::from_ref(&self.module),
+            &self.pin_file,
+            subject_cn,
+        )
     }
 }
 

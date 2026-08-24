@@ -189,13 +189,14 @@ fingerprint. It reads through the privileged Tunnel service, so it reports the
 same identity the connection would use.
 
 On Linux the keystore is a PKCS#11 token, reached through p11-kit rather than
-configured: the Tunnel service loads `p11-kit-proxy.so` and searches every token
-the modules registered with p11-kit expose. Register the token's driver with
-p11-kit, as `tpm2-pkcs11`, OpenSC and SoftHSM all do when installed.
+configured: the Tunnel service loads every module registered with p11-kit, each
+on its own so that a broken one cannot hide the tokens of the others, and
+searches every token they expose. Register the token's driver with p11-kit, as
+`tpm2-pkcs11`, OpenSC and SoftHSM all do when installed.
 
 The packages recommend p11-kit rather than depend on it, so a Client installed
 without it works and reports on its diagnostics screen that no PKCS#11 module is
-installed. Install `p11-kit-modules` on Debian and Ubuntu, `p11-kit` on Fedora
+registered. Install `p11-kit-modules` on Debian and Ubuntu, `p11-kit` on Fedora
 and RHEL, to present a certificate from a token.
 
 A token that requires a PIN takes it from `/etc/firezone/pkcs11-pin`, which must

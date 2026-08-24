@@ -61,10 +61,11 @@ keystore that cannot be read; a matching identity the keystore cannot use exits
 non-zero.
 
 On Linux the keystore is a PKCS#11 token, reached through p11-kit rather than
-configured: the Client loads `p11-kit-proxy.so` and searches every token the
-modules registered with p11-kit expose. A token that requires a PIN takes it
-from `/etc/firezone/pkcs11-pin`, which must be owned by root and readable by
-nobody else.
+configured: the Client loads every module registered with p11-kit, each on its
+own so that a broken one cannot hide the tokens of the others, and searches
+every token they expose. A token that requires a PIN takes it from
+`/etc/firezone/pkcs11-pin`, which must be owned by root and readable by nobody
+else.
 
 p11-kit is not required to run the Client. Without it there is no token to hold
 a certificate, which `--check` reports rather than fails on. Install
