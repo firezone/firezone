@@ -48,7 +48,7 @@
     ///
     /// nonisolated(unsafe): the session is Sendable, but the mock is only ever
     /// driven from the main actor.
-    private nonisolated(unsafe) var providerLogFolderSize = MockFixtures.providerLogFolderSize
+    nonisolated(unsafe) private var providerLogFolderSize = MockFixtures.providerLogFolderSize
 
     // swiftlint:disable:next discouraged_optional_collection
     func startTunnel(options: [String: Any]?) throws {}
