@@ -107,6 +107,8 @@ public struct SettingsView: View {
 
   @State private var calculateLogSizeTask: Task<(), Never>?
 
+  @State private var selectedTab: Tab
+
   #if os(iOS)
     @State private var logTempZipFileURL: URL?
     @State private var isPresentingExportLogShareSheet = false
@@ -128,10 +130,18 @@ public struct SettingsView: View {
     )
   }
 
-  public init(store: Store) {
+  /// The tabs of the settings screen.
+  public enum Tab: Hashable {
+    case general
+    case advanced
+    case logs
+  }
+
+  public init(store: Store, selectedTab: Tab = .general) {
     self.store = store
     self.configuration = store.configuration
     _viewModel = StateObject(wrappedValue: SettingsViewModel())
+    _selectedTab = State(initialValue: selectedTab)
   }
 
   public var body: some View {
@@ -142,23 +152,26 @@ public struct SettingsView: View {
             .ignoresSafeArea()
 
           VStack {
-            TabView {
+            TabView(selection: $selectedTab) {
               generalTab
                 .tabItem {
                   Image(systemName: "slider.horizontal.3")
                   Text("General")
                 }
+                .tag(Tab.general)
               advancedTab
                 .tabItem {
                   Image(systemName: "gearshape.2")
                   Text("Advanced")
                 }
                 .badge(viewModel.isValid() ? nil : "!")
+                .tag(Tab.advanced)
               logsTab
                 .tabItem {
                   Image(systemName: "doc.text")
                   Text("Diagnostic Logs")
                 }
+                .tag(Tab.logs)
             }
           }
           .padding(.bottom, 10)
@@ -200,19 +213,22 @@ public struct SettingsView: View {
       }
     #elseif os(macOS)
       VStack {
-        TabView {
+        TabView(selection: $selectedTab) {
           generalTab
             .tabItem {
               Text("General")
             }
+            .tag(Tab.general)
           advancedTab
             .tabItem {
               Text("Advanced")
             }
+            .tag(Tab.advanced)
           logsTab
             .tabItem {
               Text("Diagnostic Logs")
             }
+            .tag(Tab.logs)
         }
         .padding(20)
         Spacer()
