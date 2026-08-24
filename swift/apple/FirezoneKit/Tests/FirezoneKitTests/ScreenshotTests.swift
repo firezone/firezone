@@ -75,7 +75,7 @@
       ]
 
       for (tab, name) in tabs {
-        let window = try makeWindow(colorScheme, size: windowSize) { store in
+        let window = try makeWindow(colorScheme, size: windowSize, tabsInTitlebar: true) { store in
           SettingsView(store: store, selectedTab: tab)
         }
         try capture(window, as: "settings-\(name)", colorScheme)
@@ -95,6 +95,7 @@
       _ colorScheme: ColorScheme,
       title: String? = nil,
       size: CGSize,
+      tabsInTitlebar: Bool = false,
       @ViewBuilder content: (Store) -> some View
     ) throws -> NSWindow {
       // Before any view exists: SwiftUI resolves its environment when the hosting view is
@@ -112,6 +113,10 @@
           .environmentObject(GlobalErrorHandler())
           .environment(\.colorScheme, colorScheme)
           .environment(\.logoTextImage, Self.wordmark(colorScheme))
+          // Only takes effect under `.fullSizeContentView`, where the titlebar
+          // becomes a safe-area inset; ignoring it lets the tab bar rise into
+          // the titlebar row, where the app's settings window draws it.
+          .ignoresSafeArea(.container, edges: .top)
       )
       // Nothing may derive the window size from the content: the Spacer-heavy
       // screens have no meaningful ideal size, and a derived window collapses
@@ -124,6 +129,13 @@
       window.identifier = .screenshotCapture
       if let title {
         window.title = title
+      }
+      if tabsInTitlebar {
+        // The app's settings window shows the tab picker in the titlebar and no
+        // title text.
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.styleMask.insert(.fullSizeContentView)
       }
       // The measured sizes include the titlebar, so the frame is set rather than
       // the content size.
