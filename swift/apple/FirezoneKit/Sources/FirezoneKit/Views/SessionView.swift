@@ -103,7 +103,7 @@ import SwiftUI
 
     private func internetResourceTitle(resource: Resource) -> String {
       let status =
-        Configuration.shared.internetResourceEnabled ? StatusSymbol.enabled : StatusSymbol.disabled
+        store.configuration.internetResourceEnabled ? StatusSymbol.enabled : StatusSymbol.disabled
 
       return status + " " + resource.name
     }

@@ -17,8 +17,6 @@ import SwiftUI
 
     let content: Content
 
-    private let configuration = Configuration.shared
-
     init(@ViewBuilder content: () -> Content) {
       self.content = content()
     }
@@ -143,7 +141,7 @@ import SwiftUI
       guard let defaultURL = URL(string: ConfigurationDefaults.supportURL) else { return }
 
       let url =
-        URL(string: configuration.supportURL)
+        URL(string: store.configuration.supportURL)
         ?? defaultURL
       openURL(url)
     }

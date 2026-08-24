@@ -5,7 +5,6 @@
 //  Created by Jamil Bou Kheir on 5/25/24.
 //
 
-import Combine
 import SwiftUI
 
 #if os(iOS)
@@ -238,47 +237,21 @@ import SwiftUI
     }
   }
 
-  @MainActor
-  class ToggleInternetResourceButtonModel: ObservableObject {
-    private var cancellables: Set<AnyCancellable> = []
-    private let configuration = Configuration.shared
-
-    @Published private(set) var enabled: Bool
-
-    init() {
-      self.enabled = configuration.internetResourceEnabled
-
-      configuration.objectWillChange
-        .receive(on: RunLoop.main)
-        .sink(receiveValue: { [weak self] _ in
-          guard let self else { return }
-          self.enabled = self.configuration.internetResourceEnabled
-        })
-        .store(in: &cancellables)
-    }
-
-    func toggleInternetResource() {
-      configuration.internetResourceEnabled.toggle()
-    }
-
-    func toggleResourceEnabledText() -> String {
-      return enabled ? "Disable this resource" : "Enable this resource"
-    }
-  }
-
   struct ToggleInternetResourceButton: View {
     var resource: Resource
     @EnvironmentObject var store: Store
-    @StateObject var viewModel: ToggleInternetResourceButtonModel = .init()
 
     var body: some View {
       Button(
         action: {
-          viewModel.toggleInternetResource()
+          store.configuration.internetResourceEnabled.toggle()
         },
         label: {
           HStack {
-            Text(viewModel.toggleResourceEnabledText())
+            Text(
+              store.configuration.internetResourceEnabled
+                ? "Disable this resource" : "Enable this resource"
+            )
             Spacer()
           }
         }
