@@ -115,9 +115,7 @@
     init() {
       let proto = NETunnelProviderProtocol()
       proto.providerConfiguration = Configuration().toProviderConfiguration()
-      // Only the system would read this, to launch the extension; the mock never talks to
-      // the system, so the shipped identifier serves as well as a derived one.
-      proto.providerBundleIdentifier = "dev.firezone.firezone.network-extension"
+      proto.providerBundleIdentifier = VPNConfigurationManager.bundleIdentifier
       proto.serverAddress = "Firezone"
       protocolConfiguration = proto
     }
