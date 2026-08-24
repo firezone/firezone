@@ -50,10 +50,10 @@ function SignedOut({ signIn }: SignedOutProps) {
     <div className="flex flex-col items-center gap-4">
       <p className="text-sm text-body">
         You can sign in by clicking the Firezone icon in the taskbar or by
-        clicking &quot;Sign in&quot; below.
+        clicking &quot;Sign in to Firezone&quot; below.
       </p>
       <Button onClick={signIn} variant="primary">
-        Sign in
+        Sign in to Firezone
       </Button>
       <p className="text-xs text-subtle">
         Firezone will continue running after this window is closed.
