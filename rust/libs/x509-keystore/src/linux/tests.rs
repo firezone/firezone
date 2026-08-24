@@ -26,6 +26,25 @@ use super::*;
 use crate::sign::{der_encode_ecdsa_signature, der_integer, encode_der_length};
 
 #[test]
+fn an_unloadable_module_is_no_identity_rather_than_an_error() {
+    let module = Path::new("/nonexistent/p11-kit-proxy.so");
+    let pin_file = Path::new("/nonexistent/pkcs11-pin");
+
+    let identity = identity_on(module, pin_file, "dev.firezone.device-trust")
+        .expect("an unloadable module is a machine without a keystore, not an error");
+    assert!(identity.is_none());
+
+    let status = status_on(module, pin_file, "dev.firezone.device-trust")
+        .expect("an unloadable module is a machine without a keystore, not an error");
+    assert!(matches!(status.severity, StatusSeverity::Warning));
+    assert!(
+        status.summary.contains("PKCS#11 module cannot be used"),
+        "{}",
+        status.summary
+    );
+}
+
+#[test]
 #[ignore = "Requires the SoftHSM PKCS#11 module and writes to a temporary token store"]
 fn signs_with_the_token_key_of_an_rsa_certificate() {
     let _serialized = serialize_token_access();
