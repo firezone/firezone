@@ -31,7 +31,12 @@ ls -la "$TARGET_DIR" 2>&1 | head -40 || true
 # `windows-2022` runner image but isn't on PATH. We can't pin a
 # specific SDK build (newer images bring newer SDK versions and the
 # old ones aren't necessarily kept) so we glob all installed SDKs and
-# pick the highest version that ships an x64 MakeAppx.
+# pick the highest version that ships a MakeAppx for the host.
+case "$(uname -m)" in
+    aarch64 | arm64) HOST_ARCHES=(arm64 x64) ;;
+    *) HOST_ARCHES=(x64) ;;
+esac
+
 MAKEAPPX="${MAKEAPPX:-}"
 if [ -z "$MAKEAPPX" ]; then
     if command -v MakeAppx.exe >/dev/null 2>&1; then
@@ -39,21 +44,24 @@ if [ -z "$MAKEAPPX" ]; then
     else
         # Find candidates from both x86 and x64 SDK roots, sort
         # version-aware and take the newest.
-        mapfile -t CANDIDATES < <(
-            find \
-                "/c/Program Files (x86)/Windows Kits/10/bin" \
-                "/c/Program Files/Windows Kits/10/bin" \
-                -maxdepth 3 -type f -iname MakeAppx.exe -path '*/x64/*' 2>/dev/null \
-                | sort -V
-        )
-        if [ "${#CANDIDATES[@]}" -gt 0 ]; then
-            MAKEAPPX="${CANDIDATES[-1]}"
-        fi
+        for sdk_arch in "${HOST_ARCHES[@]}"; do
+            mapfile -t CANDIDATES < <(
+                find \
+                    "/c/Program Files (x86)/Windows Kits/10/bin" \
+                    "/c/Program Files/Windows Kits/10/bin" \
+                    -maxdepth 3 -type f -iname MakeAppx.exe -path "*/$sdk_arch/*" 2>/dev/null \
+                    | sort -V
+            )
+            if [ "${#CANDIDATES[@]}" -gt 0 ]; then
+                MAKEAPPX="${CANDIDATES[-1]}"
+                break
+            fi
+        done
     fi
 fi
 if [ -z "$MAKEAPPX" ] || [ ! -x "$MAKEAPPX" ]; then
     echo "MakeAppx.exe not found. Set \$MAKEAPPX or install the Windows 10 SDK." >&2
-    echo "Searched: PATH and /c/Program Files*/Windows Kits/10/bin/*/x64/MakeAppx.exe" >&2
+    echo "Searched: PATH and /c/Program Files*/Windows Kits/10/bin/*/{${HOST_ARCHES[*]}}/MakeAppx.exe" >&2
     exit 1
 fi
 echo "Using MakeAppx: $MAKEAPPX"

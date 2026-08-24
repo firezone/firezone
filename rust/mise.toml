@@ -9,7 +9,9 @@ auto_install = false
 "github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
-"github:mozilla/dump_syms" = "2.3.7"
+# `matching_regex` skips the npm tarballs the release also carries, so every
+# platform gets the bare binary; `bin` gives it a name the shim can use.
+"github:getsentry/sentry-cli" = { version = "3.6.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
 
 # The eBPF program is compiled with this exact nightly toolchain: `aya_build`
