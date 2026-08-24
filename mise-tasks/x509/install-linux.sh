@@ -28,7 +28,13 @@ umask 077
 
 # The Tunnel service runs as root under `ProtectHome=true`, which leaves it nothing below /home
 # to read, so both the token and its PIN belong in system-wide locations.
+# Distributions compile different config paths into the library: Debian /etc/softhsm/, Fedora
+# /etc directly. The Client reads the token through that compiled-in default, so the import has
+# to land in whichever file this machine's build actually reads.
 SOFTHSM_CONF="/etc/softhsm/softhsm2.conf"
+if [ ! -f "$SOFTHSM_CONF" ] && [ -f /etc/softhsm2.conf ]; then
+    SOFTHSM_CONF="/etc/softhsm2.conf"
+fi
 PIN_PATH="/etc/firezone/pkcs11-pin"
 
 # `//:x509:gen-certificate` issues the certificate under this common name, and the Client goes
