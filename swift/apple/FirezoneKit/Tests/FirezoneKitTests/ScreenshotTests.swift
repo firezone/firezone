@@ -32,11 +32,11 @@
   /// and no title text, in the app as in the captures.
   private let mainWindowTitle = "Welcome to Firezone"
 
-  /// The window sizes, measured from the app's windows on a fresh install. The
-  /// scenes declare no size, so AppKit derives one at runtime; captures pin the
-  /// measured result so the renders match what the app shows.
-  private let mainWindowSize = CGSize(width: 900, height: 450)
-  private let settingsWindowSize = CGSize(width: 780, height: 530)
+  /// The window size, measured from the app. Neither scene declares a size and
+  /// both hold greedy content, so AppKit derives the same default for each on
+  /// every open; captures pin the measured result so the renders match what the
+  /// app shows.
+  private let windowSize = CGSize(width: 900, height: 450)
 
   @Suite("Screenshots", .requiresAppKit)
   struct ScreenshotTests {
@@ -46,7 +46,7 @@
       let window = try makeWindow(
         colorScheme,
         title: mainWindowTitle,
-        size: mainWindowSize
+        size: windowSize
       ) { _ in GrantVPNView() }
       try capture(window, as: "grant-vpn", colorScheme)
     }
@@ -57,7 +57,7 @@
       let window = try makeWindow(
         colorScheme,
         title: mainWindowTitle,
-        size: mainWindowSize
+        size: windowSize
       ) { _ in FirstTimeView() }
       try capture(window, as: "first-time", colorScheme)
     }
@@ -75,7 +75,7 @@
       ]
 
       for (tab, name) in tabs {
-        let window = try makeWindow(colorScheme, size: settingsWindowSize) { store in
+        let window = try makeWindow(colorScheme, size: windowSize) { store in
           SettingsView(store: store, selectedTab: tab)
         }
         try capture(window, as: "settings-\(name)", colorScheme)
