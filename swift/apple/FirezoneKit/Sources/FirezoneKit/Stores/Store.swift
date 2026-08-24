@@ -675,7 +675,12 @@ public final class Store: ObservableObject {
   // On macOS, we clear logs from the app process, then call over IPC
   // to clear the provider's log directory.
   func clearLogs() async throws {
-    try Log.clear(in: logDirectory)
+    // Deleting a large log tree is blocking filesystem work, so keep it off the
+    // main actor and hop back for the provider IPC.
+    let logDirectory = self.logDirectory
+    try await Task.detached {
+      try Log.clear(in: logDirectory)
+    }.value
 
     #if os(macOS)
       guard let session = try manager().session() else {
@@ -688,19 +693,26 @@ public final class Store: ObservableObject {
 
   #if os(macOS)
     func exportLogs(to destination: URL) async throws {
+      guard let logDirectory else {
+        throw LogExporter.ExportError.invalidSourceDirectory
+      }
       guard let session = try manager().session() else {
         throw VPNConfigurationManagerError.managerNotInitialized
       }
 
-      try await LogExporter.export(to: destination, session: session)
+      try await LogExporter.export(to: destination, from: logDirectory, session: session)
     }
   #endif
 
   #if os(iOS)
     /// Exports the logs to a temporary archive and returns its URL.
     func exportLogs() async throws -> URL {
+      guard let logDirectory else {
+        throw LogExporter.ExportError.invalidSourceDirectory
+      }
+
       let archiveURL = try LogExporter.tempFile()
-      try await LogExporter.export(to: archiveURL)
+      try await LogExporter.export(to: archiveURL, from: logDirectory)
 
       return archiveURL
     }

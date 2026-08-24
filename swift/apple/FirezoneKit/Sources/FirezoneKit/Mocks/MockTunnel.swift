@@ -43,6 +43,10 @@
   private final class MockTunnelSession: TunnelSessionProtocol {
     var status: NEVPNStatus { .connected }
 
+    /// Drops to zero when a clear is acknowledged, so the settings screen shows
+    /// the size a real provider would report afterwards.
+    private var providerLogFolderSize = MockFixtures.providerLogFolderSize
+
     // swiftlint:disable:next discouraged_optional_collection
     func startTunnel(options: [String: Any]?) throws {}
     func stopTunnel() {}
@@ -89,9 +93,10 @@
         }
       case .getLogFolderSize:
         // The provider answers with the raw bytes of an `Int64`.
-        responseHandler(withUnsafeBytes(of: MockFixtures.providerLogFolderSize) { Data($0) })
+        responseHandler(withUnsafeBytes(of: providerLogFolderSize) { Data($0) })
       case .clearLogs:
         // The provider answers a successful clear with an empty response.
+        providerLogFolderSize = 0
         responseHandler(nil)
       case .exportLogs:
         // The provider streams plist-encoded `LogChunk`s; everything fits in one
@@ -189,7 +194,10 @@
     /// 30 MB, so the settings screen shows a believable provider-side log size.
     static let providerLogFolderSize: Int64 = 30_000_000
 
-    static let exportedTunnelLogs = Data("Mock tunnel log archive\n".utf8)
+    /// The provider streams the bytes of a ZIP archive, so answer with the
+    /// smallest valid one: an empty end-of-central-directory record. An export
+    /// produced against the mock then unzips cleanly.
+    static let exportedTunnelLogs = Data([0x50, 0x4B, 0x05, 0x06] + [UInt8](repeating: 0, count: 18))
 
     /// A throwaway log directory seeded with two files of fixed contents, so
     /// the computed app-side log size is real and deterministic.

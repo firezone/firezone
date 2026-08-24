@@ -153,6 +153,8 @@ public final class Log {
 
   // Returns the size in bytes of the provided directory, calculated by summing
   // the size of its contents recursively.
+  // @concurrent: walking a large log tree must not run on the caller's actor.
+  @concurrent
   public static func size(of directory: URL) async -> Int64 {
     let fileManager = FileManager.default
     var totalSize: Int64 = 0
