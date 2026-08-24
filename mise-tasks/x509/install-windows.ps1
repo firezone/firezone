@@ -30,6 +30,16 @@ if (-not (Test-Path -LiteralPath $p12Path -PathType Leaf)) {
     exit 1
 }
 
+# The Client reads only the machine store: the Tunnel service runs as LocalSystem, and a
+# certificate in a user's store is invisible to it. Writing there needs elevation.
+$principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    [Console]::Error.WriteLine('error: importing into Cert:\LocalMachine\My needs an elevated shell.')
+    [Console]::Error.WriteLine('Re-run this task from a PowerShell started as Administrator.')
+
+    exit 1
+}
+
 # `Import-PfxCertificate` comes from the PKI module, which ships with Windows PowerShell.
 # Microsoft lists PKI as untested with PowerShell 7's Windows PowerShell compatibility layer,
 # so run this under `powershell.exe` if PowerShell 7 cannot produce the cmdlet.
@@ -40,10 +50,10 @@ if (-not (Get-Command Import-PfxCertificate -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-Write-Output "==> Importing $p12Path into Cert:\CurrentUser\My..."
+Write-Output "==> Importing $p12Path into Cert:\LocalMachine\My..."
 
 $password = ConvertTo-SecureString -String $p12Password -AsPlainText -Force
-$imported = @(Import-PfxCertificate -FilePath $p12Path -CertStoreLocation 'Cert:\CurrentUser\My' -Password $password)
+$imported = @(Import-PfxCertificate -FilePath $p12Path -CertStoreLocation 'Cert:\LocalMachine\My' -Password $password)
 
 # The file carries the issuing CA alongside the client certificate, and both land in the store.
 $certificate = $imported | Where-Object { $_.HasPrivateKey } | Select-Object -First 1
@@ -57,7 +67,7 @@ Write-Output ('Thumbprint ' + $certificate.Thumbprint)
 
 # The Client signs through CNG and cannot use a key held by a legacy cryptographic service
 # provider, which is where PFXImportCertStore puts an RSA key that names no provider of its own.
-$provider = certutil -user -store My $certificate.Thumbprint |
+$provider = certutil -store My $certificate.Thumbprint |
     Select-String -Pattern 'Provider =' |
     Select-Object -First 1
 
@@ -67,14 +77,9 @@ if ($provider) {
 
 if (-not $provider -or $provider.Line -notmatch 'Key Storage Provider') {
     Write-Warning 'The private key is not held by a CNG key storage provider, so the Client cannot sign with it.'
-    Write-Warning 'Delete it from Cert:\CurrentUser\My and import it again with certutil instead:'
-    Write-Warning ('  certutil -f -user -p ' + $p12Password + ' -csp "Microsoft Software Key Storage Provider" -importpfx My ' + $p12Path)
+    Write-Warning 'Delete it from Cert:\LocalMachine\My and import it again with certutil instead:'
+    Write-Warning ('  certutil -f -p ' + $p12Password + ' -csp "Microsoft Software Key Storage Provider" -importpfx My ' + $p12Path)
 }
 
 Write-Output ''
 Write-Output "'firezone-client-tunnel.exe x509' prints what the Client makes of the store."
-Write-Output ''
-Write-Output 'That store belongs to your account. The installed Tunnel service runs as LocalSystem and'
-Write-Output 'will not see it; give the service its own copy from an elevated PowerShell:'
-Write-Output ''
-Write-Output ("    Import-PfxCertificate -FilePath '$p12Path' -CertStoreLocation Cert:\LocalMachine\My -Password (ConvertTo-SecureString -String '$p12Password' -AsPlainText -Force)")
