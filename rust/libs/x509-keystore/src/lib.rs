@@ -145,9 +145,9 @@ impl From<x509_claims::DetailField> for DetailField {
 impl From<x509_claims::ClaimValue> for FieldValue {
     fn from(value: x509_claims::ClaimValue) -> Self {
         match value {
-            x509_claims::ClaimValue::Present(value) => Self::Present(value),
+            x509_claims::ClaimValue::Present { value } => Self::Present(value),
             x509_claims::ClaimValue::Absent => Self::Absent,
-            x509_claims::ClaimValue::Invalid(reason) => Self::Invalid(reason.label().to_owned()),
+            x509_claims::ClaimValue::Invalid { reason } => Self::Invalid(reason.label().to_owned()),
         }
     }
 }
