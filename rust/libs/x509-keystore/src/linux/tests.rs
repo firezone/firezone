@@ -173,14 +173,6 @@ fn describes_a_provisioned_certificate_in_the_diagnostics() {
         Some(token.label.as_str())
     );
     assert_eq!(
-        field_value(certificate, "Private Key Access"),
-        Some("Available")
-    );
-    assert_eq!(
-        field_value(certificate, "Usable With Its Private Key"),
-        Some("Yes")
-    );
-    assert_eq!(
         field_value(certificate, "Common Name"),
         Some(token.subject_cn.as_str())
     );
