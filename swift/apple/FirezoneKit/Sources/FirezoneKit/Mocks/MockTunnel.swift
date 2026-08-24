@@ -465,7 +465,7 @@
 
     #if os(macOS)
       func showSignedOutAlertMacOS(_ message: String?) async {}
-      func showDisconnectedAlertMacOS(_ message: String?) async {}
+      func showDisconnectedAlertMacOS(_ message: String?, isCertificateError: Bool) async {}
       func showRestartRequiredAlertMacOS() {}
     #endif
   }
