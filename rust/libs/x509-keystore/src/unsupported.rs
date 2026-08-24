@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use crate::{Identity, Status, StatusSeverity};
+use crate::{DetailSection, Identity, Status, StatusSeverity, field};
 
 #[expect(
     clippy::unnecessary_wraps,
@@ -20,6 +20,9 @@ pub(crate) fn status(_subject_cn: &str) -> Result<Status> {
     Ok(Status {
         severity: StatusSeverity::Warning,
         summary: "This platform has no X.509 keystore backend.".to_owned(),
-        sections: Vec::new(),
+        sections: vec![DetailSection {
+            title: "Keystore".to_owned(),
+            fields: vec![field("Platform", std::env::consts::OS)],
+        }],
     })
 }
