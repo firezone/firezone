@@ -112,6 +112,14 @@
     /// tabs in the titlebar, which a capture of the content alone cuts off.
     @MainActor
     private func capture(_ window: NSWindow, as name: String, _ colorScheme: ColorScheme) throws {
+      // A window that never reaches the screen has no backing for the titlebar's
+      // materials, which draw as a light block whatever the appearance says. Order it
+      // front for the capture; the suite trait zeroes every window's alpha, so nothing
+      // shows on the runner's screen.
+      window.orderFrontRegardless()
+      RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+      defer { window.orderOut(nil) }
+
       let view = try #require(
         window.contentView?.superview,
         "the window has no frame view"
