@@ -19,6 +19,9 @@ To compile natively for x86_64 Windows, install the following (winget commands s
    `winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`
 1. rustup — `winget install Rustlang.Rustup`
 1. mise — `winget install jdx.mise`
+1. A `sudo` for elevating the Tunnel service: either **Sudo for Windows** (Windows 11
+   24H2 or later), enabled under Settings > System > Advanced, or
+   `winget install gerardog.gsudo`, whose installer registers the same `sudo` name.
 1. An editor of your choice (see [Recommended IDE Setup](#recommended-ide-setup))
 
 `node` and `pnpm` are pinned in [`rust/.tool-versions`](../.tool-versions) and provided
@@ -92,8 +95,9 @@ the portal; update and apply the production Terraform configuration instead.
 A live dev session needs **two** processes running at once, each in its own
 PowerShell 7 terminal. Make sure mise is activated in each (`mise activate pwsh | Out-String | Invoke-Expression`).
 
-1. **Tunnel service** — run from an **elevated (Administrator)** terminal. It manages
-   the system tunnel and serves the privileged IPC pipe:
+1. **Tunnel service** — run from a normal terminal. It manages the system tunnel and
+   serves the privileged IPC pipe, so the task builds it unprivileged and then elevates
+   only the service binary through `sudo`, which raises a UAC prompt:
 
    ```powershell
    mise run tunnel
@@ -103,6 +107,12 @@ PowerShell 7 terminal. Make sure mise is activated in each (`mise activate pwsh 
    debug build serves the Tunnel IPC pipe without pinning it to `LocalSystem`, so the
    unprivileged, non-installed GUI below can connect. Drop the flag to exercise the
    pipe-owner check against an installed GUI.
+
+   Sudo for Windows runs the elevated process in a new window by default, so the service
+   gets its own console. `sudo config --enable normal` (from an elevated console) keeps it
+   inline in this terminal instead; read
+   [Microsoft's security note](https://learn.microsoft.com/en-us/windows/advanced-settings/sudo/#security-considerations)
+   on that mode first.
 
 2. **GUI client** — from a normal (non-elevated) terminal. Connects to the Tunnel
    service above, skipping the pipe-owner check so it accepts the non-`LocalSystem` pipe:

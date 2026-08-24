@@ -12,7 +12,18 @@ description = "Run the GUI client for rapid UI iteration with an in-process mock
 raw = true
 run = "cargo tauri dev -- -- --skip-portal-auth --mock-tunnel"
 
+# Build and run are separate commands so that only the service is elevated:
+# `sudo cargo` would leave root-owned artifacts in `target/`, and `sudo mise`
+# would resolve the whole toolchain as root. Windows cannot elevate a running
+# process, so `sudo` there is Sudo for Windows or gsudo.
 [tasks.tunnel]
-description = "Run the Tunnel service interactively for local GUI dev. `--skip-peer-verification` skips the peer check so it accepts a non-installed GUI build; must be run from an elevated shell (Administrator on Windows, root on Unix)."
+description = "Run the Tunnel service interactively for local GUI dev. Elevates only the service binary, so it can be started from a normal shell. `--skip-peer-verification` skips the peer check so it accepts a non-installed GUI build."
 raw = true
-run = "cargo run -p firezone-gui-client --bin firezone-client-tunnel -- run-interactive --skip-peer-verification"
+run = [
+    "cargo build -p firezone-gui-client --bin firezone-client-tunnel",
+    "sudo -E ../target/debug/firezone-client-tunnel run-interactive --skip-peer-verification",
+]
+run_windows = [
+    "cargo build -p firezone-gui-client --bin firezone-client-tunnel",
+    "sudo ..\\target\\debug\\firezone-client-tunnel.exe run-interactive --skip-peer-verification",
+]
