@@ -32,14 +32,14 @@
     @Test("Grant VPN permission", arguments: colorSchemes)
     @MainActor
     func grantVPN(colorScheme: ColorScheme) throws {
-      let window = try makeWindow(colorScheme, width: 800, height: 500) { _ in GrantVPNView() }
+      let window = try makeWindow(colorScheme) { _ in GrantVPNView() }
       try capture(window, as: "grant-vpn", colorScheme)
     }
 
     @Test("First run", arguments: colorSchemes)
     @MainActor
     func firstTime(colorScheme: ColorScheme) throws {
-      let window = try makeWindow(colorScheme, width: 800, height: 500) { _ in FirstTimeView() }
+      let window = try makeWindow(colorScheme) { _ in FirstTimeView() }
       try capture(window, as: "first-time", colorScheme)
     }
 
@@ -56,7 +56,7 @@
       ]
 
       for (tab, name) in tabs {
-        let window = try makeWindow(colorScheme, width: 800, height: 600) { store in
+        let window = try makeWindow(colorScheme) { store in
           SettingsView(store: store, selectedTab: tab)
         }
         try capture(window, as: "settings-\(name)", colorScheme)
@@ -65,14 +65,15 @@
 
     /// Puts `content` in an off-screen window the size the app would use.
     ///
+    /// The app's window scenes declare no size, so macOS opens them at the content's
+    /// ideal size; the capture sizes its window the same way.
+    ///
     /// `ImageRenderer` looks like the obvious tool and is not: a text field, a checkbox and
     /// a tab view are all AppKit underneath, and it draws each of them as the "not allowed"
     /// symbol. A real window hosting the view draws the controls the app actually shows.
     @MainActor
     private func makeWindow(
       _ colorScheme: ColorScheme,
-      width: CGFloat,
-      height: CGFloat,
       @ViewBuilder content: (Store) -> some View
     ) throws -> NSWindow {
       let store = Store.mock()
@@ -82,10 +83,9 @@
           content(store)
           .environmentObject(store)
           .environmentObject(GlobalErrorHandler())
-          .frame(width: width, height: height)
           .environment(\.colorScheme, colorScheme)
       )
-      view.frame = CGRect(x: 0, y: 0, width: width, height: height)
+      view.frame = CGRect(origin: .zero, size: view.fittingSize)
 
       let window = NSWindow(
         contentRect: view.frame,
