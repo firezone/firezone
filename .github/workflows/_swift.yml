@@ -59,6 +59,65 @@ jobs:
           parallel: true
           fail-on-error: false
 
+  # Prototype for photographing the real app: builds the macOS app, launches it
+  # against the mocked backend (`--mock-tunnel`, one scenario per launch; see
+  # MockTunnel.swift) through the FirezoneUITests bundle and uploads the window
+  # captures. Artifact only; the images are not part of the committed
+  # screenshot gallery.
+  app-screenshots:
+    runs-on: macos-26
+    env:
+      XCODE_VERSION: "26.2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      # The app target embeds the system extension, whose build phase compiles
+      # connlib for the host architecture.
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - name: Run the app screenshot UI tests
+        working-directory: swift/apple
+        env:
+          # xcodebuild forwards TEST_RUNNER_-prefixed variables to the test
+          # runner process with the prefix stripped.
+          TEST_RUNNER_SCREENSHOT_DIR: ${{ runner.temp }}/app-screenshots
+        # Ad-hoc signing with the entitlements dropped: the runner has no
+        # signing certificate, and the mocked app touches none of the
+        # facilities the entitlements gate. Restricted entitlements without a
+        # provisioning profile would keep the app from launching.
+        run: |
+          xcodebuild test \
+            -project Firezone.xcodeproj \
+            -scheme FirezoneUITests \
+            -configuration Debug \
+            -destination "platform=macOS,arch=$(uname -m)" \
+            -resultBundlePath "${RUNNER_TEMP}/FirezoneUITests.xcresult" \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM= \
+            PROVISIONING_PROFILE_SPECIFIER= \
+            CODE_SIGN_ENTITLEMENTS= \
+            ENABLE_APP_SANDBOX=NO \
+            ENABLE_HARDENED_RUNTIME=NO \
+            GIT_SHA="${GITHUB_SHA}" \
+            ONLY_ACTIVE_ARCH=YES
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: "!cancelled()"
+        with:
+          name: app-screenshots
+          path: ${{ runner.temp }}/app-screenshots
+      # The result bundle holds XCUITest's own failure screenshots and logs.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: app-screenshots-xcresult
+          path: ${{ runner.temp }}/FirezoneUITests.xcresult
+
   static-analysis:
     runs-on: macos-26
     permissions:
