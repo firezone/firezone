@@ -87,8 +87,26 @@
           Log.warning("MockTunnelSession: failed to encode state updates: \(error)")
           responseHandler(nil)
         }
-      case .setInternetResourceEnabled, .signOut, .clearLogs, .getLogFolderSize, .exportLogs,
-        .getEncodedFirezoneId, .drainFlowLogs:
+      case .getLogFolderSize:
+        // The provider answers with the raw bytes of an `Int64`.
+        responseHandler(withUnsafeBytes(of: MockFixtures.providerLogFolderSize) { Data($0) })
+      case .clearLogs:
+        // The provider answers a successful clear with an empty response.
+        responseHandler(nil)
+      case .exportLogs:
+        // The provider streams plist-encoded `LogChunk`s; everything fits in one
+        // final chunk here.
+        do {
+          responseHandler(
+            try PropertyListEncoder().encode(
+              LogChunk(done: true, data: MockFixtures.exportedTunnelLogs)
+            )
+          )
+        } catch {
+          Log.warning("MockTunnelSession: failed to encode the log chunk: \(error)")
+          responseHandler(nil)
+        }
+      case .setInternetResourceEnabled, .signOut, .getEncodedFirezoneId, .drainFlowLogs:
         responseHandler(nil)
       }
     }
@@ -168,6 +186,11 @@
   }
 
   private enum MockFixtures {
+    /// 30 MB, so the settings screen shows a believable provider-side log size.
+    static let providerLogFolderSize: Int64 = 30_000_000
+
+    static let exportedTunnelLogs = Data("Mock tunnel log archive\n".utf8)
+
     /// A throwaway log directory seeded with two files of fixed contents, so
     /// the computed app-side log size is real and deterministic.
     static func makeLogDirectory() -> URL {
