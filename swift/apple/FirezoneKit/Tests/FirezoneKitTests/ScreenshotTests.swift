@@ -36,7 +36,7 @@
   /// scenes declare no size, so AppKit derives one at runtime; captures pin the
   /// measured result so the renders match what the app shows.
   private let mainWindowSize = CGSize(width: 900, height: 450)
-  private let settingsWindowSize = CGSize(width: 750, height: 600)
+  private let settingsWindowSize = CGSize(width: 780, height: 530)
 
   @Suite("Screenshots", .requiresAppKit)
   struct ScreenshotTests {
