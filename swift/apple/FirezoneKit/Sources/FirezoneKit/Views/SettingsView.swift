@@ -86,6 +86,7 @@ public struct SettingsView: View {
   public enum Tab: Hashable {
     case general
     case advanced
+    case x509
     case logs
   }
 
@@ -121,8 +122,9 @@ public struct SettingsView: View {
               certificateTab
                 .tabItem {
                   Image(systemName: "checkmark.seal")
-                  Text("Certificate")
+                  Text("X.509")
                 }
+                .tag(Tab.x509)
               logsTab
                 .tabItem {
                   Image(systemName: "doc.text")
@@ -183,8 +185,9 @@ public struct SettingsView: View {
             .tag(Tab.advanced)
           certificateTab
             .tabItem {
-              Text("Certificate")
+              Text("X.509")
             }
+            .tag(Tab.x509)
           logsTab
             .tabItem {
               Text("Diagnostic Logs")
