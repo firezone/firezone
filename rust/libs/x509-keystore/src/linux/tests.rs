@@ -18,10 +18,12 @@ use ring::signature::{
     RSA_PKCS1_2048_8192_SHA512, RSA_PSS_2048_8192_SHA256, RSA_PSS_2048_8192_SHA384,
     RSA_PSS_2048_8192_SHA512, UnparsedPublicKey, VerificationAlgorithm,
 };
+use rustls::SignatureAlgorithm;
 use secrecy::ExposeSecret as _;
 use x509_parser::prelude::{FromDer as _, X509Certificate};
 
 use super::*;
+use crate::sign::{der_encode_ecdsa_signature, der_integer, encode_der_length};
 
 #[test]
 #[ignore = "Requires the SoftHSM PKCS#11 module and writes to a temporary token store"]
@@ -305,18 +307,6 @@ fn names_the_cause_behind_a_token_failure() {
         classify_return_value(RvError::DeviceError, String::new()),
         SigningError::Keystore(_)
     ));
-}
-
-#[test]
-fn ecdsa_signature_is_der_encoded() {
-    let mut raw = vec![0; 64];
-    raw[31] = 1;
-    raw[63] = 2;
-
-    assert_eq!(
-        der_encode_ecdsa_signature(&raw).expect("signature should encode"),
-        vec![0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02]
-    );
 }
 
 /// Returns the flags of a token that wants a PIN and has all of its attempts left.
