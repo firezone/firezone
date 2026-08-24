@@ -19,6 +19,9 @@ enum Appearance: String, CaseIterable {
   case dark
 }
 
+// Photographing is main-actor work in XCTest, and so is everything that reads
+// the resulting image.
+@MainActor
 extension XCTestCase {
   /// Photographs `element` once it holds still and delivers the image as
   /// `<name>-<appearance>.png`.
