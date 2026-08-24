@@ -17,9 +17,7 @@ struct WelcomeView: View {
       alignment: .center,
       content: {
         Spacer()
-        Image("LogoText", bundle: Bundle.module)
-          .resizable()
-          .scaledToFit()
+        LogoText()
           .frame(maxWidth: 300)
           .padding(.horizontal, 10)
           .padding(.vertical, 10)
