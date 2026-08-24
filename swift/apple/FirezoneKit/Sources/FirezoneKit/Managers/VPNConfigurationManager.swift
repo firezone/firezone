@@ -37,15 +37,19 @@ public protocol TunnelProviderManagerFactory {
 // MARK: - NetworkExtension Conformances
 
 extension NETunnelProviderManager: TunnelProviderManager {
-  public var tunnelSession: (any TunnelSessionProtocol)? {
-    connection as? NETunnelProviderSession
-  }
-
-  public var extensionBundleIdentifier: String {
+  /// The identifier of the network extension the app ships, in one place for every
+  /// caller that must name it.
+  public static var extensionBundleIdentifier: String {
     // App cannot run without bundle identifier - force unwrap is safe
     // swiftlint:disable:next force_unwrapping
     "\(Bundle.main.bundleIdentifier!).network-extension"
   }
+
+  public var tunnelSession: (any TunnelSessionProtocol)? {
+    connection as? NETunnelProviderSession
+  }
+
+  public var extensionBundleIdentifier: String { Self.extensionBundleIdentifier }
 }
 
 @MainActor

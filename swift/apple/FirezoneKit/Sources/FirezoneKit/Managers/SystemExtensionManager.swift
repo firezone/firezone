@@ -5,6 +5,7 @@
 //
 
 #if os(macOS)
+  import NetworkExtension
   import SystemExtensions
 
   enum SystemExtensionError: Error, CustomStringConvertible, LocalizedError {
@@ -83,12 +84,6 @@
   {
     // Delegate methods complete with either a true or false outcome or an Error
     private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
-
-    private var extensionBundleIdentifier: String {
-      // App cannot run without bundle identifier - force unwrap is safe
-      // swiftlint:disable:next force_unwrapping
-      "\(Bundle.main.bundleIdentifier!).network-extension"
-    }
 
     override public init() {
       super.init()
@@ -191,7 +186,7 @@
       try await withCheckedThrowingContinuation { continuation in
         sendRequest(
           requestType: .check,
-          identifier: extensionBundleIdentifier,
+          identifier: NETunnelProviderManager.extensionBundleIdentifier,
           continuation: continuation
         )
       }
@@ -201,7 +196,7 @@
       try await withCheckedThrowingContinuation { continuation in
         sendRequest(
           requestType: .install,
-          identifier: extensionBundleIdentifier,
+          identifier: NETunnelProviderManager.extensionBundleIdentifier,
           continuation: continuation
         )
       }
