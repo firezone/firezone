@@ -169,19 +169,27 @@ public final class Store: ObservableObject {
         self?.objectWillChange.send()
       }
       .store(in: &cancellables)
+  }
 
-    // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
-    // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
-    Task {
-      do {
-        try await LaunchAgentManager.syncKeepAppRunning()
-      } catch {
-        Log.error(error)
-      }
-
-      await startupSequence()
-      await initNotifications()
+  /// Loads our state from the system. Based on what's loaded, we may need to ask the user for
+  /// permission for things. When everything loads correctly, we attempt to start the tunnel if
+  /// connectOnStart is enabled.
+  ///
+  /// Kept out of `init` so that constructing a `Store` only wires it up: installing a system
+  /// extension and connecting a tunnel are things the app asks for, not things that happen
+  /// because a value was created. Previews and tests build a `Store` and never call this.
+  ///
+  /// `async` so the caller decides how to run it; the app fires and forgets, but that is
+  /// its call to make, not this function's.
+  public func start() async {
+    do {
+      try await LaunchAgentManager.syncKeepAppRunning()
+    } catch {
+      Log.error(error)
     }
+
+    await startupSequence()
+    await initNotifications()
   }
 
   #if os(macOS)
