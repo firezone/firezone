@@ -226,8 +226,11 @@
         return nil
       }
 
+      // Decoded from memory: an image source reading the file decodes lazily, and
+      // the file is gone by the time the caller writes the pixels out.
       guard
-        let source = CGImageSourceCreateWithURL(file as CFURL, nil),
+        let data = try? Data(contentsOf: file),
+        let source = CGImageSourceCreateWithData(data as CFData, nil),
         let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
       else {
         print("screencapture produced an unreadable image")
