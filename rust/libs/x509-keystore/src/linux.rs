@@ -296,23 +296,43 @@ fn classify_return_value(value: RvError, reason: String) -> SigningError {
 }
 
 /// Returns the path of the p11-kit proxy module, [`None`] if p11-kit is not installed.
+/// Returns the path the distribution installed the p11-kit proxy at.
 fn proxy_module() -> Option<PathBuf> {
-    module_directories()
-        .map(|directory| directory.join(PROXY_MODULE))
-        .find(|candidate| candidate.is_file())
-}
-
-/// The directories a distribution may have installed PKCS#11 modules into.
-fn module_directories() -> impl Iterator<Item = PathBuf> {
-    // Debian keeps modules below a directory named after the architecture triplet, e.g.
-    // `/usr/lib/x86_64-linux-gnu/pkcs11`.
+    // Debian keeps libraries below a directory named after the architecture triplet, e.g.
+    // `/usr/lib/x86_64-linux-gnu`.
     let multiarch = std::fs::read_dir("/usr/lib")
         .into_iter()
         .flatten()
         .flatten()
-        .map(|entry| entry.path().join("pkcs11"));
+        .map(|entry| entry.path())
+        .collect();
 
-    multiarch.chain(["/usr/lib/pkcs11", "/usr/lib64/pkcs11"].map(PathBuf::from))
+    proxy_module_candidates(multiarch)
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+}
+
+/// Every path a distribution may have installed the p11-kit proxy at, most preferred first.
+///
+/// The proxy is a regular library and lands in the library directory itself: `/usr/lib64` on
+/// Fedora and RHEL, the multiarch directory on Debian and Ubuntu. Only registered driver
+/// modules live below the `pkcs11` subdirectories, but each is probed as a fallback. `/usr/lib64`
+/// has to come before `/usr/lib`, whose proxy is the 32-bit build on a Fedora machine with the
+/// i686 package installed.
+fn proxy_module_candidates(multiarch_directories: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut directories = vec![PathBuf::from("/usr/lib64")];
+    directories.extend(multiarch_directories);
+    directories.push(PathBuf::from("/usr/lib"));
+
+    directories
+        .into_iter()
+        .flat_map(|directory| {
+            [
+                directory.join(PROXY_MODULE),
+                directory.join("pkcs11").join(PROXY_MODULE),
+            ]
+        })
+        .collect()
 }
 
 /// The PKCS#11 context each module is used through, kept for the life of the process.

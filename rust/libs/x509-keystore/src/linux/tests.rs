@@ -258,6 +258,36 @@ fn counts_down_the_attempts_a_rejected_pin_leaves() {
 }
 
 #[test]
+fn probes_the_64_bit_library_directory_before_the_32_bit_one() {
+    let candidates = proxy_module_candidates(vec![PathBuf::from("/usr/lib/x86_64-linux-gnu")]);
+
+    let position = |path: &str| {
+        candidates
+            .iter()
+            .position(|candidate| candidate == Path::new(path))
+            .unwrap_or_else(|| panic!("{path} should be probed"))
+    };
+
+    assert!(
+        position("/usr/lib64/p11-kit-proxy.so") < position("/usr/lib/p11-kit-proxy.so"),
+        "an i686 p11-kit package puts a 32-bit proxy into /usr/lib, which must not shadow /usr/lib64"
+    );
+    assert!(
+        position("/usr/lib/x86_64-linux-gnu/p11-kit-proxy.so")
+            < position("/usr/lib/p11-kit-proxy.so"),
+        "the multiarch directory is where Debian installs the proxy"
+    );
+    // The registered-module subdirectories stay probed as a fallback.
+    for fallback in [
+        "/usr/lib64/pkcs11/p11-kit-proxy.so",
+        "/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-proxy.so",
+        "/usr/lib/pkcs11/p11-kit-proxy.so",
+    ] {
+        position(fallback);
+    }
+}
+
+#[test]
 fn refuses_a_pin_file_others_can_read() {
     let refused = ensure_root_only(0o640, 0, Path::new("/etc/firezone/pkcs11-pin"))
         .expect_err("a group-readable PIN file should be refused");
