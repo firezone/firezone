@@ -37,8 +37,8 @@ use x509_claims::{ParsedCertificate, parse_certificate};
 use x509_credential::SigningError;
 
 use crate::{
-    DetailField, DetailSection, Identity, Status, StatusSeverity, absent_field, field,
-    invalid_field, sign,
+    CandidateCertificate, DetailField, DetailSection, Identity, Status, StatusSeverity,
+    absent_field, field, invalid_field, selected_certificate, sign, unusable_reasons,
 };
 
 /// The store MDM-provisioned identities land in.
@@ -418,8 +418,17 @@ impl Certificate {
 
         fields
     }
+}
 
-    /// Says why this certificate cannot be presented for mutual TLS.
+impl CandidateCertificate for Certificate {
+    fn usable(&self) -> bool {
+        self.usable
+    }
+
+    fn not_before_timestamp(&self) -> i64 {
+        self.metadata.not_before_timestamp
+    }
+
     fn unusable_reason(&self) -> String {
         let fingerprint = &self.metadata.fingerprint;
 
@@ -442,28 +451,6 @@ impl Drop for Certificate {
             let _ = CertFreeCertificateContext(Some(self.context));
         }
     }
-}
-
-/// The certificate [`identity`] presents, as an index into `certificates`.
-///
-/// The most recently issued usable certificate wins, so a rotation hands over the renewal
-/// rather than the certificate it replaced.
-fn selected_certificate(certificates: &[Certificate]) -> Option<usize> {
-    certificates
-        .iter()
-        .enumerate()
-        .filter(|(_, certificate)| certificate.usable)
-        .max_by_key(|(_, certificate)| certificate.metadata.not_before_timestamp)
-        .map(|(index, _)| index)
-}
-
-/// Says why each certificate that matched the subject common name cannot be used.
-fn unusable_reasons(certificates: &[Certificate]) -> Vec<String> {
-    certificates
-        .iter()
-        .filter(|certificate| !certificate.usable)
-        .map(Certificate::unusable_reason)
-        .collect()
 }
 
 fn enumerate_matching(subject_cn: &str) -> (Vec<Certificate>, Vec<String>) {
