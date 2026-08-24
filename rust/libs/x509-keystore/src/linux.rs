@@ -33,7 +33,7 @@ use x509_credential::SigningError;
 
 use crate::{
     CandidateCertificate, DetailField, DetailSection, Identity, Status, absent_field, field,
-    invalid_field, selected_certificate, sign, unusable_reasons,
+    selected_certificate, sign, unusable_reasons,
 };
 
 /// The directories p11-kit module configuration is read from, the administrator's first.
@@ -825,16 +825,6 @@ impl Certificate {
         fields.push(match self.label.as_deref() {
             Some(label) => field("Object Label", label),
             None => absent_field("Object Label"),
-        });
-        fields.push(if self.key.is_some() {
-            field("Private Key Access", "Available")
-        } else {
-            absent_field("Private Key Access")
-        });
-        fields.push(if self.usable {
-            field("Usable With Its Private Key", "Yes")
-        } else {
-            invalid_field("Usable With Its Private Key", "No")
         });
 
         fields
