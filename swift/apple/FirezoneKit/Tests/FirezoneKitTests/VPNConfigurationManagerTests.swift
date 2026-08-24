@@ -16,6 +16,7 @@ private final class StubTunnelProviderManager: TunnelProviderManager {
   var localizedDescription: String?
   var protocolConfiguration: NEVPNProtocol?
   var tunnelSession: (any TunnelSessionProtocol)? { nil }
+  var extensionBundleIdentifier: String { providerBundleIdentifier }
   var saveCount = 0
 
   init(providerBundleIdentifier: String?, identityReference: Data? = nil) {
