@@ -54,6 +54,7 @@
       }
 
       let contentView = try #require(window.contentView)
+      try spin(until: { firstTabView(under: contentView) != nil })
       let tabView = try #require(
         firstTabView(under: contentView),
         "the settings screen shows no tab view"
@@ -64,8 +65,22 @@
 
       for (index, tab) in tabs.enumerated() {
         tabView.selectTabViewItem(at: index)
-        window.contentView?.layoutSubtreeIfNeeded()
+        contentView.layoutSubtreeIfNeeded()
+        try spin(until: { tabView.selectedTabViewItem?.view?.subviews.isEmpty == false })
         try capture(window, as: "settings-\(tab)", colorScheme)
+      }
+    }
+
+    /// Turns the main run loop until `condition` holds.
+    ///
+    /// SwiftUI hangs its AppKit-backed views under the hosting view lazily, after the
+    /// window exists; straight after attaching, a walk over the subviews finds nothing.
+    @MainActor
+    private func spin(until condition: () -> Bool) throws {
+      let deadline = Date(timeIntervalSinceNow: 10)
+      while !condition() {
+        try #require(Date() < deadline, "the view did not settle in time")
+        RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
       }
     }
 
