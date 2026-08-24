@@ -23,8 +23,12 @@ struct FirezoneApp: App {
     Telemetry.start()
 
     #if DEBUG
-      // `--mock-tunnel` runs the real Store against a canned backend (see MockTunnel.swift).
-      let store = CommandLine.arguments.contains("--mock-tunnel") ? Store.mock() : Store()
+      // `--mock-tunnel` runs the real Store against a canned backend, and the
+      // MOCK_SCENARIO environment variable picks the state it presents (see
+      // MockTunnel.swift).
+      let store =
+        CommandLine.arguments.contains("--mock-tunnel")
+        ? Store.mock(scenario: .fromEnvironment()) : Store()
     #else
       let store = Store()
     #endif
