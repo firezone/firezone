@@ -84,6 +84,12 @@
     // Delegate methods complete with either a true or false outcome or an Error
     private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
 
+    private var extensionBundleIdentifier: String {
+      // App cannot run without bundle identifier - force unwrap is safe
+      // swiftlint:disable:next force_unwrapping
+      "\(Bundle.main.bundleIdentifier!).network-extension"
+    }
+
     override public init() {
       super.init()
     }
@@ -185,7 +191,7 @@
       try await withCheckedThrowingContinuation { continuation in
         sendRequest(
           requestType: .check,
-          identifier: VPNConfigurationManager.bundleIdentifier,
+          identifier: extensionBundleIdentifier,
           continuation: continuation
         )
       }
@@ -195,7 +201,7 @@
       try await withCheckedThrowingContinuation { continuation in
         sendRequest(
           requestType: .install,
-          identifier: VPNConfigurationManager.bundleIdentifier,
+          identifier: extensionBundleIdentifier,
           continuation: continuation
         )
       }

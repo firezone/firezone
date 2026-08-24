@@ -50,6 +50,7 @@ private final class MockTunnelProviderManager: TunnelProviderManager {
   var protocolConfiguration: NEVPNProtocol?
   let connection: NEVPNConnection = NETunnelProviderManager().connection
   var tunnelSession: (any TunnelSessionProtocol)? { nil }
+  let extensionBundleIdentifier = "dev.firezone.firezone.network-extension"
   var saveCount = 0
   var loadCount = 0
 
