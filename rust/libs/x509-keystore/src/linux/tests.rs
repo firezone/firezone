@@ -72,7 +72,7 @@ fn describes_a_provisioned_certificate_in_the_diagnostics() {
     assert_eq!(status.severity, StatusSeverity::Ok);
     assert_eq!(
         status.summary,
-        "1 X.509 client identity certificate(s) are available for mutual TLS."
+        "An X.509 client identity is available for mutual TLS."
     );
     let found = section(&status, "PKCS#11 Token");
     assert_eq!(
@@ -84,7 +84,7 @@ fn describes_a_provisioned_certificate_in_the_diagnostics() {
         Some(token.label.as_str())
     );
     assert_eq!(field_value(found, "Login Required"), Some("Yes"));
-    let certificate = section(&status, "Matching Certificate 1");
+    let certificate = section(&status, "Certificate");
     assert_eq!(
         field_value(certificate, "Object Label"),
         Some(token.label.as_str())
