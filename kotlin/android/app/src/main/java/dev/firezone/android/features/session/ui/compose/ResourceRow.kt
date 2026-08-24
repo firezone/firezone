@@ -29,7 +29,7 @@ fun ResourceRow(
         modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 32.dp),
     ) {
         Text(text = resource.displayName, style = MaterialTheme.typography.bodyLarge)
         if (!resource.isInternetResource()) {
