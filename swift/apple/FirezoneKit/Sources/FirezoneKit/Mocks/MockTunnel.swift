@@ -14,16 +14,16 @@
 #if DEBUG
   import Foundation
   @preconcurrency import NetworkExtension
-  #if os(iOS)
-    import UserNotifications
-  #endif
+  import UserNotifications
 
   extension Store {
     /// A `Store` wired to mock dependencies for the `--mock-tunnel` demo.
     #if os(macOS)
       public static func mock() -> Store {
         Store(
+          sessionNotification: MockSessionNotification(),
           systemExtensionManager: MockSystemExtensionManager(),
+          updateChecker: MockUpdateChecker(),
           tunnelManagerFactory: MockTunnelProviderManagerFactory()
         )
       }
@@ -130,18 +130,37 @@
       func check() async throws -> SystemExtensionStatus { .installed }
       func tryInstall() async throws -> SystemExtensionStatus { .installed }
     }
-  #else
-    /// Reports notifications as already authorised so the iOS app routes straight to the
-    /// session UI instead of `GrantNotificationsView`.
-    @MainActor
-    private final class MockSessionNotification: SessionNotificationProtocol {
-      var signInHandler: () async -> Void = {}
 
-      func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus { .authorized }
-      func loadAuthorizationStatus() async -> UNAuthorizationStatus { .authorized }
-      func showResourceNotification(title: String, body: String) async {}
+    /// Reports the client as up to date, so the menu bar shows no update item.
+    ///
+    /// The real `UpdateChecker` would poll firezone.dev on a timer and register a
+    /// notification category, neither of which a demo or a test should be doing.
+    @MainActor
+    private final class MockUpdateChecker: UpdateCheckerProtocol {
+      let updateAvailable = false
     }
   #endif
+
+  /// Reports notifications as already authorised so the iOS app routes straight to the
+  /// session UI instead of `GrantNotificationsView`.
+  ///
+  /// Both platforms use it: the real `SessionNotification` reaches
+  /// `UNUserNotificationCenter`, which raises rather than returning an error when the
+  /// process has no app bundle, so it cannot be built from a test.
+  @MainActor
+  private final class MockSessionNotification: SessionNotificationProtocol {
+    var signInHandler: () async -> Void = {}
+
+    func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus { .authorized }
+    func loadAuthorizationStatus() async -> UNAuthorizationStatus { .authorized }
+    func showResourceNotification(title: String, body: String) async {}
+
+    #if os(macOS)
+      func showSignedOutAlertMacOS(_ message: String?) async {}
+      func showDisconnectedAlertMacOS(_ message: String?) async {}
+      func showRestartRequiredAlertMacOS() {}
+    #endif
+  }
 
   private enum MockFixtures {
     static let resources: [Resource] = {

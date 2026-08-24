@@ -10,8 +10,19 @@
   import UserNotifications
   import Cocoa
 
+  /// The one thing the UI needs from the update check.
+  ///
+  /// `UpdateChecker` reaches the network, installs a repeating timer and registers with
+  /// `UNUserNotificationCenter`, which raises when the process has no app bundle, so it
+  /// cannot be built from a test. Taking the check as a dependency lets a `Store` be built
+  /// with a canned answer instead.
   @MainActor
-  class UpdateChecker {
+  public protocol UpdateCheckerProtocol {
+    var updateAvailable: Bool { get }
+  }
+
+  @MainActor
+  class UpdateChecker: UpdateCheckerProtocol {
     enum UpdateError: Error {
       case invalidVersion(String)
 
