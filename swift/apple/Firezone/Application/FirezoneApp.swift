@@ -29,7 +29,9 @@ struct FirezoneApp: App {
       let store = Store()
     #endif
 
-    store.start()
+    // Not `.task` on a view: the main window closes right after launch on macOS, and
+    // startup must not be cancelled with it.
+    Task { await store.start() }
 
     _store = StateObject(wrappedValue: store)
 
