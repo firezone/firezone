@@ -769,7 +769,15 @@ impl<I: GuiIntegration> Controller<I> {
                     Ok(status) => self.x509_status = Some(status),
                     // A keystore we cannot read is not a reason to bring the GUI down; the
                     // diagnostics screen keeps showing whatever we last knew.
-                    Err(e) => tracing::warn!("Failed to read the platform keystore: {e}"),
+                    Err(e) => {
+                        tracing::warn!("Failed to read the platform keystore: {e}");
+
+                        // With nothing last known, the diagnostics screen would keep
+                        // waiting for a first status, so the failure has to become one.
+                        if self.x509_status.is_none() {
+                            self.x509_status = Some(unreadable_keystore_status(e));
+                        }
+                    }
                 }
 
                 self.notify_x509_status_changed()?;
@@ -1110,6 +1118,23 @@ async fn try_migrate_advanced_settings(
     Ok(())
 }
 
+/// The status the diagnostics screen shows when the Tunnel service could not read the keystore.
+fn unreadable_keystore_status(error: String) -> x509_keystore::Status {
+    x509_keystore::Status {
+        severity: x509_keystore::StatusSeverity::Warning,
+        summary: "The platform keystore could not be read, so no X.509 client identity \
+                  certificate can be found."
+            .to_owned(),
+        sections: vec![x509_keystore::DetailSection {
+            title: "Keystore".to_owned(),
+            fields: vec![x509_keystore::DetailField {
+                label: "Error".to_owned(),
+                value: x509_keystore::FieldValue::Present(error),
+            }],
+        }],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, time::Instant};
@@ -1174,6 +1199,44 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         assert_eq!(test_controller.integration().x509_statuses, vec![expected]);
+    }
+
+    #[tokio::test]
+    async fn a_keystore_read_failure_without_a_prior_status_is_shown_as_one() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        mock_tunnel
+            .tx
+            .send(&service::ServerMsg::X509Status(Err(
+                "Failed to enumerate PKCS#11 tokens".to_owned(),
+            )))
+            .await
+            .unwrap();
+
+        let status = test_controller
+            .wait_integration(|i| i.x509_statuses.first().cloned())
+            .await;
+
+        assert_eq!(status.severity, x509_keystore::StatusSeverity::Warning);
+        assert!(
+            status.summary.contains("could not be read"),
+            "{}",
+            status.summary
+        );
+        assert!(
+            status
+                .sections
+                .iter()
+                .flat_map(|section| &section.fields)
+                .any(|field| field
+                    .value
+                    .text()
+                    .contains("Failed to enumerate PKCS#11 tokens")),
+            "the diagnostics should carry the error"
+        );
     }
 
     #[tokio::test]
