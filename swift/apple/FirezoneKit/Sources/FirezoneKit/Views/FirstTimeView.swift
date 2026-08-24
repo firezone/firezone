@@ -23,7 +23,7 @@ import SwiftUI
             .padding(.horizontal, 10)
           Spacer()
           Text(
-            "You can sign in by clicking the Firezone icon in the macOS menu bar or clicking 'Open menu' below."
+            "Sign in at any time by clicking the Firezone icon in the macOS menu bar or by clicking 'Open menu' below."
           )
           .font(.body)
           .multilineTextAlignment(.center)
