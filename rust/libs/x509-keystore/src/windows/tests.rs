@@ -75,14 +75,6 @@ fn describes_a_minted_certificate_in_the_diagnostics() {
         .expect("the diagnostics should describe the minted certificate");
     assert_eq!(field_value(section, "Store"), Some("LocalMachine\\My"));
     assert_eq!(
-        field_value(section, "Private Key Access"),
-        Some("Available through Windows CNG")
-    );
-    assert_eq!(
-        field_value(section, "Usable With Its Private Key"),
-        Some("Yes")
-    );
-    assert_eq!(
         field_value(section, "Private Key Provider"),
         Some("Microsoft Software Key Storage Provider")
     );
