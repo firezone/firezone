@@ -14,8 +14,12 @@ struct TimeoutError: Error {}
 /// as the scheduler needs. A fixed sleep either gives that time away or, on a
 /// loaded machine, ends first and reports a failure that says nothing about the
 /// code under test.
+///
+/// The loop stays in the caller's isolation domain, so a condition that reads
+/// actor-isolated state is not sent across a boundary.
 func waitUntil(
   timeout: Duration = .seconds(5),
+  isolation: isolated (any Actor)? = #isolation,
   _ condition: () async -> Bool
 ) async throws {
   let clock = ContinuousClock()
