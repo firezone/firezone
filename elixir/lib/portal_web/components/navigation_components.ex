@@ -175,7 +175,7 @@ defmodule PortalWeb.NavigationComponents do
           href={PortalWeb.Session.Redirector.default_portal_path(@account, @subject.actor)}
           class="flex items-center gap-2.5 min-w-0"
         >
-          <img src={~p"/images/logo.svg"} class="h-6 w-6 shrink-0" alt="Firezone Logo" />
+          <img src={~p"/images/logo.svg"} class="h-6 w-auto shrink-0" alt="Firezone Logo" />
           <span
             data-sidebar-label
             class="font-semibold text-heading whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
