@@ -35,7 +35,9 @@ pub struct Tun {
 /// Finds the `utun` descriptor the NetworkExtension opened for this process.
 ///
 /// Separate from [`Tun::from_fd`] so a caller can establish that the descriptor
-/// exists before committing any resources to the session that will own it.
+/// exists before committing any resources to the session that will own it. Leaves
+/// the descriptor untouched: it belongs to the NetworkExtension, and a caller that
+/// gets this far may still give up before there is a [`Tun`] to own it.
 pub fn search_fd() -> io::Result<RawFd> {
     search_for_tun_fd()
 }
@@ -310,8 +312,6 @@ fn search_for_tun_fd() -> io::Result<RawFd> {
         }
 
         if addr.sc_id == info.ctl_id {
-            set_non_blocking(fd)?;
-
             return Ok(fd);
         }
     }
