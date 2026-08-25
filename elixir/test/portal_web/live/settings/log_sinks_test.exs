@@ -398,24 +398,40 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert_push_event(lv, "open_url", %{url: consent_url})
 
       assert consent_url =~
-               "https://login.microsoftonline.com/organizations/adminconsent?client_id=test_sentinel_client_id"
+               "https://login.microsoftonline.com/organizations/v2.0/adminconsent?"
 
-      assert consent_url =~
-               "redirect_uri=#{URI.encode_www_form(url(~p"/auth/sentinel/consent"))}"
+      params = consent_url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
 
-      assert consent_url =~ "state=#{account.slug}"
+      assert params["client_id"] == "test_sentinel_client_id"
+      assert params["redirect_uri"] == url(~p"/auth/sentinel/consent")
+      assert params["scope"] == "https://graph.microsoft.com/.default"
+
+      assert {:ok, %{type: "sentinel-log-sink", verification_ref: verification_ref}} =
+               PortalWeb.OIDC.verify_verification_state(params["state"])
 
       tenant_id = Ecto.UUID.generate()
+      send(lv.pid, {:sentinel_log_sink_complete, tenant_id, verification_ref})
 
-      lv
-      |> form("#log-sink-form", log_sink: %{tenant_id: tenant_id})
-      |> render_change()
+      assert render(lv) =~ tenant_id
+    end
+
+    test "ignores a consent result for a stale verification", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/sentinel/new")
 
       lv |> element("#sentinel-consent-link") |> render_click()
-      assert_push_event(lv, "open_url", %{url: tenant_url})
+      assert_push_event(lv, "open_url", %{url: _consent_url})
 
-      assert tenant_url =~
-               "https://login.microsoftonline.com/#{tenant_id}/adminconsent?client_id=test_sentinel_client_id"
+      tenant_id = Ecto.UUID.generate()
+      send(lv.pid, {:sentinel_log_sink_complete, tenant_id, Ecto.UUID.generate()})
+
+      refute render(lv) =~ tenant_id
     end
 
     test "renders the Sentinel setup tabs with prefilled snippets", %{

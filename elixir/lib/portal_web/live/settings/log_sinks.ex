@@ -72,6 +72,7 @@ defmodule PortalWeb.Settings.LogSinks do
       assign(socket,
         page_title: "Log Sinks",
         sentinel_setup_tab: "portal",
+        sentinel_verification_ref: nil,
         s3_setup_tab: "console",
         trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
         device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
@@ -147,8 +148,28 @@ defmodule PortalWeb.Settings.LogSinks do
   end
 
   def handle_event("sentinel_admin_consent", _params, socket) do
-    url = sentinel_admin_consent_url(socket.assigns.form, socket.assigns.account)
-    {:noreply, push_event(socket, "open_url", %{url: url})}
+    verification_ref = Ecto.UUID.generate()
+
+    with {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification("sentinel_log_sink", []),
+         state_token =
+           PortalWeb.OIDC.sign_verification_state(
+             PortalWeb.OIDC.serialize_pid(self()),
+             PortalWeb.OIDC.verification_state_type("sentinel_log_sink"),
+             %{verification_ref: verification_ref}
+           ),
+         {:ok, url} <-
+           PortalWeb.OIDC.build_verification_uri("sentinel_log_sink", config, nil, state_token) do
+      {:noreply,
+       socket
+       |> assign(sentinel_verification_ref: verification_ref)
+       |> push_event("open_url", %{url: url})}
+    else
+      {:error, reason} ->
+        Logger.info("Failed to start Sentinel admin consent", reason: inspect(reason))
+
+        {:noreply,
+         put_flash(socket, :error, "Failed to start Microsoft admin consent. Please try again.")}
+    end
   end
 
   def handle_event("validate", %{"log_sink" => attrs}, socket) do
@@ -275,6 +296,25 @@ defmodule PortalWeb.Settings.LogSinks do
   def handle_event("close_sink_actions", _params, socket) do
     {:noreply, assign(socket, open_sink_actions_id: nil)}
   end
+
+  def handle_info({:sentinel_log_sink_complete, tenant_id, verification_ref}, socket) do
+    if socket.assigns[:sentinel_verification_ref] == verification_ref and socket.assigns[:form] do
+      changeset = socket.assigns.form.source
+      attrs = Map.put(changeset.changes, :tenant_id, tenant_id)
+
+      changeset =
+        changeset.data
+        |> changeset(attrs)
+        |> Map.put(:action, :validate)
+
+      {:noreply, assign(socket, form: to_form(changeset), sentinel_verification_ref: nil)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(message, socket),
+    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   def render(assigns) do
     ~H"""
@@ -1050,12 +1090,13 @@ defmodule PortalWeb.Settings.LogSinks do
           <div class="mb-4 p-3 rounded border border-border bg-surface">
             <p class="text-xs font-medium text-heading mb-1.5">1. Grant admin consent</p>
             <p class="text-xs text-subtle mb-3">
-              Enter your Microsoft Entra tenant ID below, then have a tenant administrator grant
-              consent. This adds the <strong>Firezone Sentinel Log Ingestion</strong> application
-              to your tenant so you can assign it a role in the next step. It requests no API
-              permissions and cannot read your directory or data. It only becomes a service
-              principal you grant the Monitoring Metrics Publisher role to on a single data
-              collection rule.
+              Have a tenant administrator grant consent. This adds the
+              <strong>Firezone Sentinel Log Ingestion</strong>
+              application to your tenant so you can assign it a role in the next step. Firezone
+              verifies which tenant granted the consent and fills in the tenant ID below. The
+              application asks only to sign the administrator in and read their basic profile.
+              It cannot read your directory or your data. Log delivery is authorized only by the
+              Monitoring Metrics Publisher role you grant on a single data collection rule.
             </p>
             <.button
               type="button"
@@ -1143,9 +1184,10 @@ defmodule PortalWeb.Settings.LogSinks do
           </ol>
           <div :if={@sentinel_setup_tab == "cli"}>
             <p class="text-xs text-subtle mb-2">
-              Assumes an existing Log Analytics workspace. Set the variables for your
-              environment, then run the script with the Azure CLI logged into your
-              subscription. It prints the values for the fields below.
+              Creates the resource group, workspace, custom table, data collection endpoint,
+              and data collection rule if they do not exist yet, and leaves them alone if they
+              do. Set the variables for your environment, then run the script with the Azure
+              CLI logged into your subscription. It prints the values for the fields below.
             </p>
             <.code_block id="sentinel-setup-cli" class="rounded text-xs">{sentinel_cli_snippet()}</.code_block>
           </div>
@@ -1775,21 +1817,6 @@ defmodule PortalWeb.Settings.LogSinks do
     end
   end
 
-  defp sentinel_admin_consent_url(form, account) do
-    tenant =
-      case get_field(form.source, :tenant_id) do
-        tenant when is_binary(tenant) and tenant != "" -> String.trim(tenant)
-        _ -> "organizations"
-      end
-
-    "https://login.microsoftonline.com/#{tenant}/adminconsent?" <>
-      URI.encode_query(%{
-        "client_id" => sentinel_client_id(),
-        "redirect_uri" => url(~p"/auth/sentinel/consent"),
-        "state" => Phoenix.Param.to_param(account)
-      })
-  end
-
   defp sentinel_client_id do
     Portal.Config.fetch_env!(:portal, Portal.Sentinel.APIClient)
     |> Keyword.get(:client_id)
@@ -1797,30 +1824,39 @@ defmodule PortalWeb.Settings.LogSinks do
   end
 
   @sentinel_cli_snippet ~S"""
-  RG="my-resource-group"
-  WORKSPACE="my-workspace"
-  LOCATION="eastus"
+  firezone_sentinel_setup() {
+    RG="my-resource-group"
+    WORKSPACE="my-workspace"
+    LOCATION="eastus"
 
-  WORKSPACE_ID=$(az monitor log-analytics workspace show \
-    -g "$RG" -n "$WORKSPACE" --query id -o tsv)
+    if ! az group show -n "$RG" > /dev/null 2>&1; then
+      az group create -n "$RG" -l "$LOCATION" --output none
+    fi
 
-  if ! az monitor log-analytics workspace table show \
-       -g "$RG" --workspace-name "$WORKSPACE" -n FirezoneLogs_CL > /dev/null 2>&1; then
-    az monitor log-analytics workspace table create \
-      -g "$RG" --workspace-name "$WORKSPACE" -n FirezoneLogs_CL \
-      --columns TimeGenerated=datetime Message=string Stream=string Firezone=dynamic \
-      --output none
-  fi
+    WORKSPACE_ID=$(az monitor log-analytics workspace show \
+      -g "$RG" -n "$WORKSPACE" --query id -o tsv 2>/dev/null)
+    if [ -z "$WORKSPACE_ID" ]; then
+      WORKSPACE_ID=$(az monitor log-analytics workspace create \
+        -g "$RG" -n "$WORKSPACE" -l "$LOCATION" --query id -o tsv)
+    fi
 
-  DCE_ID=$(az monitor data-collection endpoint show \
-    -g "$RG" -n firezone-logs --query id -o tsv 2>/dev/null)
-  if [ -z "$DCE_ID" ]; then
-    DCE_ID=$(az monitor data-collection endpoint create \
-      -g "$RG" -n firezone-logs -l "$LOCATION" \
-      --public-network-access Enabled --query id -o tsv)
-  fi
+    if ! az monitor log-analytics workspace table show \
+         -g "$RG" --workspace-name "$WORKSPACE" -n FirezoneLogs_CL > /dev/null 2>&1; then
+      az monitor log-analytics workspace table create \
+        -g "$RG" --workspace-name "$WORKSPACE" -n FirezoneLogs_CL \
+        --columns TimeGenerated=datetime Message=string Stream=string Firezone=dynamic \
+        --output none
+    fi
 
-  cat > firezone-dcr.json <<EOF
+    DCE_ID=$(az monitor data-collection endpoint show \
+      -g "$RG" -n firezone-logs --query id -o tsv 2>/dev/null)
+    if [ -z "$DCE_ID" ]; then
+      DCE_ID=$(az monitor data-collection endpoint create \
+        -g "$RG" -n firezone-logs -l "$LOCATION" \
+        --public-network-access Enabled --query id -o tsv)
+    fi
+
+    cat > firezone-dcr.json <<EOF
   {
     "location": "$LOCATION",
     "properties": {
@@ -1852,29 +1888,37 @@ defmodule PortalWeb.Settings.LogSinks do
   }
   EOF
 
-  DCR_ID=$(az monitor data-collection rule show \
-    -g "$RG" -n firezone-logs --query id -o tsv 2>/dev/null)
-  if [ -z "$DCR_ID" ]; then
-    DCR_ID=$(az monitor data-collection rule create \
-      -g "$RG" -n firezone-logs --rule-file firezone-dcr.json --query id -o tsv)
-  fi
+    DCR_ID=$(az monitor data-collection rule show \
+      -g "$RG" -n firezone-logs --query id -o tsv 2>/dev/null)
+    if [ -z "$DCR_ID" ]; then
+      DCR_ID=$(az monitor data-collection rule create \
+        -g "$RG" -n firezone-logs --rule-file firezone-dcr.json --query id -o tsv)
+    fi
 
-  SP_ID=$(az ad sp show --id FIREZONE_CLIENT_ID --query id -o tsv)
+    SP_ID=$(az ad sp show --id FIREZONE_CLIENT_ID --query id -o tsv 2>/dev/null)
 
-  if ! az role assignment list --assignee "$SP_ID" --scope "$DCR_ID" \
-       --role "Monitoring Metrics Publisher" --query "[0].id" -o tsv 2>/dev/null | grep -q .; then
-    az role assignment create --assignee-object-id "$SP_ID" \
-      --assignee-principal-type ServicePrincipal \
-      --role "Monitoring Metrics Publisher" --scope "$DCR_ID" \
-      --output none
-  fi
+    if [ -z "$SP_ID" ]; then
+      echo "The Firezone application is not in this tenant. Grant admin consent first." >&2
+      return 1
+    fi
 
-  echo "Enter these in the Firezone form:"
-  echo "  Ingestion Endpoint: $(az monitor data-collection endpoint show \
-    -g "$RG" -n firezone-logs --query logsIngestion.endpoint -o tsv)"
-  echo "  DCR Immutable ID:   $(az monitor data-collection rule show \
-    -g "$RG" -n firezone-logs --query immutableId -o tsv)"
-  echo "  Stream Name:        Custom-FirezoneLogs_CL"
+    if ! az role assignment list --assignee "$SP_ID" --scope "$DCR_ID" \
+         --role "Monitoring Metrics Publisher" --query "[0].id" -o tsv 2>/dev/null | grep -q .; then
+      az role assignment create --assignee-object-id "$SP_ID" \
+        --assignee-principal-type ServicePrincipal \
+        --role "Monitoring Metrics Publisher" --scope "$DCR_ID" \
+        --output none
+    fi
+
+    echo "Enter these in the Firezone form:"
+    echo "  Ingestion Endpoint: $(az monitor data-collection endpoint show \
+      -g "$RG" -n firezone-logs --query logsIngestion.endpoint -o tsv)"
+    echo "  DCR Immutable ID:   $(az monitor data-collection rule show \
+      -g "$RG" -n firezone-logs --query immutableId -o tsv)"
+    echo "  Stream Name:        Custom-FirezoneLogs_CL"
+  }
+
+  firezone_sentinel_setup
   """
 
   @sentinel_terraform_snippet ~S"""
