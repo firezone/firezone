@@ -97,7 +97,11 @@ where
     let (tx, rx) = mpsc::sync_channel::<Command>(CHANNEL_CAPACITY);
     let handle = std::thread::Builder::new()
         .name("flow-log-writer".to_owned())
-        .spawn(move || writer_loop(&spool_root, &rx))
+        .spawn({
+            let spool_root = spool_root.clone();
+
+            move || writer_loop(&spool_root, &rx)
+        })
         .expect("Failed to spawn flow-log writer thread");
 
     let layer = FlowLogLayer {
@@ -112,6 +116,7 @@ where
         layer,
         Guard {
             tx,
+            spool_root,
             handle: Some(handle),
         },
     )
@@ -163,7 +168,16 @@ pub fn write_token(spool_root: &Path, token: &str) -> anyhow::Result<()> {
 /// cannot hang process exit.
 pub struct Guard {
     tx: mpsc::SyncSender<Command>,
+    spool_root: PathBuf,
     handle: Option<JoinHandle<()>>,
+}
+
+impl Guard {
+    /// Where this writer spools its reports, so an uploader can be pointed at
+    /// the same place rather than told separately.
+    pub fn spool_root(&self) -> &Path {
+        &self.spool_root
+    }
 }
 
 impl Drop for Guard {
