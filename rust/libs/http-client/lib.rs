@@ -9,6 +9,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use bytes::Bytes;
+use futures::{StreamExt as _, stream::FuturesUnordered};
 use http_body_util::{BodyExt, Full};
 use rustls::ClientConfig;
 use socket_factory::{SocketFactory, TcpSocket};
@@ -185,36 +186,36 @@ async fn connect(
 ) -> Result<(Sender, ConnectionDriver)> {
     tracing::debug!(?addresses, %domain, "Creating new HTTP connection");
 
-    anyhow::ensure!(!addresses.is_empty(), "No addresses for '{domain}'");
-
     // Race the addresses instead of walking them in order. A blackholed address
     // never errors, so trying them one at a time waits out the OS' TCP timeout
-    // before moving on, and a working address behind one is never reached.
-    // Whichever connects first wins; dropping the rest cancels them.
-    let attempts = addresses.into_iter().map(|address| {
-        let socket = SocketAddr::new(address, port);
-        let domain = domain.clone();
-        let tls_config = tls_config.clone();
-        let sf = sf.clone();
+    // before moving on, and a working address behind it is never reached.
+    let mut attempts = addresses
+        .into_iter()
+        .map(|address| {
+            let socket = SocketAddr::new(address, port);
+            let domain = domain.clone();
+            let tls_config = tls_config.clone();
+            let sf = sf.clone();
 
-        Box::pin(async move {
-            let connection = connect_one(socket, domain.clone(), tls_config, sf)
-                .await
-                .inspect_err(
-                    |e| tracing::debug!(%socket, %domain, "Failed to create HTTP client: {e:#}"),
-                )?;
-
-            tracing::debug!(%socket, %domain, "Created new HTTP connection");
-
-            anyhow::Ok(connection)
+            async move { (socket, connect_one(socket, domain, tls_config, sf).await) }
         })
-    });
+        .collect::<FuturesUnordered<_>>();
 
-    let (connection, _cancelled) = futures::future::select_ok(attempts)
-        .await
-        .with_context(|| format!("Failed to connect to '{domain}' on port {port}"))?;
+    // Ends once every attempt has resolved, so an address that hangs rather than
+    // failing keeps this pending; the caller bounds the wait. Returning early
+    // drops the losing attempts, which cancels them.
+    while let Some((socket, attempt)) = attempts.next().await {
+        match attempt {
+            Ok(connection) => {
+                tracing::debug!(%socket, %domain, "Created new HTTP connection");
 
-    Ok(connection)
+                return Ok(connection);
+            }
+            Err(e) => tracing::debug!(%socket, %domain, "Failed to create HTTP client: {e:#}"),
+        }
+    }
+
+    anyhow::bail!("Failed to connect to '{domain}' on port {port}");
 }
 
 async fn connect_one(
