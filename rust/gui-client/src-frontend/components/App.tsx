@@ -84,10 +84,7 @@ export default function App() {
           path="/advanced-settings"
           element={<Titlebar title="Advanced Settings" />}
         />
-        <Route
-          path="/x509"
-          element={<Titlebar title="X.509" />}
-        />
+        <Route path="/x509" element={<Titlebar title="X.509" />} />
         <Route path="/diagnostics" element={<Titlebar title="Diagnostics" />} />
         <Route path="/about" element={<Titlebar title="About" />} />
         <Route
