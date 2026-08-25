@@ -27,12 +27,18 @@
     /// window's accessibility title.
     private static let settingsWindowTitle = "Settings"
 
-    /// How far a window's rounded corner reaches in from its side.
+    /// The radius of the arc a window's corner is drawn with.
     ///
-    /// Measured off a capture: the corner's blend with the desktop behind it
-    /// runs to 24 pixels, so the columns within that of either side are the ones
-    /// worth dropping.
-    private static let windowCornerWidth = 24
+    /// Measured off a capture: the outline meets the picture's edge eleven pixels
+    /// in from either side, in both appearances.
+    private static let windowCornerRadius = 12
+
+    /// How far inside its own outline the window is taken, so that no edge pixel
+    /// it shares with the desktop is left behind.
+    ///
+    /// Three is past the widest fringe measured on a capture, and what it costs is
+    /// the outermost three pixels of a picture that is nine hundred wide.
+    private static let windowEdgeBleed = 3
 
     /// How bright each capture came out, by file name.
     private var brightness: [String: Double] = [:]
@@ -211,7 +217,7 @@
     /// odd pixel, so comparing them tells nothing. The measurements are printed so
     /// a run says which appearance it drew rather than leaving it to be inferred.
     private func capture(_ window: XCUIElement, as name: String, in appearance: Appearance) {
-      let image = deliver(window, as: name, in: appearance, encode: withoutSideColumns)
+      let image = deliver(window, as: name, in: appearance, encode: withoutDesktopAtCorners)
       brightness["\(name)-\(appearance.rawValue)"] = meanBrightness(of: image)
 
       guard
@@ -224,37 +230,67 @@
       XCTAssertLessThan(dark, light - 50, "\(name) is no darker in the dark appearance")
     }
 
-    /// The capture without the columns its rounded corners reach into.
+    /// The capture with the desktop taken out from behind the window's corners.
     ///
-    /// A window is drawn with rounded corners, so the pixels around each one
-    /// hold a blend of the window and whatever the desktop shows behind it, and
-    /// that blend is not always the same twice. Every corner sits within
-    /// `windowCornerWidth` of the left or right edge, so taking those columns
-    /// away takes all four, and the top and bottom edges are straight for
-    /// everything in between.
-    private func withoutSideColumns(_ screenshot: XCUIScreenshot) -> Data {
+    /// A window is drawn with rounded corners, so the pixels around each one hold
+    /// a blend of the window and whatever the desktop shows behind it, and that
+    /// blend is not always the same twice. Clearing them leaves the window whole:
+    /// the picture keeps its full width and height, and only what was never the
+    /// window becomes nothing.
+    private func withoutDesktopAtCorners(_ screenshot: XCUIScreenshot) -> Data {
       let png = screenshot.pngRepresentation
-      let width = Self.windowCornerWidth
 
       guard let source = NSBitmapImageRep(data: png),
         let full = source.cgImage,
-        full.width > width * 2
+        let context = CGContext(
+          data: nil,
+          width: full.width,
+          height: full.height,
+          bitsPerComponent: 8,
+          bytesPerRow: 0,
+          space: CGColorSpaceCreateDeviceRGB(),
+          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
       else {
         return png
       }
 
-      let bounds = CGRect(
-        x: width, y: 0, width: full.width - width * 2, height: full.height
+      let bounds = CGRect(x: 0, y: 0, width: full.width, height: full.height)
+      context.draw(full, in: bounds)
+
+      // Insetting the outline while taking the same amount off its radius keeps
+      // the arc centred where the window draws it, so the outline shrinks onto
+      // itself rather than squaring off. What is left once that is taken out of
+      // the picture's rectangle is the four corners plus a hairline along the
+      // sides, which is the rest of the edge the window shares with the desktop.
+      let bleed = CGFloat(Self.windowEdgeBleed)
+      let radius = CGFloat(Self.windowCornerRadius) - bleed
+      let outline = CGPath(
+        roundedRect: bounds.insetBy(dx: bleed, dy: bleed),
+        cornerWidth: radius,
+        cornerHeight: radius,
+        transform: nil
       )
 
-      guard let cropped = full.cropping(to: bounds),
-        let trimmed = NSBitmapImageRep(cgImage: cropped)
+      // Filling without antialiasing leaves every pixel either untouched or gone,
+      // so none is left half cleared and still carrying a trace of the desktop.
+      let corners = CGMutablePath()
+      corners.addRect(bounds)
+      corners.addPath(outline)
+
+      context.setShouldAntialias(false)
+      context.setBlendMode(.clear)
+      context.addPath(corners)
+      context.fillPath(using: .evenOdd)
+
+      guard let cleared = context.makeImage(),
+        let data = NSBitmapImageRep(cgImage: cleared)
           .representation(using: .png, properties: [:])
       else {
         return png
       }
 
-      return trimmed
+      return data
     }
 
     /// The mean brightness of a PNG, from every eighth pixel, on a 0 to 255 scale.
