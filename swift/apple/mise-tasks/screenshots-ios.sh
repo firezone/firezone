@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+#MISE description="Photograph the iOS screens into swift/apple/screenshots/ios"
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+APPLE_DIR="${SCRIPT_DIR}/.."
+RESULT_DIR="${RESULT_BUNDLE_DIR:-${TMPDIR:-/tmp}}"
+
+UDID="${SIMULATOR_UDID:-$(xcrun simctl list devices booted -j \
+  | jq -r '[.devices[][]] | first | .udid // empty')}"
+if [ -z "${UDID}" ]; then
+  echo "No booted simulator; run the boot-simulator task first" >&2
+  exit 1
+fi
+
+extra_args=()
+if [ -n "${DERIVED_DATA_PATH:-}" ]; then
+  extra_args+=(-derivedDataPath "${DERIVED_DATA_PATH}")
+fi
+
+cd "${APPLE_DIR}"
+
+# The simulator asks for no signing, and the entitlements would need a
+# provisioning profile.
+xcodebuild build-for-testing \
+    -project Firezone.xcodeproj \
+    -scheme FirezoneUITests \
+    -configuration Debug \
+    -destination "id=${UDID}" \
+    "${extra_args[@]+"${extra_args[@]}"}" \
+    CODE_SIGNING_ALLOWED=NO \
+    CODE_SIGNING_REQUIRED=NO \
+    CODE_SIGN_ENTITLEMENTS= \
+    DEVELOPMENT_TEAM= \
+    PROVISIONING_PROFILE_SPECIFIER= \
+    ONLY_ACTIVE_ARCH=YES
+
+# An appearance belongs to the simulated device rather than to a launch, so
+# the suite runs once per appearance with `simctl ui` in between.
+for appearance in light dark; do
+  RESULT_BUNDLE="${RESULT_DIR}/FirezoneUITests-ios-${appearance}.xcresult"
+  rm -rf "${RESULT_BUNDLE}"
+
+  xcrun simctl ui "${UDID}" appearance "${appearance}"
+
+  echo "Photographing the iOS screens in ${appearance}..."
+  # xcodebuild forwards TEST_RUNNER_-prefixed variables to the test runner
+  # process with the prefix stripped.
+  TEST_RUNNER_SCREENSHOT_APPEARANCE="${appearance}" \
+    xcodebuild test-without-building \
+      -project Firezone.xcodeproj \
+      -scheme FirezoneUITests \
+      -configuration Debug \
+      -destination "id=${UDID}" \
+      "${extra_args[@]+"${extra_args[@]}"}" \
+      -resultBundlePath "${RESULT_BUNDLE}"
+
+  "${SCRIPT_DIR}/export-screenshots.sh" "${RESULT_BUNDLE}" "${APPLE_DIR}/screenshots/ios"
+done

@@ -53,225 +53,70 @@ jobs:
           parallel: true
           fail-on-error: false
 
-  # Photographs the real app so a UI change lands in the diff of the pull request
-  # that causes it: builds the macOS app, launches it against the mocked backend
-  # (`--mock-tunnel`, one scenario and appearance per launch; see MockTunnel.swift)
-  # through the FirezoneUITests bundle, and hands the captures to
-  # commit-screenshots. The images are not compared against references.
-  macos-screenshots:
+  # Photographs the real app against the mocked backend (see MockTunnel.swift)
+  # and hands the captures to commit-screenshots. The images are the output;
+  # nothing is compared against a reference.
+  screenshots:
+    name: ${{ matrix.platform }}-screenshots
     runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The app target embeds the tunnel extension, whose build phase
+          # compiles connlib for the destination.
+          - platform: macos
+            rust-target: aarch64-apple-darwin
+          - platform: ios
+            rust-target: aarch64-apple-ios-sim
     env:
       XCODE_VERSION: "26.2"
+      # GIT_SHA stays unset: the settings screens print it as their build
+      # string, and the commit would move two images on every push.
+      DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
+      RESULT_BUNDLE_DIR: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
-      # The app target embeds the system extension, whose build phase compiles
-      # connlib for the host architecture.
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: false
       - uses: ./.github/actions/setup-rust-stable
         with:
-          targets: aarch64-apple-darwin
+          targets: ${{ matrix.rust-target }}
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-      # Ad-hoc signing with the entitlements dropped: the runner has no signing
-      # certificate, and the mocked app touches none of the facilities the
-      # entitlements gate. Restricted entitlements without a provisioning profile
-      # would keep the app from launching.
-      #
-      # GIT_SHA is left unset on purpose. The settings screens print it as their
-      # build string, so passing the commit would change two of the images on
-      # every commit; without it the app falls back to the fixed "unknown".
-      - name: Build the app screenshot UI tests
-        working-directory: swift/apple
-        run: |
-          xcodebuild build-for-testing \
-            -project Firezone.xcodeproj \
-            -scheme FirezoneUITests \
-            -configuration Debug \
-            -destination "platform=macOS,arch=$(uname -m)" \
-            -derivedDataPath "${RUNNER_TEMP}/DerivedData" \
-            CODE_SIGN_IDENTITY=- \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM= \
-            PROVISIONING_PROFILE_SPECIFIER= \
-            CODE_SIGN_ENTITLEMENTS= \
-            ENABLE_APP_SANDBOX=NO \
-            ENABLE_HARDENED_RUNTIME=NO \
-            ONLY_ACTIVE_ARCH=YES
-      # The captures include each window's rounded corners, where the screen
-      # behind the window bleeds into the corner's falloff. macOS ships
-      # wallpapers that shift over the day, so an uncontrolled desktop puts a
-      # different colour in those pixels from one run to the next, and a
-      # screensaver would replace the screen outright partway through.
-      # The Apple images alone wobble in the low bit of antialiased edges, and
-      # the suspect is the physical chip under the VM: GPU blend rounding is not
-      # specified to the bit across Apple GPU generations, and the runner fleet
-      # does not promise one generation. Naming the hardware in every run lets a
-      # wobble be correlated with the chip that drew it.
+      # GPU blend rounding differs between Apple chip generations, so a pixel
+      # wobble can be traced to the chip that drew it.
       - name: Name the hardware under the VM
         run: |
           sysctl -n hw.model machdep.cpu.brand_string
           system_profiler SPDisplaysDataType | grep -E "Chipset|Model|Metal" || true
+      # The wallpaper shows through the window corners' antialiasing, and macOS
+      # ships wallpapers that shift over the day.
       - name: Pin what is behind the windows
+        if: matrix.platform == 'macos'
         run: |
-          python3 -c 'import base64, pathlib, sys; pathlib.Path(sys.argv[2]).write_bytes(base64.b64decode(sys.argv[1]))' \
-            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mOQk5MDAAC4AFu7ANa+AAAAAElFTkSuQmCC' \
-            "${RUNNER_TEMP}/backdrop.png"
-
           defaults -currentHost write com.apple.screensaver idleTime -int 0
 
           osascript -e "tell application \"System Events\" to tell every desktop \
-            to set picture to \"${RUNNER_TEMP}/backdrop.png\"" \
+            to set picture to \"${GITHUB_WORKSPACE}/.github/assets/screenshot-backdrop.png\"" \
             || echo "::warning::Could not set the desktop picture; the window corners stay at the mercy of the wallpaper"
-      - name: Run the app screenshot UI tests
-        working-directory: swift/apple
-        run: |
-          xcodebuild test-without-building \
-            -project Firezone.xcodeproj \
-            -scheme FirezoneUITests \
-            -configuration Debug \
-            -destination "platform=macOS,arch=$(uname -m)" \
-            -derivedDataPath "${RUNNER_TEMP}/DerivedData" \
-            -resultBundlePath "${RUNNER_TEMP}/FirezoneUITests.xcresult"
-      - name: Export the screenshots from the result bundle
-        run: |
-          swift/apple/mise-tasks/export-screenshots.sh \
-            "${RUNNER_TEMP}/FirezoneUITests.xcresult" \
-            swift/apple/screenshots/macos
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: macos-screenshots
-          path: swift/apple/screenshots/macos
-      # The result bundle holds XCUITest's own failure screenshots and logs.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure()
-        with:
-          name: macos-screenshots-xcresult
-          path: ${{ runner.temp }}/FirezoneUITests.xcresult
-
-  # The iOS half of the gallery. The app target builds for the simulator, where
-  # a Network Extension cannot run at all, so the mocked backend is what makes
-  # the screens reachable there.
-  #
-  # A simulator's appearance belongs to the device rather than to a launch, so
-  # the suite runs once per appearance with `simctl ui` in between, rather than
-  # switching appearance per launch the way the macOS lane does.
-  ios-screenshots:
-    runs-on: macos-26
-    env:
-      XCODE_VERSION: "26.2"
-      # Pinned to the Xcode above rather than resolved as "latest": a runner
-      # image that adds a runtime would otherwise redraw the whole gallery.
-      SIMULATOR_NAME: iPhone 17
-      SIMULATOR_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-2
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
-      # The app target embeds the network extension, whose build phase compiles
-      # connlib for the simulator.
-      - uses: ./.github/actions/setup-rust-stable
-        with:
-          targets: aarch64-apple-ios-sim
-      - uses: ./.github/actions/setup-rust-sccache
-        with:
-          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-      # The Apple images alone wobble in the low bit of antialiased edges, and
-      # the suspect is the physical chip under the VM: GPU blend rounding is not
-      # specified to the bit across Apple GPU generations, and the runner fleet
-      # does not promise one generation. Naming the hardware in every run lets a
-      # wobble be correlated with the chip that drew it.
-      - name: Name the hardware under the VM
-        run: |
-          sysctl -n hw.model machdep.cpu.brand_string
-          system_profiler SPDisplaysDataType | grep -E "Chipset|Model|Metal" || true
       - name: Boot the simulator
-        run: |
-          udid=$(xcrun simctl list devices available -j | jq -r \
-            --arg name "${SIMULATOR_NAME}" --arg runtime "${SIMULATOR_RUNTIME}" \
-            '.devices[$runtime] // [] | map(select(.name == $name)) | first | .udid // empty')
-
-          if [ -z "${udid}" ]; then
-            echo "No ${SIMULATOR_NAME} on ${SIMULATOR_RUNTIME}; the runner has:" >&2
-            xcrun simctl list devices available >&2
-            exit 1
-          fi
-
-          xcrun simctl boot "${udid}"
-          xcrun simctl bootstatus "${udid}"
-
-          # The captures include the status bar, whose clock and battery would
-          # otherwise differ on every run.
-          xcrun simctl status_bar "${udid}" override \
-            --time "9:41" \
-            --dataNetwork wifi \
-            --wifiMode active \
-            --wifiBars 3 \
-            --cellularMode active \
-            --cellularBars 4 \
-            --batteryState charged \
-            --batteryLevel 100
-
-          # Materials behind the sheet toolbars do not rasterise identically
-          # from one run to the next, which reaches the gallery as a diff no one
-          # can see. Drawing them opaque takes that source of noise out of the
-          # captures. Each test launches the app afresh, so the setting is read
-          # at launch.
-          xcrun simctl spawn "${udid}" defaults write \
-            com.apple.Accessibility ReduceTransparencyEnabled -bool true
-
-          echo "SIMULATOR_UDID=${udid}" >> "${GITHUB_ENV}"
-      # Signing is skipped outright: the simulator asks for none, and the
-      # entitlements would need a provisioning profile the runner has not got.
-      #
-      # GIT_SHA is left unset on purpose. The settings screens print it as their
-      # build string, so passing the commit would change two of the images on
-      # every commit; without it the app falls back to the fixed "unknown".
-      - name: Build the app screenshot UI tests
-        working-directory: swift/apple
-        run: |
-          xcodebuild build-for-testing \
-            -project Firezone.xcodeproj \
-            -scheme FirezoneUITests \
-            -configuration Debug \
-            -destination "id=${SIMULATOR_UDID}" \
-            -derivedDataPath "${RUNNER_TEMP}/DerivedData" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_ENTITLEMENTS= \
-            DEVELOPMENT_TEAM= \
-            PROVISIONING_PROFILE_SPECIFIER= \
-            ONLY_ACTIVE_ARCH=YES
-      - name: Photograph the iOS screens
-        working-directory: swift/apple
-        run: |
-          for appearance in light dark; do
-            xcrun simctl ui "${SIMULATOR_UDID}" appearance "${appearance}"
-
-            # xcodebuild forwards TEST_RUNNER_-prefixed variables to the test
-            # runner process with the prefix stripped.
-            TEST_RUNNER_SCREENSHOT_APPEARANCE="${appearance}" \
-              xcodebuild test-without-building \
-                -project Firezone.xcodeproj \
-                -scheme FirezoneUITests \
-                -configuration Debug \
-                -destination "id=${SIMULATOR_UDID}" \
-                -derivedDataPath "${RUNNER_TEMP}/DerivedData" \
-                -resultBundlePath "${RUNNER_TEMP}/FirezoneUITests-${appearance}.xcresult"
-
-            mise-tasks/export-screenshots.sh \
-              "${RUNNER_TEMP}/FirezoneUITests-${appearance}.xcresult" \
-              screenshots/ios
-          done
+        if: matrix.platform == 'ios'
+        run: mise run //swift/apple:boot-simulator
+      - name: Photograph the ${{ matrix.platform }} screens
+        run: mise run //swift/apple:screenshots-${{ matrix.platform }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ios-screenshots
-          path: swift/apple/screenshots/ios
+          name: ${{ matrix.platform }}-screenshots
+          path: swift/apple/screenshots/${{ matrix.platform }}
       # The result bundles hold XCUITest's own failure screenshots and logs.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
-          name: ios-screenshots-xcresult
+          name: ${{ matrix.platform }}-screenshots-xcresult
           path: ${{ runner.temp }}/FirezoneUITests-*.xcresult
 
   static-analysis:
