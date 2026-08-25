@@ -9,14 +9,12 @@ To compile natively for x86_64 Linux:
 1. [Install rustup](https://rustup.rs/)
 1. Install [pnpm](https://pnpm.io/installation)
 1. `sudo apt-get install build-essential curl file pkg-config libgtk-3-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev wget`
-1. Create the `firezone-client` group and join it, then log back in so the membership
-   applies. The installer does this in production; without it the GUI refuses to start,
-   and the Tunnel service's socket (mode `0660`, group `firezone-client`) is unreadable
-   to it:
+1. The `firezone-client` group, which the installer creates in production. The GUI checks
+   for membership at startup and the Tunnel service's socket is group-readable only:
 
    ```bash
    sudo groupadd --system firezone-client
-   sudo usermod -aG firezone-client "$USER"
+   sudo usermod -aG firezone-client "$USER" # log back in afterwards
    ```
 
 ## Setup (Windows)
@@ -28,15 +26,9 @@ To compile natively for x86_64 Windows, install the following (winget commands s
    `winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`
 1. rustup — `winget install Rustlang.Rustup`
 1. mise — `winget install jdx.mise`
-1. A `sudo` that elevates **in the current console**, for the Tunnel service: either
-   **Sudo for Windows** (Windows 11 24H2 or later), enabled under Settings > System >
-   Advanced and then switched to inline with `sudo config --enable normal` from an
-   elevated console, or `winget install gerardog.gsudo`, which is inline already and
-   registers the same `sudo` name. Sudo for Windows defaults to running the command in
-   a new console, which leaves the service's ANSI escapes unprocessed and turns its
-   coloured logs into garbage. Read
-   [Microsoft's security note](https://learn.microsoft.com/en-us/windows/advanced-settings/sudo/#security-considerations)
-   on inline mode before enabling it.
+1. **Sudo for Windows** (Windows 11 24H2 or later), enabled under Settings > System >
+   Advanced and configured to elevate inline (`sudo config --enable normal`). A new
+   console does not process ANSI escapes and mangles the Tunnel service's logs.
 1. An editor of your choice (see [Recommended IDE Setup](#recommended-ide-setup))
 
 `node` and `pnpm` are pinned in [`rust/.tool-versions`](../.tool-versions) and provided
@@ -47,22 +39,17 @@ PowerShell 7 and install the toolchain from `rust/`:
 # Activate mise for the current session
 mise activate pwsh | Out-String | Invoke-Expression
 
-# Persist it. `-Force` also creates the profile and its directory, which do not
-# exist on a fresh install, so appending to `$PROFILE` fails until you do this.
+# Persist it. `-Force` creates `$PROFILE` and its directory, which do not exist yet.
+# A `$PROFILE` under `Documents\WindowsPowerShell\` means you are in 5.1, not 7.
 New-Item -ItemType File -Path $PROFILE -Force
 Add-Content $PROFILE 'mise activate pwsh | Out-String | Invoke-Expression'
 
-# Tab completions. This writes the completion script and prints the one
-# dot-source line to add to `$PROFILE` yourself.
+# Tab completions; prints a dot-source line to add to `$PROFILE`.
 mise completion pwsh --install
 
 # Install the pinned tools (node, pnpm, cargo-tauri, etc.)
 mise install
 ```
-
-If `$PROFILE` points somewhere under `Documents\WindowsPowerShell\`, you are in
-Windows PowerShell 5.1 rather than PowerShell 7, which uses `Documents\PowerShell\`.
-Start `pwsh`, not `powershell`.
 
 ### Recommended IDE Setup
 
@@ -124,8 +111,8 @@ A live dev session needs **two** processes running at once, each in its own
 PowerShell 7 terminal. Make sure mise is activated in each (`mise activate pwsh | Out-String | Invoke-Expression`).
 
 1. **Tunnel service** — run from a normal terminal. It manages the system tunnel and
-   serves the privileged IPC pipe, so the task builds it unprivileged and then elevates
-   only the service binary through `sudo`, which raises a UAC prompt:
+   serves the privileged IPC pipe; the task elevates only the service binary, so expect
+   a UAC prompt:
 
    ```powershell
    mise run tunnel
