@@ -5,7 +5,6 @@
 use anyhow::{Context as _, Result, bail};
 use clap::Parser;
 use std::{
-    ffi::OsStr,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -47,8 +46,6 @@ fn main() -> Result<()> {
     let cli = Cli::try_parse()?;
 
     let app = App::new()?;
-
-    dump_syms().context("Failed to run `dump_syms`")?;
 
     // Run normal smoke test
     tracing::info!("=== normal smoke test: GUI starts, connects to tunnel, quits gracefully ===");
@@ -357,37 +354,6 @@ impl App {
     }
 }
 
-// Get debug symbols from the exe / pdb
-fn dump_syms() -> Result<()> {
-    Exec::cmd("dump_syms")
-        .args([
-            debug_db_path().as_os_str(),
-            gui_path().as_os_str(),
-            OsStr::new("--output"),
-            syms_path().as_os_str(),
-        ])
-        .join()?
-        .fz_exit_ok()?;
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-fn debug_db_path() -> PathBuf {
-    Path::new("target").join("debug").join(GUI_NAME)
-}
-
-#[cfg(target_os = "macos")]
-fn debug_db_path() -> PathBuf {
-    Path::new("target").join("debug").join(GUI_NAME)
-}
-
-#[cfg(target_os = "windows")]
-fn debug_db_path() -> PathBuf {
-    Path::new("target")
-        .join("debug")
-        .join("firezone_gui_client.pdb")
-}
-
 #[cfg(target_os = "linux")]
 fn tunnel_service_command() -> Exec {
     Exec::cmd("sudo").args([
@@ -440,8 +406,4 @@ fn tunnel_path() -> PathBuf {
         .join("debug")
         .join(TUNNEL_NAME)
         .with_extension(EXE_EXTENSION)
-}
-
-fn syms_path() -> PathBuf {
-    gui_path().with_extension("syms")
 }

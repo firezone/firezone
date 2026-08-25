@@ -91,12 +91,10 @@ impl AllowRules {
     fn add_filter(&mut self, filter: &Filter) {
         match filter {
             Filter::Udp(range) => {
-                self.udp
-                    .insert(range.port_range_start..=range.port_range_end);
+                self.udp.insert(range.to_range());
             }
             Filter::Tcp(range) => {
-                self.tcp
-                    .insert(range.port_range_start..=range.port_range_end);
+                self.tcp.insert(range.to_range());
             }
             Filter::Icmp => {
                 self.icmp = true;
@@ -110,7 +108,6 @@ mod tests {
     use ip_packet::{Icmpv4Type, Icmpv6Type, icmpv4, icmpv6};
 
     use super::*;
-
     #[test]
     fn allows_icmpv4_destination_unreachable() {
         let filter = FilterEngine::PermitSome(AllowRules {

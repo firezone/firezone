@@ -9,6 +9,13 @@ To compile natively for x86_64 Linux:
 1. [Install rustup](https://rustup.rs/)
 1. Install [pnpm](https://pnpm.io/installation)
 1. `sudo apt-get install build-essential curl file pkg-config libgtk-3-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev wget`
+1. The `firezone-client` group, which the installer creates in production. The GUI checks
+   for membership at startup and the Tunnel service's socket is group-readable only:
+
+   ```bash
+   sudo groupadd --system firezone-client
+   sudo usermod -aG firezone-client "$USER" # log back in afterwards
+   ```
 
 ## Setup (Windows)
 
@@ -19,6 +26,9 @@ To compile natively for x86_64 Windows, install the following (winget commands s
    `winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`
 1. rustup — `winget install Rustlang.Rustup`
 1. mise — `winget install jdx.mise`
+1. **Sudo for Windows** (Windows 11 24H2 or later), enabled under Settings > System >
+   Advanced and configured to elevate inline (`sudo config --enable normal`). A new
+   console does not process ANSI escapes and mangles the Tunnel service's logs.
 1. An editor of your choice (see [Recommended IDE Setup](#recommended-ide-setup))
 
 `node` and `pnpm` are pinned in [`rust/.tool-versions`](../.tool-versions) and provided
@@ -26,8 +36,16 @@ by mise — you don't install them separately. After installing mise, activate i
 PowerShell 7 and install the toolchain from `rust/`:
 
 ```powershell
-# Activate mise for the current session (add to $PROFILE to persist)
+# Activate mise for the current session
 mise activate pwsh | Out-String | Invoke-Expression
+
+# Persist it. `-Force` creates `$PROFILE` and its directory, which do not exist yet.
+# A `$PROFILE` under `Documents\WindowsPowerShell\` means you are in 5.1, not 7.
+New-Item -ItemType File -Path $PROFILE -Force
+Add-Content $PROFILE 'mise activate pwsh | Out-String | Invoke-Expression'
+
+# Tab completions
+mise completion powershell | Add-Content $PROFILE
 
 # Install the pinned tools (node, pnpm, cargo-tauri, etc.)
 mise install
@@ -92,8 +110,9 @@ the portal; update and apply the production Terraform configuration instead.
 A live dev session needs **two** processes running at once, each in its own
 PowerShell 7 terminal. Make sure mise is activated in each (`mise activate pwsh | Out-String | Invoke-Expression`).
 
-1. **Tunnel service** — run from an **elevated (Administrator)** terminal. It manages
-   the system tunnel and serves the privileged IPC pipe:
+1. **Tunnel service** — run from a normal terminal. It manages the system tunnel and
+   serves the privileged IPC pipe; the task elevates only the service binary, so expect
+   a UAC prompt:
 
    ```powershell
    mise run tunnel
@@ -108,7 +127,7 @@ PowerShell 7 terminal. Make sure mise is activated in each (`mise activate pwsh 
    service above, skipping the pipe-owner check so it accepts the non-`LocalSystem` pipe:
 
    ```powershell
-   mise run tauri-dev
+   mise run dev
    # equivalent to: cargo tauri dev -- -- --skip-peer-verification
 
    # You can call debug subcommands on the exe this way too, e.g.

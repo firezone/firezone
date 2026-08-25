@@ -9,7 +9,9 @@ auto_install = false
 "github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
-"github:mozilla/dump_syms" = "2.3.7"
+# `matching_regex` skips the npm tarballs the release also carries, so every
+# platform gets the bare binary; `bin` gives it a name the shim can use.
+"github:getsentry/sentry-cli" = { version = "3.6.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
 
 # The eBPF program is compiled with this exact nightly toolchain: `aya_build`
@@ -63,33 +65,6 @@ run = "cargo deny check --hide-inclusion-graph --deny unnecessary-skip"
 [tasks.test]
 description = "Run tests (CI check)"
 run = "cargo test --all-features -- --include-ignored --nocapture"
-
-[tasks.tauri-mock]
-description = "Run the GUI client for rapid UI iteration with an in-process mock Tunnel service (--mock-tunnel) and the portal decoupled (--skip-portal-auth). Self-contained: no root, no separate process."
-dir = "gui-client"
-raw = true
-run = "cargo tauri dev -- -- --skip-portal-auth --mock-tunnel"
-
-[tasks.tauri-dev]
-description = "Run the GUI client in dev against a dev tunnel service"
-dir = "gui-client"
-raw = true
-run = "cargo tauri dev -- -- --skip-peer-verification"
-
-[tasks.gui-screenshots]
-description = "Render every GUI client screen to a PNG in `rust/gui-client/screenshots`"
-dir = "gui-client"
-run = [
-    "pnpm install",
-    "pnpm exec playwright install chromium",
-    "pnpm exec vitest run",
-]
-
-[tasks.tunnel]
-description = "Run the Tunnel service interactively for local GUI dev. `--skip-peer-verification` skips the peer check so it accepts a non-installed GUI build; must be run from an elevated shell (Administrator on Windows, root on Unix)."
-dir = "gui-client"
-raw = true
-run = "cargo run -p firezone-gui-client --bin firezone-client-tunnel -- run-interactive --skip-peer-verification"
 
 # =============================================================================
 # Profiling

@@ -1512,7 +1512,7 @@ fn protocol_filter_allows(filters: &[Filter], protocol: Protocol) -> bool {
 fn tcp_filter_allows(filters: &[Filter], dport: u16) -> bool {
     filters.is_empty()
         || filters.iter().any(|filter| match filter {
-            Filter::Tcp(range) => range.port_range_start <= dport && dport <= range.port_range_end,
+            Filter::Tcp(range) => range.as_range().contains(&dport),
             Filter::Icmp => false,
             Filter::Udp(_) => false,
         })
@@ -1527,7 +1527,7 @@ fn icmp_filter_allows(filters: &[Filter]) -> bool {
 fn udp_filter_allows(filters: &[Filter], dport: u16) -> bool {
     filters.is_empty()
         || filters.iter().any(|filter| match filter {
-            Filter::Udp(range) => range.port_range_start <= dport && dport <= range.port_range_end,
+            Filter::Udp(range) => range.as_range().contains(&dport),
             Filter::Icmp => false,
             Filter::Tcp(_) => false,
         })
@@ -1652,10 +1652,7 @@ mod tests {
             name: "specific".to_owned(),
             address_description: None,
             sites: vec![site],
-            filters: vec![Filter::Udp(PortRange {
-                port_range_start: 80,
-                port_range_end: 80,
-            })],
+            filters: vec![Filter::Udp(PortRange::single(80))],
         });
 
         let dst = Destination::IpAddr("10.0.0.1".parse().unwrap());

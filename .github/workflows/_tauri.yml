@@ -74,7 +74,14 @@ jobs:
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
-        runs-on: [ubuntu-22.04, ubuntu-24.04, windows-2022, windows-2025]
+        runs-on:
+          [
+            ubuntu-22.04,
+            ubuntu-24.04,
+            windows-2022,
+            windows-2025,
+            windows-11-arm,
+          ]
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
@@ -95,11 +102,6 @@ jobs:
         timeout-minutes: 15
         with:
           runtime: true
-      - uses: ./.github/actions/setup-mise
-        with:
-          install_args: "--cd rust github:mozilla/dump_syms"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm install
       - run: pnpm vite build
       - name: Build client
@@ -116,6 +118,7 @@ jobs:
     permissions:
       contents: write # for attaching the build artifacts to the release
       id-token: write # OIDC auth
+      security-events: write # for Trivy SARIF upload in setup-mise
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
@@ -130,6 +133,10 @@ jobs:
             pkg-extension: deb
           - runs-on: windows-2022
             arch: x86_64
+            os: windows
+            pkg-extension: msi
+          - runs-on: windows-11-arm
+            arch: aarch64
             os: windows
             pkg-extension: msi
     env:
@@ -164,10 +171,14 @@ jobs:
       - uses: ./.github/actions/setup-tauri-v2
         # Installing new packages can take time
         timeout-minutes: 15
-      - uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
+      - uses: ./.github/actions/setup-mise
         with:
-          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          organization: firezone-inc
+          install_args: "--cd rust github:getsentry/sentry-cli"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check sentry-cli runs
+        shell: bash
+        run: mise exec -- sentry-cli --version
       - name: Install pnpm deps
         run: pnpm install
       - uses: ./.github/actions/setup-azure-sign-tool
@@ -249,8 +260,13 @@ jobs:
 
       - name: Upload debug symbols to Sentry
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: firezone-inc
         shell: bash
-        run: ${{ env.SYMBOLS_SCRIPT }}
+        # `mise exec` puts `sentry-cli` on PATH for the script. The shims the
+        # mise action sets up are regenerated before it installs, not after.
+        run: mise exec -- bash ${{ env.SYMBOLS_SCRIPT }}
 
       - name: Upload Release Assets
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
