@@ -207,6 +207,26 @@
       return running.sorted { ($0.launchDate ?? .distantPast) < ($1.launchDate ?? .distantPast) }
     }
 
+    /// Whether the app under test is the application in front.
+    ///
+    /// A capture takes whatever is on the screen inside the window's frame, so a
+    /// window belonging to someone else that happens to sit over it is
+    /// photographed along with it. That has already put a Finder dialog in the
+    /// gallery. Nothing on screen says which process drew what, so the check is
+    /// on who holds the front instead.
+    private func inFront() -> Bool {
+      NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Self.appBundleID
+    }
+
+    /// Who holds the front, for a failure message.
+    private func describeFrontmost() -> String {
+      guard let front = NSWorkspace.shared.frontmostApplication else {
+        return "no application"
+      }
+
+      return front.bundleIdentifier ?? front.localizedName ?? "an unnamed application"
+    }
+
     /// How the instances of the app under test read in a failure message.
     private func describe(_ instances: [NSRunningApplication]) -> String {
       if instances.isEmpty {
@@ -228,6 +248,12 @@
     /// a run says which appearance it drew rather than leaving it to be inferred.
     private func capture(_ window: XCUIElement, as name: String, in appearance: Appearance) {
       window.coordinate(withNormalizedOffset: Self.pointerParkingSpot).hover()
+
+      guard inFront() else {
+        XCTFail("\(name) was not photographed: \(describeFrontmost()) was in front of it")
+
+        return
+      }
 
       let image = deliver(window, as: name, in: appearance, encode: withoutDesktopAtCorners)
       brightness["\(name)-\(appearance.rawValue)"] = meanBrightness(of: image)
