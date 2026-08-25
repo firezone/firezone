@@ -52,15 +52,27 @@ extension XCTestCase {
   /// fails the test, so a screen that will not hold still is reported rather
   /// than photographed mid-motion and committed.
   private func settledScreenshot(of element: XCUIElement, as fileName: String) -> XCUIScreenshot {
-    let attempts = 12
+    let attempts = 20
+    // Three in a row rather than two, a second apart rather than half: a control
+    // drawn on a material can hold one appearance long enough to look settled and
+    // then reach another, and a pair of captures close together cannot tell that
+    // from a picture that has stopped moving.
+    let required = 3
     var previous = element.screenshot()
+    var matches = 1
 
     for _ in 0..<attempts {
-      Thread.sleep(forTimeInterval: 0.5)
+      Thread.sleep(forTimeInterval: 1.0)
 
       let current = element.screenshot()
       if current.pngRepresentation == previous.pngRepresentation {
-        return current
+        matches += 1
+
+        if matches >= required {
+          return current
+        }
+      } else {
+        matches = 1
       }
 
       previous = current
