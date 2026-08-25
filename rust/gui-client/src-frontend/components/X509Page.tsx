@@ -22,17 +22,6 @@ function FieldValue({ value }: { value: X509FieldValue }) {
 export default function X509Page({ status }: { status: X509Status | null }) {
   return (
     <div className="page max-w-3xl space-y-4">
-      <div>
-        <h2 className="page-title">X.509 Device Identity</h2>
-        {status !== null && (
-          <p className="page-description mt-1">
-            {status.warning === null
-              ? "Firezone uses this certificate to identify this device."
-              : "Firezone did not find a certificate to identify this device."}
-          </p>
-        )}
-      </div>
-
       {status === null ? (
         <div className="panel p-4 text-body">
           Reading the platform keystore…
