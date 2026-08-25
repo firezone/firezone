@@ -32,13 +32,17 @@ pub struct Tun {
     inbound_rx: tun::InboundRx,
 }
 
-impl Tun {
-    pub fn new(runtime: &tokio::runtime::Handle) -> io::Result<Self> {
-        let fd = search_for_tun_fd()?;
-        set_non_blocking(fd)?;
-        Self::from_fd_inner(fd, runtime)
-    }
+/// Finds the `utun` descriptor the NetworkExtension opened for this process.
+///
+/// Separate from [`Tun::from_fd`] so a caller can establish that the descriptor
+/// exists before committing any resources to the session that will own it. Leaves
+/// the descriptor untouched: it belongs to the NetworkExtension, and a caller that
+/// gets this far may still give up before there is a [`Tun`] to own it.
+pub fn search_fd() -> io::Result<RawFd> {
+    search_for_tun_fd()
+}
 
+impl Tun {
     /// Create a new [`Tun`] from a raw file descriptor.
     ///
     /// # Safety
@@ -308,8 +312,6 @@ fn search_for_tun_fd() -> io::Result<RawFd> {
         }
 
         if addr.sc_id == info.ctl_id {
-            set_non_blocking(fd)?;
-
             return Ok(fd);
         }
     }
