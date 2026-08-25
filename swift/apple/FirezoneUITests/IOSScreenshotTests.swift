@@ -58,6 +58,36 @@
       deliver(app, as: "session", in: appearance)
     }
 
+    /// The three pushed detail screens, mirroring the Android gallery: a DNS
+    /// resource, the Internet resource, and a connected device.
+    func testDetails() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "connected")
+      defer { app.terminate() }
+
+      try waitFor(app.staticTexts["Office network"], on: "session")
+      assertNativeMetrics(app)
+
+      try open(app.staticTexts["Demo GitLab"], in: app, name: "a DNS resource")
+      try waitFor(app.staticTexts["ADDRESS"], on: "resource-details")
+      deliver(app, as: "resource-details", in: appearance)
+      goBack(in: app)
+
+      // The Internet resource's row carries the enabled/disabled marker in
+      // front of its name, so the name alone has to match by containment.
+      let internet = app.staticTexts.containing(
+        NSPredicate(format: "label CONTAINS %@", "Internet Resource")
+      ).firstMatch
+      try open(internet, in: app, name: "the Internet resource")
+      try waitFor(app.staticTexts["NAME"], on: "resource-details-internet")
+      deliver(app, as: "resource-details-internet", in: appearance)
+      goBack(in: app)
+
+      try open(app.staticTexts["Demo Device 1"], in: app, name: "a connected device")
+      try waitFor(app.staticTexts["Tunnel IPs"], on: "device-details")
+      deliver(app, as: "device-details", in: appearance)
+    }
+
     func testSettings() throws {
       let appearance = try currentAppearance()
       let app = launchApp(scenario: "connected")
@@ -81,6 +111,24 @@
       app.launch()
 
       return app
+    }
+
+    /// Taps `row` to push its detail screen, scrolling it into reach first.
+    private func open(_ row: XCUIElement, in app: XCUIApplication, name: String) throws {
+      guard row.waitForExistence(timeout: 10) else {
+        throw IOSScreenshotError.screenDidNotAppear(name)
+      }
+
+      for _ in 0..<3 where !row.isHittable {
+        app.swipeUp()
+      }
+
+      row.tap()
+    }
+
+    /// Pops the pushed detail screen off the navigation stack.
+    private func goBack(in app: XCUIApplication) {
+      app.navigationBars.buttons.firstMatch.tap()
     }
 
     /// Taps the settings tab labelled `label`.
