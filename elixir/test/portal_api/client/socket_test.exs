@@ -738,6 +738,30 @@ defmodule PortalAPI.Client.SocketTest do
                {:error, :missing_token}
     end
 
+    test "authenticates by token and attests by certificate when the X.509 provider is disabled",
+         %{
+           account: account,
+           actor: actor,
+           pki: pki
+         } do
+      _provider = x509_provider_fixture(account: account, is_disabled: true)
+      client_token = client_token_fixture(account: account, actor: actor)
+
+      connect_info =
+        build_connect_info(
+          token: encode_token(client_token),
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.subject.credential.type == :client_token
+      assert socket.assigns.subject.credential.id == client_token.id
+      assert socket.assigns.client.client_token_id == client_token.id
+      assert socket.assigns.client.attested?
+      assert socket.assigns.client.last_attested_cert_fingerprint
+    end
+
     test "returns a specific error when no active user matches the certificate", %{
       account: account,
       actor: actor,
