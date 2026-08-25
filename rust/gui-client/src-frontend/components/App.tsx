@@ -86,7 +86,7 @@ export default function App() {
         />
         <Route
           path="/x509"
-          element={<Titlebar title="X.509 Device Identity" />}
+          element={<Titlebar title="X.509" />}
         />
         <Route path="/diagnostics" element={<Titlebar title="Diagnostics" />} />
         <Route path="/about" element={<Titlebar title="About" />} />
@@ -147,7 +147,7 @@ export default function App() {
               </li>
               <li>
                 <ReactRouterSidebarItem icon="certificate" href="/x509">
-                  X.509 Identity
+                  X.509
                 </ReactRouterSidebarItem>
               </li>
               <li>
