@@ -44,8 +44,8 @@ mise activate pwsh | Out-String | Invoke-Expression
 New-Item -ItemType File -Path $PROFILE -Force
 Add-Content $PROFILE 'mise activate pwsh | Out-String | Invoke-Expression'
 
-# Tab completions; prints a dot-source line to add to `$PROFILE`.
-mise completion pwsh --install
+# Tab completions
+mise completion powershell | Add-Content $PROFILE
 
 # Install the pinned tools (node, pnpm, cargo-tauri, etc.)
 mise install
