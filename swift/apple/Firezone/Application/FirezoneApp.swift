@@ -146,13 +146,6 @@ struct FirezoneApp: App {
     var store: Store?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
-      #if DEBUG
-        // A mock run is a screenshot run, which launches and kills copies faster
-        // than LaunchServices keeps up with. The copy that loses that race would
-        // sit behind the modal below waiting for a click nobody can give it.
-        guard !CommandLine.arguments.contains("--mock-tunnel") else { return }
-      #endif
-
       // Enforce single instance BEFORE the app fully launches
       enforceSingleInstance()
     }
@@ -195,6 +188,19 @@ struct FirezoneApp: App {
       )
 
       guard runningApps.count > 1 else { return }
+
+      #if DEBUG
+        // A mock run is a screenshot run, which launches and quits copies faster than
+        // LaunchServices keeps up with, so it can answer a request meant for the copy
+        // already running by starting another. That copy leaves quietly: there is
+        // nobody to dismiss the alert below, and a second copy in the element tree
+        // shows its windows through the corners of the one being photographed.
+        if CommandLine.arguments.contains("--mock-tunnel") {
+          NSApp.terminate(nil)
+
+          return
+        }
+      #endif
 
       for app in runningApps where app != NSRunningApplication.current {
         Task { @MainActor in
