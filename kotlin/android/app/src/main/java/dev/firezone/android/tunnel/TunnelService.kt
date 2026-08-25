@@ -339,7 +339,7 @@ class TunnelService : VpnService() {
                                     accountSlug = config.accountSlug,
                                     deviceId = deviceIdValue,
                                     deviceName = getDeviceName(),
-                                    logDir = getLogDir(),
+                                    logDir = logDir(this@TunnelService),
                                     logFilter = config.logFilter,
                                     flowLogsDir = flowLogsDir(this@TunnelService),
                                     isInternetResourceActive = resourceState.isEnabled(),
@@ -420,12 +420,12 @@ class TunnelService : VpnService() {
         logCleanupJob =
             serviceScope.launch(Dispatchers.IO) {
                 try {
-                    val logDir = getLogDir()
+                    val dir = logDir(this@TunnelService)
                     val maxSizeMb = logCleanupDefaultMaxSizeMb()
                     val intervalMs = logCleanupDefaultIntervalSecs().toLong() * 1000
                     while (isActive) {
                         try {
-                            val bytesDeleted = enforceLogSizeCap(listOf(logDir), maxSizeMb)
+                            val bytesDeleted = enforceLogSizeCap(listOf(dir), maxSizeMb)
                             if (bytesDeleted > 0u) {
                                 Log.d(TAG, "Log cleanup deleted $bytesDeleted bytes")
                             }
@@ -512,13 +512,6 @@ class TunnelService : VpnService() {
             }
 
         return deviceId
-    }
-
-    private fun getLogDir(): String {
-        // Create log directory if it doesn't exist
-        val logDir = cacheDir.absolutePath + "/logs"
-        Files.createDirectories(Paths.get(logDir))
-        return logDir
     }
 
     fun startConnectedNotification() {
@@ -779,6 +772,12 @@ class TunnelService : VpnService() {
         private const val MTU: Int = 1280
         private const val TAG: String = "TunnelService"
         private const val FEATURE_FLAG_POLL_INTERVAL_MS: Long = 5_000
+
+        fun logDir(context: Context): String {
+            val logDir = context.cacheDir.absolutePath + "/logs"
+            Files.createDirectories(Paths.get(logDir))
+            return logDir
+        }
 
         // Under `filesDir` (persistent) and outside the log directory so exported
         // log bundles never sweep the spool up.

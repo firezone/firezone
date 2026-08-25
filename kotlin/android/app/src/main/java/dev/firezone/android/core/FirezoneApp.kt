@@ -3,6 +3,7 @@ package dev.firezone.android.core
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -10,6 +11,8 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
 import dagger.hilt.android.HiltAndroidApp
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.tunnel.TunnelService
+import uniffi.connlib.ConnlibException
+import uniffi.connlib.configureLogger
 import uniffi.connlib.drainFlowLogs
 import kotlin.concurrent.thread
 
@@ -31,6 +34,19 @@ class FirezoneApp : Application() {
         // Wires connlib's TLS stack (rustls) to Android's trust store; required before any TLS handshake.
         initRustlsPlatformVerifier(this)
 
+        // The drain below runs without a session, so it never reaches `connect`.
+        // Configure the logger here so that work is not silent.
+        try {
+            configureLogger(
+                TunnelService.logDir(this),
+                BuildConfig.LOG_FILTER,
+                TunnelService.flowLogsDir(this),
+            )
+        } catch (e: ConnlibException) {
+            Log.e(TAG, "Failed to configure connlib's logger", e)
+            e.close()
+        }
+
         // Drain flow logs whenever the app comes to the foreground (including this
         // launch): pokes the session's uploader while connected, or runs a bounded
         // one-shot pass to sweep up spool a previous session left behind. Off the
@@ -48,6 +64,8 @@ class FirezoneApp : Application() {
     }
 
     companion object {
+        private const val TAG: String = "FirezoneApp"
+
         @JvmStatic
         external fun initRustlsPlatformVerifier(context: Context)
     }
