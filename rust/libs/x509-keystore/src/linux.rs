@@ -32,7 +32,7 @@ use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
 use x509_credential::SigningError;
 
 use crate::{
-    CandidateCertificate, DetailField, DetailSection, Identity, Status, absent_field, field,
+    CandidateCertificate, DetailField, DetailSection, Identity, Status, field,
     selected_certificate, sign, unusable_reasons,
 };
 
@@ -92,7 +92,7 @@ fn status_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<S
             Ok(found) => found,
             Err(error) => {
                 tracing::debug!(module = %module.display(), "Skipping a PKCS#11 module: {error:#}");
-                sections.push(module_section(module, Some(&error)));
+                sections.push(module_section(module, &error));
                 failures += 1;
 
                 continue;
@@ -100,8 +100,6 @@ fn status_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<S
         };
 
         let Some(candidate) = found else {
-            sections.push(module_section(module, None));
-
             continue;
         };
 
@@ -158,13 +156,15 @@ fn token_status(token: Token) -> Status {
     Status { warning, sections }
 }
 
-/// The diagnostics section naming one registered module, and what failed on it, if anything.
+/// The diagnostics section for a module that could not be read.
 ///
 /// The error row shows only the short top-level cause: the raw loader and driver messages
 /// behind it are long, and the log carries the full chain.
-fn module_section(module: &Path, error: Option<&anyhow::Error>) -> DetailSection {
-    let mut fields = vec![field("Module Path", module.display().to_string())];
-    fields.extend(error.map(|error| field("Error", error.to_string())));
+fn module_section(module: &Path, error: &anyhow::Error) -> DetailSection {
+    let fields = vec![
+        field("Module Path", module.display().to_string()),
+        field("Error", error.to_string()),
+    ];
 
     DetailSection {
         title: "PKCS#11 Module".to_owned(),
@@ -784,7 +784,6 @@ fn ensure_root_only(mode: u32, uid: u32, path: &Path) -> Result<()> {
 /// A certificate on the token whose subject CN is the one we look for.
 struct Certificate {
     der: Vec<u8>,
-    label: Option<String>,
     metadata: ParsedCertificate,
     key: Option<ObjectHandle>,
     usable: bool,
@@ -806,7 +805,6 @@ fn describe_certificate(
 
     Ok(Certificate {
         der: object.der.clone(),
-        label: object.label.clone(),
         usable: metadata.is_usable(subject_cn) && key.is_some(),
         metadata,
         key,
@@ -815,19 +813,11 @@ fn describe_certificate(
 
 impl Certificate {
     fn detail_fields(&self) -> Vec<DetailField> {
-        let mut fields = self
-            .metadata
+        self.metadata
             .detail_fields()
             .into_iter()
             .map(DetailField::from)
-            .collect::<Vec<_>>();
-
-        fields.push(match self.label.as_deref() {
-            Some(label) => field("Object Label", label),
-            None => absent_field("Object Label"),
-        });
-
-        fields
+            .collect()
     }
 }
 

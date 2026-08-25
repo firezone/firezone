@@ -169,20 +169,14 @@ fn describes_a_provisioned_certificate_in_the_diagnostics() {
     assert_eq!(status.warning, None);
     let certificate = section(&status, "Certificate");
     assert_eq!(
-        field_value(certificate, "Object Label"),
-        Some(token.label.as_str())
-    );
-    assert_eq!(
         field_value(certificate, "Common Name"),
         Some(token.subject_cn.as_str())
     );
+    // The diagnostics describe the certificate, not where the token keeps it.
+    assert_eq!(field_value(certificate, "Object Label"), None);
     assert_eq!(
         field_value(certificate, "Signing Algorithm"),
         Some("SHA256withRSA")
-    );
-    assert!(
-        position(certificate, "SHA-256 Fingerprint") < position(certificate, "Object Label"),
-        "what the certificate says should read before where the token keeps it"
     );
 }
 
@@ -459,15 +453,6 @@ fn section<'a>(status: &'a Status, title: &str) -> &'a DetailSection {
         .unwrap_or_else(|| panic!("the diagnostics should have a '{title}' section"))
 }
 
-/// Returns the position of the diagnostics row labelled `label` in the section.
-fn position(section: &DetailSection, label: &str) -> usize {
-    section
-        .fields
-        .iter()
-        .position(|field| field.label == label)
-        .unwrap_or_else(|| panic!("the diagnostics should show {label}"))
-}
-
 /// Returns the value of the diagnostics row labelled `label`, if the section has one.
 fn field_value<'a>(section: &'a DetailSection, label: &str) -> Option<&'a str> {
     let field = section.fields.iter().find(|field| field.label == label)?;
@@ -524,7 +509,6 @@ fn verification_algorithm(scheme: SignatureScheme) -> &'static dyn VerificationA
 /// A SoftHSM token holding one key and the certificate that names it, erased when the test ends.
 struct Token {
     directory: PathBuf,
-    label: String,
     subject_cn: String,
     module: PathBuf,
     pin_file: PathBuf,
@@ -603,7 +587,6 @@ fn provision_token(suffix: &str, algorithm: KeyAlgorithm) -> Token {
 
     Token {
         directory,
-        label,
         subject_cn,
         module,
         pin_file,
