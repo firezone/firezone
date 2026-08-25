@@ -11,7 +11,7 @@ use crate::fd::RawFd;
 
 use std::{
     fmt,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -558,11 +558,11 @@ fn connect(
 
     install_rustls_crypto_provider();
 
+    configure_logger(log_dir, log_filter, flow_logs_dir.clone())?;
+
     let flow_logs_dir = flow_logs_dir
         .filter(|dir| !dir.is_empty())
         .map(PathBuf::from);
-
-    install_logger(&PathBuf::from(log_dir), log_filter, flow_logs_dir.clone())?;
 
     tunnel_bypass_resolver::configure(tcp_socket_factory.clone(), udp_socket_factory.clone());
 
@@ -661,39 +661,21 @@ static LOGGER_STATE: OnceLock<(
     Option<flow_log_writer::Guard>,
 )> = OnceLock::new();
 
-/// Installs the logger without starting a session.
+/// Installs the logger, or re-applies `log_filter` when it is already installed.
 ///
-/// [`connect`] installs it as part of session setup, but the network extension
-/// also runs without a session: a cycle start wakes it only to drain flow logs.
-/// Until this is called, those paths have no subscriber and every event they
-/// emit is dropped.
+/// A session is not the only thing that logs: the network extension is woken
+/// without one to drain flow logs, and every event emitted before this runs is
+/// dropped. So callers configure the logger themselves rather than relying on
+/// [`connect`] to do it, and [`connect`] calls this too.
 ///
-/// A later call re-applies `log_filter` to the running subscriber, so calling
-/// this before connecting costs the session nothing. The directories are not
-/// re-applied: they are whichever the first call passed, so callers must agree
-/// on them.
+/// Only `log_filter` is re-applied. The directories stay whichever the first
+/// call passed, so callers must agree on them.
 #[uniffi::export]
-pub fn init_logging(
+pub fn configure_logger(
     log_dir: String,
     log_filter: String,
     flow_logs_dir: Option<String>,
 ) -> Result<(), ConnlibError> {
-    install_logger(
-        &PathBuf::from(log_dir),
-        log_filter,
-        flow_logs_dir
-            .filter(|dir| !dir.is_empty())
-            .map(PathBuf::from),
-    )?;
-
-    Ok(())
-}
-
-fn install_logger(
-    log_dir: &Path,
-    log_filter: String,
-    flow_logs_dir: Option<PathBuf>,
-) -> Result<()> {
     if let Some((_, reload_handle, _)) = LOGGER_STATE.get() {
         reload_handle
             .reload(&log_filter)
@@ -701,11 +683,17 @@ fn install_logger(
         return Ok(());
     }
 
-    let (file_log_filter, file_reload_handle) = logging::try_filter(&log_filter)?;
-    let (platform_log_filter, platform_reload_handle) = logging::try_filter(&log_filter)?;
-    let (file_layer, handle) = logging::file::layer(log_dir, "connlib");
+    let (file_log_filter, file_reload_handle) =
+        logging::try_filter(&log_filter).context("Failed to parse log filter")?;
+    let (platform_log_filter, platform_reload_handle) =
+        logging::try_filter(&log_filter).context("Failed to parse log filter")?;
+    let (file_layer, handle) = logging::file::layer(&PathBuf::from(log_dir), "connlib");
     // Spools flow-log reports for the uploader, like the desktop entrypoints do.
-    let (flow_log_layer, flow_log_guard) = flow_logs_dir.map(flow_log_writer::layer).unzip();
+    let (flow_log_layer, flow_log_guard) = flow_logs_dir
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .map(flow_log_writer::layer)
+        .unzip();
 
     let subscriber = tracing_subscriber::registry()
         .with(file_layer.with_filter(file_log_filter))

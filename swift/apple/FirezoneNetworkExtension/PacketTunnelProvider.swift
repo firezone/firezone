@@ -34,11 +34,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     startTelemetry()
 
-    // connlib installs its logger from `connect`, which a cycle start never
-    // reaches: it wakes this process only to drain flow logs. Install it here so
-    // that work is not silent.
+    // A cycle start wakes this process only to drain flow logs, so it never
+    // reaches `connect`. Configure the logger here so that work is not silent.
     do {
-      try initLogging(
+      try configureLogger(
         logDir: SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone",
         logFilter: ConfigurationDefaults.logFilter,
         flowLogsDir: SharedAccess.flowLogsFolderURL?.path
