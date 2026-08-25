@@ -25,30 +25,93 @@ struct X509SettingsView: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      if let explainer {
-        Text(explainer)
-          .font(.callout)
-          .foregroundStyle(.secondary)
+    #if os(iOS)
+      // A phone fits one column, so each field becomes its own form row.
+      Form {
+        switch loadState {
+        case .loading:
+          Section {
+            ProgressView()
+              .frame(maxWidth: .infinity)
+          }
+
+        case .notConfigured:
+          Section {
+            Text("This device has no Firezone client certificate.")
+              .foregroundStyle(.secondary)
+          } header: {
+            explainerHeader
+          }
+
+        case .failed(let message):
+          Section {
+            notice("The client certificate could not be read", message)
+          } header: {
+            explainerHeader
+          }
+
+        case .loaded(let summary, let keyProblem):
+          Section {
+            if let unusableSummary = summary.unusableSummary {
+              notice(
+                "Firezone will not present this certificate",
+                "It cannot be used to prove this device is enrolled: \(unusableSummary)."
+              )
+            }
+
+            if let keyProblem {
+              notice("Firezone cannot use the certificate's private key", keyProblem)
+            }
+
+            ForEach(summary.fields, id: \.self) { field in
+              VStack(alignment: .leading, spacing: 2) {
+                Text(field.label)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+                claimValue(field.value)
+              }
+            }
+          } header: {
+            explainerHeader
+          }
+        }
       }
+      .onAppear { Task { await reload() } }
+    #else
+      VStack(alignment: .leading, spacing: 12) {
+        if let explainer {
+          Text(explainer)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
 
-      switch loadState {
-      case .loading:
-        ProgressView()
+        switch loadState {
+        case .loading:
+          ProgressView()
 
-      case .notConfigured:
-        Text("This device has no Firezone client certificate.")
-          .font(.callout)
-          .foregroundStyle(.secondary)
+        case .notConfigured:
+          Text("This device has no Firezone client certificate.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
 
-      case .failed(let message):
-        notice("The client certificate could not be read", message)
+        case .failed(let message):
+          notice("The client certificate could not be read", message)
 
-      case .loaded(let summary, let keyProblem):
-        details(summary, keyProblem: keyProblem)
+        case .loaded(let summary, let keyProblem):
+          details(summary, keyProblem: keyProblem)
+        }
       }
+      .onAppear { Task { await reload() } }
+    #endif
+  }
+
+  /// The explainer leads the screen; on iOS that slot is the section header.
+  @ViewBuilder
+  private var explainerHeader: some View {
+    if let explainer {
+      Text(explainer)
+        .textCase(nil)
     }
-    .onAppear { Task { await reload() } }
   }
 
   /// One line on what the certificate is for, absent while the keychain is still being read.
@@ -112,18 +175,27 @@ struct X509SettingsView: View {
     switch claim {
     case .present(let value):
       Text(value)
-        .font(.system(.caption, design: .monospaced))
+        .font(.system(valueTextStyle, design: .monospaced))
         .textSelection(.enabled)
 
     case .absent:
       Text("Not present")
-        .font(.caption)
+        .font(.system(valueTextStyle))
         .foregroundStyle(.secondary)
 
     case .invalid(let rejection):
       Label("Ignored: \(rejection.reason)", systemImage: "exclamationmark.triangle")
-        .font(.caption)
+        .font(.system(valueTextStyle))
     }
+  }
+
+  /// A phone row gives a value the full width, so it can afford a step up from the grid's caption.
+  private var valueTextStyle: Font.TextStyle {
+    #if os(iOS)
+      .footnote
+    #else
+      .caption
+    #endif
   }
 
   @MainActor
