@@ -24,6 +24,10 @@
     import AppKit
   #endif
 
+  #if os(iOS)
+    import UIKit
+  #endif
+
   /// The state the `--mock-tunnel` backend presents, as a fixture describes it.
   ///
   /// Every field is terminal: the mock reports it unchanged for the life of the
@@ -222,6 +226,44 @@
 
     return nil
   }
+
+  #if os(iOS)
+    extension UIApplication {
+      /// Presents a mocked run the way a capture of it needs.
+      ///
+      /// Animations go because a bar that is still animating draws its labels
+      /// through a layer rather than straight onto the screen, and the two come
+      /// out a shade apart. Either state holds still long enough to be captured,
+      /// so waiting for the picture to settle does not choose between them and
+      /// the gallery gets whichever the run happened to reach.
+      ///
+      /// The bars are made opaque for the same reason: a translucent one samples
+      /// whatever is behind it, which is a second thing that has to land the same
+      /// way twice for a capture to match.
+      @MainActor
+      public static func applyMockPresentation(_ arguments: [String] = CommandLine.arguments) {
+        guard arguments.contains("--mock-tunnel") else { return }
+
+        UIView.setAnimationsEnabled(false)
+
+        let navigationBar = UINavigationBarAppearance()
+        navigationBar.configureWithOpaqueBackground()
+        UINavigationBar.appearance().standardAppearance = navigationBar
+        UINavigationBar.appearance().scrollEdgeAppearance = navigationBar
+        UINavigationBar.appearance().compactAppearance = navigationBar
+
+        let tabBar = UITabBarAppearance()
+        tabBar.configureWithOpaqueBackground()
+        UITabBar.appearance().standardAppearance = tabBar
+        UITabBar.appearance().scrollEdgeAppearance = tabBar
+
+        let toolbar = UIToolbarAppearance()
+        toolbar.configureWithOpaqueBackground()
+        UIToolbar.appearance().standardAppearance = toolbar
+        UIToolbar.appearance().scrollEdgeAppearance = toolbar
+      }
+    }
+  #endif
 
   #if os(macOS)
     /// Holds the window observer below for the life of the process.

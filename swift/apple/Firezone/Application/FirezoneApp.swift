@@ -32,6 +32,10 @@ struct FirezoneApp: App {
         // late enough to miss `applicationWillFinishLaunching`, and this has to
         // run before the scenes create their windows.
         NSApplication.applyMockPresentation()
+      #elseif os(iOS)
+        // Before the scenes exist, so the bars are built from the appearance it
+        // sets rather than adopting it on their next update.
+        UIApplication.applyMockPresentation()
       #endif
     #else
       let store = Store()
