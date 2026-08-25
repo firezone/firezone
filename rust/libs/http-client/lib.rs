@@ -185,23 +185,36 @@ async fn connect(
 ) -> Result<(Sender, ConnectionDriver)> {
     tracing::debug!(?addresses, %domain, "Creating new HTTP connection");
 
-    for address in addresses {
+    anyhow::ensure!(!addresses.is_empty(), "No addresses for '{domain}'");
+
+    // Race the addresses instead of walking them in order. A blackholed address
+    // never errors, so trying them one at a time waits out the OS' TCP timeout
+    // before moving on, and a working address behind one is never reached.
+    // Whichever connects first wins; dropping the rest cancels them.
+    let attempts = addresses.into_iter().map(|address| {
         let socket = SocketAddr::new(address, port);
+        let domain = domain.clone();
+        let tls_config = tls_config.clone();
+        let sf = sf.clone();
 
-        match connect_one(socket, domain.clone(), tls_config.clone(), sf.clone()).await {
-            Ok((sender, driver)) => {
-                tracing::debug!(%socket, %domain, "Created new HTTP connection");
+        Box::pin(async move {
+            let connection = connect_one(socket, domain.clone(), tls_config, sf)
+                .await
+                .inspect_err(
+                    |e| tracing::debug!(%socket, %domain, "Failed to create HTTP client: {e:#}"),
+                )?;
 
-                return Ok((sender, driver));
-            }
-            Err(e) => {
-                tracing::debug!(%socket, %domain, "Failed to create HTTP client: {e:#}");
-                continue;
-            }
-        }
-    }
+            tracing::debug!(%socket, %domain, "Created new HTTP connection");
 
-    anyhow::bail!("Failed to connect to '{domain}' on port {port}");
+            anyhow::Ok(connection)
+        })
+    });
+
+    let (connection, _cancelled) = futures::future::select_ok(attempts)
+        .await
+        .with_context(|| format!("Failed to connect to '{domain}' on port {port}"))?;
+
+    Ok(connection)
 }
 
 async fn connect_one(
