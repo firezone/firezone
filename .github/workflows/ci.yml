@@ -163,9 +163,7 @@ jobs:
 
   required-check:
     name: required-check
-    # `commit-screenshots` is waited for rather than merely inspected: it starts off the same
-    # jobs this one does, so without the edge the two race and a gallery that failed to push
-    # is read as a job still running, which is not a failure.
+    # `commit-screenshots` starts off the same jobs, so without the edge the two race.
     needs:
       [
         kotlin,
@@ -197,10 +195,8 @@ jobs:
             exit 1
           fi
 
-  # Puts a UI change in the diff of the pull request that causes it, where GitHub renders
-  # it side by side, rather than in an artifact a reviewer has to go looking for. CI is the
-  # only writer, so the images are always drawn by the same runner and a change that does
-  # not touch the UI cannot produce a spurious diff. A changed image is never an error.
+  # Puts a UI change in the diff of the pull request that causes it. A changed image
+  # is never an error.
   commit-screenshots:
     name: commit-screenshots
     needs: [kotlin, swift, tauri]
@@ -233,9 +229,6 @@ jobs:
         with:
           name: ios-screenshots
           path: swift/apple/screenshots/ios
-      # A re-render that differs from what is committed only in how a subpixel was
-      # rounded is the same picture, and committing it would put a render commit on
-      # every pull request that touches a client.
       - name: Keep the images whose differences are invisible
         run: |
           set -euo pipefail
@@ -278,9 +271,8 @@ jobs:
           fi
           git commit -m "chore(ci): re-render the screenshots"
 
-          # Pushing with the checkout's GITHUB_TOKEN is deliberate: GitHub starts no
-          # workflows for its pushes, so a re-render neither re-runs the suite nor
-          # chains into the next render.
+          # GITHUB_TOKEN is deliberate: GitHub starts no workflows for its pushes, so a
+          # re-render does not chain into the next one.
 
           # The branch may have moved while the clients were building.
           for _ in 1 2 3; do
