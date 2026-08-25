@@ -11,6 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write # gh run cancel
   contents: read
   id-token: write # OIDC auth for Azure Storage uploads
 
@@ -145,3 +146,5 @@ jobs:
             --file "${{ matrix.binary }}.sha256sum.txt" \
             --overwrite true \
             --no-progress
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()

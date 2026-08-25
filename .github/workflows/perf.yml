@@ -13,6 +13,7 @@ jobs:
     uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: write # create/update GitHub releases
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
@@ -26,6 +27,7 @@ jobs:
     uses: ./.github/workflows/_control-plane.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
@@ -35,6 +37,7 @@ jobs:
     uses: ./.github/workflows/_perf_tests.yml
     secrets: inherit
     permissions:
+      actions: write # gh run cancel
       contents: read
       id-token: write # OIDC auth
       pull-requests: write # post perf result comments

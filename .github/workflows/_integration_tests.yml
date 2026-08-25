@@ -60,6 +60,7 @@ jobs:
   collect-images:
     uses: ./.github/workflows/_collect_images.yml
     permissions:
+      actions: write # gh run cancel
       contents: read
     with:
       id: ${{ inputs.id }}
@@ -81,6 +82,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: collect-images
     permissions:
+      actions: write # gh run cancel
       contents: read
       id-token: write # OIDC auth
       pull-requests: write # post test result comments
@@ -305,3 +307,7 @@ jobs:
           overwrite: true
           name: ${{ matrix.test.name || matrix.test.script }}-relay-2-xdpdump
           path: ./relay-2-packets.pcap
+
+      # Last, so the diagnostics above are still collected before the run goes away.
+      - uses: ./.github/actions/cancel-merge-group
+        if: failure()
