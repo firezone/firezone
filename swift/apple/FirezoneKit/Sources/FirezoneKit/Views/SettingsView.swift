@@ -578,9 +578,7 @@ public struct SettingsView: View {
   }
 
   private var clientCertificateSettings: some View {
-    X509SettingsView {
-      try store.manager().identityReference()
-    }
+    X509SettingsView(source: .keychain { try store.manager().identityReference() })
   }
 
   private func saveAllSettingsAndDismiss() async throws {

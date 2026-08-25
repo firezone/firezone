@@ -8,8 +8,8 @@ import SwiftUI
 
 /// Shows the client certificate the VPN profile references, for support and diagnostics.
 struct X509SettingsView: View {
-  /// Reads the persistent keychain reference from the VPN configuration.
-  let identityReference: @MainActor @Sendable () throws -> Data?
+  /// Where the certificate comes from, so that one can be handed in for a screenshot.
+  let source: X509CertificateSource
 
   private enum LoadState {
     case loading
@@ -20,8 +20,8 @@ struct X509SettingsView: View {
 
   @State private var loadState: LoadState = .loading
 
-  init(identityReference: @escaping @MainActor @Sendable () throws -> Data?) {
-    self.identityReference = identityReference
+  init(source: X509CertificateSource) {
+    self.source = source
   }
 
   var body: some View {
@@ -252,17 +252,7 @@ struct X509SettingsView: View {
     loadState = .loading
 
     do {
-      let reference = try identityReference()
-      // Reading the keychain can block, and this runs while the settings window is open.
-      let (certificate, keyProblem) = try await Task.detached(priority: .userInitiated) {
-        let certificate = try X509Identity.leafCertificate(persistentReference: reference)
-        let keyProblem =
-          certificate == nil
-          ? nil
-          : reference.flatMap(X509Identity.privateKeyProblem(persistentReference:))
-
-        return (certificate, keyProblem)
-      }.value
+      let (certificate, keyProblem) = try await source.read()
 
       guard let certificate else {
         loadState = .notConfigured
