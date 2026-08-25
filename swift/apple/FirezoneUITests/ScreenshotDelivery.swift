@@ -59,16 +59,23 @@ extension XCTestCase {
     // from a picture that has stopped moving.
     let required = 3
     var previous = element.screenshot()
+    var previousPNG = previous.pngRepresentation
+    var sizes = [previousPNG.count]
     var matches = 1
 
-    for _ in 0..<attempts {
+    for capture in 1...attempts {
       Thread.sleep(forTimeInterval: 1.0)
 
       let current = element.screenshot()
-      if current.pngRepresentation == previous.pngRepresentation {
+      let currentPNG = current.pngRepresentation
+      sizes.append(currentPNG.count)
+
+      if currentPNG == previousPNG {
         matches += 1
 
         if matches >= required {
+          report(fileName, heldStillAfter: capture, outOf: sizes)
+
           return current
         }
       } else {
@@ -76,10 +83,25 @@ extension XCTestCase {
       }
 
       previous = current
+      previousPNG = currentPNG
     }
 
+    report(fileName, heldStillAfter: nil, outOf: sizes)
     XCTFail("\(fileName) never held still, across \(attempts) captures")
 
     return previous
+  }
+
+  /// Says in the run's log how a capture came to rest.
+  ///
+  /// A screen that holds still here and still differs from the last run is
+  /// telling us the difference was fixed before the first capture, which no
+  /// amount of watching can settle. One that only just reaches agreement is a
+  /// screen the next run may well catch mid-motion. Neither is visible in the
+  /// image itself, and the sizes separate the two.
+  private func report(_ fileName: String, heldStillAfter captures: Int?, outOf sizes: [Int]) {
+    let outcome = captures.map { "held still after \($0)" } ?? "never held still"
+
+    print("settle: \(fileName) \(outcome) of \(sizes.count) captures, sizes \(Set(sizes).sorted())")
   }
 }
