@@ -114,7 +114,8 @@ extension XCTestCase {
   private func waitForNoBanner() {
     #if os(iOS)
       let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-      let screen = XCUIScreen.main.bounds
+      // SpringBoard fills the display, so its own frame is the screen's.
+      let screen = springboard.frame
       let deadline = Date().addingTimeInterval(20)
 
       while Date() < deadline {
