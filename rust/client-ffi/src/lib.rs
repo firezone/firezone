@@ -371,7 +371,7 @@ fn set_tun_from_search(session: &Session) -> Result<(), ConnlibError> {
                 return Ok(());
             }
             Err(e) => {
-                tracing::debug!(attempt, "Failed to find TUN device: {e}");
+                tracing::debug!(attempt, error = %e, "Failed to find TUN device");
                 last_error = Some(e);
                 if attempt < MAX_TUN_SETUP_ATTEMPTS {
                     std::thread::sleep(std::time::Duration::from_millis(TUN_SETUP_RETRY_DELAY_MS));

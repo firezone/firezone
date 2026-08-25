@@ -11,8 +11,9 @@ import Foundation
 import NetworkExtension
 import OSLog
 
-/// `LocalizedError` is what makes `description` reachable through an `any Error`
-/// existential, which is the only way `Log.error(_:)` ever sees us.
+/// `LocalizedError` feeds `errorDescription` into `localizedDescription`, which is
+/// what `Log.error(_:)` reads off an `any Error`. `CustomStringConvertible` makes
+/// string interpolation render the same text.
 enum AdapterError: Error, CustomStringConvertible, LocalizedError {
   /// Failure to perform an operation in such state.
   case invalidSession(Session?)
