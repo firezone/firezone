@@ -4,6 +4,7 @@ package dev.firezone.android.features.settings.ui.compose
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -44,68 +45,85 @@ internal fun X509SettingsScreen(
     onForgetCertificate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        CertificateCard(state)
+    // An alias whose key the KeyChain withholds is the personally-owned case: the administrator
+    // names the certificate, yet only the user can release the key behind it, so the chooser stays
+    // reachable there as well.
+    val keyIsWithheld = state.alias != null && !state.isLoading && !state.isUsable
+    val canSelect = keyIsWithheld || (!state.isManaged && state.alias == null)
 
-        Text(
-            text =
-                if (state.alias == null) {
-                    stringResource(R.string.x509_not_configured)
-                } else {
-                    stringResource(R.string.x509_alias_configured, state.alias)
-                },
-            style = MaterialTheme.typography.bodyMedium,
-        )
+    // An administrator's alias is not the user's to clear.
+    val canForget = !state.isManaged && state.alias != null
 
-        // The KeyChain answers a missing grant with a null key rather than an error, so this state
-        // would otherwise be an alias with no detail underneath it and no reason given.
-        if (state.alias != null && !state.isLoading && !state.isUsable && state.error == null) {
+    Column(modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CertificateCard(state)
+
             Text(
-                text = stringResource(R.string.x509_not_released),
+                text =
+                    if (state.alias == null) {
+                        stringResource(R.string.x509_not_configured)
+                    } else {
+                        stringResource(R.string.x509_alias_configured, state.alias)
+                    },
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
 
-        if (state.isLoading) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+            // The KeyChain answers a missing grant with a null key rather than an error, so this state
+            // would otherwise be an alias with no detail underneath it and no reason given.
+            if (state.alias != null && !state.isLoading && !state.isUsable && state.error == null) {
                 Text(
-                    text = stringResource(R.string.x509_loading),
-                    style = MaterialTheme.typography.bodySmall,
+                    text = stringResource(R.string.x509_not_released),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
 
-        state.details.forEach { field ->
-            HorizontalDivider()
-            DetailField(field)
-        }
+            if (state.isLoading) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text(
+                        text = stringResource(R.string.x509_loading),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
 
-        // An alias whose key the KeyChain withholds is the personally-owned case: the administrator
-        // names the certificate, yet only the user can release the key behind it, so the chooser
-        // stays reachable there as well.
-        val keyIsWithheld = state.alias != null && !state.isLoading && !state.isUsable
-
-        if (keyIsWithheld || (!state.isManaged && state.alias == null)) {
-            OutlinedButton(onClick = onSelectCertificate, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.x509_select_certificate))
+            state.details.forEach { field ->
+                HorizontalDivider()
+                DetailField(field)
             }
         }
 
-        // An administrator's alias is not the user's to clear.
-        if (!state.isManaged && state.alias != null) {
-            OutlinedButton(onClick = onForgetCertificate, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.x509_forget_certificate))
+        // The rows scroll, the buttons do not: on a certificate with a dozen rows the clear button
+        // would otherwise sit below the fold.
+        if (canSelect || canForget) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (canSelect) {
+                    OutlinedButton(onClick = onSelectCertificate, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.x509_select_certificate))
+                    }
+                }
+
+                if (canForget) {
+                    OutlinedButton(onClick = onForgetCertificate, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.x509_forget_certificate))
+                    }
+                }
             }
         }
     }
@@ -304,7 +322,9 @@ private const val SUBJECT_LABEL = "Subject"
 private const val ISSUER_LABEL = "Issuer"
 private const val NOT_AFTER_LABEL = "Not After"
 
-@Preview
+// The rows scroll underneath a fixed button area, which needs a screen to be measured against;
+// a preview that wraps its content would leave the rows no height at all.
+@Preview(showSystemUi = true)
 @Composable
 private fun X509SettingsScreenPreview() {
     FirezoneTheme {
@@ -329,7 +349,7 @@ private fun X509SettingsScreenPreview() {
     }
 }
 
-@Preview
+@Preview(showSystemUi = true)
 @Composable
 private fun X509SettingsScreenUnusablePreview() {
     FirezoneTheme {
@@ -359,7 +379,7 @@ private fun X509SettingsScreenUnusablePreview() {
     }
 }
 
-@Preview
+@Preview(showSystemUi = true)
 @Composable
 private fun X509SettingsScreenNoCertificatePreview() {
     FirezoneTheme {
