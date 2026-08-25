@@ -160,8 +160,11 @@ function presentField(
 function Warning({ problem }: { problem: X509Problem }) {
   return (
     <div className="mt-4 flex gap-2.5 rounded border border-warning/30 bg-warning-light p-3 text-sm text-warning">
-      <RemixIcon className="mt-0.5 h-4 w-4" name="alert" />
-      <p>{problemText(problem)}</p>
+      <RemixIcon className="mt-0.5 h-4 w-4 shrink-0" name="alert" />
+      {/* A fingerprint is one long word, and a flex item is by default as wide as
+          its longest word. Left alone it makes the box wider than the page and
+          takes the right-hand border off the window with it. */}
+      <p className="min-w-0 break-words">{problemText(problem)}</p>
     </div>
   );
 }
