@@ -3,6 +3,7 @@
   "vpnStatus": "connected",
   "systemExtension": "installed",
   "notifications": "authorized",
+  "clientCertificate": "absent",
   "actorName": "Jane Doe",
   "resources": [
     {
