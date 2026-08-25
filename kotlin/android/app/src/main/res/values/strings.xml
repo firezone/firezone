@@ -27,6 +27,10 @@
 	<string name="clear_log_directory">Clear Log Directory</string>
 
 	<!-- Client Certificate -->
+	<string name="x509_certificate_title">Client certificate</string>
+	<string name="x509_no_certificate_title">No client certificate</string>
+	<string name="x509_issued_by">Issued by %1$s</string>
+	<string name="x509_valid_until">Valid until %1$s</string>
 	<string name="x509_explainer_present">Firezone uses this certificate to identify this device.</string>
 	<string name="x509_explainer_absent">Firezone did not find a certificate to identify this device.</string>
 	<string name="x509_select_certificate">Select Certificate</string>
