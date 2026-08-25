@@ -104,6 +104,15 @@ jobs:
       # wallpapers that shift over the day, so an uncontrolled desktop puts a
       # different colour in those pixels from one run to the next, and a
       # screensaver would replace the screen outright partway through.
+      # The Apple images alone wobble in the low bit of antialiased edges, and
+      # the suspect is the physical chip under the VM: GPU blend rounding is not
+      # specified to the bit across Apple GPU generations, and the runner fleet
+      # does not promise one generation. Naming the hardware in every run lets a
+      # wobble be correlated with the chip that drew it.
+      - name: Name the hardware under the VM
+        run: |
+          sysctl -n hw.model machdep.cpu.brand_string
+          system_profiler SPDisplaysDataType | grep -E "Chipset|Model|Metal" || true
       - name: Pin what is behind the windows
         run: |
           python3 -c 'import base64, pathlib, sys; pathlib.Path(sys.argv[2]).write_bytes(base64.b64decode(sys.argv[1]))' \
@@ -167,6 +176,15 @@ jobs:
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      # The Apple images alone wobble in the low bit of antialiased edges, and
+      # the suspect is the physical chip under the VM: GPU blend rounding is not
+      # specified to the bit across Apple GPU generations, and the runner fleet
+      # does not promise one generation. Naming the hardware in every run lets a
+      # wobble be correlated with the chip that drew it.
+      - name: Name the hardware under the VM
+        run: |
+          sysctl -n hw.model machdep.cpu.brand_string
+          system_profiler SPDisplaysDataType | grep -E "Chipset|Model|Metal" || true
       - name: Boot the simulator
         run: |
           udid=$(xcrun simctl list devices available -j | jq -r \
