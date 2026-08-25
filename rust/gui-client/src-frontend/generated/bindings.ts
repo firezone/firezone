@@ -162,12 +162,69 @@ export type X509DetailSection = { title: string; fields: X509DetailField[] };
 export type X509FieldValue =
   | { Present: string }
   | "Absent"
-  | { Invalid: string };
+  | { Rejected: X509RejectionReason }
+  | { Failed: string };
+/**
+ * Mirrors [`x509_keystore::Package`].
+ */
+export type X509Package = "P11Kit";
+/**
+ * Mirrors [`x509_keystore::Problem`] so the frontend writes the sentence it shows.
+ */
+export type X509Problem =
+  | { NoWindowsCertificate: { subject_cn: string } }
+  | { NoUsableWindowsCertificate: { certificates: X509UnusableCertificate[] } }
+  | { UnreadableWindowsStores: { stores: X509UnreadableStore[] } }
+  | { NoPkcs11Certificate: { subject_cn: string } }
+  | { NoUsablePkcs11Certificate: { certificates: X509UnusableCertificate[] } }
+  | "UnreadablePkcs11Keystore"
+  | "UnreadableKeystore"
+  | { MissingPackage: { package: X509Package } }
+  | "UnsupportedPlatform";
+/**
+ * Mirrors [`x509_keystore::RejectionReason`].
+ */
+export type X509RejectionReason =
+  | "Empty"
+  | "TooLong"
+  | "NotAnEmailAddress"
+  | "NotAUuid"
+  | "Ambiguous"
+  | "PlaceholderIdentifier"
+  | "UnknownAttribute";
 export type X509Status = {
-  warning: string | null;
+  problems: X509Problem[];
   sections: X509DetailSection[];
 };
 export type X509StatusChanged = X509Status;
+/**
+ * Mirrors [`x509_keystore::UnreadableStore`].
+ */
+export type X509UnreadableStore = { store: string; error: string };
+/**
+ * Mirrors [`x509_keystore::UnusableCause`].
+ */
+export type X509UnusableCause =
+  | { FailsRules: { reasons: X509UnusableReason[] } }
+  | { WindowsKeyRefused: { error: string } }
+  | "WindowsKeyMissing"
+  | "Pkcs11KeyMissing";
+/**
+ * Mirrors [`x509_keystore::UnusableCertificate`].
+ */
+export type X509UnusableCertificate = {
+  fingerprint: string;
+  cause: X509UnusableCause;
+};
+/**
+ * Mirrors [`x509_keystore::UnusableReason`].
+ */
+export type X509UnusableReason =
+  | "NoClientAuthEku"
+  | "NoDigitalSignatureKeyUsage"
+  | "OutsideValidityPeriod"
+  | "UnsupportedKeyAlgorithm"
+  | "RefusedIdentity";
 
 /** tauri-specta globals **/
 

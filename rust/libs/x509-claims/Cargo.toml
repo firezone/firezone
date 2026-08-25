@@ -7,6 +7,7 @@ license = { workspace = true }
 
 [dependencies]
 base64 = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive"] }
 sha2 = { workspace = true }
 uuid = { workspace = true }
 x509-parser = { workspace = true }
