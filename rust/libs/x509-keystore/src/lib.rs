@@ -388,6 +388,10 @@ fn join(items: &[impl fmt::Display], separator: &str) -> String {
         .join(separator)
 }
 
+#[cfg_attr(
+    all(windows, not(test)),
+    expect(dead_code, reason = "Windows renders only error rows")
+)]
 pub(crate) fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
     DetailField {
         label: label.into(),

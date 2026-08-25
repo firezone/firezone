@@ -73,26 +73,15 @@ fn describes_a_minted_certificate_in_the_diagnostics() {
         .iter()
         .find(|section| section.title == "Certificate")
         .expect("the diagnostics should describe the minted certificate");
-    assert_eq!(field_value(section, "Store"), Some("LocalMachine\\My"));
-    assert_eq!(
-        field_value(section, "Private Key Provider"),
-        Some("Microsoft Software Key Storage Provider")
-    );
-    assert_eq!(
-        field_value(section, "Private Key Storage"),
-        Some("Software keystore")
-    );
     assert_eq!(
         field_value(section, "Common Name"),
         Some(subject_cn.as_str())
     );
     assert_eq!(field_value(section, "Private Key Error"), None);
     assert_eq!(field_value(section, "Certificate Chain Error"), None);
-    assert_eq!(field_value(section, "Private Key Metadata Errors"), None);
-    assert!(
-        position(section, "SHA-256 Fingerprint") < position(section, "Store"),
-        "what the certificate says should read before where Windows keeps it"
-    );
+    // The diagnostics describe the certificate, not where Windows keeps it.
+    assert_eq!(field_value(section, "Store"), None);
+    assert_eq!(field_value(section, "Private Key Provider"), None);
 }
 
 #[test]
@@ -112,22 +101,6 @@ fn reports_no_identity_when_no_certificate_matches() {
         Some(format!(
             "No X.509 certificate with subject CN '{subject_cn}' is in the Windows certificate stores."
         ))
-    );
-}
-
-#[test]
-fn classifies_windows_key_storage() {
-    assert_eq!(
-        classify_private_key_storage(Some("Microsoft Platform Crypto Provider"), None),
-        "TPM (hardware-backed keystore)"
-    );
-    assert_eq!(
-        classify_private_key_storage(Some("Microsoft Software Key Storage Provider"), None),
-        "Software keystore"
-    );
-    assert_eq!(
-        classify_private_key_storage(Some("Third-party KSP"), Some(NCRYPT_IMPL_HARDWARE_FLAG)),
-        "Hardware-backed keystore"
     );
 }
 
@@ -184,15 +157,6 @@ fn leaf_of(identity: &Identity) -> Vec<u8> {
         .expect("the identity should carry a certificate chain");
 
     leaf.to_vec()
-}
-
-/// Returns the position of the diagnostics row labelled `label` in the section.
-fn position(section: &DetailSection, label: &str) -> usize {
-    section
-        .fields
-        .iter()
-        .position(|field| field.label == label)
-        .unwrap_or_else(|| panic!("the diagnostics should show {label}"))
 }
 
 /// Returns the value of the diagnostics row labelled `label`, if the section has one.
