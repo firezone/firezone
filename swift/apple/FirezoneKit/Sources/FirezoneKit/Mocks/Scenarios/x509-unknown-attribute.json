@@ -1,9 +1,10 @@
 {
   "hasVPNConfiguration": true,
-  "vpnStatus": "disconnected",
+  "vpnStatus": "connected",
   "systemExtension": "installed",
   "notifications": "authorized",
-  "clientCertificate": "absent",
+  "clientCertificate": "unknown-attribute",
+  "actorName": "Demo User",
   "resources": [],
   "connectedDevices": [],
   "favorites": [],

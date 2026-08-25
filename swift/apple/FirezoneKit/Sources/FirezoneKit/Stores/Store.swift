@@ -86,6 +86,9 @@ public final class Store: ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
   private let tunnelManagerFactory: TunnelProviderManagerFactory
 
+  /// Where the certificate screen reads the certificate from; `nil` reads the keychain.
+  let x509CertificateSource: X509CertificateSource?
+
   private struct ConfigurationSnapshot: Equatable {
     var providerConfiguration: [String: String]
     var internetResourceEnabled: Bool
@@ -111,6 +114,7 @@ public final class Store: ObservableObject {
       systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil,
       updateChecker: (any UpdateCheckerProtocol)? = nil,
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
+      x509CertificateSource: X509CertificateSource? = nil,
       logDirectory: URL? = SharedAccess.logFolderURL,
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
@@ -121,6 +125,7 @@ public final class Store: ObservableObject {
       self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
       self.tunnelManagerFactory = tunnelManagerFactory
+      self.x509CertificateSource = x509CertificateSource
       self.logDirectory = logDirectory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
@@ -132,6 +137,7 @@ public final class Store: ObservableObject {
       configuration: Configuration? = nil,
       sessionNotification: SessionNotificationProtocol = SessionNotification(),
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
+      x509CertificateSource: X509CertificateSource? = nil,
       logDirectory: URL? = SharedAccess.logFolderURL,
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
@@ -139,6 +145,7 @@ public final class Store: ObservableObject {
       self.configuration = configuration ?? Configuration.shared
       self.sessionNotification = sessionNotification
       self.tunnelManagerFactory = tunnelManagerFactory
+      self.x509CertificateSource = x509CertificateSource
       self.logDirectory = logDirectory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)

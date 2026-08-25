@@ -1,9 +1,10 @@
 {
-  "hasVPNConfiguration": false,
-  "vpnStatus": "invalid",
-  "systemExtension": "needsInstall",
+  "hasVPNConfiguration": true,
+  "vpnStatus": "connected",
+  "systemExtension": "installed",
   "notifications": "authorized",
   "clientCertificate": "absent",
+  "actorName": "Demo User",
   "resources": [],
   "connectedDevices": [],
   "favorites": [],

@@ -20,6 +20,15 @@
       (label: "Diagnostic Logs", name: "logs"),
     ]
 
+    /// The scenarios describing the states of the certificate tab. Each image
+    /// carries the name of the scenario it was taken from.
+    private static let certificateScenarios = [
+      "x509-filled",
+      "x509-empty",
+      "x509-unknown-attribute",
+      "x509-unusable",
+    ]
+
     func testGrantVPN() throws {
       let appearance = try currentAppearance()
       let app = launchApp(scenario: "grant-vpn")
@@ -111,6 +120,22 @@
       for tab in Self.settingsTabs {
         try selectTab(tab.label, in: app)
         deliver(app, as: "settings-\(tab.name)", in: appearance)
+      }
+    }
+
+    /// The certificate tab, in each of the states a scenario describes.
+    func testCertificate() throws {
+      let appearance = try currentAppearance()
+
+      for scenario in Self.certificateScenarios {
+        let app = launchApp(scenario: scenario)
+        defer { app.terminate() }
+
+        try waitFor(app.buttons["Settings"], on: scenario)
+        app.buttons["Settings"].tap()
+        try waitFor(app.navigationBars["Settings"], on: scenario)
+        try selectTab("X.509", in: app)
+        deliver(app, as: scenario, in: appearance)
       }
     }
 

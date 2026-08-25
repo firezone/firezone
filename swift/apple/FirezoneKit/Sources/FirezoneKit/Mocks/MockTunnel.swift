@@ -29,6 +29,7 @@
     let vpnStatus: VPNStatus
     let systemExtension: SystemExtension
     let notifications: NotificationDecision
+    let clientCertificate: ClientCertificate
     /// The actor the portal would name on `init`; absent unless the scenario is connected.
     let actorName: String?
     let resources: [Resource]
@@ -56,6 +57,24 @@
       case notDetermined
       case denied
       case authorized
+    }
+
+    /// The certificate the diagnostics screen is handed, named by the state it leaves
+    /// the screen in.
+    ///
+    /// Every case but `absent` names a certificate this bundle ships under
+    /// `Mocks/Certificates`, whose subject, serial, fingerprint and validity dates are
+    /// fixed. A capture of the screen is then the same picture on every run, and the
+    /// wording on it comes from the parser rather than from a fixture.
+    enum ClientCertificate: String, Decodable, Sendable {
+      /// No certificate is configured.
+      case absent
+      /// A certificate the client can present for mutual TLS.
+      case usable
+      /// A usable certificate carrying a `firezone://` attribute the parser does not read.
+      case unknownAttribute = "unknown-attribute"
+      /// A certificate the client will not present, because it has expired.
+      case unusable
     }
   }
 
@@ -100,6 +119,34 @@
     }
   }
 
+  extension MockScenario.ClientCertificate {
+    /// Where the certificate screen reads this state's certificate from.
+    var source: X509CertificateSource { .fixed(certificate: der) }
+
+    /// The DER-encoded certificate this state names, `nil` when it names none.
+    ///
+    /// A certificate that will not load ends the process, the way a scenario that
+    /// will not load does: a screen reporting no certificate instead would go
+    /// unnoticed until someone read the screenshots.
+    private var der: Data? {
+      guard self != .absent else { return nil }
+
+      guard let url = Self.url(of: rawValue) else {
+        fatalError("No mock certificate named '\(rawValue)'")
+      }
+
+      do {
+        return try Data(contentsOf: url)
+      } catch {
+        fatalError("Mock certificate '\(rawValue)' did not load: \(error)")
+      }
+    }
+
+    private static func url(of name: String) -> URL? {
+      Bundle.module.url(forResource: name, withExtension: "der", subdirectory: "Certificates")
+    }
+  }
+
   #if os(macOS)
     extension MockScenario.SystemExtension {
       fileprivate var status: SystemExtensionStatus {
@@ -136,12 +183,14 @@
           ),
           updateChecker: MockUpdateChecker(),
           tunnelManagerFactory: MockTunnelProviderManagerFactory(scenario: scenario),
+          x509CertificateSource: scenario.clientCertificate.source,
           logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
         )
       #else
         return Store(
           sessionNotification: MockSessionNotification(decision: scenario.notifications.status),
           tunnelManagerFactory: MockTunnelProviderManagerFactory(scenario: scenario),
+          x509CertificateSource: scenario.clientCertificate.source,
           logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
         )
       #endif
