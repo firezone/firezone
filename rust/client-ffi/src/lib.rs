@@ -269,6 +269,11 @@ impl Session {
         let tcp_socket_factory = Arc::new(socket_factory::tcp);
         let udp_socket_factory = Arc::new(socket_factory::udp);
 
+        // Locate the TUN device before `connect` spawns anything: every failed
+        // search used to leave a Tokio runtime and its threads behind, and the
+        // NetworkExtension process outlives the session that owns them.
+        let tun_fd = find_tun_fd()?;
+
         let session = connect(
             api_url,
             token,
@@ -281,7 +286,7 @@ impl Session {
             udp_socket_factory,
         )?;
 
-        set_tun_from_search(&session)?;
+        session.set_tun(tun_fd)?;
 
         Ok(session)
     }
@@ -321,25 +326,22 @@ impl Session {
     }
 }
 
-/// Set up TUN device with retry logic.
+/// Find the TUN device with retry logic.
 ///
 /// Retries a few times with a small delay, as the NetworkExtension
 /// might still be setting up the TUN interface.
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-fn set_tun_from_search(session: &Session) -> Result<(), ConnlibError> {
+fn find_tun_fd() -> Result<RawFd, ConnlibError> {
     const MAX_TUN_SETUP_ATTEMPTS: u32 = 5;
     const TUN_SETUP_RETRY_DELAY_MS: u64 = 100;
-
-    let runtime = session.runtime.as_ref().context("No runtime")?;
 
     let mut last_error = None;
     for attempt in 1..=MAX_TUN_SETUP_ATTEMPTS {
         tracing::debug!(attempt, "Attempting to find TUN device");
-        match platform::Tun::new(runtime.handle()) {
-            Ok(tun) => {
-                tracing::debug!("Successfully found and set TUN device");
-                session.inner.set_tun(Box::new(tun));
-                return Ok(());
+        match platform::search_fd() {
+            Ok(fd) => {
+                tracing::debug!("Successfully found TUN device");
+                return Ok(fd);
             }
             Err(e) => {
                 tracing::debug!(attempt, error = %e, "Failed to find TUN device");
