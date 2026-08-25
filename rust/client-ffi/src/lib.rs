@@ -179,6 +179,17 @@ pub enum Event {
 }
 
 #[uniffi::export]
+impl ConnlibError {
+    /// Renders the error and its source chain.
+    ///
+    /// UniFFI maps this type to an opaque foreign class, so the `Display` impl is
+    /// not otherwise reachable from the bindings.
+    pub fn message(&self) -> String {
+        self.to_string()
+    }
+}
+
+#[uniffi::export]
 impl DisconnectError {
     pub fn message(&self) -> String {
         self.0.to_string()
@@ -323,7 +334,7 @@ fn set_tun_from_search(session: &Session) -> Result<(), ConnlibError> {
 
     let mut last_error = None;
     for attempt in 1..=MAX_TUN_SETUP_ATTEMPTS {
-        tracing::debug!("Attempting to find TUN device (attempt {})", attempt);
+        tracing::debug!(attempt, "Attempting to find TUN device");
         match platform::Tun::new(runtime.handle()) {
             Ok(tun) => {
                 tracing::debug!("Successfully found and set TUN device");
@@ -331,7 +342,7 @@ fn set_tun_from_search(session: &Session) -> Result<(), ConnlibError> {
                 return Ok(());
             }
             Err(e) => {
-                tracing::warn!("Attempt {} failed: {}", attempt, e);
+                tracing::debug!(attempt, error = %e, "Failed to find TUN device");
                 last_error = Some(e);
                 if attempt < MAX_TUN_SETUP_ATTEMPTS {
                     std::thread::sleep(std::time::Duration::from_millis(TUN_SETUP_RETRY_DELAY_MS));

@@ -11,14 +11,17 @@ import Foundation
 import NetworkExtension
 import OSLog
 
-enum AdapterError: Error {
+/// `LocalizedError` feeds `errorDescription` into `localizedDescription`, which is
+/// what `Log.error(_:)` reads off an `any Error`. `CustomStringConvertible` makes
+/// string interpolation render the same text.
+enum AdapterError: Error, CustomStringConvertible, LocalizedError {
   /// Failure to perform an operation in such state.
   case invalidSession(Session?)
 
   /// connlib failed to start
   case connlibConnectError(String)
 
-  var localizedDescription: String {
+  var description: String {
     switch self {
     case .invalidSession(let session):
       let message = session == nil ? "Session is disconnected" : "Session is still connected"
@@ -27,6 +30,8 @@ enum AdapterError: Error {
       return "connlib failed to start: \(error)"
     }
   }
+
+  var errorDescription: String? { description }
 }
 
 // Loosely inspired from WireGuardAdapter from WireGuardKit
@@ -208,6 +213,8 @@ actor Adapter {
         deviceInfo: deviceInfo,
         isInternetResourceActive: internetResourceEnabled
       )
+    } catch let error as ConnlibError {
+      throw AdapterError.connlibConnectError(error.message())
     } catch {
       throw AdapterError.connlibConnectError(String(describing: error))
     }
