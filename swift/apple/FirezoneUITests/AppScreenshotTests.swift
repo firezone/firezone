@@ -110,9 +110,7 @@
       let askUntil = Date().addingTimeInterval(10)
 
       while Date() < deadline {
-        let running = NSRunningApplication.runningApplications(
-          withBundleIdentifier: Self.appBundleID
-        )
+        let running = runningInstances()
         if running.isEmpty {
           return
         }
@@ -128,31 +126,65 @@
         Thread.sleep(forTimeInterval: 0.1)
       }
 
-      XCTFail("An instance of \(Self.appBundleID) outlived its test and never exited")
+      XCTFail(
+        "An instance of \(Self.appBundleID) outlived its test and never exited. "
+          + "Saw \(describe(runningInstances()))"
+      )
     }
 
     /// The app under test, once it is the only instance and has finished launching.
     ///
     /// `NSWorkspace.open` starts a second copy when LaunchServices does not yet
     /// count the app as running, and two processes under one bundle identifier
-    /// put both their windows into the same element tree.
+    /// put both their windows into the same element tree. A second copy never
+    /// exits by itself, so waiting for one to leave only burns the deadline: the
+    /// copies are ended here instead. The instance the test launched is the one
+    /// running longest, because `waitForNoRunningInstance` left none behind.
     private func singleRunningInstance() -> NSRunningApplication? {
       let deadline = Date().addingTimeInterval(30)
+      var seen = describe([])
 
       while Date() < deadline {
-        let running = NSRunningApplication.runningApplications(
-          withBundleIdentifier: Self.appBundleID
-        )
+        let running = runningInstances()
+
+        seen = describe(running)
+
         if running.count == 1, let instance = running.first, instance.isFinishedLaunching {
           return instance
+        }
+
+        for copy in running.dropFirst() {
+          copy.terminate()
         }
 
         Thread.sleep(forTimeInterval: 0.1)
       }
 
-      XCTFail("The app under test never settled to one finished instance")
+      XCTFail("The app under test never settled to one finished instance. Saw \(seen)")
 
       return nil
+    }
+
+    /// Every instance of the app under test, the one running longest first.
+    private func runningInstances() -> [NSRunningApplication] {
+      let running = NSRunningApplication.runningApplications(
+        withBundleIdentifier: Self.appBundleID
+      )
+
+      return running.sorted { ($0.launchDate ?? .distantPast) < ($1.launchDate ?? .distantPast) }
+    }
+
+    /// How the instances of the app under test read in a failure message.
+    private func describe(_ instances: [NSRunningApplication]) -> String {
+      if instances.isEmpty {
+        return "no running instance"
+      }
+
+      let described = instances.map {
+        "pid \($0.processIdentifier), finished launching \($0.isFinishedLaunching)"
+      }
+
+      return described.joined(separator: "; ")
     }
 
     /// Photographs the window and pins that its dark capture is actually dark.
