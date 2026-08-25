@@ -292,6 +292,8 @@ config :portal, Portal.Sentinel.APIClient,
   client_id: System.get_env("SENTINEL_SYNC_CLIENT_ID"),
   client_secret: System.get_env("SENTINEL_SYNC_CLIENT_SECRET"),
   token_base_url: "https://login.microsoftonline.com",
+  discovery_document_uri:
+    "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration",
   req_opts: []
 
 config :portal, Portal.S3.APIClient,

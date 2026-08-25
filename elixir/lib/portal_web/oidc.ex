@@ -197,17 +197,19 @@ defmodule PortalWeb.OIDC do
 
   @doc """
   Exchanges authorization code for tokens using a pre-built config.
-  Useful for legacy code paths where config is built manually.
+  Useful for legacy code paths where config is built manually. Pass
+  `:redirect_uri` for a flow whose authorization request replied somewhere
+  other than the OIDC callback; the two have to match.
   Returns {:ok, tokens} or {:error, reason}.
   """
-  def exchange_code_with_config(config, code, verifier) do
+  def exchange_code_with_config(config, code, verifier, opts \\ []) do
     with {:ok, credential} <- verification_client_credential(config) do
       params =
         %{
           grant_type: "authorization_code",
           code: code,
           code_verifier: verifier,
-          redirect_uri: callback_url()
+          redirect_uri: Keyword.get(opts, :redirect_uri, callback_url())
         }
         |> Map.merge(credential)
 
@@ -288,6 +290,7 @@ defmodule PortalWeb.OIDC do
   - "entra" — Entra auth_provider admin consent + silent authorization code/PKCE proof
   - "entra_directory_sync" — Entra directory_sync admin consent + user-bound PKCE proof
   - "intune_posture_provider" — Intune admin consent + user-bound PKCE proof
+  - "sentinel_log_sink" — Sentinel log sink admin consent + user-bound PKCE proof
 
   Options:
   - :okta_domain - Required for Okta providers
@@ -316,6 +319,21 @@ defmodule PortalWeb.OIDC do
     config =
       Portal.Microsoft.Graph.APIClient.verification_config(:intune)
       |> entra_verification_config("openid profile", "https://graph.microsoft.com/.default")
+
+    {:ok, %{config: config}}
+  end
+
+  def setup_verification("sentinel_log_sink", _opts) do
+    sentinel_config = Portal.Config.fetch_env!(:portal, Portal.Sentinel.APIClient)
+
+    config =
+      sentinel_config
+      |> Keyword.take([:client_id, :client_secret, :req_opts])
+      |> entra_verification_config(
+        "openid profile",
+        "https://graph.microsoft.com/.default",
+        Keyword.fetch!(sentinel_config, :discovery_document_uri)
+      )
 
     {:ok, %{config: config}}
   end
@@ -352,8 +370,10 @@ defmodule PortalWeb.OIDC do
   Verifies a signed verification state token.
   Returns {:ok, %{type: type, lv_pid: lv_pid}} or {:error, reason}.
   """
-  def verify_verification_state(state) do
-    Phoenix.Token.verify(PortalWeb.Endpoint, "oidc-verification-state", state, max_age: 5 * 60)
+  def verify_verification_state(state, opts \\ []) do
+    max_age = Keyword.get(opts, :max_age, 5 * 60)
+
+    Phoenix.Token.verify(PortalWeb.Endpoint, "oidc-verification-state", state, max_age: max_age)
   end
 
   @doc """
@@ -364,6 +384,7 @@ defmodule PortalWeb.OIDC do
   def verification_state_type("entra_directory_sync"), do: "entra-directory-sync"
   def verification_state_type("google_directory_sync"), do: "google-directory-sync"
   def verification_state_type("intune_posture_provider"), do: "intune-posture-provider"
+  def verification_state_type("sentinel_log_sink"), do: "sentinel-log-sink"
 
   def verification_state_type(type) when type in ["google", "okta", "oidc"],
     do: "oidc-auth-provider"
@@ -415,7 +436,7 @@ defmodule PortalWeb.OIDC do
   proof that binds the setup to the signed-in user's immutable tenant and object IDs.
   The state_token (from sign_verification_state/2) is passed through the IdP unchanged.
   Accepts types: "google", "okta", "oidc", "entra", "entra_directory_sync",
-  and "intune_posture_provider".
+  "intune_posture_provider", and "sentinel_log_sink".
   Returns {:ok, uri} or {:error, reason}.
   """
   def build_verification_uri(type, config, verifier, state_token)
@@ -467,6 +488,17 @@ defmodule PortalWeb.OIDC do
     {:ok, @entra_organizations_admin_consent_endpoint <> "?" <> URI.encode_query(params)}
   end
 
+  def build_verification_uri("sentinel_log_sink", config, _verifier, state_token) do
+    params = %{
+      client_id: config[:client_id],
+      redirect_uri: sentinel_consent_url(),
+      scope: config[:admin_consent_scope],
+      state: state_token
+    }
+
+    {:ok, @entra_organizations_admin_consent_endpoint <> "?" <> URI.encode_query(params)}
+  end
+
   def build_verification_uri(type, _config, _verifier, _state_token) do
     Logger.error("Unknown verification type", type: type)
     {:error, :unknown_verification_type}
@@ -476,7 +508,8 @@ defmodule PortalWeb.OIDC do
   Builds a tenant-specific Entra authorization-code request after admin consent.
   The initial request is silent so the Microsoft session created by admin consent
   can be reused without showing a second account picker. Set `prompt: nil` for the
-  interactive fallback when Entra reports that silent SSO is unavailable.
+  interactive fallback when Entra reports that silent SSO is unavailable, and
+  `:redirect_uri` for a flow that replies somewhere other than the OIDC callback.
   """
   def build_entra_tenant_authorization_uri(
         config,
@@ -490,7 +523,7 @@ defmodule PortalWeb.OIDC do
 
       params = %{
         client_id: config[:client_id],
-        redirect_uri: callback_url(),
+        redirect_uri: Keyword.get(opts, :redirect_uri, callback_url()),
         response_type: "code",
         response_mode: "query",
         scope: config[:scope],
@@ -519,6 +552,13 @@ defmodule PortalWeb.OIDC do
   def callback_url, do: url(~p"/auth/oidc/callback")
 
   @doc """
+  Returns the Sentinel admin consent callback URL. Both legs of the Sentinel
+  verification reply here, so the application registration needs a single
+  reply address.
+  """
+  def sentinel_consent_url, do: url(~p"/auth/sentinel/consent")
+
+  @doc """
   Performs the complete OIDC verification flow: exchange code for tokens and verify ID token.
   Returns {:ok, claims, userinfo_result} or {:error, reason}.
   """
@@ -540,9 +580,9 @@ defmodule PortalWeb.OIDC do
   from the cryptographically verified ID token after requiring it to match the
   tenant selected by the preceding admin-consent callback.
   """
-  def verify_entra_callback(config, code, verifier, expected_tenant_id) do
+  def verify_entra_callback(config, code, verifier, expected_tenant_id, opts \\ []) do
     with {:ok, expected_tenant_id} <- normalize_entra_tenant_id(expected_tenant_id),
-         {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
+         {:ok, tokens} <- exchange_code_with_config(config, code, verifier, opts),
          id_token when is_binary(id_token) <- tokens["id_token"],
          {:ok, claims} <- verify_token_with_config(config, id_token),
          {:ok, tenant_id, issuer} <- verify_entra_tenant_claims(claims),
@@ -653,9 +693,14 @@ defmodule PortalWeb.OIDC do
     |> Enum.into(%{redirect_uri: callback_url()})
   end
 
-  defp entra_verification_config(config, scope, admin_consent_scope) do
+  defp entra_verification_config(
+         config,
+         scope,
+         admin_consent_scope,
+         discovery_document_uri \\ @entra_organizations_discovery_document_uri
+       ) do
     config
-    |> Keyword.put(:discovery_document_uri, @entra_organizations_discovery_document_uri)
+    |> Keyword.put(:discovery_document_uri, discovery_document_uri)
     |> Keyword.put(:response_type, "code")
     |> Keyword.put(:scope, scope)
     |> Keyword.put(:admin_consent_scope, admin_consent_scope)
