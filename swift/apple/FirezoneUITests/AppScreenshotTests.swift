@@ -138,12 +138,15 @@
     /// count the app as running, and two processes under one bundle identifier
     /// put both their windows into the same element tree.
     ///
-    /// A copy cannot be asked to leave: `enforceSingleInstance` puts it behind a
-    /// modal telling the user to quit the other instance, and the app answers
-    /// `applicationShouldTerminate` with `.terminateLater`, so it never gets to
-    /// the reply. It is killed instead, which is the exit it was heading for. The
-    /// instance the test launched is the one running longest, because
-    /// `waitForNoRunningInstance` left none behind.
+    /// This runs before any window is asked for, so the instance the test just
+    /// launched is the one that started last: `waitForNoRunningInstance` left
+    /// none behind, and anything older than the launch is a straggler from the
+    /// iteration before. Photographing a straggler would deliver its appearance
+    /// rather than the one under test.
+    ///
+    /// A straggler is killed rather than asked to leave, because the app answers
+    /// `applicationShouldTerminate` with `.terminateLater` and can sit on the
+    /// reply for longer than the deadline.
     private func singleRunningInstance() -> NSRunningApplication? {
       let deadline = Date().addingTimeInterval(30)
       let askUntil = Date().addingTimeInterval(5)
@@ -158,11 +161,11 @@
           return instance
         }
 
-        for copy in running.dropFirst() {
+        for straggler in running.dropLast() {
           if Date() < askUntil {
-            copy.terminate()
+            straggler.terminate()
           } else {
-            copy.forceTerminate()
+            straggler.forceTerminate()
           }
         }
 
