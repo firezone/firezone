@@ -10,16 +10,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
@@ -51,29 +52,7 @@ internal fun X509SettingsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // One line on what the certificate is for, absent while the KeyChain is still being
-        // read. The wording is shared across the clients.
-        val explainer =
-            when {
-                state.isLoading -> {
-                    null
-                }
-
-                state.isUsable && state.unusableSummary == null && state.error == null -> {
-                    stringResource(R.string.x509_explainer_present)
-                }
-
-                else -> {
-                    stringResource(R.string.x509_explainer_absent)
-                }
-            }
-        if (explainer != null) {
-            Text(
-                text = explainer,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        CertificateCard(state)
 
         // A managed alias the KeyChain will not release is the personally-owned case: only the user
         // can let the app have that key, so the chooser stays reachable even when the administrator
@@ -125,22 +104,6 @@ internal fun X509SettingsScreen(
             }
         }
 
-        if (state.error != null) {
-            Notice(
-                title = stringResource(R.string.x509_error_title),
-                body = state.error,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-            )
-        }
-
-        if (state.unusableSummary != null) {
-            Notice(
-                title = stringResource(R.string.x509_unusable_title),
-                body = stringResource(R.string.x509_unusable_reason, state.unusableSummary),
-                color = MaterialTheme.colorScheme.errorContainer,
-            )
-        }
-
         state.details.forEach { field ->
             HorizontalDivider()
             DetailField(field)
@@ -148,25 +111,131 @@ internal fun X509SettingsScreen(
     }
 }
 
-/** How the screen says that something is wrong with the certificate. */
+/**
+ * Names the certificate the way a browser's site-info panel names a site: what it is called, who
+ * issued it and how long it lasts.
+ *
+ * Anything wrong with the certificate is said here as well, so that the reader has a single place
+ * to look for its standing.
+ */
+@Composable
+private fun CertificateCard(state: X509SettingsViewModel.UiState) {
+    val commonName = state.details.attested(COMMON_NAME_LABEL) ?: state.details.attested(SUBJECT_LABEL)
+    val issuer = state.details.attested(ISSUER_LABEL)
+    val notAfter = state.details.attested(NOT_AFTER_LABEL)
+    val hasProblem = state.error != null || state.unusableSummary != null
+
+    // One line on what the certificate is for, absent while the KeyChain is still being read. The
+    // wording is shared across the clients.
+    val explainer =
+        when {
+            state.isLoading -> {
+                null
+            }
+
+            state.isUsable && !hasProblem -> {
+                stringResource(R.string.x509_explainer_present)
+            }
+
+            else -> {
+                stringResource(R.string.x509_explainer_absent)
+            }
+        }
+
+    Card(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.rounded_verified_user_black_24dp),
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+                tint =
+                    if (hasProblem) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text =
+                        when {
+                            state.alias == null -> stringResource(R.string.x509_no_certificate_title)
+                            else -> commonName ?: stringResource(R.string.x509_certificate_title)
+                        },
+                    style = MaterialTheme.typography.titleMedium,
+                )
+
+                if (issuer != null) {
+                    Text(
+                        text = stringResource(R.string.x509_issued_by, issuer),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                if (notAfter != null) {
+                    Text(
+                        text = stringResource(R.string.x509_valid_until, notAfter),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                if (state.error != null) {
+                    Notice(
+                        title = stringResource(R.string.x509_error_title),
+                        body = state.error,
+                    )
+                }
+
+                if (state.unusableSummary != null) {
+                    Notice(
+                        title = stringResource(R.string.x509_unusable_title),
+                        body = stringResource(R.string.x509_unusable_reason, state.unusableSummary),
+                    )
+                }
+
+                if (explainer != null) {
+                    Text(
+                        text = explainer,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** How the card says that something is wrong with the certificate. */
 @Composable
 private fun Notice(
     title: String,
     body: String,
-    color: Color,
 ) {
-    Surface(color = color, modifier = Modifier.fillMaxWidth()) {
-        Column(
-            Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium)
-            Text(text = body, style = MaterialTheme.typography.bodySmall)
-            Text(
-                text = stringResource(R.string.x509_contact_admin),
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
+    Column(
+        Modifier.padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        Text(
+            text = body,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        Text(
+            text = stringResource(R.string.x509_contact_admin),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
     }
 }
 
@@ -222,6 +291,19 @@ private fun RejectionReason.phrase(): String =
         },
     )
 
+/** The value of a row, `null` unless the parser read exactly one the clients will attest. */
+private fun List<DetailField>.attested(label: String): String? {
+    val value = firstOrNull { it.label == label }?.value
+
+    return (value as? ClaimValue.Present)?.value
+}
+
+// Labels the Rust parser gives the rows the card is built from.
+private const val COMMON_NAME_LABEL = "Common Name"
+private const val SUBJECT_LABEL = "Subject"
+private const val ISSUER_LABEL = "Issuer"
+private const val NOT_AFTER_LABEL = "Not After"
+
 @Preview
 @Composable
 private fun X509SettingsScreenPreview() {
@@ -235,7 +317,10 @@ private fun X509SettingsScreenPreview() {
                     details =
                         listOf(
                             DetailField("KeyChain Alias", ClaimValue.Present("firezone-device")),
+                            DetailField("Common Name", ClaimValue.Present("alice@example.com")),
                             DetailField("Subject", ClaimValue.Present("CN=alice@example.com")),
+                            DetailField("Issuer", ClaimValue.Present("Example Corp Device CA")),
+                            DetailField("Not After", ClaimValue.Present("2027-01-31 23:59:59 UTC")),
                             DetailField("Account ID", ClaimValue.Absent),
                         ),
                 ),
@@ -262,10 +347,25 @@ private fun X509SettingsScreenUnusablePreview() {
                                 "Usable as a Client Identity",
                                 ClaimValue.Present("No: expired or not yet valid, unsupported key algorithm"),
                             ),
+                            DetailField("Common Name", ClaimValue.Present("alice@example.com")),
+                            DetailField("Issuer", ClaimValue.Present("Example Corp Device CA")),
+                            DetailField("Not After", ClaimValue.Present("2024-01-31 23:59:59 UTC")),
                             DetailField("Actor Email", ClaimValue.Invalid(RejectionReason.NOT_AN_EMAIL_ADDRESS)),
                             DetailField("Account ID", ClaimValue.Absent),
                         ),
                 ),
+            onSelectCertificate = {},
+            onForgetCertificate = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun X509SettingsScreenNoCertificatePreview() {
+    FirezoneTheme {
+        X509SettingsScreen(
+            state = X509SettingsViewModel.UiState(),
             onSelectCertificate = {},
             onForgetCertificate = {},
         )
