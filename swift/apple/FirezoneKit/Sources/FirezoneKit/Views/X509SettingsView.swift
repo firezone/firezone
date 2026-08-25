@@ -26,7 +26,11 @@ struct X509SettingsView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      header
+      if let explainer {
+        Text(explainer)
+          .font(.callout)
+          .foregroundStyle(.secondary)
+      }
 
       switch loadState {
       case .loading:
@@ -45,18 +49,6 @@ struct X509SettingsView: View {
       }
     }
     .onAppear { Task { await reload() } }
-  }
-
-  private var header: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      Text("Certificate")
-        .font(.headline)
-      if let explainer {
-        Text(explainer)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-    }
   }
 
   /// One line on what the certificate is for, absent while the keychain is still being read.
