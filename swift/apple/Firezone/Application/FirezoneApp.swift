@@ -149,6 +149,9 @@ struct FirezoneApp: App {
 
     var store: Store?
 
+    /// Set when this copy started only to stand aside for one already running.
+    private var isStandingAside = false
+
     func applicationWillFinishLaunching(_ notification: Notification) {
       // Enforce single instance BEFORE the app fully launches
       enforceSingleInstance()
@@ -167,7 +170,10 @@ struct FirezoneApp: App {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-      guard let store else {
+      // A copy standing aside has no session of its own to stop, and waiting on
+      // one it never opened is a wait that never ends: it stays up, a second
+      // instance under one bundle identifier, until the test gives up on it.
+      guard !isStandingAside, let store else {
         return .terminateNow
       }
 
@@ -206,6 +212,7 @@ struct FirezoneApp: App {
         // Finder. Nothing in the run dismisses that dialog, so it sits on the
         // screen and is photographed over whichever screen comes next.
         if CommandLine.arguments.contains("--mock-tunnel") {
+          isStandingAside = true
           DispatchQueue.main.async { NSApp.terminate(nil) }
 
           return
