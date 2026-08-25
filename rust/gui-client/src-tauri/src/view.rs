@@ -48,8 +48,73 @@ pub struct X509StatusChanged(pub X509Status);
 
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub struct X509Status {
-    pub warning: Option<String>,
+    pub problems: Vec<X509Problem>,
     pub sections: Vec<X509DetailSection>,
+}
+
+/// Mirrors [`x509_keystore::Problem`] so the frontend writes the sentence it shows.
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509Problem {
+    NoWindowsCertificate {
+        subject_cn: String,
+    },
+    NoUsableWindowsCertificate {
+        certificates: Vec<X509UnusableCertificate>,
+    },
+    UnreadableWindowsStores {
+        stores: Vec<X509UnreadableStore>,
+    },
+    NoPkcs11Certificate {
+        subject_cn: String,
+    },
+    NoUsablePkcs11Certificate {
+        certificates: Vec<X509UnusableCertificate>,
+    },
+    UnreadablePkcs11Keystore,
+    UnreadableKeystore,
+    MissingPackage {
+        package: X509Package,
+    },
+    UnsupportedPlatform,
+}
+
+/// Mirrors [`x509_keystore::Package`].
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509Package {
+    P11Kit,
+}
+
+/// Mirrors [`x509_keystore::UnusableCertificate`].
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub struct X509UnusableCertificate {
+    pub fingerprint: String,
+    pub cause: X509UnusableCause,
+}
+
+/// Mirrors [`x509_keystore::UnusableCause`].
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509UnusableCause {
+    FailsRules { reasons: Vec<X509UnusableReason> },
+    WindowsKeyRefused { error: String },
+    WindowsKeyMissing,
+    Pkcs11KeyMissing,
+}
+
+/// Mirrors [`x509_keystore::UnusableReason`].
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509UnusableReason {
+    NoClientAuthEku,
+    NoDigitalSignatureKeyUsage,
+    OutsideValidityPeriod,
+    UnsupportedKeyAlgorithm,
+    RefusedIdentity,
+}
+
+/// Mirrors [`x509_keystore::UnreadableStore`].
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub struct X509UnreadableStore {
+    pub store: String,
+    pub error: String,
 }
 
 #[derive(Clone, serde::Serialize, specta::Type)]
@@ -69,13 +134,31 @@ pub struct X509DetailField {
 pub enum X509FieldValue {
     Present(String),
     Absent,
-    Invalid(String),
+    Rejected(X509RejectionReason),
+    Failed(String),
+}
+
+/// Mirrors [`x509_keystore::RejectionReason`].
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509RejectionReason {
+    Empty,
+    TooLong,
+    NotAnEmailAddress,
+    NotAUuid,
+    Ambiguous,
+    PlaceholderIdentifier,
+    UnknownAttribute,
 }
 
 impl From<&x509_keystore::Status> for X509Status {
     fn from(status: &x509_keystore::Status) -> Self {
         Self {
-            warning: status.warning.clone(),
+            problems: status
+                .problems
+                .iter()
+                .cloned()
+                .map(X509Problem::from)
+                .collect(),
             sections: status
                 .sections
                 .iter()
@@ -95,12 +178,116 @@ impl From<&x509_keystore::Status> for X509Status {
     }
 }
 
+impl From<x509_keystore::Problem> for X509Problem {
+    fn from(problem: x509_keystore::Problem) -> Self {
+        match problem {
+            x509_keystore::Problem::NoWindowsCertificate { subject_cn } => {
+                Self::NoWindowsCertificate { subject_cn }
+            }
+            x509_keystore::Problem::NoUsableWindowsCertificate { certificates } => {
+                Self::NoUsableWindowsCertificate {
+                    certificates: certificates.into_iter().map(Into::into).collect(),
+                }
+            }
+            x509_keystore::Problem::UnreadableWindowsStores { stores } => {
+                Self::UnreadableWindowsStores {
+                    stores: stores.into_iter().map(Into::into).collect(),
+                }
+            }
+            x509_keystore::Problem::NoPkcs11Certificate { subject_cn } => {
+                Self::NoPkcs11Certificate { subject_cn }
+            }
+            x509_keystore::Problem::NoUsablePkcs11Certificate { certificates } => {
+                Self::NoUsablePkcs11Certificate {
+                    certificates: certificates.into_iter().map(Into::into).collect(),
+                }
+            }
+            x509_keystore::Problem::UnreadablePkcs11Keystore => Self::UnreadablePkcs11Keystore,
+            x509_keystore::Problem::UnreadableKeystore => Self::UnreadableKeystore,
+            x509_keystore::Problem::MissingPackage { package } => Self::MissingPackage {
+                package: package.into(),
+            },
+            x509_keystore::Problem::UnsupportedPlatform => Self::UnsupportedPlatform,
+        }
+    }
+}
+
+impl From<x509_keystore::Package> for X509Package {
+    fn from(package: x509_keystore::Package) -> Self {
+        match package {
+            x509_keystore::Package::P11Kit => Self::P11Kit,
+        }
+    }
+}
+
+impl From<x509_keystore::UnusableCertificate> for X509UnusableCertificate {
+    fn from(certificate: x509_keystore::UnusableCertificate) -> Self {
+        Self {
+            fingerprint: certificate.fingerprint,
+            cause: certificate.cause.into(),
+        }
+    }
+}
+
+impl From<x509_keystore::UnusableCause> for X509UnusableCause {
+    fn from(cause: x509_keystore::UnusableCause) -> Self {
+        match cause {
+            x509_keystore::UnusableCause::FailsRules { reasons } => Self::FailsRules {
+                reasons: reasons.into_iter().map(Into::into).collect(),
+            },
+            x509_keystore::UnusableCause::WindowsKeyRefused { error } => {
+                Self::WindowsKeyRefused { error }
+            }
+            x509_keystore::UnusableCause::WindowsKeyMissing => Self::WindowsKeyMissing,
+            x509_keystore::UnusableCause::Pkcs11KeyMissing => Self::Pkcs11KeyMissing,
+        }
+    }
+}
+
+impl From<x509_keystore::UnusableReason> for X509UnusableReason {
+    fn from(reason: x509_keystore::UnusableReason) -> Self {
+        match reason {
+            x509_keystore::UnusableReason::NoClientAuthEku => Self::NoClientAuthEku,
+            x509_keystore::UnusableReason::NoDigitalSignatureKeyUsage => {
+                Self::NoDigitalSignatureKeyUsage
+            }
+            x509_keystore::UnusableReason::OutsideValidityPeriod => Self::OutsideValidityPeriod,
+            x509_keystore::UnusableReason::UnsupportedKeyAlgorithm => Self::UnsupportedKeyAlgorithm,
+            x509_keystore::UnusableReason::RefusedIdentity => Self::RefusedIdentity,
+        }
+    }
+}
+
+impl From<x509_keystore::UnreadableStore> for X509UnreadableStore {
+    fn from(store: x509_keystore::UnreadableStore) -> Self {
+        Self {
+            store: store.store,
+            error: store.error,
+        }
+    }
+}
+
 impl From<x509_keystore::FieldValue> for X509FieldValue {
     fn from(value: x509_keystore::FieldValue) -> Self {
         match value {
             x509_keystore::FieldValue::Present(value) => Self::Present(value),
             x509_keystore::FieldValue::Absent => Self::Absent,
-            x509_keystore::FieldValue::Invalid(message) => Self::Invalid(message),
+            x509_keystore::FieldValue::Rejected(reason) => Self::Rejected(reason.into()),
+            x509_keystore::FieldValue::Failed(message) => Self::Failed(message),
+        }
+    }
+}
+
+impl From<x509_keystore::RejectionReason> for X509RejectionReason {
+    fn from(reason: x509_keystore::RejectionReason) -> Self {
+        match reason {
+            x509_keystore::RejectionReason::Empty => Self::Empty,
+            x509_keystore::RejectionReason::TooLong => Self::TooLong,
+            x509_keystore::RejectionReason::NotAnEmailAddress => Self::NotAnEmailAddress,
+            x509_keystore::RejectionReason::NotAUuid => Self::NotAUuid,
+            x509_keystore::RejectionReason::Ambiguous => Self::Ambiguous,
+            x509_keystore::RejectionReason::PlaceholderIdentifier => Self::PlaceholderIdentifier,
+            x509_keystore::RejectionReason::UnknownAttribute => Self::UnknownAttribute,
         }
     }
 }

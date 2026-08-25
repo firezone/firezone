@@ -77,7 +77,7 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
 
     ipc_tx
         .send(&ServerMsg::X509Status(Ok(x509_keystore::Status {
-            warning: Some("This platform has no X.509 keystore backend.".to_owned()),
+            problems: vec![x509_keystore::Problem::UnsupportedPlatform],
             sections: vec![],
         })))
         .await?;
