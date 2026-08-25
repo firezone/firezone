@@ -67,7 +67,7 @@ fn describes_a_minted_certificate_in_the_diagnostics() {
     let status =
         super::status(&subject_cn).expect("the Windows certificate stores should be readable");
 
-    assert_eq!(status.warning, None);
+    assert_eq!(status.problems, []);
     let section = status
         .sections
         .iter()
@@ -97,10 +97,8 @@ fn reports_no_identity_when_no_certificate_matches() {
 
     assert!(identity.is_none());
     assert_eq!(
-        status.warning,
-        Some(format!(
-            "No X.509 certificate with subject CN '{subject_cn}' is in the Windows certificate stores."
-        ))
+        status.problems,
+        [Problem::NoWindowsCertificate { subject_cn }]
     );
 }
 
