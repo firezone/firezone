@@ -7897,7 +7897,6 @@ dependencies = [
  "opentelemetry_sdk",
  "parking_lot",
  "rand 0.10.2",
- "rustls",
  "sentry",
  "serde",
  "serde_json",

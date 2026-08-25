@@ -345,7 +345,7 @@ impl Cli {
     }
 
     fn is_telemetry_allowed(&self) -> bool {
-        !self.no_telemetry
+        !self.no_telemetry && !firezone_gui_client::NO_TELEMETRY
     }
 }
 

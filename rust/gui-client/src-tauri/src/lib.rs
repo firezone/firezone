@@ -45,6 +45,13 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 /// Hence, we have a single constant for Tunnel service and GUI client.
 pub const RELEASE: &str = concat!("gui-client@", env!("CARGO_PKG_VERSION"));
 
+/// Whether `FIREZONE_NO_TELEMETRY` was set when this binary was built.
+///
+/// CI stamps it into every build that is not a release, so the smoke test, the
+/// install test and any artifact from a pull request stay silent even where nothing
+/// sets the variable at run time.
+pub const NO_TELEMETRY: bool = cfg!(no_telemetry);
+
 pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 
 /// `Name_publisherId` for the sparse MSIX. Derived at build time

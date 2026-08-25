@@ -29,8 +29,6 @@ tunnel-bypass-resolver = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
-rustls = { workspace = true, features = ["ring"] }
-socket-factory = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
