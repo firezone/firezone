@@ -99,7 +99,7 @@ jobs:
           defaults -currentHost write com.apple.screensaver idleTime -int 0
 
           osascript -e "tell application \"System Events\" to tell every desktop \
-            to set picture to \"${GITHUB_WORKSPACE}/.github/assets/screenshot-backdrop.png\"" \
+            to set picture to \"${GITHUB_WORKSPACE}/swift/apple/FirezoneUITests/Resources/screenshot-backdrop.png\"" \
             || echo "::warning::Could not set the desktop picture; the window corners stay at the mercy of the wallpaper"
       - name: Boot the simulator
         if: matrix.platform == 'ios'
