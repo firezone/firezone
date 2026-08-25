@@ -199,8 +199,14 @@ struct FirezoneApp: App {
         // already running by starting another. That copy leaves quietly: there is
         // nobody to dismiss the alert below, and a second copy in the element tree
         // shows its windows through the corners of the one being photographed.
+        //
+        // It leaves after the launch rather than during it. Quitting from here
+        // ends the app before it has finished launching, which LaunchServices
+        // reports to whoever asked for it as -609, in a dialog that belongs to
+        // Finder. Nothing in the run dismisses that dialog, so it sits on the
+        // screen and is photographed over whichever screen comes next.
         if CommandLine.arguments.contains("--mock-tunnel") {
-          NSApp.terminate(nil)
+          DispatchQueue.main.async { NSApp.terminate(nil) }
 
           return
         }
