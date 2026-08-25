@@ -14,6 +14,7 @@
 // the suite once per appearance.
 
 #if os(iOS)
+  import CoreGraphics
   import XCTest
 
   @MainActor
@@ -55,19 +56,30 @@
       deliver(app, as: "session", in: appearance)
     }
 
-    /// The three pushed detail screens, mirroring the Android gallery: a DNS
-    /// resource, the Internet resource, and a connected device.
-    func testDetails() throws {
+    // The three pushed detail screens, mirroring the Android gallery. Each takes
+    // its own launch: photographed one after another, a screen carries whatever
+    // the screens before it left behind, and the glass the bar's back button is
+    // drawn on comes out a shade different for it.
+
+    /// A DNS resource's detail screen.
+    func testResourceDetails() throws {
       let appearance = try currentAppearance()
       let app = launchApp(scenario: "connected")
       defer { app.terminate() }
 
       try waitFor(app.staticTexts["Office network"], on: "session")
-
       try open(app.staticTexts["Demo GitLab"], in: app, name: "a DNS resource")
       try waitFor(app.staticTexts["ADDRESS"], on: "resource-details")
       deliver(app, as: "resource-details", in: appearance)
-      goBack(in: app)
+    }
+
+    /// The Internet resource's detail screen.
+    func testInternetResourceDetails() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "connected")
+      defer { app.terminate() }
+
+      try waitFor(app.staticTexts["Office network"], on: "session")
 
       // The Internet resource's row carries the enabled/disabled marker in
       // front of its name, so the name alone has to match by containment.
@@ -77,8 +89,15 @@
       try open(internet, in: app, name: "the Internet resource")
       try waitFor(app.staticTexts["NAME"], on: "resource-details-internet")
       deliver(app, as: "resource-details-internet", in: appearance)
-      goBack(in: app)
+    }
 
+    /// A connected device's detail screen.
+    func testDeviceDetails() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "connected")
+      defer { app.terminate() }
+
+      try waitFor(app.staticTexts["Office network"], on: "session")
       try open(app.staticTexts["Demo Device 1"], in: app, name: "a connected device")
       try waitFor(app.staticTexts["Tunnel IPs"], on: "device-details")
       deliver(app, as: "device-details", in: appearance)
@@ -115,15 +134,23 @@
       }
 
       for _ in 0..<3 where !row.isHittable {
-        app.swipeUp()
+        scrollDown(in: app)
       }
 
       row.tap()
     }
 
-    /// Pops the pushed detail screen off the navigation stack.
-    private func goBack(in app: XCUIApplication) {
-      app.navigationBars.buttons.firstMatch.tap()
+    /// Takes the list up by half the screen, and leaves it exactly there.
+    ///
+    /// `swipeUp()` is a flick, so the list keeps travelling after the finger
+    /// leaves it and comes to rest a little further along each time. Holding
+    /// before the drag makes it a scroll rather than a flick, which stops where
+    /// it is let go, so the screen underneath is the same on every run.
+    private func scrollDown(in app: XCUIApplication) {
+      let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
+      let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+
+      from.press(forDuration: 0.2, thenDragTo: to)
     }
 
     /// Taps the settings tab labelled `label`.
