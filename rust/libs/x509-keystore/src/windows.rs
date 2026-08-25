@@ -17,18 +17,15 @@ use windows::{
         Security::Cryptography::{
             BCRYPT_PKCS1_PADDING_INFO, BCRYPT_PSS_PADDING_INFO, BCRYPT_SHA256_ALGORITHM,
             BCRYPT_SHA384_ALGORITHM, BCRYPT_SHA512_ALGORITHM, CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL,
-            CERT_CHAIN_DISABLE_AIA, CERT_CHAIN_PARA, CERT_CONTEXT, CERT_KEY_PROV_INFO_PROP_ID,
-            CERT_KEY_SPEC, CERT_OPEN_STORE_FLAGS, CERT_QUERY_ENCODING_TYPE,
-            CERT_STORE_OPEN_EXISTING_FLAG, CERT_STORE_PROV_SYSTEM_W, CERT_STORE_READONLY_FLAG,
-            CERT_SYSTEM_STORE_LOCAL_MACHINE, CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG,
-            CRYPT_ACQUIRE_SILENT_FLAG, CRYPT_KEY_PROV_INFO, CertCloseStore,
+            CERT_CHAIN_DISABLE_AIA, CERT_CHAIN_PARA, CERT_CONTEXT, CERT_KEY_SPEC,
+            CERT_OPEN_STORE_FLAGS, CERT_QUERY_ENCODING_TYPE, CERT_STORE_OPEN_EXISTING_FLAG,
+            CERT_STORE_PROV_SYSTEM_W, CERT_STORE_READONLY_FLAG, CERT_SYSTEM_STORE_LOCAL_MACHINE,
+            CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG, CRYPT_ACQUIRE_SILENT_FLAG, CertCloseStore,
             CertDuplicateCertificateContext, CertEnumCertificatesInStore, CertFreeCertificateChain,
-            CertFreeCertificateContext, CertGetCertificateChain, CertGetCertificateContextProperty,
-            CertOpenStore, CryptAcquireCertificatePrivateKey, HCERTSTORE,
-            HCRYPTPROV_OR_NCRYPT_KEY_HANDLE, NCRYPT_FLAGS, NCRYPT_HANDLE,
-            NCRYPT_IMPL_HARDWARE_FLAG, NCRYPT_IMPL_SOFTWARE_FLAG, NCRYPT_IMPL_TYPE_PROPERTY,
-            NCRYPT_KEY_HANDLE, NCRYPT_PAD_PKCS1_FLAG, NCRYPT_PAD_PSS_FLAG, NCRYPT_PROV_HANDLE,
-            NCRYPT_PROVIDER_HANDLE_PROPERTY, NCryptFreeObject, NCryptGetProperty, NCryptSignHash,
+            CertFreeCertificateContext, CertGetCertificateChain, CertOpenStore,
+            CryptAcquireCertificatePrivateKey, HCERTSTORE, HCRYPTPROV_OR_NCRYPT_KEY_HANDLE,
+            NCRYPT_FLAGS, NCRYPT_HANDLE, NCRYPT_KEY_HANDLE, NCRYPT_PAD_PKCS1_FLAG,
+            NCRYPT_PAD_PSS_FLAG, NCryptFreeObject, NCryptSignHash,
         },
     },
     core::w,
@@ -37,8 +34,8 @@ use x509_claims::{ParsedCertificate, parse_certificate};
 use x509_credential::SigningError;
 
 use crate::{
-    CandidateCertificate, DetailField, DetailSection, Identity, Status, absent_field, field,
-    invalid_field, selected_certificate, sign, unusable_reasons,
+    CandidateCertificate, DetailField, DetailSection, Identity, Status, invalid_field,
+    selected_certificate, sign, unusable_reasons,
 };
 
 /// The store MDM-provisioned identities land in.
@@ -352,15 +349,7 @@ struct Certificate {
     chain_error: Option<String>,
     metadata: ParsedCertificate,
     key_error: Option<String>,
-    key_metadata: Option<PrivateKeyMetadata>,
     usable: bool,
-}
-
-struct PrivateKeyMetadata {
-    provider: Option<String>,
-    container: Option<String>,
-    storage: &'static str,
-    errors: Vec<String>,
 }
 
 impl Certificate {
@@ -372,30 +361,9 @@ impl Certificate {
             .map(DetailField::from)
             .collect::<Vec<_>>();
 
-        fields.push(field("Store", self.store));
         if let Some(error) = &self.key_error {
             fields.push(invalid_field("Private Key Error", error));
         }
-        if let Some(metadata) = &self.key_metadata {
-            fields.push(match metadata.provider.as_deref() {
-                Some(provider) => field("Private Key Provider", provider),
-                None => absent_field("Private Key Provider"),
-            });
-            fields.push(field("Private Key Storage", metadata.storage));
-            if let Some(container) = &metadata.container {
-                fields.push(field("Private Key Container", container));
-            }
-            if !metadata.errors.is_empty() {
-                fields.push(invalid_field(
-                    "Private Key Metadata Errors",
-                    metadata.errors.join("\n"),
-                ));
-            }
-        }
-        fields.push(field(
-            "Certificate Chain Count",
-            self.chain.len().to_string(),
-        ));
         if let Some(error) = &self.chain_error {
             fields.push(invalid_field("Certificate Chain Error", error));
         }
@@ -490,13 +458,9 @@ unsafe fn enumerate_store(
             continue;
         }
 
-        let (key_available, key_error, key_metadata) = match unsafe { acquire_key(context) } {
-            Ok(key) => (
-                true,
-                None,
-                Some(unsafe { private_key_metadata(context, &key) }),
-            ),
-            Err(error) => (false, Some(error.to_string()), None),
+        let (key_available, key_error) = match unsafe { acquire_key(context) } {
+            Ok(_) => (true, None),
+            Err(error) => (false, Some(error.to_string())),
         };
         let (chain, chain_error) = match unsafe { certificate_chain(context) } {
             Ok(chain) => (chain, None),
@@ -526,7 +490,6 @@ unsafe fn enumerate_store(
             usable: metadata.is_usable(subject_cn) && key_available,
             metadata,
             key_error,
-            key_metadata,
         });
     }
 
@@ -653,23 +616,6 @@ struct AcquiredKey {
     must_free: bool,
 }
 
-impl AcquiredKey {
-    fn implementation_type(&self) -> Result<u32> {
-        let provider: NCRYPT_PROV_HANDLE = unsafe {
-            ncrypt_property(
-                NCRYPT_HANDLE(self.handle.0),
-                NCRYPT_PROVIDER_HANDLE_PROPERTY,
-            )
-        }
-        .context("Reading the CNG provider handle failed")?;
-        let implementation_type =
-            unsafe { ncrypt_property(NCRYPT_HANDLE(provider.0), NCRYPT_IMPL_TYPE_PROPERTY) }
-                .context("Reading the CNG implementation type failed")?;
-
-        Ok(implementation_type)
-    }
-}
-
 impl Drop for AcquiredKey {
     fn drop(&mut self) {
         if self.must_free {
@@ -703,124 +649,4 @@ unsafe fn acquire_key(context: *mut CERT_CONTEXT) -> windows_core::Result<Acquir
         handle: NCRYPT_KEY_HANDLE(handle.0),
         must_free: must_free.as_bool(),
     })
-}
-
-unsafe fn private_key_metadata(
-    context: *const CERT_CONTEXT,
-    key: &AcquiredKey,
-) -> PrivateKeyMetadata {
-    let mut errors = Vec::new();
-    let (provider, container) = match unsafe { certificate_key_provider_info(context) } {
-        Ok(info) => info,
-        Err(error) => {
-            errors.push(format!("Provider: {error:#}"));
-            (None, None)
-        }
-    };
-    let implementation_type = match key.implementation_type() {
-        Ok(value) => Some(value),
-        Err(error) => {
-            errors.push(format!("Implementation type: {error:#}"));
-            None
-        }
-    };
-
-    PrivateKeyMetadata {
-        storage: classify_private_key_storage(provider.as_deref(), implementation_type),
-        provider,
-        container,
-        errors,
-    }
-}
-
-unsafe fn certificate_key_provider_info(
-    context: *const CERT_CONTEXT,
-) -> Result<(Option<String>, Option<String>)> {
-    let mut needed = 0;
-    unsafe {
-        CertGetCertificateContextProperty(context, CERT_KEY_PROV_INFO_PROP_ID, None, &mut needed)
-    }
-    .context("Reading the CNG provider metadata size failed")?;
-    anyhow::ensure!(
-        needed as usize >= std::mem::size_of::<CRYPT_KEY_PROV_INFO>(),
-        "Windows returned invalid CNG provider metadata"
-    );
-
-    // The property contains a CRYPT_KEY_PROV_INFO followed by referenced strings,
-    // so allocate in pointer-sized units to preserve the struct's alignment.
-    let words = (needed as usize).div_ceil(std::mem::size_of::<usize>());
-    let mut buffer = vec![0usize; words];
-    unsafe {
-        CertGetCertificateContextProperty(
-            context,
-            CERT_KEY_PROV_INFO_PROP_ID,
-            Some(buffer.as_mut_ptr().cast()),
-            &mut needed,
-        )
-    }
-    .context("Reading the CNG provider metadata failed")?;
-
-    let info = unsafe { &*buffer.as_ptr().cast::<CRYPT_KEY_PROV_INFO>() };
-    let provider = unsafe { wide_string(info.pwszProvName) };
-    let container = unsafe { wide_string(info.pwszContainerName) };
-
-    Ok((provider, container))
-}
-
-unsafe fn ncrypt_property<T: Default>(
-    handle: NCRYPT_HANDLE,
-    property: windows_core::PCWSTR,
-) -> Result<T> {
-    let mut value = T::default();
-    let output = unsafe {
-        slice::from_raw_parts_mut((&raw mut value).cast::<u8>(), std::mem::size_of::<T>())
-    };
-    let mut written = 0;
-    unsafe {
-        NCryptGetProperty(
-            handle,
-            property,
-            Some(output),
-            &mut written,
-            Default::default(),
-        )
-    }
-    .context("NCryptGetProperty failed")?;
-    anyhow::ensure!(
-        written as usize == std::mem::size_of::<T>(),
-        "NCryptGetProperty returned {written} bytes, expected {}",
-        std::mem::size_of::<T>()
-    );
-
-    Ok(value)
-}
-
-unsafe fn wide_string(value: windows_core::PWSTR) -> Option<String> {
-    if value.is_null() {
-        return None;
-    }
-
-    unsafe { value.to_string().ok() }
-}
-
-fn classify_private_key_storage(
-    provider: Option<&str>,
-    implementation_type: Option<u32>,
-) -> &'static str {
-    if provider
-        .is_some_and(|provider| provider.eq_ignore_ascii_case("Microsoft Platform Crypto Provider"))
-    {
-        return "TPM (hardware-backed keystore)";
-    }
-    if implementation_type.is_some_and(|value| value & NCRYPT_IMPL_HARDWARE_FLAG != 0) {
-        return "Hardware-backed keystore";
-    }
-    if provider.is_some_and(|provider| {
-        provider.eq_ignore_ascii_case("Microsoft Software Key Storage Provider")
-    }) || implementation_type.is_some_and(|value| value & NCRYPT_IMPL_SOFTWARE_FLAG != 0)
-    {
-        return "Software keystore";
-    }
-
-    "CNG provider (hardware backing unknown)"
 }
