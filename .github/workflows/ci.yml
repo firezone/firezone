@@ -229,6 +229,16 @@ jobs:
         with:
           name: ios-screenshots
           path: swift/apple/screenshots/ios
+      # A re-render that differs from what is committed only in how a subpixel was
+      # rounded is the same picture, and committing it would put a render commit on
+      # every pull request that touches a client.
+      - name: Keep the images whose differences are invisible
+        run: |
+          set -euo pipefail
+
+          python3 -m pip install --quiet --disable-pip-version-check --break-system-packages pillow
+          python3 scripts/settle-screenshots.py \
+            rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
       - name: Set up GnuPG for the screenshot commit
         uses: ./.github/actions/setup-gpg
         id: setup-gpg

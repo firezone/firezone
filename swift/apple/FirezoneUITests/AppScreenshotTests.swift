@@ -27,6 +27,13 @@
     /// window's accessibility title.
     private static let settingsWindowTitle = "Settings"
 
+    /// How far a window's rounded corner reaches in from its side.
+    ///
+    /// Measured off a capture: the corner's blend with the desktop behind it
+    /// runs to 24 pixels, so the columns within that of either side are the ones
+    /// worth dropping.
+    private static let windowCornerWidth = 24
+
     /// How bright each capture came out, by file name.
     private var brightness: [String: Double] = [:]
 
@@ -204,7 +211,7 @@
     /// odd pixel, so comparing them tells nothing. The measurements are printed so
     /// a run says which appearance it drew rather than leaving it to be inferred.
     private func capture(_ window: XCUIElement, as name: String, in appearance: Appearance) {
-      let image = deliver(window, as: name, in: appearance)
+      let image = deliver(window, as: name, in: appearance, encode: withoutSideColumns)
       brightness["\(name)-\(appearance.rawValue)"] = meanBrightness(of: image)
 
       guard
@@ -215,6 +222,39 @@
       print("Brightness of \(name): light \(light), dark \(dark)")
 
       XCTAssertLessThan(dark, light - 50, "\(name) is no darker in the dark appearance")
+    }
+
+    /// The capture without the columns its rounded corners reach into.
+    ///
+    /// A window is drawn with rounded corners, so the pixels around each one
+    /// hold a blend of the window and whatever the desktop shows behind it, and
+    /// that blend is not always the same twice. Every corner sits within
+    /// `windowCornerWidth` of the left or right edge, so taking those columns
+    /// away takes all four, and the top and bottom edges are straight for
+    /// everything in between.
+    private func withoutSideColumns(_ screenshot: XCUIScreenshot) -> Data {
+      let png = screenshot.pngRepresentation
+      let width = Self.windowCornerWidth
+
+      guard let source = NSBitmapImageRep(data: png),
+        let full = source.cgImage,
+        full.width > width * 2
+      else {
+        return png
+      }
+
+      let bounds = CGRect(
+        x: width, y: 0, width: full.width - width * 2, height: full.height
+      )
+
+      guard let cropped = full.cropping(to: bounds),
+        let trimmed = NSBitmapImageRep(cgImage: cropped)
+          .representation(using: .png, properties: [:])
+      else {
+        return png
+      }
+
+      return trimmed
     }
 
     /// The mean brightness of a PNG, from every eighth pixel, on a 0 to 255 scale.

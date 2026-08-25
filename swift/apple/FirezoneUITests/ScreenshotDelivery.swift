@@ -26,16 +26,21 @@ extension XCTestCase {
   /// Photographs `element` once it holds still, delivers the image as
   /// `<name>-<appearance>.png`, and hands back its bytes.
   @discardableResult
-  func deliver(_ element: XCUIElement, as name: String, in appearance: Appearance) -> Data {
+  func deliver(
+    _ element: XCUIElement,
+    as name: String,
+    in appearance: Appearance,
+    encode: (XCUIScreenshot) -> Data = { $0.pngRepresentation }
+  ) -> Data {
     let fileName = "\(name)-\(appearance.rawValue).png"
-    let screenshot = settledScreenshot(of: element, as: fileName)
+    let image = encode(settledScreenshot(of: element, as: fileName))
 
-    let attachment = XCTAttachment(screenshot: screenshot)
+    let attachment = XCTAttachment(data: image, uniformTypeIdentifier: "public.png")
     attachment.name = fileName
     attachment.lifetime = .keepAlways
     add(attachment)
 
-    return screenshot.pngRepresentation
+    return image
   }
 
   /// The element as it looks once two captures in a row agree.
