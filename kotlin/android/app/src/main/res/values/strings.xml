@@ -42,7 +42,6 @@
 	<string name="x509_forget_certificate">Forget Selection</string>
 	<string name="x509_loading">Reading the KeyChain…</string>
 	<string name="x509_no_certificate_selected">No RSA or EC certificate was selected.</string>
-	<string name="x509_not_configured">No client certificate is configured.</string>
 	<string name="x509_alias_configured">KeyChain alias: %1$s</string>
 	<string name="x509_not_released">
 		Android has not released this certificate to Firezone. Selecting it grants access.

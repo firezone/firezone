@@ -9,8 +9,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -25,6 +28,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import dev.firezone.android.R
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.settings.ui.X509SettingsViewModel
@@ -51,80 +55,122 @@ internal fun X509SettingsScreen(
     val keyIsWithheld = state.alias != null && !state.isLoading && !state.isUsable
     val canSelect = keyIsWithheld || (!state.isManaged && state.alias == null)
 
-    // An administrator's alias is not the user's to clear.
-    val canForget = !state.isManaged && state.alias != null
+    // An administrator's alias is not the user's to clear, and neither is one whose key is still
+    // withheld: that screen asks for a grant, and offering to forget the certificate in the same
+    // breath asks the reader to both make a selection and undo one.
+    val canForget = !state.isManaged && state.alias != null && !keyIsWithheld
 
-    Column(modifier.fillMaxSize()) {
-        Column(
-            Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            CertificateCard(state)
+    Column(
+        modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        CertificateCard(state)
 
+        // The KeyChain answers a missing grant with a null key rather than an error, so this state
+        // would otherwise be an alias with no detail underneath it and no reason given.
+        if (keyIsWithheld && state.error == null) {
+            WarningBanner(stringResource(R.string.x509_not_released))
+        }
+
+        // Which certificate the alias names is worth saying while there is nothing else to go on.
+        // Once the KeyChain releases it, the rows below say all of this and more.
+        if (state.alias != null && !state.isUsable) {
             Text(
-                text =
-                    if (state.alias == null) {
-                        stringResource(R.string.x509_not_configured)
-                    } else {
-                        stringResource(R.string.x509_alias_configured, state.alias)
-                    },
+                text = stringResource(R.string.x509_alias_configured, state.alias),
                 style = MaterialTheme.typography.bodyMedium,
             )
+        }
 
-            // The KeyChain answers a missing grant with a null key rather than an error, so this state
-            // would otherwise be an alias with no detail underneath it and no reason given.
-            if (state.alias != null && !state.isLoading && !state.isUsable && state.error == null) {
+        if (state.isLoading) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                 Text(
-                    text = stringResource(R.string.x509_not_released),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = stringResource(R.string.x509_loading),
+                    style = MaterialTheme.typography.bodySmall,
                 )
-            }
-
-            if (state.isLoading) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Text(
-                        text = stringResource(R.string.x509_loading),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-
-            state.details.forEach { field ->
-                HorizontalDivider()
-                DetailField(field)
             }
         }
 
-        // The rows scroll, the buttons do not: on a certificate with a dozen rows the clear button
-        // would otherwise sit below the fold.
-        if (canSelect || canForget) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                if (canSelect) {
-                    OutlinedButton(onClick = onSelectCertificate, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.x509_select_certificate))
-                    }
-                }
+        state.details.forEach { field ->
+            HorizontalDivider()
+            DetailField(field)
+        }
 
-                if (canForget) {
-                    OutlinedButton(onClick = onForgetCertificate, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.x509_forget_certificate))
-                    }
-                }
-            }
+        // Under the card when there is nothing to say about a certificate, under the rows when
+        // there is: either way the button follows what it acts on.
+        if (canSelect) {
+            SettingsButton(
+                text = stringResource(R.string.x509_select_certificate),
+                onClick = onSelectCertificate,
+            )
+        }
+
+        if (canForget) {
+            SettingsButton(
+                text = stringResource(R.string.x509_forget_certificate),
+                onClick = onForgetCertificate,
+            )
+        }
+    }
+}
+
+/**
+ * An outlined button drawn the way the other settings tabs draw theirs.
+ *
+ * Those are `Widget.MaterialComponents.Button.OutlinedButton` in XML, which is squarer than the
+ * Material 3 default and letters its label in upper case.
+ */
+@Composable
+private fun SettingsButton(
+    text: String,
+    onClick: () -> Unit,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(4.dp),
+        colors =
+            ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ),
+    ) {
+        Text(
+            text = text.uppercase(),
+            style = MaterialTheme.typography.labelLarge,
+            letterSpacing = 0.09.em,
+        )
+    }
+}
+
+/** Says that the reader has something to do, rather than leaving it as one more line of prose. */
+@Composable
+private fun WarningBanner(text: String) {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+    ) {
+        Row(
+            Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.info_24px),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+            )
+
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
         }
     }
 }
