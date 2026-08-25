@@ -3,6 +3,7 @@ import Config
 # Local vars
 web_port = System.get_env("PHOENIX_WEB_PORT", "13443") |> String.to_integer()
 api_port = System.get_env("PHOENIX_API_PORT", "13001") |> String.to_integer()
+mtls_port = System.get_env("PHOENIX_MTLS_PORT", "13003") |> String.to_integer()
 ops_port = System.get_env("PHOENIX_OPS_PORT", "13002") |> String.to_integer()
 certfile_path = System.get_env("CERTFILE_PATH", "priv/cert/selfsigned.pem")
 keyfile_path = System.get_env("KEYFILE_PATH", "priv/cert/selfsigned_key.pem")
@@ -232,7 +233,7 @@ config :portal, PortalWeb.Endpoint,
 
 config :portal,
   api_external_url: "https://localhost:#{api_port}",
-  mtls_external_url: "https://localhost:#{api_port}"
+  mtls_external_url: "https://localhost:#{mtls_port}"
 
 config :phoenix_live_reload, :dirs, [File.cwd!()]
 
@@ -263,6 +264,30 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
 config :portal, api_url_override: "wss://host.docker.internal:#{api_port}/"
 
 ###############################
+##### Public Endpoint #########
+###############################
+
+# Keep mutual TLS on a dedicated listener so the ordinary API endpoint cannot
+# accidentally be treated as the mTLS endpoint during local development.
+config :portal, Portal.Endpoint,
+  url: [scheme: "https", host: "localhost", port: mtls_port],
+  https: [
+    port: mtls_port,
+    certfile: certfile_path,
+    keyfile: keyfile_path,
+    thousand_island_options: [
+      transport_options: [
+        verify: :verify_peer,
+        fail_if_no_peer_cert: true,
+        certificate_authorities: false,
+        cacerts: [],
+        verify_fun: {&Portal.TLS.verify_client_certificate/3, nil}
+      ]
+    ]
+  ],
+  server: true
+
+###############################
 ##### PortalAPI Endpoint ######
 ###############################
 
@@ -271,19 +296,7 @@ config :portal, PortalAPI.Endpoint,
   https: [
     port: api_port,
     certfile: certfile_path,
-    keyfile: keyfile_path,
-    thousand_island_options: [
-      transport_options: [
-        # Request a client certificate when one is available, but retain support
-        # for token-authenticated clients. The application validates a presented
-        # leaf against the account's trust anchors after the WebSocket upgrade.
-        verify: :verify_peer,
-        fail_if_no_peer_cert: false,
-        certificate_authorities: false,
-        cacerts: [],
-        verify_fun: {&Portal.TLS.verify_client_certificate/3, nil}
-      ]
-    ]
+    keyfile: keyfile_path
   ],
   debug_errors: true,
   code_reloader: true,

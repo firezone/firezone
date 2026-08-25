@@ -50,17 +50,21 @@ defmodule Portal.Endpoint do
 
   def dispatch(%Plug.Conn{} = conn, _opts) do
     host = String.downcase(conn.host)
+    origin = {host, conn.port}
     web_host = configured_host(:web_external_url)
-    mtls_host = configured_host(:mtls_external_url)
+    mtls_origin = configured_origin(:mtls_external_url)
 
     cond do
-      host == web_host ->
-        forward(conn, PortalWeb.Endpoint)
-
-      host == mtls_host and not websocket_upgrade?(conn) ->
+      origin == mtls_origin and not websocket_upgrade?(conn) ->
         conn
         |> Plug.Conn.send_resp(:not_found, "Not Found")
         |> Plug.Conn.halt()
+
+      origin == mtls_origin ->
+        forward(conn, PortalAPI.Endpoint)
+
+      host == web_host ->
+        forward(conn, PortalWeb.Endpoint)
 
       host in api_hosts() ->
         forward(conn, PortalAPI.Endpoint)
@@ -104,15 +108,22 @@ defmodule Portal.Endpoint do
   end
 
   defp api_hosts do
-    [:api_external_url, :rest_api_url, :flow_logs_api_url, :mtls_external_url]
+    [:api_external_url, :rest_api_url, :flow_logs_api_url]
     |> Enum.map(&configured_host/1)
     |> Enum.reject(&is_nil/1)
   end
 
   defp configured_host(key) do
+    case configured_origin(key) do
+      {host, _port} -> host
+      nil -> nil
+    end
+  end
+
+  defp configured_origin(key) do
     with url when is_binary(url) <- Portal.Config.get_env(:portal, key),
-         %URI{host: host} when is_binary(host) <- URI.parse(url) do
-      String.downcase(host)
+         %URI{host: host, port: port} when is_binary(host) and is_integer(port) <- URI.parse(url) do
+      {String.downcase(host), port}
     else
       _unconfigured -> nil
     end

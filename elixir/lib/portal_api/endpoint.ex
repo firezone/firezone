@@ -45,7 +45,7 @@ defmodule PortalAPI.Endpoint do
     drainer: []
 
   # Client sockets take `:uri` so device trust can tell a connect on the
-  # mutual-TLS host from one on the plain API host.
+  # mutual-TLS origin from one on the plain API origin.
   socket "/client", PortalAPI.Client.Socket,
     websocket: [
       check_origin: :conn,

@@ -183,7 +183,7 @@ defmodule PortalAPI.SocketsTest do
                "This device's certificate does not identify an active user authorized to access " <>
                  "this Firezone account. Please contact your administrator."
 
-      assert_problem_json(result)
+      assert_problem_json(result, "x509_user_not_authorized")
     end
 
     test "returns 503 with retry-after header for rate_limit" do

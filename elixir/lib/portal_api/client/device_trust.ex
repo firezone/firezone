@@ -3,7 +3,7 @@ defmodule PortalAPI.Client.DeviceTrust do
   Device attestation from the client certificate presented at connect.
 
   Clients holding an MDM-provisioned certificate connect over mutual TLS to
-  the dedicated `mtls_external_url` host. Phoenix terminates the handshake, so
+  the dedicated `mtls_external_url` origin. Phoenix terminates the handshake, so
   TLS has already proven the client holds the certificate's private key. Bandit
   exposes the leaf certificate as part of the connection's peer data.
 
@@ -316,11 +316,11 @@ defmodule PortalAPI.Client.DeviceTrust do
   ####################################
 
   # Checked before anything touches the database: a connect on the plain API
-  # host never pays for the anchor lookup.
+  # origin never pays for the anchor lookup.
   defp validate_attestation_host(connect_info) do
-    case attestation_host() do
+    case attestation_origin() do
       nil -> {:error, :not_attestation_host}
-      host -> validate_host(connect_info, host)
+      origin -> validate_origin(connect_info, origin)
     end
   end
 
@@ -348,24 +348,28 @@ defmodule PortalAPI.Client.DeviceTrust do
 
   defp presented_certificate(_connect_info), do: {:error, :no_certificate_presented}
 
-  defp attestation_host do
+  defp attestation_origin do
     with url when is_binary(url) <- Portal.Config.get_env(:portal, :mtls_external_url),
-         %URI{host: host} when is_binary(host) <- URI.parse(url) do
-      String.downcase(host)
+         %URI{host: host, port: port} when is_binary(host) and is_integer(port) <- URI.parse(url) do
+      {String.downcase(host), port}
     else
       _unconfigured -> nil
     end
   end
 
-  defp validate_host(%{uri: %URI{host: host}}, attestation_host) when is_binary(host) do
-    if String.downcase(host) == attestation_host do
+  defp validate_origin(
+         %{uri: %URI{host: host, port: port}},
+         {attestation_host, attestation_port}
+       )
+       when is_binary(host) and is_integer(port) do
+    if {String.downcase(host), port} == {attestation_host, attestation_port} do
       :ok
     else
       {:error, :not_attestation_host}
     end
   end
 
-  defp validate_host(_connect_info, _attestation_host), do: {:error, :not_attestation_host}
+  defp validate_origin(_connect_info, _attestation_origin), do: {:error, :not_attestation_host}
 
   defp decode_leaf(der) do
     case X509.decode_der_certificate(der, :otp) do

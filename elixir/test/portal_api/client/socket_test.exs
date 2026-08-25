@@ -496,20 +496,8 @@ defmodule PortalAPI.Client.SocketTest do
     end
   end
 
-  describe "connect/3 device trust" do
-    setup do
-      Portal.Config.put_env_override(:portal, :mtls_external_url, "https://mtls.firezone.test/")
-
-      account = account_fixture()
-      enable_feature(:trust_anchors)
-      pki = pki()
-      trust_anchor_fixture(account: account, certs: [pki.ca_der])
-
-      actor = actor_fixture(account: account)
-      token = client_token_fixture(account: account, actor: actor)
-
-      %{account: account, actor: actor, pki: pki, token: encode_token(token)}
-    end
+  describe "connect/3 device attestation" do
+    setup :setup_device_trust
 
     test "attests the device from the presented certificate", %{pki: pki, token: token} do
       connect_info = attested_connect_info(pki, token)
@@ -519,6 +507,10 @@ defmodule PortalAPI.Client.SocketTest do
       assert socket.assigns.client.last_attested_device_serial == "C02XK1ZGJGH5"
       assert socket.assigns.client.last_attested_cert_fingerprint
     end
+  end
+
+  describe "connect/3 X.509 authentication" do
+    setup :setup_device_trust
 
     test "authenticates from X.509 identity claims without a client token", %{
       account: account,
@@ -598,6 +590,60 @@ defmodule PortalAPI.Client.SocketTest do
                assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
                         {:error, :device_untrusted}
              end) =~ "invalid_x509_identity"
+    end
+
+    test "rejects two distinct X.509 account ID claims", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      other_account = account_fixture()
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      certificate =
+        x509_authentication_cert(pki, [
+          "firezone://account-id/#{account.id}",
+          "firezone://account-id/#{other_account.id}",
+          "firezone://email/#{actor.email}"
+        ])
+
+      assert_invalid_x509_identity(certificate)
+    end
+
+    test "rejects two distinct X.509 email claims when authenticating by email", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      other_actor = actor_fixture(account: account)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      certificate =
+        x509_authentication_cert(pki, [
+          "firezone://account-id/#{account.id}",
+          "firezone://email/#{actor.email}",
+          "firezone://email/#{other_actor.email}"
+        ])
+
+      assert_invalid_x509_identity(certificate)
+    end
+
+    test "rejects two distinct X.509 actor ID claims", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      other_actor = actor_fixture(account: account, type: :service_account)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      certificate =
+        x509_authentication_cert(pki, [
+          "firezone://account-id/#{account.id}",
+          "firezone://actor-id/#{actor.id}",
+          "firezone://actor-id/#{other_actor.id}"
+        ])
+
+      assert_invalid_x509_identity(certificate)
     end
 
     test "scopes an X.509 actor ID claim to the claimed account", %{
@@ -877,6 +923,10 @@ defmodule PortalAPI.Client.SocketTest do
       assert connect(Socket, connect_attrs([]), connect_info: connect_info_with_bogus_token) ==
                {:error, :rate_limit}
     end
+  end
+
+  describe "connect/3 device trust" do
+    setup :setup_device_trust
 
     test "connects unattested on the plain API host", %{pki: pki, token: token} do
       connect_info =
@@ -1541,6 +1591,30 @@ defmodule PortalAPI.Client.SocketTest do
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
   end
 
+  defp setup_device_trust(_context) do
+    Portal.Config.put_env_override(:portal, :mtls_external_url, "https://mtls.firezone.test/")
+
+    account = account_fixture()
+    enable_feature(:trust_anchors)
+    pki = pki()
+    trust_anchor_fixture(account: account, certs: [pki.ca_der])
+
+    actor = actor_fixture(account: account)
+    token = client_token_fixture(account: account, actor: actor)
+
+    %{account: account, actor: actor, pki: pki, token: encode_token(token)}
+  end
+
+  defp assert_invalid_x509_identity(certificate) do
+    connect_info =
+      build_connect_info(host: "mtls.firezone.test", client_cert: certificate)
+
+    assert capture_log(fn ->
+             assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                      {:error, :device_untrusted}
+           end) =~ "invalid_x509_identity"
+  end
+
   defp attested_connect_info(pki, token) do
     build_connect_info(
       token: token,
@@ -1550,33 +1624,31 @@ defmodule PortalAPI.Client.SocketTest do
   end
 
   defp x509_identity_cert(pki, account, actor) do
-    leaf(pki,
-      sans: [
-        {:uniformResourceIdentifier,
-         String.to_charlist("firezone://account-id/#{account.id}")},
-        {:uniformResourceIdentifier, String.to_charlist("firezone://email/#{actor.email}")},
-        {:uniformResourceIdentifier, ~c"firezone://serial/C02XK1ZGJGH5"}
-      ]
-    )
+    x509_authentication_cert(pki, [
+      "firezone://account-id/#{account.id}",
+      "firezone://email/#{actor.email}"
+    ])
   end
 
   defp x509_actor_id_cert(pki, account, actor, email \\ nil) do
-    email_sans =
-      if email do
-        [{:uniformResourceIdentifier, String.to_charlist("firezone://email/#{email}")}]
-      else
-        []
-      end
+    identity_uris = [
+      "firezone://account-id/#{account.id}",
+      "firezone://actor-id/#{actor.id}"
+    ]
+
+    identity_uris = if email, do: identity_uris ++ ["firezone://email/#{email}"], else: identity_uris
+
+    x509_authentication_cert(pki, identity_uris)
+  end
+
+  defp x509_authentication_cert(pki, identity_uris) do
+    identity_sans =
+      Enum.map(identity_uris, fn uri ->
+        {:uniformResourceIdentifier, String.to_charlist(uri)}
+      end)
 
     leaf(pki,
-      sans:
-        [
-          {:uniformResourceIdentifier,
-           String.to_charlist("firezone://account-id/#{account.id}")},
-          {:uniformResourceIdentifier, String.to_charlist("firezone://actor-id/#{actor.id}")}
-        ] ++
-          email_sans ++
-          [{:uniformResourceIdentifier, ~c"firezone://serial/C02XK1ZGJGH5"}]
+      sans: identity_sans ++ [{:uniformResourceIdentifier, ~c"firezone://serial/C02XK1ZGJGH5"}]
     )
   end
 end
