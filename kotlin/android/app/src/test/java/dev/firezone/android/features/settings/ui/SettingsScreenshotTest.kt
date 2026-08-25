@@ -79,6 +79,9 @@ class SettingsScreenshotTest {
     fun x509SettingsWithUnusableCertificate() = captureX509Page("x509-unusable", unusableCertificate)
 
     @Test
+    fun x509SettingsWithManagedCertificate() = captureX509Page("x509-managed", managedCertificate)
+
+    @Test
     fun logSettings() = captureSettingsPage("settings-logs", R.id.settingsLogs)
 
     private fun captureX509Page(
@@ -163,6 +166,10 @@ private val usableCertificate =
             ),
     )
 
+// The same certificate, handed down by an administrator and released by the KeyChain, which
+// leaves the user nothing to pick or clear.
+private val managedCertificate = usableCertificate.copy(isManaged = true)
+
 // No administrator handed a certificate down and the user picked none.
 private val noCertificate = X509SettingsViewModel.UiState()
 
@@ -187,15 +194,13 @@ private val unusableCertificate =
         isUsable = false,
     )
 
-// One certificate as the KeyChain and the Rust parser describe it, in the order the screen lists
-// their rows. Every value is pinned, so a capture only moves when the screen does.
+// One certificate as the Rust parser describes it, in the order the screen lists its rows.
+// Every value is pinned, so a capture only moves when the screen does.
 private fun certificateDetails(
     actorEmail: ClaimValue,
     unattestedNames: List<String>,
 ): List<DetailField> =
     buildList {
-        add(DetailField("KeyChain Alias", ClaimValue.Present(CERTIFICATE_ALIAS)))
-        add(DetailField("Certificates In Chain", ClaimValue.Present("2")))
         add(DetailField("Common Name", ClaimValue.Present("alice@example.com")))
         add(DetailField("Subject", ClaimValue.Present("CN=alice@example.com, O=Example Corp")))
         add(DetailField("Issuer", ClaimValue.Present("CN=Example Corp Device CA, O=Example Corp")))

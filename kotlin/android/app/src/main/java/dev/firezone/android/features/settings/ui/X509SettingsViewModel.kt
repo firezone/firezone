@@ -8,7 +8,6 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.Log
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.core.x509.LoadedX509Identity
 import dev.firezone.android.core.x509.X509Identity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -17,7 +16,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import uniffi.x509claims.ClaimValue
 import uniffi.x509claims.DetailField
 import javax.inject.Inject
 
@@ -69,7 +67,7 @@ internal class X509SettingsViewModel
                             isLoading = false,
                             isUsable = identity != null,
                             unusableSummary = identity?.unusableSummary,
-                            details = identity?.detailFields().orEmpty(),
+                            details = identity?.certificate?.detailFields.orEmpty(),
                         )
                 }
         }
@@ -115,14 +113,3 @@ internal class X509SettingsViewModel
             private const val TAG = "X509SettingsViewModel"
         }
     }
-
-/**
- * The certificate as the settings screen lists it.
- *
- * The rows come from the Rust parser; this only prepends what the KeyChain itself knows.
- */
-private fun LoadedX509Identity.detailFields(): List<DetailField> =
-    listOf(
-        DetailField("KeyChain Alias", ClaimValue.Present(alias)),
-        DetailField("Certificates In Chain", ClaimValue.Present(certificateCount.toString())),
-    ) + certificate?.detailFields.orEmpty()
