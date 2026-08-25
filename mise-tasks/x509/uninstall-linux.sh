@@ -32,10 +32,20 @@ command -v softhsm2-util >/dev/null || {
     exit 1
 }
 
-if [ "$(id -u)" -ne 0 ] && ! command -v sudo >/dev/null; then
-    echo "error: removing the system SoftHSM token and ${PIN_PATH} needs root, and sudo is not" >&2
-    echo "installed; run this task as root instead" >&2
-    exit 1
+if [ "$(id -u)" -ne 0 ]; then
+    if ! command -v sudo >/dev/null; then
+        echo "error: removing the system SoftHSM token and ${PIN_PATH} needs root, and sudo is" >&2
+        echo "not installed; run this task as root instead" >&2
+        exit 1
+    fi
+
+    # Elevating now means a refusal is its own error, rather than every check below reading
+    # as "there was nothing there".
+    if ! sudo true; then
+        echo "error: sudo could not elevate, and removing the system SoftHSM token and" >&2
+        echo "${PIN_PATH} needs root" >&2
+        exit 1
+    fi
 fi
 
 # SoftHSM prefers a per-user configuration over the system one, and `sudo` decides for itself
@@ -43,11 +53,20 @@ fi
 system_softhsm=(env "SOFTHSM2_CONF=${SOFTHSM_CONF}")
 
 echo "==> Deleting the ${TOKEN_LABEL} token..."
-# A machine that never ran the install task has neither of these, and saying so beats failing.
-if as_root "${system_softhsm[@]}" softhsm2-util --delete-token --token "$TOKEN_LABEL" >/dev/null 2>&1; then
+# A machine that never ran the install task has no token, which is not a failure. Anything
+# else softhsm2-util reports is one, and it says so on stderr rather than in its exit status.
+delete_status=0
+delete_output="$(as_root "${system_softhsm[@]}" softhsm2-util --delete-token \
+    --token "$TOKEN_LABEL" 2>&1)" || delete_status=$?
+
+if [ "$delete_status" -eq 0 ]; then
     echo "    Deleted."
-else
+elif printf '%s' "$delete_output" | grep -qi "could not be found\|not found"; then
     echo "    No ${TOKEN_LABEL} token was in ${SOFTHSM_CONF}'s store."
+else
+    echo "error: could not delete the ${TOKEN_LABEL} token:" >&2
+    printf '%s\n' "$delete_output" >&2
+    exit 1
 fi
 
 echo "==> Removing ${PIN_PATH}..."

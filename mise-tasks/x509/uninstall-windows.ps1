@@ -1,6 +1,5 @@
 #!/usr/bin/env pwsh
 #MISE description="Remove the test X.509 client certificate from the Windows certificate store"
-#USAGE flag "--alias <alias>" help="Name `//:x509:gen-certificate` stored the key under [default: firezone-client]"
 
 $ErrorActionPreference = 'Stop'
 
@@ -17,9 +16,10 @@ if (-not $onWindows) {
     exit 1
 }
 
-# `//:x509:gen-certificate` issues the certificate under this common name, which is how the
-# Client finds it and how this task knows which certificates it put there.
-$subjectCn = 'dev.firezone.device-trust'
+# `//:x509:gen-certificate` issues the certificate under the first of these common names and
+# `//:x509:create-ca` the CA under the second. `//:x509:install-windows` imports a PKCS#12 that
+# carries both, so both are in the store and both come out again.
+$commonNames = @('dev.firezone.device-trust', 'Firezone Test CA')
 
 # The install task writes into the machine store, so that is where the removal happens, and
 # emptying it needs the same elevation filling it did.
@@ -31,13 +31,18 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     exit 1
 }
 
-Write-Output "==> Removing certificates for $subjectCn from Cert:\LocalMachine\My..."
+Write-Output ("==> Removing certificates for " + ($commonNames -join ', ') + " from Cert:\LocalMachine\My...")
 
-# Matched on the subject rather than a thumbprint, because a machine that ran the install task
-# more than once holds one certificate per run and all of them are throwaway test material.
+# Matched on the common name rather than a thumbprint, because a machine that ran the install
+# task more than once holds one certificate per run and all of them are throwaway test material.
+# `GetNameInfo` reads the CN out of the subject, so a certificate whose subject merely contains
+# one of these names somewhere is left alone: this task deletes private keys as an administrator.
 $certificates = @(
-    Get-ChildItem -Path 'Cert:\LocalMachine\My' |
-        Where-Object { $_.Subject -match [regex]::Escape($subjectCn) }
+    Get-ChildItem -Path 'Cert:\LocalMachine\My' | Where-Object {
+        $commonName = $_.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+
+        $commonNames -contains $commonName
+    }
 )
 
 if ($certificates.Count -eq 0) {
