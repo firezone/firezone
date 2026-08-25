@@ -22,7 +22,9 @@ struct GrantVPNView: View {
         alignment: .center,
         content: {
           Spacer()
-          LogoText()
+          Image("LogoText")
+            .resizable()
+            .scaledToFit()
             .frame(maxWidth: 320)
             .padding(.horizontal, 10)
           Spacer()
@@ -56,7 +58,9 @@ struct GrantVPNView: View {
         alignment: .center,
         content: {
           Spacer()
-          LogoText()
+          Image("LogoText")
+            .resizable()
+            .scaledToFit()
             .frame(maxWidth: 200)
             .padding(.horizontal, 10)
           Spacer()

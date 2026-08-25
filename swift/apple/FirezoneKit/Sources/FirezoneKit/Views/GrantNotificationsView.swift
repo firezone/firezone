@@ -18,7 +18,9 @@ struct GrantNotificationsView: View {
       alignment: .center,
       content: {
         Spacer()
-        LogoText()
+        Image("LogoText")
+          .resizable()
+          .scaledToFit()
           .frame(maxWidth: 320)
           .padding(.horizontal, 10)
         Spacer()
