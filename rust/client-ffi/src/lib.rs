@@ -562,7 +562,7 @@ fn connect(
         .filter(|dir| !dir.is_empty())
         .map(PathBuf::from);
 
-    init_logging(&PathBuf::from(log_dir), log_filter, flow_logs_dir.clone())?;
+    install_logger(&PathBuf::from(log_dir), log_filter, flow_logs_dir.clone())?;
 
     tunnel_bypass_resolver::configure(tcp_socket_factory.clone(), udp_socket_factory.clone());
 
@@ -661,7 +661,39 @@ static LOGGER_STATE: OnceLock<(
     Option<flow_log_writer::Guard>,
 )> = OnceLock::new();
 
-fn init_logging(log_dir: &Path, log_filter: String, flow_logs_dir: Option<PathBuf>) -> Result<()> {
+/// Installs the logger without starting a session.
+///
+/// [`connect`] installs it as part of session setup, but the network extension
+/// also runs without a session: a cycle start wakes it only to drain flow logs.
+/// Until this is called, those paths have no subscriber and every event they
+/// emit is dropped.
+///
+/// A later call re-applies `log_filter` to the running subscriber, so calling
+/// this before connecting costs the session nothing. The directories are not
+/// re-applied: they are whichever the first call passed, so callers must agree
+/// on them.
+#[uniffi::export]
+pub fn init_logging(
+    log_dir: String,
+    log_filter: String,
+    flow_logs_dir: Option<String>,
+) -> Result<(), ConnlibError> {
+    install_logger(
+        &PathBuf::from(log_dir),
+        log_filter,
+        flow_logs_dir
+            .filter(|dir| !dir.is_empty())
+            .map(PathBuf::from),
+    )?;
+
+    Ok(())
+}
+
+fn install_logger(
+    log_dir: &Path,
+    log_filter: String,
+    flow_logs_dir: Option<PathBuf>,
+) -> Result<()> {
     if let Some((_, reload_handle, _)) = LOGGER_STATE.get() {
         reload_handle
             .reload(&log_filter)
