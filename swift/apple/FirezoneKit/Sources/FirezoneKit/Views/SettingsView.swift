@@ -121,7 +121,7 @@ public struct SettingsView: View {
                 .tag(Tab.advanced)
               certificateTab
                 .tabItem {
-                  Image(systemName: "checkmark.seal")
+                  Image(systemName: "rosette")
                   Text("X.509")
                 }
                 .tag(Tab.x509)
