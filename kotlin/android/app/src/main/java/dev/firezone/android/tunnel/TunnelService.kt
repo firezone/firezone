@@ -53,6 +53,7 @@ import uniffi.connlib.Event
 import uniffi.connlib.ProtectSocket
 import uniffi.connlib.Session
 import uniffi.connlib.SessionInterface
+import uniffi.connlib.configureLogger
 import uniffi.connlib.enforceLogSizeCap
 import uniffi.connlib.isLogStreamingActive
 import uniffi.connlib.logCleanupDefaultIntervalSecs
@@ -330,6 +331,12 @@ class TunnelService : VpnService() {
                     Telemetry.setFirezoneId(deviceIdValue)
                     Telemetry.setAccountSlug(config.accountSlug)
 
+                    configureLogger(
+                        logDir(this@TunnelService),
+                        config.logFilter,
+                        flowLogsDir(this@TunnelService),
+                    )
+
                     Session
                         .newAndroid(
                             config =
@@ -339,9 +346,6 @@ class TunnelService : VpnService() {
                                     accountSlug = config.accountSlug,
                                     deviceId = deviceIdValue,
                                     deviceName = getDeviceName(),
-                                    logDir = logDir(this@TunnelService),
-                                    logFilter = config.logFilter,
-                                    flowLogsDir = flowLogsDir(this@TunnelService),
                                     isInternetResourceActive = resourceState.isEnabled(),
                                     deviceInfo = deviceInfo,
                                 ),
@@ -608,7 +612,11 @@ class TunnelService : VpnService() {
                             }
 
                             is TunnelCommand.SetLogDirectives -> {
-                                session.setLogDirectives(command.directives)
+                                configureLogger(
+                                    logDir(this@TunnelService),
+                                    command.directives,
+                                    flowLogsDir(this@TunnelService),
+                                )
                             }
 
                             is TunnelCommand.SetTun -> {

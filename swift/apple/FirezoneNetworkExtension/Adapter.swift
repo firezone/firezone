@@ -172,8 +172,13 @@ actor Adapter {
       }
     #endif
 
-    let logDir = SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone"
-    let flowLogsDir = SharedAccess.flowLogsFolderURL?.path
+    // Applies the configured filter to the logger the extension installed at
+    // startup; connlib reads the flow-log spool back off it when connecting.
+    try configureLogger(
+      logDir: SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone",
+      logFilter: logFilter,
+      flowLogsDir: SharedAccess.flowLogsFolderURL?.path
+    )
 
     #if os(iOS)
       let deviceInfo = DeviceInfo(
@@ -200,9 +205,6 @@ actor Adapter {
         deviceId: deviceId,
         accountSlug: accountSlug,
         deviceName: deviceName,
-        logDir: logDir,
-        logFilter: logFilter,
-        flowLogsDir: flowLogsDir,
         deviceInfo: deviceInfo,
         isInternetResourceActive: internetResourceEnabled
       )
