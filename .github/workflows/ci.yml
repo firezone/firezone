@@ -163,6 +163,9 @@ jobs:
 
   required-check:
     name: required-check
+    # `commit-screenshots` is waited for rather than merely inspected: it starts off the same
+    # jobs this one does, so without the edge the two race and a gallery that failed to push
+    # is read as a job still running, which is not a failure.
     needs:
       [
         kotlin,
@@ -176,6 +179,7 @@ jobs:
         integration-tests,
         compatibility-tests,
         nix,
+        commit-screenshots,
       ]
     if: always()
     runs-on: ubuntu-latest
