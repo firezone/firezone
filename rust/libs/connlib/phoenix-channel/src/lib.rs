@@ -193,6 +193,7 @@ const CERTIFICATE_REJECTION_CODES: &[&str] = &[
     "device_untrusted",
     "certificate_revoked",
     "device_identity_conflict",
+    "x509_user_not_authorized",
 ];
 
 #[derive(Debug, thiserror::Error)]
