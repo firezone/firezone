@@ -101,7 +101,8 @@ extension XCTestCase {
   /// image itself, and the sizes separate the two.
   private func report(_ fileName: String, heldStill: Bool, outOf sizes: [Int]) {
     let outcome = heldStill ? "held still" : "never held still"
+    let seen = Set(sizes).sorted()
 
-    print("settle: \(fileName) \(outcome) across \(sizes.count) captures, sizes \(Set(sizes).sorted())")
+    print("settle: \(fileName) \(outcome) across \(sizes.count) captures, sizes \(seen)")
   }
 }
