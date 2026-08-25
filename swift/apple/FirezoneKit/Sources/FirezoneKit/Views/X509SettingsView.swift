@@ -36,33 +36,15 @@ struct X509SettingsView: View {
           }
 
         case .notConfigured:
-          Section {
-            Text("This device has no Firezone client certificate.")
-              .foregroundStyle(.secondary)
-          } header: {
-            explainerHeader
-          }
+          Section { emptyCard(error: nil) }
 
         case .failed(let message):
-          Section {
-            notice("The client certificate could not be read", message)
-          } header: {
-            explainerHeader
-          }
+          Section { emptyCard(error: message) }
 
         case .loaded(let summary, let keyProblem):
+          Section { card(summary, keyProblem: keyProblem) }
+
           Section {
-            if let unusableSummary = summary.unusableSummary {
-              notice(
-                "Firezone will not present this certificate",
-                "It cannot be used to prove this device is enrolled: \(unusableSummary)."
-              )
-            }
-
-            if let keyProblem {
-              notice("Firezone cannot use the certificate's private key", keyProblem)
-            }
-
             ForEach(summary.fields, id: \.self) { field in
               VStack(alignment: .leading, spacing: 2) {
                 Text(field.label)
@@ -71,47 +53,29 @@ struct X509SettingsView: View {
                 claimValue(field.value)
               }
             }
-          } header: {
-            explainerHeader
           }
         }
       }
       .onAppear { Task { await reload() } }
     #else
       VStack(alignment: .leading, spacing: 12) {
-        if let explainer {
-          Text(explainer)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        }
-
         switch loadState {
         case .loading:
           ProgressView()
 
         case .notConfigured:
-          Text("This device has no Firezone client certificate.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+          emptyCard(error: nil)
 
         case .failed(let message):
-          notice("The client certificate could not be read", message)
+          emptyCard(error: message)
 
         case .loaded(let summary, let keyProblem):
-          details(summary, keyProblem: keyProblem)
+          card(summary, keyProblem: keyProblem)
+          details(summary)
         }
       }
       .onAppear { Task { await reload() } }
     #endif
-  }
-
-  /// The explainer leads the screen; on iOS that slot is the section header.
-  @ViewBuilder
-  private var explainerHeader: some View {
-    if let explainer {
-      Text(explainer)
-        .textCase(nil)
-    }
   }
 
   /// One line on what the certificate is for, absent while the keychain is still being read.
@@ -129,6 +93,104 @@ struct X509SettingsView: View {
     }
   }
 
+  /// Identifies the certificate the way a keychain viewer does, before any of the detail.
+  private func card(_ summary: X509CertificateSummary, keyProblem: String?) -> some View {
+    cardLayout(
+      title: title(of: summary),
+      subtitle: value("Issuer", of: summary).map { "Issued by \($0)" },
+      validity: value("Not After", of: summary).map { "Valid until \($0)" }
+    ) {
+      if let unusableSummary = summary.unusableSummary {
+        notice(
+          "Firezone will not present this certificate",
+          "It cannot be used to prove this device is enrolled: \(unusableSummary)."
+        )
+      }
+
+      if let keyProblem {
+        notice("Firezone cannot use the certificate's private key", keyProblem)
+      }
+    }
+  }
+
+  /// The card when there is nothing to identify: no certificate, or one we could not read.
+  private func emptyCard(error: String?) -> some View {
+    cardLayout(title: "No client certificate") {
+      if let error {
+        notice("The client certificate could not be read", error)
+      }
+    }
+  }
+
+  private func cardLayout<Warning: View>(
+    title: String,
+    subtitle: String? = nil,
+    validity: String? = nil,
+    @ViewBuilder warning: () -> Warning
+  ) -> some View {
+    let content = VStack(alignment: .leading, spacing: 10) {
+      HStack(alignment: .top, spacing: 12) {
+        Image(systemName: "rosette")
+          .font(.title2)
+          .foregroundStyle(.secondary)
+
+        VStack(alignment: .leading, spacing: 2) {
+          Text(title)
+            .font(.headline)
+            .textSelection(.enabled)
+
+          if let subtitle {
+            Text(subtitle)
+              .font(.subheadline)
+              .foregroundStyle(.secondary)
+              .textSelection(.enabled)
+          }
+
+          if let validity {
+            Text(validity)
+              .font(.subheadline)
+              .foregroundStyle(.secondary)
+              .textSelection(.enabled)
+          }
+        }
+      }
+
+      if let explainer {
+        Text(explainer)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      warning()
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+
+    #if os(iOS)
+      // The section the card sits in already draws its background.
+      return content
+    #else
+      return content.padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+    #endif
+  }
+
+  /// What the card leads with, falling back until something names the certificate.
+  private func title(of summary: X509CertificateSummary) -> String {
+    value("Common Name", of: summary) ?? value("Subject", of: summary) ?? "Client certificate"
+  }
+
+  /// The value of one of the parser's rows, `nil` unless the certificate carries it.
+  ///
+  /// Rows are looked up by the label the parser gives them.
+  private func value(_ label: String, of summary: X509CertificateSummary) -> String? {
+    guard let field = summary.fields.first(where: { $0.label == label }),
+      case .present(let value) = field.value
+    else {
+      return nil
+    }
+
+    return value
+  }
+
   /// How the screen says that something is wrong with the certificate.
   private func notice(_ title: String, _ message: String) -> some View {
     VStack(alignment: .leading, spacing: 6) {
@@ -143,28 +205,15 @@ struct X509SettingsView: View {
     }
   }
 
-  private func details(_ summary: X509CertificateSummary, keyProblem: String?) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      if let unusableSummary = summary.unusableSummary {
-        notice(
-          "Firezone will not present this certificate",
-          "It cannot be used to prove this device is enrolled: \(unusableSummary)."
-        )
-      }
-
-      if let keyProblem {
-        notice("Firezone cannot use the certificate's private key", keyProblem)
-      }
-
-      Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
-        ForEach(summary.fields, id: \.self) { field in
-          GridRow {
-            Text(field.label)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-            claimValue(field.value)
-              .frame(maxWidth: .infinity, alignment: .leading)
-          }
+  private func details(_ summary: X509CertificateSummary) -> some View {
+    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
+      ForEach(summary.fields, id: \.self) { field in
+        GridRow {
+          Text(field.label)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          claimValue(field.value)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
       }
     }
