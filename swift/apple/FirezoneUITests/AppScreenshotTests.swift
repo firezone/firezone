@@ -41,7 +41,7 @@
     func testGrantVPN() throws {
       for appearance in Appearance.allCases {
         let app = launchApp(scenario: "grant-vpn", appearance: appearance)
-        defer { app.terminate() }
+        defer { endApp(app) }
 
         let window = try openWindow(named: "main", title: Self.mainWindowTitle, in: app)
         capture(window, as: "grant-vpn", in: appearance)
@@ -53,7 +53,7 @@
     func testFirstTime() throws {
       for appearance in Appearance.allCases {
         let app = launchApp(scenario: "welcome", appearance: appearance)
-        defer { app.terminate() }
+        defer { endApp(app) }
 
         let window = try openWindow(named: "main", title: Self.mainWindowTitle, in: app)
         capture(window, as: "first-time", in: appearance)
@@ -63,7 +63,7 @@
     func testSettings() throws {
       for appearance in Appearance.allCases {
         let app = launchApp(scenario: "connected", appearance: appearance)
-        defer { app.terminate() }
+        defer { endApp(app) }
 
         let window = try openWindow(named: "settings", title: Self.settingsWindowTitle, in: app)
 
@@ -96,6 +96,18 @@
       return app
     }
 
+    /// Ends the app under test and blocks until its process is gone.
+    ///
+    /// `XCUIApplication.terminate()` returns before the process exits, and the app
+    /// defers its own termination until it has stopped the session, so the next
+    /// launch would otherwise overlap a copy still on its way out. Two processes
+    /// under one bundle identifier put both their windows in the element tree, and
+    /// the one behind shows through the corners of the one being photographed.
+    private func endApp(_ app: XCUIApplication) {
+      app.terminate()
+      waitForNoRunningInstance()
+    }
+
     /// Blocks until no process carrying the app's bundle identifier is left,
     /// ending any that outstay their test.
     ///
@@ -107,7 +119,8 @@
     /// disappear or that belongs to the wrong process.
     private func waitForNoRunningInstance() {
       let deadline = Date().addingTimeInterval(30)
-      let askUntil = Date().addingTimeInterval(10)
+      // Short, because the caller has already asked the app to quit.
+      let askUntil = Date().addingTimeInterval(3)
 
       while Date() < deadline {
         let running = runningInstances()
