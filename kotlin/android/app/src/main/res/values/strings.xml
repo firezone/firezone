@@ -27,7 +27,6 @@
 	<string name="clear_log_directory">Clear Log Directory</string>
 
 	<!-- Client Certificate -->
-	<string name="x509_claims_title">Certificate</string>
 	<string name="x509_explainer_present">Firezone uses this certificate to identify this device.</string>
 	<string name="x509_explainer_absent">Firezone did not find a certificate to identify this device.</string>
 	<string name="x509_select_certificate">Select Certificate</string>

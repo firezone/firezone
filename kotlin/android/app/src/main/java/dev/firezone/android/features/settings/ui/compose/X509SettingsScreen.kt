@@ -51,11 +51,6 @@ internal fun X509SettingsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            text = stringResource(R.string.x509_claims_title),
-            style = MaterialTheme.typography.titleLarge,
-        )
-
         // One line on what the certificate is for, absent while the KeyChain is still being
         // read. The wording is shared across the clients.
         val explainer =
