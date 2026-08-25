@@ -9,14 +9,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,23 +53,6 @@ internal fun X509SettingsScreen(
     ) {
         CertificateCard(state)
 
-        // A managed alias the KeyChain will not release is the personally-owned case: only the user
-        // can let the app have that key, so the chooser stays reachable even when the administrator
-        // picked the alias.
-        if (!state.isManaged || (state.alias != null && !state.isLoading && !state.isUsable)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onSelectCertificate) {
-                    Text(stringResource(R.string.x509_select_certificate))
-                }
-
-                if (!state.isManaged && state.alias != null) {
-                    TextButton(onClick = onForgetCertificate) {
-                        Text(stringResource(R.string.x509_forget_certificate))
-                    }
-                }
-            }
-        }
-
         Text(
             text =
                 if (state.alias == null) {
@@ -107,6 +89,24 @@ internal fun X509SettingsScreen(
         state.details.forEach { field ->
             HorizontalDivider()
             DetailField(field)
+        }
+
+        // An alias whose key the KeyChain withholds is the personally-owned case: the administrator
+        // names the certificate, yet only the user can release the key behind it, so the chooser
+        // stays reachable there as well.
+        val keyIsWithheld = state.alias != null && !state.isLoading && !state.isUsable
+
+        if (keyIsWithheld || (!state.isManaged && state.alias == null)) {
+            OutlinedButton(onClick = onSelectCertificate, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.x509_select_certificate))
+            }
+        }
+
+        // An administrator's alias is not the user's to clear.
+        if (!state.isManaged && state.alias != null) {
+            OutlinedButton(onClick = onForgetCertificate, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.x509_forget_certificate))
+            }
         }
     }
 }
@@ -316,7 +316,6 @@ private fun X509SettingsScreenPreview() {
                     isUsable = true,
                     details =
                         listOf(
-                            DetailField("KeyChain Alias", ClaimValue.Present("firezone-device")),
                             DetailField("Common Name", ClaimValue.Present("alice@example.com")),
                             DetailField("Subject", ClaimValue.Present("CN=alice@example.com")),
                             DetailField("Issuer", ClaimValue.Present("Example Corp Device CA")),

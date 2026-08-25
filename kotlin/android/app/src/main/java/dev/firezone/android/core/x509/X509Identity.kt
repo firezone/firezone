@@ -30,7 +30,6 @@ class X509IdentityException(
 data class LoadedX509Identity(
     val alias: String,
     val tlsIdentity: ClientTlsIdentity,
-    val certificateCount: Int,
     val certificate: ParsedCertificate?,
 ) {
     /** The portal user this certificate authenticates, if it names a complete one. */
@@ -96,7 +95,6 @@ class X509Identity
             return LoadedX509Identity(
                 alias = alias,
                 tlsIdentity = tlsIdentity,
-                certificateCount = chain.size,
                 certificate = certificate,
             )
         }
