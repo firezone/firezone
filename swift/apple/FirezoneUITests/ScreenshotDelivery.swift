@@ -63,7 +63,7 @@ extension XCTestCase {
     var sizes = [previousPNG.count]
     var matches = 1
 
-    for capture in 1...attempts {
+    for _ in 1...attempts {
       Thread.sleep(forTimeInterval: 1.0)
 
       let current = element.screenshot()
@@ -74,7 +74,7 @@ extension XCTestCase {
         matches += 1
 
         if matches >= required {
-          report(fileName, heldStillAfter: capture, outOf: sizes)
+          report(fileName, heldStill: true, outOf: sizes)
 
           return current
         }
@@ -86,7 +86,7 @@ extension XCTestCase {
       previousPNG = currentPNG
     }
 
-    report(fileName, heldStillAfter: nil, outOf: sizes)
+    report(fileName, heldStill: false, outOf: sizes)
     XCTFail("\(fileName) never held still, across \(attempts) captures")
 
     return previous
@@ -99,9 +99,9 @@ extension XCTestCase {
   /// amount of watching can settle. One that only just reaches agreement is a
   /// screen the next run may well catch mid-motion. Neither is visible in the
   /// image itself, and the sizes separate the two.
-  private func report(_ fileName: String, heldStillAfter captures: Int?, outOf sizes: [Int]) {
-    let outcome = captures.map { "held still after \($0)" } ?? "never held still"
+  private func report(_ fileName: String, heldStill: Bool, outOf sizes: [Int]) {
+    let outcome = heldStill ? "held still" : "never held still"
 
-    print("settle: \(fileName) \(outcome) of \(sizes.count) captures, sizes \(Set(sizes).sorted())")
+    print("settle: \(fileName) \(outcome) across \(sizes.count) captures, sizes \(Set(sizes).sorted())")
   }
 }
