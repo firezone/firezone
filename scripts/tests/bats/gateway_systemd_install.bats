@@ -167,6 +167,18 @@ refute_file_contains() {
     [ "$(file_mode "$(token_file)")" = "400" ]
 }
 
+@test "gateway-systemd-install: unit provisions the state directory" {
+    run env \
+        FIREZONE_ID="test-gateway-id" \
+        FIREZONE_TOKEN="test-secret-token" \
+        "$SCRIPT"
+
+    [ "$status" -eq 0 ]
+
+    grep -q '^StateDirectory=firezone$' "$(service_file)"
+    grep -q '^StateDirectoryMode=0700$' "$(service_file)"
+}
+
 @test "gateway-systemd-install: generated init script uses hardcoded artifact URL and verifies checksums" {
     run env \
         FIREZONE_ID="test-gateway-id" \
