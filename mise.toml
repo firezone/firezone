@@ -12,6 +12,7 @@ config_roots = [
     "elixir",
     "kotlin/android",
     "rust",
+    "rust/gui-client",
     "rust/tests/fuzz",
     "swift/apple",
 ]

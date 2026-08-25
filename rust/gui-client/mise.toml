@@ -1,0 +1,35 @@
+# Firezone GUI client tasks
+#
+# Usage: mise run <task> (from this directory) or mise run //rust/gui-client:<task> (from repo root)
+
+[tasks.dev]
+description = "Run the GUI client in dev against a dev Tunnel service"
+raw = true
+run = "cargo tauri dev -- -- --skip-peer-verification"
+
+[tasks.dev-mock]
+description = "Run the GUI client for rapid UI iteration with an in-process mock Tunnel service (--mock-tunnel) and the portal decoupled (--skip-portal-auth). Self-contained: no root, no separate process."
+raw = true
+run = "cargo tauri dev -- -- --skip-portal-auth --mock-tunnel"
+
+# Build and run are separate commands so that only the service is elevated:
+# `sudo cargo` would leave root-owned artifacts in `target/`, and `sudo mise`
+# would resolve the whole toolchain as root.
+#
+# `-g firezone-client` mirrors `Group=` in the systemd unit: the IPC socket is
+# 0660 and takes the group of whoever created it, so a `root:root` service is
+# unreachable for the unprivileged GUI. `-u root` is needed alongside it because
+# `sudo` runs as the invoking user when only `-g` is given.
+#
+# Windows cannot elevate a running process, so it goes through Sudo for Windows.
+[tasks.tunnel]
+description = "Run the Tunnel service interactively for local GUI dev. Elevates only the service binary, so it can be started from a normal shell. `--skip-peer-verification` skips the peer check so it accepts a non-installed GUI build."
+raw = true
+run = [
+    "cargo build -p firezone-gui-client --bin firezone-client-tunnel",
+    "sudo -E -u root -g firezone-client ../target/debug/firezone-client-tunnel run-interactive --skip-peer-verification",
+]
+run_windows = [
+    "cargo build -p firezone-gui-client --bin firezone-client-tunnel",
+    "sudo ..\\target\\debug\\firezone-client-tunnel.exe run-interactive --skip-peer-verification",
+]
