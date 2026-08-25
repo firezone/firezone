@@ -34,8 +34,9 @@ use x509_claims::{ParsedCertificate, parse_certificate};
 use x509_credential::SigningError;
 
 use crate::{
-    CandidateCertificate, DetailField, DetailSection, Identity, Status, invalid_field,
-    selected_certificate, sign, unusable_reasons,
+    CandidateCertificate, DetailField, DetailSection, Identity, Problem, Status, UnreadableStore,
+    UnusableCause, UnusableCertificate, failed_field, join, selected_certificate, sign,
+    unusable_certificates,
 };
 
 /// The store MDM-provisioned identities land in.
@@ -50,7 +51,7 @@ pub(crate) fn status(subject_cn: &str) -> Result<Status> {
     if certificates.is_empty() && !store_errors.is_empty() {
         bail!(
             "The Windows certificate store could not be read: {}",
-            store_errors.join("; ")
+            join(&store_errors, "; ")
         );
     }
 
@@ -72,29 +73,24 @@ pub(crate) fn status(subject_cn: &str) -> Result<Status> {
         .chain(unused_sections)
         .collect();
 
-    let certificate_warning = match (selected, certificates.len()) {
-        (None, 0) => Some(format!(
-            "No X.509 certificate with subject CN '{subject_cn}' is in the Windows certificate stores."
-        )),
-        (None, _) => Some(format!(
-            "Matching certificates are in the Windows certificate store, but none is usable as a client identity: {}",
-            unusable_reasons(&certificates).join("; ")
-        )),
+    let certificate_problem = match (selected, certificates.len()) {
+        (None, 0) => Some(Problem::NoWindowsCertificate {
+            subject_cn: subject_cn.to_owned(),
+        }),
+        (None, _) => Some(Problem::NoUsableWindowsCertificate {
+            certificates: unusable_certificates(&certificates),
+        }),
         (Some(_), _) => None,
     };
-    let store_warning = (!store_errors.is_empty()).then(|| {
-        format!(
-            "Some Windows certificate stores could not be read: {}",
-            store_errors.join("; ")
-        )
+    let store_problem = (!store_errors.is_empty()).then_some(Problem::UnreadableWindowsStores {
+        stores: store_errors,
     });
-    let warning = match (certificate_warning, store_warning) {
-        (Some(certificate), Some(store)) => Some(format!("{certificate} {store}")),
-        (Some(certificate), None) => Some(certificate),
-        (None, store) => store,
-    };
+    let problems = certificate_problem
+        .into_iter()
+        .chain(store_problem)
+        .collect();
 
-    Ok(Status { warning, sections })
+    Ok(Status { problems, sections })
 }
 
 pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
@@ -102,11 +98,11 @@ pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
     if certificates.is_empty() && !store_errors.is_empty() {
         bail!(
             "The Windows certificate store could not be read: {}",
-            store_errors.join("; ")
+            join(&store_errors, "; ")
         );
     }
 
-    let unusable = unusable_reasons(&certificates);
+    let unusable = unusable_certificates(&certificates);
 
     let Some(index) = selected_certificate(&certificates) else {
         // Only a store that holds nothing for us is the ordinary no-certificate case. Skipping a
@@ -115,7 +111,7 @@ pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
         if !unusable.is_empty() {
             bail!(
                 "The Windows certificate store holds no usable Firezone client identity: {}",
-                unusable.join("; ")
+                join(&unusable, "; ")
             );
         }
 
@@ -362,10 +358,10 @@ impl Certificate {
             .collect::<Vec<_>>();
 
         if let Some(error) = &self.key_error {
-            fields.push(invalid_field("Private Key Error", error));
+            fields.push(failed_field("Private Key Error", error));
         }
         if let Some(error) = &self.chain_error {
-            fields.push(invalid_field("Certificate Chain Error", error));
+            fields.push(failed_field("Certificate Chain Error", error));
         }
 
         fields
@@ -381,19 +377,27 @@ impl CandidateCertificate for Certificate {
         self.metadata.not_before_timestamp
     }
 
-    fn unusable_reason(&self) -> String {
-        let fingerprint = &self.metadata.fingerprint;
+    fn unusable(&self) -> UnusableCertificate {
+        let fingerprint = self.metadata.fingerprint.clone();
+        let reasons = self.metadata.unusable_reasons();
 
-        let Some(summary) = self.metadata.unusable_summary() else {
+        if reasons.is_empty() {
             // CNG refuses a key held by a legacy CSP rather than a KSP, which is what an older
             // certificate template provisions.
-            return match &self.key_error {
-                Some(error) => format!("{fingerprint} has a private key CNG will not use: {error}"),
-                None => format!("{fingerprint} has no usable private key"),
+            let cause = match &self.key_error {
+                Some(error) => UnusableCause::WindowsKeyRefused {
+                    error: error.clone(),
+                },
+                None => UnusableCause::WindowsKeyMissing,
             };
-        };
 
-        format!("{fingerprint} is unusable: {summary}")
+            return UnusableCertificate { fingerprint, cause };
+        }
+
+        UnusableCertificate {
+            fingerprint,
+            cause: UnusableCause::FailsRules { reasons },
+        }
     }
 }
 
@@ -405,7 +409,7 @@ impl Drop for Certificate {
     }
 }
 
-fn enumerate_matching(subject_cn: &str) -> (Vec<Certificate>, Vec<String>) {
+fn enumerate_matching(subject_cn: &str) -> (Vec<Certificate>, Vec<UnreadableStore>) {
     let mut certificates = Vec::new();
     let mut errors = Vec::new();
 
@@ -419,7 +423,10 @@ fn enumerate_matching(subject_cn: &str) -> (Vec<Certificate>, Vec<String>) {
                 ?error,
                 "Failed to read Windows certificate store"
             );
-            errors.push(format!("{label}: {error:#}"));
+            errors.push(UnreadableStore {
+                store: label.to_owned(),
+                error: format!("{error:#}"),
+            });
         }
     }
 
