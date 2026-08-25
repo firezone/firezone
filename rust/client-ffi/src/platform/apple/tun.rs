@@ -314,7 +314,13 @@ fn search_for_tun_fd() -> io::Result<RawFd> {
         }
     }
 
-    Err(get_last_error())
+    // Not `get_last_error`: every miss above leaves `errno` set by the probe that
+    // rejected the descriptor, so the final one describes whatever fd the scan
+    // happened to end on rather than the search itself.
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        "No utun file descriptor found",
+    ))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
