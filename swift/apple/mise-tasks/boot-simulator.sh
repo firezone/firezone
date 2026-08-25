@@ -47,6 +47,17 @@ xcrun simctl spawn "${udid}" defaults write \
 xcrun simctl spawn "${udid}" defaults write \
   com.apple.Accessibility DarkerSystemColorsEnabled -bool true
 
+# A banner drawn over the app is photographed with it, and the gallery carried a
+# "Ready for Apple Intelligence" notice from Settings across the navigation bar.
+# Do Not Disturb keeps banners off the screen; the writes are best effort because
+# the keys behind it have moved between releases, and the capture waits a banner
+# out on its own if they no longer land.
+xcrun simctl spawn "${udid}" defaults write com.apple.springboard SBEnableDoNotDisturb -bool true \
+  2>/dev/null || echo "::warning::Could not turn on Do Not Disturb via SpringBoard"
+xcrun simctl spawn "${udid}" defaults write com.apple.donotdisturb.DoNotDisturbSettings \
+  dndThroughUnlockEnabled -bool true \
+  2>/dev/null || echo "::warning::Could not turn on Do Not Disturb via its settings"
+
 echo "${udid}"
 
 if [ -n "${GITHUB_ENV:-}" ]; then
