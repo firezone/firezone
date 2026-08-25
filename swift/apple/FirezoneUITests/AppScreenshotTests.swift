@@ -40,6 +40,16 @@
     /// the outermost three pixels of a picture that is nine hundred wide.
     private static let windowEdgeBleed = 3
 
+    /// Where the pointer waits while a window is photographed.
+    ///
+    /// A control under the pointer draws itself hovered, and whether that has
+    /// arrived by the time the shutter falls is a race: the settings tab that was
+    /// clicked to reach a screen is left under the pointer, and its background is
+    /// a shade darker in the runs where the hover landed first. Below the window
+    /// there is nothing to hover, and what the pointer does outside the window
+    /// never reaches a picture of the window.
+    private static let pointerParkingSpot = CGVector(dx: 0.5, dy: 1.2)
+
     /// How bright each capture came out, by file name.
     private var brightness: [String: Double] = [:]
 
@@ -217,6 +227,8 @@
     /// odd pixel, so comparing them tells nothing. The measurements are printed so
     /// a run says which appearance it drew rather than leaving it to be inferred.
     private func capture(_ window: XCUIElement, as name: String, in appearance: Appearance) {
+      window.coordinate(withNormalizedOffset: Self.pointerParkingSpot).hover()
+
       let image = deliver(window, as: name, in: appearance, encode: withoutDesktopAtCorners)
       brightness["\(name)-\(appearance.rawValue)"] = meanBrightness(of: image)
 
