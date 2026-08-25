@@ -246,8 +246,19 @@
 
         UIView.setAnimationsEnabled(false)
 
+        // An empty background image in place of the one a bar button is given by
+        // default: the button is drawn on its own material, which the bar's
+        // background does not cover and which does not come out the same twice.
+        let flatButton = UIBarButtonItemAppearance(style: .plain)
+        flatButton.normal.backgroundImage = UIImage()
+        flatButton.highlighted.backgroundImage = UIImage()
+        flatButton.disabled.backgroundImage = UIImage()
+
         let navigationBar = UINavigationBarAppearance()
         navigationBar.configureWithOpaqueBackground()
+        navigationBar.buttonAppearance = flatButton
+        navigationBar.backButtonAppearance = flatButton
+        navigationBar.doneButtonAppearance = flatButton
         UINavigationBar.appearance().standardAppearance = navigationBar
         UINavigationBar.appearance().scrollEdgeAppearance = navigationBar
         UINavigationBar.appearance().compactAppearance = navigationBar

@@ -36,6 +36,11 @@ xcrun simctl status_bar "${udid}" override \
 xcrun simctl spawn "${udid}" defaults write \
   com.apple.Accessibility ReduceTransparencyEnabled -bool true
 
+# A control that is still animating rasterises differently from one that has
+# settled, and both hold still long enough to be photographed.
+xcrun simctl spawn "${udid}" defaults write \
+  com.apple.Accessibility ReduceMotionEnabled -bool true
+
 echo "${udid}"
 
 if [ -n "${GITHUB_ENV:-}" ]; then
