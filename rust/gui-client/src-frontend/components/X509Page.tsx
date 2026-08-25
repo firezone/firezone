@@ -39,7 +39,13 @@ export default function X509Page({ status }: { status: X509Status | null }) {
               className="panel p-4"
               key={`${section.title}-${sectionIndex}`}
             >
-              <h3 className="font-medium text-heading">{section.title}</h3>
+              {section.title === "Certificate" ? (
+                <p className="text-sm text-body">
+                  Firezone uses this certificate to identify this device.
+                </p>
+              ) : (
+                <h3 className="font-medium text-heading">{section.title}</h3>
+              )}
               <dl className="mt-3 divide-y divide-border">
                 {section.fields.map((field, fieldIndex) => (
                   <div
