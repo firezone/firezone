@@ -36,14 +36,8 @@ fn an_unloadable_module_is_no_identity_rather_than_an_error() {
 
     let status = status_on(&modules, pin_file, "dev.firezone.device-trust")
         .expect("an unreadable keystore is a machine without one, not an error");
-    let warning = status
-        .warning
-        .as_deref()
-        .expect("an unreadable keystore should be warned about");
-    assert!(
-        warning.contains("PKCS#11 keystore cannot be read"),
-        "{warning}"
-    );
+    assert_eq!(status.problems, [Problem::UnreadablePkcs11Keystore]);
+    let warning = status.text_description();
     assert!(
         warning.contains("https://www.firezone.dev/kb/reference/device-certificates"),
         "{warning} should point at the knowledge base"
@@ -166,7 +160,7 @@ fn describes_a_provisioned_certificate_in_the_diagnostics() {
         .status()
         .expect("the SoftHSM token should be readable");
 
-    assert_eq!(status.warning, None);
+    assert_eq!(status.problems, []);
     let certificate = section(&status, "Certificate");
     assert_eq!(
         field_value(certificate, "Common Name"),
@@ -196,10 +190,8 @@ fn reports_no_identity_when_no_certificate_matches() {
 
     assert!(identity.is_none());
     assert_eq!(
-        status.warning,
-        Some(format!(
-            "No PKCS#11 token holds an X.509 certificate with subject CN '{subject_cn}'."
-        ))
+        status.problems,
+        [Problem::NoPkcs11Certificate { subject_cn }]
     );
 }
 
