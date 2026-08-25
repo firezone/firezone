@@ -571,13 +571,7 @@ public struct SettingsView: View {
         .padding(.vertical)
       }
     #elseif os(iOS)
-      VStack {
-        Form {
-          Section {
-            clientCertificateSettings
-          }
-        }
-      }
+      clientCertificateSettings
     #else
       #error("Unsupported platform")
     #endif
