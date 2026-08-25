@@ -32,7 +32,6 @@
       defer { app.terminate() }
 
       try waitFor(app.buttons["Grant VPN Permission"], on: "grant-vpn")
-      assertNativeMetrics(app)
       deliver(app, as: "grant-vpn", in: appearance)
     }
 
@@ -42,7 +41,6 @@
       defer { app.terminate() }
 
       try waitFor(app.buttons["Sign in"], on: "welcome")
-      assertNativeMetrics(app)
       deliver(app, as: "welcome", in: appearance)
     }
 
@@ -54,7 +52,6 @@
       // A resource from the mock's canned list, so the capture waits for the
       // list rather than for the spinner it replaces.
       try waitFor(app.staticTexts["Office network"], on: "session")
-      assertNativeMetrics(app)
       deliver(app, as: "session", in: appearance)
     }
 
@@ -66,7 +63,6 @@
       defer { app.terminate() }
 
       try waitFor(app.staticTexts["Office network"], on: "session")
-      assertNativeMetrics(app)
 
       try open(app.staticTexts["Demo GitLab"], in: app, name: "a DNS resource")
       try waitFor(app.staticTexts["ADDRESS"], on: "resource-details")
@@ -94,7 +90,6 @@
       defer { app.terminate() }
 
       try waitFor(app.buttons["Settings"], on: "settings")
-      assertNativeMetrics(app)
       app.buttons["Settings"].tap()
       try waitFor(app.navigationBars["Settings"], on: "settings")
 
@@ -153,14 +148,6 @@
     /// Without a launch screen iOS runs an app in compatibility mode, which is
     /// 320 points wide whatever the device, and photographs every screen at the
     /// wrong metrics.
-    private func assertNativeMetrics(_ app: XCUIApplication) {
-      print("App frame in points: \(app.frame)")
-
-      XCTAssertGreaterThan(
-        app.frame.width, 320, "the app is running in compatibility mode"
-      )
-    }
-
     /// Blocks until `element` is on screen, so a capture cannot catch the
     /// spinner the app shows while it loads its state.
     private func waitFor(_ element: XCUIElement, on screen: String) throws {

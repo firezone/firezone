@@ -145,24 +145,17 @@
       )
     }
 
-    /// The app under test, once it is the only instance and has finished launching.
+    /// The app under test, once it has finished launching.
     ///
-    /// `NSWorkspace.open` starts a second copy when LaunchServices does not yet
-    /// count the app as running, and two processes under one bundle identifier
-    /// put both their windows into the same element tree.
+    /// The URL open is aimed at this instance's bundle rather than resolved
+    /// through LaunchServices, which could reach another Firezone on the machine,
+    /// and an app still wiring up its scenes can answer the request with a second
+    /// copy instead of opening a window.
     ///
-    /// This runs before any window is asked for, so the instance the test just
-    /// launched is the one that started last: `waitForNoRunningInstance` left
-    /// none behind, and anything older than the launch is a straggler from the
-    /// iteration before. Photographing a straggler would deliver its appearance
-    /// rather than the one under test.
-    ///
-    /// A straggler is killed rather than asked to leave, because the app answers
-    /// `applicationShouldTerminate` with `.terminateLater` and can sit on the
-    /// reply for longer than the deadline.
+    /// A second instance is reported rather than tidied away: teardown leaves none
+    /// behind, so one that turns up anyway is worth looking at.
     private func singleRunningInstance() -> NSRunningApplication? {
       let deadline = Date().addingTimeInterval(30)
-      let askUntil = Date().addingTimeInterval(5)
       var seen = describe([])
 
       while Date() < deadline {
@@ -172,14 +165,6 @@
 
         if running.count == 1, let instance = running.first, instance.isFinishedLaunching {
           return instance
-        }
-
-        for straggler in running.dropLast() {
-          if Date() < askUntil {
-            straggler.terminate()
-          } else {
-            straggler.forceTerminate()
-          }
         }
 
         Thread.sleep(forTimeInterval: 0.1)
