@@ -96,20 +96,33 @@
       return app
     }
 
-    /// Blocks until no process carrying the app's bundle identifier is left.
+    /// Blocks until no process carrying the app's bundle identifier is left,
+    /// ending any that outstay their test.
     ///
-    /// `XCUIApplication.terminate()` returns before the process is gone. A launch
-    /// that overlaps a dying instance puts two of them under one bundle
-    /// identifier, and the element tree then holds the old instance's windows as
-    /// well: a query matches a window that is about to disappear, and the capture
-    /// or the URL that opens it lands on the wrong process.
+    /// `XCUIApplication.terminate()` returns before the process is gone, and it
+    /// only reaches the instance the test itself launched: one that a URL open
+    /// started answers to nothing the test holds. A launch overlapping either
+    /// puts two processes under one bundle identifier, and the element tree then
+    /// holds both their windows, so a query can match a window that is about to
+    /// disappear or that belongs to the wrong process.
     private func waitForNoRunningInstance() {
       let deadline = Date().addingTimeInterval(30)
+      let askUntil = Date().addingTimeInterval(10)
 
       while Date() < deadline {
-        if NSRunningApplication.runningApplications(withBundleIdentifier: Self.appBundleID).isEmpty
-        {
+        let running = NSRunningApplication.runningApplications(
+          withBundleIdentifier: Self.appBundleID
+        )
+        if running.isEmpty {
           return
+        }
+
+        for instance in running {
+          if Date() < askUntil {
+            instance.terminate()
+          } else {
+            instance.forceTerminate()
+          }
         }
 
         Thread.sleep(forTimeInterval: 0.1)
