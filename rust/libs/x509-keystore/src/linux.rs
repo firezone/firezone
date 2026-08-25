@@ -32,8 +32,9 @@ use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
 use x509_credential::SigningError;
 
 use crate::{
-    CandidateCertificate, DetailField, DetailSection, Identity, Status, field,
-    selected_certificate, sign, unusable_reasons,
+    CandidateCertificate, DetailField, DetailSection, Identity, Package, Problem, Status,
+    UnusableCause, UnusableCertificate, field, join, selected_certificate, sign,
+    unusable_certificates,
 };
 
 /// The directories p11-kit module configuration is read from, the administrator's first.
@@ -46,19 +47,14 @@ const MODULE_CONFIGURATION_DIRECTORIES: [&str; 2] =
 /// The file a token's PIN is read from.
 const PIN_FILE: &str = "/etc/firezone/pkcs11-pin";
 
-/// What the diagnostics screen says on a machine with no PKCS#11 module registered at all.
-///
-/// The packages recommend p11-kit rather than depend on it, so a client without its module
-/// configuration is a supported installation and has to be told what is missing instead of
-/// failing to connect.
-const MISSING_P11_KIT: &str = "No PKCS#11 module is registered, so no X.509 client identity certificate can be found. Firezone reads certificates through PKCS#11 modules registered with p11-kit. See https://www.firezone.dev/kb/reference/device-certificates for what to install.";
-
 pub(crate) fn status(subject_cn: &str) -> Result<Status> {
     let modules = registered_modules();
 
     if modules.is_empty() {
         return Ok(Status {
-            warning: Some(MISSING_P11_KIT.to_owned()),
+            problems: vec![Problem::MissingPackage {
+                package: Package::P11Kit,
+            }],
             sections: Vec::new(),
         });
     }
@@ -110,17 +106,16 @@ fn status_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<S
 
     // A machine whose every module failed has an unreadable keystore, not a missing
     // certificate, and which of the two the administrator reads decides what they fix.
-    let warning = if failures == modules.len() {
-        "The PKCS#11 keystore cannot be read, so no X.509 client identity certificate can be \
-         found. See https://www.firezone.dev/kb/reference/device-certificates for what the \
-         keystore needs installed and running."
-            .to_owned()
+    let problem = if failures == modules.len() {
+        Problem::UnreadablePkcs11Keystore
     } else {
-        format!("No PKCS#11 token holds an X.509 certificate with subject CN '{subject_cn}'.")
+        Problem::NoPkcs11Certificate {
+            subject_cn: subject_cn.to_owned(),
+        }
     };
 
     Ok(Status {
-        warning: Some(warning),
+        problems: vec![problem],
         sections,
     })
 }
@@ -146,14 +141,16 @@ fn token_status(token: Token) -> Status {
             }),
     );
 
-    let warning = selected.is_none().then(|| {
-        format!(
-            "Matching certificates were found, but none is usable as a client identity: {}",
-            unusable_reasons(&token.certificates).join("; ")
-        )
-    });
+    let problem = selected
+        .is_none()
+        .then(|| Problem::NoUsablePkcs11Certificate {
+            certificates: unusable_certificates(&token.certificates),
+        });
 
-    Status { warning, sections }
+    Status {
+        problems: problem.into_iter().collect(),
+        sections,
+    }
 }
 
 /// The diagnostics section for a module that could not be read.
@@ -204,14 +201,14 @@ fn select_identity(candidate: Candidate, pin_file: &Path, subject_cn: &str) -> R
         mut certificates,
         ..
     } = unlock_token(candidate, pin_file, subject_cn)?;
-    let unusable = unusable_reasons(&certificates);
+    let unusable = unusable_certificates(&certificates);
 
     let Some(index) = selected_certificate(&certificates) else {
         // Skipping a certificate that was provisioned for Firezone reads to an administrator as if
         // none had been, so say which rule it failed instead of connecting without it.
         bail!(
             "The PKCS#11 token holds no usable Firezone client identity: {}",
-            unusable.join("; ")
+            join(&unusable, "; ")
         );
     };
     let certificate = certificates.swap_remove(index);
@@ -830,14 +827,21 @@ impl CandidateCertificate for Certificate {
         self.metadata.not_before_timestamp
     }
 
-    fn unusable_reason(&self) -> String {
-        let fingerprint = &self.metadata.fingerprint;
+    fn unusable(&self) -> UnusableCertificate {
+        let fingerprint = self.metadata.fingerprint.clone();
+        let reasons = self.metadata.unusable_reasons();
 
-        let Some(summary) = self.metadata.unusable_summary() else {
-            return format!("{fingerprint} is unusable: the token holds no private key for it");
-        };
+        if reasons.is_empty() {
+            return UnusableCertificate {
+                fingerprint,
+                cause: UnusableCause::Pkcs11KeyMissing,
+            };
+        }
 
-        format!("{fingerprint} is unusable: {summary}")
+        UnusableCertificate {
+            fingerprint,
+            cause: UnusableCause::FailsRules { reasons },
+        }
     }
 }
 

@@ -63,7 +63,8 @@ pub fn certificate() -> Result<Option<ClientCertificate>> {
 /// # Errors
 ///
 /// Returns an error if the keystore cannot describe a matching identity it holds. On Linux an
-/// unreadable PKCS#11 keystore is itself described, as a warning [`Status`] naming what failed.
+/// unreadable PKCS#11 keystore is itself described, as a [`Status`] whose problems name what
+/// failed.
 pub fn status() -> Result<Status> {
     let status = keystore::status(SUBJECT_COMMON_NAME)?;
 
