@@ -136,12 +136,17 @@
     ///
     /// `NSWorkspace.open` starts a second copy when LaunchServices does not yet
     /// count the app as running, and two processes under one bundle identifier
-    /// put both their windows into the same element tree. A second copy never
-    /// exits by itself, so waiting for one to leave only burns the deadline: the
-    /// copies are ended here instead. The instance the test launched is the one
-    /// running longest, because `waitForNoRunningInstance` left none behind.
+    /// put both their windows into the same element tree.
+    ///
+    /// A copy cannot be asked to leave: `enforceSingleInstance` puts it behind a
+    /// modal telling the user to quit the other instance, and the app answers
+    /// `applicationShouldTerminate` with `.terminateLater`, so it never gets to
+    /// the reply. It is killed instead, which is the exit it was heading for. The
+    /// instance the test launched is the one running longest, because
+    /// `waitForNoRunningInstance` left none behind.
     private func singleRunningInstance() -> NSRunningApplication? {
       let deadline = Date().addingTimeInterval(30)
+      let askUntil = Date().addingTimeInterval(5)
       var seen = describe([])
 
       while Date() < deadline {
@@ -154,7 +159,11 @@
         }
 
         for copy in running.dropFirst() {
-          copy.terminate()
+          if Date() < askUntil {
+            copy.terminate()
+          } else {
+            copy.forceTerminate()
+          }
         }
 
         Thread.sleep(forTimeInterval: 0.1)
