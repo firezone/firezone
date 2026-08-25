@@ -240,6 +240,9 @@
     private func withoutDesktopAtCorners(_ screenshot: XCUIScreenshot) -> Data {
       let png = screenshot.pngRepresentation
 
+      // The capture carries the display's own colour profile, and drawing it into a
+      // context of a different one would convert every pixel in the picture. Its own
+      // space is kept so that the only thing this changes is the corners.
       guard let source = NSBitmapImageRep(data: png),
         let full = source.cgImage,
         let context = CGContext(
@@ -248,7 +251,7 @@
           height: full.height,
           bitsPerComponent: 8,
           bytesPerRow: 0,
-          space: CGColorSpaceCreateDeviceRGB(),
+          space: full.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         )
       else {
