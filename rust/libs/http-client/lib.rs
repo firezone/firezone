@@ -187,8 +187,8 @@ async fn connect(
     tracing::debug!(?addresses, %domain, "Creating new HTTP connection");
 
     // Race the addresses instead of walking them in order. A blackholed address
-    // never errors, so trying them one at a time waits out the OS' TCP timeout
-    // before moving on, and a working address behind it is never reached.
+    // fails only once the OS gives up on the TCP connect, over a minute later,
+    // so in order a working address behind one is not reached until then.
     let mut attempts = addresses
         .into_iter()
         .map(|address| {
@@ -201,9 +201,8 @@ async fn connect(
         })
         .collect::<FuturesUnordered<_>>();
 
-    // Ends once every attempt has resolved, so an address that hangs rather than
-    // failing keeps this pending; the caller bounds the wait. Returning early
-    // drops the losing attempts, which cancels them.
+    // Ends once every attempt has resolved. Returning early drops the losing
+    // attempts, which cancels them.
     while let Some((socket, attempt)) = attempts.next().await {
         match attempt {
             Ok(connection) => {
