@@ -235,7 +235,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          uv run scripts/settle-screenshots.py \
+          # `mise exec` puts `uv` on PATH: the shims the mise action sets up are
+          # regenerated before it installs, not after.
+          mise exec -- uv run scripts/settle-screenshots.py \
             rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
       - name: Set up GnuPG for the screenshot commit
         uses: ./.github/actions/setup-gpg
