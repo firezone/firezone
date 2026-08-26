@@ -19,27 +19,6 @@
     /// the app under test from everything else that is running.
     private static let appBundleID = "dev.firezone.firezone"
 
-    /// The title the app's main window scene declares in `FirezoneApp.swift`.
-    private static let mainWindowTitle = "Welcome to Firezone"
-
-    /// The title the app's settings window scene declares in `FirezoneApp.swift`.
-    /// The titlebar shows the tab picker instead of drawing it, but it stays the
-    /// window's accessibility title.
-    private static let settingsWindowTitle = "Settings"
-
-    /// The radius of the arc a window's corner is drawn with.
-    ///
-    /// Measured off a capture: the outline meets the picture's edge eleven pixels
-    /// in from either side, in both appearances.
-    private static let windowCornerRadius = 12
-
-    /// How far inside its own outline the window is taken, so that no edge pixel
-    /// it shares with the desktop is left behind.
-    ///
-    /// Three is past the widest fringe measured on a capture, and what it costs is
-    /// the outermost three pixels of a picture that is nine hundred wide.
-    private static let windowEdgeBleed = 3
-
     /// Where the pointer waits while a window is photographed.
     ///
     /// A control under the pointer draws itself hovered, and whether that has
@@ -66,7 +45,7 @@
         let app = launchApp(scenario: "grant-vpn", appearance: appearance, window: "main")
         defer { app.terminate() }
 
-        let window = try windowNamed("main", title: Self.mainWindowTitle, in: app)
+        let window = try onlyWindow(of: app)
         capture(window, as: "grant-vpn", in: appearance)
       }
     }
@@ -78,7 +57,7 @@
         let app = launchApp(scenario: "welcome", appearance: appearance, window: "main")
         defer { app.terminate() }
 
-        let window = try windowNamed("main", title: Self.mainWindowTitle, in: app)
+        let window = try onlyWindow(of: app)
         capture(window, as: "first-time", in: appearance)
       }
     }
@@ -88,21 +67,12 @@
         let app = launchApp(scenario: "connected", appearance: appearance, window: "settings")
         defer { app.terminate() }
 
-        let window = try windowNamed("settings", title: Self.settingsWindowTitle, in: app)
+        let window = try onlyWindow(of: app)
 
         // The window opens on the General tab, which is clicked anyway so that
         // every tab arrives the same way.
         for tab in Self.settingsTabs {
           try selectTab(tab.label, in: window)
-
-          // The main window arriving in front photographs as the settings window,
-          // because it belongs to the same app and is dark in the dark appearance.
-          // Nothing else in the capture notices, so it is checked here.
-          XCTAssertFalse(
-            app.windows[Self.mainWindowTitle].exists,
-            "The main window opened over the settings window"
-          )
-
           capture(window, as: "settings-\(tab.name)", in: appearance)
         }
       }
@@ -111,10 +81,9 @@
     /// Launches the app against the mock backend, presenting `scenario` in
     /// `appearance` with `window` on the screen.
     ///
-    /// The double-dashed arguments are the app's own flags. `-launchedBefore NO`
-    /// is not: it reaches `UserDefaults` through the argument domain, which keeps
-    /// the app treating every launch as the first, so it does not close the main
-    /// window shortly after startup the way it does for returning users.
+    /// `--mock-window` picks which app starts: each presents one window scene and
+    /// nothing else (see `main.swift`), so a launch has no other window to close,
+    /// and none of the lifecycle a menu bar app carries runs here.
     private func launchApp(
       scenario: String, appearance: Appearance, window: String
     ) -> XCUIApplication {
@@ -123,14 +92,8 @@
         "--mock-tunnel", "--mock-scenario", scenario,
         "--mock-appearance", appearance.rawValue,
         "--mock-window", window,
-        "-launchedBefore", "NO",
       ]
       app.launch()
-
-      // A reopen, the way clicking a running app's icon is one: the system
-      // presents a scene app's window on reopen, where a launch by the test
-      // runner presents nothing.
-      app.activate()
 
       return app
     }
@@ -170,7 +133,7 @@
         return
       }
 
-      let image = deliver(window, as: name, in: appearance, encode: withoutDesktopAtCorners)
+      let image = deliver(window, as: name, in: appearance)
       brightness["\(name)-\(appearance.rawValue)"] = meanBrightness(of: image)
 
       guard
@@ -181,72 +144,6 @@
       print("Brightness of \(name): light \(light), dark \(dark)")
 
       XCTAssertLessThan(dark, light - 50, "\(name) is no darker in the dark appearance")
-    }
-
-    /// The capture with the desktop taken out from behind the window's corners.
-    ///
-    /// A window is drawn with rounded corners, so the pixels around each one hold
-    /// a blend of the window and whatever the desktop shows behind it, and that
-    /// blend is not always the same twice. Clearing them leaves the window whole:
-    /// the picture keeps its full width and height, and only what was never the
-    /// window becomes nothing.
-    private func withoutDesktopAtCorners(_ screenshot: XCUIScreenshot) -> Data {
-      let png = screenshot.pngRepresentation
-
-      // The capture carries the display's own colour profile, and drawing it into a
-      // context of a different one would convert every pixel in the picture. Its own
-      // space is kept so that the only thing this changes is the corners.
-      guard let source = NSBitmapImageRep(data: png),
-        let full = source.cgImage,
-        let context = CGContext(
-          data: nil,
-          width: full.width,
-          height: full.height,
-          bitsPerComponent: 8,
-          bytesPerRow: 0,
-          space: full.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
-          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        )
-      else {
-        return png
-      }
-
-      let bounds = CGRect(x: 0, y: 0, width: full.width, height: full.height)
-      context.draw(full, in: bounds)
-
-      // Insetting the outline while taking the same amount off its radius keeps
-      // the arc centred where the window draws it, so the outline shrinks onto
-      // itself rather than squaring off. What is left once that is taken out of
-      // the picture's rectangle is the four corners plus a hairline along the
-      // sides, which is the rest of the edge the window shares with the desktop.
-      let bleed = CGFloat(Self.windowEdgeBleed)
-      let radius = CGFloat(Self.windowCornerRadius) - bleed
-      let outline = CGPath(
-        roundedRect: bounds.insetBy(dx: bleed, dy: bleed),
-        cornerWidth: radius,
-        cornerHeight: radius,
-        transform: nil
-      )
-
-      // Filling without antialiasing leaves every pixel either untouched or gone,
-      // so none is left half cleared and still carrying a trace of the desktop.
-      let corners = CGMutablePath()
-      corners.addRect(bounds)
-      corners.addPath(outline)
-
-      context.setShouldAntialias(false)
-      context.setBlendMode(.clear)
-      context.addPath(corners)
-      context.fillPath(using: .evenOdd)
-
-      guard let cleared = context.makeImage(),
-        let data = NSBitmapImageRep(cgImage: cleared)
-          .representation(using: .png, properties: [:])
-      else {
-        return png
-      }
-
-      return data
     }
 
     /// The mean brightness of a PNG, from every eighth pixel, on a 0 to 255 scale.
@@ -270,28 +167,16 @@
       return samples > 0 ? total / samples * 255 : 0
     }
 
-    /// The app's `name` window, once the launch has put it on the screen.
-    ///
-    /// `--mock-window` names it, so nothing here has to address the running app:
-    /// the window is on its way before the test starts looking for it.
-    private func windowNamed(
-      _ name: String, title: String, in app: XCUIApplication
-    ) throws -> XCUIElement {
-      // The identifier alternative covers a window whose title accessibility
-      // attribute is empty; the app assigns its scene windows identifiers with
-      // these prefixes (see `AppView.WindowDefinition`).
-      let matcher = NSPredicate(
-        format: "title == %@ OR identifier BEGINSWITH %@", title, "firezone-\(name)"
-      )
-      let window = app.windows.matching(matcher).firstMatch
+    /// The one window the app presents, once it is on the screen.
+    private func onlyWindow(of app: XCUIApplication) throws -> XCUIElement {
+      let window = app.windows.firstMatch
 
       guard window.waitForExistence(timeout: 30) else {
-        // The element tree names every window the app does have, which is the
-        // difference between "no window came up" and "a window came up that
-        // this matcher does not match".
-        print("Window '\(name)' did not appear; the app presents:\n\(app.debugDescription)")
+        // What the app does have on screen, which is the difference between a
+        // window that never came and one that came up as something else.
+        print("No window appeared; the app presents:\n\(app.debugDescription)")
 
-        throw AppScreenshotError.windowDidNotAppear(name)
+        throw AppScreenshotError.windowDidNotAppear
       }
 
       return window
@@ -319,7 +204,7 @@
   }
 
   private enum AppScreenshotError: Error {
-    case windowDidNotAppear(String)
+    case windowDidNotAppear
     case tabNotFound(String)
   }
 #endif

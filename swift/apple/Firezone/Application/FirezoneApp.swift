@@ -255,7 +255,7 @@ struct FirezoneApp: App {
   }
 #endif
 
-#if os(macOS) && UITEST
+#if os(macOS) && DEBUG
   /// Entry points for a screenshot run, one per window `--mock-window` can name
   /// (see `main.swift`): each declares exactly the scene under test, and the
   /// system presents an app's leading window scene at launch. `FirezoneApp`

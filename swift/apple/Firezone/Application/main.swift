@@ -6,7 +6,7 @@
 
 import Foundation
 
-#if os(macOS) && UITEST
+#if os(macOS) && DEBUG
   import FirezoneKit
 #endif
 
@@ -53,7 +53,7 @@ import Foundation
   }
 #endif
 
-#if os(macOS) && UITEST
+#if os(macOS) && DEBUG
   // A screenshot run wants exactly one window on the screen, and which one is
   // an argument. Each choice is its own app (see FirezoneApp.swift), picked
   // here because an app's scene list is fixed once its `main` runs.

@@ -21,15 +21,11 @@ rm -rf "${RESULT_BUNDLE}"
 
 # Ad-hoc signing with the entitlements dropped: the mocked app touches none of
 # the facilities they gate, and CI has no signing certificate.
-#
-# `DebugUITest` is the Debug configuration with the `UITEST` condition on top:
-# the app presents the window `--mock-window` names at launch and suppresses
-# the rest (see `FirezoneApp.swift`).
 echo "Photographing the macOS screens..."
 xcodebuild test \
     -project Firezone.xcodeproj \
     -scheme FirezoneUITests \
-    -configuration DebugUITest \
+    -configuration Debug \
     -destination "platform=macOS,arch=$(uname -m)" \
     -resultBundlePath "${RESULT_BUNDLE}" \
     "${extra_args[@]+"${extra_args[@]}"}" \

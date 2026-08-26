@@ -29,11 +29,10 @@ extension XCTestCase {
   func deliver(
     _ element: XCUIElement,
     as name: String,
-    in appearance: Appearance,
-    encode: (XCUIScreenshot) -> Data = { $0.pngRepresentation }
+    in appearance: Appearance
   ) -> Data {
     let fileName = "\(name)-\(appearance.rawValue).png"
-    let image = encode(settledScreenshot(of: element, as: fileName))
+    let image = settledScreenshot(of: element, as: fileName).pngRepresentation
 
     let attachment = XCTAttachment(data: image, uniformTypeIdentifier: "public.png")
     attachment.name = fileName
@@ -94,13 +93,6 @@ extension XCTestCase {
     return previous
   }
 
-  /// Says in the run's log how a capture came to rest.
-  ///
-  /// A screen that holds still here and still differs from the last run is
-  /// telling us the difference was fixed before the first capture, which no
-  /// amount of watching can settle. One that only just reaches agreement is a
-  /// screen the next run may well catch mid-motion. Neither is visible in the
-  /// image itself, and the sizes separate the two.
   /// Blocks while something SpringBoard drew is across the top of the screen.
   ///
   /// A notification banner belongs to SpringBoard rather than to the app, so it is
@@ -138,6 +130,13 @@ extension XCTestCase {
     #endif
   }
 
+  /// Says in the run's log how a capture came to rest.
+  ///
+  /// A screen that holds still here and still differs from the last run is
+  /// telling us the difference was fixed before the first capture, which no
+  /// amount of watching can settle. One that only just reaches agreement is a
+  /// screen the next run may well catch mid-motion. Neither is visible in the
+  /// image itself, and the sizes separate the two.
   private func report(_ fileName: String, heldStill: Bool, outOf sizes: [Int]) {
     let outcome = heldStill ? "held still" : "never held still"
     let seen = Set(sizes).sorted()
