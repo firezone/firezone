@@ -64,7 +64,7 @@
     func testGrantVPN() throws {
       for appearance in Appearance.allCases {
         let app = launchApp(scenario: "grant-vpn", appearance: appearance, window: "main")
-        defer { endApp(app) }
+        defer { app.terminate() }
 
         let window = try windowNamed("main", title: Self.mainWindowTitle, in: app)
         capture(window, as: "grant-vpn", in: appearance)
@@ -76,7 +76,7 @@
     func testFirstTime() throws {
       for appearance in Appearance.allCases {
         let app = launchApp(scenario: "welcome", appearance: appearance, window: "main")
-        defer { endApp(app) }
+        defer { app.terminate() }
 
         let window = try windowNamed("main", title: Self.mainWindowTitle, in: app)
         capture(window, as: "first-time", in: appearance)
@@ -86,7 +86,7 @@
     func testSettings() throws {
       for appearance in Appearance.allCases {
         let app = launchApp(scenario: "connected", appearance: appearance, window: "settings")
-        defer { endApp(app) }
+        defer { app.terminate() }
 
         let window = try windowNamed("settings", title: Self.settingsWindowTitle, in: app)
 
@@ -109,8 +109,6 @@
     private func launchApp(
       scenario: String, appearance: Appearance, window: String
     ) -> XCUIApplication {
-      waitForNoRunningInstance()
-
       let app = XCUIApplication()
       app.launchArguments = [
         "--mock-tunnel", "--mock-scenario", scenario,
@@ -121,62 +119,6 @@
       app.launch()
 
       return app
-    }
-
-    /// Ends the app under test and blocks until its process is gone.
-    ///
-    /// `XCUIApplication.terminate()` returns before the process exits, so the next
-    /// launch would otherwise overlap a copy still on its way out. Two processes
-    /// under one bundle identifier put both their windows in the element tree, and
-    /// the one behind shows through the corners of the one being photographed.
-    private func endApp(_ app: XCUIApplication) {
-      app.terminate()
-      waitForNoRunningInstance()
-    }
-
-    /// Blocks until no process carrying the app's bundle identifier is left,
-    /// ending any that outstay their test.
-    ///
-    /// `XCUIApplication.terminate()` returns before the process is gone, so a
-    /// launch can overlap a copy still on its way out. Two processes under one
-    /// bundle identifier put both their windows in the element tree, and a query
-    /// can then match a window that is about to disappear or that belongs to the
-    /// wrong process.
-    private func waitForNoRunningInstance() {
-      let deadline = Date().addingTimeInterval(30)
-      // Short, because the caller has already asked the app to quit.
-      let askUntil = Date().addingTimeInterval(3)
-
-      while Date() < deadline {
-        let running = runningInstances()
-        if running.isEmpty {
-          return
-        }
-
-        for instance in running {
-          if Date() < askUntil {
-            instance.terminate()
-          } else {
-            instance.forceTerminate()
-          }
-        }
-
-        Thread.sleep(forTimeInterval: 0.1)
-      }
-
-      XCTFail(
-        "An instance of \(Self.appBundleID) outlived its test and never exited. "
-          + "Saw \(describe(runningInstances()))"
-      )
-    }
-
-    /// Every instance of the app under test, the one running longest first.
-    private func runningInstances() -> [NSRunningApplication] {
-      let running = NSRunningApplication.runningApplications(
-        withBundleIdentifier: Self.appBundleID
-      )
-
-      return running.sorted { ($0.launchDate ?? .distantPast) < ($1.launchDate ?? .distantPast) }
     }
 
     /// Whether the app under test is the application in front.
@@ -197,19 +139,6 @@
       }
 
       return front.bundleIdentifier ?? front.localizedName ?? "an unnamed application"
-    }
-
-    /// How the instances of the app under test read in a failure message.
-    private func describe(_ instances: [NSRunningApplication]) -> String {
-      if instances.isEmpty {
-        return "no running instance"
-      }
-
-      let described = instances.map {
-        "pid \($0.processIdentifier), finished launching \($0.isFinishedLaunching)"
-      }
-
-      return described.joined(separator: "; ")
     }
 
     /// Photographs the window and pins that its dark capture is actually dark.

@@ -225,25 +225,6 @@ struct FirezoneApp: App {
 
       guard runningApps.count > 1 else { return }
 
-      #if DEBUG
-        // A mock run is a screenshot run, which launches and quits copies faster than
-        // LaunchServices keeps up with, so it can answer a request meant for the copy
-        // already running by starting another. That copy leaves quietly: there is
-        // nobody to dismiss the alert below, and a second copy in the element tree
-        // shows its windows through the corners of the one being photographed.
-        //
-        // It leaves after the launch rather than during it. Quitting from here
-        // ends the app before it has finished launching, which LaunchServices
-        // reports to whoever asked for it as -609, in a dialog that belongs to
-        // Finder. Nothing in the run dismisses that dialog, so it sits on the
-        // screen and is photographed over whichever screen comes next.
-        if CommandLine.arguments.contains("--mock-tunnel") {
-          DispatchQueue.main.async { NSApp.terminate(nil) }
-
-          return
-        }
-      #endif
-
       for app in runningApps where app != NSRunningApplication.current {
         Task { @MainActor in
           let alert = NSAlert()
