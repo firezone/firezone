@@ -5,18 +5,13 @@
 //
 
 // Backs the `--mock-tunnel` launch argument: feeds the real `Store` the state a
-// scenario fixture describes, so the macOS menu bar and the iOS app UI can be
-// exercised without a portal, auth, system extension, or live peers. Mirrors the
-// desktop client's `fake_controller.rs`. The code is DEBUG-only, so it ships in no
-// release; only the fixtures travel as ordinary resources. On iOS the Simulator
-// cannot run a Network Extension at all; the mock sidesteps it entirely.
+// scenario fixture describes, so the UI can be exercised without a portal, auth,
+// system extension, or live peers. Mirrors the desktop client's
+// `fake_controller.rs`. DEBUG-only, so it ships in no release; only the fixtures
+// travel as ordinary resources.
 //
-// `--mock-scenario <name>` picks the fixture (see `Mocks/Scenarios`), so a screen
-// that needs a state no fixture describes wants a new fixture rather than new
-// code here.
-//
-// `--mock-window <name>` names a window for the app to show as it launches, so a
-// screenshot run never has to address the app from outside once it is running.
+// A screen that needs a state no fixture describes wants a new fixture (see
+// `Mocks/Scenarios`) rather than new code here.
 
 #if DEBUG
   import Foundation
@@ -34,27 +29,19 @@
   /// The state the `--mock-tunnel` backend presents, as a fixture describes it.
   ///
   /// Every field is terminal: the mock reports it unchanged for the life of the
-  /// process, so a screenshot or a demo cannot race a transition. Decoding is
-  /// strict, so a fixture that leaves a field out fails to load rather than
-  /// quietly standing in for another scenario.
+  /// process, so a screenshot or a demo cannot race a transition.
   struct MockScenario: Decodable, Sendable {
-    /// Whether a VPN configuration exists, as it does once the user has granted
-    /// the VPN permission.
     let hasVPNConfiguration: Bool
 
-    /// The status the tunnel session reports. A scenario without a VPN
-    /// configuration has no session to report one, and the app treats it as
-    /// `invalid` whatever this says.
+    /// A scenario without a VPN configuration has no session to report a status,
+    /// and the app treats it as `invalid` whatever this says.
     let vpnStatus: VPNStatus
 
-    /// What the system reports about the network extension. iOS has none and
-    /// ignores this.
+    /// iOS has no network extension and ignores this.
     let systemExtension: SystemExtension
 
-    /// What the user answered when asked to allow notifications.
     let notifications: NotificationDecision
 
-    /// The signed-in user, as the provider configuration carries it.
     let actorName: String
 
     let resources: [Resource]
@@ -64,7 +51,7 @@
     /// The ids of the resources the user has starred.
     let favorites: [String]
 
-    /// The size the provider reports for its own log folder, in bytes.
+    /// In bytes.
     let providerLogFolderSize: Int64
 
     enum VPNStatus: String, Decodable, Sendable {
@@ -97,12 +84,11 @@
     /// The scenario `nameOrPath` describes.
     ///
     /// A name resolves to a fixture this bundle ships; a path starting with `/`
-    /// is read as it stands, which is what makes iterating on a screen a matter
-    /// of editing one JSON file. Either way the app reads it: a UI-test runner
-    /// is sandboxed and could hand no file over.
+    /// is read as it stands. Either way the app reads it, never the UI-test
+    /// runner, which is sandboxed and could hand no file over.
     ///
-    /// A fixture that will not load ends the process. Presenting some other
-    /// state instead would go unnoticed until someone read the screenshots.
+    /// A fixture that will not load ends the process: presenting some other state
+    /// instead would go unnoticed until someone read the screenshots.
     static func named(_ nameOrPath: String) -> MockScenario {
       guard let url = url(of: nameOrPath) else {
         fatalError("No mock scenario named '\(nameOrPath)'")
@@ -183,8 +169,8 @@
 
     /// A `Store` wired to mock dependencies presenting `scenario`.
     ///
-    /// The scenario's favorites go through `userDefaults` because that is where
-    /// `Favorites` reads them from.
+    /// The favorites go through `userDefaults` because that is where `Favorites`
+    /// reads them from.
     static func mock(
       scenario: MockScenario = .connected,
       logDirectory: URL? = nil,
@@ -234,24 +220,20 @@
     extension UIApplication {
       /// Presents a mocked run the way a capture of it needs.
       ///
-      /// Animations go because a bar that is still animating draws its labels
-      /// through a layer rather than straight onto the screen, and the two come
-      /// out a shade apart. Either state holds still long enough to be captured,
-      /// so waiting for the picture to settle does not choose between them and
-      /// the gallery gets whichever the run happened to reach.
-      ///
-      /// The bars are made opaque for the same reason: a translucent one samples
-      /// whatever is behind it, which is a second thing that has to land the same
-      /// way twice for a capture to match.
+      /// Both changes remove something that has to land the same way twice for
+      /// two captures to match: a bar mid-animation draws its labels through a
+      /// layer and comes out a shade apart, and a translucent bar samples
+      /// whatever is behind it. Either state holds still long enough to be
+      /// photographed, so waiting for the screen to settle does not choose.
       @MainActor
       public static func applyMockPresentation(_ arguments: [String] = CommandLine.arguments) {
         guard arguments.contains("--mock-tunnel") else { return }
 
         UIView.setAnimationsEnabled(false)
 
-        // An empty background image in place of the one a bar button is given by
-        // default: the button is drawn on its own material, which the bar's
-        // background does not cover and which does not come out the same twice.
+        // A bar button's default background image draws it on its own material,
+        // which the bar's background does not cover and which does not come out
+        // the same twice. An empty image leaves it flat.
         let flatButton = UIBarButtonItemAppearance(style: .plain)
         flatButton.normal.backgroundImage = UIImage()
         flatButton.highlighted.backgroundImage = UIImage()
@@ -286,9 +268,8 @@
     extension AppView.WindowDefinition {
       /// The window `--mock-window` names, or `nil` when it names none.
       ///
-      /// A UI-test build of the app presents that window at launch and suppresses
-      /// the rest (see `FirezoneApp`); naming one also keeps the app from opening
-      /// the main window over it. A launch that names none leaves the app as it
+      /// Naming one picks the app that launches, each presenting that window and
+      /// nothing else (see `FirezoneApp`). Naming none leaves the app as it
       /// ships: a menu bar app, showing no window of its own.
       public static func mockFromCommandLine(
         _ arguments: [String] = CommandLine.arguments
@@ -308,10 +289,10 @@
     extension NSApplication {
       /// Presents a mocked run the way a capture of it needs.
       ///
-      /// The appearance is what `--mock-appearance` names. Nothing outside the app
-      /// can pin it: AppKit resolves the appearance from the system setting through
-      /// `CFPreferences`, which does not read `UserDefaults`' argument domain, so an
-      /// `-AppleInterfaceStyle` argument reaches the app and changes nothing.
+      /// The appearance has to be set from in here: AppKit resolves it from the
+      /// system setting through `CFPreferences`, which does not read
+      /// `UserDefaults`' argument domain, so an `-AppleInterfaceStyle` argument
+      /// reaches the app and changes nothing.
       ///
       /// The focus is cleared because AppKit hands a freshly shown text field the
       /// focus, and the insertion point it blinks keeps two captures half a second
@@ -319,7 +300,7 @@
       /// claims the focus while the window settles and would take it straight back
       /// from an earlier attempt.
       ///
-      /// Both are done as a window becomes key rather than on every window update:
+      /// Both happen as a window becomes key rather than on every window update:
       /// setting a window's appearance makes it update, so the firehose would feed
       /// itself and leave the app with no main thread to present windows on.
       @MainActor
@@ -452,9 +433,9 @@
     }
   }
 
-  /// Both factory methods hand back the same `MockTunnelProviderManager` instance, so
-  /// session identity is stable across reloads — `Store` can subscribe to one mock
-  /// session for the lifetime of the app.
+  /// Both factory methods hand back the same `MockTunnelProviderManager`, so session
+  /// identity survives a reload and `Store` can subscribe to one mock session for the
+  /// life of the app.
   @MainActor
   private final class MockTunnelProviderManagerFactory: TunnelProviderManagerFactory {
     private let scenario: MockScenario
@@ -478,7 +459,7 @@
     var localizedDescription: String? = VPNConfigurationManager.bundleDescription
     var protocolConfiguration: NEVPNProtocol?
     var tunnelSession: (any TunnelSessionProtocol)? { session }
-    // Only the system would read this, to launch the extension; the mock never talks to
+    // Only the system reads this, to launch the extension. The mock never talks to
     // the system, so the shipped identifier serves as well as a derived one.
     let extensionBundleIdentifier = "dev.firezone.firezone.network-extension"
 
@@ -487,8 +468,8 @@
     init(scenario: MockScenario) {
       session = MockTunnelSession(scenario: scenario)
 
-      // The signed-in user reaches the app through the provider configuration,
-      // the way a real session hands it over.
+      // The signed-in user reaches the app through the provider configuration, the
+      // way a real session hands it over.
       let configuration = Configuration()
       configuration.actorName = scenario.actorName
 
@@ -504,9 +485,8 @@
   }
 
   #if os(macOS)
-    /// Reports the fixed status the scenario prescribes, from `check` and
-    /// `tryInstall` alike: scenarios are terminal, so even the install button
-    /// on the grant screen changes nothing.
+    /// Reports the scenario's status from `check` and `tryInstall` alike: scenarios
+    /// are terminal, so even the install button on the grant screen changes nothing.
     @MainActor
     private final class MockSystemExtensionManager: SystemExtensionManagerProtocol {
       private let status: SystemExtensionStatus
@@ -521,7 +501,7 @@
 
     /// Reports the client as up to date, so the menu bar shows no update item.
     ///
-    /// The real `UpdateChecker` would poll firezone.dev on a timer and register a
+    /// The real `UpdateChecker` polls firezone.dev on a timer and registers a
     /// notification category, neither of which a demo or a test should be doing.
     @MainActor
     private final class MockUpdateChecker: UpdateCheckerProtocol {
@@ -533,8 +513,8 @@
   /// shown either on `GrantNotificationsView` or past it.
   ///
   /// Both platforms use it: the real `SessionNotification` reaches
-  /// `UNUserNotificationCenter`, which raises rather than returning an error when the
-  /// process has no app bundle, so it cannot be built from a test.
+  /// `UNUserNotificationCenter`, which raises rather than returning an error when
+  /// the process has no app bundle, so it cannot be built from a test.
   @MainActor
   private final class MockSessionNotification: SessionNotificationProtocol {
     var signInHandler: () async -> Void = {}
