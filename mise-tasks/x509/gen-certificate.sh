@@ -4,12 +4,12 @@
 #USAGE     flag "--email <email>" help="Actor email to put in the certificate" required=#true
 #USAGE     flag "--account-id <account_id>" help="Account UUID to put in the certificate" required=#true
 #USAGE     flag "--serial <serial>" help="Device serial to attest as; read from this machine when omitted"
-#USAGE     flag "--alias <alias>" help="Name the key is stored under [default: firezone-client]"
+#USAGE     flag "--name <name>" help="Name the certificate is stored under [default: firezone-client]"
 #USAGE     flag "--password <password>" help="PKCS#12 export password [default: firezone]"
 #USAGE }
 #USAGE cmd "device" help="Carries no actor, so the certificate can only attest the device" {
 #USAGE     flag "--serial <serial>" help="Device serial to attest as; read from this machine when omitted"
-#USAGE     flag "--alias <alias>" help="Name the key is stored under [default: firezone-client]"
+#USAGE     flag "--name <name>" help="Name the certificate is stored under [default: firezone-client]"
 #USAGE     flag "--password <password>" help="PKCS#12 export password [default: firezone]"
 #USAGE }
 set -euo pipefail
@@ -70,7 +70,7 @@ if [ -z "${usage_cmd:-}" ]; then
 fi
 
 kind="$usage_cmd"
-alias="${usage_alias:-firezone-client}"
+name="${usage_name:-firezone-client}"
 password="${usage_password:-firezone}"
 
 if [ -n "${usage_serial:-}" ]; then
@@ -86,9 +86,9 @@ fi
 
 ca_crt="${OUT_DIR}/ca.crt"
 ca_key="${OUT_DIR}/ca.key"
-client_crt="${OUT_DIR}/${alias}.crt"
-client_key="${OUT_DIR}/${alias}.key"
-p12="${OUT_DIR}/${alias}.p12"
+client_crt="${OUT_DIR}/${name}.crt"
+client_key="${OUT_DIR}/${name}.key"
+p12="${OUT_DIR}/${name}.p12"
 
 # The CA is the trust anchor registered in the portal, so it outlives every certificate issued
 # from it and is created once, by hand.
@@ -151,7 +151,7 @@ pkcs12_args=(
     -inkey "$client_key"
     -in "$client_crt"
     -certfile "$ca_crt"
-    -name "$alias"
+    -name "$name"
     -passout "pass:${password}"
     -out "$p12"
 )
