@@ -191,14 +191,29 @@ public final class Store: ObservableObject {
   /// `async` so the caller decides how to run it; the app fires and forgets, but that is
   /// its call to make, not this function's.
   public func start() async {
-    do {
-      try await LaunchAgentManager.syncKeepAppRunning()
-    } catch {
-      Log.error(error)
+    if !isMockRun {
+      do {
+        try await LaunchAgentManager.syncKeepAppRunning()
+      } catch {
+        Log.error(error)
+      }
     }
 
     await startupSequence()
     await initNotifications()
+  }
+
+  /// Whether this process presents mocked state rather than a real tunnel.
+  ///
+  /// A mocked run leaves launchd alone: the keep-app-running agent it would
+  /// register resurrects every instance a UI test ends, and the revived copy
+  /// races the next test's launch.
+  private var isMockRun: Bool {
+    #if DEBUG
+      return CommandLine.arguments.contains("--mock-tunnel")
+    #else
+      return false
+    #endif
   }
 
   #if os(macOS)
