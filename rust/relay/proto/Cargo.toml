@@ -25,13 +25,7 @@ tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
-difference = { workspace = true }
 test-strategy = { workspace = true }
-
-[[test]]
-name = "regression"
-path = "tests/regression.rs"
-required-features = ["proptest"]
 
 [lints]
 workspace = true

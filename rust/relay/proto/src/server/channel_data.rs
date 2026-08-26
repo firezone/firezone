@@ -83,7 +83,7 @@ mod tests {
 
     #[test_strategy::proptest]
     fn can_reparse_encoded_header(
-        #[strategy(crate::proptest::channel_number())] channel: ChannelNumber,
+        #[strategy(channel_number())] channel: ChannelNumber,
         payload: Vec<u8>,
     ) {
         let mut msg = vec![0; payload.len() + 4];
@@ -95,5 +95,11 @@ mod tests {
 
         assert_eq!(parsed.data(), payload);
         assert_eq!(parsed.channel(), channel);
+    }
+
+    fn channel_number() -> impl proptest::strategy::Strategy<Value = ChannelNumber> {
+        use proptest::strategy::Strategy as _;
+
+        (ChannelNumber::MIN..=ChannelNumber::MAX).prop_map(|n| ChannelNumber::new(n).unwrap())
     }
 }
