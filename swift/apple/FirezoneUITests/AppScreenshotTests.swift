@@ -127,6 +127,11 @@
       ]
       app.launch()
 
+      // A reopen, the way clicking a running app's icon is one: the system
+      // presents a scene app's window on reopen, where a launch by the test
+      // runner presents nothing.
+      app.activate()
+
       return app
     }
 
