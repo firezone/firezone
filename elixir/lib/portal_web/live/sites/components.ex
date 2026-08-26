@@ -1860,6 +1860,7 @@ defmodule PortalWeb.Sites.Components do
       "--sysctl net.ipv6.conf.all.forwarding=1",
       "--sysctl net.ipv6.conf.default.forwarding=1",
       "--device=\"/dev/net/tun:/dev/net/tun\"",
+      "--volume /var/lib/firezone:/var/lib/firezone",
       Enum.map(env, fn {key, value} -> "--env #{key}=\"#{value}\"" end),
       "--env RUST_LOG=info",
       "#{Portal.Config.fetch_env!(:portal, :docker_registry)}/gateway:1"
