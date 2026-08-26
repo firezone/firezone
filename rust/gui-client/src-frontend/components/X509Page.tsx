@@ -249,17 +249,20 @@ function SummaryCard({ status }: { status: X509Status }) {
               Valid until {notAfter}
             </p>
           )}
-          <p className="mt-2 flex gap-1.5 text-xs text-subtle">
-            {used !== undefined && (
-              <RemixIcon
-                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success"
-                name="check"
-              />
-            )}
-            {verdict(certificate, used)}
-          </p>
         </div>
       </div>
+      {/* Outside the row so it reads across the whole card rather than starting
+          where the text beside the icon does: it is about the certificate, not
+          about any one field. */}
+      <p className="mt-2 flex gap-1.5 text-xs text-subtle">
+        {used !== undefined && (
+          <RemixIcon
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success"
+            name="check"
+          />
+        )}
+        {verdict(certificate, used)}
+      </p>
       {status.problems.map((problem, problemIndex) => (
         <Warning key={problemIndex} problem={problem} />
       ))}
