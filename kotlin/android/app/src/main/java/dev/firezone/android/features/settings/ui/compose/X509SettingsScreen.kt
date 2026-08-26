@@ -209,83 +209,90 @@ private fun CertificateCard(state: X509SettingsViewModel.UiState) {
         }
 
     Card(Modifier.fillMaxWidth()) {
-        Row(
+        Column(
             Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Icon(
-                painter = painterResource(R.drawable.rounded_verified_user_black_24dp),
-                contentDescription = null,
-                modifier = Modifier.size(32.dp),
-                tint =
-                    if (hasProblem) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-            )
-
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text =
-                        when {
-                            state.alias == null -> stringResource(R.string.x509_no_certificate_title)
-                            else -> commonName ?: stringResource(R.string.x509_certificate_title)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(
+                    painter = painterResource(R.drawable.rounded_verified_user_black_24dp),
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp),
+                    tint =
+                        if (hasProblem) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
                         },
-                    style = MaterialTheme.typography.titleMedium,
                 )
 
-                if (issuer != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = stringResource(R.string.x509_issued_by, issuer),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text =
+                            when {
+                                state.alias == null -> stringResource(R.string.x509_no_certificate_title)
+                                else -> commonName ?: stringResource(R.string.x509_certificate_title)
+                            },
+                        style = MaterialTheme.typography.titleMedium,
                     )
-                }
 
-                if (notAfter != null) {
-                    Text(
-                        text = stringResource(R.string.x509_valid_until, notAfter),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                if (state.error != null) {
-                    Notice(
-                        title = stringResource(R.string.x509_error_title),
-                        body = state.error,
-                    )
-                }
-
-                // Only the rules no row shows: the rest read underneath the attribute they are
-                // about, and repeating them here would say the same thing twice.
-                if (state.certificateProblems.isNotEmpty()) {
-                    val sentences = state.certificateProblems.map { stringResource(it.sentence()) }
-
-                    Notice(
-                        title = stringResource(R.string.x509_unusable_title),
-                        body = sentences.joinToString(" "),
-                    )
-                }
-
-                if (explainer != null) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        if (isAttesting) {
-                            Icon(
-                                painter = painterResource(R.drawable.rounded_check_circle_24),
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-
+                    if (issuer != null) {
                         Text(
-                            text = explainer,
-                            style = MaterialTheme.typography.bodySmall,
+                            text = stringResource(R.string.x509_issued_by, issuer),
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+
+                    if (notAfter != null) {
+                        Text(
+                            text = stringResource(R.string.x509_valid_until, notAfter),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    if (state.error != null) {
+                        Notice(
+                            title = stringResource(R.string.x509_error_title),
+                            body = state.error,
+                        )
+                    }
+
+                    // Only the rules no row shows: the rest read underneath the attribute they are
+                    // about, and repeating them here would say the same thing twice.
+                    if (state.certificateProblems.isNotEmpty()) {
+                        val sentences = state.certificateProblems.map { stringResource(it.sentence()) }
+                        Notice(
+                            title = stringResource(R.string.x509_unusable_title),
+                            body = sentences.joinToString(" "),
+                        )
+                    }
+                }
+            }
+
+            // Outside the row so it reads across the whole card rather than starting where the
+            // text beside the icon does: it is about the certificate, not about any one field.
+            if (explainer != null) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (isAttesting) {
+                        Icon(
+                            painter = painterResource(R.drawable.rounded_check_circle_24),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+
+                    Text(
+                        text = explainer,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
         }
