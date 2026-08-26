@@ -215,7 +215,7 @@ public final class Store: ObservableObject {
 
     public func quitApp() {
       SharedAccess.clearAppRunning()
-      do { try requestStop() } catch { Log.error(error) }
+      requestStop()
       NSApp.terminate(nil)
     }
 
@@ -588,10 +588,9 @@ public final class Store: ObservableObject {
     self.decision = try await sessionNotification.askUserForNotificationPermissions()
   }
 
-  public func requestStop() throws {
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
+  public func requestStop() {
+    // No manager or no session is no tunnel, which is where stopping was headed anyway.
+    guard let session = try? manager().session() else { return }
 
     session.stopTunnel()
   }
