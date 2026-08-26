@@ -209,7 +209,7 @@ defmodule PortalWeb.Settings.LogSinks do
     cond do
       new_disabled_state == false && sink.disabled_reason == "Sync error" ->
         {:noreply,
-         put_flash(socket, :error, "Edit and save this log sink to re-enable it.")}
+         put_flash(socket, :error, "Edit and save this log sink to enable it.")}
 
       new_disabled_state == false && not account.features.log_sinks ->
         {:noreply,
@@ -835,7 +835,7 @@ defmodule PortalWeb.Settings.LogSinks do
         <.status_popover id={"sink-status-#{@sink.id}"} label="Error" color="red">
           <p class="text-xs text-body break-words">{@sink.error_message}</p>
           <p class="mt-2 text-xs text-subtle">
-            Delivery is stopped. Edit and Save this log sink to re-enable it.
+            Delivery is stopped. Edit and Save this log sink to enable it.
           </p>
         </.status_popover>
       <% @sink.is_disabled -> %>

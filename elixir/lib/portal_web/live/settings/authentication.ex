@@ -978,7 +978,7 @@ defmodule PortalWeb.Settings.Authentication do
             <div class="flex items-center gap-4">
               <span class="text-xs text-warning">
                 {if @provider.is_disabled,
-                  do: "Re-enable this provider?",
+                  do: "Enable this provider?",
                   else:
                     "Disable this provider? Users will not be able to sign in while it is disabled."}
               </span>

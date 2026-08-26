@@ -176,7 +176,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
 
       assert html =~ "Error"
       assert html =~ "Invalid token"
-      assert html =~ "Edit and Save this log sink to re-enable it."
+      assert html =~ "Edit and Save this log sink to enable it."
     end
 
     test "shows upgrade prompt when the feature is disabled", %{conn: conn} do

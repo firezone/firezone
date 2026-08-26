@@ -137,11 +137,11 @@
 											<li style="margin-bottom: 8px;">
 												<strong>Edit and Save</strong> the log sink in your
 												<a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: underline;">log sink settings</a>
-												to re-enable it. Delivery resumes from where it left off; no events are skipped while
+												to enable it. Delivery resumes from where it left off; no events are skipped while
 												the sink is disabled.
 											</li>
 											<li>
-												Re-enable promptly: logs continue to accumulate while the sink is disabled, but logs
+												Enable promptly: logs continue to accumulate while the sink is disabled, but logs
 												that age out of your retention window before delivery resumes cannot be recovered.
 											</li>
 										</ol>
