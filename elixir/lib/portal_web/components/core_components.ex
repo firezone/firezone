@@ -18,7 +18,7 @@ defmodule PortalWeb.CoreComponents do
   def hero_logo(assigns) do
     ~H"""
     <div class="mb-6">
-      <img src={~p"/images/logo.svg"} class="mx-auto pr-10 h-24" alt="Firezone Logo" />
+      <img src={~p"/images/logo.svg"} class="mx-auto h-24" alt="Firezone Logo" />
       <p class="text-center mt-4 text-3xl">
         {@text}
       </p>

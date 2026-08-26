@@ -215,6 +215,7 @@ jobs:
           ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
           PKG_ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
           NOTARIZE: "${{ github.event_name == 'workflow_dispatch' }}"
+          FIREZONE_NO_TELEMETRY: "${{ github.event_name != 'workflow_dispatch' }}"
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"

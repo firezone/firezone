@@ -39,11 +39,11 @@ defmodule Portal.LoggerFilters do
            {:report,
             %{
               label: {:gen_server, :terminate},
-              process_label: {:thousand_island, :connection, _connection},
+              process_label: process_label,
               reason: reason
             }}
        }) do
-    expected_reason?(reason)
+    client_connection_process?(process_label) and expected_reason?(reason)
   end
 
   defp expected_client_error?(%{meta: %{domain: domain, crash_reason: crash_reason}})
@@ -52,6 +52,14 @@ defmodule Portal.LoggerFilters do
   end
 
   defp expected_client_error?(_event), do: false
+
+  # Phoenix relabels the transport process, so a WebSocket connection terminates as
+  # {Phoenix.Socket, _, _} instead of {:thousand_island, :connection, _}, and its
+  # channels exit with the same reason.
+  defp client_connection_process?({:thousand_island, :connection, _connection}), do: true
+  defp client_connection_process?({Phoenix.Socket, _handler, _id}), do: true
+  defp client_connection_process?({Phoenix.Channel, _channel, _topic}), do: true
+  defp client_connection_process?(_process_label), do: false
 
   defp expected_reason?({:tls_alert, {alert, _description}}), do: alert in @client_tls_alerts
 

@@ -16,6 +16,8 @@ dmg_path="$temp_dir/Firezone.dmg"
 staging_dmg_path="$temp_dir/staging.dmg"
 staging_pkg_path="$temp_dir/staging.pkg"
 git_sha=${GITHUB_SHA:-$(git rev-parse HEAD)}
+# CI sets this for every build that is not a release, so nothing it builds reports.
+no_telemetry=${FIREZONE_NO_TELEMETRY:-false}
 project_file=swift/apple/Firezone.xcodeproj
 code_sign_identity="Developer ID Application: Firezone, Inc. (47R2M6779T)"
 installer_code_sign_identity="Developer ID Installer: Firezone, Inc. (47R2M6779T)"
@@ -34,6 +36,7 @@ echo "Building and signing app..."
 seconds_since_epoch=$(date +%s)
 xcodebuild build \
     GIT_SHA="$git_sha" \
+    FIREZONE_NO_TELEMETRY="$no_telemetry" \
     CODE_SIGN_STYLE=Manual \
     CODE_SIGN_IDENTITY="$code_sign_identity" \
     PACKET_TUNNEL_PROVIDER_SUFFIX=-systemextension \

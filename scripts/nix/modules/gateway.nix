@@ -151,10 +151,8 @@ in
       # when FIREZONE_TOKEN is unset, so the token never enters the
       # environment.
       # Derive the same deterministic ID the deb/rpm packages use and pass
-      # it explicitly. The binary can self-derive from /etc/machine-id, but
-      # only after create_dir_all("/var/lib/firezone"), which this hardened
-      # unit (DynamicUser, ProtectSystem = "strict", no StateDirectory)
-      # forbids, so it would fail to start. Precomputing keeps it stateless.
+      # it explicitly, so the Gateway keeps its identity across a wiped
+      # state directory instead of self-deriving into one.
       script = ''
         ${lib.optionalString (cfg.id == null) ''
           FIREZONE_ID="$(${pkgs.systemd}/bin/systemd-id128 --app-specific=753b38f9f96947ef8083802d5909a372 machine-id)"
@@ -170,6 +168,13 @@ in
         SyslogIdentifier = "firezone-gateway";
 
         LoadCredential = [ "FIREZONE_TOKEN:${cfg.tokenFile}" ];
+
+        # The Gateway stores its device ID and the flow-log spool here.
+        # ProtectSystem = "strict" leaves the rest of /var read-only, and
+        # under DynamicUser systemd bind-mounts /var/lib/private/firezone
+        # into place.
+        StateDirectory = "firezone";
+        StateDirectoryMode = "0700";
 
         TimeoutStartSec = "15s";
         TimeoutStopSec = "15s";

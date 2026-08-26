@@ -20,6 +20,55 @@ defmodule PortalWeb.Settings.LogSinksTest do
     Repo.get_by!(Splunk.LogSink, account_id: sink.account_id, id: sink.id)
   end
 
+  # The Sentinel tenant has no input; it only ever arrives from the admin
+  # consent tenant proof.
+  defp verify_sentinel_tenant(lv, tenant_id) do
+    lv |> element("#sentinel-consent-link") |> render_click()
+    assert_push_event(lv, "open_url", %{url: consent_url})
+
+    {:ok, %{verification_ref: verification_ref}} =
+      consent_url
+      |> URI.parse()
+      |> Map.fetch!(:query)
+      |> URI.decode_query()
+      |> Map.fetch!("state")
+      |> PortalWeb.OIDC.verify_verification_state()
+
+    send(lv.pid, {:sentinel_log_sink_complete, tenant_id, verification_ref})
+    render(lv)
+
+    tenant_id
+  end
+
+  defp maybe_verify_tenant(lv, "sentinel"), do: verify_sentinel_tenant(lv, Ecto.UUID.generate())
+  defp maybe_verify_tenant(_lv, _type), do: :ok
+
+  defp sink_fixture(sink_type, attrs) do
+    apply(Portal.LogSinkFixtures, sink_type.fixture, [attrs])
+  end
+
+  defp name_field_error(html) do
+    html
+    |> Floki.parse_document!()
+    |> Floki.find(~s([data-validation-error-for="log_sink[name]"]))
+    |> Floki.text()
+  end
+
+  defp form_error_count(html, field) do
+    html
+    |> Floki.parse_document!()
+    |> Floki.find(~s([data-validation-error-for="log_sink[#{field}]"]))
+    |> length()
+  end
+
+  defp submit_button_disabled?(html) do
+    html
+    |> Floki.parse_document!()
+    |> Floki.find("button[form=log-sink-form][type=submit]")
+    |> Floki.attribute("disabled")
+    |> Enum.any?()
+  end
+
   defp open_sink_actions(lv, sink_id) do
     lv
     |> element("button[phx-click='toggle_sink_actions'][phx-value-id='#{sink_id}']")
@@ -353,13 +402,12 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/log_sinks/sentinel/new")
 
-      tenant_id = Ecto.UUID.generate()
+      tenant_id = verify_sentinel_tenant(lv, Ecto.UUID.generate())
 
       form =
         form(lv, "#log-sink-form",
           log_sink: %{
             name: "SOC Sentinel",
-            tenant_id: tenant_id,
             ingestion_endpoint: "https://dce.eastus-1.ingest.monitor.azure.com/",
             dcr_immutable_id: "dcr-0123456789abcdef0123456789abcdef",
             stream_name: "Custom-FirezoneLogs_CL",
@@ -398,24 +446,40 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert_push_event(lv, "open_url", %{url: consent_url})
 
       assert consent_url =~
-               "https://login.microsoftonline.com/organizations/adminconsent?client_id=test_sentinel_client_id"
+               "https://login.microsoftonline.com/organizations/v2.0/adminconsent?"
 
-      assert consent_url =~
-               "redirect_uri=#{URI.encode_www_form(url(~p"/auth/sentinel/consent"))}"
+      params = consent_url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
 
-      assert consent_url =~ "state=#{account.slug}"
+      assert params["client_id"] == "test_sentinel_client_id"
+      assert params["redirect_uri"] == url(~p"/auth/sentinel/consent")
+      assert params["scope"] == "https://graph.microsoft.com/.default"
+
+      assert {:ok, %{type: "sentinel-log-sink", verification_ref: verification_ref}} =
+               PortalWeb.OIDC.verify_verification_state(params["state"])
 
       tenant_id = Ecto.UUID.generate()
+      send(lv.pid, {:sentinel_log_sink_complete, tenant_id, verification_ref})
 
-      lv
-      |> form("#log-sink-form", log_sink: %{tenant_id: tenant_id})
-      |> render_change()
+      assert render(lv) =~ tenant_id
+    end
+
+    test "ignores a consent result for a stale verification", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/sentinel/new")
 
       lv |> element("#sentinel-consent-link") |> render_click()
-      assert_push_event(lv, "open_url", %{url: tenant_url})
+      assert_push_event(lv, "open_url", %{url: _consent_url})
 
-      assert tenant_url =~
-               "https://login.microsoftonline.com/#{tenant_id}/adminconsent?client_id=test_sentinel_client_id"
+      tenant_id = Ecto.UUID.generate()
+      send(lv.pid, {:sentinel_log_sink_complete, tenant_id, Ecto.UUID.generate()})
+
+      refute render(lv) =~ tenant_id
     end
 
     test "renders the Sentinel setup tabs with prefilled snippets", %{
@@ -468,7 +532,6 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> form("#log-sink-form",
           log_sink: %{
             name: "SOC Sentinel",
-            tenant_id: Ecto.UUID.generate(),
             ingestion_endpoint: "https://dce.eastus-1.ingest.monitor.azure.com",
             dcr_immutable_id: "not-a-dcr-id"
           }
@@ -1058,6 +1121,357 @@ defmodule PortalWeb.Settings.LogSinksTest do
 
       assert html =~ "Failed to queue log sink delivery."
       refute_enqueued(worker: Splunk.Sync)
+    end
+  end
+
+  describe "submit errors" do
+    @sink_types [
+      %{
+        type: "splunk",
+        base_type: :splunk,
+        schema: Portal.Splunk.LogSink,
+        fixture: :splunk_log_sink_fixture,
+        label: "Splunk",
+        params: %{
+          collector_url: "https://http-inputs-acme.splunkcloud.com/services/collector/event",
+          hec_token: "test-hec-token",
+          enabled_streams: ["", "session"]
+        }
+      },
+      %{
+        type: "datadog",
+        base_type: :datadog,
+        schema: Portal.Datadog.LogSink,
+        fixture: :datadog_log_sink_fixture,
+        label: "Datadog",
+        params: %{
+          site: "datadoghq.eu",
+          api_key: "dd-test-key",
+          enabled_streams: ["", "change"]
+        }
+      },
+      %{
+        type: "newrelic",
+        base_type: :newrelic,
+        schema: Portal.NewRelic.LogSink,
+        fixture: :newrelic_log_sink_fixture,
+        label: "New Relic",
+        params: %{
+          region: "EU",
+          license_key: "nr-test-key",
+          enabled_streams: ["", "session"]
+        }
+      },
+      %{
+        type: "elastic",
+        base_type: :elastic,
+        schema: Portal.Elastic.LogSink,
+        fixture: :elastic_log_sink_fixture,
+        label: "Elastic",
+        params: %{
+          endpoint_url: "https://acme.es.us-east-1.aws.elastic-cloud.com/_bulk",
+          api_key: "es-test-key",
+          data_stream: "logs-firezone-default",
+          enabled_streams: ["", "session"]
+        }
+      },
+      %{
+        type: "sentinel",
+        base_type: :sentinel,
+        schema: Portal.Sentinel.LogSink,
+        fixture: :sentinel_log_sink_fixture,
+        label: "Microsoft Sentinel",
+        params: %{
+          ingestion_endpoint: "https://dce.eastus-1.ingest.monitor.azure.com/",
+          dcr_immutable_id: "dcr-0123456789abcdef0123456789abcdef",
+          stream_name: "Custom-FirezoneLogs_CL",
+          enabled_streams: ["", "session"]
+        }
+      },
+      %{
+        type: "s3",
+        base_type: :s3,
+        schema: Portal.S3.LogSink,
+        fixture: :s3_log_sink_fixture,
+        label: "S3",
+        params: %{
+          bucket: "acme-firezone-logs",
+          region: "us-west-2",
+          role_arn: "arn:aws:iam::123456789012:role/firezone-logs",
+          enabled_streams: ["", "session"]
+        }
+      },
+      %{
+        type: "qradar",
+        base_type: :qradar,
+        schema: Portal.QRadar.LogSink,
+        fixture: :qradar_log_sink_fixture,
+        label: "QRadar",
+        params: %{
+          endpoint_url: "https://qradar.example.com:12469/",
+          auth_header: "Bearer test-shared-secret",
+          enabled_streams: ["", "session"]
+        }
+      },
+      %{
+        type: "http",
+        base_type: :http,
+        schema: Portal.HTTP.LogSink,
+        fixture: :http_log_sink_fixture,
+        label: "HTTP",
+        params: %{
+          endpoint_url: "https://logs.acme.example/firezone/",
+          bearer_token: "http-secret-token",
+          batch_max_events: "250",
+          enabled_streams: ["", "session"]
+        }
+      }
+    ]
+
+    for sink_type <- @sink_types do
+      @sink_type sink_type
+
+      test "#{sink_type.label}: a duplicate name is reported on the form and in a flash", %{
+        conn: conn,
+        account: account,
+        actor: actor
+      } do
+        taken = "Taken #{@sink_type.label}"
+        sink_fixture(@sink_type, account: account, name: taken)
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/log_sinks/#{@sink_type.type}/new")
+
+        maybe_verify_tenant(lv, @sink_type.type)
+
+        form = form(lv, "#log-sink-form", log_sink: Map.put(@sink_type.params, :name, taken))
+
+        render_change(form)
+        html = render_submit(form)
+
+        assert html =~ "with this name already exists"
+        assert form_error_count(html, "name") == 1
+        assert html =~ "Errors prevented this form from being saved"
+        assert submit_button_disabled?(html)
+        assert Repo.aggregate(@sink_type.schema, :count) == 1
+      end
+
+      test "#{sink_type.label}: renaming after a rejected submit saves the sink", %{
+        conn: conn,
+        account: account,
+        actor: actor
+      } do
+        taken = "Taken #{@sink_type.label}"
+        sink_fixture(@sink_type, account: account, name: taken)
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/log_sinks/#{@sink_type.type}/new")
+
+        maybe_verify_tenant(lv, @sink_type.type)
+
+        form = form(lv, "#log-sink-form", log_sink: Map.put(@sink_type.params, :name, taken))
+        render_change(form)
+        render_submit(form)
+
+        free = "Free #{@sink_type.label}"
+        retry = form(lv, "#log-sink-form", log_sink: Map.put(@sink_type.params, :name, free))
+        render_change(retry)
+        render_submit(retry)
+
+        assert sink = Repo.get_by(@sink_type.schema, account_id: account.id, name: free)
+        assert base = Repo.get_by(Portal.LogSink, account_id: account.id, id: sink.id)
+        assert base.type == @sink_type.base_type
+      end
+
+      test "#{sink_type.label}: renaming an existing sink onto a taken name is reported", %{
+        conn: conn,
+        account: account,
+        actor: actor
+      } do
+        taken = "Taken #{@sink_type.label}"
+        sink_fixture(@sink_type, account: account, name: taken)
+        sink = sink_fixture(@sink_type, account: account, name: "Other #{@sink_type.label}")
+
+        {:ok, lv, _html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/log_sinks/#{@sink_type.type}/#{sink.id}/edit")
+
+        form = form(lv, "#log-sink-form", log_sink: %{name: taken})
+        render_change(form)
+        html = render_submit(form)
+
+        assert html =~ "with this name already exists"
+        assert submit_button_disabled?(html)
+
+        renamed = "Renamed #{@sink_type.label}"
+        retry = form(lv, "#log-sink-form", log_sink: %{name: renamed})
+        render_change(retry)
+        render_submit(retry)
+
+        assert Repo.get_by(@sink_type.schema, account_id: account.id, id: sink.id).name == renamed
+      end
+    end
+  end
+
+  describe "Sentinel tenant" do
+    test "has no input and shows the tenant only once consent is verified", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/sentinel/new")
+
+      refute html =~ ~s(name="log_sink[tenant_id]")
+      assert html =~ "Awaiting verification"
+
+      tenant_id = verify_sentinel_tenant(lv, Ecto.UUID.generate())
+
+      html = render(lv)
+      refute html =~ ~s(name="log_sink[tenant_id]")
+      assert html =~ tenant_id
+      refute html =~ "Awaiting verification"
+    end
+
+    test "cannot be saved before the tenant is verified", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/sentinel/new")
+
+      form =
+        form(lv, "#log-sink-form",
+          log_sink: %{
+            name: "SOC Sentinel",
+            ingestion_endpoint: "https://dce.eastus-1.ingest.monitor.azure.com/",
+            dcr_immutable_id: "dcr-0123456789abcdef0123456789abcdef"
+          }
+        )
+
+      html = render_change(form)
+
+      assert submit_button_disabled?(html)
+      refute Repo.get_by(Portal.Sentinel.LogSink, account_id: account.id)
+    end
+
+    test "ignores a tenant posted by the browser", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/sentinel/new")
+
+      verified = verify_sentinel_tenant(lv, Ecto.UUID.generate())
+      forged = Ecto.UUID.generate()
+
+      lv
+      |> element("#log-sink-form")
+      |> render_change(%{
+        "log_sink" => %{
+          "name" => "SOC Sentinel",
+          "tenant_id" => forged,
+          "ingestion_endpoint" => "https://dce.eastus-1.ingest.monitor.azure.com/",
+          "dcr_immutable_id" => "dcr-0123456789abcdef0123456789abcdef",
+          "stream_name" => "Custom-FirezoneLogs_CL",
+          "enabled_streams" => ["", "session"]
+        }
+      })
+
+      lv |> element("#log-sink-form") |> render_submit()
+
+      assert sink = Repo.get_by(Portal.Sentinel.LogSink, account_id: account.id)
+      assert sink.tenant_id == verified
+      refute sink.tenant_id == forged
+    end
+  end
+
+  describe "untouched field errors" do
+    test "reports a duplicate name under the Name field", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sentinel_log_sink_fixture(account: account, name: "Microsoft Sentinel")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/sentinel/new")
+
+      verify_sentinel_tenant(lv, Ecto.UUID.generate())
+
+      # The operator never touches Name, so the browser marks it unused.
+      lv
+      |> element("#log-sink-form")
+      |> render_change(%{
+        "log_sink" => %{
+          "name" => "Microsoft Sentinel",
+          "_unused_name" => "",
+          "ingestion_endpoint" => "https://dce.eastus-1.ingest.monitor.azure.com/",
+          "dcr_immutable_id" => "dcr-0123456789abcdef0123456789abcdef",
+          "stream_name" => "Custom-FirezoneLogs_CL",
+          "enabled_streams" => ["", "session"]
+        }
+      })
+
+      html =
+        lv
+        |> element("#log-sink-form")
+        |> render_submit(%{
+          "log_sink" => %{
+            "name" => "Microsoft Sentinel",
+            "ingestion_endpoint" => "https://dce.eastus-1.ingest.monitor.azure.com/",
+            "dcr_immutable_id" => "dcr-0123456789abcdef0123456789abcdef",
+            "stream_name" => "Custom-FirezoneLogs_CL",
+            "enabled_streams" => ["", "session"]
+          }
+        })
+
+      assert form_error_count(html, "name") == 1
+      assert name_field_error(html) =~ "already exists"
+      assert html =~ "Errors prevented this form from being saved"
+    end
+
+    test "keeps a change-only validation error across repeated change events", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/datadog/new")
+
+      long_tags = Enum.map_join(1..11, ",", fn i -> "tag#{i}:#{String.duplicate("a", 190)}" end)
+
+      form =
+        form(lv, "#log-sink-form",
+          log_sink: %{
+            name: "SOC Datadog",
+            site: "datadoghq.eu",
+            api_key: "dd-test-key",
+            tags: long_tags,
+            enabled_streams: ["", "change"]
+          }
+        )
+
+      assert render_change(form) =~ "should be at most 2000 character"
+      assert render_change(form) =~ "should be at most 2000 character"
+      assert submit_button_disabled?(render_change(form))
     end
   end
 end

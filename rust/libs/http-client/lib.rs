@@ -9,6 +9,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use bytes::Bytes;
+use futures::{StreamExt as _, stream::FuturesUnordered};
 use http_body_util::{BodyExt, Full};
 use rustls::ClientConfig;
 use socket_factory::{SocketFactory, TcpSocket};
@@ -185,19 +186,31 @@ async fn connect(
 ) -> Result<(Sender, ConnectionDriver)> {
     tracing::debug!(?addresses, %domain, "Creating new HTTP connection");
 
-    for address in addresses {
-        let socket = SocketAddr::new(address, port);
+    // Race the addresses instead of walking them in order. A blackholed address
+    // fails only once the OS gives up on the TCP connect, over a minute later,
+    // so in order a working address behind one is not reached until then.
+    let mut attempts = addresses
+        .into_iter()
+        .map(|address| {
+            let socket = SocketAddr::new(address, port);
+            let domain = domain.clone();
+            let tls_config = tls_config.clone();
+            let sf = sf.clone();
 
-        match connect_one(socket, domain.clone(), tls_config.clone(), sf.clone()).await {
-            Ok((sender, driver)) => {
+            async move { (socket, connect_one(socket, domain, tls_config, sf).await) }
+        })
+        .collect::<FuturesUnordered<_>>();
+
+    // Ends once every attempt has resolved. Returning early drops the losing
+    // attempts, which cancels them.
+    while let Some((socket, attempt)) = attempts.next().await {
+        match attempt {
+            Ok(connection) => {
                 tracing::debug!(%socket, %domain, "Created new HTTP connection");
 
-                return Ok((sender, driver));
+                return Ok(connection);
             }
-            Err(e) => {
-                tracing::debug!(%socket, %domain, "Failed to create HTTP client: {e:#}");
-                continue;
-            }
+            Err(e) => tracing::debug!(%socket, %domain, "Failed to create HTTP client: {e:#}"),
         }
     }
 

@@ -170,7 +170,9 @@ if config_env() == :prod do
   # identity (Portal.Azure.ManagedIdentity).
   config :portal, Portal.Sentinel.APIClient,
     client_id: env_var_to_config!(:sentinel_sync_client_id),
-    token_base_url: "https://login.microsoftonline.com"
+    token_base_url: "https://login.microsoftonline.com",
+    discovery_document_uri:
+      "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
 
   config :portal, Portal.Billing.Stripe.APIClient, endpoint: "https://api.stripe.com"
 

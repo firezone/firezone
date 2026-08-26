@@ -97,7 +97,11 @@ where
     let (tx, rx) = mpsc::sync_channel::<Command>(CHANNEL_CAPACITY);
     let handle = std::thread::Builder::new()
         .name("flow-log-writer".to_owned())
-        .spawn(move || writer_loop(&spool_root, &rx))
+        .spawn({
+            let spool_root = spool_root.clone();
+
+            move || writer_loop(&spool_root, &rx)
+        })
         .expect("Failed to spawn flow-log writer thread");
 
     let layer = FlowLogLayer {
@@ -112,6 +116,7 @@ where
         layer,
         Guard {
             tx,
+            spool_root,
             handle: Some(handle),
         },
     )
@@ -163,7 +168,16 @@ pub fn write_token(spool_root: &Path, token: &str) -> anyhow::Result<()> {
 /// cannot hang process exit.
 pub struct Guard {
     tx: mpsc::SyncSender<Command>,
+    spool_root: PathBuf,
     handle: Option<JoinHandle<()>>,
+}
+
+impl Guard {
+    /// Where this writer spools its reports, so an uploader can be pointed at
+    /// the same place rather than told separately.
+    pub fn spool_root(&self) -> &Path {
+        &self.spool_root
+    }
 }
 
 impl Drop for Guard {
@@ -190,6 +204,22 @@ impl Drop for Guard {
         }
 
         let _ = handle.join();
+    }
+}
+
+impl Guard {
+    /// Drains the backlog and joins the writer thread, with no time bound.
+    ///
+    /// Production exits through [`Drop`], whose wait is bounded so a stalled
+    /// disk cannot hang the process. A test that reads the spool right after
+    /// emitting needs every report on disk instead, and a hung writer there
+    /// should hang the test into its own timeout, which names the culprit.
+    pub fn join(mut self) {
+        let _ = self.tx.send(Command::Shutdown);
+
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
     }
 }
 
@@ -510,7 +540,7 @@ mod tests {
             emit_event(false);
             emit_event(true);
         });
-        drop(guard); // joins the writer thread, so everything is on disk
+        guard.join(); // every emitted report is on disk once this returns
 
         let authz_dir = dir.path().join("responder").join(AUTHZ_ID);
         let stems = std::fs::read_dir(&authz_dir)
@@ -548,7 +578,7 @@ mod tests {
         tracing::subscriber::with_default(subscriber, || {
             emit_event(true);
         });
-        drop(guard);
+        guard.join();
 
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
@@ -567,7 +597,7 @@ mod tests {
                 "TCP flow started"
             );
         });
-        drop(guard);
+        guard.join();
 
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }

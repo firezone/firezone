@@ -43,6 +43,13 @@ for RUNNING_CONTAINER in $CURRENTLY_RUNNING; do
             fi
         fi
 
+        # The flow log spool lives in /var/lib/firezone and must survive re-creating the container.
+        # Keep whatever the running container mapped there; otherwise fall back to the documented host path.
+        FIREZONE_VOLUME=$(docker container inspect "$RUNNING_CONTAINER" --format '{{range .Mounts}}{{if eq .Destination "/var/lib/firezone"}}{{if eq .Type "volume"}}{{.Name}}{{else}}{{.Source}}{{end}}{{end}}{{end}}')
+        if [ -z "$FIREZONE_VOLUME" ]; then
+            FIREZONE_VOLUME="/var/lib/firezone"
+        fi
+
         docker stop "$RUNNING_CONTAINER" >/dev/null
         docker rm -f "$RUNNING_CONTAINER" >/dev/null
         docker run -d \
@@ -58,6 +65,7 @@ for RUNNING_CONTAINER in $CURRENTLY_RUNNING; do
             --sysctl net.ipv6.conf.all.forwarding=1 \
             --sysctl net.ipv6.conf.default.forwarding=1 \
             --device="/dev/net/tun:/dev/net/tun" \
+            --volume "$FIREZONE_VOLUME:/var/lib/firezone" \
             "$TARGET_IMAGE"
         rm variables.env
         echo "Container upgraded"

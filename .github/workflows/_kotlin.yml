@@ -11,6 +11,12 @@ permissions:
   contents: "read"
   id-token: "write" # OIDC auth
 
+# Stamped into every build below, so neither the emulator running the instrumented
+# tests nor a debug artifact someone installs later reports to Sentry. The release
+# build overrides it.
+env:
+  FIREZONE_NO_TELEMETRY: "true"
+
 jobs:
   static-analysis:
     # Android SDK tools hardware accel is available only on Linux runners
@@ -133,6 +139,7 @@ jobs:
           install_args: --cd kotlin/android
       - name: Build the release package
         env:
+          FIREZONE_NO_TELEMETRY: "false"
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}
           KEYSTORE_KEY_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_KEY_PASSWORD }}
