@@ -141,5 +141,25 @@ defmodule Portal.Mailer.SyncErrorEmailTest do
       assert email_body.text_body =~ ~r/Tenant ID:\s*#{provider.tenant_id}/
       assert email_body.text_body =~ "admin consent in Microsoft Entra"
     end
+
+    test "a Santa provider names its Workshop tenant without exposing the key", %{
+      account: account
+    } do
+      provider =
+        [account: account, api_key: "npsws_sk_topsecret"]
+        |> Portal.SantaFixtures.santa_posture_provider_fixture()
+        |> Ecto.Changeset.change(
+          error_message: "401 - Invalid API key.",
+          errored_at: DateTime.utc_now()
+        )
+        |> Repo.update!()
+        |> Repo.preload(:account)
+
+      email_body = posture_provider_error_email(provider, "admin@example.com")
+
+      assert email_body.text_body =~ ~r/Workshop URL:\s*#{Regex.escape(provider.api_url)}/
+      assert email_body.text_body =~ "Workshop API key"
+      refute email_body.text_body =~ "npsws_sk_topsecret"
+    end
   end
 end

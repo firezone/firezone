@@ -112,6 +112,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     intune_posture_providers
     iru_posture_providers
     defender_posture_providers
+    santa_posture_providers
     splunk_log_sinks
     datadog_log_sinks
     newrelic_log_sinks
@@ -169,6 +170,7 @@ config :portal, Portal.Changes.Consumer,
     intune_posture_providers
     iru_posture_providers
     defender_posture_providers
+    santa_posture_providers
     relay_tokens
     portal_sessions
   ],
@@ -249,6 +251,13 @@ config :portal, Portal.Defender.APIClient,
 # the domains are configuration rather than a constant.
 config :portal, Portal.Iru.APIClient,
   api_domains: [us: "api.kandji.io", eu: "api.eu.kandji.io"],
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
+  ]
+
+config :portal, Portal.Santa.APIClient,
   req_opts: [
     # 15 minutes
     receive_timeout: 900_000,

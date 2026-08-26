@@ -299,6 +299,167 @@
         "title": "PolicyCreateParams",
         "type": "object"
       },
+      "SantaDevice": {
+        "description": "Santa host synced from North Pole Security Workshop",
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "nullable": false,
+            "type": "string"
+          },
+          "configured_client_mode": {
+            "nullable": true,
+            "type": "string"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "hostname": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "nullable": false,
+            "type": "string"
+          },
+          "inserted_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "last_preflight_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "last_preflight_ip": {
+            "format": "byte",
+            "nullable": true,
+            "type": "string"
+          },
+          "last_seen_client_mode": {
+            "nullable": true,
+            "type": "string"
+          },
+          "last_sync_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "machine_model": {
+            "nullable": true,
+            "type": "string"
+          },
+          "os_build": {
+            "nullable": true,
+            "type": "string"
+          },
+          "os_type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "os_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "posture_provider_id": {
+            "format": "uuid",
+            "nullable": false,
+            "type": "string"
+          },
+          "primary_user": {
+            "nullable": true,
+            "type": "string"
+          },
+          "primary_user_groups": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "primary_user_locked": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "rule_sync_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "santa_id": {
+            "nullable": false,
+            "type": "string"
+          },
+          "santa_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "santanetd_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "serial_number": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sip_status": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "nullable": false,
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "tags_locked": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "tags_truncated": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "temporary_admin_mode_ends_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "temporary_admin_mode_user": {
+            "nullable": true,
+            "type": "string"
+          },
+          "temporary_monitor_mode_ends_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "id",
+          "posture_provider_id",
+          "santa_id",
+          "synced_at"
+        ],
+        "title": "SantaDevice",
+        "type": "object"
+      },
       "IntunePostureProviderListResponse": {
         "properties": {
           "data": {
@@ -312,6 +473,75 @@
           }
         },
         "title": "IntunePostureProviderListResponse",
+        "type": "object"
+      },
+      "SantaPostureProvider": {
+        "description": "Santa posture provider backed by North Pole Security Workshop",
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "api_url": {
+            "format": "uri",
+            "type": "string"
+          },
+          "disabled_reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "error_message": {
+            "nullable": true,
+            "type": "string"
+          },
+          "errored_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "inserted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "is_disabled": {
+            "type": "boolean"
+          },
+          "is_verified": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "santa"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "type",
+          "name",
+          "api_url",
+          "is_verified",
+          "is_disabled"
+        ],
+        "title": "SantaPostureProvider",
         "type": "object"
       },
       "OktaAuthProvider": {
@@ -2474,6 +2704,15 @@
         "title": "ExternalIdentityResponse",
         "type": "object"
       },
+      "SantaDeviceResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SantaDevice"
+          }
+        },
+        "title": "SantaDeviceResponse",
+        "type": "object"
+      },
       "OktaDirectory": {
         "description": "Okta Directory",
         "example": {
@@ -3819,6 +4058,21 @@
         "title": "Client",
         "type": "object"
       },
+      "SantaDeviceListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SantaDevice"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "title": "SantaDeviceListResponse",
+        "type": "object"
+      },
       "DefenderDeviceResponse": {
         "properties": {
           "data": {
@@ -4332,6 +4586,21 @@
         "title": "ProblemDetails",
         "type": "object"
       },
+      "SantaPostureProviderListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SantaPostureProvider"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "title": "SantaPostureProviderListResponse",
+        "type": "object"
+      },
       "ResourceUpdateRequest": {
         "description": "PATCH/PUT body for updating a Resource. All fields are optional; omitted fields keep their current value.",
         "example": {
@@ -4564,6 +4833,15 @@
           }
         },
         "title": "LogResponse",
+        "type": "object"
+      },
+      "SantaPostureProviderResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SantaPostureProvider"
+          }
+        },
+        "title": "SantaPostureProviderResponse",
         "type": "object"
       },
       "ClientResponse": {
@@ -7476,6 +7754,112 @@
         "summary": "Update a Gateway (rename)",
         "tags": [
           "Gateways"
+        ]
+      }
+    },
+    "/santa_posture_providers": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SantaPostureProviderController.index",
+        "parameters": [
+          {
+            "description": "Limit providers returned",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/previous page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaPostureProviderListResponse"
+                }
+              }
+            },
+            "description": "Santa posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List Santa posture providers",
+        "tags": [
+          "Santa Posture Providers"
         ]
       }
     },
@@ -12140,6 +12524,119 @@
         ]
       }
     },
+    "/santa_posture_providers/{id}": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SantaPostureProviderController.show",
+        "parameters": [
+          {
+            "description": "Santa posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Santa posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show a Santa posture provider",
+        "tags": [
+          "Santa Posture Providers"
+        ]
+      }
+    },
     "/google_directories/{id}": {
       "get": {
         "callbacks": {},
@@ -12235,6 +12732,112 @@
         "summary": "Show Google Directory",
         "tags": [
           "Google Directories"
+        ]
+      }
+    },
+    "/santa_devices": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SantaDeviceController.index",
+        "parameters": [
+          {
+            "description": "Limit devices returned",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/previous page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaDeviceListResponse"
+                }
+              }
+            },
+            "description": "Santa device response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List synced Santa devices",
+        "tags": [
+          "Santa Devices"
         ]
       }
     },
@@ -16114,6 +16717,119 @@
         "summary": "List Okta Directories",
         "tags": [
           "Okta Directories"
+        ]
+      }
+    },
+    "/santa_devices/{id}": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SantaDeviceController.show",
+        "parameters": [
+          {
+            "description": "Synced Santa device ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaDeviceResponse"
+                }
+              }
+            },
+            "description": "Santa device response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show a synced Santa device",
+        "tags": [
+          "Santa Devices"
         ]
       }
     },

@@ -63,11 +63,13 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert "intune_posture_providers" in tables
       assert "iru_posture_providers" in tables
       assert "defender_posture_providers" in tables
+      assert "santa_posture_providers" in tables
 
       refute "posture_providers" in tables
       refute "intune_devices" in tables
       refute "iru_devices" in tables
       refute "defender_devices" in tables
+      refute "santa_devices" in tables
     end
   end
 
@@ -252,6 +254,32 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       attrs = result_state.flush_buffer[12346]
       assert attrs.after["api_token"] == "[redacted]"
       assert attrs.after["subdomain"] == "acme"
+    end
+
+    test "redacts the Workshop API key in the buffered snapshot", %{
+      account: account,
+      initial_state: initial_state
+    } do
+      data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "api_url" => "https://acme.workshop.cloud",
+        "api_key" => "npsws_sk_secret"
+      }
+
+      result_state =
+        Consumer.on_write(
+          initial_state,
+          12347,
+          :insert,
+          "santa_posture_providers",
+          nil,
+          data
+        )
+
+      attrs = result_state.flush_buffer[12347]
+      assert attrs.after["api_key"] == "[redacted]"
+      assert attrs.after["api_url"] == "https://acme.workshop.cloud"
     end
 
     test "preserves existing buffer items", %{account: account, initial_state: initial_state} do

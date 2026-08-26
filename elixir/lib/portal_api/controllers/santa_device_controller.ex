@@ -1,0 +1,93 @@
+defmodule PortalAPI.SantaDeviceController do
+  use PortalAPI, :controller
+  use OpenApiSpex.ControllerSpecs
+
+  alias PortalAPI.{Error, Pagination, Schemas.ProblemDetails}
+  alias __MODULE__.Database
+
+  tags ["Santa Devices"]
+
+  plug :require_device_posture
+
+  defp require_device_posture(conn, _opts) do
+    if Portal.Account.device_posture_enabled?(conn.assigns.subject.account) do
+      conn
+    else
+      conn
+      |> Error.handle({:error, :forbidden, reason: "This feature is not enabled for your account."})
+      |> Plug.Conn.halt()
+    end
+  end
+
+  # coveralls-ignore-start
+  operation :index,
+    summary: "List synced Santa devices",
+    parameters: [
+      limit: [in: :query, description: "Limit devices returned", type: :integer],
+      page_cursor: [in: :query, description: "Next/previous page cursor", type: :string]
+    ],
+    responses:
+      [ok: {"Santa device response", "application/json", PortalAPI.Schemas.SantaDevice.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :forbidden, :too_many_requests])
+
+  operation :show,
+    summary: "Show a synced Santa device",
+    parameters: [
+      id: [in: :path, description: "Synced Santa device ID", type: :string]
+    ],
+    responses:
+      [ok: {"Santa device response", "application/json", PortalAPI.Schemas.SantaDevice.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
+
+  def index(conn, params) do
+    with {:ok, opts} <- Pagination.params_to_list_opts(params),
+         {:ok, devices, metadata} <- Database.list_devices(conn.assigns.subject, opts) do
+      render(conn, :index, devices: devices, metadata: metadata)
+    else
+      error -> Error.handle(conn, error)
+    end
+  end
+
+  def show(conn, %{"id" => id}) do
+    with {:ok, device} <- Database.fetch_device(id, conn.assigns.subject) do
+      render(conn, :show, device: device)
+    else
+      error -> Error.handle(conn, error)
+    end
+  end
+
+  defmodule Database do
+    import Ecto.Query
+    alias Portal.{Safe, Santa}
+
+    def list_devices(subject, opts) do
+      from(d in Santa.Device, as: :santa_devices)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def fetch_device(id, subject) do
+      case from(d in Santa.Device, where: d.id == ^id)
+           |> Safe.scoped(subject)
+           |> Safe.one() do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        device -> {:ok, device}
+      end
+    end
+
+    def cursor_fields do
+      [{:santa_devices, :asc, :inserted_at}, {:santa_devices, :asc, :id}]
+    end
+
+    def preloads, do: []
+  end
+end

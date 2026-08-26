@@ -191,6 +191,12 @@ config :portal, Portal.Iru.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Santa.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.Santa.APIClient},
+    retry: false
+  ]
+
 config :portal, Portal.Workers.SyncErrorNotification, []
 
 config :portal, Portal.Workers.LogSinkErrorNotification, []

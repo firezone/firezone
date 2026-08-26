@@ -268,6 +268,9 @@ if config_env() == :prod do
     # Schedule Defender device inventory sync every 2 hours
     {"30 */2 * * *", Portal.Defender.Scheduler},
 
+    # Schedule Santa device inventory sync every 2 hours
+    {"40 */2 * * *", Portal.Santa.Scheduler},
+
     # Schedule Google directory sync every 2 hours
     {"20 */2 * * *", Portal.Google.Scheduler},
 
@@ -297,6 +300,8 @@ if config_env() == :prod do
      args: %{provider: "iru", frequency: "daily"}},
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "defender", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "santa", frequency: "daily"}},
 
     # Directory sync error notifications - every 3 days for medium error count
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
@@ -311,6 +316,8 @@ if config_env() == :prod do
      args: %{provider: "iru", frequency: "three_days"}},
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "defender", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "santa", frequency: "three_days"}},
 
     # Directory sync error notifications - weekly for high error count
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
@@ -325,6 +332,8 @@ if config_env() == :prod do
      args: %{provider: "iru", frequency: "weekly"}},
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
      args: %{provider: "defender", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "santa", frequency: "weekly"}},
 
     # Log sink delivery error notifications
     {"0 9 * * *", Portal.Workers.LogSinkErrorNotification},
@@ -388,6 +397,8 @@ if config_env() == :prod do
       iru_sync: 5,
       defender_scheduler: 1,
       defender_sync: 5,
+      santa_scheduler: 1,
+      santa_sync: 5,
       google_scheduler: 1,
       google_sync: 5,
       okta_scheduler: 1,
