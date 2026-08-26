@@ -348,17 +348,18 @@ async fn connect_with_zero_backoff_resets_reconnect_backoff() {
     .expect("should not timeout");
 }
 
-#[test_case(http::StatusCode::UNAUTHORIZED, Some(INVALID_TOKEN) => "Authentication token invalid"; "401 naming the token")]
-#[test_case(http::StatusCode::UNAUTHORIZED, Some(UNAUTHORIZED) => "Failed to authenticate with portal: Invalid token"; "401 without a code")]
-#[test_case(http::StatusCode::UNAUTHORIZED, None => "Failed to authenticate with portal: no reason provided"; "401 without problem details")]
-#[test_case(http::StatusCode::FORBIDDEN, Some(REVOKED_CERTIFICATE) => "The portal rejected the client certificate: This device's certificate has been revoked."; "403 naming the certificate")]
-#[test_case(http::StatusCode::CONFLICT, Some(IDENTITY_CONFLICT) => "The portal rejected the client certificate: Different hardware."; "409 naming the certificate")]
+// The portal names permanent rejections with a problem code; the HTTP status only decides
+// for a response that carries no code the client knows.
+#[test_case(r#"{"status":401,"detail":"Invalid token","code":"invalid_token"}"# => "Authentication token invalid"; "an unusable token")]
+#[test_case(r#"{"status":401,"detail":"No token","code":"missing_token"}"# => "Authentication token invalid"; "a missing token")]
+#[test_case(r#"{"status":403,"detail":"This device's certificate has been revoked.","code":"certificate_revoked"}"# => "The portal rejected the client certificate: This device's certificate has been revoked."; "a revoked certificate")]
+#[test_case(r#"{"status":403,"detail":"This device is not trusted.","code":"device_untrusted"}"# => "The portal rejected the client certificate: This device is not trusted."; "an untrusted device")]
+#[test_case(r#"{"status":409,"detail":"Different hardware.","code":"device_identity_conflict"}"# => "The portal rejected the client certificate: Different hardware."; "a conflicting device identity")]
+#[test_case(r#"{"status":401,"detail":"Invalid token"}"# => "Failed to authenticate with portal: Invalid token"; "a 401 without a code")]
+#[test_case(r#"{"status":401}"# => "Failed to authenticate with portal: no reason provided"; "a 401 without a detail")]
 #[tokio::test]
-async fn rejected_upgrade_is_terminal(
-    code: http::StatusCode,
-    problem_details: Option<&str>,
-) -> String {
-    let port = rejecting_server(code, problem_details).await;
+async fn portal_rejection_is_terminal(problem_details: &str) -> String {
+    let port = http_problem_details_server(problem_details).await;
 
     // Without the terminal path these are an `Event::Hiccup` and the poll never resolves, so
     // reaching the timeout is the failure this test is really guarding against.
@@ -367,18 +368,38 @@ async fn rejected_upgrade_is_terminal(
     error.to_string()
 }
 
-// Only the codes that name the certificate are terminal; the rest stay retryable.
-#[test_case(http::StatusCode::BAD_REQUEST, None; "400")]
-#[test_case(http::StatusCode::FORBIDDEN, None; "403 without problem details")]
-#[test_case(http::StatusCode::FORBIDDEN, Some(ACCOUNT_DISABLED); "403 with a code that does not name the certificate")]
-#[test_case(http::StatusCode::REQUEST_TIMEOUT, None; "408")]
-#[test_case(http::StatusCode::TOO_MANY_REQUESTS, None; "429")]
-#[test_case(http::StatusCode::SERVICE_UNAVAILABLE, None; "503")]
+#[test_case(r#"{"status":403,"detail":"The account is disabled","code":"account_disabled"}"#; "a code that names neither the token nor the certificate")]
+#[test_case(r#"{"status":403,"detail":"Something new","code":"a_code_from_a_newer_portal"}"#; "a code the client does not know")]
 #[tokio::test]
-async fn rejected_upgrade_is_retried(code: http::StatusCode, problem_details: Option<&str>) {
-    let port = rejecting_server(code, problem_details).await;
+async fn portal_rejection_is_retried(problem_details: &str) {
+    let port = http_problem_details_server(problem_details).await;
 
     expect_hiccup(first_event(port).await);
+}
+
+// An intermediary rejects the upgrade without problem details, e.g. with an error page.
+#[test_case(http::StatusCode::BAD_REQUEST; "400")]
+#[test_case(http::StatusCode::FORBIDDEN; "403")]
+#[test_case(http::StatusCode::REQUEST_TIMEOUT; "408")]
+#[test_case(http::StatusCode::TOO_MANY_REQUESTS; "429")]
+#[test_case(http::StatusCode::SERVICE_UNAVAILABLE; "503")]
+#[tokio::test]
+async fn bare_rejection_is_retried(code: http::StatusCode) {
+    let port = http_status_server(code).await;
+
+    expect_hiccup(first_event(port).await);
+}
+
+#[tokio::test]
+async fn bare_401_is_terminal() {
+    let port = http_status_server(http::StatusCode::UNAUTHORIZED).await;
+
+    let error = expect_error(first_event(port).await);
+
+    assert_eq!(
+        error.to_string(),
+        "Failed to authenticate with portal: no reason provided"
+    );
 }
 
 #[test_case(http::StatusCode::TOO_MANY_REQUESTS, Duration::from_secs(30); "429")]
@@ -394,7 +415,10 @@ async fn retry_after_header_sets_the_backoff(code: http::StatusCode, retry_after
 
 #[tokio::test]
 async fn rejected_certificate_does_not_require_sign_in() {
-    let port = http_problem_details_server(http::StatusCode::FORBIDDEN, REVOKED_CERTIFICATE).await;
+    let port = http_problem_details_server(
+        r#"{"status":403,"detail":"This device's certificate has been revoked.","code":"certificate_revoked"}"#,
+    )
+    .await;
 
     let error = expect_error(first_event(port).await);
 
@@ -467,14 +491,6 @@ struct Hiccup {
     backoff: Duration,
     /// The error's chain of causes, as rendered by its alternate `Display` representation.
     error: String,
-}
-
-/// Spawns a server that rejects the WebSocket upgrade with `code`, optionally with problem details.
-async fn rejecting_server(code: http::StatusCode, problem_details: Option<&str>) -> u16 {
-    match problem_details {
-        Some(body) => http_problem_details_server(code, body).await,
-        None => http_status_server(code).await,
-    }
 }
 
 /// Connects a channel to `port` and returns the first event it emits.
@@ -574,13 +590,6 @@ const JOIN_REPLY: &str =
     r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#;
 const BAR_REQUEST: &str = r#"{"topic":"test","event":"bar","ref":1}"#;
 const FOO_MESSAGE: &str = r#"{"topic":"test","event":"foo","payload":null}"#;
-const INVALID_TOKEN: &str = r#"{"type":"about:blank","title":"Unauthorized","status":401,"detail":"Invalid token","code":"invalid_token"}"#;
-const UNAUTHORIZED: &str =
-    r#"{"type":"about:blank","title":"Unauthorized","status":401,"detail":"Invalid token"}"#;
-const REVOKED_CERTIFICATE: &str = r#"{"type":"about:blank","title":"Forbidden","status":403,"detail":"This device's certificate has been revoked.","code":"certificate_revoked"}"#;
-const IDENTITY_CONFLICT: &str = r#"{"type":"about:blank","title":"Conflict","status":409,"detail":"Different hardware.","code":"device_identity_conflict"}"#;
-const ACCOUNT_DISABLED: &str = r#"{"type":"about:blank","title":"Forbidden","status":403,"detail":"The account is disabled","code":"account_disabled"}"#;
-
 /// A reply carrying a reference the channel never sent.
 const UNMATCHED_REPLY: &str =
     r#"{"event":"phx_reply","ref":9999,"topic":"phoenix","payload":{"status":"ok","response":{}}}"#;
@@ -704,16 +713,24 @@ async fn http_status_server_with_retry_after(code: http::StatusCode, retry_after
 }
 
 /// Spawns a server that rejects the WebSocket upgrade with RFC 9457 problem details.
-async fn http_problem_details_server(code: http::StatusCode, body: &str) -> u16 {
+///
+/// The status line is taken from the body's `status` member, so a case cannot state one
+/// status in the response and another in the problem details.
+async fn http_problem_details_server(problem_details: &str) -> u16 {
+    let status = serde_json::from_str::<serde_json::Value>(problem_details).unwrap()["status"]
+        .as_u64()
+        .expect("problem details to carry a `status` member");
+    let code = http::StatusCode::from_u16(status.try_into().unwrap()).unwrap();
+
     http_response_server(format!(
         "HTTP/1.1 {status} {reason}\r\n\
          Connection: close\r\n\
          Content-Type: application/problem+json; charset=utf-8\r\n\
          Content-Length: {length}\r\n\r\n\
-         {body}",
+         {problem_details}",
         status = code.as_u16(),
         reason = code.canonical_reason().unwrap_or_default(),
-        length = body.len()
+        length = problem_details.len()
     ))
     .await
 }
