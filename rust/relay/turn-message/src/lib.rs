@@ -3,8 +3,12 @@
 //! Parsing of the STUN & TURN messages a TURN client sends to a server.
 //!
 //! This crate only decodes; it holds no server state and performs no
-//! authentication. A message that decodes but is not a valid request comes back
-//! as a [`Rejection`], leaving it to the server to render an error response.
+//! authentication. A request that decodes but cannot be served comes back as a
+//! [`Rejection`], leaving it to the server to render an error response.
+//!
+//! A message of any other class is a [`DecodeError`] instead. Answering an
+//! indication or a response would make the relay a reflector, so there is
+//! deliberately nothing for the server to render.
 
 mod channel_data;
 mod client_message;
@@ -45,7 +49,7 @@ stun_codec::define_attribute_enums!(
     ]
 );
 
-/// A message that decoded but is not a request we can serve.
+/// A request that decoded but that we cannot serve.
 ///
 /// Carries what an error response needs, so the server can render one with its
 /// own `SOFTWARE` attribute.

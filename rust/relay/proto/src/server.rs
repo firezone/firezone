@@ -269,7 +269,7 @@ where
             Ok(Err(rejection)) => {
                 tracing::warn!(target: "relay", %sender, method = %rejection.method(), "Failed to decode message");
 
-                // This is fine, the original message failed to parse to we cannot respond with an authenticated reply.
+                // This is fine, the original message failed to parse so we cannot respond with an authenticated reply.
                 let message = AuthenticatedMessage::new_dangerous_unauthenticated(error_response(
                     rejection.method(),
                     rejection.transaction_id(),
