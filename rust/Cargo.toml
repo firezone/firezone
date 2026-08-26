@@ -245,10 +245,10 @@ tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "main" 
 tracing-opentelemetry = "0.33.0"
 tracing-subscriber = { version = "0.3.23", features = ["parking_lot"] }
 tun = { path = "libs/connlib/tun" }
-turn-message = { path = "relay/turn-message" }
 tunnel = { path = "libs/connlib/tunnel" }
 tunnel-bypass-resolver = { path = "libs/tunnel-bypass-resolver" }
 tunnel-proto = { path = "libs/connlib/tunnel-proto" }
+turn-message = { path = "relay/turn-message" }
 uniffi = "0.31.1"
 url = "2.5.2"
 uuid = "1.23.2"
