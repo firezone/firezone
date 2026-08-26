@@ -33,6 +33,7 @@
 	<string name="x509_valid_until">Valid until %1$s</string>
 	<string name="x509_explainer_present">Firezone uses this certificate to identify this device.</string>
 	<string name="x509_explainer_absent">Firezone did not find a certificate to identify this device.</string>
+	<string name="x509_explainer_unusable">Firezone cannot use this certificate to identify this device.</string>
 	<string name="x509_select_certificate">Select Certificate</string>
 	<string name="x509_selection_title">Select your client certificate</string>
 	<string name="x509_selection_description">
@@ -47,9 +48,6 @@
 	</string>
 	<string name="x509_error_title">Unable to read the client certificate</string>
 	<string name="x509_unusable_title">Firezone will not present this certificate</string>
-	<string name="x509_unusable_reason">
-		It cannot be used to prove this device is enrolled: %1$s.
-	</string>
 	<string name="x509_contact_admin">Contact your administrator for support.</string>
 	<string name="x509_claim_absent">Not present</string>
 	<string name="x509_claim_invalid">Ignored: %1$s</string>
@@ -60,6 +58,15 @@
 	<string name="x509_claim_ambiguous">more than one value was given</string>
 	<string name="x509_claim_placeholder_identifier">a placeholder identifier</string>
 	<string name="x509_claim_unknown_attribute">not an attribute we understand</string>
+	<string name="x509_rule_no_client_auth_eku">
+		Firezone only presents a certificate that allows TLS client authentication.
+	</string>
+	<string name="x509_rule_no_digital_signature_key_usage">
+		Firezone only presents a certificate whose key usage allows digital signatures.
+	</string>
+	<string name="x509_rule_not_yet_valid">This certificate is not valid yet.</string>
+	<string name="x509_rule_expired">This certificate has expired.</string>
+	<string name="x509_rule_unsupported_key_algorithm">Firezone cannot sign with this key algorithm.</string>
 
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>

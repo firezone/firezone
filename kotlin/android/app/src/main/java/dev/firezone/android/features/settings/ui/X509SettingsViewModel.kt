@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.x509claims.DetailField
+import uniffi.x509claims.UnusableReason
 import javax.inject.Inject
 
 @HiltViewModel
@@ -66,7 +67,8 @@ internal class X509SettingsViewModel
                         uiMutableStateFlow.value.copy(
                             isLoading = false,
                             isUsable = identity != null,
-                            unusableSummary = identity?.unusableSummary,
+                            certificateIsUsable = identity?.certificateIsUsable != false,
+                            certificateProblems = identity?.certificateProblems.orEmpty(),
                             details = identity?.certificate?.detailFields.orEmpty(),
                         )
                 }
@@ -105,8 +107,10 @@ internal class X509SettingsViewModel
             val error: String? = null,
             /** Whether the KeyChain released the key for [alias]. */
             val isUsable: Boolean = false,
-            /** Why the certificate cannot be presented for mutual TLS, `null` if it can. */
-            val unusableSummary: String? = null,
+            /** Whether the certificate's own rules allow presenting it for mutual TLS. */
+            val certificateIsUsable: Boolean = true,
+            /** The rules it fails that no detail row carries. */
+            val certificateProblems: List<UnusableReason> = emptyList(),
         )
 
         private companion object {
