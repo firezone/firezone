@@ -48,7 +48,7 @@ public struct AppView: View {
         .store(in: &cancellables)
     }
 
-    public enum WindowDefinition: String, CaseIterable {
+    public enum WindowDefinition: String, CaseIterable, Sendable {
       case main
       case settings
 

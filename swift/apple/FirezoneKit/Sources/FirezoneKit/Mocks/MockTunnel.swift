@@ -14,6 +14,9 @@
 // `--mock-scenario <name>` picks the fixture (see `Mocks/Scenarios`), so a screen
 // that needs a state no fixture describes wants a new fixture rather than new
 // code here.
+//
+// `--mock-window <name>` names a window for the app to show as it launches, so a
+// screenshot run never has to address the app from outside once it is running.
 
 #if DEBUG
   import Foundation
@@ -279,6 +282,27 @@
   #if os(macOS)
     /// Holds the window observer below for the life of the process.
     @MainActor private var mockWindowObserver: (any NSObjectProtocol)?
+
+    extension AppView.WindowDefinition {
+      /// The window `--mock-window` names, or `nil` when it names none.
+      ///
+      /// A launch that names one shows that window and closes the rest. A launch
+      /// that names none leaves the app as it ships: a menu bar app, showing no
+      /// window of its own.
+      public static func mockFromCommandLine(
+        _ arguments: [String] = CommandLine.arguments
+      ) -> Self? {
+        guard let name = flagValue("--mock-window", in: arguments) else { return nil }
+
+        guard let window = Self(rawValue: name) else {
+          Log.warning("Ignoring unknown --mock-window '\(name)'")
+
+          return nil
+        }
+
+        return window
+      }
+    }
 
     extension NSApplication {
       /// Presents a mocked run the way a capture of it needs.
