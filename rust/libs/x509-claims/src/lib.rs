@@ -352,6 +352,11 @@ impl ParsedCertificate {
             field.problem = Some(FieldProblem::Unusable { reason });
         }
 
+        // What is wrong with a certificate is what the reader came for, so it reads before the
+        // rows that are merely true. The sort is stable, which is what keeps a row from moving
+        // between two renderings of the same certificate.
+        fields.sort_by_key(|field| field.problem.is_none());
+
         fields
     }
 

@@ -638,6 +638,9 @@ fn diagnostics_read_from_the_identity_down_to_the_encoding() {
     assert_eq!(
         labels,
         [
+            // The one row with something wrong with it leads, and the rest read in the order
+            // the diagnostics build them in.
+            "firezone://not-a-real-attribute",
             "Common Name",
             "Subject",
             "Issuer",
@@ -645,7 +648,6 @@ fn diagnostics_read_from_the_identity_down_to_the_encoding() {
             "Account ID",
             "MDM Device ID",
             "Device Serial",
-            "firezone://not-a-real-attribute",
             "Subject Alternative Names",
             "Serial Number",
             "Not Before",
@@ -656,6 +658,42 @@ fn diagnostics_read_from_the_identity_down_to_the_encoding() {
             "SHA-256 Fingerprint",
         ],
     );
+}
+
+#[test]
+fn the_rows_with_a_problem_read_first() {
+    let der = certificate_with_uri_sans(&[
+        "firezone://email/not-an-address",
+        "firezone://not-a-real-attribute/x",
+    ]);
+
+    let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+    let fields = metadata.detail_fields();
+    let (with_a_problem, remainder): (Vec<_>, Vec<_>) =
+        fields.iter().partition(|field| field.problem.is_some());
+
+    assert_eq!(
+        labels(&with_a_problem),
+        ["Actor Email", "firezone://not-a-real-attribute"],
+        "the rows that carry a problem keep the order they were built in"
+    );
+    assert_eq!(
+        labels(&fields.iter().take(with_a_problem.len()).collect::<Vec<_>>()),
+        labels(&with_a_problem),
+        "a row with a problem should not read after one without"
+    );
+    assert!(
+        labels(&remainder).starts_with(&[
+            "Common Name",
+            "Subject",
+            "Issuer",
+            "Account ID",
+            "MDM Device ID",
+            "Device Serial",
+        ]),
+        "the rows with nothing wrong keep the order they were built in"
+    );
+    assert!(labels(&remainder).ends_with(&["Signing Algorithm", "SHA-256 Fingerprint"]));
 }
 
 #[test]
@@ -721,6 +759,10 @@ fn the_alternative_names_remainder_reads_after_the_claims() {
         position(&fields, "Subject Alternative Names") < position(&fields, "Serial Number"),
         "the remainder belongs to the identity, not to the certificate facts below"
     );
+}
+
+fn labels<'a>(fields: &[&'a DetailField]) -> Vec<&'a str> {
+    fields.iter().map(|field| field.label.as_str()).collect()
 }
 
 fn position(fields: &[DetailField], label: &str) -> usize {
