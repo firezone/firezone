@@ -13,7 +13,9 @@ import {
   FileCount,
   GeneralSettingsViewModel,
   SessionViewModel,
+  X509DetailField,
   X509DetailSection,
+  X509FieldProblem,
   X509FieldValue,
   X509Status,
 } from "./generated/bindings";
@@ -72,15 +74,29 @@ interface Certificate {
   commonName: string;
   subject: string;
   issuer: string;
-  actorEmail: X509FieldValue;
-  accountId: X509FieldValue;
-  mdmDeviceId: X509FieldValue;
-  deviceSerial: X509FieldValue;
+  actorEmail: Row;
+  accountId: Row;
+  mdmDeviceId: Row;
+  deviceSerial: Row;
   serialNumber: string;
   notBefore: string;
-  notAfter: string;
-  signingAlgorithm: string;
+  notAfter: Row;
+  signingAlgorithm: Row;
   fingerprint: string;
+}
+
+// One row as the parser hands it over: what the certificate said, and what is wrong with it.
+interface Row {
+  value: X509FieldValue;
+  problem?: X509FieldProblem;
+}
+
+function row(label: string, { value, problem }: Row): X509DetailField {
+  return { label, value, problem: problem ?? null };
+}
+
+function present(value: string): Row {
+  return { value: { Present: value } };
 }
 
 // The rows in the order `x509_claims::ParsedCertificate::detail_fields` builds them.
@@ -88,27 +104,28 @@ function certificateSection(
   title: string,
   certificate: Certificate
 ): X509DetailSection {
+  // `x509_claims::ParsedCertificate::detail_fields` reads the rows with a problem first, so a
+  // mock that left them in place would draw a screen the client cannot produce.
+  const fields = [
+    row("Common Name", present(certificate.commonName)),
+    row("Subject", present(certificate.subject)),
+    row("Issuer", present(certificate.issuer)),
+    row("Actor Email", certificate.actorEmail),
+    row("Account ID", certificate.accountId),
+    row("MDM Device ID", certificate.mdmDeviceId),
+    row("Device Serial", certificate.deviceSerial),
+    row("Serial Number", present(certificate.serialNumber)),
+    row("Not Before", present(certificate.notBefore)),
+    row("Not After", certificate.notAfter),
+    row("Signing Algorithm", certificate.signingAlgorithm),
+    row("SHA-256 Fingerprint", present(certificate.fingerprint)),
+  ];
+
   return {
     title,
     fields: [
-      { label: "Common Name", value: { Present: certificate.commonName } },
-      { label: "Subject", value: { Present: certificate.subject } },
-      { label: "Issuer", value: { Present: certificate.issuer } },
-      { label: "Actor Email", value: certificate.actorEmail },
-      { label: "Account ID", value: certificate.accountId },
-      { label: "MDM Device ID", value: certificate.mdmDeviceId },
-      { label: "Device Serial", value: certificate.deviceSerial },
-      { label: "Serial Number", value: { Present: certificate.serialNumber } },
-      { label: "Not Before", value: { Present: certificate.notBefore } },
-      { label: "Not After", value: { Present: certificate.notAfter } },
-      {
-        label: "Signing Algorithm",
-        value: { Present: certificate.signingAlgorithm },
-      },
-      {
-        label: "SHA-256 Fingerprint",
-        value: { Present: certificate.fingerprint },
-      },
+      ...fields.filter((field) => field.problem !== null),
+      ...fields.filter((field) => field.problem === null),
     ],
   };
 }
@@ -118,14 +135,14 @@ const windowsCertificate: Certificate = {
   commonName: SUBJECT_CN,
   subject: `O=Acme Corp, CN=${SUBJECT_CN}`,
   issuer: "DC=example, DC=acme, CN=Acme Corp Issuing CA 1",
-  actorEmail: { Present: "alice@example.com" },
-  accountId: { Present: "6f3f8a2c-0b74-4f8a-9b1f-1c2d3e4f5a6b" },
-  mdmDeviceId: { Present: "9a1c7d4e-5f60-4b28-8c3a-2d5e7f9b0c14" },
-  deviceSerial: { Present: "PF2X9K7L" },
+  actorEmail: present("alice@example.com"),
+  accountId: present("6f3f8a2c-0b74-4f8a-9b1f-1c2d3e4f5a6b"),
+  mdmDeviceId: present("9a1c7d4e-5f60-4b28-8c3a-2d5e7f9b0c14"),
+  deviceSerial: present("PF2X9K7L"),
   serialNumber: "3a:68:e8:18:bf:83:6b:20:c4:37:16:ec:96:d2:7a:a4",
   notBefore: "Mar 12 09:12:44 2026 +00:00",
-  notAfter: "Jun 14 09:12:44 2028 +00:00",
-  signingAlgorithm: "SHA256withRSA",
+  notAfter: present("Jun 14 09:12:44 2028 +00:00"),
+  signingAlgorithm: present("SHA256withRSA"),
   fingerprint:
     "90:E4:45:C9:E2:8E:8F:5B:57:D2:30:90:8C:6F:B2:3D:CE:A1:61:CA:96:3E:BF:B2:8E:E7:3D:A9:CF:70:DD:B7",
 };
@@ -135,29 +152,37 @@ const linuxCertificate: Certificate = {
   commonName: SUBJECT_CN,
   subject: `O=Acme Corp, CN=${SUBJECT_CN}`,
   issuer: "O=Acme Corp, CN=Acme Corp Device CA",
-  actorEmail: { Present: "bob@example.com" },
-  accountId: { Present: "6f3f8a2c-0b74-4f8a-9b1f-1c2d3e4f5a6b" },
-  mdmDeviceId: "Absent",
-  deviceSerial: { Present: "7QK4M3J" },
+  actorEmail: present("bob@example.com"),
+  accountId: present("6f3f8a2c-0b74-4f8a-9b1f-1c2d3e4f5a6b"),
+  mdmDeviceId: { value: "Absent" },
+  deviceSerial: present("7QK4M3J"),
   serialNumber: "ee:0d:bc:83:e7:cc:35:bc:2f:91:94:b1:e2:d2:95:f4",
   notBefore: "Nov 20 14:05:31 2025 +00:00",
-  notAfter: "Feb 23 14:05:31 2028 +00:00",
-  signingAlgorithm: "SHA256withECDSA",
+  notAfter: present("Feb 23 14:05:31 2028 +00:00"),
+  signingAlgorithm: present("SHA256withECDSA"),
   fingerprint:
     "29:19:1D:E9:31:EB:64:B5:2E:2D:64:44:FB:E7:E5:C0:EF:82:EF:8C:1C:B3:75:6A:77:A1:E5:AE:8C:F1:73:31",
 };
 
-// A certificate the client presents even though one of its claims will not be attested.
+// A certificate the client presents even though two of its claims will not be attested: one
+// whose value the parser refuses, and one the certificate leaves empty.
 const invalidAttributeCertificate: Certificate = {
   ...windowsCertificate,
-  actorEmail: { Rejected: "NotAnEmailAddress" },
+  actorEmail: {
+    value: { Present: "alice(at)example.com" },
+    problem: { Rejected: "NotAnEmailAddress" },
+  },
+  accountId: { value: "Absent", problem: { Rejected: "Empty" } },
 };
 
 const expiredCertificate: Certificate = {
   ...windowsCertificate,
   serialNumber: "7d:f2:02:1f:e6:58:05:32:af:9c:0f:07:46:91:15:24",
   notBefore: "Feb 14 08:30:00 2023 +00:00",
-  notAfter: "May 19 08:30:00 2025 +00:00",
+  notAfter: {
+    value: { Present: "May 19 08:30:00 2025 +00:00" },
+    problem: { Unusable: "Expired" },
+  },
   fingerprint:
     "DA:A5:4F:C1:B7:D1:F0:DA:C3:AC:A5:F1:07:16:4E:DA:AE:63:15:BC:CB:7E:59:AA:FC:1D:E3:C0:63:C2:3C:AC",
 };
@@ -244,7 +269,7 @@ const screens: Record<string, Screen> = {
             certificates: [
               {
                 fingerprint: expiredCertificate.fingerprint,
-                cause: { FailsRules: { reasons: ["OutsideValidityPeriod"] } },
+                cause: { FailsRules: { reasons: ["Expired"] } },
               },
             ],
           },

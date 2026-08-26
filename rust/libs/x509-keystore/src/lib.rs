@@ -210,25 +210,20 @@ pub struct DetailSection {
     pub fields: Vec<DetailField>,
 }
 
-/// A label-value row of the diagnostics.
+/// A label-value row of the diagnostics, and what is wrong with it.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct DetailField {
     pub label: String,
     pub value: FieldValue,
+    /// What is wrong with the value, [`None`] when nothing is.
+    pub problem: Option<FieldProblem>,
 }
 
 /// What the keystore knows about one row.
-///
-/// A keystore that could not produce a row hands on whatever the platform said about it, because
-/// a platform refusal has no closed set of rules behind it the way a [`RejectionReason`] has.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum FieldValue {
     Present(String),
     Absent,
-    /// The certificate carries a value the parser will not attest.
-    Rejected(RejectionReason),
-    /// The keystore could not produce the row, in the platform's own words.
-    Failed(String),
 }
 
 impl FieldValue {
@@ -237,8 +232,31 @@ impl FieldValue {
         match self {
             Self::Present(value) => value,
             Self::Absent => "Not present",
+        }
+    }
+}
+
+/// What is wrong with one row of the diagnostics.
+///
+/// A keystore that could not produce a row hands on whatever the platform said about it, because
+/// a platform refusal has no closed set of rules behind it the way the parser's problems have.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub enum FieldProblem {
+    /// The certificate carries a value the parser will not attest.
+    Rejected(RejectionReason),
+    /// A rule the certificate fails because of this attribute.
+    Unusable(UnusableReason),
+    /// The keystore could not read the row, in the platform's own words.
+    Unreadable(String),
+}
+
+impl FieldProblem {
+    /// A phrase that reads after the row it explains.
+    pub fn label(&self) -> &str {
+        match self {
             Self::Rejected(reason) => reason.label(),
-            Self::Failed(message) => message,
+            Self::Unusable(reason) => reason.label(),
+            Self::Unreadable(message) => message,
         }
     }
 }
@@ -265,6 +283,10 @@ impl Status {
 
                 for line in field.value.text().split('\n') {
                     let _ = writeln!(output, "  {line}");
+                }
+
+                if let Some(problem) = &field.problem {
+                    let _ = writeln!(output, "  ({})", problem.label());
                 }
             }
         }
@@ -377,6 +399,7 @@ pub(crate) fn field(label: impl Into<String>, value: impl Into<String>) -> Detai
     DetailField {
         label: label.into(),
         value: FieldValue::Present(value.into()),
+        problem: None,
     }
 }
 
@@ -390,6 +413,7 @@ pub(crate) fn absent_field(label: impl Into<String>) -> DetailField {
     DetailField {
         label: label.into(),
         value: FieldValue::Absent,
+        problem: None,
     }
 }
 
@@ -402,7 +426,8 @@ pub(crate) fn absent_field(label: impl Into<String>) -> DetailField {
 pub(crate) fn failed_field(label: impl Into<String>, message: impl Into<String>) -> DetailField {
     DetailField {
         label: label.into(),
-        value: FieldValue::Failed(message.into()),
+        value: FieldValue::Absent,
+        problem: Some(FieldProblem::Unreadable(message.into())),
     }
 }
 
@@ -411,6 +436,7 @@ impl From<x509_claims::DetailField> for DetailField {
         Self {
             label: field.label,
             value: field.value.into(),
+            problem: field.problem.map(FieldProblem::from),
         }
     }
 }
@@ -420,7 +446,15 @@ impl From<x509_claims::ClaimValue> for FieldValue {
         match value {
             x509_claims::ClaimValue::Present { value } => Self::Present(value),
             x509_claims::ClaimValue::Absent => Self::Absent,
-            x509_claims::ClaimValue::Invalid { reason } => Self::Rejected(reason),
+        }
+    }
+}
+
+impl From<x509_claims::FieldProblem> for FieldProblem {
+    fn from(problem: x509_claims::FieldProblem) -> Self {
+        match problem {
+            x509_claims::FieldProblem::Rejected { reason } => Self::Rejected(reason),
+            x509_claims::FieldProblem::Unusable { reason } => Self::Unusable(reason),
         }
     }
 }
@@ -455,6 +489,35 @@ mod tests {
     }
 
     #[test]
+    fn a_rows_problem_reads_underneath_its_value() {
+        let status = Status {
+            problems: Vec::new(),
+            sections: vec![DetailSection {
+                title: "Certificate".to_owned(),
+                fields: vec![
+                    DetailField {
+                        label: "Not After".to_owned(),
+                        value: FieldValue::Present("Jan  1 00:00:00 2020 +00:00".to_owned()),
+                        problem: Some(FieldProblem::Unusable(UnusableReason::Expired)),
+                    },
+                    DetailField {
+                        label: "Serial Number".to_owned(),
+                        value: FieldValue::Absent,
+                        problem: Some(FieldProblem::Unreadable(
+                            "CertGetNameString failed".to_owned(),
+                        )),
+                    },
+                ],
+            }],
+        };
+
+        assert_eq!(
+            status.text_description(),
+            "[Certificate]\nNot After:\n  Jan  1 00:00:00 2020 +00:00\n  (expired)\nSerial Number:\n  Not present\n  (CertGetNameString failed)\n"
+        );
+    }
+
+    #[test]
     fn every_problem_reads_in_one_warning() {
         let status = Status {
             problems: vec![
@@ -482,16 +545,13 @@ mod tests {
         let certificate = UnusableCertificate {
             fingerprint: "AA:BB".to_owned(),
             cause: UnusableCause::FailsRules {
-                reasons: vec![
-                    UnusableReason::NoClientAuthEku,
-                    UnusableReason::OutsideValidityPeriod,
-                ],
+                reasons: vec![UnusableReason::NoClientAuthEku, UnusableReason::Expired],
             },
         };
 
         assert_eq!(
             certificate.to_string(),
-            "AA:BB is unusable: no TLS client authentication extended key usage, expired or not yet valid"
+            "AA:BB is unusable: no TLS client authentication extended key usage, expired"
         );
     }
 
@@ -516,7 +576,7 @@ mod tests {
                 UnusableCertificate {
                     fingerprint: self.not_before.to_string(),
                     cause: UnusableCause::FailsRules {
-                        reasons: vec![UnusableReason::OutsideValidityPeriod],
+                        reasons: vec![UnusableReason::Expired],
                     },
                 }
             }
@@ -543,7 +603,7 @@ mod tests {
                 .iter()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>(),
-            ["3 is unusable: expired or not yet valid"]
+            ["3 is unusable: expired"]
         );
         assert_eq!(selected_certificate::<Candidate>(&[]), None);
     }
