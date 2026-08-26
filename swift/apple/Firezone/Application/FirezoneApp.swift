@@ -66,7 +66,6 @@ struct FirezoneApp: App {
       ) {
         AppView()
           .environmentObject(store)
-          .presentingMockWindow(.main)
       }
       .handlesExternalEvents(
         matching: [AppView.WindowDefinition.main.externalEventMatchString]
@@ -77,7 +76,6 @@ struct FirezoneApp: App {
         id: AppView.WindowDefinition.settings.identifier
       ) {
         SettingsView(store: store)
-          .presentingMockWindow(.settings)
       }
       .handlesExternalEvents(
         matching: [AppView.WindowDefinition.settings.externalEventMatchString]
@@ -161,7 +159,8 @@ struct FirezoneApp: App {
         AppView.subscribeToGlobalEvents(store: store)
       }
 
-      closeWindowsShownByLaunch()
+      // SwiftUI will show the first window group, so close it on launch
+      _ = AppView.WindowDefinition.allCases.map { $0.window()?.close() }
 
       // Show alert for macOS 15.0.x which has issues with Network Extensions.
       maybeShowOutdatedAlert()
@@ -179,23 +178,6 @@ struct FirezoneApp: App {
       Log.log("\(#function) - app is about to quit")
     }
 
-    /// Closes the windows SwiftUI shows for the app's scenes at launch.
-    ///
-    /// This is a menu bar app, so it shows no window of its own until something
-    /// asks for one.
-    private func closeWindowsShownByLaunch() {
-      #if DEBUG
-        // `--mock-window` asks for one, and it is opened and put in front from
-        // the window's own view, which needs the window the launch showed to
-        // stay on the screen long enough to run.
-        guard AppView.WindowDefinition.mockFromCommandLine() == nil else { return }
-      #endif
-
-      for definition in AppView.WindowDefinition.allCases {
-        definition.window()?.close()
-      }
-    }
-
     private func enforceSingleInstance() {
       // Get the actual bundle identifier from the running app
       guard let bundleId = Bundle.main.bundleIdentifier else { return }
@@ -207,13 +189,11 @@ struct FirezoneApp: App {
       guard runningApps.count > 1 else { return }
 
       #if DEBUG
-        // The app asks LaunchServices to open a `firezone://` URL when it wants a
-        // window that is not on the screen, and a mock run is a screenshot run,
-        // which launches and quits copies faster than LaunchServices keeps up
-        // with, so a request meant for the copy already running can be answered
-        // by starting another. That copy leaves quietly: there is nobody to
-        // dismiss the alert below, and a second copy in the element tree shows
-        // its windows through the corners of the one being photographed.
+        // A mock run is a screenshot run, which launches and quits copies faster than
+        // LaunchServices keeps up with, so it can answer a request meant for the copy
+        // already running by starting another. That copy leaves quietly: there is
+        // nobody to dismiss the alert below, and a second copy in the element tree
+        // shows its windows through the corners of the one being photographed.
         //
         // It leaves after the launch rather than during it. Quitting from here
         // ends the app before it has finished launching, which LaunchServices
@@ -275,20 +255,6 @@ struct FirezoneApp: App {
           await NSWorkspace.shared.openAsync(Self.softwareUpdateURL)
         }
       }
-    }
-  }
-
-  extension View {
-    /// Opens and fronts the window `--mock-window` names, from the view of the
-    /// `shown` window group.
-    ///
-    /// A release build carries no mock flags, so this does nothing there.
-    fileprivate func presentingMockWindow(_ shown: AppView.WindowDefinition) -> some View {
-      #if DEBUG
-        return modifier(MockWindowPresenter(shown))
-      #else
-        return self
-      #endif
     }
   }
 #endif

@@ -14,14 +14,10 @@
 // `--mock-scenario <name>` picks the fixture (see `Mocks/Scenarios`), so a screen
 // that needs a state no fixture describes wants a new fixture rather than new
 // code here.
-//
-// `--mock-window <name>` names a window for the app to open at launch, so a
-// screenshot run never has to address the app from outside once it is running.
 
 #if DEBUG
   import Foundation
   @preconcurrency import NetworkExtension
-  import SwiftUI
   import UserNotifications
 
   #if os(macOS)
@@ -283,72 +279,6 @@
   #if os(macOS)
     /// Holds the window observer below for the life of the process.
     @MainActor private var mockWindowObserver: (any NSObjectProtocol)?
-
-    extension AppView.WindowDefinition {
-      /// The window `--mock-window` names, or `nil` when it names none.
-      ///
-      /// A launch that names one keeps that window on the screen and puts it in
-      /// front. A launch that names none leaves the app as it ships: a menu bar
-      /// app, showing no window of its own.
-      public static func mockFromCommandLine(
-        _ arguments: [String] = CommandLine.arguments
-      ) -> Self? {
-        guard let name = flagValue("--mock-window", in: arguments) else { return nil }
-
-        guard let definition = Self(rawValue: name) else {
-          Log.warning("Ignoring unknown --mock-window '\(name)'")
-
-          return nil
-        }
-
-        return definition
-      }
-    }
-
-    /// Opens the window `--mock-window` names and leaves it in front.
-    ///
-    /// SwiftUI publishes `openWindow` to views, which is why this is a view
-    /// modifier: it opens a scene by its id from inside the process. The
-    /// `firezone://` URL that opens the same window goes out to LaunchServices
-    /// instead, which is free to answer it by starting a second copy of the app.
-    ///
-    /// Every window group carries this, `shown` naming the one it is attached
-    /// to. The launch shows the first group, whose view asks for the window the
-    /// run wants; the windows the launch showed instead are closed from the
-    /// wanted window's own view, so nothing closes a window whose view has yet
-    /// to run.
-    public struct MockWindowPresenter: ViewModifier {
-      private let shown: AppView.WindowDefinition
-
-      @Environment(\.openWindow) private var openWindow
-
-      public init(_ shown: AppView.WindowDefinition) {
-        self.shown = shown
-      }
-
-      public func body(content: Content) -> some View {
-        content.onAppear {
-          guard let wanted = AppView.WindowDefinition.mockFromCommandLine() else { return }
-
-          guard wanted == shown else {
-            // A window the launch showed instead, so ask for the wanted one.
-            if wanted.window() == nil {
-              openWindow(id: wanted.identifier)
-            }
-
-            return
-          }
-
-          // The wanted window is on the screen, so the rest can go.
-          for other in AppView.WindowDefinition.allCases where other != wanted {
-            other.window()?.close()
-          }
-
-          NSApp.activate(ignoringOtherApps: true)
-          wanted.window()?.makeKeyAndOrderFront(nil)
-        }
-      }
-    }
 
     extension NSApplication {
       /// Presents a mocked run the way a capture of it needs.
