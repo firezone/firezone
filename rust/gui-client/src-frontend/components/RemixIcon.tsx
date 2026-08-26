@@ -6,6 +6,7 @@ import database from "remixicon/icons/Device/database-2-line.svg";
 import certificate from "remixicon/icons/Document/certificate-line.svg";
 import equalizer from "remixicon/icons/Media/equalizer-line.svg";
 import alert from "remixicon/icons/System/alert-line.svg";
+import check from "remixicon/icons/System/checkbox-circle-line.svg";
 import close from "remixicon/icons/System/close-line.svg";
 import deleteBin from "remixicon/icons/System/delete-bin-line.svg";
 import information from "remixicon/icons/System/information-line.svg";
@@ -16,6 +17,7 @@ const icons = {
   alert,
   "arrow-down": arrowDown,
   certificate,
+  check,
   close,
   database,
   "delete-bin": deleteBin,
