@@ -61,11 +61,12 @@ public struct AppView: View {
         .store(in: &cancellables)
     }
 
-    public enum WindowDefinition: String, CaseIterable, Sendable {
+    public enum WindowDefinition: String, CaseIterable {
       case main
       case settings
 
       public var identifier: String { "firezone-\(rawValue)" }
+      public var externalEventMatchString: String { rawValue }
       // Simple custom scheme URL with known rawValue is guaranteed valid
       // swiftlint:disable:next force_unwrapping
       public var externalEventOpenURL: URL { URL(string: "firezone://\(rawValue)")! }
@@ -77,12 +78,8 @@ public struct AppView: View {
           // Order existing window front
           NSApp.activate(ignoringOtherApps: true)
           window.makeKeyAndOrderFront(self)
-        } else if let openWindow = WindowOpener.action {
-          NSApp.activate(ignoringOtherApps: true)
-          openWindow(id: identifier)
         } else {
-          // No scene has handed its action over yet. Asking the system to deliver
-          // the URL still works, at the risk of it starting a second copy.
+          // Open new window
           Task { await NSWorkspace.shared.openAsync(externalEventOpenURL) }
         }
       }
@@ -147,30 +144,3 @@ public struct AppView: View {
     #endif
   }
 }
-
-#if os(macOS)
-  /// Holds `openWindow` for the code that has to open a scene without a view to read
-  /// the environment from.
-  ///
-  /// Only SwiftUI can open one of its scenes, so a view that exists hands the action
-  /// over and everything else asks through here.
-  @MainActor
-  enum WindowOpener {
-    static var action: OpenWindowAction?
-  }
-
-  private struct WindowOpenerBridge: ViewModifier {
-    @Environment(\.openWindow) private var openWindow
-
-    func body(content: Content) -> some View {
-      content.onAppear { WindowOpener.action = openWindow }
-    }
-  }
-
-  extension View {
-    /// Lends this scene's `openWindow` action to the rest of the app.
-    public func providingWindowOpener() -> some View {
-      modifier(WindowOpenerBridge())
-    }
-  }
-#endif

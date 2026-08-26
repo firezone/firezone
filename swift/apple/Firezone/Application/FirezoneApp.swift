@@ -66,16 +66,20 @@ struct FirezoneApp: App {
       ) {
         AppView()
           .environmentObject(store)
-          .providingWindowOpener()
       }
+      .handlesExternalEvents(
+        matching: [AppView.WindowDefinition.main.externalEventMatchString]
+      )
       // macOS doesn't have Sheets, need to use another Window group to show settings
       WindowGroup(
         "Settings",
         id: AppView.WindowDefinition.settings.identifier
       ) {
         SettingsView(store: store)
-          .providingWindowOpener()
       }
+      .handlesExternalEvents(
+        matching: [AppView.WindowDefinition.settings.externalEventMatchString]
+      )
 
       MenuBarExtra {
         MenuBarView()
@@ -145,21 +149,6 @@ struct FirezoneApp: App {
 
     var store: Store?
 
-    /// Opens the window a `firezone://<window>` URL names.
-    ///
-    /// `handlesExternalEvents` used to do this, at the cost of every window the app
-    /// showed itself going out to `NSWorkspace` and back.
-    func application(_ application: NSApplication, open urls: [URL]) {
-      for url in urls {
-        guard url.scheme == "firezone",
-          let host = url.host,
-          let window = AppView.WindowDefinition(rawValue: host)
-        else { continue }
-
-        window.openWindow()
-      }
-    }
-
     func applicationWillFinishLaunching(_ notification: Notification) {
       // Enforce single instance BEFORE the app fully launches
       enforceSingleInstance()
@@ -170,7 +159,8 @@ struct FirezoneApp: App {
         AppView.subscribeToGlobalEvents(store: store)
       }
 
-      presentLaunchWindows()
+      // SwiftUI will show the first window group, so close it on launch
+      _ = AppView.WindowDefinition.allCases.map { $0.window()?.close() }
 
       // Show alert for macOS 15.0.x which has issues with Network Extensions.
       maybeShowOutdatedAlert()
@@ -186,33 +176,6 @@ struct FirezoneApp: App {
 
     func applicationWillTerminate(_ notification: Notification) {
       Log.log("\(#function) - app is about to quit")
-    }
-
-    /// Leaves the app showing what it should be showing after launch.
-    ///
-    /// SwiftUI shows the first window group, which a menu bar app has no use
-    /// for, so the windows are closed again. `--mock-window` names one to keep
-    /// on the screen instead, which is how a screenshot run gets its window
-    /// without asking the system to open a `firezone://` URL.
-    private func presentLaunchWindows() {
-      #if DEBUG
-        if let wanted = AppView.WindowDefinition.mockFromCommandLine() {
-          // A turn later, so that the group SwiftUI showed has appeared and lent
-          // its `openWindow` action: without it, opening a window is the URL
-          // round trip this avoids.
-          DispatchQueue.main.async {
-            wanted.openWindow()
-
-            for other in AppView.WindowDefinition.allCases where other != wanted {
-              other.window()?.close()
-            }
-          }
-
-          return
-        }
-      #endif
-
-      _ = AppView.WindowDefinition.allCases.map { $0.window()?.close() }
     }
 
     private func enforceSingleInstance() {
