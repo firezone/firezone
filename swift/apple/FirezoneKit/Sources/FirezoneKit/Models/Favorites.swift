@@ -1,7 +1,7 @@
 import Foundation
 
 public final class Favorites: ObservableObject {
-  private static let key = "favoriteResourceIDs"
+  static let key = "favoriteResourceIDs"
   private var ids: Set<String>
   private let userDefaults: UserDefaults
 
@@ -49,12 +49,3 @@ public final class Favorites: ObservableObject {
     return []
   }
 }
-
-#if DEBUG
-  extension Favorites {
-    /// Replaces the stored favorites, so a mock scenario can seed them.
-    static func seed(_ ids: [String], in userDefaults: UserDefaults) {
-      userDefaults.set(ids, forKey: key)
-    }
-  }
-#endif

@@ -32,26 +32,13 @@
   /// process, so a screenshot or a demo cannot race a transition.
   struct MockScenario: Decodable, Sendable {
     let hasVPNConfiguration: Bool
-
-    /// A scenario without a VPN configuration has no session to report a status,
-    /// and the app treats it as `invalid` whatever this says.
     let vpnStatus: VPNStatus
-
-    /// iOS has no network extension and ignores this.
     let systemExtension: SystemExtension
-
     let notifications: NotificationDecision
-
     let actorName: String
-
     let resources: [Resource]
-
     let connectedDevices: [ConnectedDevice]
-
-    /// The ids of the resources the user has starred.
     let favorites: [String]
-
-    /// In bytes.
     let providerLogFolderSize: Int64
 
     enum VPNStatus: String, Decodable, Sendable {
@@ -78,17 +65,10 @@
   }
 
   extension MockScenario {
-    /// The scenario a mock presents when none is named.
     static var connected: MockScenario { named("connected") }
 
-    /// The scenario `nameOrPath` describes.
-    ///
-    /// A name resolves to a fixture this bundle ships; a path starting with `/`
-    /// is read as it stands. Either way the app reads it, never the UI-test
-    /// runner, which is sandboxed and could hand no file over.
-    ///
-    /// A fixture that will not load ends the process: presenting some other state
-    /// instead would go unnoticed until someone read the screenshots.
+    /// A name resolves to a fixture this bundle ships; a path starting with `/` is
+    /// read as it stands.
     static func named(_ nameOrPath: String) -> MockScenario {
       guard let url = url(of: nameOrPath) else {
         fatalError("No mock scenario named '\(nameOrPath)'")
@@ -149,12 +129,6 @@
   #endif
 
   extension Store {
-    /// A `Store` against the mocked backend when the command line asks for one
-    /// with `--mock-tunnel`, and `nil` otherwise.
-    ///
-    /// `--mock-scenario <name>` picks the state it presents. Both flags carry two
-    /// dashes, which keeps them out of `UserDefaults`' argument domain, where a
-    /// single dash would land them.
     public static func mockFromCommandLine(
       _ arguments: [String] = CommandLine.arguments
     ) -> Store? {
@@ -168,16 +142,14 @@
     }
 
     /// A `Store` wired to mock dependencies presenting `scenario`.
-    ///
-    /// The favorites go through `userDefaults` because that is where `Favorites`
-    /// reads them from.
     static func mock(
       scenario: MockScenario = .connected,
       logDirectory: URL? = nil,
       // swiftlint:disable:next no_userdefaults_standard - DI entry point
       userDefaults: UserDefaults = .standard
     ) -> Store {
-      Favorites.seed(scenario.favorites, in: userDefaults)
+      // Where `Favorites` reads them back from.
+      userDefaults.set(scenario.favorites, forKey: Favorites.key)
 
       #if os(macOS)
         return Store(
