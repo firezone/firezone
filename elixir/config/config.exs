@@ -94,6 +94,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     oidc_auth_providers
     email_otp_auth_providers
     userpass_auth_providers
+    x509_auth_providers
     entra_directories
     okta_directories
     google_directories
@@ -160,6 +161,7 @@ config :portal, Portal.Changes.Consumer,
     oidc_auth_providers
     email_otp_auth_providers
     userpass_auth_providers
+    x509_auth_providers
     entra_directories
     okta_directories
     google_directories

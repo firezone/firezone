@@ -172,6 +172,20 @@ defmodule PortalAPI.SocketsTest do
       assert_problem_json(result, "gateway_already_connected")
     end
 
+    test "returns a client-facing 403 for an unauthorized X.509 user" do
+      conn = Plug.Test.conn(:get, "/")
+
+      result = Sockets.handle_error(conn, :x509_user_not_authorized)
+
+      assert result.status == 403
+
+      assert json_body(result)["detail"] ==
+               "This device's certificate does not identify an active user authorized to access " <>
+                 "this Firezone account. Please contact your administrator."
+
+      assert_problem_json(result, "x509_user_not_authorized")
+    end
+
     test "returns 503 with retry-after header for rate_limit" do
       conn = Plug.Test.conn(:get, "/")
 

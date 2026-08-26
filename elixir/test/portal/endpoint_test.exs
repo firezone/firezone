@@ -166,6 +166,34 @@ defmodule Portal.EndpointTest do
     assert forwarded.private.phoenix_endpoint == PortalAPI.Endpoint
   end
 
+  test "distinguishes the mutual-TLS endpoint by hostname and port" do
+    Portal.Config.put_env_override(:portal, :web_external_url, "https://localhost:443/")
+    Portal.Config.put_env_override(:portal, :mtls_external_url, "https://localhost:4444/")
+
+    web = Endpoint.call(conn(:get, "https://localhost:443/not-found"), [])
+    assert web.private.phoenix_endpoint == PortalWeb.Endpoint
+
+    rejected = Endpoint.call(conn(:get, "https://localhost:4444/not-found"), [])
+    assert rejected.status == 404
+    assert rejected.private.phoenix_endpoint == Endpoint
+
+    forwarded =
+      :get
+      |> conn("https://localhost:4444/not-found")
+      |> put_req_header("upgrade", "websocket")
+      |> Endpoint.call([])
+
+    assert forwarded.private.phoenix_endpoint == PortalAPI.Endpoint
+
+    wrong_port =
+      :get
+      |> conn("https://localhost:4445/not-found")
+      |> put_req_header("upgrade", "websocket")
+      |> Endpoint.call([])
+
+    assert wrong_port.private.phoenix_endpoint == PortalWeb.Endpoint
+  end
+
   test "rejects unknown hostnames" do
     conn = Endpoint.call(conn(:get, "https://unknown.firezone.test/"), [])
 

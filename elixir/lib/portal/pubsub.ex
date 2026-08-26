@@ -58,6 +58,7 @@ defmodule Portal.PubSub do
             | :resources
             | :sites
             | :static_device_pool_members
+            | :x509_auth_providers
 
     @spec subscribe(String.t()) :: :ok | {:error, term()}
     def subscribe(account_id) do
