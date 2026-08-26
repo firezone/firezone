@@ -99,8 +99,8 @@ mise run //kotlin/android:work-profile:setup
 
 That chains building Google's [TestDPC](https://github.com/googlesamples/android-testdpc),
 booting an account-free AOSP emulator, creating the managed profile, installing
-the app into it, issuing a certificate and pointing the managed configuration at
-it. Each step also runs on its own; `mise tasks` lists them.
+the app into it, staging the certificate and pointing the managed configuration
+at it. Each step also runs on its own; `mise tasks` lists them.
 
 Two steps are yours, because only a profile owner can install a key pair or push
 managed configuration and neither has an `adb` equivalent. The tasks print
@@ -112,10 +112,17 @@ instructions when they get there:
 1. TestDPC, "Manage app restrictions", `dev.firezone.android`, add the string
    `x509CertificateAlias` with the certificate's alias as its value.
 
-The certificate carries the same `firezone://<attribute>/<value>` URI subject
-alternative names a real one does. Override `ACTOR_EMAIL`, `ACCOUNT_ID`,
-`MDM_DEVICE_ID`, `DEVICE_SERIAL`, `CERT_ALIAS` or `TESTDPC_APK` to change what it
-issues.
+The certificate comes from the shared X.509 tasks rather than from this
+directory, so issue one before the setup gets to it:
+
+```bash
+mise run //:x509:create-ca
+mise run //:x509:gen-certificate device
+```
+
+`gen-certificate user --email <email> --account-id <account-id>` issues one that
+carries an actor as well; whichever of the two ran last is the one the work
+profile stages. Override `TESTDPC_APK` to install a DPC you built yourself.
 
 ## Release Setup
 
