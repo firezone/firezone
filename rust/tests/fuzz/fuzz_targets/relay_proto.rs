@@ -32,8 +32,8 @@ const CLIENT: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::new(10
 
 #[derive(Arbitrary, Debug)]
 struct Input<'a> {
-    /// Re-encode the datagram through an independent STUN codec first.
-    reencode: bool,
+    /// Decode the datagram as a STUN message and re-encode it before handing it over.
+    parse: bool,
     /// Give the message a nonce the relay issued and a matching HMAC.
     authenticate: bool,
     datagram: &'a [u8],
@@ -46,7 +46,7 @@ fuzz_target!(|input: Input<'_>| {
 
     let nonce = issued_nonce(&mut server, client, now);
 
-    let datagram = match input.reencode {
+    let datagram = match input.parse {
         false => input.datagram.to_vec(),
         true => match repair(
             input.datagram,
