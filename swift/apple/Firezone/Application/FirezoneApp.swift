@@ -14,10 +14,6 @@ struct FirezoneApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var connectingAnimationFrame: Int = 0
 
-    #if UITEST
-      /// The window a UI test asked for with `--mock-window`.
-      private let launchWindow = AppView.WindowDefinition.mockFromCommandLine() ?? .main
-    #endif
   #endif
 
   @StateObject var store: Store
@@ -65,24 +61,11 @@ struct FirezoneApp: App {
           .environmentObject(store)
       }
     #elseif os(macOS)
-      #if UITEST
-        // A UI-test build declares one window group, the window `--mock-window`
-        // chose. A regular app's first scene is presented at launch by the
-        // system, so the window is on its way up without anybody opening it,
-        // and there is no other group to keep off the screen.
-        WindowGroup(
-          launchWindow == .main ? "Welcome to Firezone" : "Settings",
-          id: launchWindow.identifier
-        ) {
-          switch launchWindow {
-          case .main:
-            AppView()
-              .environmentObject(store)
-          case .settings:
-            SettingsView(store: store)
-          }
-        }
-      #else
+      // The system presents none of these window groups at launch, so a
+      // UI-test build declares none: its window is the one the app delegate
+      // puts up itself, which cannot lose a race the way asking the system
+      // to present a scene can.
+      #if !UITEST
         WindowGroup(
           "Welcome to Firezone",
           id: AppView.WindowDefinition.main.identifier
@@ -183,10 +166,10 @@ struct FirezoneApp: App {
         AppView.subscribeToGlobalEvents(store: store)
       }
 
-      #if !UITEST
-        // SwiftUI will show the first window group, so close it on launch. A
-        // UI-test build shows the window `--mock-window` chose instead, through
-        // the scenes' launch behavior, so it has nothing to close here.
+      #if UITEST
+        presentChosenWindow()
+      #else
+        // SwiftUI will show the first window group, so close it on launch.
         _ = AppView.WindowDefinition.allCases.map { $0.window()?.close() }
       #endif
 
@@ -205,6 +188,44 @@ struct FirezoneApp: App {
     func applicationWillTerminate(_ notification: Notification) {
       Log.log("\(#function) - app is about to quit")
     }
+
+    #if UITEST
+      /// Keeps the window below alive for the life of the process.
+      private var chosenWindow: NSWindow?
+
+      /// Puts the window `--mock-window` names on the screen.
+      ///
+      /// The app hosts the screen in a window of its own rather than in one of
+      /// its window groups: the system presents no scene at this app's launch,
+      /// and everything that asks it to present one later is asynchronous, so a
+      /// window made right here is the only one that is certainly up before the
+      /// test starts looking for it.
+      private func presentChosenWindow() {
+        guard let store else { return }
+
+        let chosen = AppView.WindowDefinition.mockFromCommandLine() ?? .main
+
+        let title: String
+        let screen: AnyView
+        switch chosen {
+        case .main:
+          title = "Welcome to Firezone"
+          screen = AnyView(AppView().environmentObject(store))
+        case .settings:
+          title = "Settings"
+          screen = AnyView(SettingsView(store: store))
+        }
+
+        let window = NSWindow(contentViewController: NSHostingController(rootView: screen))
+        window.title = title
+        window.identifier = NSUserInterfaceItemIdentifier(chosen.identifier)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        chosenWindow = window
+      }
+    #endif
 
     private func enforceSingleInstance() {
       // Get the actual bundle identifier from the running app
