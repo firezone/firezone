@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pillow"]
+# ///
 """Put back re-rendered screenshots that no one could tell apart.
 
 Two ways a re-render differs from what is committed without anything having

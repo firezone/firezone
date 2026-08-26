@@ -1,5 +1,10 @@
 monorepo_root = true
 
+[tools]
+# `scripts/settle-screenshots.py` declares its own dependencies inline (PEP 723),
+# so `uv run` resolves them and the Python it needs without touching the system.
+uv = "0.12.6"
+
 [settings]
 # Refuse to install tool versions released less than 7 days ago. Mitigates the
 # malicious-publish supply-chain attack window: most compromised releases are
