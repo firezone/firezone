@@ -55,7 +55,8 @@ defmodule Portal.ChangeLogs.Consumer do
     "http_log_sinks" => Portal.HTTP.LogSink,
     "intune_posture_providers" => Portal.Intune.PostureProvider,
     "iru_posture_providers" => Portal.Iru.PostureProvider,
-    "defender_posture_providers" => Portal.Defender.PostureProvider
+    "defender_posture_providers" => Portal.Defender.PostureProvider,
+    "santa_posture_providers" => Portal.Santa.PostureProvider
   }
 
   @impl true

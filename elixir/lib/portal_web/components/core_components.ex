@@ -1446,6 +1446,14 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("santa") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-santa.png",
+      alt: "Santa by North Pole Security"
+    }
+  end
+
   defp provider_icon_spec("okta") do
     %{
       type: :image,

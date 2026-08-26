@@ -3,14 +3,14 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   import Ecto.Changeset
 
-  alias Portal.{Changes.Change, Defender, PostureProvider, Intune, Iru, PubSub}
+  alias Portal.{Changes.Change, Defender, PostureProvider, Intune, Iru, Santa, PubSub}
   alias __MODULE__.Database
 
   require Logger
 
   @feature_disabled "Device posture is not enabled for your account."
 
-  @types ~w[intune iru defender]
+  @types ~w[intune iru defender santa]
 
   @select_type_classes [
     "flex items-center w-full p-4 rounded border transition-colors cursor-pointer",
@@ -21,7 +21,8 @@ defmodule PortalWeb.Settings.DevicePosture do
   @form_fields %{
     "intune" => ~w[name]a,
     "iru" => ~w[name region subdomain api_token]a,
-    "defender" => ~w[name]a
+    "defender" => ~w[name]a,
+    "santa" => ~w[name api_url api_key]a
   }
 
   # Set by the verification flow rather than by an input, so they have to be
@@ -29,12 +30,14 @@ defmodule PortalWeb.Settings.DevicePosture do
   @programmatic_fields %{
     "intune" => ~w[tenant_id is_verified]a,
     "iru" => ~w[is_verified]a,
-    "defender" => ~w[tenant_id is_verified]a
+    "defender" => ~w[tenant_id is_verified]a,
+    "santa" => ~w[is_verified]a
   }
 
   # What the Iru test call used, so a change to any of them means the tenant
   # behind the verification is no longer the tenant in the form.
   @iru_verification_fields ~w[region subdomain api_token]a
+  @santa_verification_fields ~w[api_url api_key]a
 
   def mount(_params, _session, socket) do
     if PortalWeb.NavigationComponents.device_posture_enabled?() do
@@ -167,6 +170,11 @@ defmodule PortalWeb.Settings.DevicePosture do
     {:noreply, assign(socket, verification_error: nil, verifying: true)}
   end
 
+  def handle_event("start_verification", _params, %{assigns: %{type: "santa"}} = socket) do
+    send(self(), :verify_santa)
+    {:noreply, assign(socket, verification_error: nil, verifying: true)}
+  end
+
   def handle_event("start_verification", _params, socket) do
     verification_type = entra_verification_type(socket.assigns.type)
 
@@ -263,7 +271,7 @@ defmodule PortalWeb.Settings.DevicePosture do
     # a sync error has been stale for as long as it was disabled, so either way
     # waiting for the next scheduled run would show the wrong inventory.
     resync? =
-      Enum.any?(@iru_verification_fields ++ [:tenant_id], &Map.has_key?(changeset.changes, &1)) or
+      Enum.any?(verification_fields(socket.assigns.type), &Map.has_key?(changeset.changes, &1)) or
         get_change(changeset, :is_disabled) == false
 
     changeset
@@ -353,6 +361,34 @@ defmodule PortalWeb.Settings.DevicePosture do
 
         {:noreply,
          assign(socket, verifying: false, verification_error: iru_verification_error(reason))}
+    end
+  end
+
+  def handle_info(:verify_santa, socket) do
+    changeset = socket.assigns.form.source
+
+    client =
+      Santa.APIClient.new(
+        get_field(changeset, :api_url),
+        get_field(changeset, :api_key)
+      )
+
+    case Santa.APIClient.test_connection(client) do
+      :ok ->
+        attrs = Map.put(changeset.changes, :is_verified, true)
+
+        {:noreply,
+         assign(socket,
+           form: to_form(provider_changeset(changeset.data, "santa", attrs), as: :provider),
+           verification_error: nil,
+           verifying: false
+         )}
+
+      {:error, reason} ->
+        Logger.info("Failed to verify Santa provider", reason: inspect(reason))
+
+        {:noreply,
+         assign(socket, verifying: false, verification_error: santa_verification_error(reason))}
     end
   end
 
@@ -484,6 +520,14 @@ defmodule PortalWeb.Settings.DevicePosture do
               <:left>{@sensor_inactive_count}</:left>
               <:right>Sensor inactive</:right>
             </.dual_badge>
+            <.dual_badge :if={@has_santa?} type="success">
+              <:left>{@lockdown_count}</:left>
+              <:right>Santa Lockdown</:right>
+            </.dual_badge>
+            <.dual_badge :if={@has_santa?} type="warning">
+              <:left>{@monitor_count}</:left>
+              <:right>Santa Monitor</:right>
+            </.dual_badge>
           </div>
 
           <div class="flex-1 overflow-auto">
@@ -594,6 +638,20 @@ defmodule PortalWeb.Settings.DevicePosture do
                   </span>
                   <span class="text-xs text-body">
                     Sync onboarded machines from a Microsoft Defender for Endpoint tenant.
+                  </span>
+                </.link>
+              </li>
+              <li>
+                <.link
+                  patch={~p"/#{@account}/settings/device_posture/santa/new"}
+                  class={select_type_classes()}
+                >
+                  <span class="flex items-center gap-3 w-2/5 shrink-0">
+                    <.provider_icon provider="santa" size="xl" />
+                    <span class="text-sm font-medium text-heading">Santa</span>
+                  </span>
+                  <span class="text-xs text-body">
+                    Sync Santa hosts from North Pole Security Workshop.
                   </span>
                 </.link>
               </li>
@@ -912,6 +970,41 @@ defmodule PortalWeb.Settings.DevicePosture do
         </p>
       </div>
 
+      <div :if={@type == "santa"}>
+        <.input
+          field={@form[:api_url]}
+          type="url"
+          label="Workshop URL"
+          autocomplete="off"
+          phx-debounce="300"
+          placeholder="https://acme.workshop.cloud"
+          required
+        />
+        <p class="mt-1 text-xs text-subtle">
+          The base URL of the Workshop tenant that manages your Santa hosts.
+        </p>
+      </div>
+
+      <div :if={@type == "santa"}>
+        <label for={@form[:api_key].id} class="block text-xs font-medium text-body mb-1.5">
+          API Key <span class="text-error">*</span>
+        </label>
+        <.input
+          field={@form[:api_key]}
+          value={typed_api_key(@form)}
+          type="password"
+          autocomplete="off"
+          phx-debounce="300"
+          data-1p-ignore
+          placeholder={if @editing?, do: "Leave blank to keep the current key"}
+          required={not @editing?}
+        />
+        <p class="mt-1 text-xs text-subtle">
+          Create a read-only key in Workshop under API Keys. It must be able to call
+          <code class="text-xs">{Santa.APIClient.list_hosts_path()}</code>.
+        </p>
+      </div>
+
       <div :if={@type == "iru"}>
         <.input
           field={@form[:subdomain]}
@@ -1071,8 +1164,11 @@ defmodule PortalWeb.Settings.DevicePosture do
       type == "defender" ->
         "Grant Microsoft admin consent to verify the Defender for Endpoint provider."
 
-      true ->
+      type == "iru" ->
         "Check that the API token can read devices in the Iru tenant."
+
+      true ->
+        "Check that the API key can read hosts in the Workshop tenant."
     end
   end
 
@@ -1088,14 +1184,17 @@ defmodule PortalWeb.Settings.DevicePosture do
   # an edit. Leaving it that way submits an empty string, which cast/3 reads as
   # no change and the stored token stays.
   defp typed_api_token(form), do: get_change(form.source, :api_token) || ""
+  defp typed_api_key(form), do: get_change(form.source, :api_key) || ""
 
   defp provider_title("intune"), do: "Microsoft Intune"
   defp provider_title("iru"), do: "Iru (formerly Kandji)"
   defp provider_title("defender"), do: "Microsoft Defender for Endpoint"
+  defp provider_title("santa"), do: "Santa (Workshop)"
 
   defp new_provider("intune"), do: %Intune.PostureProvider{}
   defp new_provider("iru"), do: %Iru.PostureProvider{}
   defp new_provider("defender"), do: %Defender.PostureProvider{}
+  defp new_provider("santa"), do: %Santa.PostureProvider{}
 
   defp iru_region_options, do: [{"United States", "us"}, {"European Union", "eu"}]
 
@@ -1104,6 +1203,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp reset_verification_attrs("intune"), do: %{tenant_id: nil, is_verified: false}
   defp reset_verification_attrs("iru"), do: %{is_verified: false}
   defp reset_verification_attrs("defender"), do: %{tenant_id: nil, is_verified: false}
+  defp reset_verification_attrs("santa"), do: %{is_verified: false}
 
   # Admin consent, or a successful call against the tenant, is what proves the
   # provider works, so the form refuses to save until one succeeded. The sync
@@ -1112,7 +1212,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp provider_changeset(provider, type, attrs) do
     provider
     |> cast(
-      drop_blank_api_token(attrs),
+      drop_blank_secret(attrs),
       @form_fields[type] ++ @programmatic_fields[type] ++ ~w[is_disabled disabled_reason]a
     )
     |> base_changeset(type)
@@ -1125,11 +1225,14 @@ defmodule PortalWeb.Settings.DevicePosture do
   # "put the field back to its default", which would blank a working token.
   # Dropping it means the stored one stays; a new provider still has none and
   # still fails the required check.
-  defp drop_blank_api_token(%{"api_token" => token} = attrs) when is_binary(token) do
-    if String.trim(token) == "", do: Map.delete(attrs, "api_token"), else: attrs
+  defp drop_blank_secret(attrs) do
+    Enum.reduce(["api_token", "api_key"], attrs, fn field, attrs ->
+      if blank_secret?(attrs[field]), do: Map.delete(attrs, field), else: attrs
+    end)
   end
 
-  defp drop_blank_api_token(attrs), do: attrs
+  defp blank_secret?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank_secret?(_value), do: false
 
   # Debounced inputs are not always included when a different input triggers
   # validation. Keep values already received from the browser until that input
@@ -1144,9 +1247,18 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp base_changeset(changeset, "intune"), do: Intune.PostureProvider.changeset(changeset)
   defp base_changeset(changeset, "iru"), do: Iru.PostureProvider.changeset(changeset)
   defp base_changeset(changeset, "defender"), do: Defender.PostureProvider.changeset(changeset)
+  defp base_changeset(changeset, "santa"), do: Santa.PostureProvider.changeset(changeset)
 
   defp clear_verification_if_trigger_fields_changed(changeset, "iru") do
     if Enum.any?(@iru_verification_fields, &get_change(changeset, &1)) do
+      put_change(changeset, :is_verified, false)
+    else
+      changeset
+    end
+  end
+
+  defp clear_verification_if_trigger_fields_changed(changeset, "santa") do
+    if Enum.any?(@santa_verification_fields, &get_change(changeset, &1)) do
       put_change(changeset, :is_verified, false)
     else
       changeset
@@ -1252,15 +1364,18 @@ defmodule PortalWeb.Settings.DevicePosture do
     intune_counts = Database.intune_device_counts(subject)
     iru_counts = Database.iru_device_counts(subject)
     defender_counts = Database.defender_device_counts(subject)
+    santa_counts = Database.santa_device_counts(subject)
 
     by_provider =
-      Enum.reduce(intune_counts ++ iru_counts ++ defender_counts, %{}, fn {id, _key, n}, acc ->
+      Enum.reduce(intune_counts ++ iru_counts ++ defender_counts ++ santa_counts, %{}, fn
+        {id, _key, n}, acc ->
         Map.update(acc, id, n, &(&1 + n))
       end)
 
     by_compliance = group_counts(intune_counts)
     by_filevault = group_counts(iru_counts)
     by_health = group_counts(defender_counts)
+    by_santa_mode = group_counts(santa_counts)
     providers = Database.list_providers(subject, by_provider)
 
     assign(socket,
@@ -1268,6 +1383,7 @@ defmodule PortalWeb.Settings.DevicePosture do
       has_intune?: Enum.any?(providers, &(&1.type == "intune")),
       has_iru?: Enum.any?(providers, &(&1.type == "iru")),
       has_defender?: Enum.any?(providers, &(&1.type == "defender")),
+      has_santa?: Enum.any?(providers, &(&1.type == "santa")),
       devices_count: by_provider |> Map.values() |> Enum.sum(),
       compliant_count: Map.get(by_compliance, "compliant", 0),
       noncompliant_count: Map.get(by_compliance, "noncompliant", 0),
@@ -1277,7 +1393,9 @@ defmodule PortalWeb.Settings.DevicePosture do
       sensor_active_count: Map.get(by_health, "Active", 0),
       # Defender has five ways of saying a sensor stopped reporting, so the
       # badge counts everything that is not "Active" rather than one of them.
-      sensor_inactive_count: by_health |> Map.drop(["Active", nil]) |> Map.values() |> Enum.sum()
+      sensor_inactive_count: by_health |> Map.drop(["Active", nil]) |> Map.values() |> Enum.sum(),
+      lockdown_count: Map.get(by_santa_mode, "LOCKDOWN", 0),
+      monitor_count: Map.get(by_santa_mode, "MONITOR", 0)
     )
   end
 
@@ -1429,13 +1547,20 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp sync_worker("intune"), do: Intune.Sync
   defp sync_worker("iru"), do: Iru.Sync
   defp sync_worker("defender"), do: Defender.Sync
+  defp sync_worker("santa"), do: Santa.Sync
 
   defp provider_type_atom("intune"), do: :intune
   defp provider_type_atom("iru"), do: :iru
   defp provider_type_atom("defender"), do: :defender
+  defp provider_type_atom("santa"), do: :santa
 
   defp entra_verification_type("intune"), do: "intune_posture_provider"
   defp entra_verification_type("defender"), do: "defender_posture_provider"
+
+  defp verification_fields("intune"), do: [:tenant_id]
+  defp verification_fields("iru"), do: @iru_verification_fields
+  defp verification_fields("defender"), do: [:tenant_id]
+  defp verification_fields("santa"), do: @santa_verification_fields
 
   # The worker resolves the provider by both ids, so the account has to ride
   # along with the row id rather than being trusted from the browser.
@@ -1457,6 +1582,21 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp iru_verification_error(_reason),
     do: "Could not reach the Iru tenant. Check the subdomain and the region."
 
+  defp santa_verification_error(%Req.Response{status: 401}),
+    do: "Workshop rejected the API key. Check that it is correct and has not expired."
+
+  defp santa_verification_error(%Req.Response{status: 403}),
+    do: "The API key cannot list hosts. Use a read-only or superadmin Workshop key."
+
+  defp santa_verification_error(%Req.Response{status: 404}),
+    do: "No Workshop API answered at that URL. Check the tenant URL."
+
+  defp santa_verification_error(%Req.Response{status: status}),
+    do: "Workshop returned HTTP #{status}. Please try again."
+
+  defp santa_verification_error(_reason),
+    do: "Could not reach the Workshop tenant. Check its URL."
+
   defp account_feature_enabled?(socket),
     do: Portal.Account.device_posture_enabled?(socket.assigns.subject.account)
 
@@ -1465,7 +1605,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defmodule Database do
     import Ecto.Query
 
-    alias Portal.{Defender, PostureProvider, Intune, Iru, Safe}
+    alias Portal.{Defender, PostureProvider, Intune, Iru, Santa, Safe}
 
     def list_providers(subject, device_counts) do
       intune =
@@ -1495,7 +1635,16 @@ defmodule PortalWeb.Settings.DevicePosture do
           row(provider, "defender", name, provider.tenant_id, device_counts)
         end)
 
-      Enum.sort_by(intune ++ iru ++ defender, &{String.downcase(&1.name), &1.type})
+      santa =
+        Santa.PostureProvider
+        |> with_name()
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Enum.map(fn {provider, name} ->
+          row(provider, "santa", name, provider.api_url, device_counts)
+        end)
+
+      Enum.sort_by(intune ++ iru ++ defender ++ santa, &{String.downcase(&1.name), &1.type})
     end
 
     defp with_name(schema) do
@@ -1545,6 +1694,16 @@ defmodule PortalWeb.Settings.DevicePosture do
       |> Safe.all()
     end
 
+    @doc "Counts synced Santa hosts by provider and client mode."
+    def santa_device_counts(subject) do
+      from(d in Santa.Device,
+        group_by: [d.posture_provider_id, d.last_seen_client_mode],
+        select: {d.posture_provider_id, d.last_seen_client_mode, count(d.santa_id)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
     def get_provider!(type, id, subject) do
       provider =
         from(p in schema(type), where: p.id == ^id, preload: [:posture_provider])
@@ -1579,6 +1738,7 @@ defmodule PortalWeb.Settings.DevicePosture do
     defp schema("intune"), do: Intune.PostureProvider
     defp schema("iru"), do: Iru.PostureProvider
     defp schema("defender"), do: Defender.PostureProvider
+    defp schema("santa"), do: Santa.PostureProvider
 
     defp row(provider, type, name, identifier, device_counts) do
       %{

@@ -115,5 +115,36 @@ defmodule Portal.Telemetry.Reporter.ObanTest do
                id: provider.id
              ).is_disabled
     end
+
+    test "routes Santa device inventory sync exceptions to the Santa error handler" do
+      provider = Portal.SantaFixtures.santa_posture_provider_fixture()
+
+      job = %Oban.Job{
+        id: 4,
+        worker: "Portal.Santa.Sync",
+        queue: "santa_sync",
+        meta: %{},
+        args: %{"account_id" => provider.account_id, "posture_provider_id" => provider.id}
+      }
+
+      reason =
+        Portal.Santa.SyncError.exception(
+          provider_id: provider.id,
+          step: :list_hosts,
+          error: %Req.Response{status: 403, body: ""}
+        )
+
+      Reporter.handle_event(
+        [:oban, :job, :exception],
+        %{},
+        %{reason: reason, job: job, stacktrace: []},
+        []
+      )
+
+      assert Portal.Repo.get_by!(Portal.Santa.PostureProvider,
+               account_id: provider.account_id,
+               id: provider.id
+             ).is_disabled
+    end
   end
 end

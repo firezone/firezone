@@ -42,7 +42,8 @@ defmodule Portal.Changes.Consumer do
     "relay_tokens" => Hooks.RelayTokens,
     "intune_posture_providers" => Hooks.IntunePostureProviders,
     "iru_posture_providers" => Hooks.IruPostureProviders,
-    "defender_posture_providers" => Hooks.DefenderPostureProviders
+    "defender_posture_providers" => Hooks.DefenderPostureProviders,
+    "santa_posture_providers" => Hooks.SantaPostureProviders
   }
 
   @impl true
