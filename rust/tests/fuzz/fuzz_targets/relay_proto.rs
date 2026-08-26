@@ -144,18 +144,16 @@ impl Harness {
             }
             Step::PeerTraffic { peer, port, data } => {
                 let len = data.len().min(MAX_PAYLOAD);
-                let port = AllocationPort::new(
-                    PORTS.start() + port % (PORTS.end() - PORTS.start() + 1),
-                );
+                let port =
+                    AllocationPort::new(PORTS.start() + port % (PORTS.end() - PORTS.start() + 1));
 
                 self.server
                     .handle_peer_traffic(&data[..len], peer_socket(peer), port);
                 self.drain_commands();
             }
             Step::AllocationFailed { port } => {
-                let port = AllocationPort::new(
-                    PORTS.start() + port % (PORTS.end() - PORTS.start() + 1),
-                );
+                let port =
+                    AllocationPort::new(PORTS.start() + port % (PORTS.end() - PORTS.start() + 1));
 
                 self.server.handle_allocation_failed(port);
                 self.drain_commands();
@@ -253,9 +251,15 @@ enum Stack {
 #[derive(Arbitrary, Debug)]
 enum Step<'a> {
     /// A datagram straight off the wire, reaching the decoder and nothing else.
-    Datagram { client: u8, bytes: &'a [u8] },
+    Datagram {
+        client: u8,
+        bytes: &'a [u8],
+    },
     /// A STUN request, encoded before it is handed to the relay.
-    Request { client: u8, request: Request<'a> },
+    Request {
+        client: u8,
+        request: Request<'a>,
+    },
     /// A well-formed `ChannelData` message from a client.
     ChannelData {
         client: u8,
@@ -263,10 +267,18 @@ enum Step<'a> {
         payload: &'a [u8],
     },
     /// Data arriving on one of the relay's allocations.
-    PeerTraffic { peer: u8, port: u16, data: &'a [u8] },
+    PeerTraffic {
+        peer: u8,
+        port: u16,
+        data: &'a [u8],
+    },
     /// The event loop failed to open the socket for an allocation.
-    AllocationFailed { port: u16 },
-    AdvanceTime { millis: u32 },
+    AllocationFailed {
+        port: u16,
+    },
+    AdvanceTime {
+        millis: u32,
+    },
 }
 
 #[derive(Arbitrary, Debug)]
@@ -311,10 +323,10 @@ impl Request<'_> {
         if let Some(family) = self.additional_address_family {
             message.add_attribute(AdditionalAddressFamily::new(family.into_family()));
         }
-        if let Some(number) = self.channel_number {
-            if let Ok(number) = ChannelNumber::new(number) {
-                message.add_attribute(number);
-            }
+        if let Some(number) = self.channel_number
+            && let Ok(number) = ChannelNumber::new(number)
+        {
+            message.add_attribute(number);
         }
         if let Some(peer) = self.peer_address {
             message.add_attribute(XorPeerAddress::new(peer_socket(peer).into_socket()));
@@ -355,7 +367,10 @@ enum UsernameSpec<'a> {
     /// Drawing `expiry` as a `u64` rather than mutating its decimal form is what
     /// reaches the boundary values: libFuzzer's ASCII-integer mutator can never
     /// grow a 10-digit timestamp into the 20 digits that overflow a `SystemTime`.
-    Credentials { expiry: u64, salt: &'a str },
+    Credentials {
+        expiry: u64,
+        salt: &'a str,
+    },
     /// Any other text, exercising the splitting and the integer parse.
     Raw(&'a str),
     Missing,
