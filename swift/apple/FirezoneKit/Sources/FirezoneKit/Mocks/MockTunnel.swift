@@ -289,26 +289,20 @@
     extension NSApplication {
       /// Presents a mocked run the way a capture of it needs.
       ///
-      /// The appearance has to be set from in here: AppKit resolves it from the
-      /// system setting through `CFPreferences`, which does not read
-      /// `UserDefaults`' argument domain, so an `-AppleInterfaceStyle` argument
-      /// reaches the app and changes nothing.
+      /// The appearance is set here because AppKit resolves it from the system
+      /// setting through `CFPreferences`, which does not read `UserDefaults`'
+      /// argument domain, so an `-AppleInterfaceStyle` argument reaches the app
+      /// and changes nothing. A window inherits it, and this runs before the app
+      /// has one.
       ///
       /// The focus is cleared because AppKit hands a freshly shown text field the
       /// focus, and the insertion point it blinks keeps two captures half a second
-      /// apart from ever matching. It is cleared a turn behind SwiftUI, which
-      /// claims the focus while the window settles and would take it straight back
-      /// from an earlier attempt.
-      ///
-      /// Both happen as a window becomes key rather than on every window update:
-      /// setting a window's appearance makes it update, so the firehose would feed
-      /// itself and leave the app with no main thread to present windows on.
+      /// apart from ever matching. A window owns its first responder, so clearing
+      /// it needs the window, and it is done a turn behind SwiftUI, which claims
+      /// the focus while the window settles and would take it straight back.
       @MainActor
       public static func applyMockPresentation(_ arguments: [String] = CommandLine.arguments) {
-        let appearance = mockAppearance(arguments)
-        shared.appearance = appearance
-
-        guard appearance != nil || arguments.contains("--mock-tunnel") else { return }
+        shared.appearance = mockAppearance(arguments)
 
         mockWindowObserver = NotificationCenter.default.addObserver(
           forName: NSWindow.didBecomeKeyNotification,
@@ -318,10 +312,6 @@
           guard let window = notification.object as? NSWindow else { return }
 
           MainActor.assumeIsolated {
-            if let appearance, window.appearance?.name != appearance.name {
-              window.appearance = appearance
-            }
-
             DispatchQueue.main.async { window.makeFirstResponder(nil) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
               window.makeFirstResponder(nil)
