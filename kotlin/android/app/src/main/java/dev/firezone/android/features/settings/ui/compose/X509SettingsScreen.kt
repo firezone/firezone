@@ -357,10 +357,13 @@ private fun FieldProblem(problem: FieldProblem) {
     Text(
         text =
             when (problem) {
-                is FieldProblem.Rejected ->
+                is FieldProblem.Rejected -> {
                     stringResource(R.string.x509_claim_invalid, stringResource(problem.reason.phrase()))
+                }
 
-                is FieldProblem.Unusable -> stringResource(problem.reason.sentence())
+                is FieldProblem.Unusable -> {
+                    stringResource(problem.reason.sentence())
+                }
             },
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.error,
