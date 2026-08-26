@@ -28,12 +28,7 @@ struct FirezoneApp: App {
       // `--mock-scenario` picks the state it presents (see MockTunnel.swift).
       let store = Store.mockFromCommandLine() ?? Store()
 
-      #if os(macOS)
-        // Here rather than in the app delegate: SwiftUI installs the delegate
-        // late enough to miss `applicationWillFinishLaunching`, and this has to
-        // run before the scenes create their windows.
-        NSApplication.applyMockPresentation()
-      #elseif os(iOS)
+      #if os(iOS)
         // Before the scenes exist, so the bars are built from the appearance it
         // sets rather than adopting it on their next update.
         UIApplication.applyMockPresentation()
