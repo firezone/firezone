@@ -94,6 +94,15 @@
         // every tab arrives the same way.
         for tab in Self.settingsTabs {
           try selectTab(tab.label, in: window)
+
+          // The main window arriving in front photographs as the settings window,
+          // because it belongs to the same app and is dark in the dark appearance.
+          // Nothing else in the capture notices, so it is checked here.
+          XCTAssertFalse(
+            app.windows[Self.mainWindowTitle].exists,
+            "The main window opened over the settings window"
+          )
+
           capture(window, as: "settings-\(tab.name)", in: appearance)
         }
       }
