@@ -720,8 +720,8 @@ impl<'a> Handler<'a> {
                 // is cumbersome.
                 // Disabling telemetry for the service is mostly useful for our own testing and therefore
                 // doesn't need to be exposed publicly anyway.
-                let no_telemetry =
-                    std::env::var("FIREZONE_NO_TELEMETRY").is_ok_and(|s| s == "true");
+                let no_telemetry = crate::NO_TELEMETRY
+                    || std::env::var("FIREZONE_NO_TELEMETRY").is_ok_and(|s| s == "true");
 
                 if !no_telemetry {
                     self.telemetry_release = Some(release.clone());

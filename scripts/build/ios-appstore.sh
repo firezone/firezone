@@ -13,6 +13,8 @@ temp_dir="${TEMP_DIR:-$(mktemp -d)}"
 archive_path="$temp_dir/Firezone.xcarchive"
 export_options_plist_path="$temp_dir/ExportOptions.plist"
 git_sha=${GITHUB_SHA:-$(git rev-parse HEAD)}
+# CI sets this for every build that is not a release, so nothing it builds reports.
+no_telemetry=${FIREZONE_NO_TELEMETRY:-false}
 project_file=swift/apple/Firezone.xcodeproj
 code_sign_identity="Apple Distribution: Firezone, Inc. (47R2M6779T)"
 
@@ -30,6 +32,7 @@ echo "Building and signing app..."
 seconds_since_epoch=$(date +%s)
 xcodebuild archive \
     GIT_SHA="$git_sha" \
+    FIREZONE_NO_TELEMETRY="$no_telemetry" \
     CODE_SIGN_STYLE=Manual \
     CODE_SIGN_IDENTITY="$code_sign_identity" \
     APP_PROFILE_ID="$app_profile_id" \
