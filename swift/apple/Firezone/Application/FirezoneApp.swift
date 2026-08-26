@@ -262,6 +262,7 @@ struct FirezoneApp: App {
   /// gets no such presentation, which its menu bar scene appears to cost it,
   /// so a run through these needs no window opened or closed by hand.
   struct UITestMainApp: App {
+    @NSApplicationDelegateAdaptor(UITestDelegate.self) var delegate
     @StateObject var store = uiTestStore()
 
     var body: some Scene {
@@ -270,10 +271,40 @@ struct FirezoneApp: App {
   }
 
   struct UITestSettingsApp: App {
+    @NSApplicationDelegateAdaptor(UITestDelegate.self) var delegate
     @StateObject var store = uiTestStore()
 
     var body: some Scene {
       settingsWindowScene(store: store)
+    }
+  }
+
+  /// Orders the scene's window front, because nobody else will: the system
+  /// presents no scene at all when XCUITest launches the app.
+  @MainActor
+  final class UITestDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_: Notification) {
+      presentSceneWindows(attemptsLeft: 50)
+    }
+
+    /// Retries because the scene's window need not exist yet when the launch
+    /// notification arrives.
+    private func presentSceneWindows(attemptsLeft: Int) {
+      guard !NSApp.windows.isEmpty else {
+        if attemptsLeft > 0 {
+          Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(100))
+            presentSceneWindows(attemptsLeft: attemptsLeft - 1)
+          }
+        }
+
+        return
+      }
+
+      for window in NSApp.windows {
+        window.makeKeyAndOrderFront(nil)
+      }
+      NSApp.activate(ignoringOtherApps: true)
     }
   }
 
