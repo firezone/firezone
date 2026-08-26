@@ -15,8 +15,8 @@ struct FirezoneApp: App {
     @State private var connectingAnimationFrame: Int = 0
 
     #if UITEST
-      /// The window a UI test asked for with `--mock-window`; the other stays suppressed.
-      private let launchWindow = AppView.WindowDefinition.mockFromCommandLine()
+      /// The window a UI test asked for with `--mock-window`.
+      private let launchWindow = AppView.WindowDefinition.mockFromCommandLine() ?? .main
     #endif
   #endif
 
@@ -66,28 +66,22 @@ struct FirezoneApp: App {
       }
     #elseif os(macOS)
       #if UITEST
-        // UI-test builds target macOS 15, so the system itself presents the
-        // window `--mock-window` chose and suppresses the other; no window has
-        // to be opened or closed after launch. Restoration is disabled so a
-        // previous run's windows cannot come back beside it.
+        // A UI-test build declares one window group, the window `--mock-window`
+        // chose. A regular app's first scene is presented at launch by the
+        // system, so the window is on its way up without anybody opening it,
+        // and there is no other group to keep off the screen.
         WindowGroup(
-          "Welcome to Firezone",
-          id: AppView.WindowDefinition.main.identifier
+          launchWindow == .main ? "Welcome to Firezone" : "Settings",
+          id: launchWindow.identifier
         ) {
-          AppView()
-            .environmentObject(store)
+          switch launchWindow {
+          case .main:
+            AppView()
+              .environmentObject(store)
+          case .settings:
+            SettingsView(store: store)
+          }
         }
-        .defaultLaunchBehavior(launchWindow == .main ? .presented : .suppressed)
-        .restorationBehavior(.disabled)
-
-        WindowGroup(
-          "Settings",
-          id: AppView.WindowDefinition.settings.identifier
-        ) {
-          SettingsView(store: store)
-        }
-        .defaultLaunchBehavior(launchWindow == .settings ? .presented : .suppressed)
-        .restorationBehavior(.disabled)
       #else
         WindowGroup(
           "Welcome to Firezone",

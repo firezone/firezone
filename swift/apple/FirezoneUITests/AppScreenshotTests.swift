@@ -281,6 +281,11 @@
       let window = app.windows.matching(matcher).firstMatch
 
       guard window.waitForExistence(timeout: 30) else {
+        // The element tree names every window the app does have, which is the
+        // difference between "no window came up" and "a window came up that
+        // this matcher does not match".
+        print("Window '\(name)' did not appear; the app presents:\n\(app.debugDescription)")
+
         throw AppScreenshotError.windowDidNotAppear(name)
       }
 
