@@ -28,7 +28,7 @@ const MAX_ALLOCATION_LIFETIME: Duration = Duration::from_secs(3600);
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-allocations-2>.
 const DEFAULT_ALLOCATION_LIFETIME: Duration = Duration::from_secs(600);
 
-pub fn decode(input: &[u8]) -> Result<Result<ClientMessage<'_>, Message<Attribute>>, Error> {
+pub fn decode(input: &[u8]) -> Result<Result<ClientMessage<'_>, Message<Attribute>>, DecodeError> {
     let mut decoder = stun_codec::MessageDecoder::default();
 
     // De-multiplex as per <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
@@ -61,18 +61,20 @@ pub fn decode(input: &[u8]) -> Result<Result<ClientMessage<'_>, Message<Attribut
                     CreatePermission::parse(&message),
                 ))),
                 (_, Request) => Ok(Err(bad_request(&message))),
-                (method, class) => Err(Error::DecodeStun(bytecodec::Error::from(io::Error::new(
-                    io::ErrorKind::Unsupported,
-                    format!(
-                        "handling method {} and {class:?} is not implemented",
-                        method.as_u16()
+                (method, class) => Err(DecodeError::DecodeStun(bytecodec::Error::from(
+                    io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        format!(
+                            "handling method {} and {class:?} is not implemented",
+                            method.as_u16()
+                        ),
                     ),
-                )))),
+                ))),
             }
         }
         Some(64..=79) => Ok(Ok(ClientMessage::ChannelData(ChannelData::parse(input)?))),
-        Some(other) => Err(Error::UnknownMessageType(*other)),
-        None => Err(Error::Eof),
+        Some(other) => Err(DecodeError::UnknownMessageType(*other)),
+        None => Err(DecodeError::Eof),
     }
 }
 
@@ -601,22 +603,22 @@ fn bad_request(message: &Message<Attribute>) -> Message<Attribute> {
 }
 
 #[derive(Debug)]
-pub enum Error {
+pub enum DecodeError {
     BadChannelData(io::Error),
     DecodeStun(bytecodec::Error),
     UnknownMessageType(u8),
     Eof,
 }
 
-impl From<bytecodec::Error> for Error {
+impl From<bytecodec::Error> for DecodeError {
     fn from(error: bytecodec::Error) -> Self {
-        Error::DecodeStun(error)
+        DecodeError::DecodeStun(error)
     }
 }
 
-impl From<io::Error> for Error {
+impl From<io::Error> for DecodeError {
     fn from(error: io::Error) -> Self {
-        Error::BadChannelData(error)
+        DecodeError::BadChannelData(error)
     }
 }
 
