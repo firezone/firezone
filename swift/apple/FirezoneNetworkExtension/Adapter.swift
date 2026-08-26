@@ -657,12 +657,17 @@ actor Adapter {
     )
   }
 
-  private static func describe(_ claim: ClaimValue) -> String {
-    switch claim {
-    case .present(let value): return value
-    case .absent: return "none"
-    case .invalid(let reason): return "invalid (\(reason))"
+  private static func describe(_ claim: Claim) -> String {
+    let value: String
+
+    switch claim.value {
+    case .present(let text): value = text
+    case .absent: value = "none"
     }
+
+    guard let rejection = claim.rejection else { return value }
+
+    return "\(value) (refused: \(rejection))"
   }
 
   private func setSystemDefaultResolvers(_ path: Network.NWPath) async {

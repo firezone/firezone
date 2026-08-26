@@ -33,33 +33,73 @@ public enum X509ClaimRejection: Hashable, Sendable {
   }
 }
 
-/// What the certificate says about one row of the diagnostics screen.
+/// A rule a certificate has to satisfy before Firezone can present it for mutual TLS.
+///
+/// Mirrors `UnusableReason` of the `x509claims` bindings, which FirezoneKit cannot import.
+/// The parser ships the rule rather than a sentence so that each client words it itself.
+public enum X509UnusableReason: Hashable, Sendable {
+  case noClientAuthEku
+  case noDigitalSignatureKeyUsage
+  case notYetValid
+  case expired
+  case unsupportedKeyAlgorithm
+
+  /// A sentence that reads underneath the attribute the rule is about.
+  public var sentence: String {
+    switch self {
+    case .noClientAuthEku:
+      return "Firezone only presents a certificate that allows TLS client authentication."
+    case .noDigitalSignatureKeyUsage:
+      return "Firezone only presents a certificate whose key usage allows digital signatures."
+    case .notYetValid: return "This certificate is not valid yet."
+    case .expired: return "This certificate has expired."
+    case .unsupportedKeyAlgorithm: return "Firezone cannot sign with this key algorithm."
+    }
+  }
+}
+
+/// The text one row of the diagnostics screen shows, above whatever is wrong with it.
 public enum X509ClaimValue: Hashable, Sendable {
   case present(String)
   case absent
-  case invalid(X509ClaimRejection)
+}
+
+/// What is wrong with one row, read underneath the value it belongs to.
+public enum X509FieldProblem: Hashable, Sendable {
+  case rejected(X509ClaimRejection)
+  case unusable(X509UnusableReason)
 }
 
 /// One row of the certificate diagnostics screen.
 public struct X509CertificateField: Hashable, Sendable {
   public let label: String
   public let value: X509ClaimValue
+  /// What is wrong with the value above, `nil` when nothing is.
+  public let problem: X509FieldProblem?
 
-  public init(label: String, value: X509ClaimValue) {
+  public init(label: String, value: X509ClaimValue, problem: X509FieldProblem?) {
     self.label = label
     self.value = value
+    self.problem = problem
   }
 }
 
 /// What the parser made of the client certificate the VPN profile references.
 public struct X509CertificateSummary: Equatable, Sendable {
-  /// Why this certificate cannot be presented for mutual TLS, `nil` if it can.
-  public let unusableSummary: String?
+  /// Whether the certificate's own rules allow presenting it for mutual TLS.
+  public let isUsable: Bool
+  /// The rules it fails that no row carries, which the card states with the verdict.
+  public let certificateProblems: [X509UnusableReason]
   /// Rows to render, in the order the parser produced them.
   public let fields: [X509CertificateField]
 
-  public init(unusableSummary: String?, fields: [X509CertificateField]) {
-    self.unusableSummary = unusableSummary
+  public init(
+    isUsable: Bool,
+    certificateProblems: [X509UnusableReason],
+    fields: [X509CertificateField]
+  ) {
+    self.isUsable = isUsable
+    self.certificateProblems = certificateProblems
     self.fields = fields
   }
 }

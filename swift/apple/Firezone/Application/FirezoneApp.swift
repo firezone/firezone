@@ -32,9 +32,14 @@ struct FirezoneApp: App {
       guard let parsed = parseClientCertificate(der: der) else { return nil }
 
       return X509CertificateSummary(
-        unusableSummary: parsed.unusableSummary,
-        fields: parsed.detailFields.map {
-          X509CertificateField(label: $0.label, value: X509ClaimValue($0.value))
+        isUsable: parsed.isUsable,
+        certificateProblems: parsed.certificateProblems.map { X509UnusableReason($0) },
+        fields: parsed.detailFields.map { field in
+          X509CertificateField(
+            label: field.label,
+            value: X509ClaimValue(field.value),
+            problem: field.problem.map { X509FieldProblem($0) }
+          )
         }
       )
     }
@@ -148,7 +153,27 @@ extension X509ClaimValue {
     switch value {
     case .present(let value): self = .present(value)
     case .absent: self = .absent
-    case .invalid(let reason): self = .invalid(X509ClaimRejection(reason))
+    }
+  }
+}
+
+extension X509FieldProblem {
+  init(_ problem: FieldProblem) {
+    switch problem {
+    case .rejected(let reason): self = .rejected(X509ClaimRejection(reason))
+    case .unusable(let reason): self = .unusable(X509UnusableReason(reason))
+    }
+  }
+}
+
+extension X509UnusableReason {
+  init(_ reason: UnusableReason) {
+    switch reason {
+    case .noClientAuthEku: self = .noClientAuthEku
+    case .noDigitalSignatureKeyUsage: self = .noDigitalSignatureKeyUsage
+    case .notYetValid: self = .notYetValid
+    case .expired: self = .expired
+    case .unsupportedKeyAlgorithm: self = .unsupportedKeyAlgorithm
     }
   }
 }

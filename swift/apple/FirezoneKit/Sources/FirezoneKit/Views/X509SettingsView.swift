@@ -51,6 +51,7 @@ struct X509SettingsView: View {
                   .font(.caption)
                   .foregroundStyle(.secondary)
                 claimValue(field.value)
+                fieldProblem(field.problem)
               }
             }
           }
@@ -80,16 +81,30 @@ struct X509SettingsView: View {
 
   /// One line on what the certificate is for, absent while the keychain is still being read.
   ///
-  /// The wording is shared across the clients.
+  /// The wording is shared across the clients. A certificate that was read and refused says so
+  /// rather than reading as one that was never found: the rows below carry the attribute that
+  /// makes it unusable.
   private var explainer: String? {
     switch loadState {
     case .loading:
       return nil
     case .loaded(let summary, let keyProblem)
-    where summary.unusableSummary == nil && keyProblem == nil:
+    where summary.isUsable && keyProblem == nil:
       return "Firezone uses this certificate to identify this device."
+    case .loaded(let summary, _) where !summary.isUsable:
+      return "Firezone cannot use this certificate to identify this device."
     case .loaded, .notConfigured, .failed:
       return "Firezone did not find a certificate to identify this device."
+    }
+  }
+
+  /// Whether the explainer is the one that says Firezone presents this certificate.
+  private var isAttesting: Bool {
+    switch loadState {
+    case .loaded(let summary, let keyProblem):
+      return summary.isUsable && keyProblem == nil
+    case .loading, .notConfigured, .failed:
+      return false
     }
   }
 
@@ -100,10 +115,12 @@ struct X509SettingsView: View {
       subtitle: value("Issuer", of: summary).map { "Issued by \($0)" },
       validity: value("Not After", of: summary).map { "Valid until \($0)" }
     ) {
-      if let unusableSummary = summary.unusableSummary {
+      // Only the rules no row shows: the rest read underneath the attribute they are about,
+      // and repeating them here would say the same thing twice.
+      if !summary.certificateProblems.isEmpty {
         notice(
           "Firezone will not present this certificate",
-          "It cannot be used to prove this device is enrolled: \(unusableSummary)."
+          summary.certificateProblems.map(\.sentence).joined(separator: " ")
         )
       }
 
@@ -156,9 +173,16 @@ struct X509SettingsView: View {
       }
 
       if let explainer {
-        Text(explainer)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+          if isAttesting {
+            Image(systemName: "checkmark.circle")
+              .foregroundStyle(.tint)
+          }
+
+          Text(explainer)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
       }
 
       warning()
@@ -212,8 +236,11 @@ struct X509SettingsView: View {
           Text(field.label)
             .font(.caption)
             .foregroundStyle(.secondary)
-          claimValue(field.value)
-            .frame(maxWidth: .infinity, alignment: .leading)
+          VStack(alignment: .leading, spacing: 2) {
+            claimValue(field.value)
+            fieldProblem(field.problem)
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
         }
       }
     }
@@ -231,10 +258,24 @@ struct X509SettingsView: View {
       Text("Not present")
         .font(.system(valueTextStyle))
         .foregroundStyle(.secondary)
+    }
+  }
 
-    case .invalid(let rejection):
+  /// Reads underneath the value it belongs to, the way a form shows an error on its input.
+  @ViewBuilder
+  private func fieldProblem(_ problem: X509FieldProblem?) -> some View {
+    switch problem {
+    case .rejected(let rejection):
       Label("Ignored: \(rejection.reason)", systemImage: "exclamationmark.triangle")
         .font(.system(valueTextStyle))
+
+    case .unusable(let reason):
+      Label(reason.sentence, systemImage: "exclamationmark.triangle")
+        .font(.system(valueTextStyle))
+        .foregroundStyle(.red)
+
+    case .none:
+      EmptyView()
     }
   }
 
