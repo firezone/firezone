@@ -26,15 +26,6 @@ public struct AppView: View {
     // subscribe the AppView to certain Store properties to control the main window lifecycle which SwiftUI doesn't
     // handle.
     private static var cancellables: Set<AnyCancellable> = []
-
-    /// Whether a `--mock-window` run has chosen the window that must stay in front.
-    private static var isPresentingChosenWindow: Bool {
-      #if DEBUG
-        return WindowDefinition.mockFromCommandLine() != nil
-      #else
-        return false
-      #endif
-    }
     public static func subscribeToGlobalEvents(store: Store) {
       store.$vpnStatus
         .combineLatest(store.$systemExtensionStatus)
@@ -42,12 +33,8 @@ public struct AppView: View {
         // Prevents flurry of windows from opening
         .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main)
         .sink(receiveValue: { vpnStatus, systemExtensionStatus in
-          // Open window in case permissions are revoked, unless a screenshot run
-          // has already said which window it wants photographed: this fires after
-          // that window is up, and would land the main window in front of it.
-          if vpnStatus == .invalid || systemExtensionStatus?.isUsable != true,
-            !isPresentingChosenWindow
-          {
+          // Open window in case permissions are revoked
+          if vpnStatus == .invalid || systemExtensionStatus?.isUsable != true {
             WindowDefinition.main.openWindow()
           }
 

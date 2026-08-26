@@ -61,32 +61,15 @@ struct FirezoneApp: App {
           .environmentObject(store)
       }
     #elseif os(macOS)
-      // The system presents none of these window groups at launch, so a
-      // UI-test build declares none: its window is the one the app delegate
-      // puts up itself, which cannot lose a race the way asking the system
-      // to present a scene can.
-      #if !UITEST
-        WindowGroup(
-          "Welcome to Firezone",
-          id: AppView.WindowDefinition.main.identifier
-        ) {
-          AppView()
-            .environmentObject(store)
-        }
+      mainWindowScene(store: store)
         .handlesExternalEvents(
           matching: [AppView.WindowDefinition.main.externalEventMatchString]
         )
-        // macOS doesn't have Sheets, need to use another Window group to show settings
-        WindowGroup(
-          "Settings",
-          id: AppView.WindowDefinition.settings.identifier
-        ) {
-          SettingsView(store: store)
-        }
+      // macOS doesn't have Sheets, need to use another Window group to show settings
+      settingsWindowScene(store: store)
         .handlesExternalEvents(
           matching: [AppView.WindowDefinition.settings.externalEventMatchString]
         )
-      #endif
 
       MenuBarExtra {
         MenuBarView()
@@ -166,12 +149,8 @@ struct FirezoneApp: App {
         AppView.subscribeToGlobalEvents(store: store)
       }
 
-      #if UITEST
-        presentChosenWindow()
-      #else
-        // SwiftUI will show the first window group, so close it on launch.
-        _ = AppView.WindowDefinition.allCases.map { $0.window()?.close() }
-      #endif
+      // SwiftUI will show the first window group, so close it on launch.
+      _ = AppView.WindowDefinition.allCases.map { $0.window()?.close() }
 
       // Show alert for macOS 15.0.x which has issues with Network Extensions.
       maybeShowOutdatedAlert()
@@ -188,57 +167,6 @@ struct FirezoneApp: App {
     func applicationWillTerminate(_ notification: Notification) {
       Log.log("\(#function) - app is about to quit")
     }
-
-    #if UITEST
-      /// Keeps the window below alive for the life of the process.
-      private var chosenWindow: NSWindow?
-
-      /// Puts the window `--mock-window` names on the screen.
-      ///
-      /// The app hosts the screen in a window of its own rather than in one of
-      /// its window groups: the system presents no scene at this app's launch,
-      /// and everything that asks it to present one later is asynchronous, so a
-      /// window made right here is the only one that is certainly up before the
-      /// test starts looking for it.
-      private func presentChosenWindow() {
-        guard let store else { return }
-
-        let chosen = AppView.WindowDefinition.mockFromCommandLine() ?? .main
-
-        let title: String
-        let screen: AnyView
-        switch chosen {
-        case .main:
-          title = "Welcome to Firezone"
-          screen = AnyView(AppView().environmentObject(store))
-        case .settings:
-          title = "Settings"
-          screen = AnyView(SettingsView(store: store))
-        }
-
-        // A greedy root gives the screen no ideal size of its own, and the
-        // sizing options keep the hosting controller's hands off the window
-        // frame, so the frame set below is the one that gets photographed:
-        // 900 by 450 is what SwiftUI gives the app's window groups.
-        let host = NSHostingController(
-          rootView: screen.frame(maxWidth: .infinity, maxHeight: .infinity)
-        )
-        host.sizingOptions = []
-
-        let window = NSWindow(contentViewController: host)
-        window.title = title
-        window.identifier = NSUserInterfaceItemIdentifier(chosen.identifier)
-        window.setFrame(
-          NSRect(origin: .zero, size: NSSize(width: 900, height: 450)),
-          display: false
-        )
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-
-        chosenWindow = window
-      }
-    #endif
 
     private func enforceSingleInstance() {
       // Get the actual bundle identifier from the running app
@@ -299,5 +227,64 @@ struct FirezoneApp: App {
         }
       }
     }
+  }
+#endif
+
+#if os(macOS)
+  /// The app's main window, sans the external-event routing `FirezoneApp` adds to it.
+  @MainActor
+  func mainWindowScene(store: Store) -> some Scene {
+    WindowGroup(
+      "Welcome to Firezone",
+      id: AppView.WindowDefinition.main.identifier
+    ) {
+      AppView()
+        .environmentObject(store)
+    }
+  }
+
+  /// The settings window, sans the external-event routing `FirezoneApp` adds to it.
+  @MainActor
+  func settingsWindowScene(store: Store) -> some Scene {
+    WindowGroup(
+      "Settings",
+      id: AppView.WindowDefinition.settings.identifier
+    ) {
+      SettingsView(store: store)
+    }
+  }
+#endif
+
+#if os(macOS) && UITEST
+  /// Entry points for a screenshot run, one per window `--mock-window` can name
+  /// (see `main.swift`): each declares exactly the scene under test, and the
+  /// system presents an app's leading window scene at launch. `FirezoneApp`
+  /// gets no such presentation, which its menu bar scene appears to cost it,
+  /// so a run through these needs no window opened or closed by hand.
+  struct UITestMainApp: App {
+    @StateObject var store = uiTestStore()
+
+    var body: some Scene {
+      mainWindowScene(store: store)
+    }
+  }
+
+  struct UITestSettingsApp: App {
+    @StateObject var store = uiTestStore()
+
+    var body: some Scene {
+      settingsWindowScene(store: store)
+    }
+  }
+
+  /// A started mock `Store`, presented the way `FirezoneApp` presents its own.
+  @MainActor
+  private func uiTestStore() -> Store {
+    NSApplication.applyMockPresentation()
+
+    let store = Store.mockFromCommandLine() ?? Store()
+    Task { await store.start() }
+
+    return store
   }
 #endif
