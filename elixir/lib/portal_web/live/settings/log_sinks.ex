@@ -1927,9 +1927,26 @@ defmodule PortalWeb.Settings.LogSinks do
 
     DCR_ID=$(az monitor data-collection rule show \
       -g "$RG" -n firezone-logs --query id -o tsv 2>/dev/null)
-    if [ -z "$DCR_ID" ]; then
+
+    # A freshly created custom table is not accepted as a rule's output stream
+    # until Log Analytics finishes publishing it, so the first create can fail
+    # with InvalidOutputTable while that settles.
+    attempt=1
+    while [ -z "$DCR_ID" ] && [ "$attempt" -le 10 ]; do
       DCR_ID=$(az monitor data-collection rule create \
-        -g "$RG" -n firezone-logs --rule-file firezone-dcr.json --query id -o tsv)
+        -g "$RG" -n firezone-logs --rule-file firezone-dcr.json --query id -o tsv 2>/dev/null)
+
+      if [ -z "$DCR_ID" ]; then
+        echo "Waiting for table FirezoneLogs_CL to become available ($attempt/10)..." >&2
+        sleep 15
+      fi
+
+      attempt=$((attempt + 1))
+    done
+
+    if [ -z "$DCR_ID" ]; then
+      echo "Table FirezoneLogs_CL did not become available. Run this again." >&2
+      return 1
     fi
 
     SP_ID=$(az ad sp show --id FIREZONE_CLIENT_ID --query id -o tsv 2>/dev/null)
