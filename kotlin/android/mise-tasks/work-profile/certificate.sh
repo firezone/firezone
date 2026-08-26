@@ -14,7 +14,7 @@ source "${SCRIPT_DIR}/lib.sh"
 # subcommand issued this file.
 name="${usage_name:-firezone-client}"
 password="${usage_password:-firezone}"
-p12="${XDG_CACHE_HOME:-${HOME}/.cache}/firezone/x509/${name}.p12"
+p12="$(client_certificate_path "$name")"
 
 require_sdk_tool adb
 
@@ -23,19 +23,7 @@ command -v openssl >/dev/null || {
     exit 1
 }
 
-if [ ! -f "$p12" ]; then
-    echo "error: ${p12} does not exist" >&2
-    echo >&2
-    echo "Issue a certificate first:" >&2
-    echo >&2
-    echo "    mise run //:x509:create-ca" >&2
-    echo "    mise run //:x509:gen-certificate device" >&2
-    echo >&2
-    echo "or, for one that carries an actor as well:" >&2
-    echo >&2
-    echo "    mise run //:x509:gen-certificate user --email <email> --account-id <account-id>" >&2
-    exit 1
-fi
+require_client_certificate "$p12"
 
 client_cert="$(openssl pkcs12 -in "$p12" -passin "pass:${password}" -nokeys -clcerts 2>/dev/null)" || {
     echo "error: could not read ${p12}; pass --password if it was packed with another one" >&2

@@ -3,6 +3,14 @@
 #MISE raw=true
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+
+# `certificate` stages a certificate rather than issuing one, and it is the fifth of six steps, so
+# checking here is the difference between failing now and failing after the emulator has booted.
+require_client_certificate "$(client_certificate_path firezone-client)"
+
 # Each step consumes what the previous one leaves on the device, so they run in sequence rather
 # than as `depends`, which mise runs in parallel.
 #

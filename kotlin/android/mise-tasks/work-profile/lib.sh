@@ -5,6 +5,33 @@
 # Sourced, never run: it carries no `#MISE description=` line and is not executable, so mise does not
 # offer it as a task, and it leaves `set -euo pipefail` to the task that sources it.
 
+# Where `//:x509:gen-certificate` leaves the certificate it packs, by the name it stored it under.
+client_certificate_path() {
+    printf '%s/firezone/x509/%s.p12' "${XDG_CACHE_HOME:-${HOME}/.cache}" "$1"
+}
+
+# Issuing belongs to `//:x509:gen-certificate`, so the work-profile tasks only ever find one. Which
+# claims it carries is decided there, by the subcommand that issued it.
+require_client_certificate() {
+    local p12="$1"
+
+    if [ -f "$p12" ]; then
+        return
+    fi
+
+    echo "error: ${p12} does not exist" >&2
+    echo >&2
+    echo "Issue a certificate first:" >&2
+    echo >&2
+    echo "    mise run //:x509:create-ca" >&2
+    echo "    mise run //:x509:gen-certificate device" >&2
+    echo >&2
+    echo "or, for one that carries an actor as well:" >&2
+    echo >&2
+    echo "    mise run //:x509:gen-certificate user --email <email> --account-id <account-id>" >&2
+    exit 1
+}
+
 # `kotlin/android/mise.toml` resolves `ANDROID_HOME` and puts the SDK's tool directories on `PATH`,
 # so a tool missing here is one the SDK does not have installed rather than one `PATH` cannot see.
 require_sdk_tool() {
