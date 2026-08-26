@@ -204,10 +204,12 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      security-events: write # trivy SARIF upload from setup-mise
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.head_ref }}
+      - uses: ./.github/actions/setup-mise
       # A platform the planner skipped uploads nothing, which leaves its images as committed.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         continue-on-error: true
@@ -233,8 +235,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          python3 -m pip install --quiet --disable-pip-version-check --break-system-packages pillow
-          python3 scripts/settle-screenshots.py \
+          uv run scripts/settle-screenshots.py \
             rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
       - name: Set up GnuPG for the screenshot commit
         uses: ./.github/actions/setup-gpg
