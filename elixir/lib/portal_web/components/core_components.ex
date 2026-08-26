@@ -1438,6 +1438,14 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("defender") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-defender.svg",
+      alt: "Microsoft Defender for Endpoint"
+    }
+  end
+
   defp provider_icon_spec("okta") do
     %{
       type: :image,

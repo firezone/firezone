@@ -62,10 +62,12 @@ defmodule Portal.ChangeLogs.ConsumerTest do
     test "includes the typed posture provider tables only", %{tables: tables} do
       assert "intune_posture_providers" in tables
       assert "iru_posture_providers" in tables
+      assert "defender_posture_providers" in tables
 
       refute "posture_providers" in tables
       refute "intune_devices" in tables
       refute "iru_devices" in tables
+      refute "defender_devices" in tables
     end
   end
 

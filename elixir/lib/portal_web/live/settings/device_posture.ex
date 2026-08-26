@@ -3,14 +3,14 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   import Ecto.Changeset
 
-  alias Portal.{Changes.Change, PostureProvider, Intune, Iru, PubSub}
+  alias Portal.{Changes.Change, Defender, PostureProvider, Intune, Iru, PubSub}
   alias __MODULE__.Database
 
   require Logger
 
   @feature_disabled "Device posture is not enabled for your account."
 
-  @types ~w[intune iru]
+  @types ~w[intune iru defender]
 
   @select_type_classes [
     "flex items-center w-full p-4 rounded border transition-colors cursor-pointer",
@@ -20,14 +20,16 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   @form_fields %{
     "intune" => ~w[name]a,
-    "iru" => ~w[name region subdomain api_token]a
+    "iru" => ~w[name region subdomain api_token]a,
+    "defender" => ~w[name]a
   }
 
   # Set by the verification flow rather than by an input, so they have to be
   # carried across every validate event or a keystroke would drop them.
   @programmatic_fields %{
     "intune" => ~w[tenant_id is_verified]a,
-    "iru" => ~w[is_verified]a
+    "iru" => ~w[is_verified]a,
+    "defender" => ~w[tenant_id is_verified]a
   }
 
   # What the Iru test call used, so a change to any of them means the tenant
@@ -166,20 +168,22 @@ defmodule PortalWeb.Settings.DevicePosture do
   end
 
   def handle_event("start_verification", _params, socket) do
+    verification_type = entra_verification_type(socket.assigns.type)
+
     with {:ok, %{config: config}} <-
-           PortalWeb.OIDC.setup_verification("intune_posture_provider", []),
+           PortalWeb.OIDC.setup_verification(verification_type, []),
          verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
          verification_ref = Ecto.UUID.generate(),
          lv_pid_string = PortalWeb.OIDC.serialize_pid(self()),
          state_token <-
            PortalWeb.OIDC.sign_verification_state(
              lv_pid_string,
-             PortalWeb.OIDC.verification_state_type("intune_posture_provider"),
+             PortalWeb.OIDC.verification_state_type(verification_type),
              %{verification_ref: verification_ref}
            ),
          {:ok, uri} <-
            PortalWeb.OIDC.build_verification_uri(
-             "intune_posture_provider",
+             verification_type,
              config,
              verifier,
              state_token
@@ -201,7 +205,10 @@ defmodule PortalWeb.Settings.DevicePosture do
        |> push_event("open_url", %{url: uri})}
     else
       {:error, reason} ->
-        Logger.info("Failed to start Intune verification", reason: inspect(reason))
+        Logger.info("Failed to start Microsoft admin consent",
+          type: socket.assigns.type,
+          reason: inspect(reason)
+        )
 
         {:noreply,
          assign(socket,
@@ -387,27 +394,14 @@ defmodule PortalWeb.Settings.DevicePosture do
         {:intune_posture_provider_complete, tenant_id, verification_ref, ack_to},
         socket
       ) do
-    if active_verification?(socket, verification_ref) and socket.assigns.form do
-      changeset = socket.assigns.form.source
+    complete_tenant_verification(socket, "intune", tenant_id, verification_ref, ack_to)
+  end
 
-      attrs =
-        changeset.changes
-        |> Map.put(:tenant_id, tenant_id)
-        |> Map.put(:is_verified, true)
-
-      maybe_send_verification_ack(ack_to)
-
-      {:noreply,
-       assign(socket,
-         form: to_form(provider_changeset(changeset.data, "intune", attrs), as: :provider),
-         active_verification: nil,
-         verification_error: nil,
-         verifying: false
-       )}
-    else
-      maybe_send_verification_ack(ack_to)
-      {:noreply, socket}
-    end
+  def handle_info(
+        {:defender_posture_provider_complete, tenant_id, verification_ref, ack_to},
+        socket
+      ) do
+    complete_tenant_verification(socket, "defender", tenant_id, verification_ref, ack_to)
   end
 
   def handle_info({:verification_failed, reason, verification_ref}, socket) do
@@ -481,6 +475,14 @@ defmodule PortalWeb.Settings.DevicePosture do
             <.dual_badge :if={@has_iru?} type="danger">
               <:left>{@unencrypted_count}</:left>
               <:right>FileVault off</:right>
+            </.dual_badge>
+            <.dual_badge :if={@has_defender?} type="success">
+              <:left>{@sensor_active_count}</:left>
+              <:right>Sensor active</:right>
+            </.dual_badge>
+            <.dual_badge :if={@has_defender? and @sensor_inactive_count > 0} type="danger">
+              <:left>{@sensor_inactive_count}</:left>
+              <:right>Sensor inactive</:right>
             </.dual_badge>
           </div>
 
@@ -576,6 +578,22 @@ defmodule PortalWeb.Settings.DevicePosture do
                   </span>
                   <span class="text-xs text-body">
                     Sync devices and posture from an Iru (formerly Kandji) tenant.
+                  </span>
+                </.link>
+              </li>
+              <li>
+                <.link
+                  patch={~p"/#{@account}/settings/device_posture/defender/new"}
+                  class={select_type_classes()}
+                >
+                  <span class="flex items-center gap-3 w-2/5 shrink-0">
+                    <.provider_icon provider="defender" size="xl" />
+                    <span class="text-sm font-medium text-heading">
+                      Microsoft Defender for Endpoint
+                    </span>
+                  </span>
+                  <span class="text-xs text-body">
+                    Sync onboarded machines from a Microsoft Defender for Endpoint tenant.
                   </span>
                 </.link>
               </li>
@@ -970,11 +988,14 @@ defmodule PortalWeb.Settings.DevicePosture do
           </div>
         </div>
 
-        <div :if={@type == "intune"} class="mt-4 pt-4 border-t border-border space-y-3">
+        <div
+          :if={@type in ~w[intune defender]}
+          class="mt-4 pt-4 border-t border-border space-y-3"
+        >
           <div class="flex justify-between items-center">
             <label class="text-xs font-medium text-body">Tenant ID</label>
             <div class="text-right">
-              <p id="intune-tenant-id" class="text-xs font-semibold text-heading">
+              <p id="provider-tenant-id" class="text-xs font-semibold text-heading">
                 {verification_tenant_id(@form)}
               </p>
             </div>
@@ -1008,7 +1029,9 @@ defmodule PortalWeb.Settings.DevicePosture do
         id="provider-verification-button"
         type="button"
         style="primary"
-        icon={if @type == "intune", do: "ri-external-link-line", else: "ri-plug-line"}
+        icon={
+          if @type in ~w[intune defender], do: "ri-external-link-line", else: "ri-plug-line"
+        }
         phx-click="start_verification"
       >
         Verify Now
@@ -1045,6 +1068,9 @@ defmodule PortalWeb.Settings.DevicePosture do
       type == "intune" ->
         "Grant Microsoft admin consent to verify the Intune provider."
 
+      type == "defender" ->
+        "Grant Microsoft admin consent to verify the Defender for Endpoint provider."
+
       true ->
         "Check that the API token can read devices in the Iru tenant."
     end
@@ -1065,9 +1091,11 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   defp provider_title("intune"), do: "Microsoft Intune"
   defp provider_title("iru"), do: "Iru (formerly Kandji)"
+  defp provider_title("defender"), do: "Microsoft Defender for Endpoint"
 
   defp new_provider("intune"), do: %Intune.PostureProvider{}
   defp new_provider("iru"), do: %Iru.PostureProvider{}
+  defp new_provider("defender"), do: %Defender.PostureProvider{}
 
   defp iru_region_options, do: [{"United States", "us"}, {"European Union", "eu"}]
 
@@ -1075,6 +1103,7 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   defp reset_verification_attrs("intune"), do: %{tenant_id: nil, is_verified: false}
   defp reset_verification_attrs("iru"), do: %{is_verified: false}
+  defp reset_verification_attrs("defender"), do: %{tenant_id: nil, is_verified: false}
 
   # Admin consent, or a successful call against the tenant, is what proves the
   # provider works, so the form refuses to save until one succeeded. The sync
@@ -1114,6 +1143,7 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   defp base_changeset(changeset, "intune"), do: Intune.PostureProvider.changeset(changeset)
   defp base_changeset(changeset, "iru"), do: Iru.PostureProvider.changeset(changeset)
+  defp base_changeset(changeset, "defender"), do: Defender.PostureProvider.changeset(changeset)
 
   defp clear_verification_if_trigger_fields_changed(changeset, "iru") do
     if Enum.any?(@iru_verification_fields, &get_change(changeset, &1)) do
@@ -1221,26 +1251,33 @@ defmodule PortalWeb.Settings.DevicePosture do
     subject = socket.assigns.subject
     intune_counts = Database.intune_device_counts(subject)
     iru_counts = Database.iru_device_counts(subject)
+    defender_counts = Database.defender_device_counts(subject)
 
     by_provider =
-      Enum.reduce(intune_counts ++ iru_counts, %{}, fn {id, _key, n}, acc ->
+      Enum.reduce(intune_counts ++ iru_counts ++ defender_counts, %{}, fn {id, _key, n}, acc ->
         Map.update(acc, id, n, &(&1 + n))
       end)
 
     by_compliance = group_counts(intune_counts)
     by_filevault = group_counts(iru_counts)
+    by_health = group_counts(defender_counts)
     providers = Database.list_providers(subject, by_provider)
 
     assign(socket,
       providers: providers,
       has_intune?: Enum.any?(providers, &(&1.type == "intune")),
       has_iru?: Enum.any?(providers, &(&1.type == "iru")),
+      has_defender?: Enum.any?(providers, &(&1.type == "defender")),
       devices_count: by_provider |> Map.values() |> Enum.sum(),
       compliant_count: Map.get(by_compliance, "compliant", 0),
       noncompliant_count: Map.get(by_compliance, "noncompliant", 0),
       in_grace_period_count: Map.get(by_compliance, "inGracePeriod", 0),
       encrypted_count: Map.get(by_filevault, true, 0),
-      unencrypted_count: Map.get(by_filevault, false, 0)
+      unencrypted_count: Map.get(by_filevault, false, 0),
+      sensor_active_count: Map.get(by_health, "Active", 0),
+      # Defender has five ways of saying a sensor stopped reporting, so the
+      # badge counts everything that is not "Active" rather than one of them.
+      sensor_inactive_count: by_health |> Map.drop(["Active", nil]) |> Map.values() |> Enum.sum()
     )
   end
 
@@ -1265,6 +1302,32 @@ defmodule PortalWeb.Settings.DevicePosture do
       %{verification_ref: ^verification_ref} when is_binary(verification_ref),
       socket.assigns.active_verification
     )
+  end
+
+  # Admin consent proves the tenant rather than the form, so the tenant id the
+  # callback carries is what lands in the changeset.
+  defp complete_tenant_verification(socket, type, tenant_id, verification_ref, ack_to) do
+    if active_verification?(socket, verification_ref) and socket.assigns.form do
+      changeset = socket.assigns.form.source
+
+      attrs =
+        changeset.changes
+        |> Map.put(:tenant_id, tenant_id)
+        |> Map.put(:is_verified, true)
+
+      maybe_send_verification_ack(ack_to)
+
+      {:noreply,
+       assign(socket,
+         form: to_form(provider_changeset(changeset.data, type, attrs), as: :provider),
+         active_verification: nil,
+         verification_error: nil,
+         verifying: false
+       )}
+    else
+      maybe_send_verification_ack(ack_to)
+      {:noreply, socket}
+    end
   end
 
   defp maybe_send_verification_ack({pid, ref}) when is_pid(pid) do
@@ -1365,9 +1428,14 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   defp sync_worker("intune"), do: Intune.Sync
   defp sync_worker("iru"), do: Iru.Sync
+  defp sync_worker("defender"), do: Defender.Sync
 
   defp provider_type_atom("intune"), do: :intune
   defp provider_type_atom("iru"), do: :iru
+  defp provider_type_atom("defender"), do: :defender
+
+  defp entra_verification_type("intune"), do: "intune_posture_provider"
+  defp entra_verification_type("defender"), do: "defender_posture_provider"
 
   # The worker resolves the provider by both ids, so the account has to ride
   # along with the row id rather than being trusted from the browser.
@@ -1397,7 +1465,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defmodule Database do
     import Ecto.Query
 
-    alias Portal.{PostureProvider, Intune, Iru, Safe}
+    alias Portal.{Defender, PostureProvider, Intune, Iru, Safe}
 
     def list_providers(subject, device_counts) do
       intune =
@@ -1418,7 +1486,16 @@ defmodule PortalWeb.Settings.DevicePosture do
           row(provider, "iru", name, provider.subdomain, device_counts)
         end)
 
-      Enum.sort_by(intune ++ iru, &{String.downcase(&1.name), &1.type})
+      defender =
+        Defender.PostureProvider
+        |> with_name()
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Enum.map(fn {provider, name} ->
+          row(provider, "defender", name, provider.tenant_id, device_counts)
+        end)
+
+      Enum.sort_by(intune ++ iru ++ defender, &{String.downcase(&1.name), &1.type})
     end
 
     defp with_name(schema) do
@@ -1451,6 +1528,18 @@ defmodule PortalWeb.Settings.DevicePosture do
       from(d in Iru.Device,
         group_by: [d.posture_provider_id, d.filevault_enabled],
         select: {d.posture_provider_id, d.filevault_enabled, count(d.iru_id)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    @doc """
+    Counts synced Defender devices by provider and sensor health.
+    """
+    def defender_device_counts(subject) do
+      from(d in Defender.Device,
+        group_by: [d.posture_provider_id, d.health_status],
+        select: {d.posture_provider_id, d.health_status, count(d.defender_id)}
       )
       |> Safe.scoped(subject)
       |> Safe.all()
@@ -1489,6 +1578,7 @@ defmodule PortalWeb.Settings.DevicePosture do
 
     defp schema("intune"), do: Intune.PostureProvider
     defp schema("iru"), do: Iru.PostureProvider
+    defp schema("defender"), do: Defender.PostureProvider
 
     defp row(provider, type, name, identifier, device_counts) do
       %{

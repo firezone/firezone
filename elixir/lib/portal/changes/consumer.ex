@@ -41,7 +41,8 @@ defmodule Portal.Changes.Consumer do
     "google_directories" => Hooks.Directories,
     "relay_tokens" => Hooks.RelayTokens,
     "intune_posture_providers" => Hooks.IntunePostureProviders,
-    "iru_posture_providers" => Hooks.IruPostureProviders
+    "iru_posture_providers" => Hooks.IruPostureProviders,
+    "defender_posture_providers" => Hooks.DefenderPostureProviders
   }
 
   @impl true

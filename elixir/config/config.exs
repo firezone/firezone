@@ -111,6 +111,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     trust_anchor_certificates
     intune_posture_providers
     iru_posture_providers
+    defender_posture_providers
     splunk_log_sinks
     datadog_log_sinks
     newrelic_log_sinks
@@ -167,6 +168,7 @@ config :portal, Portal.Changes.Consumer,
     google_directories
     intune_posture_providers
     iru_posture_providers
+    defender_posture_providers
     relay_tokens
     portal_sessions
   ],
@@ -222,6 +224,24 @@ config :portal, Portal.Microsoft.Graph.APIClient,
     receive_timeout: 900_000,
     # Fixes `pool_not_available` errors on a cold Finch pool right after a deploy,
     # since some requests are POSTs and the default `:safe_transient` retry strategy only retries HEADS and GETs.
+    retry: :transient
+  ]
+
+# Defender for Endpoint is reached at api.security.microsoft.com, but tokens
+# still have to be minted for the legacy api.securitycenter.microsoft.com
+# audience or the API answers 403.
+config :portal, Portal.Defender.APIClient,
+  endpoint: "https://api.security.microsoft.com",
+  token_base_url: "https://login.microsoftonline.com",
+  token_scope: "https://api.securitycenter.microsoft.com/.default",
+  client_id: System.get_env("DEFENDER_SYNC_CLIENT_ID"),
+  client_secret: System.get_env("DEFENDER_SYNC_CLIENT_SECRET"),
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    # Fixes `pool_not_available` errors on a cold Finch pool right after a deploy,
+    # since the token request is a POST and the default `:safe_transient` retry
+    # strategy only retries HEADS and GETs.
     retry: :transient
   ]
 
