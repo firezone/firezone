@@ -57,7 +57,6 @@ extension XCTestCase {
     // then reach another, and a pair of captures close together cannot tell that
     // from a picture that has stopped moving.
     let required = 3
-    waitForNoBanner()
     var previous = element.screenshot()
     var previousPNG = previous.pngRepresentation
     var sizes = [previousPNG.count]
@@ -65,7 +64,6 @@ extension XCTestCase {
 
     for _ in 1...attempts {
       Thread.sleep(forTimeInterval: 1.0)
-      waitForNoBanner()
 
       let current = element.screenshot()
       let currentPNG = current.pngRepresentation
@@ -91,43 +89,6 @@ extension XCTestCase {
     XCTFail("\(fileName) never held still, across \(attempts) captures")
 
     return previous
-  }
-
-  /// Blocks while something SpringBoard drew is across the top of the screen.
-  ///
-  /// A notification banner belongs to SpringBoard rather than to the app, so it is
-  /// not in the app's element tree and the app cannot be asked to wait for it. It
-  /// is drawn over whatever is being photographed all the same: the gallery
-  /// carried a "Ready for Apple Intelligence" notice across a navigation bar.
-  ///
-  /// A banner outlives a run of captures taken a second apart, so a screen can
-  /// hold still with one on it. Matching on where it is drawn rather than on what
-  /// it is called keeps this working when the name changes between releases.
-  private func waitForNoBanner() {
-    #if os(iOS)
-      let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-      // SpringBoard fills the display, so its own frame is the screen's.
-      let screen = springboard.frame
-      let deadline = Date().addingTimeInterval(20)
-
-      while Date() < deadline {
-        let banner = springboard.otherElements.allElementsBoundByIndex.contains { element in
-          let frame = element.frame
-
-          // Wider than half the screen and taller than the status bar, in the top
-          // third of it: a banner, and nothing else SpringBoard leaves up there.
-          return frame.width > screen.width / 2
-            && frame.height > 60
-            && frame.maxY < screen.height / 3
-        }
-
-        if !banner {
-          return
-        }
-
-        Thread.sleep(forTimeInterval: 0.5)
-      }
-    #endif
   }
 
   /// Says in the run's log how a capture came to rest.
