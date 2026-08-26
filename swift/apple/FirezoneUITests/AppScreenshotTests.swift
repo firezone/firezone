@@ -121,8 +121,7 @@
 
     /// Ends the app under test and blocks until its process is gone.
     ///
-    /// `XCUIApplication.terminate()` returns before the process exits, and the app
-    /// defers its own termination until it has stopped the session, so the next
+    /// `XCUIApplication.terminate()` returns before the process exits, so the next
     /// launch would otherwise overlap a copy still on its way out. Two processes
     /// under one bundle identifier put both their windows in the element tree, and
     /// the one behind shows through the corners of the one being photographed.
