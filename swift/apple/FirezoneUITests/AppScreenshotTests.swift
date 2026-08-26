@@ -33,6 +33,9 @@
 
     private var brightness: [String: Double] = [:]
 
+    /// What each capture came out as, so a test can tell two of its own screens apart.
+    private var captured: [String: Data] = [:]
+
     func testGrantVPN() throws {
       for appearance in Appearance.allCases {
         let app = launchApp(scenario: "grant-vpn", appearance: appearance, window: "main")
@@ -81,6 +84,22 @@
           capture(window, as: scenario, in: appearance)
         }
       }
+
+      // Four scenarios describing four screens should photograph as four
+      // pictures. They collapse into one the moment the tab cannot read the
+      // certificate it was handed, and every such screen says the same thing,
+      // so the gallery looks plausible while carrying nothing.
+      for appearance in Appearance.allCases {
+        let images = Self.certificateScenarios.compactMap {
+          captured["\($0)-\(appearance.rawValue)"]
+        }
+
+        XCTAssertEqual(
+          Set(images).count,
+          images.count,
+          "two \(appearance.rawValue) certificate scenarios drew the same screen"
+        )
+      }
     }
 
     private func launchApp(
@@ -116,6 +135,7 @@
 
       let image = deliver(window, as: name, in: appearance)
       brightness["\(name)-\(appearance.rawValue)"] = meanBrightness(of: image)
+      captured["\(name)-\(appearance.rawValue)"] = image
 
       guard
         let light = brightness["\(name)-light"],
