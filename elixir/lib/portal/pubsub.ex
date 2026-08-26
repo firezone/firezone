@@ -58,6 +58,8 @@ defmodule Portal.PubSub do
             | :resources
             | :sites
             | :static_device_pool_members
+            | :trust_anchor_certificates
+            | :trust_anchors
 
     @spec subscribe(String.t()) :: :ok | {:error, term()}
     def subscribe(account_id) do
