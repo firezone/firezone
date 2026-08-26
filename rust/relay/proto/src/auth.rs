@@ -72,9 +72,9 @@ impl MessageIntegrityExt for MessageIntegrity {
         now: SystemTime,
     ) -> Result<(), Error> {
         let (expiry, salt) = split_username(username)?;
-        let expired = systemtime_from_unix(expiry);
+        let expires_at = systemtime_from_unix(expiry).ok_or(Error::InvalidUsername)?;
 
-        if expired < now {
+        if expires_at < now {
             return Err(Error::Expired);
         }
 
@@ -282,8 +282,11 @@ pub fn generate_password(relay_secret: &SecretString, expiry: u64, username_salt
     BASE64_STANDARD_NO_PAD.encode(array.as_slice())
 }
 
-pub(crate) fn systemtime_from_unix(seconds: u64) -> SystemTime {
-    SystemTime::UNIX_EPOCH + Duration::from_secs(seconds)
+/// Converts a UNIX timestamp in seconds to a [`SystemTime`].
+///
+/// Returns [`None`] if the timestamp is too far in the future to be represented as a [`SystemTime`].
+pub(crate) fn systemtime_from_unix(seconds: u64) -> Option<SystemTime> {
+    SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(seconds))
 }
 
 #[cfg(test)]
@@ -327,7 +330,7 @@ mod tests {
         let result = message_integrity.verify(
             &RELAY_SECRET_1.into(),
             "1685200000:n23JJ2wKKtt30oXi",
-            systemtime_from_unix(1685200000 - 1000),
+            systemtime_from_unix(1685200000 - 1000).unwrap(),
         );
 
         result.expect("credentials to be valid");
@@ -344,7 +347,7 @@ mod tests {
         let result = message_integrity.verify(
             &RELAY_SECRET_1.into(),
             "1685199000:n23JJ2wKKtt30oXi",
-            systemtime_from_unix(1685200000),
+            systemtime_from_unix(1685200000).unwrap(),
         );
 
         assert!(matches!(result.unwrap_err(), Error::Expired))
@@ -358,7 +361,7 @@ mod tests {
         let result = message_integrity.verify(
             &RELAY_SECRET_1.into(),
             "1685200000:n23JJ2wKKtt30oXi",
-            systemtime_from_unix(168520000 + 1000),
+            systemtime_from_unix(168520000 + 1000).unwrap(),
         );
 
         assert!(matches!(result.unwrap_err(), Error::InvalidPassword))
@@ -372,7 +375,21 @@ mod tests {
         let result = message_integrity.verify(
             &RELAY_SECRET_1.into(),
             "foobar",
-            systemtime_from_unix(168520000 + 1000),
+            systemtime_from_unix(168520000 + 1000).unwrap(),
+        );
+
+        assert!(matches!(result.unwrap_err(), Error::InvalidUsername))
+    }
+
+    #[test]
+    fn oversized_unix_expiry_is_invalid_username() {
+        let message_integrity =
+            message_integrity(&RELAY_SECRET_1.into(), u64::MAX, SAMPLE_USERNAME);
+
+        let result = message_integrity.verify(
+            &RELAY_SECRET_1.into(),
+            &format!("{}:{SAMPLE_USERNAME}", u64::MAX),
+            systemtime_from_unix(1685200000).unwrap(),
         );
 
         assert!(matches!(result.unwrap_err(), Error::InvalidUsername))
