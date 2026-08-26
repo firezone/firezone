@@ -157,7 +157,7 @@ struct FirezoneApp: App {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
       // Stopping is a request rather than an operation to wait on, so there is
       // nothing left for the app to defer its termination for once it is made.
-      do { try store?.stop() } catch { Log.error(error) }
+      do { try store?.requestStop() } catch { Log.error(error) }
 
       return .terminateNow
     }
