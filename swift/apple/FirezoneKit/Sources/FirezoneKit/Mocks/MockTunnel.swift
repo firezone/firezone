@@ -286,9 +286,10 @@
     extension AppView.WindowDefinition {
       /// The window `--mock-window` names, or `nil` when it names none.
       ///
-      /// A launch that names one shows that window and closes the rest. A launch
-      /// that names none leaves the app as it ships: a menu bar app, showing no
-      /// window of its own.
+      /// A UI-test build of the app presents that window at launch and suppresses
+      /// the rest (see `FirezoneApp`); naming one also keeps the app from opening
+      /// the main window over it. A launch that names none leaves the app as it
+      /// ships: a menu bar app, showing no window of its own.
       public static func mockFromCommandLine(
         _ arguments: [String] = CommandLine.arguments
       ) -> Self? {

@@ -13,6 +13,11 @@ struct FirezoneApp: App {
   #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var connectingAnimationFrame: Int = 0
+
+    #if UITEST
+      /// The window a UI test asked for with `--mock-window`; the other stays suppressed.
+      private let launchWindow = AppView.WindowDefinition.mockFromCommandLine()
+    #endif
   #endif
 
   @StateObject var store: Store
@@ -60,26 +65,51 @@ struct FirezoneApp: App {
           .environmentObject(store)
       }
     #elseif os(macOS)
-      WindowGroup(
-        "Welcome to Firezone",
-        id: AppView.WindowDefinition.main.identifier
-      ) {
-        AppView()
-          .environmentObject(store)
-      }
-      .handlesExternalEvents(
-        matching: [AppView.WindowDefinition.main.externalEventMatchString]
-      )
-      // macOS doesn't have Sheets, need to use another Window group to show settings
-      WindowGroup(
-        "Settings",
-        id: AppView.WindowDefinition.settings.identifier
-      ) {
-        SettingsView(store: store)
-      }
-      .handlesExternalEvents(
-        matching: [AppView.WindowDefinition.settings.externalEventMatchString]
-      )
+      #if UITEST
+        // UI-test builds target macOS 15, so the system itself presents the
+        // window `--mock-window` chose and suppresses the other; no window has
+        // to be opened or closed after launch. Restoration is disabled so a
+        // previous run's windows cannot come back beside it.
+        WindowGroup(
+          "Welcome to Firezone",
+          id: AppView.WindowDefinition.main.identifier
+        ) {
+          AppView()
+            .environmentObject(store)
+        }
+        .defaultLaunchBehavior(launchWindow == .main ? .presented : .suppressed)
+        .restorationBehavior(.disabled)
+
+        WindowGroup(
+          "Settings",
+          id: AppView.WindowDefinition.settings.identifier
+        ) {
+          SettingsView(store: store)
+        }
+        .defaultLaunchBehavior(launchWindow == .settings ? .presented : .suppressed)
+        .restorationBehavior(.disabled)
+      #else
+        WindowGroup(
+          "Welcome to Firezone",
+          id: AppView.WindowDefinition.main.identifier
+        ) {
+          AppView()
+            .environmentObject(store)
+        }
+        .handlesExternalEvents(
+          matching: [AppView.WindowDefinition.main.externalEventMatchString]
+        )
+        // macOS doesn't have Sheets, need to use another Window group to show settings
+        WindowGroup(
+          "Settings",
+          id: AppView.WindowDefinition.settings.identifier
+        ) {
+          SettingsView(store: store)
+        }
+        .handlesExternalEvents(
+          matching: [AppView.WindowDefinition.settings.externalEventMatchString]
+        )
+      #endif
 
       MenuBarExtra {
         MenuBarView()
@@ -159,8 +189,12 @@ struct FirezoneApp: App {
         AppView.subscribeToGlobalEvents(store: store)
       }
 
-      // SwiftUI will show the first window group, so close it on launch
-      _ = AppView.WindowDefinition.allCases.map { $0.window()?.close() }
+      #if !UITEST
+        // SwiftUI will show the first window group, so close it on launch. A
+        // UI-test build shows the window `--mock-window` chose instead, through
+        // the scenes' launch behavior, so it has nothing to close here.
+        _ = AppView.WindowDefinition.allCases.map { $0.window()?.close() }
+      #endif
 
       // Show alert for macOS 15.0.x which has issues with Network Extensions.
       maybeShowOutdatedAlert()
