@@ -314,7 +314,7 @@ fn a_validity_rule_reads_underneath_the_date_that_breaks_it() {
 }
 
 #[test]
-fn a_rule_no_row_carries_is_reported_beside_the_verdict() {
+fn every_rule_reads_underneath_the_attribute_that_causes_it() {
     let der = certificate_without_client_identity_extensions();
 
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
@@ -331,20 +331,51 @@ fn a_rule_no_row_carries_is_reported_beside_the_verdict() {
         }),
         "the key algorithm belongs on the row that names it"
     );
-    for reason in metadata.unusable_reasons() {
-        let on_a_row = metadata
-            .detail_fields()
-            .iter()
-            .any(|field| field.problem == Some(FieldProblem::Unusable { reason }));
+    assert_eq!(
+        detail_value(&metadata, "TLS Client Authentication EKU"),
+        ClaimValue::Absent
+    );
+    assert_eq!(
+        detail_problem(&metadata, "TLS Client Authentication EKU"),
+        Some(FieldProblem::Unusable {
+            reason: UnusableReason::NoClientAuthEku
+        })
+    );
+    assert_eq!(
+        detail_value(&metadata, "Digital Signature Key Usage"),
+        ClaimValue::Absent
+    );
+    assert_eq!(
+        detail_problem(&metadata, "Digital Signature Key Usage"),
+        Some(FieldProblem::Unusable {
+            reason: UnusableReason::NoDigitalSignatureKeyUsage
+        })
+    );
+    assert!(
+        metadata.unusable_reasons_without_a_field().is_empty(),
+        "every rule should reach the reader underneath the attribute it is about"
+    );
 
-        assert_eq!(
-            on_a_row,
-            !metadata
-                .unusable_reasons_without_a_field()
-                .contains(&reason),
-            "{reason:?} should read either underneath a row or beside the verdict, not both"
-        );
-    }
+    let passing = parse_certificate(
+        &certificate_with_uri_sans(&[
+            "firezone://email/alice@example.com",
+            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+        ]),
+        now(),
+    )
+    .expect("generated certificate should parse");
+
+    assert!(
+        passing.unusable_reasons().is_empty(),
+        "this certificate should satisfy every rule"
+    );
+    assert!(
+        !passing.detail_fields().iter().any(|field| {
+            field.label == "TLS Client Authentication EKU"
+                || field.label == "Digital Signature Key Usage"
+        }),
+        "a gate the certificate passes says nothing worth a row"
+    );
 }
 
 #[test]
@@ -653,8 +684,6 @@ fn diagnostics_read_from_the_identity_down_to_the_encoding() {
             "Serial Number",
             "Not Before",
             "Not After",
-            "TLS Client Authentication EKU",
-            "Digital Signature Key Usage",
             "Signing Algorithm",
             "SHA-256 Fingerprint",
         ],
@@ -725,8 +754,6 @@ fn sparse_diagnostics_keep_the_order_without_leaving_gaps() {
             "Serial Number",
             "Not Before",
             "Not After",
-            "TLS Client Authentication EKU",
-            "Digital Signature Key Usage",
             "Signing Algorithm",
             "SHA-256 Fingerprint",
         ],

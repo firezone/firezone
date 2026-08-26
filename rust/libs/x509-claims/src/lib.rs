@@ -332,22 +332,18 @@ impl ParsedCertificate {
             field("Serial Number", &self.serial),
             field("Not Before", &self.not_before),
             field("Not After", &self.not_after),
-            field(
-                "TLS Client Authentication EKU",
-                if self.has_client_auth_eku {
-                    "Yes"
-                } else {
-                    "No"
-                },
-            ),
-            field(
-                "Digital Signature Key Usage",
-                if self.digital_signature_allowed {
-                    "Allowed"
-                } else {
-                    "Not allowed"
-                },
-            ),
+        ]);
+
+        // A gate the certificate passes says nothing worth a row. One it fails is a reason the
+        // certificate is refused, and every reason belongs on the attribute that causes it.
+        if !self.has_client_auth_eku {
+            fields.push(absent_field("TLS Client Authentication EKU"));
+        }
+        if !self.digital_signature_allowed {
+            fields.push(absent_field("Digital Signature Key Usage"));
+        }
+
+        fields.extend([
             field(
                 "Signing Algorithm",
                 self.signing_algorithm
@@ -1079,6 +1075,15 @@ fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
         value: ClaimValue::Present {
             value: value.into(),
         },
+        problem: None,
+    }
+}
+
+/// A row for something the certificate does not carry, which a problem then says the cost of.
+fn absent_field(label: impl Into<String>) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: ClaimValue::Absent,
         problem: None,
     }
 }
