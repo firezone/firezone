@@ -2,6 +2,7 @@ defmodule Portal.Santa.SyncTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
+  import Ecto.Query
   import Portal.DevicePostureFixtures
   import Portal.SantaFixtures
 
@@ -111,6 +112,29 @@ defmodule Portal.Santa.SyncTest do
 
     assert_received {:request, "/workshop.v1.WorkshopService/ListHosts", "json",
                      %{"orderBy" => "uuid", "page" => 2, "pageSize" => 100}}
+  end
+
+  test "scopes reported host IDs to the Workshop posture provider" do
+    account = device_posture_account_fixture()
+    first_provider = santa_posture_provider_fixture(account: account)
+    second_provider = santa_posture_provider_fixture(account: account)
+
+    stub_api([host(%{"uuid" => "shared-machine-id", "hostname" => "first-tenant-host"})])
+    assert :ok = perform_job(Sync, sync_args(first_provider))
+
+    stub_api([host(%{"uuid" => "shared-machine-id", "hostname" => "second-tenant-host"})])
+    assert :ok = perform_job(Sync, sync_args(second_provider))
+
+    devices =
+      Device
+      |> where([d], d.account_id == ^account.id and d.santa_id == "shared-machine-id")
+      |> order_by([d], asc: d.hostname)
+      |> Repo.all()
+
+    assert Enum.map(devices, &{&1.posture_provider_id, &1.hostname}) == [
+             {first_provider.id, "first-tenant-host"},
+             {second_provider.id, "second-tenant-host"}
+           ]
   end
 
   test "accepts proto JSON that omits an empty hosts collection" do

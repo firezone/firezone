@@ -33,7 +33,7 @@ defmodule PortalAPI.SantaDeviceController do
   operation :show,
     summary: "Show a synced Santa device",
     parameters: [
-      identifier: [in: :path, description: "Synced Santa device ID", type: :string]
+      id: [in: :path, description: "Synced Santa device ID", type: :string]
     ],
     responses:
       [ok: {"Santa device response", "application/json", PortalAPI.Schemas.SantaDevice.Response}] ++
@@ -56,7 +56,7 @@ defmodule PortalAPI.SantaDeviceController do
     end
   end
 
-  def show(conn, %{"identifier" => id}) do
+  def show(conn, %{"id" => id}) do
     with {:ok, device} <- Database.fetch_device(id, conn.assigns.subject) do
       render(conn, :show, device: device)
     else
@@ -75,7 +75,7 @@ defmodule PortalAPI.SantaDeviceController do
     end
 
     def fetch_device(id, subject) do
-      case from(d in Santa.Device, where: d.santa_id == ^id)
+      case from(d in Santa.Device, where: d.id == ^id)
            |> Safe.scoped(subject)
            |> Safe.one() do
         nil -> {:error, :not_found}
@@ -85,7 +85,7 @@ defmodule PortalAPI.SantaDeviceController do
     end
 
     def cursor_fields do
-      [{:santa_devices, :asc, :inserted_at}, {:santa_devices, :asc, :santa_id}]
+      [{:santa_devices, :asc, :inserted_at}, {:santa_devices, :asc, :id}]
     end
 
     def preloads, do: []

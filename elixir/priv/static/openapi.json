@@ -320,6 +320,11 @@
             "nullable": true,
             "type": "string"
           },
+          "id": {
+            "format": "uuid",
+            "nullable": false,
+            "type": "string"
+          },
           "inserted_at": {
             "format": "date-time",
             "nullable": true,
@@ -447,6 +452,7 @@
         },
         "required": [
           "account_id",
+          "id",
           "posture_provider_id",
           "santa_id",
           "synced_at"
@@ -16714,6 +16720,119 @@
         ]
       }
     },
+    "/santa_devices/{id}": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SantaDeviceController.show",
+        "parameters": [
+          {
+            "description": "Synced Santa device ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaDeviceResponse"
+                }
+              }
+            },
+            "description": "Santa device response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show a synced Santa device",
+        "tags": [
+          "Santa Devices"
+        ]
+      }
+    },
     "/iru_posture_providers": {
       "get": {
         "callbacks": {},
@@ -17255,119 +17374,6 @@
         "summary": "List Defender posture providers",
         "tags": [
           "Defender Posture Providers"
-        ]
-      }
-    },
-    "/santa_devices/{identifier}": {
-      "get": {
-        "callbacks": {},
-        "operationId": "PortalAPI.SantaDeviceController.show",
-        "parameters": [
-          {
-            "description": "Synced Santa device ID",
-            "in": "path",
-            "name": "identifier",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SantaDeviceResponse"
-                }
-              }
-            },
-            "description": "Santa device response"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "example": {
-                  "detail": "The request could not be processed.",
-                  "status": 400,
-                  "title": "Bad Request",
-                  "type": "about:blank"
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "example": {
-                  "detail": "Authentication credentials were missing or invalid.",
-                  "status": 401,
-                  "title": "Unauthorized",
-                  "type": "about:blank"
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "example": {
-                  "detail": "You do not have permission to perform this action.",
-                  "status": 403,
-                  "title": "Forbidden",
-                  "type": "about:blank"
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "example": {
-                  "detail": "The requested resource could not be found.",
-                  "status": 404,
-                  "title": "Not Found",
-                  "type": "about:blank"
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "example": {
-                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
-                  "status": 429,
-                  "title": "Too Many Requests",
-                  "type": "about:blank"
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Too Many Requests"
-          }
-        },
-        "summary": "Show a synced Santa device",
-        "tags": [
-          "Santa Devices"
         ]
       }
     },

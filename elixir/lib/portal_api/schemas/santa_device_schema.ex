@@ -5,7 +5,7 @@ defmodule PortalAPI.Schemas.SantaDevice do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @required [:account_id, :posture_provider_id, :santa_id, :synced_at]
+    @required [:account_id, :id, :posture_provider_id, :santa_id, :synced_at]
 
     @properties Map.new(Portal.Santa.Device.__schema__(:fields), fn field ->
                   nullable = field not in @required

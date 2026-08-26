@@ -3,8 +3,9 @@ defmodule Portal.Santa.Device do
   A Santa host synchronized from North Pole Security Workshop's `ListHosts` API.
 
   Workshop calls the remote identifier `uuid`, although Santa permits a custom
-  machine identifier that is not a UUID. It is stored as `santa_id` to follow
-  the provider-specific inventory convention used by Intune and Iru.
+  machine identifier that is not a UUID. It is stored as `santa_id` and scoped
+  to its posture provider because Workshop does not guarantee that reported
+  machine IDs are unique across tenants.
 
   This schema mirrors `workshop.v1.Host`, which is shared by macOS and Linux
   inventory. Workshop's platform telemetry schemas describe events emitted by
@@ -20,7 +21,8 @@ defmodule Portal.Santa.Device do
 
   schema "santa_devices" do
     belongs_to :account, Portal.Account, primary_key: true
-    field :santa_id, :string, primary_key: true
+    field :id, :binary_id, primary_key: true, autogenerate: true
+    field :santa_id, :string
     belongs_to :posture_provider, Portal.PostureProvider
 
     field :serial_number, :string

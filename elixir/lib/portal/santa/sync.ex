@@ -29,7 +29,7 @@ defmodule Portal.Santa.Sync do
   @stale_after_seconds 24 * 60 * 60
 
   @replace_fields Santa.Device.__schema__(:fields) --
-                    [:account_id, :posture_provider_id, :santa_id, :inserted_at]
+                    [:account_id, :id, :posture_provider_id, :santa_id, :inserted_at]
 
   @upsert_chunk_size div(65_535, length(Santa.Device.__schema__(:fields)))
 
@@ -164,6 +164,7 @@ defmodule Portal.Santa.Sync do
   defp device_attrs(host, provider, synced_at) do
     %{
       account_id: provider.account_id,
+      id: Ecto.UUID.generate(),
       posture_provider_id: provider.id,
       synced_at: synced_at
     }
@@ -231,7 +232,7 @@ defmodule Portal.Santa.Sync do
     def upsert_devices(rows, replace_fields) do
       Safe.unscoped()
       |> Safe.insert_all(Santa.Device, rows,
-        conflict_target: [:account_id, :santa_id],
+        conflict_target: [:account_id, :posture_provider_id, :santa_id],
         on_conflict: {:replace, replace_fields}
       )
     end

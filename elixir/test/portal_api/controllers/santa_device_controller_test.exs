@@ -34,7 +34,7 @@ defmodule PortalAPI.SantaDeviceControllerTest do
     data =
       conn
       |> authorize_conn(actor)
-      |> get("/santa_devices/#{device.santa_id}")
+      |> get("/santa_devices/#{device.id}")
       |> json_response(200)
       |> Map.fetch!("data")
 
@@ -49,6 +49,6 @@ defmodule PortalAPI.SantaDeviceControllerTest do
   end
 
   test "show requires authorization", %{conn: conn, device: device} do
-    assert conn |> get("/santa_devices/#{device.santa_id}") |> json_response(401)
+    assert conn |> get("/santa_devices/#{device.id}") |> json_response(401)
   end
 end

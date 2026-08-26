@@ -786,6 +786,35 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       refute has_element?(lv, "#provider-verification-status", "Verified")
       assert has_element?(lv, "#provider-verification-button", "Verify Now")
     end
+
+    test "rejects a changed Workshop tenant submitted before its debounce fires", %{lv: lv} do
+      Req.Test.stub(Portal.Santa.APIClient, fn conn ->
+        Req.Test.json(conn, %{"hosts" => [], "more" => false})
+      end)
+
+      Req.Test.allow(Portal.Santa.APIClient, self(), lv.pid)
+
+      attrs = %{
+        name: "Acme Santa",
+        api_url: "https://acme.workshop.cloud",
+        api_key: "npsws_sk_secret"
+      }
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+
+      render_submit(lv, "submit", %{
+        "provider" => %{
+          "name" => attrs.name,
+          "api_url" => "https://other.workshop.cloud",
+          "api_key" => attrs.api_key
+        }
+      })
+
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.Santa.PostureProvider, :count) == 0
+    end
   end
 
   describe "Iru providers" do
@@ -899,6 +928,29 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
       refute has_element?(lv, "#provider-verification-status", "Verified")
       assert has_element?(lv, "#provider-verification-button", "Verify Now")
+    end
+
+    test "rejects a changed tenant submitted before its debounce fires", %{lv: lv} do
+      Req.Test.stub(Portal.Iru.APIClient, fn conn -> Req.Test.json(conn, []) end)
+      Req.Test.allow(Portal.Iru.APIClient, self(), lv.pid)
+
+      attrs = %{name: "Acme Iru", subdomain: "acme", region: "us", api_token: "token"}
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+
+      render_submit(lv, "submit", %{
+        "provider" => %{
+          "name" => attrs.name,
+          "subdomain" => "other",
+          "region" => attrs.region,
+          "api_token" => attrs.api_token
+        }
+      })
+
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.Iru.PostureProvider, :count) == 0
     end
   end
 

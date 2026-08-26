@@ -49,9 +49,11 @@ defmodule Portal.Repo.Migrations.CreateSantaDeviceInventory do
         primary_key: true
       )
 
+      add(:id, :binary_id, null: false, primary_key: true)
+
       # Workshop calls this the host UUID, although the API explicitly permits
       # clients to report an identifier that is not a UUID.
-      add(:santa_id, :string, null: false, primary_key: true)
+      add(:santa_id, :string, null: false)
 
       add(
         :posture_provider_id,
@@ -104,7 +106,13 @@ defmodule Portal.Repo.Migrations.CreateSantaDeviceInventory do
       timestamps()
     end
 
-    create(index(:santa_devices, [:account_id, :inserted_at, :santa_id]))
+    create(
+      unique_index(:santa_devices, [:account_id, :posture_provider_id, :santa_id],
+        name: :santa_devices_provider_santa_id_index
+      )
+    )
+
+    create(index(:santa_devices, [:account_id, :inserted_at, :id]))
 
     create(
       index(:santa_devices, [:account_id, :posture_provider_id, :synced_at],

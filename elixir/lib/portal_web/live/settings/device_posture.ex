@@ -1276,7 +1276,25 @@ defmodule PortalWeb.Settings.DevicePosture do
         Map.put(attrs, Atom.to_string(field), get_field(source, field))
       end)
 
-    provider_changeset(source.data, type, attrs)
+    source.data
+    |> provider_changeset(type, attrs)
+    |> clear_verification_if_submitted_fields_changed(source, type)
+  end
+
+  # A submit cancels pending debounced change events, but its FormData contains
+  # the browser's current values. Compare that submitted candidate with the
+  # form state that was actually verified so a changed tenant or credential
+  # cannot inherit stale verification.
+  defp clear_verification_if_submitted_fields_changed(changeset, source, type) do
+    if Enum.any?(verification_fields(type), fn field ->
+         get_field(changeset, field) != get_field(source, field)
+       end) do
+      changeset
+      |> put_change(:is_verified, false)
+      |> add_error(:is_verified, "must be accepted", validation: :acceptance)
+    else
+      changeset
+    end
   end
 
   defp put_posture_provider_assoc(changeset, socket) do
