@@ -70,18 +70,9 @@ internal fun X509SettingsScreen(
         CertificateCard(state)
 
         // The KeyChain answers a missing grant with a null key rather than an error, so this state
-        // would otherwise be an alias with no detail underneath it and no reason given.
+        // would otherwise be a card naming a certificate with nothing underneath it to say why.
         if (keyIsWithheld && state.error == null) {
             WarningBanner(stringResource(R.string.x509_not_released))
-        }
-
-        // Which certificate the alias names is worth saying while there is nothing else to go on.
-        // Once the KeyChain releases it, the rows below say all of this and more.
-        if (state.alias != null && !state.isUsable) {
-            Text(
-                text = stringResource(R.string.x509_alias_configured, state.alias),
-                style = MaterialTheme.typography.bodyMedium,
-            )
         }
 
         if (state.isLoading) {
