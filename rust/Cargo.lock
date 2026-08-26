@@ -2919,6 +2919,7 @@ dependencies = [
  "anyhow-ext",
  "arbitrary",
  "bufferpool",
+ "bytecodec",
  "chrono",
  "connlib-model",
  "derive_more",
@@ -2939,9 +2940,11 @@ dependencies = [
  "sha2 0.11.0",
  "smallvec",
  "snownet",
+ "stun_codec",
  "tracing",
  "tracing-subscriber",
  "tunnel-proto",
+ "uuid",
 ]
 
 [[package]]
