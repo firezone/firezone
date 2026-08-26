@@ -54,20 +54,16 @@ struct FirezoneApp: App {
       ) {
         AppView()
           .environmentObject(store)
+          .providingWindowOpener()
       }
-      .handlesExternalEvents(
-        matching: [AppView.WindowDefinition.main.externalEventMatchString]
-      )
       // macOS doesn't have Sheets, need to use another Window group to show settings
       WindowGroup(
         "Settings",
         id: AppView.WindowDefinition.settings.identifier
       ) {
         SettingsView(store: store)
+          .providingWindowOpener()
       }
-      .handlesExternalEvents(
-        matching: [AppView.WindowDefinition.settings.externalEventMatchString]
-      )
 
       MenuBarExtra {
         MenuBarView()
@@ -136,6 +132,21 @@ struct FirezoneApp: App {
     )!  // swiftlint:disable:this force_unwrapping
 
     var store: Store?
+
+    /// Opens the window a `firezone://<window>` URL names.
+    ///
+    /// `handlesExternalEvents` used to do this, at the cost of every window the app
+    /// showed itself going out to `NSWorkspace` and back.
+    func application(_ application: NSApplication, open urls: [URL]) {
+      for url in urls {
+        guard url.scheme == "firezone",
+          let host = url.host,
+          let window = AppView.WindowDefinition(rawValue: host)
+        else { continue }
+
+        window.openWindow()
+      }
+    }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
       // Enforce single instance BEFORE the app fully launches
