@@ -3,7 +3,7 @@ mod client_message;
 
 pub use crate::server::channel_data::ChannelData;
 pub use crate::server::client_message::{
-    Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, Refresh,
+    Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, DecodeError, Refresh, decode,
 };
 
 use crate::auth::{self, AuthenticatedMessage, FIREZONE, MessageIntegrityExt, Nonces};
@@ -280,16 +280,16 @@ where
                 self.send_message(message, sender);
             }
             // Parsing the bytes failed.
-            Err(client_message::Error::BadChannelData(ref error)) => {
+            Err(DecodeError::BadChannelData(ref error)) => {
                 tracing::debug!(target: "relay", %error, "failed to decode channel data")
             }
-            Err(client_message::Error::DecodeStun(ref error)) => {
+            Err(DecodeError::DecodeStun(ref error)) => {
                 tracing::debug!(target: "relay", %error, "failed to decode stun packet")
             }
-            Err(client_message::Error::UnknownMessageType(t)) => {
+            Err(DecodeError::UnknownMessageType(t)) => {
                 tracing::debug!(target: "relay", r#type = %t, "unknown STUN message type")
             }
-            Err(client_message::Error::Eof) => {
+            Err(DecodeError::Eof) => {
                 tracing::debug!(target: "relay", "unexpected EOF while parsing message")
             }
         };
