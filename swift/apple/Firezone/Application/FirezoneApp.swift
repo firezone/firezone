@@ -216,16 +216,14 @@ struct FirezoneApp: App {
           screen = AnyView(SettingsView(store: store))
         }
 
-        let window = NSWindow(contentViewController: NSHostingController(rootView: screen))
+        // Pinned to the frame SwiftUI gives the app's window groups: the
+        // hosting controller sizes its window to the screen's preferred size,
+        // and any other preference photographs at the wrong size.
+        let host = NSHostingController(rootView: screen.frame(width: 900, height: 450))
+
+        let window = NSWindow(contentViewController: host)
         window.title = title
         window.identifier = NSUserInterfaceItemIdentifier(chosen.identifier)
-        // The frame SwiftUI gives the app's window groups when nothing chooses
-        // one; left to size itself, the hosted screen shrinks to its ideal
-        // size, which for the main screen is next to nothing.
-        window.setFrame(
-          NSRect(origin: .zero, size: NSSize(width: 900, height: 450)),
-          display: false
-        )
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
