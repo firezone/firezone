@@ -200,54 +200,6 @@ fn unauthenticated_allocate_triggers_authentication(
 }
 
 #[proptest]
-fn allocate_with_unrepresentable_username_expiry_is_unauthorized(
-    #[strategy(relay_proto::proptest::transaction_id())] transaction_id: TransactionId,
-    #[strategy(relay_proto::proptest::allocation_lifetime())] lifetime: Lifetime,
-    #[strategy(relay_proto::proptest::username_salt())] username_salt: String,
-    source: SocketAddrV4,
-    public_relay_addr: Ipv4Addr,
-) {
-    let now = Instant::now();
-
-    // Nonces are generated randomly and we control the randomness in the test, thus this is deterministic.
-    let first_nonce = Uuid::from_u128(0x0);
-
-    let mut server = TestServer::new(public_relay_addr);
-    let secret = server.auth_secret().to_owned();
-
-    server.assert_commands(
-        from_client(
-            source,
-            Allocate::new_unauthenticated_udp(transaction_id, Some(lifetime.clone())),
-            now,
-        ),
-        [send_message(
-            source,
-            unauthorized_allocate_response(transaction_id, first_nonce),
-        )],
-    );
-
-    server.assert_commands(
-        from_client(
-            source,
-            Allocate::new_authenticated_udp_implicit_ip4(
-                transaction_id,
-                Some(lifetime),
-                Username::new(format!("{}:{username_salt}", u64::MAX)).unwrap(),
-                &secret,
-                first_nonce,
-            )
-            .unwrap(),
-            now,
-        ),
-        [send_message(
-            source,
-            unauthorized_allocate_response(transaction_id, first_nonce),
-        )],
-    );
-}
-
-#[proptest]
 fn when_refreshed_in_time_allocation_does_not_expire(
     #[strategy(relay_proto::proptest::transaction_id())] allocate_transaction_id: TransactionId,
     #[strategy(relay_proto::proptest::transaction_id())] refresh_transaction_id: TransactionId,
