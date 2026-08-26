@@ -1,6 +1,21 @@
 defmodule Portal.Defender.Sync do
   @moduledoc """
   Synchronizes the machine list from a Microsoft Defender for Endpoint tenant.
+
+  Machines are walked with `$skip` over a collection that keeps changing, so a
+  page boundary can step over a machine that was there the whole time: anything
+  removed at the source mid-walk pulls the machines after it back by one, into
+  a page already read. The Graph syncs follow a server-side cursor, which has no
+  offset to slide, but this endpoint hands back no cursor to follow.
+
+  So a machine missing from one run is not evidence that it is gone. A run
+  deletes a machine only once no run has seen it for `@stale_after_seconds`,
+  and only if the run before this one did not see it either.
+
+  The first bound rides out a skip, because the run two hours later picks the
+  machine up again. The second bound covers a sync that has been failing for
+  longer than the window: every row is past the clock by then, so without it
+  the first run to succeed again could delete most of a tenant on one walk.
   """
 
   use Oban.Worker,
@@ -16,6 +31,11 @@ defmodule Portal.Defender.Sync do
 
   @replace_fields Portal.Defender.Device.__schema__(:fields) --
                     [:account_id, :posture_provider_id, :defender_id, :inserted_at]
+
+  # Twelve runs at the current two-hour schedule. Long enough that a machine has
+  # to be skipped over and over to be deleted, short enough that a machine
+  # really offboarded from the tenant stops counting as known within a day.
+  @stale_after_seconds 24 * 60 * 60
 
   # Postgres binds at most 65535 parameters per statement and a device carries a
   # column per machine property, so a large page would not fit in one insert.
@@ -64,7 +84,7 @@ defmodule Portal.Defender.Sync do
     end)
     |> Stream.run()
 
-    Database.delete_stale_devices(provider, started_at)
+    delete_stale_devices(provider, started_at)
     Database.mark_succeeded(provider, started_at)
 
     Logger.info("Finished Defender device inventory sync",
@@ -73,6 +93,18 @@ defmodule Portal.Defender.Sync do
     )
 
     :ok
+  end
+
+  # `synced_at` on the provider is the run before this one, so the earlier of the
+  # two bounds is the one to delete against. Nothing has synced yet on a first
+  # run, which leaves no earlier run to measure from and nothing to delete.
+  defp delete_stale_devices(%Defender.PostureProvider{synced_at: nil}, _started_at), do: :ok
+
+  defp delete_stale_devices(provider, started_at) do
+    cutoff =
+      Enum.min([provider.synced_at, DateTime.add(started_at, -@stale_after_seconds)], DateTime)
+
+    Database.delete_stale_devices(provider, cutoff)
   end
 
   defp get_access_token!(provider) do
@@ -260,11 +292,11 @@ defmodule Portal.Defender.Sync do
       )
     end
 
-    def delete_stale_devices(provider, synced_at) do
+    def delete_stale_devices(provider, cutoff) do
       from(d in Defender.Device,
         where: d.account_id == ^provider.account_id,
         where: d.posture_provider_id == ^provider.id,
-        where: d.synced_at < ^synced_at
+        where: d.synced_at < ^cutoff
       )
       |> Safe.unscoped()
       |> Safe.delete_all()

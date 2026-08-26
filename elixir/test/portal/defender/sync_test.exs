@@ -197,9 +197,9 @@ defmodule Portal.Defender.SyncTest do
     assert_raise Portal.Defender.SyncError, fn -> perform_job(Sync, sync_args(provider)) end
   end
 
-  test "deletes machines the tenant no longer reports" do
-    provider = defender_posture_provider_fixture()
-    stale = defender_device_fixture(provider: provider, defender_id: "stale-machine")
+  test "deletes machines no run has seen for a day" do
+    provider = defender_posture_provider_fixture(synced_at: ago(2, :hour))
+    stale = defender_device_fixture(provider: provider, synced_at: ago(2, :day))
 
     stub_machines([machine(%{"id" => "machine-1"})])
 
@@ -207,6 +207,45 @@ defmodule Portal.Defender.SyncTest do
 
     refute Repo.get_by(Device, account_id: provider.account_id, defender_id: stale.defender_id)
     assert Repo.get_by(Device, account_id: provider.account_id, defender_id: "machine-1")
+  end
+
+  # `$skip` steps over a machine whenever the tenant loses one mid-walk, so one
+  # run missing a machine has to leave it alone. Deleting it here would drop the
+  # row on one run and write it back on the next, every couple of hours.
+  test "keeps a machine a single run skipped over" do
+    provider = defender_posture_provider_fixture(synced_at: ago(2, :hour))
+    skipped = defender_device_fixture(provider: provider, synced_at: ago(3, :hour))
+
+    stub_machines([machine(%{"id" => "machine-1"})])
+
+    assert :ok = perform_job(Sync, sync_args(provider))
+
+    assert Repo.get_by(Device, account_id: provider.account_id, defender_id: skipped.defender_id)
+  end
+
+  # Once syncing has been broken for longer than the window, every row is past
+  # the clock, and measuring from it alone would let one walk empty the tenant.
+  test "keeps a machine skipped by the first run after a long outage" do
+    outage = ago(30, :day)
+    provider = defender_posture_provider_fixture(synced_at: outage)
+    skipped = defender_device_fixture(provider: provider, synced_at: outage)
+
+    stub_machines([machine(%{"id" => "machine-1"})])
+
+    assert :ok = perform_job(Sync, sync_args(provider))
+
+    assert Repo.get_by(Device, account_id: provider.account_id, defender_id: skipped.defender_id)
+  end
+
+  test "deletes nothing on the first run of a provider" do
+    provider = defender_posture_provider_fixture(synced_at: nil)
+    ancient = defender_device_fixture(provider: provider, synced_at: ago(30, :day))
+
+    stub_machines([machine(%{"id" => "machine-1"})])
+
+    assert :ok = perform_job(Sync, sync_args(provider))
+
+    assert Repo.get_by(Device, account_id: provider.account_id, defender_id: ancient.defender_id)
   end
 
   test "records the sync and clears earlier errors on the provider" do
@@ -260,6 +299,10 @@ defmodule Portal.Defender.SyncTest do
 
   defp sync_args(provider) do
     %{"account_id" => provider.account_id, "posture_provider_id" => provider.id}
+  end
+
+  defp ago(amount, unit) do
+    DateTime.utc_now() |> DateTime.add(-amount, unit) |> DateTime.truncate(:microsecond)
   end
 
   defp stub_machines(machines) do
