@@ -34,7 +34,9 @@ import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.settings.ui.X509SettingsViewModel
 import uniffi.x509claims.ClaimValue
 import uniffi.x509claims.DetailField
+import uniffi.x509claims.FieldProblem
 import uniffi.x509claims.RejectionReason
+import uniffi.x509claims.UnusableReason
 
 /**
  * Shows which client certificate this device signs in with and what it contains.
@@ -178,18 +180,27 @@ private fun CertificateCard(state: X509SettingsViewModel.UiState) {
     val commonName = state.details.attested(COMMON_NAME_LABEL) ?: state.details.attested(SUBJECT_LABEL)
     val issuer = state.details.attested(ISSUER_LABEL)
     val notAfter = state.details.attested(NOT_AFTER_LABEL)
-    val hasProblem = state.error != null || state.unusableSummary != null
+    val hasProblem = state.error != null || !state.certificateIsUsable
+
+    val isAttesting = state.isUsable && !state.isLoading && !hasProblem
 
     // One line on what the certificate is for, absent while the KeyChain is still being read. The
     // wording is shared across the clients.
+    //
+    // A certificate that was read and cannot be used says so rather than reading as one that was
+    // never found: the rows below carry the attribute that makes it unusable.
     val explainer =
         when {
             state.isLoading -> {
                 null
             }
 
-            state.isUsable && !hasProblem -> {
+            isAttesting -> {
                 stringResource(R.string.x509_explainer_present)
+            }
+
+            !state.certificateIsUsable -> {
+                stringResource(R.string.x509_explainer_unusable)
             }
 
             else -> {
@@ -247,19 +258,34 @@ private fun CertificateCard(state: X509SettingsViewModel.UiState) {
                     )
                 }
 
-                if (state.unusableSummary != null) {
+                // Only the rules no row shows: the rest read underneath the attribute they are
+                // about, and repeating them here would say the same thing twice.
+                if (state.certificateProblems.isNotEmpty()) {
+                    val sentences = state.certificateProblems.map { stringResource(it.sentence()) }
+
                     Notice(
                         title = stringResource(R.string.x509_unusable_title),
-                        body = stringResource(R.string.x509_unusable_reason, state.unusableSummary),
+                        body = sentences.joinToString(" "),
                     )
                 }
 
                 if (explainer != null) {
-                    Text(
-                        text = explainer,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (isAttesting) {
+                            Icon(
+                                painter = painterResource(R.drawable.rounded_check_circle_24),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+
+                        Text(
+                            text = explainer,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
@@ -319,32 +345,49 @@ private fun DetailField(field: DetailField) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
-            is ClaimValue.Invalid -> {
-                Text(
-                    text = stringResource(R.string.x509_claim_invalid, value.reason.phrase()),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
         }
+
+        field.problem?.let { problem -> FieldProblem(problem) }
     }
 }
 
-/** The wording for a rejection, which the parser leaves to each client. */
+/** Reads underneath the value it belongs to, the way a form shows an error on its input. */
 @Composable
-private fun RejectionReason.phrase(): String =
-    stringResource(
-        when (this) {
-            RejectionReason.EMPTY -> R.string.x509_claim_empty
-            RejectionReason.TOO_LONG -> R.string.x509_claim_too_long
-            RejectionReason.NOT_AN_EMAIL_ADDRESS -> R.string.x509_claim_not_an_email_address
-            RejectionReason.NOT_A_UUID -> R.string.x509_claim_not_a_uuid
-            RejectionReason.AMBIGUOUS -> R.string.x509_claim_ambiguous
-            RejectionReason.PLACEHOLDER_IDENTIFIER -> R.string.x509_claim_placeholder_identifier
-            RejectionReason.UNKNOWN_ATTRIBUTE -> R.string.x509_claim_unknown_attribute
-        },
+private fun FieldProblem(problem: FieldProblem) {
+    Text(
+        text =
+            when (problem) {
+                is FieldProblem.Rejected ->
+                    stringResource(R.string.x509_claim_invalid, stringResource(problem.reason.phrase()))
+
+                is FieldProblem.Unusable -> stringResource(problem.reason.sentence())
+            },
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.error,
     )
+}
+
+/** The string resource wording a rejection, which the parser leaves to each client. */
+private fun RejectionReason.phrase(): Int =
+    when (this) {
+        RejectionReason.EMPTY -> R.string.x509_claim_empty
+        RejectionReason.TOO_LONG -> R.string.x509_claim_too_long
+        RejectionReason.NOT_AN_EMAIL_ADDRESS -> R.string.x509_claim_not_an_email_address
+        RejectionReason.NOT_A_UUID -> R.string.x509_claim_not_a_uuid
+        RejectionReason.AMBIGUOUS -> R.string.x509_claim_ambiguous
+        RejectionReason.PLACEHOLDER_IDENTIFIER -> R.string.x509_claim_placeholder_identifier
+        RejectionReason.UNKNOWN_ATTRIBUTE -> R.string.x509_claim_unknown_attribute
+    }
+
+/** The string resource wording a rule the certificate fails, which the parser leaves to each client. */
+private fun UnusableReason.sentence(): Int =
+    when (this) {
+        UnusableReason.NO_CLIENT_AUTH_EKU -> R.string.x509_rule_no_client_auth_eku
+        UnusableReason.NO_DIGITAL_SIGNATURE_KEY_USAGE -> R.string.x509_rule_no_digital_signature_key_usage
+        UnusableReason.NOT_YET_VALID -> R.string.x509_rule_not_yet_valid
+        UnusableReason.EXPIRED -> R.string.x509_rule_expired
+        UnusableReason.UNSUPPORTED_KEY_ALGORITHM -> R.string.x509_rule_unsupported_key_algorithm
+    }
 
 /** The value of a row, `null` unless the parser read exactly one the clients will attest. */
 private fun List<DetailField>.attested(label: String): String? {
@@ -373,11 +416,11 @@ private fun X509SettingsScreenPreview() {
                     isUsable = true,
                     details =
                         listOf(
-                            DetailField("Common Name", ClaimValue.Present("alice@example.com")),
-                            DetailField("Subject", ClaimValue.Present("CN=alice@example.com")),
-                            DetailField("Issuer", ClaimValue.Present("Example Corp Device CA")),
-                            DetailField("Not After", ClaimValue.Present("2027-01-31 23:59:59 UTC")),
-                            DetailField("Account ID", ClaimValue.Absent),
+                            DetailField("Common Name", ClaimValue.Present("alice@example.com"), null),
+                            DetailField("Subject", ClaimValue.Present("CN=alice@example.com"), null),
+                            DetailField("Issuer", ClaimValue.Present("Example Corp Device CA"), null),
+                            DetailField("Not After", ClaimValue.Present("2027-01-31 23:59:59 UTC"), null),
+                            DetailField("Account ID", ClaimValue.Absent, null),
                         ),
                 ),
             onSelectCertificate = {},
@@ -396,18 +439,24 @@ private fun X509SettingsScreenUnusablePreview() {
                     alias = "firezone-device",
                     isManaged = true,
                     isUsable = true,
-                    unusableSummary = "expired or not yet valid, unsupported key algorithm",
+                    certificateIsUsable = false,
+                    certificateProblems = listOf(UnusableReason.NO_CLIENT_AUTH_EKU),
+                    // The parser reads the rows with a problem first.
                     details =
                         listOf(
                             DetailField(
-                                "Usable as a Client Identity",
-                                ClaimValue.Present("No: expired or not yet valid, unsupported key algorithm"),
+                                "Not After",
+                                ClaimValue.Present("2024-01-31 23:59:59 UTC"),
+                                FieldProblem.Unusable(UnusableReason.EXPIRED),
                             ),
-                            DetailField("Common Name", ClaimValue.Present("alice@example.com")),
-                            DetailField("Issuer", ClaimValue.Present("Example Corp Device CA")),
-                            DetailField("Not After", ClaimValue.Present("2024-01-31 23:59:59 UTC")),
-                            DetailField("Actor Email", ClaimValue.Invalid(RejectionReason.NOT_AN_EMAIL_ADDRESS)),
-                            DetailField("Account ID", ClaimValue.Absent),
+                            DetailField(
+                                "Actor Email",
+                                ClaimValue.Present("alice(at)example.com"),
+                                FieldProblem.Rejected(RejectionReason.NOT_AN_EMAIL_ADDRESS),
+                            ),
+                            DetailField("Account ID", ClaimValue.Absent, FieldProblem.Rejected(RejectionReason.EMPTY)),
+                            DetailField("Common Name", ClaimValue.Present("alice@example.com"), null),
+                            DetailField("Issuer", ClaimValue.Present("Example Corp Device CA"), null),
                         ),
                 ),
             onSelectCertificate = {},

@@ -7,6 +7,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.firezone.android.core.Log
 import uniffi.connlib.ClientTlsIdentity
 import uniffi.x509claims.ParsedCertificate
+import uniffi.x509claims.UnusableReason
 import uniffi.x509claims.UserIdentity
 import uniffi.x509claims.parseClientCertificate
 import java.security.GeneralSecurityException
@@ -36,9 +37,13 @@ data class LoadedX509Identity(
     val userIdentity: UserIdentity?
         get() = certificate?.userIdentity
 
-    /** Why this certificate cannot be presented for mutual TLS, `null` if it can. */
-    val unusableSummary: String?
-        get() = certificate?.unusableSummary
+    /** Whether the certificate's own rules allow presenting it for mutual TLS. */
+    val certificateIsUsable: Boolean
+        get() = certificate?.isUsable != false
+
+    /** The rules the certificate fails that no detail row carries. */
+    val certificateProblems: List<UnusableReason>
+        get() = certificate?.certificateProblems.orEmpty()
 }
 
 /**

@@ -43,7 +43,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import uniffi.x509claims.ClaimValue
 import uniffi.x509claims.DetailField
+import uniffi.x509claims.FieldProblem
 import uniffi.x509claims.RejectionReason
+import uniffi.x509claims.UnusableReason
 import java.io.File
 import java.io.RandomAccessFile
 import dev.firezone.android.core.data.model.Config as FirezoneConfig
@@ -77,6 +79,9 @@ class SettingsScreenshotTest {
 
     @Test
     fun x509SettingsWithUnusableCertificate() = captureX509Page("x509-unusable", unusableCertificate)
+
+    @Test
+    fun x509SettingsWithRefusedCertificate() = captureX509Page("x509-refused", refusedCertificate)
 
     @Test
     fun x509SettingsWithManagedCertificate() = captureX509Page("x509-managed", managedCertificate)
@@ -161,7 +166,7 @@ private val usableCertificate =
         isUsable = true,
         details =
             certificateDetails(
-                actorEmail = ClaimValue.Present("alice@example.com"),
+                actorEmail = row("Actor Email", ClaimValue.Present("alice@example.com")),
                 unattestedNames = emptyList(),
             ),
     )
@@ -181,7 +186,12 @@ private val certificateWithRejectedClaim =
         isUsable = true,
         details =
             certificateDetails(
-                actorEmail = ClaimValue.Invalid(RejectionReason.NOT_AN_EMAIL_ADDRESS),
+                actorEmail =
+                    row(
+                        "Actor Email",
+                        ClaimValue.Present("alice.example.com"),
+                        FieldProblem.Rejected(RejectionReason.NOT_AN_EMAIL_ADDRESS),
+                    ),
                 unattestedNames = listOf("URI: firezone://email/alice.example.com"),
             ),
     )
@@ -194,38 +204,62 @@ private val unusableCertificate =
         isUsable = false,
     )
 
+// A certificate the KeyChain released and Firezone will not present: one rule reads underneath
+// the date that breaks it, the other has no attribute to read underneath.
+private val refusedCertificate =
+    X509SettingsViewModel.UiState(
+        alias = CERTIFICATE_ALIAS,
+        isUsable = true,
+        certificateIsUsable = false,
+        certificateProblems = listOf(UnusableReason.NO_CLIENT_AUTH_EKU),
+        details =
+            certificateDetails(
+                actorEmail = row("Actor Email", ClaimValue.Present("alice@example.com")),
+                unattestedNames = emptyList(),
+                notAfter =
+                    row(
+                        "Not After",
+                        ClaimValue.Present("Jan  5 09:00:00 2025 +00:00"),
+                        FieldProblem.Unusable(UnusableReason.EXPIRED),
+                    ),
+            ),
+    )
+
 // One certificate as the Rust parser describes it, in the order the screen lists its rows.
 // Every value is pinned, so a capture only moves when the screen does.
 private fun certificateDetails(
-    actorEmail: ClaimValue,
+    actorEmail: DetailField,
     unattestedNames: List<String>,
+    notAfter: DetailField = row("Not After", ClaimValue.Present("Jan  5 09:00:00 2027 +00:00")),
 ): List<DetailField> =
+    // `x509_claims::ParsedCertificate::detail_fields` reads the rows with a problem first, so a
+    // mock that left them in place would draw a screen the client cannot produce.
     buildList {
-        add(DetailField("Common Name", ClaimValue.Present("alice@example.com")))
-        add(DetailField("Subject", ClaimValue.Present("CN=alice@example.com, O=Example Corp")))
-        add(DetailField("Issuer", ClaimValue.Present("CN=Example Corp Device CA, O=Example Corp")))
-        add(DetailField("Actor Email", actorEmail))
-        add(DetailField("Account ID", ClaimValue.Present("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")))
-        add(DetailField("MDM Device ID", ClaimValue.Present("9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64")))
-        add(DetailField("Device Serial", ClaimValue.Present("C02XK1ZGJGH5")))
+        add(row("Common Name", ClaimValue.Present("alice@example.com")))
+        add(row("Subject", ClaimValue.Present("CN=alice@example.com, O=Example Corp")))
+        add(row("Issuer", ClaimValue.Present("CN=Example Corp Device CA, O=Example Corp")))
+        add(actorEmail)
+        add(row("Account ID", ClaimValue.Present("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")))
+        add(row("MDM Device ID", ClaimValue.Present("9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64")))
+        add(row("Device Serial", ClaimValue.Present("C02XK1ZGJGH5")))
 
         // The parser lists the alternative names no claim row shows, which is where a name it
         // refused to attest ends up.
         if (unattestedNames.isNotEmpty()) {
             add(
-                DetailField(
+                row(
                     "Subject Alternative Names",
                     ClaimValue.Present(unattestedNames.joinToString("\n")),
                 ),
             )
         }
 
-        add(DetailField("Serial Number", ClaimValue.Present("4a:1f:8c:52:0d:9b:36:e7:11:c4:58:a3:7f:20:6b:d9")))
-        add(DetailField("Not Before", ClaimValue.Present("Jan  5 09:00:00 2026 +00:00")))
-        add(DetailField("Not After", ClaimValue.Present("Jan  5 09:00:00 2027 +00:00")))
-        add(DetailField("Signing Algorithm", ClaimValue.Present("SHA256withECDSA")))
+        add(row("Serial Number", ClaimValue.Present("4a:1f:8c:52:0d:9b:36:e7:11:c4:58:a3:7f:20:6b:d9")))
+        add(row("Not Before", ClaimValue.Present("Jan  5 09:00:00 2026 +00:00")))
+        add(notAfter)
+        add(row("Signing Algorithm", ClaimValue.Present("SHA256withECDSA")))
         add(
-            DetailField(
+            row(
                 "SHA-256 Fingerprint",
                 ClaimValue.Present(
                     "3B:1D:0C:7E:59:A4:F2:68:8D:31:C0:5B:7A:96:E4:2F:" +
@@ -233,7 +267,14 @@ private fun certificateDetails(
                 ),
             ),
         )
-    }
+    }.sortedBy { it.problem == null }
+
+// A row as the parser hands it over: what the certificate said, and what is wrong with it.
+private fun row(
+    label: String,
+    value: ClaimValue,
+    problem: FieldProblem? = null,
+): DetailField = DetailField(label, value, problem)
 
 // Hosts the settings pages the way `SettingsActivity` does, with the Hilt graph replaced by
 // a view model built by hand from preferences seeded with `sampleConfig`.
