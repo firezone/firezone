@@ -298,6 +298,7 @@
     /// releases, so the first control kind that answers to the label wins.
     private func selectTab(_ label: String, in window: XCUIElement) throws {
       let candidates = [
+        window.tabs[label],
         window.tabGroups.buttons[label],
         window.toolbars.buttons[label],
         window.radioButtons[label],

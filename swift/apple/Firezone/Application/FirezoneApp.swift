@@ -216,14 +216,7 @@ struct FirezoneApp: App {
           screen = AnyView(SettingsView(store: store))
         }
 
-        let host = NSHostingController(rootView: screen)
-        if #available(macOS 14.0, *) {
-          // A hosting controller leaves the window's toolbar alone unless told
-          // otherwise, and the settings tab picker is drawn as one.
-          host.sceneBridgingOptions = [.toolbars]
-        }
-
-        let window = NSWindow(contentViewController: host)
+        let window = NSWindow(contentViewController: NSHostingController(rootView: screen))
         window.title = title
         window.identifier = NSUserInterfaceItemIdentifier(chosen.identifier)
         window.center()
