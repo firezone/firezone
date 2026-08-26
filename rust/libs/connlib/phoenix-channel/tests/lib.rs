@@ -12,6 +12,7 @@ use futures::future::Either;
 use futures::{SinkExt, StreamExt as _};
 use phoenix_channel::{DeviceInfo, Error, Event, LoginUrl, PhoenixChannel, PublicKeyParam};
 use secrecy::SecretString;
+use test_case::test_case;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::TcpListener;
 use tokio::task::JoinError;
@@ -347,160 +348,59 @@ async fn connect_with_zero_backoff_resets_reconnect_backoff() {
     .expect("should not timeout");
 }
 
+#[test_case(http::StatusCode::UNAUTHORIZED, Some(INVALID_TOKEN) => "Authentication token invalid"; "401 naming the token")]
+#[test_case(http::StatusCode::UNAUTHORIZED, Some(UNAUTHORIZED) => "Failed to authenticate with portal: Invalid token"; "401 without a code")]
+#[test_case(http::StatusCode::UNAUTHORIZED, None => "Failed to authenticate with portal: no reason provided"; "401 without problem details")]
+#[test_case(http::StatusCode::FORBIDDEN, Some(REVOKED_CERTIFICATE) => "The portal rejected the client certificate: This device's certificate has been revoked."; "403 naming the certificate")]
+#[test_case(http::StatusCode::CONFLICT, Some(IDENTITY_CONFLICT) => "The portal rejected the client certificate: Different hardware."; "409 naming the certificate")]
 #[tokio::test]
-async fn http_400_returns_client_error() {
-    let port = http_status_server(http::StatusCode::BAD_REQUEST).await;
+async fn rejected_upgrade_is_terminal(
+    code: http::StatusCode,
+    problem_details: Option<&str>,
+) -> String {
+    let port = rejecting_server(code, problem_details).await;
 
-    expect_hiccup(first_event(port).await);
-}
-
-#[tokio::test]
-async fn http_401_with_invalid_token_code_returns_invalid_token() {
-    let port = http_problem_details_server(
-        http::StatusCode::UNAUTHORIZED,
-        r#"{"type":"about:blank","title":"Unauthorized","status":401,"detail":"Invalid token","code":"invalid_token"}"#,
-    )
-    .await;
-
-    let error = expect_error(first_event(port).await);
-
-    assert!(
-        matches!(error, Error::InvalidToken),
-        "expected Error::InvalidToken for 401 with `invalid_token` code, got {error:?}"
-    );
-}
-
-#[tokio::test]
-async fn http_401_without_code_returns_authentication_failed() {
-    let port = http_problem_details_server(
-        http::StatusCode::UNAUTHORIZED,
-        r#"{"type":"about:blank","title":"Unauthorized","status":401,"detail":"Invalid token"}"#,
-    )
-    .await;
-
-    let error = expect_error(first_event(port).await);
-
-    assert!(
-        matches!(error, Error::AuthenticationFailed(_)),
-        "expected Error::AuthenticationFailed for 401 without code, got {error:?}"
-    );
-}
-
-#[tokio::test]
-async fn http_401_without_problem_details_returns_authentication_failed() {
-    let port = http_status_server(http::StatusCode::UNAUTHORIZED).await;
-
-    let error = expect_error(first_event(port).await);
-
-    assert!(
-        matches!(error, Error::AuthenticationFailed(_)),
-        "expected Error::AuthenticationFailed for 401 without problem details, got {error:?}"
-    );
-}
-
-#[tokio::test]
-async fn http_403_with_certificate_code_is_terminal() {
-    let port = http_problem_details_server(
-        http::StatusCode::FORBIDDEN,
-        r#"{"type":"about:blank","title":"Forbidden","status":403,"detail":"This device's certificate has been revoked.","code":"certificate_revoked"}"#,
-    )
-    .await;
-
-    // Without the terminal path this is an `Event::Hiccup` and the poll never resolves, so
+    // Without the terminal path these are an `Event::Hiccup` and the poll never resolves, so
     // reaching the timeout is the failure this test is really guarding against.
     let error = expect_error(first_event(port).await);
 
-    assert_eq!(
-        error.to_string(),
-        "The portal rejected the client certificate: This device's certificate has been revoked."
-    );
-    assert!(error.is_certificate_error());
-    // A new token cannot replace the credential the portal refused.
-    assert!(!error.requires_sign_in());
+    error.to_string()
 }
 
+// Only the codes that name the certificate are terminal; the rest stay retryable.
+#[test_case(http::StatusCode::BAD_REQUEST, None; "400")]
+#[test_case(http::StatusCode::FORBIDDEN, None; "403 without problem details")]
+#[test_case(http::StatusCode::FORBIDDEN, Some(ACCOUNT_DISABLED); "403 with a code that does not name the certificate")]
+#[test_case(http::StatusCode::REQUEST_TIMEOUT, None; "408")]
+#[test_case(http::StatusCode::TOO_MANY_REQUESTS, None; "429")]
+#[test_case(http::StatusCode::SERVICE_UNAVAILABLE, None; "503")]
 #[tokio::test]
-async fn http_403_with_another_code_triggers_retry() {
-    let port = http_problem_details_server(
-        http::StatusCode::FORBIDDEN,
-        r#"{"type":"about:blank","title":"Forbidden","status":403,"detail":"The account is disabled","code":"account_disabled"}"#,
-    )
-    .await;
-
-    // Only the codes that name the certificate are terminal; the rest stay retryable.
-    expect_hiccup(first_event(port).await);
-}
-
-#[tokio::test]
-async fn http_403_without_problem_details_triggers_retry() {
-    let port = http_status_server(http::StatusCode::FORBIDDEN).await;
+async fn rejected_upgrade_is_retried(code: http::StatusCode, problem_details: Option<&str>) {
+    let port = rejecting_server(code, problem_details).await;
 
     expect_hiccup(first_event(port).await);
 }
 
+#[test_case(http::StatusCode::TOO_MANY_REQUESTS, Duration::from_secs(30); "429")]
+#[test_case(http::StatusCode::SERVICE_UNAVAILABLE, Duration::from_secs(60); "503")]
 #[tokio::test]
-async fn http_408_triggers_retry() {
-    let port = http_status_server(http::StatusCode::REQUEST_TIMEOUT).await;
+async fn retry_after_header_sets_the_backoff(code: http::StatusCode, retry_after: Duration) {
+    let port = http_status_server_with_retry_after(code, retry_after).await;
 
-    expect_hiccup(first_event(port).await);
+    let backoff = expect_hiccup(first_event(port).await);
+
+    assert_eq!(backoff, retry_after);
 }
 
 #[tokio::test]
-async fn http_409_with_certificate_code_is_terminal() {
-    let port = http_problem_details_server(
-        http::StatusCode::CONFLICT,
-        r#"{"type":"about:blank","title":"Conflict","status":409,"detail":"Different hardware.","code":"device_identity_conflict"}"#,
-    )
-    .await;
+async fn rejected_certificate_does_not_require_sign_in() {
+    let port = http_problem_details_server(http::StatusCode::FORBIDDEN, REVOKED_CERTIFICATE).await;
 
     let error = expect_error(first_event(port).await);
 
-    assert_eq!(
-        error.to_string(),
-        "The portal rejected the client certificate: Different hardware."
-    );
     assert!(error.is_certificate_error());
+    // A new token cannot replace the credential the portal refused.
     assert!(!error.requires_sign_in());
-}
-
-#[tokio::test]
-async fn http_429_triggers_retry() {
-    let port = http_status_server(http::StatusCode::TOO_MANY_REQUESTS).await;
-
-    expect_hiccup(first_event(port).await);
-}
-
-#[tokio::test]
-async fn http_429_with_retry_after_uses_header_value() {
-    let port = http_status_server_with_retry_after(
-        http::StatusCode::TOO_MANY_REQUESTS,
-        Duration::from_secs(30),
-    )
-    .await;
-
-    let backoff = expect_hiccup(first_event(port).await);
-
-    assert_eq!(backoff, Duration::from_secs(30));
-}
-
-#[tokio::test]
-async fn http_503_triggers_retry() {
-    let port = http_status_server(http::StatusCode::SERVICE_UNAVAILABLE).await;
-
-    expect_hiccup(first_event(port).await);
-}
-
-#[tokio::test]
-async fn http_503_with_retry_after_uses_header_value() {
-    let port = http_status_server_with_retry_after(
-        http::StatusCode::SERVICE_UNAVAILABLE,
-        Duration::from_secs(60),
-    )
-    .await;
-
-    let backoff = expect_hiccup(first_event(port).await);
-
-    assert_eq!(backoff, Duration::from_secs(60));
 }
 
 /// Connects the channel to localhost after waiting for `backoff`.
@@ -567,6 +467,14 @@ struct Hiccup {
     backoff: Duration,
     /// The error's chain of causes, as rendered by its alternate `Display` representation.
     error: String,
+}
+
+/// Spawns a server that rejects the WebSocket upgrade with `code`, optionally with problem details.
+async fn rejecting_server(code: http::StatusCode, problem_details: Option<&str>) -> u16 {
+    match problem_details {
+        Some(body) => http_problem_details_server(code, body).await,
+        None => http_status_server(code).await,
+    }
 }
 
 /// Connects a channel to `port` and returns the first event it emits.
@@ -666,6 +574,13 @@ const JOIN_REPLY: &str =
     r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#;
 const BAR_REQUEST: &str = r#"{"topic":"test","event":"bar","ref":1}"#;
 const FOO_MESSAGE: &str = r#"{"topic":"test","event":"foo","payload":null}"#;
+const INVALID_TOKEN: &str = r#"{"type":"about:blank","title":"Unauthorized","status":401,"detail":"Invalid token","code":"invalid_token"}"#;
+const UNAUTHORIZED: &str =
+    r#"{"type":"about:blank","title":"Unauthorized","status":401,"detail":"Invalid token"}"#;
+const REVOKED_CERTIFICATE: &str = r#"{"type":"about:blank","title":"Forbidden","status":403,"detail":"This device's certificate has been revoked.","code":"certificate_revoked"}"#;
+const IDENTITY_CONFLICT: &str = r#"{"type":"about:blank","title":"Conflict","status":409,"detail":"Different hardware.","code":"device_identity_conflict"}"#;
+const ACCOUNT_DISABLED: &str = r#"{"type":"about:blank","title":"Forbidden","status":403,"detail":"The account is disabled","code":"account_disabled"}"#;
+
 /// A reply carrying a reference the channel never sent.
 const UNMATCHED_REPLY: &str =
     r#"{"event":"phx_reply","ref":9999,"topic":"phoenix","payload":{"status":"ok","response":{}}}"#;
