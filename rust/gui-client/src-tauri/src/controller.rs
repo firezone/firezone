@@ -1127,6 +1127,7 @@ fn unreadable_keystore_status(error: String) -> x509_keystore::Status {
             fields: vec![x509_keystore::DetailField {
                 label: "Error".to_owned(),
                 value: x509_keystore::FieldValue::Present(error),
+                problem: None,
             }],
         }],
     }

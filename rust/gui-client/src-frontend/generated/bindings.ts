@@ -154,16 +154,23 @@ export type SessionViewModel =
   | { SignedIn: { account_slug: string; actor_name: string } }
   | "Loading"
   | "SignedOut";
-export type X509DetailField = { label: string; value: X509FieldValue };
+export type X509DetailField = {
+  label: string;
+  value: X509FieldValue;
+  problem: X509FieldProblem | null;
+};
 export type X509DetailSection = { title: string; fields: X509DetailField[] };
 /**
- * Mirrors [`x509_keystore::FieldValue`] so the frontend can tell a refusal from a value.
+ * Mirrors [`x509_keystore::FieldProblem`] so the frontend writes the sentence it shows.
  */
-export type X509FieldValue =
-  | { Present: string }
-  | "Absent"
+export type X509FieldProblem =
   | { Rejected: X509RejectionReason }
-  | { Failed: string };
+  | { Unusable: X509UnusableReason }
+  | { Unreadable: string };
+/**
+ * Mirrors [`x509_keystore::FieldValue`].
+ */
+export type X509FieldValue = { Present: string } | "Absent";
 /**
  * Mirrors [`x509_keystore::Package`].
  */
@@ -222,7 +229,8 @@ export type X509UnusableCertificate = {
 export type X509UnusableReason =
   | "NoClientAuthEku"
   | "NoDigitalSignatureKeyUsage"
-  | "OutsideValidityPeriod"
+  | "NotYetValid"
+  | "Expired"
   | "UnsupportedKeyAlgorithm"
   | "RefusedIdentity";
 

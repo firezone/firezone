@@ -105,7 +105,8 @@ pub enum X509UnusableCause {
 pub enum X509UnusableReason {
     NoClientAuthEku,
     NoDigitalSignatureKeyUsage,
-    OutsideValidityPeriod,
+    NotYetValid,
+    Expired,
     UnsupportedKeyAlgorithm,
     RefusedIdentity,
 }
@@ -127,15 +128,22 @@ pub struct X509DetailSection {
 pub struct X509DetailField {
     pub label: String,
     pub value: X509FieldValue,
+    pub problem: Option<X509FieldProblem>,
 }
 
-/// Mirrors [`x509_keystore::FieldValue`] so the frontend can tell a refusal from a value.
+/// Mirrors [`x509_keystore::FieldValue`].
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub enum X509FieldValue {
     Present(String),
     Absent,
+}
+
+/// Mirrors [`x509_keystore::FieldProblem`] so the frontend writes the sentence it shows.
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509FieldProblem {
     Rejected(X509RejectionReason),
-    Failed(String),
+    Unusable(X509UnusableReason),
+    Unreadable(String),
 }
 
 /// Mirrors [`x509_keystore::RejectionReason`].
@@ -170,6 +178,7 @@ impl From<&x509_keystore::Status> for X509Status {
                         .map(|field| X509DetailField {
                             label: field.label.clone(),
                             value: field.value.clone().into(),
+                            problem: field.problem.clone().map(X509FieldProblem::from),
                         })
                         .collect(),
                 })
@@ -251,7 +260,8 @@ impl From<x509_keystore::UnusableReason> for X509UnusableReason {
             x509_keystore::UnusableReason::NoDigitalSignatureKeyUsage => {
                 Self::NoDigitalSignatureKeyUsage
             }
-            x509_keystore::UnusableReason::OutsideValidityPeriod => Self::OutsideValidityPeriod,
+            x509_keystore::UnusableReason::NotYetValid => Self::NotYetValid,
+            x509_keystore::UnusableReason::Expired => Self::Expired,
             x509_keystore::UnusableReason::UnsupportedKeyAlgorithm => Self::UnsupportedKeyAlgorithm,
             x509_keystore::UnusableReason::RefusedIdentity => Self::RefusedIdentity,
         }
@@ -272,8 +282,16 @@ impl From<x509_keystore::FieldValue> for X509FieldValue {
         match value {
             x509_keystore::FieldValue::Present(value) => Self::Present(value),
             x509_keystore::FieldValue::Absent => Self::Absent,
-            x509_keystore::FieldValue::Rejected(reason) => Self::Rejected(reason.into()),
-            x509_keystore::FieldValue::Failed(message) => Self::Failed(message),
+        }
+    }
+}
+
+impl From<x509_keystore::FieldProblem> for X509FieldProblem {
+    fn from(problem: x509_keystore::FieldProblem) -> Self {
+        match problem {
+            x509_keystore::FieldProblem::Rejected(reason) => Self::Rejected(reason.into()),
+            x509_keystore::FieldProblem::Unusable(reason) => Self::Unusable(reason.into()),
+            x509_keystore::FieldProblem::Unreadable(message) => Self::Unreadable(message),
         }
     }
 }

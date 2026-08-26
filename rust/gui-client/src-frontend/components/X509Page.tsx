@@ -1,6 +1,7 @@
 import React from "react";
 import {
   X509DetailSection,
+  X509FieldProblem,
   X509FieldValue,
   X509Package,
   X509Problem,
@@ -14,6 +15,8 @@ import {
 import RemixIcon from "./RemixIcon";
 
 const CERTIFICATE_SECTION = "Certificate";
+// What the keystore backends title a certificate they found and would not present.
+const UNUSED_CERTIFICATE_SECTION = "Unused Certificate";
 
 const REJECTION_TEXT: Record<X509RejectionReason, string> = {
   Empty: "empty",
@@ -28,9 +31,23 @@ const REJECTION_TEXT: Record<X509RejectionReason, string> = {
 const UNUSABLE_REASON_TEXT: Record<X509UnusableReason, string> = {
   NoClientAuthEku: "no TLS client authentication extended key usage",
   NoDigitalSignatureKeyUsage: "key usage does not allow digital signatures",
-  OutsideValidityPeriod: "expired or not yet valid",
+  NotYetValid: "not yet valid",
+  Expired: "expired",
   UnsupportedKeyAlgorithm: "unsupported key algorithm",
   RefusedIdentity: "the user it names cannot be resolved",
+};
+
+// The same rules read underneath the attribute they are about, where a phrase from a list of
+// causes would be a fragment.
+const UNUSABLE_FIELD_TEXT: Record<X509UnusableReason, string> = {
+  NoClientAuthEku:
+    "Firezone only presents a certificate that allows TLS client authentication.",
+  NoDigitalSignatureKeyUsage:
+    "Firezone only presents a certificate whose key usage allows digital signatures.",
+  NotYetValid: "This certificate is not valid yet.",
+  Expired: "This certificate has expired.",
+  UnsupportedKeyAlgorithm: "Firezone cannot sign with this key algorithm.",
+  RefusedIdentity: "Firezone cannot resolve the user this certificate names.",
 };
 
 const MISSING_PACKAGE_TEXT: Record<X509Package, string> = {
@@ -119,20 +136,33 @@ function FieldValue({ value }: { value: X509FieldValue }) {
     return <span className="text-subtle">Not present</span>;
   }
 
-  if ("Rejected" in value) {
-    return <Refusal>{REJECTION_TEXT[value.Rejected]}</Refusal>;
-  }
-
-  if ("Failed" in value) {
-    return <Refusal>{value.Failed}</Refusal>;
-  }
-
   return <>{value.Present}</>;
 }
 
-function Refusal({ children }: { children: React.ReactNode }) {
+// Reads underneath the value it belongs to, the way a form shows an error on its input.
+function FieldProblem({ problem }: { problem: X509FieldProblem }) {
+  if ("Unusable" in problem) {
+    // The rule this attribute breaks is why the certificate is turned down, not a remark
+    // about it, so it reads in the colour the page turns things down in.
+    return (
+      <Note tone="text-error">{UNUSABLE_FIELD_TEXT[problem.Unusable]}</Note>
+    );
+  }
+
+  if ("Rejected" in problem) {
+    return (
+      <Note tone="text-warning">
+        Ignored: {REJECTION_TEXT[problem.Rejected]}
+      </Note>
+    );
+  }
+
+  return <Note tone="text-warning">{problem.Unreadable}</Note>;
+}
+
+function Note({ tone, children }: { tone: string; children: React.ReactNode }) {
   return (
-    <span className="flex gap-1.5 text-warning">
+    <span className={`mt-1 flex gap-1.5 font-sans ${tone}`}>
       <RemixIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" name="alert" />
       {children}
     </span>
@@ -145,12 +175,7 @@ function presentField(
 ): string | null {
   const value = section?.fields.find((field) => field.label === label)?.value;
 
-  if (
-    value === undefined ||
-    value === "Absent" ||
-    "Rejected" in value ||
-    "Failed" in value
-  ) {
+  if (value === undefined || value === "Absent") {
     return null;
   }
 
@@ -169,13 +194,35 @@ function Warning({ problem }: { problem: X509Problem }) {
   );
 }
 
-function SummaryCard({
-  certificate,
-  problems,
-}: {
-  certificate: X509DetailSection | undefined;
-  problems: X509Problem[];
-}) {
+// What the card says Firezone does with the certificate the keystore found, if it found one.
+//
+// A certificate that was found and turned down is worth saying out loud: the rows below carry
+// the attribute that makes it unusable, and this is what sends the reader to them.
+function verdict(
+  certificate: X509DetailSection | undefined,
+  used: X509DetailSection | undefined
+): string {
+  if (used !== undefined) {
+    return "Firezone uses this certificate to identify this device.";
+  }
+
+  if (certificate !== undefined) {
+    return "Firezone cannot use this certificate to identify this device.";
+  }
+
+  return "Firezone did not find a certificate to identify this device.";
+}
+
+function SummaryCard({ status }: { status: X509Status }) {
+  const used = status.sections.find(
+    (section) => section.title === CERTIFICATE_SECTION
+  );
+  // A keystore that turned its only candidate down still has a certificate to describe.
+  const certificate =
+    used ??
+    status.sections.find(
+      (section) => section.title === UNUSED_CERTIFICATE_SECTION
+    );
   const commonName = presentField(certificate, "Common Name");
   const subject = presentField(certificate, "Subject");
   const issuer = presentField(certificate, "Issuer");
@@ -202,14 +249,18 @@ function SummaryCard({
               Valid until {notAfter}
             </p>
           )}
-          <p className="mt-2 text-xs text-subtle">
-            {found
-              ? "Firezone uses this certificate to identify this device."
-              : "Firezone did not find a certificate to identify this device."}
+          <p className="mt-2 flex gap-1.5 text-xs text-subtle">
+            {used !== undefined && (
+              <RemixIcon
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success"
+                name="check"
+              />
+            )}
+            {verdict(certificate, used)}
           </p>
         </div>
       </div>
-      {problems.map((problem, problemIndex) => (
+      {status.problems.map((problem, problemIndex) => (
         <Warning key={problemIndex} problem={problem} />
       ))}
     </section>
@@ -231,6 +282,9 @@ function DetailSection({ section }: { section: X509DetailSection }) {
             <dt className="text-xs text-subtle">{field.label}</dt>
             <dd className="whitespace-pre-wrap break-all font-mono text-xs text-body">
               <FieldValue value={field.value} />
+              {field.problem !== null && (
+                <FieldProblem problem={field.problem} />
+              )}
             </dd>
           </div>
         ))}
@@ -248,12 +302,7 @@ export default function X509Page({ status }: { status: X509Status | null }) {
         </div>
       ) : (
         <>
-          <SummaryCard
-            certificate={status.sections.find(
-              (section) => section.title === CERTIFICATE_SECTION
-            )}
-            problems={status.problems}
-          />
+          <SummaryCard status={status} />
           {status.sections.map((section, sectionIndex) => (
             <DetailSection
               key={`${section.title}-${sectionIndex}`}
