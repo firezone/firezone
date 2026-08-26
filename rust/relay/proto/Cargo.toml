@@ -9,12 +9,10 @@ anyhow = { workspace = true }
 base64 = { workspace = true, features = ["std"] }
 bimap = { workspace = true }
 bytecodec = { workspace = true }
-derive_more = { workspace = true, features = ["from"] }
 hex = { workspace = true }
 logging = { workspace = true }
 once_cell = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
-proptest = { workspace = true, optional = true }
 rand = { workspace = true }
 secrecy = { workspace = true }
 sha2 = { workspace = true }
@@ -22,10 +20,8 @@ smallvec = { workspace = true }
 stun_codec = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+turn-message = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
-
-[dev-dependencies]
-test-strategy = { workspace = true }
 
 [lints]
 workspace = true

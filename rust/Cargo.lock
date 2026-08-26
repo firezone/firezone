@@ -6171,20 +6171,18 @@ dependencies = [
  "base64 0.23.1",
  "bimap",
  "bytecodec",
- "derive_more",
  "hex",
  "logging",
  "once_cell",
  "opentelemetry",
- "proptest",
  "rand 0.10.2",
  "secrecy",
  "sha2 0.11.0",
  "smallvec",
  "stun_codec",
- "test-strategy",
  "thiserror 2.0.20",
  "tracing",
+ "turn-message",
  "uuid",
 ]
 
@@ -8679,6 +8677,18 @@ dependencies = [
  "test-case",
  "test-strategy",
  "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
+name = "turn-message"
+version = "0.1.0"
+dependencies = [
+ "bytecodec",
+ "derive_more",
+ "proptest",
+ "stun_codec",
+ "test-strategy",
  "tracing",
 ]
 

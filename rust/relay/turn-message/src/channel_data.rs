@@ -77,7 +77,7 @@ impl<'a> ChannelData<'a> {
     }
 }
 
-#[cfg(all(test, feature = "proptest"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 

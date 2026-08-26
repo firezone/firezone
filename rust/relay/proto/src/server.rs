@@ -1,9 +1,6 @@
-mod channel_data;
-mod client_message;
-
-pub use crate::server::channel_data::ChannelData;
-pub use crate::server::client_message::{
-    Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, Refresh,
+pub use turn_message::{
+    Allocate, Attribute, Binding, ChannelBind, ChannelData, ClientMessage, CreatePermission,
+    Refresh,
 };
 
 use crate::auth::{self, AuthenticatedMessage, FIREZONE, MessageIntegrityExt, Nonces};
@@ -25,13 +22,11 @@ use std::net::{IpAddr, SocketAddr};
 use std::ops::RangeInclusive;
 use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
-    ErrorCode, MessageIntegrity, Nonce, Realm, Software, Username, XorMappedAddress,
+    ErrorCode, MessageIntegrity, Nonce, Software, Username, XorMappedAddress,
 };
 use stun_codec::rfc5389::errors::{BadRequest, ServerError, StaleNonce, Unauthorized};
 use stun_codec::rfc5389::methods::BINDING;
-use stun_codec::rfc5766::attributes::{
-    ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
-};
+use stun_codec::rfc5766::attributes::{ChannelNumber, Lifetime, XorRelayAddress};
 use stun_codec::rfc5766::errors::{AllocationMismatch, InsufficientCapacity};
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
 use stun_codec::rfc8656::attributes::{
@@ -266,30 +261,34 @@ where
             return None;
         }
 
-        match client_message::decode(bytes) {
+        match turn_message::decode(bytes) {
             Ok(Ok(message)) => {
                 return self.handle_client_message(message, sender, now);
             }
             // Could parse the bytes but message was semantically invalid (like missing attribute).
-            Ok(Err(error_response)) => {
-                tracing::warn!(target: "relay", %sender, method = %error_response.method(), "Failed to decode message");
+            Ok(Err(rejection)) => {
+                tracing::warn!(target: "relay", %sender, method = %rejection.method(), "Failed to decode message");
 
                 // This is fine, the original message failed to parse to we cannot respond with an authenticated reply.
-                let message = AuthenticatedMessage::new_dangerous_unauthenticated(error_response);
+                let message = AuthenticatedMessage::new_dangerous_unauthenticated(error_response(
+                    rejection.method(),
+                    rejection.transaction_id(),
+                    rejection.error_code().clone(),
+                ));
 
                 self.send_message(message, sender);
             }
             // Parsing the bytes failed.
-            Err(client_message::Error::BadChannelData(ref error)) => {
+            Err(turn_message::DecodeError::BadChannelData(ref error)) => {
                 tracing::debug!(target: "relay", %error, "failed to decode channel data")
             }
-            Err(client_message::Error::DecodeStun(ref error)) => {
+            Err(turn_message::DecodeError::DecodeStun(ref error)) => {
                 tracing::debug!(target: "relay", %error, "failed to decode stun packet")
             }
-            Err(client_message::Error::UnknownMessageType(t)) => {
+            Err(turn_message::DecodeError::UnknownMessageType(t)) => {
                 tracing::debug!(target: "relay", r#type = %t, "unknown STUN message type")
             }
-            Err(client_message::Error::Eof) => {
+            Err(turn_message::DecodeError::Eof) => {
                 tracing::debug!(target: "relay", "unexpected EOF while parsing message")
             }
         };
@@ -1346,28 +1345,6 @@ impl_protected_request_for!(CreatePermission);
 impl_protected_request_for!(Refresh);
 
 // Define an enum of all attributes that we care about for our server.
-stun_codec::define_attribute_enums!(
-    Attribute,
-    AttributeDecoder,
-    AttributeEncoder,
-    [
-        MessageIntegrity,
-        XorMappedAddress,
-        ErrorCode,
-        RequestedTransport,
-        XorRelayAddress,
-        Lifetime,
-        ChannelNumber,
-        XorPeerAddress,
-        Nonce,
-        Realm,
-        Username,
-        RequestedAddressFamily,
-        AdditionalAddressFamily,
-        Software
-    ]
-);
-
 fn success_response(method: Method, id: TransactionId) -> Message<Attribute> {
     let mut message = Message::new(MessageClass::SuccessResponse, method, id);
     message.add_attribute(SOFTWARE.clone());

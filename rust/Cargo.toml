@@ -50,6 +50,7 @@ members = [
     "relay/ebpf-turn-router",
     "relay/proto",
     "relay/server",
+    "relay/turn-message",
     "tests/fuzz",
     "tests/gui-smoke-test",
     "tests/http-test-server",
@@ -244,6 +245,7 @@ tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "main" 
 tracing-opentelemetry = "0.33.0"
 tracing-subscriber = { version = "0.3.23", features = ["parking_lot"] }
 tun = { path = "libs/connlib/tun" }
+turn-message = { path = "relay/turn-message" }
 tunnel = { path = "libs/connlib/tunnel" }
 tunnel-bypass-resolver = { path = "libs/tunnel-bypass-resolver" }
 tunnel-proto = { path = "libs/connlib/tunnel-proto" }
