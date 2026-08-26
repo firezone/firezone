@@ -262,49 +262,46 @@ struct FirezoneApp: App {
   /// gets no such presentation, which its menu bar scene appears to cost it,
   /// so a run through these needs no window opened or closed by hand.
   struct UITestMainApp: App {
-    @NSApplicationDelegateAdaptor(UITestDelegate.self) var delegate
     @StateObject var store = uiTestStore()
 
     var body: some Scene {
       mainWindowScene(store: store)
+      windowOpenerExtra(id: AppView.WindowDefinition.main.identifier)
     }
   }
 
   struct UITestSettingsApp: App {
-    @NSApplicationDelegateAdaptor(UITestDelegate.self) var delegate
     @StateObject var store = uiTestStore()
 
     var body: some Scene {
       settingsWindowScene(store: store)
+      windowOpenerExtra(id: AppView.WindowDefinition.settings.identifier)
     }
   }
 
-  /// Orders the scene's window front, because nobody else will: the system
-  /// presents no scene at all when XCUITest launches the app.
+  /// A menu bar scene whose one job is presenting the window scene beside it.
+  ///
+  /// The system presents no scene at all when XCUITest launches the app, and
+  /// `openWindow` lives in a view's environment, so presenting a window takes
+  /// a view that exists without one. A menu bar item's label is such a view:
+  /// it is built for the status bar at launch.
   @MainActor
-  final class UITestDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_: Notification) {
-      presentSceneWindows(attemptsLeft: 50)
+  func windowOpenerExtra(id windowID: String) -> some Scene {
+    MenuBarExtra {
+      EmptyView()
+    } label: {
+      WindowOpenerLabel(windowID: windowID)
     }
+  }
 
-    /// Retries because the scene's window need not exist yet when the launch
-    /// notification arrives.
-    private func presentSceneWindows(attemptsLeft: Int) {
-      guard !NSApp.windows.isEmpty else {
-        if attemptsLeft > 0 {
-          Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(100))
-            presentSceneWindows(attemptsLeft: attemptsLeft - 1)
-          }
-        }
+  private struct WindowOpenerLabel: View {
+    @Environment(\.openWindow) private var openWindow
 
-        return
-      }
+    let windowID: String
 
-      for window in NSApp.windows {
-        window.makeKeyAndOrderFront(nil)
-      }
-      NSApp.activate(ignoringOtherApps: true)
+    var body: some View {
+      Text("Firezone UI Test")
+        .onAppear { openWindow(id: windowID) }
     }
   }
 
