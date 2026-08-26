@@ -355,6 +355,7 @@ async fn connect_with_zero_backoff_resets_reconnect_backoff() {
 #[test_case(r#"{"status":403,"detail":"This device's certificate has been revoked.","code":"certificate_revoked"}"# => "The portal rejected the client certificate: This device's certificate has been revoked."; "a revoked certificate")]
 #[test_case(r#"{"status":403,"detail":"This device is not trusted.","code":"device_untrusted"}"# => "The portal rejected the client certificate: This device is not trusted."; "an untrusted device")]
 #[test_case(r#"{"status":409,"detail":"Different hardware.","code":"device_identity_conflict"}"# => "The portal rejected the client certificate: Different hardware."; "a conflicting device identity")]
+#[test_case(r#"{"status":403,"detail":"This device's certificate does not identify an active user authorized to access this Firezone account. Please contact your administrator.","code":"x509_user_not_authorized"}"# => "The portal rejected the client certificate: This device's certificate does not identify an active user authorized to access this Firezone account. Please contact your administrator."; "an unauthorized X.509 user")]
 #[test_case(r#"{"status":401,"detail":"Invalid token"}"# => "Failed to authenticate with portal: Invalid token"; "a 401 without a code")]
 #[test_case(r#"{"status":401}"# => "Failed to authenticate with portal: no reason provided"; "a 401 without a detail")]
 #[tokio::test]
@@ -413,12 +414,11 @@ async fn retry_after_header_sets_the_backoff(code: http::StatusCode, retry_after
     assert_eq!(backoff, retry_after);
 }
 
+#[test_case(r#"{"status":403,"detail":"This device's certificate has been revoked.","code":"certificate_revoked"}"#; "a revoked certificate")]
+#[test_case(r#"{"status":403,"detail":"No authorized user.","code":"x509_user_not_authorized"}"#; "an unauthorized X.509 user")]
 #[tokio::test]
-async fn rejected_certificate_does_not_require_sign_in() {
-    let port = http_problem_details_server(
-        r#"{"status":403,"detail":"This device's certificate has been revoked.","code":"certificate_revoked"}"#,
-    )
-    .await;
+async fn rejected_certificate_does_not_require_sign_in(problem_details: &str) {
+    let port = http_problem_details_server(problem_details).await;
 
     let error = expect_error(first_event(port).await);
 
