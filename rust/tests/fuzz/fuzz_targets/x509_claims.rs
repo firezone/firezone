@@ -14,7 +14,7 @@ use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use sha2::{Digest as _, Sha256};
 use x509_claims::{
-    ClaimValue, ParsedCertificate, RejectionReason, UnusableReason, parse_certificate,
+    Claim, FieldProblem, ParsedCertificate, RejectionReason, UnusableReason, parse_certificate,
 };
 
 fuzz_target!(|input: Input| {
@@ -30,6 +30,7 @@ fuzz_target!(|input: Input| {
     );
     assert_usable_is_the_conjunction(&certificate);
     assert_unusable_reasons_mirror_the_rules(&certificate);
+    assert_every_unusable_reason_is_shown_once(&certificate);
     // An arbitrary common name almost never matches, so it covers the rejection while the
     // certificate's own one covers the match.
     assert_usable_requires_an_exact_common_name(&certificate, input.expected_subject_cn);
@@ -121,8 +122,14 @@ fn assert_unusable_reasons_mirror_the_rules(certificate: &ParsedCertificate) {
             !certificate.digital_signature_allowed,
         ),
         (
-            UnusableReason::OutsideValidityPeriod,
-            !certificate.is_currently_valid,
+            UnusableReason::NotYetValid,
+            !certificate.is_currently_valid
+                && certificate.checked_at_timestamp <= certificate.not_after_timestamp,
+        ),
+        (
+            UnusableReason::Expired,
+            !certificate.is_currently_valid
+                && certificate.checked_at_timestamp > certificate.not_after_timestamp,
         ),
         (
             UnusableReason::UnsupportedKeyAlgorithm,
@@ -135,16 +142,29 @@ fn assert_unusable_reasons_mirror_the_rules(certificate: &ParsedCertificate) {
         assert_eq!(reasons.contains(&reason), failed);
     }
 
-    let summary = certificate.unusable_summary();
+    assert_eq!(certificate.passes_its_own_rules(), reasons.is_empty());
+}
 
-    assert_eq!(summary.is_some(), !reasons.is_empty());
+/// Asserts that every rule the certificate fails reaches the reader exactly once.
+///
+/// A rule reads underneath the attribute that causes it where the details show one, and beside
+/// the verdict where they do not, so one that lands in neither place is a rule nobody is told.
+fn assert_every_unusable_reason_is_shown_once(certificate: &ParsedCertificate) {
+    let fields = certificate.detail_fields();
+    let without_a_field = certificate.unusable_reasons_without_a_field();
 
-    let Some(summary) = summary else {
-        return;
-    };
+    for reason in certificate.unusable_reasons() {
+        let rows = fields
+            .iter()
+            .filter(|field| field.problem == Some(FieldProblem::Unusable { reason }))
+            .count();
 
-    for reason in reasons {
-        assert!(summary.contains(reason.label()));
+        assert!(rows <= 1, "{reason:?} reads underneath more than one row");
+        assert_eq!(rows == 0, without_a_field.contains(&reason));
+    }
+
+    for reason in without_a_field {
+        assert!(certificate.unusable_reasons().contains(&reason));
     }
 }
 
@@ -232,7 +252,7 @@ fn assert_device_serial_is_printable(certificate: &ParsedCertificate) {
 /// from sends an administrator after the wrong part of their certificate template.
 fn assert_claims_are_rendered_as_they_were_read(certificate: &ParsedCertificate) {
     let fields = certificate.detail_fields();
-    let claims = [
+    let claims: [(&str, &Claim); 4] = [
         ("Actor Email", &certificate.actor_email),
         ("Account ID", &certificate.account_id),
         ("MDM Device ID", &certificate.mdm_device_id),
@@ -245,7 +265,13 @@ fn assert_claims_are_rendered_as_they_were_read(certificate: &ParsedCertificate)
             .find(|field| field.label == label)
             .unwrap_or_else(|| panic!("diagnostics should show {label}"));
 
-        assert_eq!(field.value, *claim);
+        assert_eq!(field.value, claim.value);
+        assert_eq!(
+            field.problem,
+            claim
+                .rejection
+                .map(|reason| FieldProblem::Rejected { reason })
+        );
     }
 }
 
@@ -258,17 +284,22 @@ fn assert_unrecognised_claims_are_shown(certificate: &ParsedCertificate) {
         .detail_fields()
         .into_iter()
         .filter(|field| {
-            field.value
-                == ClaimValue::Invalid {
+            field.problem
+                == Some(FieldProblem::Rejected {
                     reason: RejectionReason::UnknownAttribute,
-                }
+                })
         })
         .map(|field| field.label)
-        .collect::<HashSet<_>>();
+        .collect::<Vec<_>>();
+
+    assert_eq!(unrecognised.len(), certificate.unrecognised_claims.len());
 
     for claim in &certificate.unrecognised_claims {
         assert!(claim.chars().count() <= 96, "{claim}");
-        assert!(unrecognised.contains(claim), "{claim} has no row");
+        assert!(
+            unrecognised.iter().any(|label| claim.starts_with(label)),
+            "{claim} has no row"
+        );
     }
 }
 

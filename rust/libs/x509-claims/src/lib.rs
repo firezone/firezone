@@ -20,6 +20,7 @@ use sha2::{Digest as _, Sha256};
 use x509_parser::{
     extensions::{GeneralName, ParsedExtension},
     oid_registry::{OID_KEY_TYPE_EC_PUBLIC_KEY, OID_PKCS1_RSAENCRYPTION},
+    prelude::AlgorithmIdentifier,
     prelude::{FromDer as _, X509Certificate},
 };
 
@@ -50,7 +51,8 @@ impl SigningAlgorithm {
 pub enum UnusableReason {
     NoClientAuthEku,
     NoDigitalSignatureKeyUsage,
-    OutsideValidityPeriod,
+    NotYetValid,
+    Expired,
     UnsupportedKeyAlgorithm,
 }
 
@@ -60,30 +62,85 @@ impl UnusableReason {
         match self {
             Self::NoClientAuthEku => "no TLS client authentication extended key usage",
             Self::NoDigitalSignatureKeyUsage => "key usage does not allow digital signatures",
-            Self::OutsideValidityPeriod => "expired or not yet valid",
+            Self::NotYetValid => "not yet valid",
+            Self::Expired => "expired",
             Self::UnsupportedKeyAlgorithm => "unsupported key algorithm",
+        }
+    }
+
+    /// The attribute this rule is about, labelled the way the diagnostics label its row.
+    ///
+    /// A reader told that a certificate cannot be used needs the attribute to fix, so a rule
+    /// reads underneath the row that shows it wherever the details carry one.
+    fn field_label(self) -> &'static str {
+        match self {
+            Self::NoClientAuthEku => "TLS Client Authentication EKU",
+            Self::NoDigitalSignatureKeyUsage => "Digital Signature Key Usage",
+            Self::NotYetValid => "Not Before",
+            Self::Expired => "Not After",
+            Self::UnsupportedKeyAlgorithm => "Signing Algorithm",
         }
     }
 }
 
-/// What a certificate says about one of the claims the clients read.
+/// The text a diagnostics row shows, above whatever is wrong with it.
+///
+/// A value the clients refuse is still a value, so it stays here and the refusal reads
+/// underneath it as a [`FieldProblem`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimValue {
-    /// Exactly one value, which the clients will attest.
+    /// What the certificate carries, whether or not the clients will attest it.
     Present { value: String },
-    /// The certificate carries no `firezone://` name for this claim.
+    /// The certificate carries nothing for this row.
     Absent,
-    /// The certificate carries one, but not one the clients will attest.
-    Invalid { reason: RejectionReason },
 }
 
-impl ClaimValue {
+/// What a certificate says about one of the claims the clients read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Claim {
+    pub value: ClaimValue,
+    /// Why the clients will not attest the value, [`None`] when they will.
+    pub rejection: Option<RejectionReason>,
+}
+
+impl Claim {
     /// The value the clients will attest, [`None`] for a claim they will not.
     pub fn attested(&self) -> Option<&str> {
-        match self {
-            Self::Present { value } => Some(value),
-            Self::Absent => None,
-            Self::Invalid { .. } => None,
+        match (&self.value, self.rejection) {
+            (ClaimValue::Present { value }, None) => Some(value),
+            (ClaimValue::Present { .. }, Some(_)) | (ClaimValue::Absent, _) => None,
+        }
+    }
+
+    /// A claim the certificate carries and the clients will attest.
+    fn present(value: String) -> Self {
+        Self {
+            value: ClaimValue::Present { value },
+            rejection: None,
+        }
+    }
+
+    /// A claim the certificate does not carry at all.
+    fn absent() -> Self {
+        Self {
+            value: ClaimValue::Absent,
+            rejection: None,
+        }
+    }
+
+    /// A claim the certificate carries and the clients will not attest.
+    ///
+    /// The value is shown the way the certificate spelled it, bounded the way every other
+    /// claim value is: an administrator fixing a template needs to see what it wrote.
+    fn rejected(value: &str, reason: RejectionReason) -> Self {
+        let value = format_claim_value(value);
+
+        Self {
+            value: match value.trim().is_empty() {
+                true => ClaimValue::Absent,
+                false => ClaimValue::Present { value },
+            },
+            rejection: Some(reason),
         }
     }
 }
@@ -95,6 +152,18 @@ impl From<Option<String>> for ClaimValue {
             None => Self::Absent,
         }
     }
+}
+
+/// What is wrong with one diagnostics row, read underneath the value it belongs to.
+///
+/// The clients word these themselves, so a problem crosses to them as the reason it is rather
+/// than as a sentence: the mobile and Apple clients render them from their own string resources.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldProblem {
+    /// The certificate carries this claim and the clients will not attest what it says.
+    Rejected { reason: RejectionReason },
+    /// The certificate cannot be presented for mutual TLS because of this attribute.
+    Unusable { reason: UnusableReason },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -128,10 +197,10 @@ pub struct ParsedCertificate {
     pub subject_cn: Option<String>,
     pub subject: String,
     pub subject_alternative_names: Vec<String>,
-    pub actor_email: ClaimValue,
-    pub account_id: ClaimValue,
-    pub mdm_device_id: ClaimValue,
-    pub device_serial: ClaimValue,
+    pub actor_email: Claim,
+    pub account_id: Claim,
+    pub mdm_device_id: Claim,
+    pub device_serial: Claim,
     /// `firezone://` names whose attribute this parser does not read, e.g. a typo in a template.
     pub unrecognised_claims: Vec<String>,
     pub issuer: String,
@@ -139,11 +208,21 @@ pub struct ParsedCertificate {
     pub has_client_auth_eku: bool,
     pub digital_signature_allowed: bool,
     pub is_currently_valid: bool,
+    /// The instant the validity window was compared against, in seconds since the Unix epoch.
+    ///
+    /// A certificate that is not currently valid is expired or not yet valid depending on it,
+    /// and the diagnostics say which.
+    pub checked_at_timestamp: i64,
     pub not_before: String,
     pub not_before_timestamp: i64,
     pub not_after: String,
     pub not_after_timestamp: i64,
     pub signing_algorithm: Option<SigningAlgorithm>,
+    /// The public key's algorithm as the certificate spells it, for one Firezone cannot sign with.
+    ///
+    /// Object identifiers rather than a name: an algorithm this parser has no name for is
+    /// exactly the one an administrator needs to read off the row.
+    pub key_algorithm_oid: String,
     pub fingerprint: String,
     pub der_bytes: usize,
 }
@@ -164,10 +243,8 @@ impl ParsedCertificate {
                 UnusableReason::NoDigitalSignatureKeyUsage,
                 !self.digital_signature_allowed,
             ),
-            (
-                UnusableReason::OutsideValidityPeriod,
-                !self.is_currently_valid,
-            ),
+            (UnusableReason::NotYetValid, self.is_not_yet_valid()),
+            (UnusableReason::Expired, self.is_expired()),
             (
                 UnusableReason::UnsupportedKeyAlgorithm,
                 self.signing_algorithm.is_none(),
@@ -178,13 +255,48 @@ impl ParsedCertificate {
         .collect()
     }
 
+    /// The rules this certificate fails that no diagnostics row carries.
+    ///
+    /// Every other rule reads underneath the attribute that causes it, so the clients state
+    /// only these where they state the verdict.
+    pub fn unusable_reasons_without_a_field(&self) -> Vec<UnusableReason> {
+        let fields = self.detail_fields();
+
+        self.unusable_reasons()
+            .into_iter()
+            .filter(|reason| {
+                !fields
+                    .iter()
+                    .any(|field| field.problem == Some(FieldProblem::Unusable { reason: *reason }))
+            })
+            .collect()
+    }
+
+    /// Whether the certificate's own rules allow presenting it for mutual TLS.
+    ///
+    /// A client that also expects a particular subject common name checks that with
+    /// [`Self::is_usable`].
+    pub fn passes_its_own_rules(&self) -> bool {
+        self.unusable_reasons().is_empty()
+    }
+
+    /// Whether the validity period has not started yet, which the clock decides.
+    fn is_not_yet_valid(&self) -> bool {
+        !self.is_currently_valid && !self.is_expired()
+    }
+
+    /// Whether the validity period has passed, which the clock decides.
+    fn is_expired(&self) -> bool {
+        !self.is_currently_valid && self.checked_at_timestamp > self.not_after_timestamp
+    }
+
     pub fn is_usable(&self, expected_subject_cn: &str) -> bool {
         self.matches_subject(expected_subject_cn) && self.unusable_reasons().is_empty()
     }
 
     pub fn detail_fields(&self) -> Vec<DetailField> {
         let mut fields = vec![
-            claim_field("Common Name", ClaimValue::from(self.subject_cn.clone())),
+            optional_field("Common Name", self.subject_cn.clone()),
             field("Subject", &self.subject),
             field("Issuer", &self.issuer),
             claim_field("Actor Email", self.actor_email.clone()),
@@ -192,14 +304,11 @@ impl ParsedCertificate {
             claim_field("MDM Device ID", self.mdm_device_id.clone()),
             claim_field("Device Serial", self.device_serial.clone()),
         ];
-        fields.extend(self.unrecognised_claims.iter().map(|claim| {
-            claim_field(
-                claim,
-                ClaimValue::Invalid {
-                    reason: RejectionReason::UnknownAttribute,
-                },
-            )
-        }));
+        fields.extend(
+            self.unrecognised_claims
+                .iter()
+                .map(|claim| unrecognised_claim_field(claim)),
+        );
         let remaining = self.remaining_subject_alternative_names();
         if !remaining.is_empty() {
             fields.push(field("Subject Alternative Names", remaining.join("\n")));
@@ -228,27 +337,22 @@ impl ParsedCertificate {
                 "Signing Algorithm",
                 self.signing_algorithm
                     .map(SigningAlgorithm::label)
-                    .unwrap_or("Unsupported"),
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| self.key_algorithm_oid.clone()),
             ),
             field("SHA-256 Fingerprint", &self.fingerprint),
         ]);
-        fields
-    }
 
-    /// Why this certificate cannot be presented for mutual TLS, [`None`] if it can.
-    pub fn unusable_summary(&self) -> Option<String> {
-        let reasons = self.unusable_reasons();
-        if reasons.is_empty() {
-            return None;
+        for reason in self.unusable_reasons() {
+            let label = reason.field_label();
+            let Some(field) = fields.iter_mut().find(|field| field.label == label) else {
+                continue;
+            };
+
+            field.problem = Some(FieldProblem::Unusable { reason });
         }
 
-        Some(
-            reasons
-                .into_iter()
-                .map(UnusableReason::label)
-                .collect::<Vec<_>>()
-                .join(", "),
-        )
+        fields
     }
 
     pub fn user_identity(&self) -> Option<UserIdentity> {
@@ -310,10 +414,15 @@ pub struct UserIdentity {
 }
 
 /// A row for the clients' certificate diagnostics screens.
+///
+/// The value reads on top and the problem, if there is one, underneath it: a certificate is
+/// wrong in an attribute, and that is where a reader has to look to fix it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DetailField {
     pub label: String,
     pub value: ClaimValue,
+    /// What is wrong with the value above, [`None`] when nothing is.
+    pub problem: Option<FieldProblem>,
 }
 
 pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificate> {
@@ -407,6 +516,8 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificat
         }
     };
 
+    let key_algorithm_oid = format_key_algorithm(&certificate.subject_pki.algorithm);
+
     let fingerprint = Sha256::digest(der)
         .iter()
         .map(|byte| format!("{byte:02X}"))
@@ -427,23 +538,42 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificat
         has_client_auth_eku,
         digital_signature_allowed,
         is_currently_valid,
+        checked_at_timestamp: now_timestamp.unwrap_or_default(),
         not_before: certificate.validity().not_before.to_string(),
         not_before_timestamp,
         not_after: certificate.validity().not_after.to_string(),
         not_after_timestamp,
         signing_algorithm,
+        key_algorithm_oid,
         fingerprint,
         der_bytes: der.len(),
     })
 }
 
-fn extract_actor_email(uris: &[&str]) -> ClaimValue {
+/// The public key algorithm's object identifier, with the curve's where one is named.
+fn format_key_algorithm(algorithm: &AlgorithmIdentifier<'_>) -> String {
+    let oid = algorithm.algorithm.to_id_string();
+    let Some(parameters) = algorithm
+        .parameters
+        .as_ref()
+        .and_then(|parameters| parameters.as_oid().ok())
+    else {
+        return oid;
+    };
+
+    format!("{oid} ({})", parameters.to_id_string())
+}
+
+fn extract_actor_email(uris: &[&str]) -> Claim {
     let emails = firezone_attribute_values(uris, "email")
         .into_iter()
         .map(|value| {
             let value = value?;
             if !valid_email(&value) {
-                return Err(RejectionReason::NotAnEmailAddress);
+                return Err(Rejected {
+                    value,
+                    reason: RejectionReason::NotAnEmailAddress,
+                });
             }
 
             Ok(value.to_lowercase())
@@ -453,13 +583,16 @@ fn extract_actor_email(uris: &[&str]) -> ClaimValue {
     resolve_claim(emails, str::to_owned)
 }
 
-fn extract_account_id(uris: &[&str]) -> ClaimValue {
+fn extract_account_id(uris: &[&str]) -> Claim {
     let account_ids = firezone_attribute_values(uris, "account-id")
         .into_iter()
         .map(|value| {
             let value = value?;
             let Ok(account_id) = uuid::Uuid::parse_str(&value) else {
-                return Err(RejectionReason::NotAUuid);
+                return Err(Rejected {
+                    value,
+                    reason: RejectionReason::NotAUuid,
+                });
             };
 
             Ok(account_id.hyphenated().to_string().to_lowercase())
@@ -469,7 +602,7 @@ fn extract_account_id(uris: &[&str]) -> ClaimValue {
     resolve_claim(account_ids, str::to_owned)
 }
 
-fn extract_device_serial(uris: &[&str]) -> ClaimValue {
+fn extract_device_serial(uris: &[&str]) -> Claim {
     let mut serials = firezone_attribute_values(uris, "serial");
     serials.extend(firezone_attribute_values(uris, "apple-serial"));
 
@@ -480,7 +613,7 @@ fn extract_device_serial(uris: &[&str]) -> ClaimValue {
 fn firezone_attribute_values(
     uris: &[&str],
     expected_attribute: &str,
-) -> Vec<Result<String, RejectionReason>> {
+) -> Vec<Result<String, Rejected>> {
     let mut values = Vec::new();
 
     for uri in uris {
@@ -494,7 +627,10 @@ fn firezone_attribute_values(
         let decoded = percent_decode(raw_value).unwrap_or_else(|| raw_value.to_owned());
         let value = decoded.trim();
         if !valid_identifier(value) {
-            values.push(Err(invalid_identifier_reason(value)));
+            values.push(Err(Rejected {
+                value: value.to_owned(),
+                reason: invalid_identifier_reason(value),
+            }));
             continue;
         }
 
@@ -504,33 +640,37 @@ fn firezone_attribute_values(
     values
 }
 
+/// A value a certificate gave a claim that the clients will not attest, and why.
+struct Rejected {
+    value: String,
+    reason: RejectionReason,
+}
+
 /// The state a claim resolves to, comparing the values a certificate gave it by `key`.
 ///
 /// Repeating the same value is not a conflict. Giving two different ones is, and neither is
-/// attested: picking one would let a certificate decide which identity it is read as.
-fn resolve_claim(
-    values: Vec<Result<String, RejectionReason>>,
-    key: impl Fn(&str) -> String,
-) -> ClaimValue {
-    let rejection = values
-        .iter()
-        .find_map(|value| value.as_ref().err().copied());
+/// attested: picking one would let a certificate decide which identity it is read as. Both are
+/// still shown, because a template that writes two is fixed by seeing which.
+fn resolve_claim(values: Vec<Result<String, Rejected>>, key: impl Fn(&str) -> String) -> Claim {
     let mut seen = HashSet::new();
-    let accepted = values
-        .into_iter()
-        .flatten()
-        .filter(|value| seen.insert(key(value)))
-        .collect::<Vec<_>>();
+    let mut accepted = Vec::new();
+    let mut rejection = None;
+
+    for value in values {
+        match value {
+            Ok(value) if seen.insert(key(&value)) => accepted.push(value),
+            Ok(_) => {}
+            Err(rejected) => {
+                rejection.get_or_insert(rejected);
+            }
+        }
+    }
 
     match (accepted.as_slice(), rejection) {
-        ([value], _) => ClaimValue::Present {
-            value: value.clone(),
-        },
-        ([], None) => ClaimValue::Absent,
-        ([], Some(reason)) => ClaimValue::Invalid { reason },
-        (_, _) => ClaimValue::Invalid {
-            reason: RejectionReason::Ambiguous,
-        },
+        ([value], _) => Claim::present(value.clone()),
+        ([], None) => Claim::absent(),
+        ([], Some(rejected)) => Claim::rejected(&rejected.value, rejected.reason),
+        (values, _) => Claim::rejected(&values.join(", "), RejectionReason::Ambiguous),
     }
 }
 
@@ -580,7 +720,7 @@ fn hex_value(value: u8) -> Option<u8> {
     }
 }
 
-fn extract_mdm_device_id(uris: &[&str]) -> ClaimValue {
+fn extract_mdm_device_id(uris: &[&str]) -> Claim {
     let uris = uris
         .iter()
         .copied()
@@ -607,7 +747,10 @@ fn extract_mdm_device_id(uris: &[&str]) -> ClaimValue {
         let value = value.as_str();
         if !valid_identifier(value) {
             if device_id_attribute(&id_type) {
-                rejection.get_or_insert(invalid_identifier_reason(value));
+                rejection.get_or_insert(Rejected {
+                    value: value.to_owned(),
+                    reason: invalid_identifier_reason(value),
+                });
             }
 
             continue;
@@ -620,7 +763,10 @@ fn extract_mdm_device_id(uris: &[&str]) -> ClaimValue {
 
         typed_mdm_device_id = normalize_mdm_device_id(value);
         if typed_mdm_device_id.is_none() {
-            rejection.get_or_insert(RejectionReason::PlaceholderIdentifier);
+            rejection.get_or_insert(Rejected {
+                value: value.to_owned(),
+                reason: RejectionReason::PlaceholderIdentifier,
+            });
         }
     }
 
@@ -636,9 +782,9 @@ fn extract_mdm_device_id(uris: &[&str]) -> ClaimValue {
     };
 
     match (device_id, rejection) {
-        (Some(device_id), _) => ClaimValue::Present { value: device_id },
-        (None, Some(reason)) => ClaimValue::Invalid { reason },
-        (None, None) => ClaimValue::Absent,
+        (Some(device_id), _) => Claim::present(device_id),
+        (None, Some(rejected)) => Claim::rejected(&rejected.value, rejected.reason),
+        (None, None) => Claim::absent(),
     }
 }
 
@@ -833,17 +979,65 @@ fn format_claim_value(value: &str) -> String {
 }
 
 fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
-    claim_field(
-        label,
-        ClaimValue::Present {
-            value: value.into(),
-        },
-    )
-}
-
-fn claim_field(label: impl Into<String>, value: ClaimValue) -> DetailField {
     DetailField {
         label: label.into(),
-        value,
+        value: ClaimValue::Present {
+            value: value.into(),
+        },
+        problem: None,
     }
+}
+
+/// A row for something the certificate may leave out, which nothing is wrong with either way.
+fn optional_field(label: impl Into<String>, value: Option<String>) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: ClaimValue::from(value),
+        problem: None,
+    }
+}
+
+fn claim_field(label: impl Into<String>, claim: Claim) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: claim.value,
+        problem: claim
+            .rejection
+            .map(|reason| FieldProblem::Rejected { reason }),
+    }
+}
+
+/// The row for a `firezone://` name whose attribute the parser does not read.
+///
+/// Splitting the name lets it read like every other claim: the attribute labels the row and
+/// its value fills it, so a template with a typo shows what it wrote as well as where.
+fn unrecognised_claim_field(claim: &str) -> DetailField {
+    let (attribute, value) = split_claim_attribute(claim);
+
+    DetailField {
+        label: attribute.to_owned(),
+        value: match value {
+            Some(value) if !value.is_empty() => ClaimValue::Present {
+                value: value.to_owned(),
+            },
+            Some(_) | None => ClaimValue::Absent,
+        },
+        problem: Some(FieldProblem::Rejected {
+            reason: RejectionReason::UnknownAttribute,
+        }),
+    }
+}
+
+/// A `firezone://` name up to its value, and the value itself.
+///
+/// A name that carries no value, or one elided before it, has only the attribute to show.
+fn split_claim_attribute(claim: &str) -> (&str, Option<&str>) {
+    let Some(start) = claim.find("://").map(|index| index + "://".len()) else {
+        return (claim, None);
+    };
+    let Some(separator) = claim[start..].find('/').map(|index| start + index) else {
+        return (claim, None);
+    };
+
+    (&claim[..separator], Some(&claim[separator + 1..]))
 }
