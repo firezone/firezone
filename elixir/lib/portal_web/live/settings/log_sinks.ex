@@ -72,6 +72,7 @@ defmodule PortalWeb.Settings.LogSinks do
       assign(socket,
         page_title: "Log Sinks",
         sentinel_setup_tab: "portal",
+        submit_failed?: false,
         sentinel_verification_ref: nil,
         s3_setup_tab: "console",
         trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
@@ -91,6 +92,7 @@ defmodule PortalWeb.Settings.LogSinks do
      assign(socket,
        type: type,
        form: to_form(changeset),
+       submit_failed?: false,
        open_sink_actions_id: nil
      )}
   end
@@ -112,6 +114,7 @@ defmodule PortalWeb.Settings.LogSinks do
        sink_name: sink.name,
        type: type,
        form: to_form(changeset),
+       submit_failed?: false,
        open_sink_actions_id: nil
      )}
   end
@@ -173,28 +176,12 @@ defmodule PortalWeb.Settings.LogSinks do
   end
 
   def handle_event("validate", %{"log_sink" => attrs}, socket) do
-    changeset = socket.assigns.form.source
-    attrs = normalize_attrs(attrs, changeset)
-
-    # EDIT: .data (original sink) so changes are relative to DB values.
-    # NEW: apply_changes() to capture all current values.
-    base =
-      if socket.assigns.live_action == :edit do
-        changeset.data
-      else
-        apply_changes(changeset)
-      end
-
-    changeset =
-      base
-      |> changeset(attrs)
-      |> Map.put(:action, :validate)
-
-    {:noreply, assign(socket, form: to_form(changeset))}
+    changeset = submitted_changeset(socket, attrs)
+    {:noreply, assign(socket, form: to_form(changeset), submit_failed?: false)}
   end
 
-  def handle_event("submit_sink", _params, socket) do
-    submit_sink(socket)
+  def handle_event("submit_sink", %{"log_sink" => attrs}, socket) do
+    submit_sink(socket, submitted_changeset(socket, attrs))
   end
 
   def handle_event("delete_sink", %{"id" => id}, socket) do
@@ -564,6 +551,9 @@ defmodule PortalWeb.Settings.LogSinks do
               <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} s3_setup_tab={@s3_setup_tab} />
             </div>
             <.panel_footer>
+              <p :if={@submit_failed?} class="mr-auto text-xs text-error">
+                Errors prevented this form from being saved
+              </p>
               <.panel_footer_button phx-click="close_panel">
                 Cancel
               </.panel_footer_button>
@@ -607,6 +597,9 @@ defmodule PortalWeb.Settings.LogSinks do
               <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} s3_setup_tab={@s3_setup_tab} />
             </div>
             <.panel_footer>
+              <p :if={@submit_failed?} class="mr-auto text-xs text-error">
+                Errors prevented this form from being saved
+              </p>
               <.panel_footer_button phx-click="close_panel">
                 Cancel
               </.panel_footer_button>
@@ -1087,27 +1080,35 @@ defmodule PortalWeb.Settings.LogSinks do
         <div :if={@type == "sentinel"} class="p-3 rounded border border-border bg-raised">
           <p class="text-xs font-medium text-heading mb-3">Setup</p>
 
-          <div class="mb-4 p-3 rounded border border-border bg-surface">
-            <p class="text-xs font-medium text-heading mb-1.5">1. Grant admin consent</p>
-            <p class="text-xs text-subtle mb-3">
-              Have a tenant administrator grant consent. This adds the
-              <strong>Firezone Sentinel Log Ingestion</strong>
-              application to your tenant so you can assign it a role in the next step. Firezone
-              verifies which tenant granted the consent and fills in the tenant ID below. The
-              application asks only to sign the administrator in and read their basic profile.
-              It cannot read your directory or your data. Log delivery is authorized only by the
-              Monitoring Metrics Publisher role you grant on a single data collection rule.
-            </p>
-            <.button
-              type="button"
-              style="primary"
-              icon="ri-external-link-line"
-              id="sentinel-consent-link"
-              phx-click="sentinel_admin_consent"
-              phx-hook="OpenURL"
-            >
-              Grant admin consent
-            </.button>
+          <p class="text-xs font-medium text-heading mb-1.5">1. Grant admin consent</p>
+          <p class="text-xs text-subtle mb-3">
+            Have a tenant administrator grant consent. This adds the
+            <strong>Firezone Sentinel Log Ingestion</strong>
+            application to your tenant so you can assign it a role in the next step. The
+            application asks only to sign the administrator in and read their basic profile,
+            which is how Firezone learns which tenant granted the consent. The tenant ID
+            cannot be typed in; it is only ever taken from that signed proof. The application
+            cannot read your directory or your data, and log delivery is authorized only by
+            the Monitoring Metrics Publisher role you grant on a single data collection rule.
+          </p>
+          <.button
+            type="button"
+            style="primary"
+            icon="ri-external-link-line"
+            id="sentinel-consent-link"
+            phx-click="sentinel_admin_consent"
+            phx-hook="OpenURL"
+          >
+            Grant admin consent
+          </.button>
+
+          <div class="mt-4 mb-4 flex justify-between items-center">
+            <label class="text-xs font-medium text-body">Tenant ID</label>
+            <div class="text-right">
+              <p id="sentinel-tenant-id" class="text-xs font-semibold text-heading">
+                {sentinel_tenant_id(@form)}
+              </p>
+            </div>
           </div>
 
           <p class="text-xs font-medium text-heading mb-1.5">2. Create the ingestion resources</p>
@@ -1200,23 +1201,6 @@ defmodule PortalWeb.Settings.LogSinks do
           </div>
         </div>
 
-        <div :if={@type == "sentinel"}>
-          <label for={@form[:tenant_id].id} class="block text-xs font-medium text-body mb-1.5">
-            Tenant ID <span class="text-error">*</span>
-          </label>
-          <.input
-            field={@form[:tenant_id]}
-            type="text"
-            autocomplete="off"
-            phx-debounce="300"
-            data-1p-ignore
-            required
-          />
-          <p class="mt-1 text-xs text-subtle">
-            Your Microsoft Entra directory (tenant) ID, e.g.
-            <code class="text-xs">00000000-0000-0000-0000-000000000000</code>.
-          </p>
-        </div>
 
         <div :if={@type == "sentinel"}>
           <label
@@ -1603,17 +1587,35 @@ defmodule PortalWeb.Settings.LogSinks do
     """
   end
 
-  defp submit_sink(%{assigns: %{live_action: :new, form: %{source: changeset}}} = socket) do
-    changeset = put_sink_assoc(changeset, socket)
+  # Every event rebuilds from the params it carries and from the pristine
+  # struct: an empty one for a new sink, the stored row for an edit.
+  #
+  # Reusing the previous event's changeset hid errors, because a change event
+  # marks the fields the operator never touched as unused and an input renders
+  # no error while its field carries that marker. Casting onto the previous
+  # event's applied values hid them too, because an unchanged field records no
+  # change and the validations that only run on changes stop running.
+  defp submitted_changeset(socket, attrs) do
+    changeset = socket.assigns.form.source
 
+    attrs =
+      attrs
+      |> normalize_attrs(changeset)
+      |> carry_verified_tenant_id(changeset)
+
+    changeset.data
+    |> changeset(attrs)
+    |> Map.put(:action, :validate)
+  end
+
+  defp submit_sink(%{assigns: %{live_action: :new}} = socket, changeset) do
     changeset
+    |> put_sink_assoc(socket)
     |> Database.insert_sink(socket.assigns.subject)
     |> handle_submit(socket, "created")
   end
 
-  defp submit_sink(
-         %{assigns: %{live_action: :edit, form: %{source: changeset}, sink: sink}} = socket
-       ) do
+  defp submit_sink(%{assigns: %{live_action: :edit, sink: sink}} = socket, changeset) do
     changeset
     |> maybe_clear_sync_error(sink)
     |> Database.update_sink(socket.assigns.subject)
@@ -1630,7 +1632,23 @@ defmodule PortalWeb.Settings.LogSinks do
          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/log_sinks")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+        changeset = hoist_base_row_errors(changeset)
+
+        {:noreply, assign(socket, form: to_form(changeset), submit_failed?: true)}
+    end
+  end
+
+  # The base row is written through the association, so an error on it comes
+  # back on that changeset, which the form does not render.
+  defp hoist_base_row_errors(%Ecto.Changeset{} = changeset) do
+    case changeset.changes[:log_sink] do
+      %Ecto.Changeset{errors: errors} ->
+        Enum.reduce(errors, changeset, fn {field, {message, opts}}, acc ->
+          add_error(acc, field, message, opts)
+        end)
+
+      _ ->
+        changeset
     end
   end
 
@@ -1713,6 +1731,25 @@ defmodule PortalWeb.Settings.LogSinks do
 
     cast(struct, attrs, Map.get(@fields, schema))
     |> schema.changeset()
+  end
+
+  # The tenant is proven by a signed Entra ID token, never typed, so the form
+  # has no input for it and anything the browser posts under that name is
+  # dropped in favour of what the verification put on the changeset.
+  defp carry_verified_tenant_id(attrs, %Ecto.Changeset{data: %Sentinel.LogSink{}} = changeset) do
+    case get_field(changeset, :tenant_id) do
+      nil -> Map.delete(attrs, "tenant_id")
+      tenant_id -> Map.put(attrs, "tenant_id", tenant_id)
+    end
+  end
+
+  defp carry_verified_tenant_id(attrs, _changeset), do: Map.delete(attrs, "tenant_id")
+
+  defp sentinel_tenant_id(form) do
+    case get_field(form.source, :tenant_id) do
+      tenant_id when is_binary(tenant_id) and tenant_id != "" -> tenant_id
+      _ -> "Awaiting verification..."
+    end
   end
 
   defp normalize_attrs(attrs, _changeset) do
