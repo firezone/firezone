@@ -901,4 +901,61 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     summary = lv |> element("#device-posture-summary") |> render()
     assert summary =~ ~r/1.*FileVault off/s
   end
+
+  describe "verified fields" do
+    test "ignores a tenant and a verified flag posted by the browser", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/intune/new")
+
+      refute html =~ ~s(name="provider[tenant_id]")
+
+      lv
+      |> element("#device-posture-form")
+      |> render_change(%{
+        "provider" => %{
+          "name" => "Contoso",
+          "tenant_id" => "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          "is_verified" => "true"
+        }
+      })
+
+      lv |> element("#device-posture-form") |> render_submit()
+
+      refute Portal.Repo.get_by(Portal.Intune.PostureProvider, account_id: account.id)
+    end
+
+    test "keeps the verified tenant when a later change posts another", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/intune/new")
+
+      verified = "11111111-1111-1111-1111-111111111111"
+      reverify(lv, verified)
+
+      lv
+      |> element("#device-posture-form")
+      |> render_change(%{
+        "provider" => %{
+          "name" => "Contoso",
+          "tenant_id" => "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        }
+      })
+
+      lv |> element("#device-posture-form") |> render_submit()
+
+      assert provider = Portal.Repo.get_by(Portal.Intune.PostureProvider, account_id: account.id)
+      assert provider.tenant_id == verified
+    end
+  end
 end
