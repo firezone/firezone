@@ -394,7 +394,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
               <span class="text-xs text-warning">
                 {if !@actor.is_disabled,
                   do: "Disable this API Token? It will no longer be able to authenticate.",
-                  else: "Re-enable this API Token?"}
+                  else: "Enable this API Token?"}
               </span>
               <div class="flex items-center gap-2 ml-auto shrink-0">
                 <.button

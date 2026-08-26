@@ -188,7 +188,7 @@ defmodule PortalWeb.SignInHTML do
             has been disabled.
           </p>
           <p class="mt-4 text-xs text-muted">
-            Please contact your Firezone administrator to re-enable this account.
+            Please contact your Firezone administrator to enable this account.
           </p>
         </div>
       </body>
