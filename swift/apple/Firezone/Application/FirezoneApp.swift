@@ -155,16 +155,11 @@ struct FirezoneApp: App {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-      guard let store else {
-        return .terminateNow
-      }
+      // Stopping is a request rather than an operation to wait on, so there is
+      // nothing left for the app to defer its termination for once it is made.
+      do { try store?.stop() } catch { Log.error(error) }
 
-      Task {
-        do { try await store.stop() } catch { Log.error(error) }
-        await MainActor.run { NSApp.reply(toApplicationShouldTerminate: true) }
-      }
-
-      return .terminateLater
+      return .terminateNow
     }
 
     func applicationWillTerminate(_ notification: Notification) {
