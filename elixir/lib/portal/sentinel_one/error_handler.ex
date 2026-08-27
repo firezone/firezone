@@ -31,13 +31,11 @@ defmodule Portal.SentinelOne.ErrorHandler do
   defp format(%Req.Response{status: status, body: %{"errors" => errors}})
        when is_list(errors) and errors != [] do
     details =
-      errors
-      |> Enum.map(fn
+      Enum.map_join(errors, "; ", fn
         %{"detail" => detail} when is_binary(detail) -> detail
         %{"title" => title} when is_binary(title) -> title
         error -> inspect(error)
       end)
-      |> Enum.join("; ")
 
     truncate("HTTP #{status} - #{details}")
   end
