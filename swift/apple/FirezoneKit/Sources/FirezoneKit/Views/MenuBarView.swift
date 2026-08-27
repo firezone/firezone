@@ -74,12 +74,12 @@
         }
 
       case .disconnecting:
-        Text("Signing out…")
+        Text(store.endingSessionTitle)
           .foregroundStyle(.secondary)
 
       case .connected, .reasserting, .connecting:
         Group {
-          Text("Signed in as \(store.actorName)")
+          Text(store.sessionHeading)
             .foregroundStyle(.secondary)
 
           Button(endSessionTitle) {

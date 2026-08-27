@@ -27,6 +27,22 @@ public final class Store: ObservableObject {
   @Published private(set) var resourceList: ResourceList = .loading
   @Published private(set) var connectedDevices: [ConnectedDevice] = []
 
+  /// How a running session reads, which the certificate decides along with the controls.
+  var sessionHeading: String {
+    switch certificateIdentity {
+    case .absent: return "Signed in as \(actorName)"
+    case .claimed: return "Connected as \(actorName)"
+    }
+  }
+
+  /// How a session ending reads, matching the control the user pressed to end it.
+  var endingSessionTitle: String {
+    switch certificateIdentity {
+    case .absent: return "Signing out…"
+    case .claimed: return "Disconnecting…"
+    }
+  }
+
   // Encapsulate Tunnel status here to make it easier for other components to observe
   @Published public private(set) var vpnStatus: NEVPNStatus?
 
