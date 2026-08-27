@@ -1,6 +1,6 @@
 //! Network change detection for Linux via DBus / NetworkManager
 
-use crate::DnsControlMethod;
+use crate::{DnsControlMethod, dbus};
 use anyhow::Result;
 use futures::stream::BoxStream;
 use futures::{Stream, StreamExt as _, stream};
@@ -24,7 +24,7 @@ pub async fn new_dns_notifier(
                 .map(|_| Ok(()))
                 .boxed()
         }
-        DnsControlMethod::SystemdResolved => dbus_stream(
+        DnsControlMethod::SystemdResolved => dbus::signal_stream(
             "org.freedesktop.resolve1",
             "/org/freedesktop/resolve1",
             "org.freedesktop.DBus.Properties",
@@ -58,7 +58,7 @@ pub async fn new_dns_notifier(
 /// stream, so callers can use `.unwrap_or_default()` to gracefully handle
 /// failure.
 pub async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>> + Default + Unpin> {
-    let stream = dbus_stream(
+    let stream = dbus::signal_stream(
         "org.freedesktop.NetworkManager",
         "/org/freedesktop/NetworkManager",
         // Despite what the payload's first argument says, NM stamps
@@ -126,17 +126,4 @@ fn interval_stream(interval: Duration) -> impl Stream<Item = ()> + Unpin {
         Some(((), interval))
     })
     .boxed()
-}
-
-async fn dbus_stream(
-    dest: &'static str,
-    path: &'static str,
-    interface: &'static str,
-    member: &'static str,
-) -> Result<impl Stream<Item = zbus::Message> + Unpin> {
-    let cxn = zbus::Connection::system().await?;
-    let proxy = zbus::Proxy::new_owned(cxn, dest, path, interface).await?;
-    let stream = proxy.receive_signal(member).await?;
-
-    Ok(stream)
 }
