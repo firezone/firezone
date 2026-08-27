@@ -79,32 +79,37 @@ struct X509SettingsView: View {
     #endif
   }
 
-  /// One line on what the certificate is for, absent while the keychain is still being read.
+  /// What the card says about the certificate, and the mark that leads it.
   ///
   /// The wording is shared across the clients. A certificate that was read and refused says so
   /// rather than reading as one that was never found: the rows below carry the attribute that
   /// makes it unusable.
-  private var explainer: String? {
+  private enum Verdict {
+    case presenting
+    case refused
+    case missing
+
+    var sentence: String {
+      switch self {
+      case .presenting: return "Firezone uses this certificate to identify this device."
+      case .refused: return "Firezone cannot use this certificate to identify this device."
+      case .missing: return "Firezone did not find a certificate to identify this device."
+      }
+    }
+  }
+
+  /// Absent while the keychain is still being read.
+  private var verdict: Verdict? {
     switch loadState {
     case .loading:
       return nil
     case .loaded(let summary, let keyProblem)
     where summary.isUsable && keyProblem == nil:
-      return "Firezone uses this certificate to identify this device."
+      return .presenting
     case .loaded(let summary, _) where !summary.isUsable:
-      return "Firezone cannot use this certificate to identify this device."
+      return .refused
     case .loaded, .notConfigured, .failed:
-      return "Firezone did not find a certificate to identify this device."
-    }
-  }
-
-  /// Whether the explainer is the one that says Firezone presents this certificate.
-  private var isAttesting: Bool {
-    switch loadState {
-    case .loaded(let summary, let keyProblem):
-      return summary.isUsable && keyProblem == nil
-    case .loading, .notConfigured, .failed:
-      return false
+      return .missing
     }
   }
 
@@ -116,16 +121,14 @@ struct X509SettingsView: View {
       validity: value("Not After", of: summary).map { "Valid until \($0)" }
     ) {
       // Only the rules no row shows: the rest read underneath the attribute they are about,
-      // and repeating them here would say the same thing twice.
+      // and repeating them here would say the same thing twice. The verdict above has already
+      // said the certificate is refused, so these carry no heading of their own.
       if !summary.certificateProblems.isEmpty {
-        notice(
-          "Firezone will not present this certificate",
-          summary.certificateProblems.map(\.sentence).joined(separator: " ")
-        )
+        notice(summary.certificateProblems.map(\.sentence).joined(separator: " "))
       }
 
       if let keyProblem {
-        notice("Firezone cannot use the certificate's private key", keyProblem)
+        notice(keyProblem, title: "Firezone cannot use the certificate's private key")
       }
     }
   }
@@ -134,7 +137,7 @@ struct X509SettingsView: View {
   private func emptyCard(error: String?) -> some View {
     cardLayout(title: "No client certificate") {
       if let error {
-        notice("The client certificate could not be read", error)
+        notice(error, title: "The client certificate could not be read")
       }
     }
   }
@@ -172,14 +175,20 @@ struct X509SettingsView: View {
         }
       }
 
-      if let explainer {
+      if let verdict {
         HStack(spacing: 4) {
-          if isAttesting {
+          switch verdict {
+          case .presenting:
             Image(systemName: "checkmark.circle")
               .foregroundStyle(.tint)
+          case .refused:
+            Image(systemName: "xmark.circle")
+              .foregroundStyle(.red)
+          case .missing:
+            EmptyView()
           }
 
-          Text(explainer)
+          Text(verdict.sentence)
         }
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -216,10 +225,12 @@ struct X509SettingsView: View {
   }
 
   /// How the screen says that something is wrong with the certificate.
-  private func notice(_ title: String, _ message: String) -> some View {
+  private func notice(_ message: String, title: String? = nil) -> some View {
     VStack(alignment: .leading, spacing: 6) {
-      Label(title, systemImage: "exclamationmark.triangle")
-        .font(.callout)
+      if let title {
+        Label(title, systemImage: "exclamationmark.triangle")
+          .font(.callout)
+      }
       Text(message)
         .font(.callout)
         .textSelection(.enabled)
