@@ -398,6 +398,7 @@ private fun UnusableReason.sentence(): Int =
         UnusableReason.NOT_YET_VALID -> R.string.x509_rule_not_yet_valid
         UnusableReason.EXPIRED -> R.string.x509_rule_expired
         UnusableReason.UNSUPPORTED_KEY_ALGORITHM -> R.string.x509_rule_unsupported_key_algorithm
+        UnusableReason.UNREADABLE -> R.string.x509_rule_unreadable
     }
 
 /** The value of a row, `null` unless the parser read exactly one the clients will attest. */
