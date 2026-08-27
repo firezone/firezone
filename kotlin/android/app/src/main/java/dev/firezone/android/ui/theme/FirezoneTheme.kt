@@ -1,5 +1,5 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
-package dev.firezone.android.features.session.ui.compose
+package dev.firezone.android.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography

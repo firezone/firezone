@@ -13,8 +13,8 @@ import androidx.navigation.fragment.findNavController
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.features.auth.ui.AuthActivity
-import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.signin.ui.compose.SignInScreen
+import dev.firezone.android.ui.theme.FirezoneTheme
 
 @AndroidEntryPoint
 internal class SignInFragment : Fragment() {

@@ -19,11 +19,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.toggle
-import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.session.ui.compose.SessionScreen
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.model.isInternetResource
+import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.collections.immutable.toImmutableList
 
 @AndroidEntryPoint
