@@ -8,8 +8,8 @@ use rcgen::{
     SerialNumber, string::Ia5String,
 };
 use x509_claims::{
-    Actor, Claim, ClaimValue, DetailField, FieldProblem, Identity, ParsedCertificate,
-    RejectionReason, SigningAlgorithm, UnusableReason, UserIdentity, parse_certificate,
+    Actor, Claim, ClaimValue, DetailField, Identity, ParsedCertificate, RejectionReason,
+    SigningAlgorithm, UserIdentity, parse_certificate,
 };
 
 const RSA_LEAF: &[u8] =
@@ -32,7 +32,6 @@ fn recognizes_rsa_client_identity() {
         metadata.signing_algorithm,
         Some(SigningAlgorithm::RsaSha256)
     );
-    assert!(metadata.is_usable(SUBJECT_CN));
 }
 
 #[test]
@@ -243,108 +242,31 @@ fn diagnostics_show_derived_firezone_attributes() {
 }
 
 #[test]
-fn reports_every_rule_an_unusable_certificate_fails() {
+fn diagnostics_show_what_a_certificate_lacks_without_judging_it() {
     let der = certificate_without_client_identity_extensions();
 
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
 
-    assert!(!metadata.is_usable(SUBJECT_CN));
     assert_eq!(
-        metadata.unusable_reasons(),
-        [
-            UnusableReason::NoClientAuthEku,
-            UnusableReason::NoDigitalSignatureKeyUsage,
-            UnusableReason::UnsupportedKeyAlgorithm,
-        ]
-    );
-}
-
-#[test]
-fn leaves_the_usability_verdict_out_of_a_row_of_its_own() {
-    let usable = parse_certificate(RSA_LEAF, now()).expect("fixture should parse");
-    let expired = parse_certificate(RSA_LEAF, after(usable.not_after_timestamp))
-        .expect("fixture should parse at any instant");
-
-    assert!(usable.unusable_reasons().is_empty());
-    assert!(usable.passes_its_own_rules());
-    assert_eq!(expired.unusable_reasons(), [UnusableReason::Expired]);
-    assert!(!expired.passes_its_own_rules());
-    for fields in [usable.detail_fields(), expired.detail_fields()] {
-        assert!(
-            fields
-                .iter()
-                .all(|field| field.label != "Usable as a Client Identity"
-                    && field.label != "Currently Valid"),
-            "usability should surface as a warning, not as an attribute row"
-        );
-    }
-}
-
-#[test]
-fn a_validity_rule_reads_underneath_the_date_that_breaks_it() {
-    let usable = parse_certificate(RSA_LEAF, now()).expect("fixture should parse");
-    let expired = parse_certificate(RSA_LEAF, after(usable.not_after_timestamp))
-        .expect("fixture should parse at any instant");
-    let not_yet_valid = parse_certificate(RSA_LEAF, before(usable.not_before_timestamp))
-        .expect("fixture should parse at any instant");
-
-    assert_eq!(
-        detail_value(&expired, "Not After"),
-        present(&usable.not_after),
-        "a date that broke the rule should still be shown"
+        detail_value(&metadata, "TLS Client Authentication EKU"),
+        present("No")
     );
     assert_eq!(
-        detail_problem(&expired, "Not After"),
-        Some(FieldProblem::Unusable {
-            reason: UnusableReason::Expired
-        })
+        detail_value(&metadata, "Digital Signature Key Usage"),
+        present("Not allowed")
     );
-    assert_eq!(detail_problem(&expired, "Not Before"), None);
-    assert_eq!(
-        detail_problem(&not_yet_valid, "Not Before"),
-        Some(FieldProblem::Unusable {
-            reason: UnusableReason::NotYetValid
-        })
-    );
-    assert_eq!(detail_problem(&not_yet_valid, "Not After"), None);
-    assert_eq!(detail_problem(&usable, "Not Before"), None);
-    assert_eq!(detail_problem(&usable, "Not After"), None);
-    assert!(expired.unusable_reasons_without_a_field().is_empty());
-    assert!(not_yet_valid.unusable_reasons_without_a_field().is_empty());
-}
-
-#[test]
-fn a_rule_no_row_carries_is_reported_beside_the_verdict() {
-    let der = certificate_without_client_identity_extensions();
-
-    let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
-
     assert_eq!(
         detail_value(&metadata, "Signing Algorithm"),
         present("1.3.101.112"),
         "an algorithm the parser has no name for should still be shown"
     );
-    assert_eq!(
-        detail_problem(&metadata, "Signing Algorithm"),
-        Some(FieldProblem::Unusable {
-            reason: UnusableReason::UnsupportedKeyAlgorithm
-        }),
-        "the key algorithm belongs on the row that names it"
-    );
-    for reason in metadata.unusable_reasons() {
-        let on_a_row = metadata
+    assert!(
+        metadata
             .detail_fields()
             .iter()
-            .any(|field| field.problem == Some(FieldProblem::Unusable { reason }));
-
-        assert_eq!(
-            on_a_row,
-            !metadata
-                .unusable_reasons_without_a_field()
-                .contains(&reason),
-            "{reason:?} should read either underneath a row or beside the verdict, not both"
-        );
-    }
+            .all(|field| field.problem.is_none()),
+        "what the portal makes of these rows is not a problem with them"
+    );
 }
 
 #[test]
@@ -475,9 +397,7 @@ fn diagnostics_show_why_a_claim_was_not_attested() {
     );
     assert_eq!(
         detail_problem(&metadata, "Actor Email"),
-        Some(FieldProblem::Rejected {
-            reason: RejectionReason::NotAnEmailAddress
-        })
+        Some(RejectionReason::NotAnEmailAddress)
     );
     assert_eq!(
         detail_value(&metadata, "firezone://not-a-real-attribute"),
@@ -485,9 +405,7 @@ fn diagnostics_show_why_a_claim_was_not_attested() {
     );
     assert_eq!(
         detail_problem(&metadata, "firezone://not-a-real-attribute"),
-        Some(FieldProblem::Rejected {
-            reason: RejectionReason::UnknownAttribute
-        })
+        Some(RejectionReason::UnknownAttribute)
     );
     assert!(
         position(&fields, "firezone://not-a-real-attribute")
@@ -565,9 +483,7 @@ fn diagnostics_distinguish_an_invalid_claim_from_a_valid_one() {
     assert_eq!(detail_value(&metadata, "Account ID"), present("not-a-uuid"));
     assert_eq!(
         detail_problem(&metadata, "Account ID"),
-        Some(FieldProblem::Rejected {
-            reason: RejectionReason::NotAUuid
-        })
+        Some(RejectionReason::NotAUuid)
     );
 }
 
@@ -594,10 +510,12 @@ fn diagnostics_omit_unrecognised_claims_when_there_are_none() {
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
 
     assert!(metadata.unrecognised_claims.is_empty());
-    assert!(!metadata.detail_fields().iter().any(|field| field.problem
-        == Some(FieldProblem::Rejected {
-            reason: RejectionReason::UnknownAttribute
-        })));
+    assert!(
+        !metadata
+            .detail_fields()
+            .iter()
+            .any(|field| field.problem == Some(RejectionReason::UnknownAttribute))
+    );
 }
 
 #[test]
@@ -812,7 +730,7 @@ fn rejected(value: &str, reason: RejectionReason) -> Claim {
 }
 
 /// What a row says is wrong with it, [`None`] when nothing is.
-fn detail_problem(metadata: &ParsedCertificate, label: &str) -> Option<FieldProblem> {
+fn detail_problem(metadata: &ParsedCertificate, label: &str) -> Option<RejectionReason> {
     metadata
         .detail_fields()
         .into_iter()
@@ -821,7 +739,8 @@ fn detail_problem(metadata: &ParsedCertificate, label: &str) -> Option<FieldProb
         .problem
 }
 
-/// A certificate that fails every rule a client identity has to satisfy but the validity window.
+/// An Ed25519 certificate carrying neither the client authentication EKU nor a key usage
+/// allowing digital signatures.
 fn certificate_without_client_identity_extensions() -> Vec<u8> {
     let key = KeyPair::generate_for(&rcgen::PKCS_ED25519).expect("should generate a key pair");
 
@@ -886,16 +805,6 @@ fn certificate_with_sans(subject_alt_names: Vec<SanType>) -> Vec<u8> {
         .expect("should self-sign the certificate");
 
     certificate.der().to_vec()
-}
-
-fn before(timestamp: i64) -> SystemTime {
-    SystemTime::UNIX_EPOCH
-        + Duration::from_secs(u64::try_from(timestamp).expect("a valid instant") - 1)
-}
-
-fn after(timestamp: i64) -> SystemTime {
-    SystemTime::UNIX_EPOCH
-        + Duration::from_secs(u64::try_from(timestamp).expect("a valid instant") + 1)
 }
 
 fn now() -> SystemTime {
@@ -987,36 +896,4 @@ fn an_identity_is_absent_resolved_or_refused() {
     ] {
         assert_eq!(identity_of(&uris), Identity::Refused, "{uris:?}");
     }
-}
-
-/// A certificate naming someone the portal will refuse is one the clients must not present.
-#[test]
-fn a_refused_identity_makes_the_certificate_unusable() {
-    let der = certificate_with_uri_sans(&[
-        "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-        "firezone://actor-id/not-a-uuid",
-    ]);
-    let refused = parse_certificate(&der, now()).expect("generated certificate should parse");
-
-    assert!(!refused.passes_its_own_rules());
-    assert!(
-        !refused.is_usable(refused.subject_cn.clone().unwrap_or_default().as_str()),
-        "a refused identity keeps the certificate from being presented"
-    );
-    assert!(
-        refused
-            .unusable_reasons_without_a_field()
-            .contains(&UnusableReason::RefusedIdentity),
-        "no single row names the user, so the verdict carries the reason"
-    );
-
-    let der = certificate_with_uri_sans(&[
-        "firezone://mdm-device-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-    ]);
-    let attesting = parse_certificate(&der, now()).expect("generated certificate should parse");
-
-    assert!(
-        attesting.passes_its_own_rules(),
-        "a certificate that names nobody still attests the device"
-    );
 }

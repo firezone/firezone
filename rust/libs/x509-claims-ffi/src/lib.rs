@@ -22,8 +22,8 @@ pub struct UserIdentity {
 pub struct DetailField {
     pub label: String,
     pub value: ClaimValue,
-    /// What is wrong with the value above, `None` when nothing is.
-    pub problem: Option<FieldProblem>,
+    /// Why the value above was not attested, `None` when it was.
+    pub problem: Option<RejectionReason>,
 }
 
 /// The text a diagnostics row shows, mirroring [`x509_claims::ClaimValue`].
@@ -44,19 +44,10 @@ pub struct Claim {
     pub rejection: Option<RejectionReason>,
 }
 
-/// What is wrong with one diagnostics row, mirroring [`x509_claims::FieldProblem`].
+/// Why a `firezone://` claim was not attested, mirroring [`x509_claims::RejectionReason`].
 ///
 /// The clients word these from their own string resources, so the reason crosses the binding
 /// as itself rather than as a sentence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum FieldProblem {
-    /// The certificate carries this claim and the clients will not attest what it says.
-    Rejected { reason: RejectionReason },
-    /// The certificate cannot be presented for mutual TLS because of this attribute.
-    Unusable { reason: UnusableReason },
-}
-
-/// Why a `firezone://` claim was not attested, mirroring [`x509_claims::RejectionReason`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum RejectionReason {
     Empty,
@@ -66,20 +57,6 @@ pub enum RejectionReason {
     Ambiguous,
     PlaceholderIdentifier,
     UnknownAttribute,
-}
-
-/// A rule the certificate has to satisfy, mirroring [`x509_claims::UnusableReason`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum UnusableReason {
-    NoClientAuthEku,
-    NoDigitalSignatureKeyUsage,
-    NotYetValid,
-    Expired,
-    UnsupportedKeyAlgorithm,
-    RefusedIdentity,
-    /// The bytes are not a certificate this client can read, so none of the rules above
-    /// could be checked. `x509_claims` reports this by parsing nothing at all.
-    Unreadable,
 }
 
 /// Metadata parsed from a client certificate, mirroring [`x509_claims::ParsedCertificate`].
@@ -108,10 +85,6 @@ pub struct ParsedCertificate {
     /// Colon-separated uppercase hex SHA-256 fingerprint of the DER bytes.
     pub fingerprint: String,
     pub der_bytes: u64,
-    /// Whether the certificate's own rules allow presenting it for mutual TLS.
-    pub is_usable: bool,
-    /// The rules it fails that no detail row carries, which the clients state with the verdict.
-    pub certificate_problems: Vec<UnusableReason>,
     pub user_identity: Option<UserIdentity>,
     /// Ready-to-display diagnostics rows derived from the fields above.
     pub detail_fields: Vec<DetailField>,
@@ -129,12 +102,6 @@ pub fn parse_client_certificate(der: Vec<u8>) -> Option<ParsedCertificate> {
 
 impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
     fn from(parsed: x509_claims::ParsedCertificate) -> Self {
-        let is_usable = parsed.passes_its_own_rules();
-        let certificate_problems = parsed
-            .unusable_reasons_without_a_field()
-            .into_iter()
-            .map(UnusableReason::from)
-            .collect();
         let user_identity = parsed.user_identity().map(UserIdentity::from);
         let detail_fields = parsed
             .detail_fields()
@@ -164,8 +131,6 @@ impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
                 .map(|algorithm| algorithm.label().to_owned()),
             fingerprint: parsed.fingerprint,
             der_bytes: parsed.der_bytes as u64,
-            is_usable,
-            certificate_problems,
             user_identity,
             detail_fields,
         }
@@ -186,7 +151,7 @@ impl From<x509_claims::DetailField> for DetailField {
         Self {
             label: field.label,
             value: ClaimValue::from(field.value),
-            problem: field.problem.map(FieldProblem::from),
+            problem: field.problem.map(RejectionReason::from),
         }
     }
 }
@@ -205,34 +170,6 @@ impl From<x509_claims::Claim> for Claim {
         Self {
             value: ClaimValue::from(claim.value),
             rejection: claim.rejection.map(RejectionReason::from),
-        }
-    }
-}
-
-impl From<x509_claims::FieldProblem> for FieldProblem {
-    fn from(problem: x509_claims::FieldProblem) -> Self {
-        match problem {
-            x509_claims::FieldProblem::Rejected { reason } => Self::Rejected {
-                reason: RejectionReason::from(reason),
-            },
-            x509_claims::FieldProblem::Unusable { reason } => Self::Unusable {
-                reason: UnusableReason::from(reason),
-            },
-        }
-    }
-}
-
-impl From<x509_claims::UnusableReason> for UnusableReason {
-    fn from(reason: x509_claims::UnusableReason) -> Self {
-        match reason {
-            x509_claims::UnusableReason::NoClientAuthEku => Self::NoClientAuthEku,
-            x509_claims::UnusableReason::NoDigitalSignatureKeyUsage => {
-                Self::NoDigitalSignatureKeyUsage
-            }
-            x509_claims::UnusableReason::NotYetValid => Self::NotYetValid,
-            x509_claims::UnusableReason::Expired => Self::Expired,
-            x509_claims::UnusableReason::UnsupportedKeyAlgorithm => Self::UnsupportedKeyAlgorithm,
-            x509_claims::UnusableReason::RefusedIdentity => Self::RefusedIdentity,
         }
     }
 }
