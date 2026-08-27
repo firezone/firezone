@@ -24,7 +24,7 @@ public enum X509ClaimRejection: Hashable, Sendable {
     switch self {
     case .empty: return "empty"
     case .tooLong: return "longer than 255 characters"
-    case .notAnEmailAddress: return "not an email address"
+    case .notAnEmailAddress: return "not a valid email address"
     case .notAUuid: return "not a UUID"
     case .ambiguous: return "more than one value was given"
     case .placeholderIdentifier: return "a placeholder identifier"
