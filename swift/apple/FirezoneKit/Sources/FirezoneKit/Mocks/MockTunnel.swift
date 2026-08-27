@@ -125,6 +125,8 @@
       // swiftlint:disable:next no_userdefaults_standard - DI entry point
       UserDefaults.standard.set(scenario.favorites, forKey: Favorites.key)
 
+      seedConfiguration(with: scenario)
+
       #if os(macOS)
         return Store(
           sessionNotification: MockSessionNotification(decision: scenario.notifications.status),
@@ -142,6 +144,24 @@
           logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
         )
       #endif
+    }
+
+    /// Settles the settings the app reports before anything reads them.
+    ///
+    /// `SettingsViewModel` snapshots each unforced setting when it is built and only
+    /// ever re-reads the forced ones, so a value that arrives later leaves the form
+    /// showing a stale one and its Apply button lit.
+    private static func seedConfiguration(with scenario: MockScenario) {
+      let configuration = Configuration.shared
+
+      configuration.actorName = scenario.actorName
+      configuration.accountSlug = "example-corp"
+
+      // A DEBUG build points these at the staging stack, which a screenshot of the
+      // settings screens would then advertise.
+      configuration.authURL = "https://app.firezone.dev"
+      configuration.apiURL = "wss://api.firezone.dev"
+      configuration.logFilter = "info"
     }
   }
 
@@ -389,18 +409,8 @@
     init(scenario: MockScenario) {
       session = MockTunnelSession(scenario: scenario)
 
-      // The app reads the signed-in user out of the provider configuration.
-      let configuration = Configuration()
-      configuration.actorName = scenario.actorName
-
-      // A DEBUG build points these at the staging stack, which a screenshot of the
-      // settings screens would then advertise.
-      configuration.authURL = "https://app.firezone.dev"
-      configuration.apiURL = "wss://api.firezone.dev"
-      configuration.logFilter = "info"
-
       let proto = NETunnelProviderProtocol()
-      proto.providerConfiguration = configuration.toProviderConfiguration()
+      proto.providerConfiguration = Configuration.shared.toProviderConfiguration()
       proto.providerBundleIdentifier = extensionBundleIdentifier
       proto.serverAddress = "Firezone"
       protocolConfiguration = proto

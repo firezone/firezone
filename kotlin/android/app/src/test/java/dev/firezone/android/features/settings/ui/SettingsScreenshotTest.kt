@@ -109,7 +109,7 @@ private val sampleConfig =
         authUrl = "https://app.firezone.dev",
         apiUrl = "wss://api.firezone.dev",
         logFilter = "info",
-        accountSlug = "acme-corp",
+        accountSlug = "example-corp",
         startOnLogin = true,
         connectOnStart = false,
     )
