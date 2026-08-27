@@ -27,21 +27,20 @@ struct ConnlibErrorTests {
   }
 
   #if os(macOS)
-    @Test("A failed certificate points the user at their administrator")
+    @Test("A disconnect keeps the reason it was given")
     @MainActor
-    func certificateDisconnectMentionsTheAdministrator() {
-      let text = MacOSAlert.disconnectedText("revoked", isCertificateError: true)
-
-      #expect(text.contains("revoked"))
-      #expect(text.contains("Contact your administrator for support."))
-    }
-
-    @Test("Any other disconnect keeps the reason it was given")
-    @MainActor
-    func otherDisconnectsKeepTheReason() {
-      let text = MacOSAlert.disconnectedText("gateway went away", isCertificateError: false)
+    func disconnectsKeepTheReason() {
+      let text = MacOSAlert.disconnectedText("gateway went away")
 
       #expect(text == "gateway went away")
+    }
+
+    @Test("A disconnect without a reason falls back to a generic one")
+    @MainActor
+    func disconnectsWithoutAReasonFallBack() {
+      let text = MacOSAlert.disconnectedText(nil)
+
+      #expect(text == "Firezone has been disconnected.")
     }
   #endif
 }

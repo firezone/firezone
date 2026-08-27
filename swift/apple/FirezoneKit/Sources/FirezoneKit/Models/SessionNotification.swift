@@ -177,11 +177,8 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
     }
 
     @MainActor
-    public func showDisconnectedAlertMacOS(
-      _ message: String?,
-      isCertificateError: Bool
-    ) async {
-      await MacOSAlert.showDisconnectedAlert(message, isCertificateError: isCertificateError)
+    public func showDisconnectedAlertMacOS(_ message: String?) async {
+      await MacOSAlert.showDisconnectedAlert(message)
     }
 
     @MainActor
