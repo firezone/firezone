@@ -98,7 +98,7 @@ private fun SessionScreenSample(
     favorites: Favorites = Favorites(HashSet()),
 ) {
     SessionScreen(
-        actorName = "Maya Ortiz",
+        actorName = "Jane Doe",
         resources = resources,
         connectedDevices = connectedDevices,
         favorites = favorites,

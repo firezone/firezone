@@ -21,7 +21,7 @@ import kotlinx.collections.immutable.toImmutableList
 private fun SessionScreenPreview() {
     FirezoneTheme {
         SessionScreen(
-            actorName = "Maya Ortiz",
+            actorName = "Jane Doe",
             resources = sampleResources,
             connectedDevices = sampleConnectedDevices,
             favorites = Favorites(HashSet()),
@@ -108,8 +108,8 @@ internal val sampleResources: ImmutableList<ResourceUiModel> =
         Resource(
             type = ResourceType.DNS,
             id = "0854dca1-2c5b-468a-be85-0eec2f02a211",
-            address = "wiki.meridian.example",
-            addressDescription = "https://wiki.meridian.example",
+            address = "wiki.example.com",
+            addressDescription = "https://wiki.example.com",
             sites = listOf(sydneyOffice),
             name = "Engineering wiki",
             status = StatusEnum.ONLINE,
@@ -117,7 +117,7 @@ internal val sampleResources: ImmutableList<ResourceUiModel> =
         Resource(
             type = ResourceType.DNS,
             id = "92da16a4-0eb2-45c2-b882-8573aad73921",
-            address = "git.meridian.example",
+            address = "git.example.com",
             addressDescription = null,
             sites = listOf(productionCloud),
             name = "Git server",
@@ -126,7 +126,7 @@ internal val sampleResources: ImmutableList<ResourceUiModel> =
         Resource(
             type = ResourceType.DNS,
             id = "ed3778b9-dd41-4312-b616-028b0bbaff1c",
-            address = "*.svc.meridian.example",
+            address = "*.svc.example.com",
             addressDescription = null,
             sites = listOf(productionCloud),
             name = "Internal services",
@@ -156,7 +156,7 @@ internal val sampleResources: ImmutableList<ResourceUiModel> =
             address = "203.0.113.0/24",
             addressDescription = null,
             sites = listOf(hardwareLab),
-            name = "Robot test bench",
+            name = "Lab test bench",
             status = StatusEnum.OFFLINE,
         ),
     ).map { ResourceUiModel(it, ResourceState.ENABLED) }.toImmutableList()

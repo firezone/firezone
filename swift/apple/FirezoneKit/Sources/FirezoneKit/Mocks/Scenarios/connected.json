@@ -3,7 +3,7 @@
   "vpnStatus": "connected",
   "systemExtension": "installed",
   "notifications": "authorized",
-  "actorName": "Maya Ortiz",
+  "actorName": "Jane Doe",
   "resources": [
     {
       "id": "425233f2-a1cb-4b7d-84f3-850367fa122a",
@@ -22,8 +22,8 @@
     {
       "id": "0854dca1-2c5b-468a-be85-0eec2f02a211",
       "name": "Engineering wiki",
-      "address": "wiki.meridian.example",
-      "addressDescription": "https://wiki.meridian.example",
+      "address": "wiki.example.com",
+      "addressDescription": "https://wiki.example.com",
       "status": "Online",
       "sites": [
         {
@@ -36,7 +36,7 @@
     {
       "id": "92da16a4-0eb2-45c2-b882-8573aad73921",
       "name": "Git server",
-      "address": "git.meridian.example",
+      "address": "git.example.com",
       "addressDescription": null,
       "status": "Unknown",
       "sites": [
@@ -50,7 +50,7 @@
     {
       "id": "ed3778b9-dd41-4312-b616-028b0bbaff1c",
       "name": "Internal services",
-      "address": "*.svc.meridian.example",
+      "address": "*.svc.example.com",
       "addressDescription": null,
       "status": "Unknown",
       "sites": [
@@ -91,7 +91,7 @@
     },
     {
       "id": "6b15c815-cefc-4128-8ab0-d9d6a526bbc7",
-      "name": "Robot test bench",
+      "name": "Lab test bench",
       "address": "203.0.113.0/24",
       "addressDescription": null,
       "status": "Offline",

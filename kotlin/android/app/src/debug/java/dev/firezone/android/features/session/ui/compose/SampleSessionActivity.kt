@@ -25,7 +25,7 @@ class SampleSessionActivity : AppCompatActivity() {
                 var favorites by remember { mutableStateOf(Favorites(HashSet())) }
 
                 SessionScreen(
-                    actorName = "Maya Ortiz",
+                    actorName = "Jane Doe",
                     resources = sampleResources,
                     connectedDevices = sampleConnectedDevices,
                     favorites = favorites,
