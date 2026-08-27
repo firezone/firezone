@@ -140,7 +140,7 @@ struct FirezoneApp: App {
 @MainActor
 func installCertificateParser() {
   X509CertificateParser.use { der in
-    guard let parsed = parseClientCertificate(der: der) else { return nil }
+    guard let parsed = parseClientCertificate(der: der) else { return .unreadable }
 
     return X509CertificateSummary(
       isUsable: parsed.isUsable,
@@ -183,6 +183,7 @@ extension X509UnusableReason {
     case .notYetValid: self = .notYetValid
     case .expired: self = .expired
     case .unsupportedKeyAlgorithm: self = .unsupportedKeyAlgorithm
+    case .unreadable: self = .unreadable
     }
   }
 }

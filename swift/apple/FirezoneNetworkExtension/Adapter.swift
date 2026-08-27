@@ -645,7 +645,7 @@ actor Adapter {
 
     // connlib dials the portal's mTLS host whenever it is handed an identity, so a
     // certificate that cannot be presented is withheld rather than tried.
-    guard parsed?.isUsable != false else {
+    guard parsed?.isUsable == true else {
       guard token != nil else {
         throw AdapterError.authenticationUnavailable(
           "the client certificate cannot be presented")
@@ -663,7 +663,7 @@ actor Adapter {
     _ identity: X509ClientIdentity, _ parsed: ParsedCertificate?
   ) {
     guard let parsed else {
-      Log.warning("Presenting a client certificate that could not be parsed")
+      Log.warning("Withholding a client certificate that could not be parsed")
       return
     }
 
