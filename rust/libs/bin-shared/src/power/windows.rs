@@ -47,11 +47,11 @@ fn subscribe() -> Result<broadcast::Receiver<()>> {
     }
 
     let (tx, rx) = broadcast::channel(1);
-    let tx: &'static broadcast::Sender<()> = Box::leak(Box::new(tx));
+    let tx = Box::new(tx);
 
     let mut params = DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS {
         Callback: Some(suspend_resume_callback),
-        Context: std::ptr::from_ref(tx) as *mut c_void,
+        Context: std::ptr::from_ref(&*tx) as *mut c_void,
     };
     let mut registration = std::ptr::null_mut();
 
@@ -65,9 +65,9 @@ fn subscribe() -> Result<broadcast::Receiver<()>> {
         )
     }
     .ok()
-    .context("Failed to register for suspend / resume notifications")?;
+    .context("Failed to register for suspend / resume notifications")?; // On failure the OS never got our pointer, so `tx` is dropped here.
 
-    *registered = Some(tx);
+    *registered = Some(Box::leak(tx));
 
     Ok(rx)
 }

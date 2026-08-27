@@ -8,7 +8,7 @@ use tokio::time::timeout;
 /// Smoke test for the DNS, network change and resume notifiers
 ///
 /// Turn them on, wait a second, turn them off.
-/// This tests that the threads quit gracefully when we call `close`, and they don't crash on startup.
+/// This tests that the threads quit gracefully when the notifiers are dropped, and they don't crash on startup.
 #[tokio::test]
 #[cfg_attr(target_os = "macos", ignore = "Notifiers not implemented on macOS")]
 async fn notifiers() {
