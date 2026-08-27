@@ -20,6 +20,7 @@ use rustls::SignatureAlgorithm;
 use x509_parser::prelude::{FromDer as _, X509Certificate};
 
 use super::*;
+use crate::DetailSection;
 
 #[test]
 #[ignore = "Writes to the LocalMachine certificate store"]
@@ -77,7 +78,8 @@ fn describes_a_minted_certificate_in_the_diagnostics() {
         field_value(section, "Common Name"),
         Some(subject_cn.as_str())
     );
-    assert_eq!(field_value(section, "Private Key Error"), None);
+    // Only a certificate we cannot present carries a Private Key row.
+    assert!(!section.fields.iter().any(|row| row.label == "Private Key"));
     assert_eq!(field_value(section, "Certificate Chain Error"), None);
     // The diagnostics describe the certificate, not where Windows keeps it.
     assert_eq!(field_value(section, "Store"), None);
