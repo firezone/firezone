@@ -54,8 +54,17 @@ jobs:
 
   # Renders every screen the client can show to a PNG; nothing is compared against
   # a reference.
+  #
+  # Runs in Playwright's own image, pinned by digest, because the runner image is
+  # a rolling label and the fonts `--with-deps` installs decide how glyphs are
+  # rasterized: a font package update moves pixels in every screenshot. Bump the
+  # tag with the `playwright` version in `rust/gui-client/pnpm-lock.yaml`, which
+  # is what decides the browser build; a mismatch fails loudly rather than
+  # quietly rendering something else.
   screenshots:
     runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
@@ -63,7 +72,6 @@ jobs:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
           lockfile-dir: ./rust/gui-client
       - run: pnpm install
-      - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm exec vitest run
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
