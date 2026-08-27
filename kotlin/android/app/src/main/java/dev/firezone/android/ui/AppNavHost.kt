@@ -58,8 +58,10 @@ fun AppNavHost(
 }
 
 @Composable
-private fun SplashRoute(navController: NavHostController) {
-    val viewModel: SplashViewModel = hiltViewModel()
+private fun SplashRoute(
+    navController: NavHostController,
+    viewModel: SplashViewModel = hiltViewModel(),
+) {
     val context = LocalContext.current
     val action by viewModel.actionStateFlow.collectAsStateWithLifecycle()
     var isInitialLaunch by rememberSaveable { mutableStateOf(true) }
