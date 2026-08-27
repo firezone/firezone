@@ -147,23 +147,6 @@ const windowsCertificate: Certificate = {
     "90:E4:45:C9:E2:8E:8F:5B:57:D2:30:90:8C:6F:B2:3D:CE:A1:61:CA:96:3E:BF:B2:8E:E7:3D:A9:CF:70:DD:B7",
 };
 
-// An identity on a PKCS#11 token, which attests the device without naming an actor.
-const linuxCertificate: Certificate = {
-  commonName: SUBJECT_CN,
-  subject: `O=Acme Corp, CN=${SUBJECT_CN}`,
-  issuer: "O=Acme Corp, CN=Acme Corp Device CA",
-  actorEmail: present("bob@example.com"),
-  accountId: present("6f3f8a2c-0b74-4f8a-9b1f-1c2d3e4f5a6b"),
-  mdmDeviceId: { value: "Absent" },
-  deviceSerial: present("7QK4M3J"),
-  serialNumber: "ee:0d:bc:83:e7:cc:35:bc:2f:91:94:b1:e2:d2:95:f4",
-  notBefore: "Nov 20 14:05:31 2025 +00:00",
-  notAfter: present("Feb 23 14:05:31 2028 +00:00"),
-  signingAlgorithm: present("SHA256withECDSA"),
-  fingerprint:
-    "29:19:1D:E9:31:EB:64:B5:2E:2D:64:44:FB:E7:E5:C0:EF:82:EF:8C:1C:B3:75:6A:77:A1:E5:AE:8C:F1:73:31",
-};
-
 // A certificate the client presents even though two of its claims will not be attested: one
 // whose value the parser refuses, and one the certificate leaves empty.
 const invalidAttributeCertificate: Certificate = {
@@ -231,18 +214,11 @@ const screens: Record<string, Screen> = {
       sections: [],
     },
   },
-  "x509-happy-windows": {
+  "x509-happy": {
     route: "/x509",
     x509: {
       problems: [],
       sections: [certificateSection(CERTIFICATE, windowsCertificate)],
-    },
-  },
-  "x509-happy-linux": {
-    route: "/x509",
-    x509: {
-      problems: [],
-      sections: [certificateSection(CERTIFICATE, linuxCertificate)],
     },
   },
   "x509-missing-package-linux": {
