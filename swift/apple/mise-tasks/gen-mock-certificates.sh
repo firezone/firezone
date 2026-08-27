@@ -86,8 +86,6 @@ issue_certificate() {
     local name="$1" serial_number="$2" serial_attribute="$3" not_before="$4" not_after="$5"
     local cnf="${WORK_DIR}/${name}.cnf"
 
-    # The claims parser mirrors the portal and refuses an identity it only has half of, so
-    # every mock carries both an actor email and the account that actor belongs to.
     cat >"$cnf" <<EOF
 [req]
 distinguished_name = dn
