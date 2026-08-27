@@ -43,7 +43,6 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import uniffi.x509claims.ClaimValue
 import uniffi.x509claims.DetailField
-import uniffi.x509claims.FieldProblem
 import uniffi.x509claims.RejectionReason
 import java.io.File
 import java.io.RandomAccessFile
@@ -192,7 +191,7 @@ private val certificateWithRejectedClaim =
                     row(
                         "Actor Email",
                         ClaimValue.Present("jane.doe.example.com"),
-                        FieldProblem.Rejected(RejectionReason.NOT_AN_EMAIL_ADDRESS),
+                        RejectionReason.NOT_AN_EMAIL_ADDRESS,
                     ),
                 unattestedNames = listOf("URI: firezone://email/jane.doe.example.com"),
             ),
@@ -276,7 +275,7 @@ private fun certificateDetails(
 private fun row(
     label: String,
     value: ClaimValue,
-    problem: FieldProblem? = null,
+    problem: RejectionReason? = null,
 ): DetailField = DetailField(label, value, problem)
 
 // Hosts the settings pages the way `SettingsActivity` does, with the Hilt graph replaced by
