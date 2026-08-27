@@ -67,6 +67,8 @@ class ScreenshotTest {
     @Test
     fun sessionScreenScrolled() {
         composeRule.setContent { FirezoneTheme { SessionScreenSample() } }
+        // The screen resets the list to the top once its tab settles, so let that land first.
+        composeRule.waitForIdle()
         composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(5)
         composeRule.waitForIdle()
         captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/session-screen-scrolled.png")
