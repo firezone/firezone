@@ -18,8 +18,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
 
-// The subtitle names whoever is signed in; pass `null` where nobody is, which collapses the bar
-// to a single row.
+// Pass a `null` subtitle where nobody is signed in; the bar then collapses to a single row.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FirezoneTopBar(
@@ -50,7 +49,8 @@ fun FirezoneTopBar(
             Image(
                 painter = painterResource(R.drawable.ic_firezone_logo),
                 contentDescription = null,
-                modifier = Modifier.padding(start = 16.dp).size(32.dp),
+                // The slot already insets by 4dp, so this lands the mark on the standard 16dp margin.
+                modifier = Modifier.padding(start = 12.dp).size(32.dp),
             )
         },
         actions = {
