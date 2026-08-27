@@ -89,23 +89,23 @@ class ScreenshotTest {
         composeRule.waitForIdle()
         captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
     }
+}
 
-    @Composable
-    private fun SessionScreenSample(
-        resources: ImmutableList<ResourceUiModel> = sampleResources,
-        connectedDevices: ImmutableList<ConnectedDevice> = sampleConnectedDevices,
-        favorites: Favorites = Favorites(HashSet()),
-    ) {
-        SessionScreen(
-            actorName = "Jane Doe",
-            resources = resources,
-            connectedDevices = connectedDevices,
-            favorites = favorites,
-            onToggleInternet = {},
-            onAddFavorite = {},
-            onRemoveFavorite = {},
-            onSettings = {},
-            onSignOut = {},
-        )
-    }
+@Composable
+private fun SessionScreenSample(
+    resources: ImmutableList<ResourceUiModel> = sampleResources,
+    connectedDevices: ImmutableList<ConnectedDevice> = sampleConnectedDevices,
+    favorites: Favorites = Favorites(HashSet()),
+) {
+    SessionScreen(
+        actorName = "Jane Doe",
+        resources = resources,
+        connectedDevices = connectedDevices,
+        favorites = favorites,
+        onToggleInternet = {},
+        onAddFavorite = {},
+        onRemoveFavorite = {},
+        onSettings = {},
+        onSignOut = {},
+    )
 }
