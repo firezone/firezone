@@ -284,7 +284,7 @@ dependencies {
     implementation("androidx.browser:browser:1.10.0")
     implementation("com.google.firebase:firebase-installations")
     implementation("com.google.android.gms:play-services-tasks:18.4.1")
-    implementation("androidx.hilt:hilt-navigation-compose:1.4.0")
+    implementation("androidx.hilt:hilt-lifecycle-viewmodel-compose:1.4.0")
     ksp("androidx.hilt:hilt-compiler:1.4.0")
     ksp("com.google.dagger:hilt-android-compiler:2.60.1")
     // Instrumented Tests
