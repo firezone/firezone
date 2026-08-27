@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -16,18 +17,23 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.Log
 import dev.firezone.android.core.presentation.MainActivity
-import dev.firezone.android.databinding.ActivityAuthBinding
+import dev.firezone.android.features.auth.ui.compose.AuthScreen
+import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
-    private lateinit var binding: ActivityAuthBinding
+class AuthActivity : AppCompatActivity() {
     private val viewModel: AuthViewModel by viewModels()
     private var hasLaunchedCustomTab = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityAuthBinding.inflate(layoutInflater)
+
+        setContent {
+            FirezoneTheme {
+                AuthScreen()
+            }
+        }
 
         setupActionObservers()
     }
