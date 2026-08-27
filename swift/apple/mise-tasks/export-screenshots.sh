@@ -12,10 +12,8 @@ OUTPUT_DIR="$2"
 STAGING_DIR="$(mktemp -d)"
 trap 'rm -rf "${STAGING_DIR}"' EXIT
 
-# Xcode signs the UI-test runner with the App Sandbox whatever the target's
-# settings say, so the runner cannot write the images itself and every capture
-# travels as a test attachment instead. The export names the files by UUID; the
-# manifest maps them back to the names the tests gave them.
+# The captures travel as test attachments (see ScreenshotDelivery.swift). The
+# export names the files by UUID; the manifest maps them back to their names.
 xcrun xcresulttool export attachments --path "${XCRESULT}" --output-path "${STAGING_DIR}"
 
 manifest="${STAGING_DIR}/manifest.json"
@@ -26,10 +24,9 @@ fi
 
 mkdir -p "${OUTPUT_DIR}"
 
-# XCTest hands back the name a test gave its attachment with an index and a
-# UUID appended, so take those off to get the gallery's file name. Only the
-# captures are taken, by the shape of that name: XCUITest attaches its own
-# diagnostics beside them, and an empty run fails below.
+# XCTest appends an index and a UUID to the name a test gave its attachment, so
+# take those off. Only names of the gallery's shape are taken: XCUITest attaches
+# its own diagnostics beside the captures.
 copied=0
 while IFS="$(printf '\t')" read -r exported suggested; do
     name="${suggested%.png}"

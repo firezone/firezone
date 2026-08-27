@@ -20,8 +20,7 @@ fi
 
 cd "${APPLE_DIR}"
 
-# The simulator asks for no signing, and the entitlements would need a
-# provisioning profile.
+# The simulator asks for no signing, and the entitlements need a profile.
 xcodebuild build-for-testing \
     -project Firezone.xcodeproj \
     -scheme FirezoneUITests \
@@ -35,8 +34,8 @@ xcodebuild build-for-testing \
     PROVISIONING_PROFILE_SPECIFIER= \
     ONLY_ACTIVE_ARCH=YES
 
-# An appearance belongs to the simulated device rather than to a launch, so
-# the suite runs once per appearance with `simctl ui` in between.
+# An appearance belongs to the device rather than to a launch, so the suite runs
+# once per appearance with `simctl ui` in between.
 for appearance in light dark; do
   RESULT_BUNDLE="${RESULT_DIR}/FirezoneUITests-ios-${appearance}.xcresult"
   rm -rf "${RESULT_BUNDLE}"
@@ -44,8 +43,7 @@ for appearance in light dark; do
   xcrun simctl ui "${UDID}" appearance "${appearance}"
 
   echo "Photographing the iOS screens in ${appearance}..."
-  # xcodebuild forwards TEST_RUNNER_-prefixed variables to the test runner
-  # process with the prefix stripped.
+  # xcodebuild forwards TEST_RUNNER_-prefixed variables with the prefix stripped.
   TEST_RUNNER_SCREENSHOT_APPEARANCE="${appearance}" \
     xcodebuild test-without-building \
       -project Firezone.xcodeproj \

@@ -4,10 +4,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APPLE_DIR="${SCRIPT_DIR}/.."
-# A fixed path rather than a fresh `mktemp -d`, so repeated runs keep one
-# bundle instead of accumulating them. `xcodebuild` refuses to write over an
-# existing bundle, so it is cleared before the run rather than after, which
-# leaves the last one to inspect when the tests fail.
+# A fixed path, cleared before the run rather than after: `xcodebuild` refuses to
+# write over an existing bundle, and the last one stays around to inspect.
 RESULT_BUNDLE="${RESULT_BUNDLE_DIR:-${TMPDIR:-/tmp}}/FirezoneUITests-macos.xcresult"
 
 extra_args=()
