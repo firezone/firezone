@@ -57,8 +57,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     var showSaveWarning by rememberSaveable { mutableStateOf(false) }
 
-    // The log directory grows while the app runs, so re-measure it whenever the page is shown
-    // rather than only once when the screen opens.
+    // The log directory grows while the app runs, so re-measure it each time the page is shown.
     LaunchedEffect(pagerState.currentPage) {
         if (pagerState.currentPage == PAGE_LOGS) onLogsShown()
     }
@@ -84,13 +83,13 @@ fun SettingsScreen(
             )
         },
         bottomBar = {
+            // The tabs jump without smooth scrolling, so that crossing the bar does not drag
+            // every page in between across the screen.
             NavigationBar {
                 SettingsTab(
                     selected = pagerState.currentPage == PAGE_GENERAL,
                     labelRes = R.string.general_settings_title,
                     iconRes = R.drawable.rounded_discover_tune_black_24dp,
-                    // Without smooth scrolling, so that jumping across the bar does not drag every
-                    // page in between across the screen.
                     onClick = { scope.launch { pagerState.scrollToPage(PAGE_GENERAL) } },
                 )
                 SettingsTab(

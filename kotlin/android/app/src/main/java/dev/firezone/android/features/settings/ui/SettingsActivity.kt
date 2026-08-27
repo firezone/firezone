@@ -32,7 +32,7 @@ internal class SettingsActivity : AppCompatActivity() {
                     action?.let {
                         viewModel.clearAction()
                         when (it) {
-                            SettingsViewModel.ViewAction.NavigateBack -> finish()
+                            is SettingsViewModel.ViewAction.NavigateBack -> finish()
                         }
                     }
                 }
