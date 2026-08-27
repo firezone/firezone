@@ -32,8 +32,8 @@ use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
 use x509_credential::SigningError;
 
 use crate::{
-    CandidateCertificate, DetailField, DetailSection, Identity, Package, Problem, Status,
-    UnusableCause, UnusableCertificate, field, join, selected_certificate, sign,
+    CandidateCertificate, ClientIdentity, DetailField, DetailSection, Identity, Package, Problem,
+    Status, UnusableCause, UnusableCertificate, field, join, selected_certificate, sign,
     unusable_certificates,
 };
 
@@ -56,6 +56,7 @@ pub(crate) fn status(subject_cn: &str) -> Result<Status> {
                 package: Package::P11Kit,
             }],
             sections: Vec::new(),
+            identity: ClientIdentity::Absent,
         });
     }
 
@@ -117,6 +118,7 @@ fn status_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<S
     Ok(Status {
         problems: vec![problem],
         sections,
+        identity: ClientIdentity::Absent,
     })
 }
 
@@ -150,6 +152,9 @@ fn token_status(token: Token) -> Status {
     Status {
         problems: problem.into_iter().collect(),
         sections,
+        identity: selected
+            .map(|index| token.certificates[index].metadata.identity())
+            .unwrap_or(ClientIdentity::Absent),
     }
 }
 
