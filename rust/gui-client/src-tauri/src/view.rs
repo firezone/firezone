@@ -82,9 +82,8 @@ pub enum X509Package {
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub enum X509UnusableCause {
     UnsupportedKeyAlgorithm,
-    WindowsKeyRefused { error: String },
-    WindowsKeyMissing,
-    Pkcs11KeyMissing,
+    KeyRefused { error: String },
+    KeyMissing,
 }
 
 /// Mirrors [`x509_keystore::UnreadableStore`].
@@ -204,11 +203,8 @@ impl From<x509_keystore::UnusableCause> for X509UnusableCause {
     fn from(cause: x509_keystore::UnusableCause) -> Self {
         match cause {
             x509_keystore::UnusableCause::UnsupportedKeyAlgorithm => Self::UnsupportedKeyAlgorithm,
-            x509_keystore::UnusableCause::WindowsKeyRefused { error } => {
-                Self::WindowsKeyRefused { error }
-            }
-            x509_keystore::UnusableCause::WindowsKeyMissing => Self::WindowsKeyMissing,
-            x509_keystore::UnusableCause::Pkcs11KeyMissing => Self::Pkcs11KeyMissing,
+            x509_keystore::UnusableCause::KeyRefused { error } => Self::KeyRefused { error },
+            x509_keystore::UnusableCause::KeyMissing => Self::KeyMissing,
         }
     }
 }

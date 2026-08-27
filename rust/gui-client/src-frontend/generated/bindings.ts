@@ -201,9 +201,8 @@ export type X509UnreadableStore = { store: string; error: string };
  */
 export type X509UnusableCause =
   | "UnsupportedKeyAlgorithm"
-  | { WindowsKeyRefused: { error: string } }
-  | "WindowsKeyMissing"
-  | "Pkcs11KeyMissing";
+  | { KeyRefused: { error: string } }
+  | "KeyMissing";
 /**
  * Mirrors [`x509_keystore::ValidationError`].
  */

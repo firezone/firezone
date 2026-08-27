@@ -215,12 +215,10 @@ pub enum Package {
 pub enum UnusableCause {
     /// Nothing we can sign a TLS handshake with holds the certificate's key algorithm.
     UnsupportedKeyAlgorithm,
-    /// CNG will not use the certificate's private key, as for a key a legacy CSP holds.
-    WindowsKeyRefused { error: String },
-    /// Windows holds no private key for the certificate.
-    WindowsKeyMissing,
-    /// The PKCS#11 token holds no private key for the certificate.
-    Pkcs11KeyMissing,
+    /// The keystore will not use the certificate's private key, as for a key a legacy CSP holds.
+    KeyRefused { error: String },
+    /// The keystore holds no private key for the certificate.
+    KeyMissing,
 }
 
 /// A certificate store a keystore could not read.
@@ -347,17 +345,14 @@ impl fmt::Display for UnusableCause {
             Self::UnsupportedKeyAlgorithm => {
                 formatter.write_str("we cannot sign with this certificate's key algorithm")
             }
-            Self::WindowsKeyRefused { error } => {
+            Self::KeyRefused { error } => {
                 write!(
                     formatter,
-                    "Windows would not hand over the private key: {error}"
+                    "the keystore would not hand over the private key: {error}"
                 )
             }
-            Self::WindowsKeyMissing => {
-                formatter.write_str("Windows holds no private key for this certificate")
-            }
-            Self::Pkcs11KeyMissing => {
-                formatter.write_str("the token holds no private key for this certificate")
+            Self::KeyMissing => {
+                formatter.write_str("the keystore holds no private key for this certificate")
             }
         }
     }
@@ -551,7 +546,7 @@ mod tests {
                 not_before: 1,
             },
             Candidate {
-                unusable: Some(UnusableCause::WindowsKeyMissing),
+                unusable: Some(UnusableCause::KeyMissing),
                 not_before: 3,
             },
             Candidate {
@@ -561,10 +556,7 @@ mod tests {
         ];
 
         assert_eq!(selected_certificate(&certificates), Some(2));
-        assert_eq!(
-            unusable_causes(&certificates),
-            [UnusableCause::WindowsKeyMissing]
-        );
+        assert_eq!(unusable_causes(&certificates), [UnusableCause::KeyMissing]);
         assert_eq!(selected_certificate::<Candidate>(&[]), None);
     }
 
@@ -573,7 +565,7 @@ mod tests {
     fn a_certificate_we_cannot_present_says_why_in_its_own_section() {
         let certificates = [
             Candidate {
-                unusable: Some(UnusableCause::WindowsKeyMissing),
+                unusable: Some(UnusableCause::KeyMissing),
                 not_before: 3,
             },
             Candidate {
@@ -589,7 +581,7 @@ mod tests {
 
         assert_eq!(
             status.text_description(),
-            "[Certificate]\nNot Before:\n  2\n\n[Unused Certificate]\nPrivate Key:\n  Not present\n  (Windows holds no private key for this certificate)\nNot Before:\n  3\n"
+            "[Certificate]\nNot Before:\n  2\n\n[Unused Certificate]\nPrivate Key:\n  Not present\n  (the keystore holds no private key for this certificate)\nNot Before:\n  3\n"
         );
     }
 }
