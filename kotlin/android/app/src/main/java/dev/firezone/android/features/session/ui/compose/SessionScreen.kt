@@ -2,15 +2,10 @@
 package dev.firezone.android.features.session.ui.compose
 
 import android.os.Parcelable
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -30,7 +25,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -94,23 +88,11 @@ fun SessionScreen(
             (selection as? Selection.Device)?.let { sel -> connectedDevices.firstOrNull { it.id == sel.id } }
         }
 
-    Scaffold(modifier = modifier) { innerPadding ->
+    Scaffold(
+        modifier = modifier,
+        topBar = { FirezoneTopBar(subtitle = actorName, onSettings = onSettings) },
+    ) { innerPadding ->
         Column(Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    painter = painterResource(R.drawable.ic_firezone_logo),
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                )
-                Text(
-                    text = stringResource(R.string.app_short_name),
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-                Spacer(Modifier.weight(1f))
-                actorName?.let { Text(text = it, style = MaterialTheme.typography.bodySmall) }
-            }
-
             // The tab bar is the top-level switcher, pinned below the app bar so it stays visible and
             // accessible no matter how far the list is scrolled.
             if (hasFavorites) {
@@ -119,7 +101,6 @@ fun SessionScreen(
                 TabRow(
                     selectedTabIndex = effectiveTab,
                     contentColor = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(top = 16.dp),
                 ) {
                     LeadingIconTab(
                         selected = effectiveTab == TAB_FAVORITES,
@@ -161,16 +142,11 @@ fun SessionScreen(
                 }
             }
 
-            Row(
-                Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            OutlinedButton(
+                onClick = onSignOut,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             ) {
-                OutlinedButton(onClick = onSettings, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.settings))
-                }
-                OutlinedButton(onClick = onSignOut, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.sign_out))
-                }
+                Text(stringResource(R.string.sign_out))
             }
         }
     }

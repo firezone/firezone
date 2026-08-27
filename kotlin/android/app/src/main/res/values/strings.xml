@@ -28,7 +28,8 @@
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>
 	<string name="settings">Settings</string>
-	<string name="signed_out">Signed Out</string>
+	<string name="sign_in_welcome">Welcome to Firezone.</string>
+	<string name="sign_in_prompt">Sign in to access Resources.</string>
 
 	<!-- Sign Out -->
 	<string name="resources">Resources</string>
