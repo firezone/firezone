@@ -1042,13 +1042,13 @@ defmodule PortalWeb.Settings.Authentication do
             </td>
             <td class="px-6 py-3">
               <div class="flex items-center gap-2.5 text-xs text-body tabular-nums">
-                <span>
+                <span :if={@type != "x509"}>
                   <span class="font-medium text-heading">
                     {@provider.portal_sessions_count}
                   </span>
                   portal
                 </span>
-                <span class="w-px h-3 bg-border-strong shrink-0"></span>
+                <span :if={@type != "x509"} class="w-px h-3 bg-border-strong shrink-0"></span>
                 <span>
                   <span class="font-medium text-heading">
                     {@provider.client_tokens_count}

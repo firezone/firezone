@@ -187,6 +187,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert html =~ "X.509"
       assert html =~ "No devices will be able to use this authentication provider"
 
+      row_text = provider_row_text(html, provider.id)
+      assert row_text =~ "0 client"
+      refute row_text =~ "0 portal"
+
       assert has_element?(
                lv,
                "a[href='/#{account.slug}/settings/trust_anchors']",
