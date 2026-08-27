@@ -57,8 +57,9 @@ fun SessionScreen(
     onAddFavorite: (String) -> Unit,
     onRemoveFavorite: (String) -> Unit,
     onSettings: () -> Unit,
-    onSignOut: () -> Unit,
+    onEndSession: () -> Unit,
     modifier: Modifier = Modifier,
+    endSessionLabel: String = stringResource(R.string.sign_out),
 ) {
     val hasFavorites = favorites.inner.isNotEmpty()
     var selectedTab by rememberSaveable { mutableIntStateOf(TAB_FAVORITES) }
@@ -163,8 +164,8 @@ fun SessionScreen(
                 OutlinedButton(onClick = onSettings, modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.settings))
                 }
-                Button(onClick = onSignOut, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.sign_out))
+                Button(onClick = onEndSession, modifier = Modifier.weight(1f)) {
+                    Text(endSessionLabel)
                 }
             }
         }

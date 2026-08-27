@@ -20,6 +20,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import uniffi.x509claims.Identity
 import javax.inject.Inject
 
 private const val REQUEST_DELAY = 1000L
@@ -67,8 +68,9 @@ internal class SplashViewModel
 
                 val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
 
-                // Without a token we can only connect if a client certificate authenticates us.
-                if (token.isNullOrBlank() && certificateUser.identity() == null) {
+                // Without a token we can only connect if a client certificate names somebody the
+                // portal will resolve; one it refuses has to reach the sign-in screen to say so.
+                if (token.isNullOrBlank() && certificateUser.identity() !is Identity.Resolved) {
                     actionMutableStateFlow.value = ViewAction.NavigateToSignIn
                     return@launch
                 }

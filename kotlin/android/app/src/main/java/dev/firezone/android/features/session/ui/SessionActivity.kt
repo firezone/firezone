@@ -15,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
@@ -26,6 +27,8 @@ import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.model.isInternetResource
 import kotlinx.collections.immutable.toImmutableList
+import uniffi.x509claims.Actor
+import uniffi.x509claims.Identity
 
 @AndroidEntryPoint
 class SessionActivity : AppCompatActivity() {
@@ -70,7 +73,7 @@ class SessionActivity : AppCompatActivity() {
                 val connectedDevicesState by viewModel.connectedDevicesStateFlow.collectAsStateWithLifecycle()
                 val favorites by viewModel.favorites.collectAsStateWithLifecycle()
                 val serviceStatus by viewModel.serviceStatusStateFlow.collectAsStateWithLifecycle()
-                val certificateUser by viewModel.certificateUserStateFlow.collectAsStateWithLifecycle()
+                val certificateIdentity by viewModel.certificateIdentityStateFlow.collectAsStateWithLifecycle()
 
                 // Finish if the tunnel service dies.
                 LaunchedEffect(serviceStatus) {
@@ -99,9 +102,16 @@ class SessionActivity : AppCompatActivity() {
                     }
 
                 val signedInActorName = remember { viewModel.getActorName() }
+                val certificateEmail =
+                    ((certificateIdentity as? Identity.Resolved)?.actor as? Actor.Email)?.email
                 val actorName =
-                    certificateUser?.let { getString(R.string.connected_as, it.email) }
+                    certificateEmail?.let { getString(R.string.connected_as, it) }
                         ?: signedInActorName
+                val endSessionLabel =
+                    when (certificateIdentity) {
+                        Identity.Absent -> stringResource(R.string.sign_out)
+                        is Identity.Resolved, Identity.Refused -> stringResource(R.string.disconnect)
+                    }
 
                 SessionScreen(
                     actorName = actorName,
@@ -120,20 +130,21 @@ class SessionActivity : AppCompatActivity() {
                         settings.putExtra("isUserSignedIn", true)
                         startActivity(settings)
                     },
-                    onSignOut = {
+                    onEndSession = {
                         // A client certificate re-authenticates on its own, so there is nothing to
                         // discard: disconnecting is all this can do.
-                        if (certificateUser == null) {
+                        if (certificateIdentity == Identity.Absent) {
                             viewModel.clearToken()
                             viewModel.clearActorName()
                         }
                         tunnelService?.disconnect()
                     },
+                    endSessionLabel = endSessionLabel,
                 )
             }
         }
 
-        viewModel.refreshCertificateUser()
+        viewModel.refreshCertificateIdentity()
     }
 
     override fun onDestroy() {

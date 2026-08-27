@@ -13,7 +13,7 @@ import dev.firezone.android.tunnel.model.Resource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import uniffi.x509claims.UserIdentity
+import uniffi.x509claims.Identity
 import javax.inject.Inject
 
 @HiltViewModel
@@ -26,7 +26,7 @@ internal class SessionViewModel
         private val _serviceStatusStateFlow = MutableStateFlow<State?>(null)
         private val _resourcesStateFlow = MutableStateFlow<List<Resource>>(emptyList())
         private val _connectedDevicesStateFlow = MutableStateFlow<List<ConnectedDevice>>(emptyList())
-        private val _certificateUserStateFlow = MutableStateFlow<UserIdentity?>(null)
+        private val _certificateIdentityStateFlow = MutableStateFlow<Identity>(Identity.Absent)
 
         val serviceStatusStateFlow: StateFlow<State?>
             get() = _serviceStatusStateFlow
@@ -35,9 +35,9 @@ internal class SessionViewModel
         val connectedDevicesStateFlow: StateFlow<List<ConnectedDevice>>
             get() = _connectedDevicesStateFlow
 
-        /** The user a configured client certificate authenticates, who has no token to sign out of. */
-        val certificateUserStateFlow: StateFlow<UserIdentity?>
-            get() = _certificateUserStateFlow
+        /** Who the configured client certificate says is connecting, which decides how the session ends. */
+        val certificateIdentityStateFlow: StateFlow<Identity>
+            get() = _certificateIdentityStateFlow
 
         // Internal getters for TunnelService to update state
         internal fun getServiceStatusMutableStateFlow(): MutableStateFlow<State?> = _serviceStatusStateFlow
@@ -54,9 +54,9 @@ internal class SessionViewModel
 
         fun getActorName() = repo.getActorNameSync()
 
-        fun refreshCertificateUser() {
+        fun refreshCertificateIdentity() {
             viewModelScope.launch {
-                _certificateUserStateFlow.value = certificateUser.identity()
+                _certificateIdentityStateFlow.value = certificateUser.identity()
             }
         }
 
