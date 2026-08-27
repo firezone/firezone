@@ -21,7 +21,7 @@ const UNUSED_CERTIFICATE_SECTION = "Unused Certificate";
 const REJECTION_TEXT: Record<X509RejectionReason, string> = {
   Empty: "empty",
   TooLong: "longer than 255 characters",
-  NotAnEmailAddress: "not an email address",
+  NotAnEmailAddress: "not a valid email address",
   NotAUuid: "not a UUID",
   Ambiguous: "more than one value was given",
   PlaceholderIdentifier: "a placeholder identifier",
