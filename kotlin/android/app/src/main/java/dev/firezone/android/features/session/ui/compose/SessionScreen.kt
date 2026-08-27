@@ -134,7 +134,9 @@ fun SessionScreen(
                 // Connected devices is a niche feature, so it sits in its own section below the
                 // resources, sharing the same heading style rather than drawing extra attention.
                 if (effectiveTab == TAB_ALL && connectedDevices.isNotEmpty()) {
-                    item(key = "devices-heading") { SectionTitle(text = connectedDevicesTitle) }
+                    item(key = "devices-heading") {
+                        SectionTitle(text = connectedDevicesTitle, modifier = Modifier.padding(top = 24.dp))
+                    }
                     itemsIndexed(connectedDevices, key = { _, device -> "dev-${device.id}" }) { index, device ->
                         if (index > 0) HorizontalDivider()
                         ConnectedDeviceRow(device = device, onClick = { selection = Selection.Device(device.id) })
@@ -178,7 +180,7 @@ private fun SectionTitle(
     Text(
         text = text,
         style = MaterialTheme.typography.headlineSmall,
-        modifier = modifier.padding(top = 24.dp, bottom = 8.dp),
+        modifier = modifier.padding(bottom = 8.dp),
     )
 }
 
