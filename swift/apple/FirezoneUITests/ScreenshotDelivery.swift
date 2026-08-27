@@ -13,14 +13,12 @@
 
 import XCTest
 
-/// The appearances the gallery holds a capture of.
 enum Appearance: String, CaseIterable {
   case light
   case dark
 }
 
-// Photographing is main-actor work in XCTest, and so is everything that reads
-// the resulting image.
+// Photographing is main-actor work in XCTest, and so is reading the image back.
 @MainActor
 extension XCTestCase {
   /// Photographs `element` once it holds still, delivers the image as
@@ -42,14 +40,12 @@ extension XCTestCase {
     return image
   }
 
-  /// The element as it looks once two captures in a row agree.
+  /// The element as it looks once its captures agree.
   ///
   /// Freshly presented content is often still moving: the diagnostic logs tab
-  /// spins while it adds up the log directory, and windows fade in. An image
-  /// that catches a frame of that differs on every run, which the gallery would
-  /// carry as a diff on every commit. A capture that never agrees with itself
-  /// fails the test, so a screen that will not hold still is reported rather
-  /// than photographed mid-motion and committed.
+  /// spins while it adds up the log directory, and windows fade in. An image that
+  /// catches a frame of that differs on every run, so a screen that will not hold
+  /// still fails the test rather than being committed mid-motion.
   private func settledScreenshot(of element: XCUIElement, as fileName: String) -> XCUIScreenshot {
     let attempts = 20
     // Three in a row rather than two, a second apart rather than half: a control
@@ -91,13 +87,8 @@ extension XCTestCase {
     return previous
   }
 
-  /// Says in the run's log how a capture came to rest.
-  ///
-  /// A screen that holds still here and still differs from the last run is
-  /// telling us the difference was fixed before the first capture, which no
-  /// amount of watching can settle. One that only just reaches agreement is a
-  /// screen the next run may well catch mid-motion. Neither is visible in the
-  /// image itself, and the sizes separate the two.
+  /// Says in the run's log how a capture came to rest: a screen that agreed at
+  /// once differs from one that only just did, and the image shows neither.
   private func report(_ fileName: String, heldStill: Bool, outOf sizes: [Int]) {
     let outcome = heldStill ? "held still" : "never held still"
     let seen = Set(sizes).sorted()

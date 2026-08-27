@@ -4,14 +4,9 @@
 //  LICENSE: Apache-2.0
 //
 
-// Launches the real iOS app with `--mock-tunnel` and photographs its screens,
-// one scenario per launch (see MockTunnel.swift for the scenarios). Nothing is
-// compared against a reference; the images are the output, and CI commits them
-// to `swift/apple/screenshots/ios`.
-//
-// A run covers one appearance. macOS can ask for an appearance per launch, but
-// a simulator's belongs to the device, so CI sets it with `simctl ui` and runs
-// the suite once per appearance.
+// Photographs the real iOS app against the mocked backend, one scenario per
+// launch. Nothing is compared against a reference: the images are the output,
+// and CI commits them to `swift/apple/screenshots/ios`.
 
 #if os(iOS)
   import CoreGraphics
@@ -19,8 +14,6 @@
 
   @MainActor
   final class IOSScreenshotTests: XCTestCase {
-    /// The settings tabs, by the label the app gives each and the name its
-    /// images carry in the gallery.
     private static let settingsTabs = [
       (label: "General", name: "general"),
       (label: "Advanced", name: "advanced"),
@@ -50,18 +43,13 @@
       let app = launchApp(scenario: "connected")
       defer { app.terminate() }
 
-      // A resource from the mock's canned list, so the capture waits for the
-      // list rather than for the spinner it replaces.
       try waitFor(app.staticTexts["Office network"], on: "session")
       deliver(app, as: "session", in: appearance)
     }
 
-    // The three pushed detail screens, mirroring the Android gallery. Each takes
-    // its own launch: photographed one after another, a screen carries whatever
-    // the screens before it left behind, and the glass the bar's back button is
-    // drawn on comes out a shade different for it.
-
-    /// A DNS resource's detail screen.
+    // Each detail screen takes its own launch: photographed one after another, a
+    // screen carries what the ones before it left behind, and the glass the back
+    // button is drawn on comes out a shade different for it.
     func testResourceDetails() throws {
       let appearance = try currentAppearance()
       let app = launchApp(scenario: "connected")
@@ -73,7 +61,6 @@
       deliver(app, as: "resource-details", in: appearance)
     }
 
-    /// The Internet resource's detail screen.
     func testInternetResourceDetails() throws {
       let appearance = try currentAppearance()
       let app = launchApp(scenario: "connected")
@@ -91,7 +78,6 @@
       deliver(app, as: "resource-details-internet", in: appearance)
     }
 
-    /// A connected device's detail screen.
     func testDeviceDetails() throws {
       let appearance = try currentAppearance()
       let app = launchApp(scenario: "connected")
@@ -118,7 +104,6 @@
       }
     }
 
-    /// Launches the app against the mock backend, presenting `scenario`.
     private func launchApp(scenario: String) -> XCUIApplication {
       let app = XCUIApplication()
       app.launchArguments = ["--mock-tunnel", "--mock-scenario", scenario]
@@ -127,7 +112,6 @@
       return app
     }
 
-    /// Taps `row` to push its detail screen, scrolling it into reach first.
     private func open(_ row: XCUIElement, in app: XCUIApplication, name: String) throws {
       guard row.waitForExistence(timeout: 10) else {
         throw IOSScreenshotError.screenDidNotAppear(name)
@@ -142,10 +126,9 @@
 
     /// Takes the list up by half the screen, and leaves it exactly there.
     ///
-    /// `swipeUp()` is a flick, so the list keeps travelling after the finger
-    /// leaves it and comes to rest a little further along each time. Holding
-    /// before the drag makes it a scroll rather than a flick, which stops where
-    /// it is let go, so the screen underneath is the same on every run.
+    /// `swipeUp()` is a flick: the list keeps travelling after the finger leaves
+    /// it and comes to rest a little further along each time. Pressing before the
+    /// drag makes it a scroll, which stops where it is let go.
     private func scrollDown(in app: XCUIApplication) {
       let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
       let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
@@ -153,10 +136,8 @@
       from.press(forDuration: 0.2, thenDragTo: to)
     }
 
-    /// Taps the settings tab labelled `label`.
-    ///
-    /// SwiftUI has drawn the tab bar as different controls across releases, so
-    /// the first control kind that answers to the label wins.
+    /// SwiftUI has drawn the iOS tab bar as different controls across releases,
+    /// so the first kind that answers to `label` wins.
     private func selectTab(_ label: String, in app: XCUIApplication) throws {
       let candidates = [
         app.tabBars.buttons[label],
@@ -170,13 +151,8 @@
       tab.tap()
     }
 
-    /// Pins that the app fills the simulated device.
-    ///
-    /// Without a launch screen iOS runs an app in compatibility mode, which is
-    /// 320 points wide whatever the device, and photographs every screen at the
-    /// wrong metrics.
-    /// Blocks until `element` is on screen, so a capture cannot catch the
-    /// spinner the app shows while it loads its state.
+    /// Blocks until `element` is on screen, so a capture cannot catch the spinner
+    /// the app shows while it loads its state.
     private func waitFor(_ element: XCUIElement, on screen: String) throws {
       guard element.waitForExistence(timeout: 30) else {
         throw IOSScreenshotError.screenDidNotAppear(screen)
@@ -185,8 +161,9 @@
 
     /// The appearance the simulator was put in for this run.
     ///
-    /// `XCUIDevice.appearance` is ignored when the tests run under `xcodebuild`,
-    /// so CI sets the simulator's appearance itself and names it here.
+    /// An appearance belongs to the device rather than to a launch, and
+    /// `XCUIDevice.appearance` is ignored under `xcodebuild`, so CI sets it with
+    /// `simctl ui` and runs the whole suite once per appearance.
     private func currentAppearance() throws -> Appearance {
       let name = try XCTUnwrap(
         ProcessInfo.processInfo.environment["SCREENSHOT_APPEARANCE"],
