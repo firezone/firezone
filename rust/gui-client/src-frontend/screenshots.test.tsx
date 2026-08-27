@@ -200,36 +200,48 @@ const screens: Record<string, Screen> = {
   "x509-empty-windows": {
     route: "/x509",
     x509: {
+      identity: "Absent",
       problems: [{ NoWindowsCertificate: { subject_cn: SUBJECT_CN } }],
       sections: [],
+      identity: \"Absent\",
     },
   },
   "x509-empty-linux": {
     route: "/x509",
     x509: {
+      identity: "Absent",
       problems: [{ NoPkcs11Certificate: { subject_cn: SUBJECT_CN } }],
       sections: [],
+      identity: \"Absent\",
     },
   },
   "x509-happy": {
     route: "/x509",
     x509: {
+      identity: "Absent",
       problems: [],
       sections: [certificateSection(CERTIFICATE, windowsCertificate)],
+      identity: \"Absent\",
+      identity: \"Absent\",
     },
   },
   "x509-missing-package-linux": {
     route: "/x509",
     x509: {
+      identity: "Absent",
       problems: [{ MissingPackage: { package: "P11Kit" } }],
       sections: [],
+      identity: \"Absent\",
     },
   },
   "x509-invalid-attribute": {
     route: "/x509",
     x509: {
+      identity: "Absent",
       problems: [],
       sections: [certificateSection(CERTIFICATE, invalidAttributeCertificate)],
+      identity: \"Absent\",
+      identity: \"Absent\",
     },
   },
   // The certificate is past its validity window, which the page shows without
@@ -237,6 +249,7 @@ const screens: Record<string, Screen> = {
   "x509-unusable": {
     route: "/x509",
     x509: {
+      identity: "Absent",
       problems: [
         {
           NoUsableWindowsCertificate: {
@@ -250,6 +263,8 @@ const screens: Record<string, Screen> = {
         },
       ],
       sections: [certificateSection(UNUSED_CERTIFICATE, expiredCertificate)],
+      identity: \"Absent\",
+      identity: \"Absent\",
     },
   },
   "diagnostics-no-logs": { route: "/diagnostics" },
