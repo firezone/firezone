@@ -277,6 +277,7 @@ private fun CertificateCard(state: X509SettingsViewModel.UiState) {
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (isAttesting) {
                         Icon(
