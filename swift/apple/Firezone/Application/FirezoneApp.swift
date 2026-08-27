@@ -140,16 +140,14 @@ struct FirezoneApp: App {
 @MainActor
 func installCertificateParser() {
   X509CertificateParser.use { der in
-    guard let parsed = parseClientCertificate(der: der) else { return .unreadable }
+    guard let parsed = parseClientCertificate(der: der) else { return nil }
 
     return X509CertificateSummary(
-      isUsable: parsed.isUsable,
-      certificateProblems: parsed.certificateProblems.map { X509UnusableReason($0) },
       fields: parsed.detailFields.map { field in
         X509CertificateField(
           label: field.label,
           value: X509ClaimValue(field.value),
-          problem: field.problem.map { X509FieldProblem($0) }
+          problem: field.problem.map { X509ClaimRejection($0) }
         )
       },
       identity: X509ClaimedIdentity(parsed.identity)
@@ -167,40 +165,11 @@ extension X509ClaimValue {
   }
 }
 
-extension X509FieldProblem {
-  init(_ problem: FieldProblem) {
-    switch problem {
-    case .rejected(let reason): self = .rejected(X509ClaimRejection(reason))
-    case .unusable(let reason): self = .unusable(X509UnusableReason(reason))
-    }
-  }
-}
-
-extension X509UnusableReason {
-  init(_ reason: UnusableReason) {
-    switch reason {
-    case .noClientAuthEku: self = .noClientAuthEku
-    case .noDigitalSignatureKeyUsage: self = .noDigitalSignatureKeyUsage
-    case .notYetValid: self = .notYetValid
-    case .expired: self = .expired
-    case .unsupportedKeyAlgorithm: self = .unsupportedKeyAlgorithm
-    case .refusedIdentity: self = .refusedIdentity
-    case .unreadable: self = .unreadable
-    }
-  }
-}
-
 extension X509ClaimedIdentity {
   init(_ identity: Identity) {
     switch identity {
-    case .absent:
-      self = .absent
-    case .resolved(let accountId, .id(let actorId)):
-      self = .resolved(accountId: accountId, actor: .id(actorId))
-    case .resolved(let accountId, .email(let email)):
-      self = .resolved(accountId: accountId, actor: .email(email))
-    case .refused:
-      self = .refused
+    case .absent: self = .absent
+    case .claimed(let email): self = .claimed(email: email)
     }
   }
 }

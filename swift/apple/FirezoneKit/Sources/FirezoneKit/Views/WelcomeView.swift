@@ -44,8 +44,8 @@ struct WelcomeView: View {
   private var startSessionTitle: String {
     switch store.certificateIdentity {
     case .absent: return "Sign in"
-    case .resolved(_, .email(let email)): return "Connect as \(email)"
-    case .resolved(_, .id), .refused: return "Connect"
+    case .claimed(.some(let email)): return "Connect as \(email)"
+    case .claimed(.none): return "Connect"
     }
   }
 
@@ -53,11 +53,8 @@ struct WelcomeView: View {
     switch store.certificateIdentity {
     case .absent:
       signIn()
-    case .resolved:
+    case .claimed:
       connect()
-    case .refused:
-      self.errorHandler.handle(
-        ErrorAlert(title: "Cannot connect", error: X509ConnectError.refusedIdentity))
     }
   }
 

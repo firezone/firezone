@@ -108,8 +108,8 @@ import SwiftUI
     private var startSessionTitle: String {
       switch store.certificateIdentity {
       case .absent: return "Sign in"
-      case .resolved(_, .email(let email)): return "Connect as \(email)"
-      case .resolved(_, .id), .refused: return "Connect"
+      case .claimed(.some(let email)): return "Connect as \(email)"
+      case .claimed(.none): return "Connect"
       }
     }
 
@@ -117,7 +117,7 @@ import SwiftUI
     private var endSessionTitle: String {
       switch store.certificateIdentity {
       case .absent: return "Sign out"
-      case .resolved, .refused: return "Disconnect"
+      case .claimed: return "Disconnect"
       }
     }
 
@@ -125,12 +125,8 @@ import SwiftUI
       switch store.certificateIdentity {
       case .absent:
         signInButtonTapped()
-      case .resolved:
+      case .claimed:
         connectButtonTapped()
-      case .refused:
-        self.errorHandler.handle(
-          ErrorAlert(title: "Cannot connect", error: X509ConnectError.refusedIdentity)
-        )
       }
     }
 

@@ -59,8 +59,7 @@
       case authorized
     }
 
-    /// The certificate the diagnostics screen is handed, named by the state it leaves
-    /// the screen in.
+    /// The certificate the diagnostics screen is handed, named by what it carries.
     ///
     /// Every case but `absent` and `unreadable` names a certificate this bundle ships under
     /// `Mocks/Certificates`, whose subject, serial, fingerprint and validity dates are
@@ -73,8 +72,8 @@
       case usable
       /// A usable certificate carrying a `firezone://` attribute the parser does not read.
       case unknownAttribute = "unknown-attribute"
-      /// A certificate the client will not present, because it has expired.
-      case unusable
+      /// A certificate whose validity window has passed.
+      case expired
       /// Bytes that are not a certificate, which the client cannot read.
       case unreadable
     }
@@ -138,7 +137,7 @@
       case .unreadable:
         return Data("These bytes are not a certificate.".utf8)
 
-      case .usable, .unknownAttribute, .unusable:
+      case .usable, .unknownAttribute, .expired:
         guard let url = Self.url(of: rawValue) else {
           fatalError("No mock certificate named '\(rawValue)'")
         }

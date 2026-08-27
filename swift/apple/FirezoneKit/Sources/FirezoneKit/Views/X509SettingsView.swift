@@ -79,40 +79,6 @@ struct X509SettingsView: View {
     #endif
   }
 
-  /// What the card says about the certificate, and the mark that leads it.
-  ///
-  /// The wording is shared across the clients. A certificate that was read and refused says so
-  /// rather than reading as one that was never found: the rows below carry the attribute that
-  /// makes it unusable.
-  private enum Verdict {
-    case presenting
-    case refused
-    case missing
-
-    var sentence: String {
-      switch self {
-      case .presenting: return "Firezone uses this certificate to identify this device."
-      case .refused: return "Firezone cannot use this certificate to identify this device."
-      case .missing: return "Firezone did not find a certificate to identify this device."
-      }
-    }
-  }
-
-  /// Absent while the keychain is still being read.
-  private var verdict: Verdict? {
-    switch loadState {
-    case .loading:
-      return nil
-    case .loaded(let summary, let keyProblem)
-    where summary.isUsable && keyProblem == nil:
-      return .presenting
-    case .loaded(let summary, _) where !summary.isUsable:
-      return .refused
-    case .loaded, .notConfigured, .failed:
-      return .missing
-    }
-  }
-
   /// Identifies the certificate the way a keychain viewer does, before any of the detail.
   private func card(_ summary: X509CertificateSummary, keyProblem: String?) -> some View {
     cardLayout(
@@ -120,13 +86,6 @@ struct X509SettingsView: View {
       subtitle: value("Issuer", of: summary).map { "Issued by \($0)" },
       validity: value("Not After", of: summary).map { "Valid until \($0)" }
     ) {
-      // Only the rules no row shows: the rest read underneath the attribute they are about,
-      // and repeating them here would say the same thing twice. The verdict above has already
-      // said the certificate is refused, so these carry no heading of their own.
-      if !summary.certificateProblems.isEmpty {
-        notice(summary.certificateProblems.map(\.sentence).joined(separator: " "))
-      }
-
       if let keyProblem {
         notice(keyProblem, title: "Firezone cannot use the certificate's private key")
       }
@@ -175,25 +134,6 @@ struct X509SettingsView: View {
         }
       }
 
-      if let verdict {
-        HStack(spacing: 4) {
-          switch verdict {
-          case .presenting:
-            Image(systemName: "checkmark.circle")
-              .foregroundStyle(.tint)
-          case .refused:
-            Image(systemName: "xmark.circle")
-              .foregroundStyle(.red)
-          case .missing:
-            EmptyView()
-          }
-
-          Text(verdict.sentence)
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-      }
-
       warning()
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -225,12 +165,10 @@ struct X509SettingsView: View {
   }
 
   /// How the screen says that something is wrong with the certificate.
-  private func notice(_ message: String, title: String? = nil) -> some View {
+  private func notice(_ message: String, title: String) -> some View {
     VStack(alignment: .leading, spacing: 6) {
-      if let title {
-        Label(title, systemImage: "exclamationmark.triangle")
-          .font(.callout)
-      }
+      Label(title, systemImage: "exclamationmark.triangle")
+        .font(.callout)
       Text(message)
         .font(.callout)
         .textSelection(.enabled)
@@ -273,23 +211,12 @@ struct X509SettingsView: View {
   }
 
   /// Reads underneath the value it belongs to, the way a form shows an error on its input.
-  ///
-  /// Red marks a certificate Firezone will not present, orange a claim it will not attest.
   @ViewBuilder
-  private func fieldProblem(_ problem: X509FieldProblem?) -> some View {
-    switch problem {
-    case .rejected(let rejection):
+  private func fieldProblem(_ rejection: X509ClaimRejection?) -> some View {
+    if let rejection {
       Label(rejection.reason, systemImage: "exclamationmark.triangle")
         .font(.system(valueTextStyle))
         .foregroundStyle(.orange)
-
-    case .unusable(let reason):
-      Label(reason.sentence, systemImage: "exclamationmark.triangle")
-        .font(.system(valueTextStyle))
-        .foregroundStyle(.red)
-
-    case .none:
-      EmptyView()
     }
   }
 
@@ -315,7 +242,11 @@ struct X509SettingsView: View {
         return
       }
 
-      let summary = X509CertificateParser.summary(of: certificate) ?? .unreadable
+      guard let summary = X509CertificateParser.summary(of: certificate) else {
+        loadState = .failed("Its bytes are not an X.509 certificate.")
+
+        return
+      }
 
       loadState = .loaded(summary, keyProblem: keyProblem)
     } catch {

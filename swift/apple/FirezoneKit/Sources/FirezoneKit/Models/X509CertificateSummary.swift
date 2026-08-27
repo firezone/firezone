@@ -33,55 +33,20 @@ public enum X509ClaimRejection: Hashable, Sendable {
   }
 }
 
-/// A rule a certificate has to satisfy before Firezone can present it for mutual TLS.
-///
-/// Mirrors `UnusableReason` of the `x509claims` bindings, which FirezoneKit cannot import.
-/// The parser ships the rule rather than a sentence so that each client words it itself.
-public enum X509UnusableReason: Hashable, Sendable {
-  case noClientAuthEku
-  case noDigitalSignatureKeyUsage
-  case notYetValid
-  case expired
-  case unsupportedKeyAlgorithm
-  case refusedIdentity
-  case unreadable
-
-  /// A sentence that reads underneath the attribute the rule is about.
-  public var sentence: String {
-    switch self {
-    case .noClientAuthEku:
-      return "Firezone only presents a certificate that allows TLS client authentication."
-    case .noDigitalSignatureKeyUsage:
-      return "Firezone only presents a certificate whose key usage allows digital signatures."
-    case .notYetValid: return "This certificate is not valid yet."
-    case .expired: return "This certificate has expired."
-    case .unsupportedKeyAlgorithm: return "Firezone cannot sign with this key algorithm."
-    case .refusedIdentity: return "This certificate names a user Firezone cannot resolve."
-    case .unreadable: return "Firezone could not read this certificate."
-    }
-  }
-}
-
 /// The text one row of the diagnostics screen shows, above whatever is wrong with it.
 public enum X509ClaimValue: Hashable, Sendable {
   case present(String)
   case absent
 }
 
-/// What is wrong with one row, read underneath the value it belongs to.
-public enum X509FieldProblem: Hashable, Sendable {
-  case rejected(X509ClaimRejection)
-  case unusable(X509UnusableReason)
-}
-
 /// One row of the certificate diagnostics screen.
 public struct X509CertificateField: Hashable, Sendable {
   public let label: String
   public let value: X509ClaimValue
-  /// What is wrong with the value above, `nil` when nothing is.
-  public let problem: X509FieldProblem?
+  /// Why the value above was not attested, `nil` when it was.
+  public let problem: X509ClaimRejection?
 
-  public init(label: String, value: X509ClaimValue, problem: X509FieldProblem?) {
+  public init(label: String, value: X509ClaimValue, problem: X509ClaimRejection?) {
     self.label = label
     self.value = value
     self.problem = problem
@@ -91,64 +56,22 @@ public struct X509CertificateField: Hashable, Sendable {
 /// Who the certificate says is connecting.
 ///
 /// Mirrors `Identity` of the `x509claims` bindings, which FirezoneKit cannot import.
-/// Naming nobody and naming somebody the parser will not attest are different answers:
-/// only the first falls back to signing in through the browser.
 public enum X509ClaimedIdentity: Hashable, Sendable {
   case absent
-  case resolved(accountId: String, actor: X509ClaimedActor)
-  case refused
-}
-
-/// How a certificate names the actor connecting.
-///
-/// Mirrors `Actor` of the `x509claims` bindings, which FirezoneKit cannot import.
-public enum X509ClaimedActor: Hashable, Sendable {
-  /// A service account, which carries no email to name it by.
-  case id(String)
-  case email(String)
-}
-
-/// Why Firezone will not start a session with the certificate that is configured.
-public enum X509ConnectError: LocalizedError {
-  /// The certificate names somebody the parser will not attest.
-  case refusedIdentity
-
-  public var errorDescription: String? {
-    switch self {
-    case .refusedIdentity:
-      return
-        "A certificate has been configured but it is invalid. Please contact your administrator."
-    }
-  }
+  case claimed(email: String?)
 }
 
 /// What the parser made of the client certificate the VPN profile references.
 public struct X509CertificateSummary: Equatable, Sendable {
-  /// Whether the certificate's own rules allow presenting it for mutual TLS.
-  public let isUsable: Bool
-  /// The rules it fails that no row carries, which the card states with the verdict.
-  public let certificateProblems: [X509UnusableReason]
   /// Rows to render, in the order the parser produced them.
   public let fields: [X509CertificateField]
   /// Who the certificate says is connecting, which decides what the clients offer.
   public let identity: X509ClaimedIdentity
 
-  public init(
-    isUsable: Bool,
-    certificateProblems: [X509UnusableReason],
-    fields: [X509CertificateField],
-    identity: X509ClaimedIdentity
-  ) {
-    self.isUsable = isUsable
-    self.certificateProblems = certificateProblems
+  public init(fields: [X509CertificateField], identity: X509ClaimedIdentity) {
     self.fields = fields
     self.identity = identity
   }
-
-  /// Bytes that are not a certificate, reported as one that fails a rule so that the
-  /// screen states the same verdict it states for every certificate it will not present.
-  public static let unreadable = X509CertificateSummary(
-    isUsable: false, certificateProblems: [.unreadable], fields: [], identity: .absent)
 }
 
 /// Where the app installs the certificate parser.
@@ -159,7 +82,8 @@ public struct X509CertificateSummary: Equatable, Sendable {
 /// parser over during startup and the diagnostics screen calls back into it.
 @MainActor
 public enum X509CertificateParser {
-  public typealias Parse = @Sendable (Data) -> X509CertificateSummary
+  /// `nil` for bytes that are not a certificate.
+  public typealias Parse = @Sendable (Data) -> X509CertificateSummary?
 
   private static var parse: Parse?
 
