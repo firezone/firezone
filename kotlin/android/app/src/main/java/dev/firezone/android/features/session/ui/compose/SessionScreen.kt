@@ -115,7 +115,13 @@ fun SessionScreen(
             // The tab bar is the top-level switcher, pinned below the app bar so it stays visible and
             // accessible no matter how far the list is scrolled.
             if (hasFavorites) {
-                TabRow(selectedTabIndex = effectiveTab, modifier = Modifier.padding(top = 16.dp)) {
+                // M3 labels tabs with `primary`, which the brand makes orange; only the indicator
+                // under the selected tab should carry it.
+                TabRow(
+                    selectedTabIndex = effectiveTab,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 16.dp),
+                ) {
                     LeadingIconTab(
                         selected = effectiveTab == TAB_FAVORITES,
                         onClick = { selectedTab = TAB_FAVORITES },
