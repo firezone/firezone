@@ -359,9 +359,8 @@ class TunnelService : VpnService() {
 
                             Log.i(TAG, "Event-loop finished: $stopReason")
 
-                            if (startedByUser && stopReason != StopReason.ExplicitDisconnect) {
-                                // Show dismissable disconnected notification
-                                TunnelNotification.showDisconnectedNotification(context)
+                            if (startedByUser && stopReason is StopReason.Disconnected) {
+                                TunnelNotification.showDisconnectedNotification(context, stopReason.message)
                             }
                         }
                 } catch (e: ConnlibException) {
@@ -554,12 +553,18 @@ class TunnelService : VpnService() {
         data object Reset : TunnelCommand()
     }
 
-    enum class StopReason {
-        ExplicitDisconnect,
-        Disconnected,
-        EventChannelClosed,
-        CommandChannelClosed,
-        Error,
+    sealed class StopReason {
+        data object ExplicitDisconnect : StopReason()
+
+        data class Disconnected(
+            val message: String,
+        ) : StopReason()
+
+        data object EventChannelClosed : StopReason()
+
+        data object CommandChannelClosed : StopReason()
+
+        data object Error : StopReason()
     }
 
     private fun resourceById(resourceId: String): Pair<Resource, Site>? {
@@ -664,11 +669,12 @@ class TunnelService : VpnService() {
                                 }
 
                                 is Event.Disconnected -> {
-                                    // Clear any user tokens and actorNames
-                                    repo.clearToken()
-                                    repo.clearActorName()
+                                    if (event.error.requiresSignIn()) {
+                                        repo.clearToken()
+                                        repo.clearActorName()
+                                    }
 
-                                    stopReason = StopReason.Disconnected
+                                    stopReason = StopReason.Disconnected(event.error.message())
                                 }
 
                                 is Event.GatewayVersionMismatch -> {
