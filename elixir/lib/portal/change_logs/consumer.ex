@@ -44,6 +44,7 @@ defmodule Portal.ChangeLogs.Consumer do
     "trust_anchor_certificates" => Portal.TrustAnchorCertificate,
     "trust_anchors" => Portal.TrustAnchor,
     "userpass_auth_providers" => Portal.Userpass.AuthProvider,
+    "x509_auth_providers" => Portal.X509.AuthProvider,
     "splunk_log_sinks" => Portal.Splunk.LogSink,
     "datadog_log_sinks" => Portal.Datadog.LogSink,
     "newrelic_log_sinks" => Portal.NewRelic.LogSink,
@@ -53,7 +54,9 @@ defmodule Portal.ChangeLogs.Consumer do
     "qradar_log_sinks" => Portal.QRadar.LogSink,
     "http_log_sinks" => Portal.HTTP.LogSink,
     "intune_posture_providers" => Portal.Intune.PostureProvider,
-    "iru_posture_providers" => Portal.Iru.PostureProvider
+    "iru_posture_providers" => Portal.Iru.PostureProvider,
+    "defender_posture_providers" => Portal.Defender.PostureProvider,
+    "santa_posture_providers" => Portal.Santa.PostureProvider
   }
 
   @impl true

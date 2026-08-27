@@ -191,10 +191,14 @@ public final class Store: ObservableObject {
   /// `async` so the caller decides how to run it; the app fires and forgets, but that is
   /// its call to make, not this function's.
   public func start() async {
-    do {
-      try await LaunchAgentManager.syncKeepAppRunning()
-    } catch {
-      Log.error(error)
+    // A mocked run leaves launchd alone: the keep-app-running agent resurrects every
+    // instance a UI test ends, and the revived copy races the next test's launch.
+    if !MockRun.isActive {
+      do {
+        try await LaunchAgentManager.syncKeepAppRunning()
+      } catch {
+        Log.error(error)
+      }
     }
 
     await startupSequence()
@@ -215,10 +219,8 @@ public final class Store: ObservableObject {
 
     public func quitApp() {
       SharedAccess.clearAppRunning()
-      Task {
-        do { try await stop() } catch { Log.error(error) }
-        NSApp.terminate(nil)
-      }
+      requestStop()
+      NSApp.terminate(nil)
     }
 
     /// Returns the appropriate icon name from asset catalog for the given state
@@ -590,10 +592,9 @@ public final class Store: ObservableObject {
     self.decision = try await sessionNotification.askUserForNotificationPermissions()
   }
 
-  public func stop() async throws {
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
+  public func requestStop() {
+    // No manager or no session is no tunnel, which is where stopping was headed anyway.
+    guard let session = try? manager().session() else { return }
 
     session.stopTunnel()
   }

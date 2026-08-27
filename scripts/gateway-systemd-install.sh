@@ -106,6 +106,12 @@ Group=firezone
 PermissionsStartOnly=true
 SyslogIdentifier=firezone-gateway
 
+# Creates /var/lib/firezone before the service starts, owned by the service
+# user, and fixes up ownership if it already exists. The Gateway stores its
+# device ID and the flow-log spool there.
+StateDirectory=firezone
+StateDirectoryMode=0700
+
 LoadCredential=FIREZONE_TOKEN:$TOKEN_FILE
 
 Environment="FIREZONE_NAME=$FIREZONE_NAME"

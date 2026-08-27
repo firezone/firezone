@@ -11,8 +11,9 @@ defmodule PortalAPI.Client.DeviceTrustTest do
   alias PortalAPI.Client.DeviceTrust
   alias Portal.Crypto.X509
 
-  @attestation_url "https://mtls.firezone.test/"
+  @attestation_url "https://mtls.firezone.test:4443/"
   @attestation_host "mtls.firezone.test"
+  @attestation_port 4443
 
   describe "attest/2 when there is nothing to attest" do
     setup do
@@ -490,6 +491,15 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert DeviceTrust.attest(connect_info, subject) == {:error, :not_attestation_host}
     end
 
+    test "does not attest on another port at the attestation host", %{
+      pki: pki,
+      subject: subject
+    } do
+      connect_info = connect_info(leaf(pki, :rsa), port: 443)
+
+      assert DeviceTrust.attest(connect_info, subject) == {:error, :not_attestation_host}
+    end
+
     test "does not attest a connect that carries no host", %{pki: pki, subject: subject} do
       connect_info = pki |> leaf(:rsa) |> connect_info() |> Map.delete(:uri)
 
@@ -684,9 +694,10 @@ defmodule PortalAPI.Client.DeviceTrustTest do
 
   defp connect_info_with_cert(value, opts \\ []) do
     host = Keyword.get(opts, :host, @attestation_host)
+    port = Keyword.get(opts, :port, @attestation_port)
 
     %{
-      uri: %URI{scheme: "https", host: host, port: 443, path: "/"},
+      uri: %URI{scheme: "https", host: host, port: port, path: "/"},
       peer_data: %{ssl_cert: value}
     }
   end

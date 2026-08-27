@@ -70,9 +70,21 @@ defmodule Portal.Mailer.SyncEmail do
   defp provider_details_rows(%Portal.Iru.PostureProvider{} = provider),
     do: [{"Subdomain", provider.subdomain}, {"Region", String.upcase(to_string(provider.region))}]
 
+  defp provider_details_rows(%Portal.Defender.PostureProvider{} = provider),
+    do: [{"Tenant ID", provider.tenant_id}]
+
+  defp provider_details_rows(%Portal.Santa.PostureProvider{} = provider),
+    do: [{"Workshop URL", provider.api_url}]
+
   defp provider_remediation(%Portal.Intune.PostureProvider{}),
     do: "Please verify the Firezone app registration still has admin consent in Microsoft Entra."
 
   defp provider_remediation(%Portal.Iru.PostureProvider{}),
     do: "Please verify the Iru API token is still valid and can read devices."
+
+  defp provider_remediation(%Portal.Defender.PostureProvider{}),
+    do: "Please verify the Firezone app registration still has admin consent in Microsoft Entra."
+
+  defp provider_remediation(%Portal.Santa.PostureProvider{}),
+    do: "Please verify the Workshop API key is still valid and can read hosts."
 end

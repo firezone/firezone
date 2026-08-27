@@ -52,6 +52,9 @@
 		FZ0CLI012E8000000000000A /* ExtensionCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000018 /* ExtensionCommand.swift */; platformFilters = (macos, ); };
 		FZ0CLI012E80000000000007 /* TunnelSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */; platformFilters = (macos, ); };
 		FZ0CLI012E80000000000003 /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = FZ0CLI012E80000000000030 /* ArgumentParser */; platformFilters = (macos, ); };
+		FZUIT0012E90000000000001 /* AppScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZUIT0012E90000000000010 /* AppScreenshotTests.swift */; };
+		FZUIT0012E90000000000002 /* ScreenshotDelivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZUIT0012E90000000000012 /* ScreenshotDelivery.swift */; };
+		FZUIT0012E90000000000003 /* IOSScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZUIT0012E90000000000013 /* IOSScreenshotTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -75,6 +78,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 9A1000082F10000100BEEF01;
 			remoteInfo = KeepFirezoneRunning;
+		};
+		FZUIT0012E90000000000050 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8DCC021828D512AC007E12D2;
+			remoteInfo = Firezone;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -147,6 +157,10 @@
 		FZ0CLI012E80000000000017 /* SignOutCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignOutCommand.swift; sourceTree = "<group>"; };
 		FZ0CLI012E80000000000018 /* ExtensionCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionCommand.swift; sourceTree = "<group>"; };
 		FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelSupervisor.swift; sourceTree = "<group>"; };
+		FZUIT0012E90000000000010 /* AppScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppScreenshotTests.swift; sourceTree = "<group>"; };
+		FZUIT0012E90000000000012 /* ScreenshotDelivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotDelivery.swift; sourceTree = "<group>"; };
+		FZUIT0012E90000000000013 /* IOSScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSScreenshotTests.swift; sourceTree = "<group>"; };
+		FZUIT0012E90000000000011 /* FirezoneUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FirezoneUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -182,6 +196,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		9A1000072F10000100BEEF01 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FZUIT0012E90000000000031 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -257,6 +278,7 @@
 				8DCC021B28D512AC007E12D2 /* Firezone */,
 				9A1000062F10000100BEEF01 /* KeepFirezoneRunning */,
 				05833DF928F73B070008FAB0 /* FirezoneNetworkExtension */,
+				FZUIT0012E90000000000020 /* FirezoneUITests */,
 				8DCC021A28D512AC007E12D2 /* Products */,
 				8D3F90C328D64FAD00980124 /* Frameworks */,
 				8BCDECDF49DAFFD25CF140AF /* FirezoneNetworkExtension */,
@@ -271,6 +293,7 @@
 				9A1000052F10000100BEEF01 /* KeepFirezoneRunning.app */,
 				05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */,
 				8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */,
+				FZUIT0012E90000000000011 /* FirezoneUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -326,6 +349,16 @@
 				FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */,
 			);
 			path = CLI;
+			sourceTree = "<group>";
+		};
+		FZUIT0012E90000000000020 /* FirezoneUITests */ = {
+			isa = PBXGroup;
+			children = (
+				FZUIT0012E90000000000010 /* AppScreenshotTests.swift */,
+				FZUIT0012E90000000000013 /* IOSScreenshotTests.swift */,
+				FZUIT0012E90000000000012 /* ScreenshotDelivery.swift */,
+			);
+			path = FirezoneUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -422,6 +455,26 @@
 			productReference = 9A1000052F10000100BEEF01 /* KeepFirezoneRunning.app */;
 			productType = "com.apple.product-type.application";
 		};
+		FZUIT0012E90000000000040 /* FirezoneUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FZUIT0012E90000000000070 /* Build configuration list for PBXNativeTarget "FirezoneUITests" */;
+			buildPhases = (
+				FZUIT0012E90000000000030 /* Sources */,
+				FZUIT0012E90000000000031 /* Frameworks */,
+				FZUIT0012E90000000000032 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FZUIT0012E90000000000051 /* PBXTargetDependency */,
+			);
+			name = FirezoneUITests;
+			packageProductDependencies = (
+			);
+			productName = FirezoneUITests;
+			productReference = FZUIT0012E90000000000011 /* FirezoneUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -446,6 +499,10 @@
 					9A1000082F10000100BEEF01 = {
 						CreatedOnToolsVersion = 16.4;
 					};
+					FZUIT0012E90000000000040 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 8DCC021828D512AC007E12D2;
+					};
 				};
 			};
 			buildConfigurationList = 8DCC021428D512AC007E12D2 /* Build configuration list for PBXProject "Firezone" */;
@@ -468,6 +525,7 @@
 				9A1000082F10000100BEEF01 /* KeepFirezoneRunning */,
 				05CF1CEF290B1CEE00CF4755 /* FirezoneNetworkExtensioniOS */,
 				8D5047E22CE6A8F4009802E9 /* FirezoneNetworkExtensionmacOS */,
+				FZUIT0012E90000000000040 /* FirezoneUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -498,6 +556,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		9A1000092F10000100BEEF01 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FZUIT0012E90000000000032 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -684,6 +749,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FZUIT0012E90000000000030 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FZUIT0012E90000000000001 /* AppScreenshotTests.swift in Sources */,
+				FZUIT0012E90000000000003 /* IOSScreenshotTests.swift in Sources */,
+				FZUIT0012E90000000000002 /* ScreenshotDelivery.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -708,6 +783,11 @@
 			);
 			target = 9A1000082F10000100BEEF01 /* KeepFirezoneRunning */;
 			targetProxy = 9A10000B2F10000100BEEF01 /* PBXContainerItemProxy */;
+		};
+		FZUIT0012E90000000000051 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8DCC021828D512AC007E12D2 /* Firezone */;
+			targetProxy = FZUIT0012E90000000000050 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1063,9 +1143,13 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1120,9 +1204,13 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1418,9 +1506,13 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1448,6 +1540,107 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TVOS_DEPLOYMENT_TARGET = "";
 				WATCHOS_DEPLOYMENT_TARGET = "";
+			};
+			name = Profile;
+		};
+		FZUIT0012E90000000000060 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "";
+				CODE_SIGN_IDENTITY = "$(inherited)";
+				CODE_SIGN_STYLE = "$(inherited)";
+				CURRENT_PROJECT_VERSION = "$(inherited)";
+				DEVELOPMENT_TEAM = "$(inherited)";
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.firezone.firezone.ui-tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Firezone;
+			};
+			name = Debug;
+		};
+		FZUIT0012E90000000000061 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "";
+				CODE_SIGN_IDENTITY = "$(inherited)";
+				CODE_SIGN_STYLE = "$(inherited)";
+				CURRENT_PROJECT_VERSION = "$(inherited)";
+				DEVELOPMENT_TEAM = "$(inherited)";
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.firezone.firezone.ui-tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_VERSION = 6.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Firezone;
+			};
+			name = Release;
+		};
+		FZUIT0012E90000000000062 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "";
+				CODE_SIGN_IDENTITY = "$(inherited)";
+				CODE_SIGN_STYLE = "$(inherited)";
+				CURRENT_PROJECT_VERSION = "$(inherited)";
+				DEVELOPMENT_TEAM = "$(inherited)";
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.firezone.firezone.ui-tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Firezone;
 			};
 			name = Profile;
 		};
@@ -1500,6 +1693,16 @@
 				9A10000D2F10000100BEEF01 /* Debug */,
 				9A10000E2F10000100BEEF01 /* Release */,
 				9A10000F2F10000100BEEF01 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FZUIT0012E90000000000070 /* Build configuration list for PBXNativeTarget "FirezoneUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FZUIT0012E90000000000060 /* Debug */,
+				FZUIT0012E90000000000061 /* Release */,
+				FZUIT0012E90000000000062 /* Profile */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

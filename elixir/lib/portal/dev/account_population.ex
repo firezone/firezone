@@ -16,6 +16,7 @@ defmodule Portal.Dev.AccountPopulation do
   alias Portal.Repo
   alias Portal.Resource
   alias Portal.Site
+  alias Portal.X509
 
   alias Portal.Authentication.{Context, Credential, Subject}
 
@@ -392,6 +393,7 @@ defmodule Portal.Dev.AccountPopulation do
 
     everyone_group = create_group(account, %{name: "Everyone", type: :managed})
     email_provider = create_email_provider(account)
+    _x509_provider = create_x509_provider(account)
 
     admin_actor =
       create_actor(account, :account_admin_user, "Admin 1", email_for(account.slug, "admin-1"))
@@ -868,6 +870,33 @@ defmodule Portal.Dev.AccountPopulation do
       [:id, :account_id, :name, :context]
     )
     |> EmailOTP.AuthProvider.changeset()
+    |> Repo.insert!()
+  end
+
+  defp create_x509_provider(account) do
+    provider_id = Ecto.UUID.generate()
+
+    %AuthProvider{}
+    |> cast(%{id: provider_id, account_id: account.id, type: :x509}, [
+      :id,
+      :account_id,
+      :type
+    ])
+    |> AuthProvider.changeset()
+    |> Repo.insert!()
+
+    %X509.AuthProvider{}
+    |> cast(
+      %{
+        id: provider_id,
+        account_id: account.id,
+        name: "X.509",
+        context: :clients_only,
+        is_disabled: true
+      },
+      [:id, :account_id, :name, :context, :is_disabled]
+    )
+    |> X509.AuthProvider.changeset()
     |> Repo.insert!()
   end
 

@@ -301,13 +301,13 @@ fn filters_json(filters: Vec<Filter>) -> Vec<Value> {
         .map(|filter| match filter {
             Filter::Udp(range) => json!({
                 "protocol": "udp",
-                "port_range_start": range.port_range_start,
-                "port_range_end": range.port_range_end,
+                "port_range_start": range.start(),
+                "port_range_end": range.end(),
             }),
             Filter::Tcp(range) => json!({
                 "protocol": "tcp",
-                "port_range_start": range.port_range_start,
-                "port_range_end": range.port_range_end,
+                "port_range_start": range.start(),
+                "port_range_end": range.end(),
             }),
             Filter::Icmp => json!({ "protocol": "icmp" }),
         })

@@ -5,8 +5,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
+  import Portal.FeaturesFixtures
   import Portal.TokenFixtures
   import Portal.PortalSessionFixtures
+  import Portal.TrustAnchorFixtures
 
   alias Portal.EmailOTP
   alias PortalWeb.Mocks
@@ -169,6 +171,71 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   # =============================================================================
 
   describe "provider listing" do
+    test "renders X.509 with a trust-anchor warning when the feature is enabled", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      enable_feature(:trust_anchors)
+      provider = x509_provider_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      assert html =~ "X.509"
+      assert html =~ "No devices will be able to use this authentication provider"
+
+      row_text = provider_row_text(html, provider.id)
+      assert row_text =~ "0 client"
+      refute row_text =~ "0 portal"
+
+      assert has_element?(
+               lv,
+               "a[href='/#{account.slug}/settings/trust_anchors']",
+               "Trust Anchors"
+             )
+
+      actions = open_provider_actions(lv, provider.id)
+      refute actions =~ "Make default"
+      refute has_provider_action_button?(actions, "delete", provider.id)
+      refute actions =~ "/authentication/x509/#{provider.id}/edit"
+    end
+
+    test "does not warn for X.509 when the account has a trust anchor", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      enable_feature(:trust_anchors)
+      _provider = x509_provider_fixture(account: account)
+      _anchor = trust_anchor_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      assert html =~ "X.509"
+      refute html =~ "No devices will be able to use this authentication provider"
+    end
+
+    test "hides X.509 when trust anchors are globally disabled", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      _provider = x509_provider_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      refute html =~ "X.509"
+    end
+
     test "renders email_otp provider", %{account: account, actor: actor, conn: conn} do
       # authorize_conn creates an email_otp provider
       {:ok, _lv, html} =
@@ -1310,6 +1377,29 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       # The email_otp provider shouldn't have a delete button
       assert Enum.empty?(delete_buttons)
+    end
+
+    test "X.509 providers cannot be deleted even with a forged event", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      enable_feature(:trust_anchors)
+      provider = x509_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      render_hook(lv, "delete_provider", %{"id" => provider.id})
+
+      assert render(lv) =~ "Failed to delete authentication provider"
+
+      assert Repo.get_by!(Portal.X509.AuthProvider,
+               account_id: account.id,
+               id: provider.id
+             )
     end
 
     test "userpass providers cannot be deleted via UI", %{

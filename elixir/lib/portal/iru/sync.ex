@@ -5,6 +5,20 @@ defmodule Portal.Iru.Sync do
   The device list is one endpoint and each posture signal is another, so a run
   reads `/api/v1/devices` first and then folds every per-device Prism category
   into the rows it just wrote.
+
+  That list is walked with `limit` and `offset` over a collection that keeps
+  changing, so a page boundary can step over a device that was there the whole
+  time: anything removed at the source mid-walk pulls the devices after it back
+  by one, into a page already read. There is no cursor to follow instead.
+
+  So a device missing from one run is not evidence that it is gone. A run
+  deletes a device only once no run has seen it for `@stale_after_seconds`, and
+  only if the run before this one did not see it either.
+
+  The first bound rides out a skip, because the run two hours later picks the
+  device up again. The second bound covers a sync that has been failing for
+  longer than the window: every row is past the clock by then, so without it
+  the first run to succeed again could delete most of a tenant on one walk.
   """
 
   use Oban.Worker,
@@ -17,6 +31,11 @@ defmodule Portal.Iru.Sync do
   alias Portal.Iru
   alias Portal.Iru.APIClient
   alias __MODULE__.Database
+
+  # Twelve runs at the current two-hour schedule. Long enough that a device has
+  # to be skipped over and over to be deleted, short enough that a device really
+  # removed from the tenant stops counting as known within a day.
+  @stale_after_seconds 24 * 60 * 60
 
   # Postgres binds at most 65535 parameters per statement, so a full page of 300
   # devices has to fit within that. Derived from the field count so adding a
@@ -61,7 +80,7 @@ defmodule Portal.Iru.Sync do
     synced_ids = sync_devices(provider, client, started_at)
     sync_prism_categories(provider, client, synced_ids)
 
-    Database.delete_stale_devices(provider, started_at)
+    delete_stale_devices(provider, started_at)
     Database.mark_succeeded(provider, started_at)
 
     Logger.info("Finished Iru device inventory sync",
@@ -71,6 +90,18 @@ defmodule Portal.Iru.Sync do
     )
 
     :ok
+  end
+
+  # `synced_at` on the provider is the run before this one, so the earlier of the
+  # two bounds is the one to delete against. Nothing has synced yet on a first
+  # run, which leaves no earlier run to measure from and nothing to delete.
+  defp delete_stale_devices(%Iru.PostureProvider{synced_at: nil}, _started_at), do: :ok
+
+  defp delete_stale_devices(provider, started_at) do
+    cutoff =
+      Enum.min([provider.synced_at, DateTime.add(started_at, -@stale_after_seconds)], DateTime)
+
+    Database.delete_stale_devices(provider, cutoff)
   end
 
   # Every property of the `/api/v1/devices` record. `user` is an object on a
@@ -498,11 +529,11 @@ defmodule Portal.Iru.Sync do
       Enum.map(fields, &{&1, nil}) ++ [updated_at: now]
     end
 
-    def delete_stale_devices(provider, synced_at) do
+    def delete_stale_devices(provider, cutoff) do
       from(d in Iru.Device,
         where: d.account_id == ^provider.account_id,
         where: d.posture_provider_id == ^provider.id,
-        where: d.synced_at < ^synced_at
+        where: d.synced_at < ^cutoff
       )
       |> Safe.unscoped()
       |> Safe.delete_all()

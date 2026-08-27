@@ -50,6 +50,10 @@ defmodule Portal.Account do
     has_many :intune_devices, Portal.Intune.Device
     has_many :iru_posture_providers, Portal.Iru.PostureProvider
     has_many :iru_devices, Portal.Iru.Device
+    has_many :defender_posture_providers, Portal.Defender.PostureProvider
+    has_many :defender_devices, Portal.Defender.Device
+    has_many :santa_posture_providers, Portal.Santa.PostureProvider
+    has_many :santa_devices, Portal.Santa.Device
     has_many :clients, Portal.Device, where: [type: :client]
     has_many :gateways, Portal.Device, where: [type: :gateway]
     has_many :sites, Portal.Site
@@ -68,6 +72,7 @@ defmodule Portal.Account do
     has_many :oidc_auth_providers, Portal.OIDC.AuthProvider
     has_one :email_otp_auth_provider, Portal.EmailOTP.AuthProvider
     has_one :userpass_auth_provider, Portal.Userpass.AuthProvider
+    has_one :x509_auth_provider, Portal.X509.AuthProvider
 
     # Billing limit exceeded flags - set by CheckAccountLimits worker and Stripe event processing
     field :users_limit_exceeded, :boolean, default: false

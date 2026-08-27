@@ -19,6 +19,12 @@ public enum Telemetry {
   }
 
   public static func start(enableAppHangTracking: Bool = true) {
+    guard !BundleHelper.noTelemetry else {
+      Log.info("Telemetry is switched off for this build")
+
+      return
+    }
+
     SentrySDK.start { options in
       options.dsn =
         "https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488"

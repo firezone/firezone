@@ -3,7 +3,10 @@ import Config
 # Local vars
 web_port = System.get_env("PHOENIX_WEB_PORT", "13443") |> String.to_integer()
 api_port = System.get_env("PHOENIX_API_PORT", "13001") |> String.to_integer()
+mtls_port = System.get_env("PHOENIX_MTLS_PORT", "13003") |> String.to_integer()
 ops_port = System.get_env("PHOENIX_OPS_PORT", "13002") |> String.to_integer()
+certfile_path = System.get_env("CERTFILE_PATH", "priv/cert/selfsigned.pem")
+keyfile_path = System.get_env("KEYFILE_PATH", "priv/cert/selfsigned_key.pem")
 
 # DATABASE_SSL can be "true", "false", or a JSON object with SSL options
 db_ssl =
@@ -97,6 +100,8 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.Entra.Scheduler},
        {worker_dev_schedule, Portal.Intune.Scheduler},
        {worker_dev_schedule, Portal.Iru.Scheduler},
+       {worker_dev_schedule, Portal.Defender.Scheduler},
+       {worker_dev_schedule, Portal.Santa.Scheduler},
        {worker_dev_schedule, Portal.Google.Scheduler},
        {worker_dev_schedule, Portal.Okta.Scheduler},
        {worker_dev_schedule, Portal.Splunk.Scheduler},
@@ -144,6 +149,10 @@ config :portal, Oban,
     intune_sync: 5,
     iru_scheduler: 1,
     iru_sync: 5,
+    defender_scheduler: 1,
+    defender_sync: 5,
+    santa_scheduler: 1,
+    santa_sync: 5,
     google_scheduler: 1,
     google_sync: 5,
     okta_scheduler: 1,
@@ -198,8 +207,8 @@ config :portal, PortalWeb.Endpoint,
   url: [scheme: "https", host: "localhost", port: web_port],
   https: [
     port: web_port,
-    certfile: System.get_env("CERTFILE_PATH", "priv/cert/selfsigned.pem"),
-    keyfile: System.get_env("KEYFILE_PATH", "priv/cert/selfsigned_key.pem")
+    certfile: certfile_path,
+    keyfile: keyfile_path
   ],
   code_reloader: true,
   debug_errors: true,
@@ -229,7 +238,8 @@ config :portal, PortalWeb.Endpoint,
   server: true
 
 config :portal,
-  api_external_url: "http://localhost:#{api_port}"
+  api_external_url: "https://localhost:#{api_port}",
+  mtls_external_url: "https://localhost:#{mtls_port}"
 
 config :phoenix_live_reload, :dirs, [File.cwd!()]
 
@@ -257,14 +267,43 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
 
 # Note: on Linux you may need to add `--add-host=host.docker.internal:host-gateway`
 # to the `docker run` command. Works on Docker v20.10 and above.
-config :portal, api_url_override: "ws://host.docker.internal:#{api_port}/"
+config :portal, api_url_override: "wss://host.docker.internal:#{api_port}/"
+
+###############################
+##### Public Endpoint #########
+###############################
+
+# Keep mutual TLS on a dedicated listener so the ordinary API endpoint cannot
+# accidentally be treated as the mTLS endpoint during local development.
+config :portal, Portal.Endpoint,
+  url: [scheme: "https", host: "localhost", port: mtls_port],
+  https: [
+    port: mtls_port,
+    certfile: certfile_path,
+    keyfile: keyfile_path,
+    thousand_island_options: [
+      transport_options: [
+        verify: :verify_peer,
+        fail_if_no_peer_cert: true,
+        certificate_authorities: false,
+        cacerts: [],
+        verify_fun: {&Portal.TLS.verify_client_certificate/3, nil}
+      ]
+    ]
+  ],
+  server: true
 
 ###############################
 ##### PortalAPI Endpoint ######
 ###############################
 
 config :portal, PortalAPI.Endpoint,
-  http: [port: api_port],
+  url: [scheme: "https", host: "localhost", port: api_port],
+  https: [
+    port: api_port,
+    certfile: certfile_path,
+    keyfile: keyfile_path
+  ],
   debug_errors: true,
   code_reloader: true,
   check_origin: ["//10.0.0.107", "//10.0.2.2", "//127.0.0.1", "//localhost"],

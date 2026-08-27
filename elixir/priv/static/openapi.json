@@ -299,6 +299,167 @@
         "title": "PolicyCreateParams",
         "type": "object"
       },
+      "SantaDevice": {
+        "description": "Santa host synced from North Pole Security Workshop",
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "nullable": false,
+            "type": "string"
+          },
+          "configured_client_mode": {
+            "nullable": true,
+            "type": "string"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "hostname": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "nullable": false,
+            "type": "string"
+          },
+          "inserted_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "last_preflight_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "last_preflight_ip": {
+            "format": "byte",
+            "nullable": true,
+            "type": "string"
+          },
+          "last_seen_client_mode": {
+            "nullable": true,
+            "type": "string"
+          },
+          "last_sync_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "machine_model": {
+            "nullable": true,
+            "type": "string"
+          },
+          "os_build": {
+            "nullable": true,
+            "type": "string"
+          },
+          "os_type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "os_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "posture_provider_id": {
+            "format": "uuid",
+            "nullable": false,
+            "type": "string"
+          },
+          "primary_user": {
+            "nullable": true,
+            "type": "string"
+          },
+          "primary_user_groups": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "primary_user_locked": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "rule_sync_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "santa_id": {
+            "nullable": false,
+            "type": "string"
+          },
+          "santa_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "santanetd_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "serial_number": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sip_status": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "nullable": false,
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "tags_locked": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "tags_truncated": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "temporary_admin_mode_ends_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "temporary_admin_mode_user": {
+            "nullable": true,
+            "type": "string"
+          },
+          "temporary_monitor_mode_ends_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "id",
+          "posture_provider_id",
+          "santa_id",
+          "synced_at"
+        ],
+        "title": "SantaDevice",
+        "type": "object"
+      },
       "IntunePostureProviderListResponse": {
         "properties": {
           "data": {
@@ -312,6 +473,75 @@
           }
         },
         "title": "IntunePostureProviderListResponse",
+        "type": "object"
+      },
+      "SantaPostureProvider": {
+        "description": "Santa posture provider backed by North Pole Security Workshop",
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "api_url": {
+            "format": "uri",
+            "type": "string"
+          },
+          "disabled_reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "error_message": {
+            "nullable": true,
+            "type": "string"
+          },
+          "errored_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "inserted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "is_disabled": {
+            "type": "boolean"
+          },
+          "is_verified": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "santa"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "type",
+          "name",
+          "api_url",
+          "is_verified",
+          "is_disabled"
+        ],
+        "title": "SantaPostureProvider",
         "type": "object"
       },
       "OktaAuthProvider": {
@@ -511,6 +741,74 @@
           }
         },
         "title": "ClientTokenCreateResponse",
+        "type": "object"
+      },
+      "DefenderPostureProvider": {
+        "description": "Microsoft Defender for Endpoint posture provider",
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "disabled_reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "error_message": {
+            "nullable": true,
+            "type": "string"
+          },
+          "errored_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "inserted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "is_disabled": {
+            "type": "boolean"
+          },
+          "is_verified": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "defender"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "type",
+          "name",
+          "tenant_id",
+          "is_verified",
+          "is_disabled"
+        ],
+        "title": "DefenderPostureProvider",
         "type": "object"
       },
       "GatewayCreateRequest": {
@@ -2105,6 +2403,21 @@
         "title": "OIDCAuthProvider",
         "type": "object"
       },
+      "DefenderDeviceListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/DefenderDevice"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "title": "DefenderDeviceListResponse",
+        "type": "object"
+      },
       "ExternalIdentityListResponse": {
         "description": "Response schema for multiple External Identities",
         "example": {
@@ -2391,6 +2704,15 @@
         "title": "ExternalIdentityResponse",
         "type": "object"
       },
+      "SantaDeviceResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SantaDevice"
+          }
+        },
+        "title": "SantaDeviceResponse",
+        "type": "object"
+      },
       "OktaDirectory": {
         "description": "Okta Directory",
         "example": {
@@ -2506,6 +2828,15 @@
           }
         },
         "title": "OktaDirectoryListResponse",
+        "type": "object"
+      },
+      "DefenderPostureProviderResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DefenderPostureProvider"
+          }
+        },
+        "title": "DefenderPostureProviderResponse",
         "type": "object"
       },
       "PaginationMetadata": {
@@ -2685,6 +3016,61 @@
           }
         },
         "title": "GatewayProvisionResponse",
+        "type": "object"
+      },
+      "X509AuthProvider": {
+        "description": "X.509 Auth Provider",
+        "example": {
+          "context": "clients_only",
+          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "is_disabled": true,
+          "name": "X.509"
+        },
+        "properties": {
+          "account_id": {
+            "description": "Account ID",
+            "format": "uuid",
+            "type": "string"
+          },
+          "context": {
+            "description": "Context",
+            "enum": [
+              "clients_only"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "description": "Provider ID",
+            "format": "uuid",
+            "type": "string"
+          },
+          "inserted_at": {
+            "description": "Creation timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "is_disabled": {
+            "description": "Whether provider is disabled",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Provider name",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "Update timestamp",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "name",
+          "context",
+          "is_disabled"
+        ],
+        "title": "X509AuthProvider",
         "type": "object"
       },
       "ActorsResponse": {
@@ -3024,6 +3410,184 @@
         "title": "PolicyUpdateParams",
         "type": "object"
       },
+      "DefenderDevice": {
+        "description": "Device synced from Microsoft Defender for Endpoint",
+        "properties": {
+          "last_seen_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "machine_tags": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "managed_by": {
+            "nullable": true,
+            "type": "string"
+          },
+          "vm_resource_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "os_platform": {
+            "nullable": true,
+            "type": "string"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "nullable": false,
+            "type": "string"
+          },
+          "last_ip_address": {
+            "nullable": true,
+            "type": "string"
+          },
+          "device_value": {
+            "nullable": true,
+            "type": "string"
+          },
+          "inserted_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "os_architecture": {
+            "nullable": true,
+            "type": "string"
+          },
+          "rbac_group_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "exposure_level": {
+            "nullable": true,
+            "type": "string"
+          },
+          "defender_id": {
+            "nullable": false,
+            "type": "string"
+          },
+          "entra_joined": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "exclusion_reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "vm_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "vm_cloud_provider": {
+            "nullable": true,
+            "type": "string"
+          },
+          "os_processor": {
+            "nullable": true,
+            "type": "string"
+          },
+          "account_id": {
+            "format": "uuid",
+            "nullable": false,
+            "type": "string"
+          },
+          "merged_into_machine_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "entra_device_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "os_build": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "managed_by_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "is_excluded": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "vm_subscription_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "last_external_ip_address": {
+            "nullable": true,
+            "type": "string"
+          },
+          "health_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "risk_score": {
+            "nullable": true,
+            "type": "string"
+          },
+          "is_potential_duplication": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "agent_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "rbac_group_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "ip_addresses": {
+            "items": {
+              "type": "object"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "onboarding_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "computer_dns_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "posture_provider_id": {
+            "format": "uuid",
+            "nullable": false,
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "posture_provider_id",
+          "defender_id",
+          "synced_at"
+        ],
+        "title": "DefenderDevice",
+        "type": "object"
+      },
       "Resource": {
         "description": "Resource",
         "example": {
@@ -3100,6 +3664,16 @@
         "title": "Resource",
         "type": "object"
       },
+      "X509AuthProviderResponse": {
+        "description": "Response schema for a single X.509 Auth Provider",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/X509AuthProvider"
+          }
+        },
+        "title": "X509AuthProviderResponse",
+        "type": "object"
+      },
       "ClientTokenCreate": {
         "description": "Client Token attributes",
         "example": {
@@ -3116,6 +3690,21 @@
           "expires_at"
         ],
         "title": "ClientTokenCreate",
+        "type": "object"
+      },
+      "DefenderPostureProviderListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/DefenderPostureProvider"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "title": "DefenderPostureProviderListResponse",
         "type": "object"
       },
       "EntraDirectory": {
@@ -3467,6 +4056,30 @@
           "updated_at"
         ],
         "title": "Client",
+        "type": "object"
+      },
+      "SantaDeviceListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SantaDevice"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "title": "SantaDeviceListResponse",
+        "type": "object"
+      },
+      "DefenderDeviceResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DefenderDevice"
+          }
+        },
+        "title": "DefenderDeviceResponse",
         "type": "object"
       },
       "ClientTokenResponse": {
@@ -3973,6 +4586,21 @@
         "title": "ProblemDetails",
         "type": "object"
       },
+      "SantaPostureProviderListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SantaPostureProvider"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "title": "SantaPostureProviderListResponse",
+        "type": "object"
+      },
       "ResourceUpdateRequest": {
         "description": "PATCH/PUT body for updating a Resource. All fields are optional; omitted fields keep their current value.",
         "example": {
@@ -4205,6 +4833,15 @@
           }
         },
         "title": "LogResponse",
+        "type": "object"
+      },
+      "SantaPostureProviderResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SantaPostureProvider"
+          }
+        },
+        "title": "SantaPostureProviderResponse",
         "type": "object"
       },
       "ClientResponse": {
@@ -7117,6 +7754,112 @@
         "summary": "Update a Gateway (rename)",
         "tags": [
           "Gateways"
+        ]
+      }
+    },
+    "/santa_posture_providers": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SantaPostureProviderController.index",
+        "parameters": [
+          {
+            "description": "Limit providers returned",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/previous page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaPostureProviderListResponse"
+                }
+              }
+            },
+            "description": "Santa posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List Santa posture providers",
+        "tags": [
+          "Santa Posture Providers"
         ]
       }
     },
@@ -10189,6 +10932,93 @@
         ]
       }
     },
+    "/x509_auth_provider": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.X509AuthProviderController.show",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/X509AuthProviderResponse"
+                }
+              }
+            },
+            "description": "X.509 Auth Provider Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show X.509 Auth Provider",
+        "tags": [
+          "X.509 Auth Providers"
+        ]
+      }
+    },
     "/resources": {
       "get": {
         "callbacks": {},
@@ -10742,6 +11572,119 @@
         ]
       }
     },
+    "/defender_devices/{id}": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.DefenderDeviceController.show",
+        "parameters": [
+          {
+            "description": "Synced Defender device ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefenderDeviceResponse"
+                }
+              }
+            },
+            "description": "Defender device response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show a synced Defender device",
+        "tags": [
+          "Defender Devices"
+        ]
+      }
+    },
     "/intune_devices/{id}": {
       "get": {
         "callbacks": {},
@@ -10852,6 +11795,119 @@
         "summary": "Show a synced Intune device",
         "tags": [
           "Intune Devices"
+        ]
+      }
+    },
+    "/defender_posture_providers/{id}": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.DefenderPostureProviderController.show",
+        "parameters": [
+          {
+            "description": "Defender posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefenderPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Defender posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show a Defender posture provider",
+        "tags": [
+          "Defender Posture Providers"
         ]
       }
     },
@@ -11468,6 +12524,119 @@
         ]
       }
     },
+    "/santa_posture_providers/{id}": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SantaPostureProviderController.show",
+        "parameters": [
+          {
+            "description": "Santa posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Santa posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show a Santa posture provider",
+        "tags": [
+          "Santa Posture Providers"
+        ]
+      }
+    },
     "/google_directories/{id}": {
       "get": {
         "callbacks": {},
@@ -11563,6 +12732,112 @@
         "summary": "Show Google Directory",
         "tags": [
           "Google Directories"
+        ]
+      }
+    },
+    "/santa_devices": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SantaDeviceController.index",
+        "parameters": [
+          {
+            "description": "Limit devices returned",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/previous page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaDeviceListResponse"
+                }
+              }
+            },
+            "description": "Santa device response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List synced Santa devices",
+        "tags": [
+          "Santa Devices"
         ]
       }
     },
@@ -14635,6 +15910,112 @@
         ]
       }
     },
+    "/defender_devices": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.DefenderDeviceController.index",
+        "parameters": [
+          {
+            "description": "Limit devices returned",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/previous page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefenderDeviceListResponse"
+                }
+              }
+            },
+            "description": "Defender device response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List synced Defender devices",
+        "tags": [
+          "Defender Devices"
+        ]
+      }
+    },
     "/policies": {
       "get": {
         "callbacks": {},
@@ -15339,6 +16720,119 @@
         ]
       }
     },
+    "/santa_devices/{id}": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SantaDeviceController.show",
+        "parameters": [
+          {
+            "description": "Synced Santa device ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaDeviceResponse"
+                }
+              }
+            },
+            "description": "Santa device response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show a synced Santa device",
+        "tags": [
+          "Santa Devices"
+        ]
+      }
+    },
     "/iru_posture_providers": {
       "get": {
         "callbacks": {},
@@ -15774,6 +17268,112 @@
         "summary": "Create a single-owner Gateway Token",
         "tags": [
           "Gateway Tokens"
+        ]
+      }
+    },
+    "/defender_posture_providers": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.DefenderPostureProviderController.index",
+        "parameters": [
+          {
+            "description": "Limit providers returned",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/previous page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefenderPostureProviderListResponse"
+                }
+              }
+            },
+            "description": "Defender posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List Defender posture providers",
+        "tags": [
+          "Defender Posture Providers"
         ]
       }
     },

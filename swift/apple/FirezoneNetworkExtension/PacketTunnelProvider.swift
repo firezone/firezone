@@ -34,6 +34,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     startTelemetry()
 
+    // A cycle start wakes this process only to drain flow logs, so it never
+    // reaches `connect`. Configure the logger here so that work is not silent.
+    do {
+      try configureLogger(
+        logDir: SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone",
+        logFilter: ConfigurationDefaults.logFilter,
+        flowLogsDir: SharedAccess.flowLogsFolderURL?.path
+      )
+    } catch {
+      Log.error(error)
+    }
+
     super.init()
 
     // Log version information immediately on startup

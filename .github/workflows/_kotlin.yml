@@ -11,6 +11,12 @@ permissions:
   contents: "read"
   id-token: "write" # OIDC auth
 
+# Stamped into every build below, so neither the emulator running the instrumented
+# tests nor a debug artifact someone installs later reports to Sentry. The release
+# build overrides it.
+env:
+  FIREZONE_NO_TELEMETRY: "true"
+
 jobs:
   static-analysis:
     # Android SDK tools hardware accel is available only on Linux runners
@@ -31,6 +37,13 @@ jobs:
       # (debug). Narrowing to one ABI reuses the cargo build from lint above.
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest -Pandroid.injected.build.abi=x86_64
+      # Renders the app's screens to PNGs; nothing is compared against a reference.
+      - name: Record screenshots
+        run: ./gradlew recordRoborazziDebug -Pandroid.injected.build.abi=x86_64
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-screenshots
+          path: kotlin/android/screenshots
 
   instrumented-tests:
     # The emulator needs KVM, which only the Linux runners provide.
@@ -125,6 +138,7 @@ jobs:
           install_args: --cd kotlin/android
       - name: Build the release package
         env:
+          FIREZONE_NO_TELEMETRY: "false"
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}
           KEYSTORE_KEY_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_KEY_PASSWORD }}

@@ -1878,12 +1878,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "difference"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "524cbf6897b527295dff137cec09ecf3a05f4fddffd7dfcd1585403449e74198"
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2919,6 +2913,7 @@ dependencies = [
  "anyhow-ext",
  "arbitrary",
  "bufferpool",
+ "bytecodec",
  "chrono",
  "connlib-model",
  "derive_more",
@@ -2939,6 +2934,7 @@ dependencies = [
  "sha2 0.11.0",
  "smallvec",
  "snownet",
+ "stun_codec",
  "tracing",
  "tracing-subscriber",
  "tunnel-proto",
@@ -5630,6 +5626,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "socket-factory",
+ "test-case",
  "thiserror 2.0.20",
  "tokio",
  "tokio-tungstenite",
@@ -6178,7 +6175,6 @@ dependencies = [
  "bimap",
  "bytecodec",
  "derive_more",
- "difference",
  "hex",
  "logging",
  "once_cell",
@@ -7897,7 +7893,6 @@ dependencies = [
  "opentelemetry_sdk",
  "parking_lot",
  "rand 0.10.2",
- "rustls",
  "sentry",
  "serde",
  "serde_json",

@@ -1840,6 +1840,67 @@ defmodule PortalAPI.Client.Channel.Shared do
   #### Handling changes from the domain ####
   ##########################################
 
+  # ACTORS
+
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Portal.Actor{id: actor_id, is_disabled: false},
+           struct: %Portal.Actor{id: actor_id, is_disabled: true}
+         },
+         %{assigns: %{subject: %{actor: %{id: actor_id}}}} = socket
+       ) do
+    handle_info(:disconnect, socket)
+  end
+
+  defp handle_change(
+         %Change{op: :delete, old_struct: %Portal.Actor{id: actor_id}},
+         %{assigns: %{subject: %{actor: %{id: actor_id}}}} = socket
+       ) do
+    handle_info(:disconnect, socket)
+  end
+
+  # X.509 AUTH PROVIDERS
+
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Portal.X509.AuthProvider{
+             id: auth_provider_id,
+             is_disabled: false
+           },
+           struct: %Portal.X509.AuthProvider{
+             id: auth_provider_id,
+             is_disabled: true
+           }
+         },
+         %{
+           assigns: %{
+             subject: %{
+               credential: %{type: :x509, auth_provider_id: auth_provider_id}
+             }
+           }
+         } = socket
+       ) do
+    handle_info(:disconnect, socket)
+  end
+
+  defp handle_change(
+         %Change{
+           op: :delete,
+           old_struct: %Portal.X509.AuthProvider{id: auth_provider_id}
+         },
+         %{
+           assigns: %{
+             subject: %{
+               credential: %{type: :x509, auth_provider_id: auth_provider_id}
+             }
+           }
+         } = socket
+       ) do
+    handle_info(:disconnect, socket)
+  end
+
   # ACCOUNTS
 
   defp handle_change(
@@ -2526,26 +2587,50 @@ defmodule PortalAPI.Client.Channel.Shared do
         :ok = PG.join(socket.assigns.subject.credential.id)
         socket = assign(socket, :pg_scope_pid, new_pid)
 
-        # Only enqueue + arm on the first successful registration; re-registrations
-        # after a PG scope crash share the same channel and session row.
-        if is_nil(current_pid) do
-          Portal.Queue.enqueue(
-            :client_session_queue,
-            session_attrs(
-              socket.assigns.client,
-              socket.assigns.session_ref,
-              socket.assigns.client.attested?
-            ),
-            metadata: %{
-              subject: Authentication.Subject.to_map(socket.assigns.subject),
-              timestamp: DateTime.utc_now()
-            }
-          )
-
-          {:noreply, arm_session_durability_timer(socket)}
+        # The account CDC subscription is already active. Checking current state
+        # after subscribing closes the connect race: an earlier disable is seen
+        # here, while a later one arrives through the CDC-derived broadcast.
+        if x509_session_enabled?(socket) do
+          register_session(socket, current_pid)
         else
-          {:noreply, socket}
+          handle_info(:disconnect, socket)
         end
+    end
+  end
+
+  defp x509_session_enabled?(%{
+         assigns: %{
+           subject: %{
+             actor: %{id: actor_id},
+             credential: %{type: :x509, auth_provider_id: auth_provider_id}
+           }
+         }
+       }) do
+    Database.x509_session_enabled?(auth_provider_id, actor_id)
+  end
+
+  defp x509_session_enabled?(_socket), do: true
+
+  # Only enqueue + arm on the first successful registration; re-registrations
+  # after a PG scope crash share the same channel and session row.
+  defp register_session(socket, current_pid) do
+    if is_nil(current_pid) do
+      Portal.Queue.enqueue(
+        :client_session_queue,
+        session_attrs(
+          socket.assigns.client,
+          socket.assigns.session_ref,
+          socket.assigns.client.attested?
+        ),
+        metadata: %{
+          subject: Authentication.Subject.to_map(socket.assigns.subject),
+          timestamp: DateTime.utc_now()
+        }
+      )
+
+      {:noreply, arm_session_durability_timer(socket)}
+    else
+      {:noreply, socket}
     end
   end
 
@@ -2647,6 +2732,19 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defmodule Database do
     import Ecto.Query, only: [from: 2]
+
+    def x509_session_enabled?(auth_provider_id, actor_id) do
+      from(auth_provider in Portal.X509.AuthProvider,
+        join: actor in Portal.Actor,
+        on: actor.account_id == auth_provider.account_id,
+        where: auth_provider.id == ^auth_provider_id,
+        where: auth_provider.is_disabled == false,
+        where: actor.id == ^actor_id,
+        where: actor.is_disabled == false
+      )
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.exists?()
+    end
 
     # Nothing else clears these when a channel stops, so a cut session would
     # otherwise leave its grants behind.

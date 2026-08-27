@@ -34,4 +34,7 @@ gha-creds-*.json
 # Ignore build data for sourcekit-lsp (Swift code)
 buildServer.json
 
+# Python bytecode caches
+__pycache__/
+
 erl_crash.dump

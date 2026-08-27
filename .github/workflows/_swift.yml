@@ -53,6 +53,71 @@ jobs:
           parallel: true
           fail-on-error: false
 
+  # Photographs the real app against the mocked backend (see MockTunnel.swift) and
+  # hands the captures to commit-screenshots. Nothing is compared against a reference.
+  screenshots:
+    name: ${{ matrix.platform }}-screenshots
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The app target embeds the tunnel extension, which compiles connlib.
+          - platform: macos
+            rust-target: aarch64-apple-darwin
+          - platform: ios
+            rust-target: aarch64-apple-ios-sim
+    env:
+      XCODE_VERSION: "26.2"
+      # GIT_SHA stays unset: the settings screens print it as their build
+      # string, and the commit would move two images on every push.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: false
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: ${{ matrix.rust-target }}
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      # GPU blend rounding differs between Apple chip generations, so a pixel wobble
+      # can be traced to the chip that drew it.
+      - name: Name the hardware under the VM
+        run: |
+          sysctl -n hw.model machdep.cpu.brand_string
+          system_profiler SPDisplaysDataType | grep -E "Chipset|Model|Metal" || true
+      # The wallpaper shows through the window corners, and macOS shifts it over the day.
+      - name: Pin what is behind the windows
+        if: matrix.platform == 'macos'
+        run: |
+          defaults -currentHost write com.apple.screensaver idleTime -int 0
+
+          osascript -e "tell application \"System Events\" to tell every desktop \
+            to set picture to \"${GITHUB_WORKSPACE}/swift/apple/FirezoneUITests/Resources/screenshot-backdrop.png\"" \
+            || echo "::warning::Could not set the desktop picture; the window corners stay at the mercy of the wallpaper"
+      - name: Boot the simulator
+        if: matrix.platform == 'ios'
+        run: mise run //swift/apple:boot-simulator
+      - name: Photograph the ${{ matrix.platform }} screens
+        # The runner context only exists at step level.
+        env:
+          DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
+          RESULT_BUNDLE_DIR: ${{ runner.temp }}
+        run: mise run //swift/apple:screenshots-${{ matrix.platform }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.platform }}-screenshots
+          path: swift/apple/screenshots/${{ matrix.platform }}
+      # The result bundles hold XCUITest's own failure screenshots and logs.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: ${{ matrix.platform }}-screenshots-xcresult
+          path: ${{ runner.temp }}/FirezoneUITests-*.xcresult
+
   static-analysis:
     runs-on: macos-26
     permissions:
@@ -147,6 +212,7 @@ jobs:
           ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
           PKG_ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
           NOTARIZE: "${{ github.event_name == 'workflow_dispatch' }}"
+          FIREZONE_NO_TELEMETRY: "${{ github.event_name != 'workflow_dispatch' }}"
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"

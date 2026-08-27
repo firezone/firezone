@@ -14,7 +14,7 @@ defmodule PortalWeb.SignInHTML do
         <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
         <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
         <link rel="manifest" href={~p"/site.webmanifest"} />
-        <meta name="theme-color" content="#331700" />
+        <meta name="theme-color" content="#FF7300" />
         <meta name="csrf-token" content={get_csrf_token()} />
         <.live_title suffix=" · Firezone">
           {assigns[:page_title] || "Firezone"}
@@ -74,7 +74,7 @@ defmodule PortalWeb.SignInHTML do
         <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
         <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
         <link rel="manifest" href={~p"/site.webmanifest"} />
-        <meta name="theme-color" content="#331700" />
+        <meta name="theme-color" content="#FF7300" />
         <meta name="csrf-token" content={get_csrf_token()} />
         <.live_title suffix=" · Firezone">
           {assigns[:page_title] || "Firezone"}
@@ -145,7 +145,7 @@ defmodule PortalWeb.SignInHTML do
         <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
         <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
         <link rel="manifest" href={~p"/site.webmanifest"} />
-        <meta name="theme-color" content="#331700" />
+        <meta name="theme-color" content="#FF7300" />
         <meta name="csrf-token" content={get_csrf_token()} />
         <.live_title suffix=" · Firezone">
           {assigns[:page_title] || "Firezone"}
@@ -188,7 +188,7 @@ defmodule PortalWeb.SignInHTML do
             has been disabled.
           </p>
           <p class="mt-4 text-xs text-muted">
-            Please contact your Firezone administrator to re-enable this account.
+            Please contact your Firezone administrator to enable this account.
           </p>
         </div>
       </body>
@@ -208,7 +208,7 @@ defmodule PortalWeb.SignInHTML do
         <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
         <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
         <link rel="manifest" href={~p"/site.webmanifest"} />
-        <meta name="theme-color" content="#331700" />
+        <meta name="theme-color" content="#FF7300" />
         <meta name="csrf-token" content={get_csrf_token()} />
         <.live_title suffix=" · Firezone">
           {assigns[:page_title] || "Firezone"}

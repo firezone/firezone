@@ -35,12 +35,15 @@ defmodule Portal.Changes.Consumer do
     "oidc_auth_providers" => Hooks.AuthProviders,
     "email_otp_auth_providers" => Hooks.AuthProviders,
     "userpass_auth_providers" => Hooks.AuthProviders,
+    "x509_auth_providers" => Hooks.X509AuthProviders,
     "entra_directories" => Hooks.Directories,
     "okta_directories" => Hooks.Directories,
     "google_directories" => Hooks.Directories,
     "relay_tokens" => Hooks.RelayTokens,
     "intune_posture_providers" => Hooks.IntunePostureProviders,
-    "iru_posture_providers" => Hooks.IruPostureProviders
+    "iru_posture_providers" => Hooks.IruPostureProviders,
+    "defender_posture_providers" => Hooks.DefenderPostureProviders,
+    "santa_posture_providers" => Hooks.SantaPostureProviders
   }
 
   @impl true

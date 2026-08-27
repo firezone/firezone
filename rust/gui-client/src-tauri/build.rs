@@ -71,6 +71,15 @@ fn main() -> Result<()> {
 
     println!("cargo:rerun-if-changed=../policy-templates/windows/firezone.admx");
 
+    // `FIREZONE_NO_TELEMETRY` is also a run-time flag, but the MSI runs
+    // `register-sparse.exe` with an environment we do not control, so CI stamps the
+    // build-time value in as well.
+    println!("cargo:rerun-if-env-changed=FIREZONE_NO_TELEMETRY");
+    println!("cargo:rustc-check-cfg=cfg(no_telemetry)");
+    if std::env::var("FIREZONE_NO_TELEMETRY").as_deref() == Ok("true") {
+        println!("cargo:rustc-cfg=no_telemetry");
+    }
+
     let pfn = format!("{PACKAGE_NAME}_{}", publisher_id(PUBLISHER_DN));
     println!("cargo:rustc-env=FIREZONE_PACKAGE_FAMILY_NAME={pfn}");
     write_wix_package_identity(&pfn)?;

@@ -12,6 +12,8 @@ ne_profile_id=$(extract_uuid "$MACOS_NE_PROVISIONING_PROFILE")
 temp_dir="${TEMP_DIR:-$(mktemp -d)}"
 package_path="$temp_dir/Firezone.pkg"
 git_sha=${GITHUB_SHA:-$(git rev-parse HEAD)}
+# CI sets this for every build that is not a release, so nothing it builds reports.
+no_telemetry=${FIREZONE_NO_TELEMETRY:-false}
 project_file=swift/apple/Firezone.xcodeproj
 code_sign_identity="Apple Distribution: Firezone, Inc. (47R2M6779T)"
 installer_code_sign_identity="3rd Party Mac Developer Installer: Firezone, Inc. (47R2M6779T)"
@@ -30,6 +32,7 @@ echo "Building and signing app..."
 seconds_since_epoch=$(date +%s)
 xcodebuild build \
     GIT_SHA="$git_sha" \
+    FIREZONE_NO_TELEMETRY="$no_telemetry" \
     CODE_SIGN_STYLE=Manual \
     CODE_SIGN_IDENTITY="$code_sign_identity" \
     CONFIGURATION_BUILD_DIR="$temp_dir" \

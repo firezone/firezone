@@ -4,51 +4,305 @@
 //  LICENSE: Apache-2.0
 //
 
-// Backs the `--mock-tunnel` launch argument: feeds the real `Store` a connected
-// status and a canned resource + connected-device list, so the macOS menu bar and
-// the iOS app UI can be exercised without a portal, auth, system extension, or live
-// peers. Mirrors the desktop client's `fake_controller.rs`. DEBUG-only, so it ships
-// in no release. On iOS the Simulator cannot run a Network Extension at all; the mock
-// sidesteps it entirely.
+// Backs the `--mock-tunnel` launch argument: feeds the real `Store` the state a
+// fixture in `Mocks/Scenarios` describes, so the UI can be exercised without a
+// portal, auth, system extension, or live peers. Mirrors the desktop client's
+// `fake_controller.rs`. DEBUG-only, so it ships in no release.
 
 #if DEBUG
   import Foundation
   @preconcurrency import NetworkExtension
   import UserNotifications
 
-  extension Store {
-    /// A `Store` wired to mock dependencies for the `--mock-tunnel` demo.
-    #if os(macOS)
-      public static func mock(logDirectory: URL? = nil) -> Store {
-        Store(
-          sessionNotification: MockSessionNotification(),
-          systemExtensionManager: MockSystemExtensionManager(),
-          updateChecker: MockUpdateChecker(),
-          tunnelManagerFactory: MockTunnelProviderManagerFactory(),
-          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
-        )
-      }
-    #else
-      public static func mock(logDirectory: URL? = nil) -> Store {
-        Store(
-          sessionNotification: MockSessionNotification(),
-          tunnelManagerFactory: MockTunnelProviderManagerFactory(),
-          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
-        )
-      }
-    #endif
+  #if os(macOS)
+    import AppKit
+  #endif
+
+  #if os(iOS)
+    import UIKit
+  #endif
+
+  /// The state a fixture describes, reported unchanged for the life of the
+  /// process so that a capture cannot race a transition.
+  struct MockScenario: Decodable, Sendable {
+    let hasVPNConfiguration: Bool
+    let vpnStatus: VPNStatus
+    let systemExtension: SystemExtension
+    let notifications: NotificationDecision
+    let actorName: String
+    let resources: [Resource]
+    let connectedDevices: [ConnectedDevice]
+    let favorites: [String]
+    let providerLogFolderSize: Int64
+
+    enum VPNStatus: String, Decodable, Sendable {
+      case invalid
+      case disconnected
+      case connecting
+      case connected
+      case reasserting
+      case disconnecting
+    }
+
+    enum SystemExtension: String, Decodable, Sendable {
+      case needsInstall
+      case needsReplacement
+      case installed
+      case needsReboot
+    }
+
+    enum NotificationDecision: String, Decodable, Sendable {
+      case notDetermined
+      case denied
+      case authorized
+    }
   }
 
-  /// Answers `pollUpdates` with the canned snapshot and reports a connected tunnel.
+  extension MockScenario {
+    static var connected: MockScenario { named("connected") }
+
+    static func named(_ name: String) -> MockScenario {
+      let url = Bundle.module.url(
+        forResource: name, withExtension: "json", subdirectory: "Scenarios"
+      )
+
+      guard let url else { fatalError("No mock scenario named '\(name)'") }
+
+      do {
+        return try JSONDecoder().decode(MockScenario.self, from: Data(contentsOf: url))
+      } catch {
+        fatalError("Mock scenario '\(name)' did not load: \(error)")
+      }
+    }
+  }
+
+  extension MockScenario.VPNStatus {
+    fileprivate var status: NEVPNStatus {
+      switch self {
+      case .invalid: return .invalid
+      case .disconnected: return .disconnected
+      case .connecting: return .connecting
+      case .connected: return .connected
+      case .reasserting: return .reasserting
+      case .disconnecting: return .disconnecting
+      }
+    }
+  }
+
+  extension MockScenario.NotificationDecision {
+    fileprivate var status: UNAuthorizationStatus {
+      switch self {
+      case .notDetermined: return .notDetermined
+      case .denied: return .denied
+      case .authorized: return .authorized
+      }
+    }
+  }
+
+  #if os(macOS)
+    extension MockScenario.SystemExtension {
+      fileprivate var status: SystemExtensionStatus {
+        switch self {
+        case .needsInstall: return .needsInstall
+        case .needsReplacement: return .needsReplacement
+        case .installed: return .installed
+        case .needsReboot: return .needsReboot
+        }
+      }
+    }
+  #endif
+
+  extension Store {
+    public static func mockFromCommandLine() -> Store? {
+      guard MockRun.isActive else { return nil }
+
+      guard let name = flagValue("--mock-scenario") else { return mock() }
+
+      return mock(scenario: .named(name))
+    }
+
+    static func mock(scenario: MockScenario = .connected, logDirectory: URL? = nil) -> Store {
+      // swiftlint:disable:next no_userdefaults_standard - DI entry point
+      UserDefaults.standard.set(scenario.favorites, forKey: Favorites.key)
+
+      seedConfiguration(with: scenario)
+
+      #if os(macOS)
+        return Store(
+          sessionNotification: MockSessionNotification(decision: scenario.notifications.status),
+          systemExtensionManager: MockSystemExtensionManager(
+            status: scenario.systemExtension.status
+          ),
+          updateChecker: MockUpdateChecker(),
+          tunnelManagerFactory: MockTunnelProviderManagerFactory(scenario: scenario),
+          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
+        )
+      #else
+        return Store(
+          sessionNotification: MockSessionNotification(decision: scenario.notifications.status),
+          tunnelManagerFactory: MockTunnelProviderManagerFactory(scenario: scenario),
+          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
+        )
+      #endif
+    }
+
+    /// Settles the settings the app reports before anything reads them.
+    ///
+    /// `SettingsViewModel` snapshots each unforced setting when it is built and only
+    /// ever re-reads the forced ones, so a value that arrives later leaves the form
+    /// showing a stale one and its Apply button lit.
+    private static func seedConfiguration(with scenario: MockScenario) {
+      let configuration = Configuration.shared
+
+      configuration.actorName = scenario.actorName
+      configuration.accountSlug = "example-corp"
+
+      // A DEBUG build points these at the staging stack, which a screenshot of the
+      // settings screens would then advertise.
+      configuration.authURL = "https://app.firezone.dev"
+      configuration.apiURL = "wss://api.firezone.dev"
+      configuration.logFilter = "info"
+    }
+  }
+
+  /// The argument following `flag`, or the value it carries after an `=`.
+  private func flagValue(_ flag: String) -> String? {
+    let arguments = CommandLine.arguments
+
+    for (index, argument) in arguments.enumerated() {
+      if argument == flag, index + 1 < arguments.count {
+        return arguments[index + 1]
+      }
+
+      if argument.hasPrefix("\(flag)=") {
+        return String(argument.dropFirst(flag.count + 1))
+      }
+    }
+
+    return nil
+  }
+
+  #if os(iOS)
+    extension UIApplication {
+      /// Takes the animation and the translucency out of a mocked run.
+      ///
+      /// Both hold still long enough to be photographed, so waiting for the
+      /// screen to settle cannot tell a bar mid-animation, or one sampling
+      /// whatever is behind it, from one that has come to rest.
+      @MainActor
+      public static func applyMockPresentation() {
+        guard MockRun.isActive else { return }
+
+        UIView.setAnimationsEnabled(false)
+
+        // A bar button's default background image draws it on a material of its
+        // own that does not come out the same twice; an empty image is flat.
+        let flatButton = UIBarButtonItemAppearance(style: .plain)
+        flatButton.normal.backgroundImage = UIImage()
+        flatButton.highlighted.backgroundImage = UIImage()
+        flatButton.disabled.backgroundImage = UIImage()
+
+        let navigationBar = UINavigationBarAppearance()
+        navigationBar.configureWithOpaqueBackground()
+        navigationBar.buttonAppearance = flatButton
+        navigationBar.backButtonAppearance = flatButton
+        navigationBar.doneButtonAppearance = flatButton
+        UINavigationBar.appearance().standardAppearance = navigationBar
+        UINavigationBar.appearance().scrollEdgeAppearance = navigationBar
+        UINavigationBar.appearance().compactAppearance = navigationBar
+
+        let tabBar = UITabBarAppearance()
+        tabBar.configureWithOpaqueBackground()
+        UITabBar.appearance().standardAppearance = tabBar
+        UITabBar.appearance().scrollEdgeAppearance = tabBar
+
+        let toolbar = UIToolbarAppearance()
+        toolbar.configureWithOpaqueBackground()
+        UIToolbar.appearance().standardAppearance = toolbar
+        UIToolbar.appearance().scrollEdgeAppearance = toolbar
+      }
+    }
+  #endif
+
+  #if os(macOS)
+    /// Holds the window observer below for the life of the process.
+    @MainActor private var mockWindowObserver: (any NSObjectProtocol)?
+
+    extension AppView.WindowDefinition {
+      public static func mockFromCommandLine() -> Self? {
+        guard let name = flagValue("--mock-window") else { return nil }
+
+        guard let window = Self(rawValue: name) else {
+          Log.warning("Ignoring unknown --mock-window '\(name)'")
+
+          return nil
+        }
+
+        return window
+      }
+    }
+
+    extension NSApplication {
+      /// Sets the appearance a capture wants and keeps the focus off its windows.
+      ///
+      /// The appearance is set from in here because AppKit resolves it through
+      /// `CFPreferences`, which does not read `UserDefaults`' argument domain: an
+      /// `-AppleInterfaceStyle` argument reaches the app and changes nothing.
+      ///
+      /// The focus is cleared because the insertion point a text field blinks keeps
+      /// two captures half a second apart from ever matching. SwiftUI claims it back
+      /// while the window settles, hence the second pass a turn later.
+      @MainActor
+      public static func applyMockPresentation() {
+        shared.appearance = mockAppearance()
+
+        mockWindowObserver = NotificationCenter.default.addObserver(
+          forName: NSWindow.didBecomeKeyNotification,
+          object: nil,
+          queue: .main
+        ) { notification in
+          guard let window = notification.object as? NSWindow else { return }
+
+          MainActor.assumeIsolated {
+            DispatchQueue.main.async { window.makeFirstResponder(nil) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+              window.makeFirstResponder(nil)
+            }
+          }
+        }
+      }
+
+      private static func mockAppearance() -> NSAppearance? {
+        guard let name = flagValue("--mock-appearance") else { return nil }
+
+        switch name {
+        case "light": return NSAppearance(named: .aqua)
+        case "dark": return NSAppearance(named: .darkAqua)
+        default:
+          Log.warning("Ignoring unknown --mock-appearance '\(name)'")
+          return nil
+        }
+      }
+    }
+  #endif
+
+  /// Answers `pollUpdates` with the scenario's snapshot and reports its tunnel status.
   private final class MockTunnelSession: TunnelSessionProtocol {
-    var status: NEVPNStatus { .connected }
+    private let scenario: MockScenario
+
+    var status: NEVPNStatus { scenario.vpnStatus.status }
 
     /// Drops to zero when a clear is acknowledged, so the settings screen shows
     /// the size a real provider would report afterwards.
     ///
     /// nonisolated(unsafe): the session is Sendable, but the mock is only ever
     /// driven from the main actor.
-    nonisolated(unsafe) private var providerLogFolderSize = MockFixtures.providerLogFolderSize
+    nonisolated(unsafe) private var providerLogFolderSize: Int64
+
+    init(scenario: MockScenario) {
+      self.scenario = scenario
+      self.providerLogFolderSize = scenario.providerLogFolderSize
+    }
 
     // swiftlint:disable:next discouraged_optional_collection
     func startTunnel(options: [String: Any]?) throws {}
@@ -76,8 +330,8 @@
       case .pollUpdates(let request):
         do {
           let stateChange = try ConnlibState.makeIfChanged(
-            resources: MockFixtures.resources,
-            connectedDevices: MockFixtures.connectedDevices,
+            resources: scenario.resources,
+            connectedDevices: scenario.connectedDevices,
             isLogStreamingActive: false,
             comparedTo: request.stateHash
           )
@@ -120,14 +374,23 @@
     }
   }
 
-  /// Both factory methods hand back the same `MockTunnelProviderManager` instance, so
-  /// session identity is stable across reloads — `Store` can subscribe to one mock
-  /// session for the lifetime of the app.
+  /// Both factory methods hand back the same `MockTunnelProviderManager`, so session
+  /// identity survives a reload and `Store` can subscribe to one mock session for the
+  /// life of the app.
   @MainActor
   private final class MockTunnelProviderManagerFactory: TunnelProviderManagerFactory {
-    private let manager = MockTunnelProviderManager()
+    private let scenario: MockScenario
+    private let manager: MockTunnelProviderManager
 
-    func loadAllFromPreferences() async throws -> [any TunnelProviderManager] { [manager] }
+    init(scenario: MockScenario) {
+      self.scenario = scenario
+      self.manager = MockTunnelProviderManager(scenario: scenario)
+    }
+
+    func loadAllFromPreferences() async throws -> [any TunnelProviderManager] {
+      scenario.hasVPNConfiguration ? [manager] : []
+    }
+
     func createManager() -> any TunnelProviderManager { manager }
   }
 
@@ -141,11 +404,13 @@
     // the system, so the shipped identifier serves as well as a derived one.
     let extensionBundleIdentifier = "dev.firezone.firezone.network-extension"
 
-    private let session = MockTunnelSession()
+    private let session: MockTunnelSession
 
-    init() {
+    init(scenario: MockScenario) {
+      session = MockTunnelSession(scenario: scenario)
+
       let proto = NETunnelProviderProtocol()
-      proto.providerConfiguration = Configuration().toProviderConfiguration()
+      proto.providerConfiguration = Configuration.shared.toProviderConfiguration()
       proto.providerBundleIdentifier = extensionBundleIdentifier
       proto.serverAddress = "Firezone"
       protocolConfiguration = proto
@@ -158,8 +423,14 @@
   #if os(macOS)
     @MainActor
     private final class MockSystemExtensionManager: SystemExtensionManagerProtocol {
-      func check() async throws -> SystemExtensionStatus { .installed }
-      func tryInstall() async throws -> SystemExtensionStatus { .installed }
+      private let status: SystemExtensionStatus
+
+      init(status: SystemExtensionStatus) {
+        self.status = status
+      }
+
+      func check() async throws -> SystemExtensionStatus { status }
+      func tryInstall() async throws -> SystemExtensionStatus { status }
     }
 
     /// Reports the client as up to date, so the menu bar shows no update item.
@@ -172,18 +443,23 @@
     }
   #endif
 
-  /// Reports notifications as already authorised so the iOS app routes straight to the
-  /// session UI instead of `GrantNotificationsView`.
+  /// Reports the scenario's answer to the notification prompt.
   ///
   /// Both platforms use it: the real `SessionNotification` reaches
-  /// `UNUserNotificationCenter`, which raises rather than returning an error when the
-  /// process has no app bundle, so it cannot be built from a test.
+  /// `UNUserNotificationCenter`, which raises rather than returning an error when
+  /// the process has no app bundle, so it cannot be built from a test.
   @MainActor
   private final class MockSessionNotification: SessionNotificationProtocol {
     var signInHandler: () async -> Void = {}
 
-    func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus { .authorized }
-    func loadAuthorizationStatus() async -> UNAuthorizationStatus { .authorized }
+    private let decision: UNAuthorizationStatus
+
+    init(decision: UNAuthorizationStatus) {
+      self.decision = decision
+    }
+
+    func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus { decision }
+    func loadAuthorizationStatus() async -> UNAuthorizationStatus { decision }
     func showResourceNotification(title: String, body: String) async {}
 
     #if os(macOS)
@@ -194,9 +470,6 @@
   }
 
   private enum MockFixtures {
-    /// 30 MB, so the settings screen shows a believable provider-side log size.
-    static let providerLogFolderSize: Int64 = 30_000_000
-
     /// The provider streams the bytes of a ZIP archive, so answer with the
     /// smallest valid one: an empty end-of-central-directory record. An export
     /// produced against the mock then unzips cleanly.
@@ -223,45 +496,5 @@
 
       return directory
     }
-
-    static let resources: [Resource] = {
-      let site = Site(id: "demo-site", name: "Demo Site")
-      return [
-        Resource(
-          id: "internet-resource", name: "Internet Resource", address: nil,
-          addressDescription: nil, status: .online, sites: [site], type: .internet),
-        Resource(
-          id: "office-network", name: "Office network", address: "10.0.0.0/16",
-          addressDescription: "CIDR resource", status: .online, sites: [site], type: .cidr),
-        Resource(
-          id: "demo-gitlab", name: "Demo GitLab", address: "gitlab.demo.example",
-          addressDescription: "https://gitlab.demo.example", status: .online, sites: [site],
-          type: .dns),
-        Resource(
-          id: "lab-network", name: "Lab network (offline)", address: "192.168.50.0/24",
-          addressDescription: "Gateway offline", status: .offline, sites: [site], type: .cidr),
-        Resource(
-          id: "demo-wiki", name: "Demo Wiki (unknown)", address: "wiki.demo.example",
-          addressDescription: "Gateway state unknown", status: .unknown, sites: [site], type: .dns),
-      ]
-    }()
-
-    static let connectedDevices: [ConnectedDevice] = {
-      let poolPatterns: [[String]] = [
-        ["Engineering Pool"],
-        ["Engineering Pool", "QA Pool"],
-        ["QA Pool"],
-        ["Sales Pool"],
-      ]
-      return (0..<22).map { index in
-        ConnectedDevice(
-          id: "client-\(index + 1)",
-          name: "Demo Device \(index + 1)",
-          tunIPv4: "100.96.0.\(index + 1)",
-          tunIPv6: "fd00:2021:1111::\(String(index + 1, radix: 16))",
-          pools: poolPatterns[index % poolPatterns.count]
-        )
-      }
-    }()
   }
 #endif

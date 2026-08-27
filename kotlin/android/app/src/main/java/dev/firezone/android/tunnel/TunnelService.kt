@@ -53,6 +53,7 @@ import uniffi.connlib.Event
 import uniffi.connlib.ProtectSocket
 import uniffi.connlib.Session
 import uniffi.connlib.SessionInterface
+import uniffi.connlib.configureLogger
 import uniffi.connlib.enforceLogSizeCap
 import uniffi.connlib.isLogStreamingActive
 import uniffi.connlib.logCleanupDefaultIntervalSecs
@@ -330,6 +331,12 @@ class TunnelService : VpnService() {
                     Telemetry.setFirezoneId(deviceIdValue)
                     Telemetry.setAccountSlug(config.accountSlug)
 
+                    configureLogger(
+                        logDir(this@TunnelService),
+                        config.logFilter,
+                        flowLogsDir(this@TunnelService),
+                    )
+
                     Session
                         .newAndroid(
                             config =
@@ -339,9 +346,6 @@ class TunnelService : VpnService() {
                                     accountSlug = config.accountSlug,
                                     deviceId = deviceIdValue,
                                     deviceName = getDeviceName(),
-                                    logDir = getLogDir(),
-                                    logFilter = config.logFilter,
-                                    flowLogsDir = flowLogsDir(this@TunnelService),
                                     isInternetResourceActive = resourceState.isEnabled(),
                                     deviceInfo = deviceInfo,
                                 ),
@@ -420,12 +424,12 @@ class TunnelService : VpnService() {
         logCleanupJob =
             serviceScope.launch(Dispatchers.IO) {
                 try {
-                    val logDir = getLogDir()
+                    val dir = logDir(this@TunnelService)
                     val maxSizeMb = logCleanupDefaultMaxSizeMb()
                     val intervalMs = logCleanupDefaultIntervalSecs().toLong() * 1000
                     while (isActive) {
                         try {
-                            val bytesDeleted = enforceLogSizeCap(listOf(logDir), maxSizeMb)
+                            val bytesDeleted = enforceLogSizeCap(listOf(dir), maxSizeMb)
                             if (bytesDeleted > 0u) {
                                 Log.d(TAG, "Log cleanup deleted $bytesDeleted bytes")
                             }
@@ -512,13 +516,6 @@ class TunnelService : VpnService() {
             }
 
         return deviceId
-    }
-
-    private fun getLogDir(): String {
-        // Create log directory if it doesn't exist
-        val logDir = cacheDir.absolutePath + "/logs"
-        Files.createDirectories(Paths.get(logDir))
-        return logDir
     }
 
     fun startConnectedNotification() {
@@ -615,7 +612,11 @@ class TunnelService : VpnService() {
                             }
 
                             is TunnelCommand.SetLogDirectives -> {
-                                session.setLogDirectives(command.directives)
+                                configureLogger(
+                                    logDir(this@TunnelService),
+                                    command.directives,
+                                    flowLogsDir(this@TunnelService),
+                                )
                             }
 
                             is TunnelCommand.SetTun -> {
@@ -779,6 +780,12 @@ class TunnelService : VpnService() {
         private const val MTU: Int = 1280
         private const val TAG: String = "TunnelService"
         private const val FEATURE_FLAG_POLL_INTERVAL_MS: Long = 5_000
+
+        fun logDir(context: Context): String {
+            val logDir = context.cacheDir.absolutePath + "/logs"
+            Files.createDirectories(Paths.get(logDir))
+            return logDir
+        }
 
         // Under `filesDir` (persistent) and outside the log directory so exported
         // log bundles never sweep the spool up.

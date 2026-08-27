@@ -11,7 +11,7 @@ use crate::fd::RawFd;
 
 use std::{
     fmt,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -80,9 +80,6 @@ pub struct AndroidSessionConfig {
     pub device_id: String,
     pub account_slug: String,
     pub device_name: String,
-    pub log_dir: String,
-    pub log_filter: String,
-    pub flow_logs_dir: Option<String>,
     pub device_info: DeviceInfo,
     pub is_internet_resource_active: bool,
 }
@@ -182,6 +179,17 @@ pub enum Event {
 }
 
 #[uniffi::export]
+impl ConnlibError {
+    /// Renders the error and its source chain.
+    ///
+    /// UniFFI maps this type to an opaque foreign class, so the `Display` impl is
+    /// not otherwise reachable from the bindings.
+    pub fn message(&self) -> String {
+        self.to_string()
+    }
+}
+
+#[uniffi::export]
 impl DisconnectError {
     pub fn message(&self) -> String {
         self.0.to_string()
@@ -224,9 +232,6 @@ impl Session {
             device_id,
             account_slug,
             device_name,
-            log_dir,
-            log_filter,
-            flow_logs_dir,
             device_info,
             is_internet_resource_active,
         } = config;
@@ -239,9 +244,6 @@ impl Session {
             device_id,
             account_slug,
             Some(device_name),
-            log_dir,
-            log_filter,
-            flow_logs_dir,
             device_info,
             is_internet_resource_active,
             tcp_socket_factory,
@@ -254,19 +256,12 @@ impl Session {
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 impl Session {
     #[uniffi::constructor]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "This is the API we want to expose over FFI."
-    )]
     pub fn new_apple(
         api_url: String,
         token: String,
         device_id: String,
         account_slug: String,
         device_name: Option<String>,
-        log_dir: String,
-        log_filter: String,
-        flow_logs_dir: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
     ) -> Result<Self, ConnlibError> {
@@ -274,22 +269,24 @@ impl Session {
         let tcp_socket_factory = Arc::new(socket_factory::tcp);
         let udp_socket_factory = Arc::new(socket_factory::udp);
 
+        // Locate the TUN device before `connect` spawns anything: every failed
+        // search used to leave a Tokio runtime and its threads behind, and the
+        // NetworkExtension process outlives the session that owns them.
+        let tun_fd = find_tun_fd()?;
+
         let session = connect(
             api_url,
             token,
             device_id,
             account_slug,
             device_name,
-            log_dir,
-            log_filter,
-            flow_logs_dir,
             device_info,
             is_internet_resource_active,
             tcp_socket_factory,
             udp_socket_factory,
         )?;
 
-        set_tun_from_search(&session)?;
+        session.set_tun(tun_fd)?;
 
         Ok(session)
     }
@@ -298,10 +295,6 @@ impl Session {
 #[uniffi::export]
 impl Session {
     #[uniffi::constructor]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "This is the API we want to expose over FFI."
-    )]
     /// Dummy constructor that isn't feature-gated by an OS.
     ///
     /// This only exists to make working on the FFI module from Linux/Windows more convenient without many "unused code" warnings.
@@ -311,9 +304,6 @@ impl Session {
         device_id: String,
         account_slug: String,
         device_name: Option<String>,
-        log_dir: String,
-        log_filter: String,
-        flow_logs_dir: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
     ) -> Result<Self, ConnlibError> {
@@ -326,9 +316,6 @@ impl Session {
             device_id,
             account_slug,
             device_name,
-            log_dir,
-            log_filter,
-            flow_logs_dir,
             device_info,
             is_internet_resource_active,
             tcp_socket_factory,
@@ -339,28 +326,25 @@ impl Session {
     }
 }
 
-/// Set up TUN device with retry logic.
+/// Find the TUN device with retry logic.
 ///
 /// Retries a few times with a small delay, as the NetworkExtension
 /// might still be setting up the TUN interface.
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-fn set_tun_from_search(session: &Session) -> Result<(), ConnlibError> {
+fn find_tun_fd() -> Result<RawFd, ConnlibError> {
     const MAX_TUN_SETUP_ATTEMPTS: u32 = 5;
     const TUN_SETUP_RETRY_DELAY_MS: u64 = 100;
 
-    let runtime = session.runtime.as_ref().context("No runtime")?;
-
     let mut last_error = None;
     for attempt in 1..=MAX_TUN_SETUP_ATTEMPTS {
-        tracing::debug!("Attempting to find TUN device (attempt {})", attempt);
-        match platform::Tun::new(runtime.handle()) {
-            Ok(tun) => {
-                tracing::debug!("Successfully found and set TUN device");
-                session.inner.set_tun(Box::new(tun));
-                return Ok(());
+        tracing::debug!(attempt, "Attempting to find TUN device");
+        match platform::search_fd() {
+            Ok(fd) => {
+                tracing::debug!("Successfully found TUN device");
+                return Ok(fd);
             }
             Err(e) => {
-                tracing::warn!("Attempt {} failed: {}", attempt, e);
+                tracing::debug!(attempt, error = %e, "Failed to find TUN device");
                 last_error = Some(e);
                 if attempt < MAX_TUN_SETUP_ATTEMPTS {
                     std::thread::sleep(std::time::Duration::from_millis(TUN_SETUP_RETRY_DELAY_MS));
@@ -403,16 +387,6 @@ impl Session {
 
     pub fn reset(&self, reason: String) {
         self.inner.reset(reason)
-    }
-
-    pub fn set_log_directives(&self, directives: String) -> Result<(), ConnlibError> {
-        let (_, reload_handle, _) = LOGGER_STATE.get().context("Logger not yet initialised")?;
-
-        reload_handle
-            .reload(&directives)
-            .context("Failed to apply new directives")?;
-
-        Ok(())
     }
 
     pub fn set_tun(&self, fd: RawFd) -> Result<(), ConnlibError> {
@@ -532,9 +506,6 @@ fn connect(
     device_id: String,
     account_slug: String,
     device_name: Option<String>,
-    log_dir: String,
-    log_filter: String,
-    flow_logs_dir: Option<String>,
     device_info: DeviceInfo,
     is_internet_resource_active: bool,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
@@ -558,11 +529,13 @@ fn connect(
 
     install_rustls_crypto_provider();
 
-    let flow_logs_dir = flow_logs_dir
-        .filter(|dir| !dir.is_empty())
-        .map(PathBuf::from);
-
-    init_logging(&PathBuf::from(log_dir), log_filter, flow_logs_dir.clone())?;
+    // Fail loudly rather than run a session with no logs and no flow-log spool.
+    let flow_logs_dir = LOGGER
+        .get()
+        .context("Logger must be configured before connecting")?
+        .flow_log_guard
+        .as_ref()
+        .map(|guard| guard.spool_root().to_path_buf());
 
     tunnel_bypass_resolver::configure(tcp_socket_factory.clone(), udp_socket_factory.clone());
 
@@ -655,25 +628,52 @@ pub fn stop_telemetry() {
     telemetry::stop();
 }
 
-static LOGGER_STATE: OnceLock<(
-    logging::file::Handle,
-    logging::FilterReloadHandle,
-    Option<flow_log_writer::Guard>,
-)> = OnceLock::new();
+/// The process-wide logger, installed once by [`configure_logger`].
+struct Logger {
+    reload_handle: logging::FilterReloadHandle,
+    /// Owns the flow-log spool root, so the uploader can be pointed at the same
+    /// place the writer uses rather than told separately.
+    flow_log_guard: Option<flow_log_writer::Guard>,
+    _file_handle: logging::file::Handle,
+}
 
-fn init_logging(log_dir: &Path, log_filter: String, flow_logs_dir: Option<PathBuf>) -> Result<()> {
-    if let Some((_, reload_handle, _)) = LOGGER_STATE.get() {
-        reload_handle
+static LOGGER: OnceLock<Logger> = OnceLock::new();
+
+/// Installs the logger, or re-applies `log_filter` when it is already installed.
+///
+/// A session is not the only thing that logs: the network extension is woken
+/// without one to drain flow logs, and every event emitted before this runs is
+/// dropped. So every entry point configures the logger itself, and [`connect`]
+/// requires that to have happened already: it reads the flow-log spool root back
+/// off the installed logger rather than being told it a second time.
+///
+/// Only `log_filter` is re-applied. The directories stay whichever the first
+/// call passed, so callers must agree on them.
+#[uniffi::export]
+pub fn configure_logger(
+    log_dir: String,
+    log_filter: String,
+    flow_logs_dir: Option<String>,
+) -> Result<(), ConnlibError> {
+    if let Some(logger) = LOGGER.get() {
+        logger
+            .reload_handle
             .reload(&log_filter)
             .context("Failed to apply new log-filter")?;
         return Ok(());
     }
 
-    let (file_log_filter, file_reload_handle) = logging::try_filter(&log_filter)?;
-    let (platform_log_filter, platform_reload_handle) = logging::try_filter(&log_filter)?;
-    let (file_layer, handle) = logging::file::layer(log_dir, "connlib");
+    let (file_log_filter, file_reload_handle) =
+        logging::try_filter(&log_filter).context("Failed to parse log filter")?;
+    let (platform_log_filter, platform_reload_handle) =
+        logging::try_filter(&log_filter).context("Failed to parse log filter")?;
+    let (file_layer, handle) = logging::file::layer(&PathBuf::from(log_dir), "connlib");
     // Spools flow-log reports for the uploader, like the desktop entrypoints do.
-    let (flow_log_layer, flow_log_guard) = flow_logs_dir.map(flow_log_writer::layer).unzip();
+    let (flow_log_layer, flow_log_guard) = flow_logs_dir
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .map(flow_log_writer::layer)
+        .unzip();
 
     let subscriber = tracing_subscriber::registry()
         .with(file_layer.with_filter(file_log_filter))
@@ -691,8 +691,12 @@ fn init_logging(log_dir: &Path, log_filter: String, flow_logs_dir: Option<PathBu
 
     logging::init(subscriber)?;
 
-    LOGGER_STATE
-        .set((handle, reload_handle, flow_log_guard))
+    LOGGER
+        .set(Logger {
+            reload_handle,
+            flow_log_guard,
+            _file_handle: handle,
+        })
         .map_err(|_| anyhow!("Logging guard should never be initialized twice"))?;
 
     Ok(())

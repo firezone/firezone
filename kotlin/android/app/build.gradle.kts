@@ -16,6 +16,7 @@ plugins {
     id("com.google.devtools.ksp")
 
     id("org.jetbrains.kotlin.plugin.compose")
+    id("io.github.takahirom.roborazzi")
 }
 
 spotless {
@@ -61,6 +62,10 @@ android {
 
         val gitSha = System.getenv("GITHUB_SHA") ?: "unknown"
         resValue("string", "git_sha", "Build: \"${gitSha.take(8)}\"")
+
+        // CI sets this for every build that is not a release, so nothing it builds reports.
+        val noTelemetry = System.getenv("FIREZONE_NO_TELEMETRY") == "true"
+        buildConfigField("boolean", "NO_TELEMETRY", noTelemetry.toString())
     }
 
     signingConfigs {
@@ -280,6 +285,21 @@ dependencies {
     // inside nested blocks; our UI model that wraps a resource is named `ResourceUiModel`
     // (not `*ViewModel`) so the check doesn't mistake it for a real ViewModel.
     lintChecks("com.slack.lint.compose:compose-lint-checks:1.5.4")
+
+    // Screenshots. Roborazzi draws Compose through Robolectric's native graphics, so the
+    // screens render on the JVM without an emulator.
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    // `createComposeRule` launches `androidx.activity.ComponentActivity`, and Robolectric
+    // resolves activities against the debug manifest, which this artifact declares it in.
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.72.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.72.0")
+    testImplementation("org.robolectric:robolectric:4.16.1")
+}
+
+roborazzi {
+    outputDir.set(layout.projectDirectory.dir("../screenshots"))
 }
 
 val rustDir = layout.projectDirectory.dir("../../../rust")

@@ -6,6 +6,8 @@ defmodule PortalWeb.Settings.DevicePostureTest do
   import Portal.DevicePostureFixtures
   import Portal.IntuneFixtures
   import Portal.IruFixtures
+  import Portal.DefenderFixtures
+  import Portal.SantaFixtures
 
   setup do
     enable_device_posture()
@@ -196,7 +198,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
              "Verify Now"
            )
 
-    assert has_element?(lv, "#intune-tenant-id", "Awaiting verification...")
+    assert has_element?(lv, "#provider-tenant-id", "Awaiting verification...")
 
     lv |> element("#provider-verification-button") |> render_click()
     assert_push_event(lv, "open_url", %{url: url})
@@ -223,7 +225,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     assert_receive {:verification_ack, ^ack_ref}
     assert render(lv) =~ "tenant-123"
     assert has_element?(lv, "#provider-verification-status", "Verified")
-    assert has_element?(lv, "#intune-tenant-id", "tenant-123")
+    assert has_element?(lv, "#provider-tenant-id", "tenant-123")
     assert has_element?(lv, "button[phx-click=reset_verification]", "Reset verification")
 
     lv
@@ -656,7 +658,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
   end
 
   describe "selecting a provider type" do
-    test "lists both providers", %{conn: conn, account: account, actor: actor} do
+    test "lists every provider type", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture/new")
 
@@ -664,6 +666,8 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert html =~ "Select Provider Type"
       assert html =~ "Microsoft Intune"
       assert html =~ "Iru"
+      assert html =~ "Microsoft Defender for Endpoint"
+      assert html =~ "Santa"
 
       assert has_element?(
                lv,
@@ -671,12 +675,145 @@ defmodule PortalWeb.Settings.DevicePostureTest do
              )
 
       assert has_element?(lv, ~s|a[href="/#{account.slug}/settings/device_posture/iru/new"]|)
+
+      assert has_element?(
+               lv,
+               ~s|a[href="/#{account.slug}/settings/device_posture/defender/new"]|
+             )
+      assert has_element?(lv, ~s|a[href="/#{account.slug}/settings/device_posture/santa/new"]|)
     end
 
     test "raises on an unknown provider type", %{conn: conn, account: account, actor: actor} do
       assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture/jamf/new")
       end
+    end
+  end
+
+  describe "Santa providers" do
+    setup %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture/santa/new")
+
+      %{lv: lv}
+    end
+
+    test "verifies ListHosts and creates the provider", %{lv: lv, account: account} do
+      parent = self()
+
+      Req.Test.stub(Portal.Santa.APIClient, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        send(parent, {:santa_request, conn.request_path, Plug.Conn.get_req_header(conn, "authorization")})
+        Req.Test.json(conn, %{"hosts" => [], "more" => false})
+      end)
+
+      Req.Test.allow(Portal.Santa.APIClient, self(), lv.pid)
+
+      attrs = %{
+        name: "Acme Santa",
+        api_url: "acme.workshop.cloud/api/explorer",
+        api_key: "npsws_sk_secret"
+      }
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+      assert_received {:santa_request, "/workshop.v1.WorkshopService/ListHosts", ["npsws_sk_secret"]}
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_submit()
+      assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+      provider = Portal.Repo.get_by!(Portal.Santa.PostureProvider, account_id: account.id)
+      assert provider_name(provider) == "Acme Santa"
+      assert provider.api_url == "https://acme.workshop.cloud"
+      assert provider.api_key == "npsws_sk_secret"
+      assert provider.is_verified
+
+      assert_enqueued(
+        worker: Portal.Santa.Sync,
+        args: %{"account_id" => account.id, "posture_provider_id" => provider.id}
+      )
+    end
+
+    test "reports a rejected API key and saves nothing", %{lv: lv} do
+      Req.Test.stub(Portal.Santa.APIClient, fn conn ->
+        conn |> Plug.Conn.put_status(401) |> Req.Test.json(%{"message" => "invalid key"})
+      end)
+
+      Req.Test.allow(Portal.Santa.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{
+          name: "Acme Santa",
+          api_url: "https://acme.workshop.cloud",
+          api_key: "npsws_sk_wrong"
+        }
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert render(lv) =~ "Workshop rejected the API key"
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.Santa.PostureProvider, :count) == 0
+    end
+
+    test "drops verification when the Workshop tenant changes", %{lv: lv} do
+      Req.Test.stub(Portal.Santa.APIClient, fn conn ->
+        Req.Test.json(conn, %{"hosts" => [], "more" => false})
+      end)
+
+      Req.Test.allow(Portal.Santa.APIClient, self(), lv.pid)
+
+      attrs = %{
+        name: "Acme Santa",
+        api_url: "https://acme.workshop.cloud",
+        api_key: "npsws_sk_secret"
+      }
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{attrs | api_url: "https://other.workshop.cloud"}
+      )
+      |> render_change()
+
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert has_element?(lv, "#provider-verification-button", "Verify Now")
+    end
+
+    test "rejects a changed Workshop tenant submitted before its debounce fires", %{lv: lv} do
+      Req.Test.stub(Portal.Santa.APIClient, fn conn ->
+        Req.Test.json(conn, %{"hosts" => [], "more" => false})
+      end)
+
+      Req.Test.allow(Portal.Santa.APIClient, self(), lv.pid)
+
+      attrs = %{
+        name: "Acme Santa",
+        api_url: "https://acme.workshop.cloud",
+        api_key: "npsws_sk_secret"
+      }
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+
+      render_submit(lv, "submit", %{
+        "provider" => %{
+          "name" => attrs.name,
+          "api_url" => "https://other.workshop.cloud",
+          "api_key" => attrs.api_key
+        }
+      })
+
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.Santa.PostureProvider, :count) == 0
     end
   end
 
@@ -792,6 +929,29 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       refute has_element?(lv, "#provider-verification-status", "Verified")
       assert has_element?(lv, "#provider-verification-button", "Verify Now")
     end
+
+    test "rejects a changed tenant submitted before its debounce fires", %{lv: lv} do
+      Req.Test.stub(Portal.Iru.APIClient, fn conn -> Req.Test.json(conn, []) end)
+      Req.Test.allow(Portal.Iru.APIClient, self(), lv.pid)
+
+      attrs = %{name: "Acme Iru", subdomain: "acme", region: "us", api_token: "token"}
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+
+      render_submit(lv, "submit", %{
+        "provider" => %{
+          "name" => attrs.name,
+          "subdomain" => "other",
+          "region" => attrs.region,
+          "api_token" => attrs.api_token
+        }
+      })
+
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.Iru.PostureProvider, :count) == 0
+    end
   end
 
   test "renaming an Iru provider keeps the stored API token", %{
@@ -886,10 +1046,102 @@ defmodule PortalWeb.Settings.DevicePostureTest do
            ).api_token == "new-token"
   end
 
-  test "lists providers of both types", %{conn: conn, account: account, actor: actor} do
+  describe "Defender providers" do
+    test "uses the signed Microsoft consent flow and creates the verified provider", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/defender/new")
+
+      assert has_element?(lv, "#provider-tenant-id", "Awaiting verification...")
+      assert render(lv) =~ "Grant Microsoft admin consent"
+
+      lv |> element("#provider-verification-button") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      state =
+        url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+
+      assert {:ok, %{type: "defender-posture-provider", verification_ref: ref}} =
+               PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:get_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^ref}}
+
+      ack_ref = make_ref()
+      send(lv.pid, {:defender_posture_provider_complete, "tenant-9", ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+      assert has_element?(lv, "#provider-tenant-id", "tenant-9")
+
+      lv
+      |> form("#device-posture-form", provider: %{name: "Contoso EDR"})
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+      provider = Portal.Repo.get_by!(Portal.Defender.PostureProvider, account_id: account.id)
+      assert provider_name(provider) == "Contoso EDR"
+      assert provider.tenant_id == "tenant-9"
+      assert provider.is_verified
+
+      assert_enqueued(
+        worker: Portal.Defender.Sync,
+        args: %{"account_id" => account.id, "posture_provider_id" => provider.id}
+      )
+    end
+
+    test "refuses a second provider for the same tenant", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      defender_posture_provider_fixture(account: account, tenant_id: "tenant-9")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/defender/new")
+
+      lv |> element("#provider-verification-button") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      state =
+        url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+
+      {:ok, %{verification_ref: ref}} = PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:get_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^ref}}
+
+      ack_ref = make_ref()
+      send(lv.pid, {:defender_posture_provider_complete, "tenant-9", ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+
+      lv
+      |> form("#device-posture-form", provider: %{name: "Duplicate EDR"})
+      |> render_submit()
+
+      assert render(lv) =~ "This Defender tenant is already connected."
+      assert Portal.Repo.aggregate(Portal.Defender.PostureProvider, :count) == 1
+    end
+  end
+
+  test "lists providers of every type", %{conn: conn, account: account, actor: actor} do
     intune_posture_provider_fixture(account: account, name: "Contoso Intune")
     iru_provider = iru_posture_provider_fixture(account: account, name: "Acme Iru")
     iru_device_fixture(provider: iru_provider, filevault_enabled: false)
+    santa_provider = santa_posture_provider_fixture(account: account, name: "Acme Santa")
+    santa_device_fixture(provider: santa_provider, last_seen_client_mode: "LOCKDOWN")
+
+    defender_provider = defender_posture_provider_fixture(account: account, name: "Contoso EDR")
+    defender_device_fixture(provider: defender_provider, health_status: "Active")
+    defender_device_fixture(provider: defender_provider, health_status: "Inactive")
 
     {:ok, lv, html} =
       conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
@@ -897,8 +1149,72 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     assert html =~ "Contoso Intune"
     assert html =~ "Acme Iru"
     assert html =~ "Iru (formerly Kandji)"
+    assert html =~ "Contoso EDR"
+    assert html =~ "Microsoft Defender for Endpoint"
+    assert html =~ "Acme Santa"
+    assert html =~ "Santa (Workshop)"
 
     summary = lv |> element("#device-posture-summary") |> render()
     assert summary =~ ~r/1.*FileVault off/s
+    assert summary =~ ~r/1.*Sensor active/s
+    assert summary =~ ~r/1.*Sensor inactive/s
+    assert summary =~ ~r/1.*Santa Lockdown/s
+  end
+
+  describe "verified fields" do
+    test "ignores a tenant and a verified flag posted by the browser", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/intune/new")
+
+      refute html =~ ~s(name="provider[tenant_id]")
+
+      lv
+      |> element("#device-posture-form")
+      |> render_change(%{
+        "provider" => %{
+          "name" => "Contoso",
+          "tenant_id" => "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          "is_verified" => "true"
+        }
+      })
+
+      lv |> element("#device-posture-form") |> render_submit()
+
+      refute Portal.Repo.get_by(Portal.Intune.PostureProvider, account_id: account.id)
+    end
+
+    test "keeps the verified tenant when a later change posts another", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/intune/new")
+
+      verified = "11111111-1111-1111-1111-111111111111"
+      reverify(lv, verified)
+
+      lv
+      |> element("#device-posture-form")
+      |> render_change(%{
+        "provider" => %{
+          "name" => "Contoso",
+          "tenant_id" => "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        }
+      })
+
+      lv |> element("#device-posture-form") |> render_submit()
+
+      assert provider = Portal.Repo.get_by(Portal.Intune.PostureProvider, account_id: account.id)
+      assert provider.tenant_id == verified
+    end
   end
 end

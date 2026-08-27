@@ -99,6 +99,7 @@ defmodule PortalAPI.Router do
     end
 
     resources "/email_otp_auth_providers", EmailOTPAuthProviderController, only: [:index, :show]
+    get "/x509_auth_provider", X509AuthProviderController, :show
     resources "/oidc_auth_providers", OIDCAuthProviderController, only: [:index, :show]
     resources "/google_auth_providers", GoogleAuthProviderController, only: [:index, :show]
     resources "/entra_auth_providers", EntraAuthProviderController, only: [:index, :show]
@@ -115,6 +116,16 @@ defmodule PortalAPI.Router do
       only: [:index, :show]
 
     resources "/iru_devices", IruDeviceController, only: [:index, :show]
+
+    resources "/defender_posture_providers", DefenderPostureProviderController,
+      only: [:index, :show]
+
+    resources "/defender_devices", DefenderDeviceController, only: [:index, :show]
+
+    resources "/santa_posture_providers", SantaPostureProviderController,
+      only: [:index, :show]
+
+    resources "/santa_devices", SantaDeviceController, only: [:index, :show]
   end
 
   scope "/integrations", PortalAPI.Integrations do

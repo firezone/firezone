@@ -2,18 +2,19 @@
 
 use crate::messages::{
     Filter, FlowLogsConfig, IceCredentials, IceRole, IngestToken, Interface, Key, Relay,
-    RelaysPresence, SecretKey, SnownetCapabilities,
+    RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
 use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use serde::{Deserialize, Serialize};
-use serde_with::{DurationSeconds, serde_as};
+use serde_with::{DurationSeconds, VecSkipError, serde_as};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
 pub use crate::messages::Authorization;
 
 /// Description of a resource that maps to a DNS record.
+#[serde_as]
 #[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
@@ -33,11 +34,13 @@ pub struct ResourceDescriptionDns {
     #[serde(default)]
     pub ip_stack: Option<IpStack>,
 
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     #[serde(default)]
     pub filters: Vec<Filter>,
 }
 
 /// Description of a resource that maps to a CIDR.
+#[serde_as]
 #[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionCidr {
     /// Resource's id.
@@ -53,6 +56,7 @@ pub struct ResourceDescriptionCidr {
     #[serde(rename = "gateway_groups", alias = "sites")]
     pub sites: Vec<Site>,
 
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     #[serde(default)]
     pub filters: Vec<Filter>,
 }
@@ -61,12 +65,14 @@ fn internet_resource_name() -> String {
     "Internet Resource".to_string()
 }
 
+#[serde_as]
 #[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionStaticDevicePool {
     pub id: ResourceId,
     pub name: String,
     #[serde(default)]
     pub devices: Vec<DevicePoolMember>,
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     #[serde(default)]
     pub filters: Vec<Filter>,
 }
@@ -208,9 +214,11 @@ pub struct ClientDeviceAccessAuthorized {
 /// The portal's minimal `{id, filters}` resource view embedded in
 /// [`ClientDeviceAccessAuthorized`] for the target device. Other resource
 /// fields the portal sends (name, type, devices) are ignored.
+#[serde_as]
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct AuthorizedResource {
     pub id: ResourceId,
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     #[serde(default)]
     pub filters: Vec<Filter>,
 }
@@ -233,9 +241,11 @@ pub struct ResourceAuthorization {
 /// Sent by the portal when a resource's filters change while access remains
 /// authorized. Receivers must update the inbound filter for any peer the
 /// resource currently authorizes.
+#[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct ResourceFiltersUpdated {
     pub id: ResourceId,
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     pub filters: Vec<Filter>,
 }
 

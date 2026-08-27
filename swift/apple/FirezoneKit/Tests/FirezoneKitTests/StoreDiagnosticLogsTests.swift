@@ -111,20 +111,5 @@
       try await waitUntil { model.logDirectorySizeText != nil }
       #expect(model.logDirectorySizeText == "Unknown")
     }
-
-    private func waitUntil(
-      timeout: Duration = .seconds(5),
-      _ condition: @MainActor () -> Bool
-    ) async throws {
-      let clock = ContinuousClock()
-      let deadline = clock.now.advanced(by: timeout)
-
-      while !condition() {
-        guard clock.now < deadline else { throw TimeoutError() }
-        try await Task.sleep(for: .milliseconds(10))
-      }
-    }
-
-    private struct TimeoutError: Error {}
   }
 #endif

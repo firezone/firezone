@@ -309,18 +309,12 @@ fn arb_cidr_resources(
                     let filters = resource
                         .filters
                         .iter()
-                        .copied()
+                        .cloned()
                         .chain(
                             allow_do53
                                 .then_some([
-                                    Filter::Udp(PortRange {
-                                        port_range_start: 53,
-                                        port_range_end: 53,
-                                    }),
-                                    Filter::Tcp(PortRange {
-                                        port_range_start: 53,
-                                        port_range_end: 53,
-                                    }),
+                                    Filter::Udp(PortRange::single(53)),
+                                    Filter::Tcp(PortRange::single(53)),
                                 ])
                                 .into_iter()
                                 .flatten(),

@@ -28,7 +28,13 @@ struct FirezoneApp: App {
 
     #if DEBUG
       // `--mock-tunnel` runs the real Store against a canned backend (see MockTunnel.swift).
-      let store = CommandLine.arguments.contains("--mock-tunnel") ? Store.mock() : Store()
+      let store = Store.mockFromCommandLine() ?? Store()
+
+      #if os(iOS)
+        // Before the scenes exist, so the bars are built from the appearance it
+        // sets rather than adopting it on their next update.
+        UIApplication.applyMockPresentation()
+      #endif
     #else
       let store = Store()
     #endif
@@ -52,26 +58,15 @@ struct FirezoneApp: App {
           .environmentObject(store)
       }
     #elseif os(macOS)
-      WindowGroup(
-        "Welcome to Firezone",
-        id: AppView.WindowDefinition.main.identifier
-      ) {
-        AppView()
-          .environmentObject(store)
-      }
-      .handlesExternalEvents(
-        matching: [AppView.WindowDefinition.main.externalEventMatchString]
-      )
+      mainWindowScene(store: store)
+        .handlesExternalEvents(
+          matching: [AppView.WindowDefinition.main.externalEventMatchString]
+        )
       // macOS doesn't have Sheets, need to use another Window group to show settings
-      WindowGroup(
-        "Settings",
-        id: AppView.WindowDefinition.settings.identifier
-      ) {
-        SettingsView(store: store)
-      }
-      .handlesExternalEvents(
-        matching: [AppView.WindowDefinition.settings.externalEventMatchString]
-      )
+      settingsWindowScene(store: store)
+        .handlesExternalEvents(
+          matching: [AppView.WindowDefinition.settings.externalEventMatchString]
+        )
 
       MenuBarExtra {
         MenuBarView()
@@ -161,16 +156,11 @@ struct FirezoneApp: App {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-      guard let store else {
-        return .terminateNow
-      }
+      // Stopping is a request rather than an operation to wait on, so there is
+      // nothing left for the app to defer its termination for once it is made.
+      store?.requestStop()
 
-      Task {
-        do { try await store.stop() } catch { Log.error(error) }
-        await MainActor.run { NSApp.reply(toApplicationShouldTerminate: true) }
-      }
-
-      return .terminateLater
+      return .terminateNow
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -236,5 +226,84 @@ struct FirezoneApp: App {
         }
       }
     }
+  }
+#endif
+
+#if os(macOS)
+  @MainActor
+  func mainWindowScene(store: Store) -> some Scene {
+    WindowGroup(
+      "Welcome to Firezone",
+      id: AppView.WindowDefinition.main.identifier
+    ) {
+      AppView()
+        .environmentObject(store)
+    }
+  }
+
+  @MainActor
+  func settingsWindowScene(store: Store) -> some Scene {
+    WindowGroup(
+      "Settings",
+      id: AppView.WindowDefinition.settings.identifier
+    ) {
+      SettingsView(store: store)
+    }
+  }
+#endif
+
+#if os(macOS) && DEBUG
+  // The apps a `--mock-window` run launches, one per window it can name.
+  struct UITestMainApp: App {
+    @StateObject var store = uiTestStore()
+
+    var body: some Scene {
+      mainWindowScene(store: store)
+      windowOpenerExtra(id: AppView.WindowDefinition.main.identifier)
+    }
+  }
+
+  struct UITestSettingsApp: App {
+    @StateObject var store = uiTestStore()
+
+    var body: some Scene {
+      settingsWindowScene(store: store)
+      windowOpenerExtra(id: AppView.WindowDefinition.settings.identifier)
+    }
+  }
+
+  /// A menu bar scene whose one job is presenting the window scene beside it.
+  ///
+  /// XCUITest's launch presents no scene at all, and `openWindow` lives in a
+  /// view's environment, so opening a window takes a view that exists without
+  /// one: a menu bar item's label is built for the status bar at launch.
+  @MainActor
+  func windowOpenerExtra(id windowID: String) -> some Scene {
+    MenuBarExtra {
+      EmptyView()
+    } label: {
+      WindowOpenerLabel(windowID: windowID)
+    }
+  }
+
+  private struct WindowOpenerLabel: View {
+    @Environment(\.openWindow) private var openWindow
+
+    let windowID: String
+
+    var body: some View {
+      Text("Firezone UI Test")
+        .onAppear { openWindow(id: windowID) }
+    }
+  }
+
+  @MainActor
+  private func uiTestStore() -> Store {
+    NSApplication.applyMockPresentation()
+
+    let store = Store.mockFromCommandLine() ?? Store()
+    Task { await store.start() }
+
+    return store
   }
 #endif

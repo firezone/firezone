@@ -236,10 +236,7 @@ fn arb_port_range(g: &mut Generator) -> PortRange {
     let start = g.u16();
     let end = g.u16_in(start..=u16::MAX);
 
-    PortRange {
-        port_range_start: start,
-        port_range_end: end,
-    }
+    PortRange::new(start, end).unwrap()
 }
 
 fn cidr_reserved_v4() -> [Ipv4Network; 4] {

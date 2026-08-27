@@ -33,6 +33,10 @@ defmodule PortalWeb.Policies do
       |> assign_async(:policies_count, fn -> {:ok, %{policies_count: Database.count_policies(subject)}} end)
       |> assign(selected_policy: nil, policy_providers: [])
       |> assign(
+        x509_auth_provider_id: Database.x509_auth_provider_id(subject),
+        has_trust_anchors?: Database.has_trust_anchors?(subject)
+      )
+      |> assign(
         policy_authorizations: [],
         policy_authorizations_page: 1,
         policy_authorizations_has_next: false,
@@ -346,6 +350,8 @@ defmodule PortalWeb.Policies do
         account={@account}
         policy={@selected_policy}
         providers={@policy_providers}
+        x509_auth_provider_id={@x509_auth_provider_id}
+        has_trust_anchors?={@has_trust_anchors?}
         subject={@subject}
         panel={policy_panel_state(assigns)}
         conditions_state={policy_conditions_state(assigns)}
@@ -1268,7 +1274,7 @@ defmodule PortalWeb.Policies do
     end
 
     def all_active_providers(_account, subject) do
-      [
+      schemas = [
         Portal.Userpass.AuthProvider,
         Portal.EmailOTP.AuthProvider,
         Portal.OIDC.AuthProvider,
@@ -1276,11 +1282,37 @@ defmodule PortalWeb.Policies do
         Portal.Entra.AuthProvider,
         Portal.Okta.AuthProvider
       ]
-      |> Enum.flat_map(fn schema ->
+
+      schemas =
+        if Portal.Features.enabled?(:trust_anchors) do
+          [Portal.X509.AuthProvider | schemas]
+        else
+          schemas
+        end
+
+      Enum.flat_map(schemas, fn schema ->
         from(p in schema, where: not p.is_disabled)
         |> Safe.scoped(subject)
         |> Safe.all()
       end)
+    end
+
+    def x509_auth_provider_id(subject) do
+      if Portal.Features.enabled?(:trust_anchors) do
+        Portal.X509.AuthProvider
+        |> Safe.scoped(subject)
+        |> Safe.one()
+        |> case do
+          %Portal.X509.AuthProvider{id: id} -> id
+          _ -> nil
+        end
+      end
+    end
+
+    def has_trust_anchors?(subject) do
+      Portal.TrustAnchorCertificate
+      |> Safe.scoped(subject)
+      |> Safe.exists?()
     end
 
     def count_policies(subject) do

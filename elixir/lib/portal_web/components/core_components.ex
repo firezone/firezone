@@ -18,7 +18,7 @@ defmodule PortalWeb.CoreComponents do
   def hero_logo(assigns) do
     ~H"""
     <div class="mb-6">
-      <img src={~p"/images/logo.svg"} class="mx-auto pr-10 h-24" alt="Firezone Logo" />
+      <img src={~p"/images/logo.svg"} class="mx-auto h-24" alt="Firezone Logo" />
       <p class="text-center mt-4 text-3xl">
         {@text}
       </p>
@@ -1438,6 +1438,22 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("defender") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-defender.svg",
+      alt: "Microsoft Defender for Endpoint"
+    }
+  end
+
+  defp provider_icon_spec("santa") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-santa.png",
+      alt: "Santa by North Pole Security"
+    }
+  end
+
   defp provider_icon_spec("okta") do
     %{
       type: :image,
@@ -1466,6 +1482,13 @@ defmodule PortalWeb.CoreComponents do
     %{
       type: :icon,
       name: "ri-key-line"
+    }
+  end
+
+  defp provider_icon_spec("x509") do
+    %{
+      type: :icon,
+      name: "ri-shield-keyhole-line"
     }
   end
 

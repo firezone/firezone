@@ -10,7 +10,7 @@ pub use tunnel::messages::client::{IngressMessages, ResourceDescription};
 use anyhow::Result;
 use connlib_model::{ResourceId, ResourceList};
 use eventloop::{Command, Eventloop};
-use futures::future::Fuse;
+use futures::future::{Fuse, FusedFuture as _};
 use futures::{FutureExt, StreamExt};
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -178,6 +178,13 @@ impl EventStream {
                 Poll::Pending => {}
             }
 
+            // A resolved `Fuse` parks forever and the senders above died with the
+            // event-loop, so nothing is left that could wake us: whatever we just
+            // yielded was the last event.
+            if self.eventloop.is_terminated() {
+                return Poll::Ready(None);
+            }
+
             return Poll::Pending;
         }
     }
@@ -262,7 +269,24 @@ mod tests {
         let _next = stream.next().await.unwrap();
         let poll = stream.poll_next(&mut Context::from_waker(futures::task::noop_waker_ref()));
 
-        assert!(poll.is_pending());
+        assert!(matches!(poll, Poll::Ready(None)));
+    }
+
+    #[tokio::test]
+    async fn stream_ends_after_disconnect() {
+        let mut stream = EventStream::new(
+            |_, _, _| async move { Err(DisconnectError::from(anyhow::anyhow!("Boom!"))) },
+            tokio::runtime::Handle::current(),
+        );
+
+        let Event::Disconnected(_) = stream.next().await.unwrap() else {
+            panic!("Unexpected event!");
+        };
+
+        assert!(
+            stream.next().await.is_none(),
+            "stream should be closed once the event-loop has disconnected"
+        );
     }
 
     #[tokio::test]
