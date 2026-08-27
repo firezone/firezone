@@ -13,3 +13,6 @@ bats 1.13.0
 
 # GitHub Actions linting
 actionlint 1.7.9
+
+# For CI Python scripts
+uv 0.12.5
