@@ -11,6 +11,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -28,6 +29,11 @@ fun FirezoneTopBar(
     modifier: Modifier = Modifier,
 ) {
     TopAppBar(
+        // M3 defaults the bar to `surface`, which seams against the canvas the page is painted with.
+        colors =
+            TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.background,
+            ),
         // M3 has a `subtitle` slot but keeps it internal, so the two lines share the title slot.
         title = {
             Column {
