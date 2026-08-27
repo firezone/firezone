@@ -62,13 +62,11 @@
     static var connected: MockScenario { named("connected") }
 
     static func named(_ name: String) -> MockScenario {
-      guard
-        let url = Bundle.module.url(
-          forResource: name, withExtension: "json", subdirectory: "Scenarios"
-        )
-      else {
-        fatalError("No mock scenario named '\(name)'")
-      }
+      let url = Bundle.module.url(
+        forResource: name, withExtension: "json", subdirectory: "Scenarios"
+      )
+
+      guard let url else { fatalError("No mock scenario named '\(name)'") }
 
       do {
         return try JSONDecoder().decode(MockScenario.self, from: Data(contentsOf: url))
