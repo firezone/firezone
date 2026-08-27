@@ -186,6 +186,42 @@ defmodule PortalAPI.SocketsTest do
       assert_problem_json(result, "x509_user_not_authorized")
     end
 
+    test "returns distinct client-facing 403 errors for X.509 authentication failures" do
+      reasons = [
+        :invalid_certificate,
+        :invalid_x509_identity,
+        :malformed_cert_issuer,
+        :malformed_cert_serial,
+        :missing_client_auth_eku,
+        :missing_digital_signature_key_usage,
+        :no_device_identifiers,
+        :no_trust_anchors,
+        :outside_validity_window,
+        :untrusted_chain,
+        :x509_account_disabled,
+        :x509_account_not_found,
+        :x509_authentication_disabled,
+        :x509_authentication_not_found,
+        :x509_user_disabled,
+        :x509_user_not_found,
+        :x509_user_type_not_allowed
+      ]
+
+      details =
+        Enum.map(reasons, fn reason ->
+          result = Sockets.handle_error(Plug.Test.conn(:get, "/"), reason)
+
+          assert result.status == 403
+          assert_problem_json(result, Atom.to_string(reason))
+
+          detail = json_body(result)["detail"]
+          assert is_binary(detail) and detail != ""
+          detail
+        end)
+
+      assert Enum.uniq(details) == details
+    end
+
     test "returns 503 with retry-after header for rate_limit" do
       conn = Plug.Test.conn(:get, "/")
 

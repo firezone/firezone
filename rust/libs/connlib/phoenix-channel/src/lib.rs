@@ -190,10 +190,27 @@ async fn connect(
 /// None of them can be retried into success: the certificate has to be replaced, or the portal
 /// reconfigured, before another attempt means anything.
 const CERTIFICATE_REJECTION_CODES: &[&str] = &[
-    "device_untrusted",
     "certificate_revoked",
     "device_identity_conflict",
+    "device_untrusted",
+    "invalid_certificate",
+    "invalid_x509_identity",
+    "malformed_cert_issuer",
+    "malformed_cert_serial",
+    "missing_client_auth_eku",
+    "missing_digital_signature_key_usage",
+    "no_device_identifiers",
+    "no_trust_anchors",
+    "outside_validity_window",
+    "untrusted_chain",
+    "x509_account_disabled",
+    "x509_account_not_found",
+    "x509_authentication_disabled",
+    "x509_authentication_not_found",
+    "x509_user_disabled",
     "x509_user_not_authorized",
+    "x509_user_not_found",
+    "x509_user_type_not_allowed",
 ];
 
 #[derive(Debug, thiserror::Error)]
