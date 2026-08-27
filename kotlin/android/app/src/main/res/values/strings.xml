@@ -50,14 +50,13 @@
 	<string name="x509_unusable_title">Firezone will not present this certificate</string>
 	<string name="x509_contact_admin">Contact your administrator for support.</string>
 	<string name="x509_claim_absent">Not present</string>
-	<string name="x509_claim_invalid">Ignored: %1$s</string>
-	<string name="x509_claim_empty">empty</string>
-	<string name="x509_claim_too_long">longer than 255 characters</string>
-	<string name="x509_claim_not_an_email_address">not an email address</string>
-	<string name="x509_claim_not_a_uuid">not a UUID</string>
-	<string name="x509_claim_ambiguous">more than one value was given</string>
-	<string name="x509_claim_placeholder_identifier">a placeholder identifier</string>
-	<string name="x509_claim_unknown_attribute">not an attribute we understand</string>
+	<string name="x509_claim_empty">Empty</string>
+	<string name="x509_claim_too_long">Longer than 255 characters</string>
+	<string name="x509_claim_not_an_email_address">Not an email address</string>
+	<string name="x509_claim_not_a_uuid">Not a UUID</string>
+	<string name="x509_claim_ambiguous">More than one value was given</string>
+	<string name="x509_claim_placeholder_identifier">Placeholder identifier</string>
+	<string name="x509_claim_unknown_attribute">Unrecognised attribute</string>
 	<string name="x509_rule_no_client_auth_eku">
 		Firezone only presents a certificate that allows TLS client authentication.
 	</string>
