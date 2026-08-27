@@ -17,8 +17,8 @@ public enum BundleHelper {
     return false
   }
 
-  /// Whether telemetry was switched off when this bundle was built. CI stamps
-  /// `FIREZONE_NO_TELEMETRY` into every build that is not a release.
+  /// Whether telemetry was switched off when this bundle was built. Apple builds
+  /// default to no telemetry; official release scripts explicitly opt in.
   static var noTelemetry: Bool {
     Bundle.main.object(forInfoDictionaryKey: "NoTelemetry") as? String == "true"
   }
