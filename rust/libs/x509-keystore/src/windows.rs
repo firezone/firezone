@@ -34,9 +34,9 @@ use x509_claims::{ParsedCertificate, parse_certificate};
 use x509_credential::SigningError;
 
 use crate::{
-    CandidateCertificate, ClientIdentity, DetailField, DetailSection, Identity, Problem, Status,
-    UnreadableStore, UnusableCause, UnusableCertificate, failed_field, join, selected_certificate,
-    sign, unusable_certificates,
+    CandidateCertificate, ClientIdentity, DetailField, Identity, Problem, Status, UnreadableStore,
+    UnusableCause, certificate_sections, failed_field, join, selected_certificate, sign,
+    unusable_causes,
 };
 
 /// The store MDM-provisioned identities land in.
@@ -56,32 +56,13 @@ pub(crate) fn status(subject_cn: &str) -> Result<Status> {
     }
 
     let selected = selected_certificate(&certificates);
-    let selected_section = selected.map(|index| DetailSection {
-        title: "Certificate".to_owned(),
-        fields: certificates[index].detail_fields(),
-    });
-    let unused_sections = certificates
-        .iter()
-        .enumerate()
-        .filter(|(index, _)| Some(*index) != selected)
-        .map(|(_, certificate)| DetailSection {
-            title: "Unused Certificate".to_owned(),
-            fields: certificate.detail_fields(),
-        });
-    let sections = selected_section
-        .into_iter()
-        .chain(unused_sections)
-        .collect();
+    let sections = certificate_sections(&certificates, selected);
 
-    let certificate_problem = match (selected, certificates.len()) {
-        (None, 0) => Some(Problem::NoWindowsCertificate {
+    let certificate_problem = certificates
+        .is_empty()
+        .then(|| Problem::NoWindowsCertificate {
             subject_cn: subject_cn.to_owned(),
-        }),
-        (None, _) => Some(Problem::NoUsableWindowsCertificate {
-            certificates: unusable_certificates(&certificates),
-        }),
-        (Some(_), _) => None,
-    };
+        });
     let store_problem = (!store_errors.is_empty()).then_some(Problem::UnreadableWindowsStores {
         stores: store_errors,
     });
@@ -110,7 +91,7 @@ pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
         );
     }
 
-    let unusable = unusable_certificates(&certificates);
+    let unusable = unusable_causes(&certificates);
 
     let Some(index) = selected_certificate(&certificates) else {
         // Only a store that holds nothing for us is the ordinary no-certificate case. Skipping a
@@ -356,7 +337,28 @@ struct Certificate {
     usable: bool,
 }
 
-impl Certificate {
+impl CandidateCertificate for Certificate {
+    fn unusable(&self) -> Option<UnusableCause> {
+        // CNG refuses a key held by a legacy CSP rather than a KSP, which is what an older
+        // certificate template provisions.
+        match (
+            &self.key_error,
+            self.metadata.signing_algorithm,
+            self.usable,
+        ) {
+            (Some(error), _, _) => Some(UnusableCause::WindowsKeyRefused {
+                error: error.clone(),
+            }),
+            (None, None, _) => Some(UnusableCause::UnsupportedKeyAlgorithm),
+            (None, Some(_), false) => Some(UnusableCause::WindowsKeyMissing),
+            (None, Some(_), true) => None,
+        }
+    }
+
+    fn not_before_timestamp(&self) -> i64 {
+        self.metadata.not_before_timestamp
+    }
+
     fn detail_fields(&self) -> Vec<DetailField> {
         let mut fields = self
             .metadata
@@ -365,41 +367,11 @@ impl Certificate {
             .map(DetailField::from)
             .collect::<Vec<_>>();
 
-        if let Some(error) = &self.key_error {
-            fields.push(failed_field("Private Key Error", error));
-        }
         if let Some(error) = &self.chain_error {
             fields.push(failed_field("Certificate Chain Error", error));
         }
 
         fields
-    }
-}
-
-impl CandidateCertificate for Certificate {
-    fn usable(&self) -> bool {
-        self.usable
-    }
-
-    fn not_before_timestamp(&self) -> i64 {
-        self.metadata.not_before_timestamp
-    }
-
-    fn unusable(&self) -> UnusableCertificate {
-        // CNG refuses a key held by a legacy CSP rather than a KSP, which is what an older
-        // certificate template provisions.
-        let cause = match (&self.key_error, self.metadata.signing_algorithm) {
-            (Some(error), _) => UnusableCause::WindowsKeyRefused {
-                error: error.clone(),
-            },
-            (None, None) => UnusableCause::UnsupportedKeyAlgorithm,
-            (None, Some(_)) => UnusableCause::WindowsKeyMissing,
-        };
-
-        UnusableCertificate {
-            fingerprint: self.metadata.fingerprint.clone(),
-            cause,
-        }
     }
 }
 
