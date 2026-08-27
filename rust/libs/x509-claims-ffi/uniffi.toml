@@ -1,0 +1,10 @@
+# UniFFI Configuration for x509-claims-ffi
+
+[bindings.swift]
+generate_immutable_records = true
+generate_codable_conformance = true
+generate_case_iterable_conformance = true
+
+[bindings.kotlin]
+android = true
+generate_immutable_records = true

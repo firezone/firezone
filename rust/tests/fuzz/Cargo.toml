@@ -29,6 +29,13 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "x509-claims"
+path = "fuzz_targets/x509_claims.rs"
+test = false
+doc = false
+bench = false
+
 [dependencies]
 anyhow = { workspace = true }
 arbitrary = { workspace = true, features = ["derive"] }
@@ -58,6 +65,8 @@ stun_codec = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tunnel-proto = { workspace = true, features = ["malicious-behaviour"] }
+uuid = { workspace = true }
+x509-claims = { workspace = true }
 
 [lints]
 workspace = true

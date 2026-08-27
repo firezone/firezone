@@ -1,1 +1,1 @@
-["ip-packet", "relay-proto", "tunnel-proto"]
+["ip-packet", "relay-proto", "tunnel-proto", "x509-claims"]
