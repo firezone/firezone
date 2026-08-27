@@ -261,23 +261,6 @@ impl Error {
         }
     }
 
-    /// Returns whether the X.509 client certificate is what failed.
-    ///
-    /// Lets a client word its error and choose what to offer from what actually went wrong,
-    /// rather than from how it happened to authenticate: a session that presented a certificate
-    /// can still fail for reasons that have nothing to do with it.
-    pub fn is_certificate_error(&self) -> bool {
-        match self {
-            Error::CertificateRejected(_) => true,
-            Error::ClientCertificateSigningFailed(_) => true,
-            Error::InvalidToken => false,
-            Error::AuthenticationFailed(_) => false,
-            Error::MaxRetriesReached { .. } => false,
-            Error::LoginFailed(_) => false,
-            Error::FatalIo(_) => false,
-        }
-    }
-
     /// Classifies a rejected connection attempt by the reason the portal reported.
     ///
     /// Returns `None` when nothing in the response marks the failure as permanent, so the

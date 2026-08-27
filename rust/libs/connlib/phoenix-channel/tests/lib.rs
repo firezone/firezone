@@ -426,7 +426,6 @@ async fn rejected_certificate_does_not_require_sign_in(problem_details: &str) {
 
     let error = expect_error(first_event(port).await);
 
-    assert!(error.is_certificate_error());
     // A new token cannot replace the credential the portal refused.
     assert!(!error.requires_sign_in());
 }

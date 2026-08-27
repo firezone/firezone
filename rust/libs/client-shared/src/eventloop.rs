@@ -129,19 +129,6 @@ impl DisconnectError {
 
         e.requires_sign_in()
     }
-
-    /// Returns whether the X.509 client certificate is what failed.
-    ///
-    /// Lets a client word its error and choose what to offer from what actually went wrong,
-    /// rather than from how it happened to authenticate: a session that presented a certificate
-    /// can still fail for reasons that have nothing to do with it.
-    pub fn is_certificate_error(&self) -> bool {
-        let Some(e) = self.0.any_downcast_ref::<phoenix_channel::Error>() else {
-            return false;
-        };
-
-        e.is_certificate_error()
-    }
 }
 
 impl Eventloop {
