@@ -165,7 +165,6 @@ export type X509DetailSection = { title: string; fields: X509DetailField[] };
  */
 export type X509FieldProblem =
   | { Rejected: X509RejectionReason }
-  | { Unusable: X509UnusableReason }
   | { Unreadable: string };
 /**
  * Mirrors [`x509_keystore::FieldValue`].
@@ -212,7 +211,7 @@ export type X509UnreadableStore = { store: string; error: string };
  * Mirrors [`x509_keystore::UnusableCause`].
  */
 export type X509UnusableCause =
-  | { FailsRules: { reasons: X509UnusableReason[] } }
+  | "UnsupportedKeyAlgorithm"
   | { WindowsKeyRefused: { error: string } }
   | "WindowsKeyMissing"
   | "Pkcs11KeyMissing";
@@ -223,16 +222,6 @@ export type X509UnusableCertificate = {
   fingerprint: string;
   cause: X509UnusableCause;
 };
-/**
- * Mirrors [`x509_keystore::UnusableReason`].
- */
-export type X509UnusableReason =
-  | "NoClientAuthEku"
-  | "NoDigitalSignatureKeyUsage"
-  | "NotYetValid"
-  | "Expired"
-  | "UnsupportedKeyAlgorithm"
-  | "RefusedIdentity";
 
 /** tauri-specta globals **/
 
