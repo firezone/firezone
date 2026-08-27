@@ -17,6 +17,7 @@ import {
   X509DetailSection,
   X509FieldProblem,
   X509Status,
+  X509UnusableCause,
 } from "./generated/bindings";
 import "./main.css";
 
@@ -128,6 +129,23 @@ function certificateSection(
     fields: [
       ...fields.filter((field) => field.problem !== null),
       ...fields.filter((field) => field.problem === null),
+    ],
+  };
+}
+
+// `x509_keystore::certificate_sections` leads a certificate it cannot present with the row
+// saying why, under a label no X.509 attribute carries.
+function unusedCertificateSection(
+  certificate: Certificate,
+  cause: X509UnusableCause
+): X509DetailSection {
+  const section = certificateSection(UNUSED_CERTIFICATE, certificate);
+
+  return {
+    ...section,
+    fields: [
+      { label: "Private Key", value: null, problem: { Unusable: cause } },
+      ...section.fields,
     ],
   };
 }
@@ -265,19 +283,10 @@ const screens: Record<string, Screen> = {
     route: "/x509",
     x509: {
       identity: "Absent",
-      problems: [
-        {
-          NoUsableWindowsCertificate: {
-            certificates: [
-              {
-                fingerprint: expiredCertificate.fingerprint,
-                cause: "WindowsKeyMissing",
-              },
-            ],
-          },
-        },
+      problems: [],
+      sections: [
+        unusedCertificateSection(expiredCertificate, "WindowsKeyMissing"),
       ],
-      sections: [certificateSection(UNUSED_CERTIFICATE, expiredCertificate)],
     },
   },
   "diagnostics-no-logs": { route: "/diagnostics" },

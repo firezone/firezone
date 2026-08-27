@@ -63,26 +63,12 @@ pub enum X509Identity {
 /// Mirrors [`x509_keystore::Problem`] so the frontend writes the sentence it shows.
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub enum X509Problem {
-    NoWindowsCertificate {
-        subject_cn: String,
-    },
-    NoUsableWindowsCertificate {
-        certificates: Vec<X509UnusableCertificate>,
-    },
-    UnreadableWindowsStores {
-        stores: Vec<X509UnreadableStore>,
-    },
-    NoPkcs11Certificate {
-        subject_cn: String,
-    },
-    NoUsablePkcs11Certificate {
-        certificates: Vec<X509UnusableCertificate>,
-    },
+    NoWindowsCertificate { subject_cn: String },
+    UnreadableWindowsStores { stores: Vec<X509UnreadableStore> },
+    NoPkcs11Certificate { subject_cn: String },
     UnreadablePkcs11Keystore,
     UnreadableKeystore,
-    MissingPackage {
-        package: X509Package,
-    },
+    MissingPackage { package: X509Package },
     UnsupportedPlatform,
 }
 
@@ -90,13 +76,6 @@ pub enum X509Problem {
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub enum X509Package {
     P11Kit,
-}
-
-/// Mirrors [`x509_keystore::UnusableCertificate`].
-#[derive(Clone, serde::Serialize, specta::Type)]
-pub struct X509UnusableCertificate {
-    pub fingerprint: String,
-    pub cause: X509UnusableCause,
 }
 
 /// Mirrors [`x509_keystore::UnusableCause`].
@@ -133,6 +112,7 @@ pub struct X509DetailField {
 pub enum X509FieldProblem {
     Invalid(X509ValidationError),
     Unreadable(String),
+    Unusable(X509UnusableCause),
 }
 
 /// Mirrors [`x509_keystore::ValidationError`].
@@ -194,11 +174,6 @@ impl From<x509_keystore::Problem> for X509Problem {
             x509_keystore::Problem::NoWindowsCertificate { subject_cn } => {
                 Self::NoWindowsCertificate { subject_cn }
             }
-            x509_keystore::Problem::NoUsableWindowsCertificate { certificates } => {
-                Self::NoUsableWindowsCertificate {
-                    certificates: certificates.into_iter().map(Into::into).collect(),
-                }
-            }
             x509_keystore::Problem::UnreadableWindowsStores { stores } => {
                 Self::UnreadableWindowsStores {
                     stores: stores.into_iter().map(Into::into).collect(),
@@ -206,11 +181,6 @@ impl From<x509_keystore::Problem> for X509Problem {
             }
             x509_keystore::Problem::NoPkcs11Certificate { subject_cn } => {
                 Self::NoPkcs11Certificate { subject_cn }
-            }
-            x509_keystore::Problem::NoUsablePkcs11Certificate { certificates } => {
-                Self::NoUsablePkcs11Certificate {
-                    certificates: certificates.into_iter().map(Into::into).collect(),
-                }
             }
             x509_keystore::Problem::UnreadablePkcs11Keystore => Self::UnreadablePkcs11Keystore,
             x509_keystore::Problem::UnreadableKeystore => Self::UnreadableKeystore,
@@ -226,15 +196,6 @@ impl From<x509_keystore::Package> for X509Package {
     fn from(package: x509_keystore::Package) -> Self {
         match package {
             x509_keystore::Package::P11Kit => Self::P11Kit,
-        }
-    }
-}
-
-impl From<x509_keystore::UnusableCertificate> for X509UnusableCertificate {
-    fn from(certificate: x509_keystore::UnusableCertificate) -> Self {
-        Self {
-            fingerprint: certificate.fingerprint,
-            cause: certificate.cause.into(),
         }
     }
 }
@@ -266,6 +227,7 @@ impl From<x509_keystore::FieldProblem> for X509FieldProblem {
         match problem {
             x509_keystore::FieldProblem::Invalid(error) => Self::Invalid(error.into()),
             x509_keystore::FieldProblem::Unreadable(message) => Self::Unreadable(message),
+            x509_keystore::FieldProblem::Unusable(cause) => Self::Unusable(cause.into()),
         }
     }
 }

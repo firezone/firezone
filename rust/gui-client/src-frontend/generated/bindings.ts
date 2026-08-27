@@ -165,7 +165,8 @@ export type X509DetailSection = { title: string; fields: X509DetailField[] };
  */
 export type X509FieldProblem =
   | { Invalid: X509ValidationError }
-  | { Unreadable: string };
+  | { Unreadable: string }
+  | { Unusable: X509UnusableCause };
 /**
  * Mirrors [`x509_keystore::Package`].
  */
@@ -175,10 +176,8 @@ export type X509Package = "P11Kit";
  */
 export type X509Problem =
   | { NoWindowsCertificate: { subject_cn: string } }
-  | { NoUsableWindowsCertificate: { certificates: X509UnusableCertificate[] } }
   | { UnreadableWindowsStores: { stores: X509UnreadableStore[] } }
   | { NoPkcs11Certificate: { subject_cn: string } }
-  | { NoUsablePkcs11Certificate: { certificates: X509UnusableCertificate[] } }
   | "UnreadablePkcs11Keystore"
   | "UnreadableKeystore"
   | { MissingPackage: { package: X509Package } }
@@ -205,13 +204,6 @@ export type X509UnusableCause =
   | { WindowsKeyRefused: { error: string } }
   | "WindowsKeyMissing"
   | "Pkcs11KeyMissing";
-/**
- * Mirrors [`x509_keystore::UnusableCertificate`].
- */
-export type X509UnusableCertificate = {
-  fingerprint: string;
-  cause: X509UnusableCause;
-};
 /**
  * Mirrors [`x509_keystore::ValidationError`].
  */
