@@ -45,7 +45,6 @@ import uniffi.x509claims.ClaimValue
 import uniffi.x509claims.DetailField
 import uniffi.x509claims.FieldProblem
 import uniffi.x509claims.RejectionReason
-import uniffi.x509claims.UnusableReason
 import java.io.File
 import java.io.RandomAccessFile
 import dev.firezone.android.core.data.model.Config as FirezoneConfig
@@ -81,7 +80,7 @@ class SettingsScreenshotTest {
     fun x509SettingsWithUnusableCertificate() = captureX509Page("x509-unusable", unusableCertificate)
 
     @Test
-    fun x509SettingsWithRefusedCertificate() = captureX509Page("x509-refused", refusedCertificate)
+    fun x509SettingsWithExpiredCertificate() = captureX509Page("x509-expired", expiredCertificate)
 
     @Test
     fun x509SettingsWithUnreadableCertificate() = captureX509Page("x509-unreadable", unreadableCertificate)
@@ -207,35 +206,26 @@ private val unusableCertificate =
         isUsable = false,
     )
 
-// A certificate the KeyChain released and Firezone will not present: one rule reads underneath
-// the date that breaks it, the other has no attribute to read underneath.
-private val refusedCertificate =
+// A certificate whose validity window has passed. Only the portal decides whether that matters,
+// so the screen shows the date and says nothing about it.
+private val expiredCertificate =
     X509SettingsViewModel.UiState(
         alias = CERTIFICATE_ALIAS,
         isUsable = true,
-        certificateIsUsable = false,
-        certificateProblems = listOf(UnusableReason.NO_CLIENT_AUTH_EKU),
         details =
             certificateDetails(
                 actorEmail = row("Actor Email", ClaimValue.Present("jane.doe@example.com")),
                 unattestedNames = emptyList(),
-                notAfter =
-                    row(
-                        "Not After",
-                        ClaimValue.Present("Jan  5 09:00:00 2025 +00:00"),
-                        FieldProblem.Unusable(UnusableReason.EXPIRED),
-                    ),
+                notAfter = row("Not After", ClaimValue.Present("Jan  5 09:00:00 2025 +00:00")),
             ),
     )
 
-// A certificate the KeyChain released and the parser could not read, which leaves no rule
-// checked and no row to carry the reason.
+// A certificate the KeyChain released and the parser could not read, which leaves no row to show.
 private val unreadableCertificate =
     X509SettingsViewModel.UiState(
         alias = CERTIFICATE_ALIAS,
         isUsable = true,
-        certificateIsUsable = false,
-        certificateProblems = listOf(UnusableReason.UNREADABLE),
+        certificateIsUnreadable = true,
     )
 
 // One certificate as the Rust parser describes it, in the order the screen lists its rows.

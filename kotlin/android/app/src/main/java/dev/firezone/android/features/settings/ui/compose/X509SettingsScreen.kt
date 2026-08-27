@@ -36,7 +36,6 @@ import uniffi.x509claims.ClaimValue
 import uniffi.x509claims.DetailField
 import uniffi.x509claims.FieldProblem
 import uniffi.x509claims.RejectionReason
-import uniffi.x509claims.UnusableReason
 
 /**
  * Shows which client certificate this device signs in with and what it contains.
@@ -171,128 +170,66 @@ private fun WarningBanner(text: String) {
 /**
  * Names the certificate the way a browser's site-info panel names a site: what it is called, who
  * issued it and how long it lasts.
- *
- * Anything wrong with the certificate is said here as well, so that the reader has a single place
- * to look for its standing.
  */
 @Composable
 private fun CertificateCard(state: X509SettingsViewModel.UiState) {
     val commonName = state.details.attested(COMMON_NAME_LABEL) ?: state.details.attested(SUBJECT_LABEL)
     val issuer = state.details.attested(ISSUER_LABEL)
     val notAfter = state.details.attested(NOT_AFTER_LABEL)
-    val hasProblem = state.error != null || !state.certificateIsUsable
-
-    val isAttesting = state.isUsable && !state.isLoading && !hasProblem
-
-    // One line on what the certificate is for, absent while the KeyChain is still being read. The
-    // wording is shared across the clients.
-    //
-    // A certificate that was read and cannot be used says so rather than reading as one that was
-    // never found: the rows below carry the attribute that makes it unusable.
-    val explainer =
+    val readFailure =
         when {
-            state.isLoading -> {
-                null
-            }
-
-            isAttesting -> {
-                stringResource(R.string.x509_explainer_present)
-            }
-
-            !state.certificateIsUsable -> {
-                stringResource(R.string.x509_explainer_unusable)
-            }
-
-            else -> {
-                stringResource(R.string.x509_explainer_absent)
-            }
+            state.error != null -> state.error
+            state.certificateIsUnreadable -> stringResource(R.string.x509_unreadable)
+            else -> null
         }
 
     Card(Modifier.fillMaxWidth()) {
-        Column(
+        Row(
             Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(
-                    painter = painterResource(R.drawable.rounded_verified_user_black_24dp),
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                    tint =
-                        if (hasProblem) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+            Icon(
+                painter = painterResource(R.drawable.rounded_verified_user_black_24dp),
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+                tint =
+                    if (readFailure != null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text =
+                        when {
+                            state.alias == null -> stringResource(R.string.x509_no_certificate_title)
+                            else -> commonName ?: stringResource(R.string.x509_certificate_title)
                         },
+                    style = MaterialTheme.typography.titleMedium,
                 )
 
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (issuer != null) {
                     Text(
-                        text =
-                            when {
-                                state.alias == null -> stringResource(R.string.x509_no_certificate_title)
-                                else -> commonName ?: stringResource(R.string.x509_certificate_title)
-                            },
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-
-                    if (issuer != null) {
-                        Text(
-                            text = stringResource(R.string.x509_issued_by, issuer),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-
-                    if (notAfter != null) {
-                        Text(
-                            text = stringResource(R.string.x509_valid_until, notAfter),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-
-                    if (state.error != null) {
-                        Notice(
-                            title = stringResource(R.string.x509_error_title),
-                            body = state.error,
-                        )
-                    }
-
-                    // Only the rules no row shows: the rest read underneath the attribute they are
-                    // about, and repeating them here would say the same thing twice.
-                    if (state.certificateProblems.isNotEmpty()) {
-                        val sentences = state.certificateProblems.map { stringResource(it.sentence()) }
-                        Notice(
-                            title = stringResource(R.string.x509_unusable_title),
-                            body = sentences.joinToString(" "),
-                        )
-                    }
-                }
-            }
-
-            // Outside the row so it reads across the whole card rather than starting where the
-            // text beside the icon does: it is about the certificate, not about any one field.
-            if (explainer != null) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (isAttesting) {
-                        Icon(
-                            painter = painterResource(R.drawable.rounded_check_circle_24),
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-
-                    Text(
-                        text = explainer,
-                        style = MaterialTheme.typography.bodySmall,
+                        text = stringResource(R.string.x509_issued_by, issuer),
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f),
+                    )
+                }
+
+                if (notAfter != null) {
+                    Text(
+                        text = stringResource(R.string.x509_valid_until, notAfter),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                if (readFailure != null) {
+                    Notice(
+                        title = stringResource(R.string.x509_error_title),
+                        body = readFailure,
                     )
                 }
             }
@@ -300,7 +237,7 @@ private fun CertificateCard(state: X509SettingsViewModel.UiState) {
     }
 }
 
-/** How the card says that something is wrong with the certificate. */
+/** How the card says that the certificate could not be read. */
 @Composable
 private fun Notice(
     title: String,
@@ -366,7 +303,6 @@ private fun FieldProblem(problem: FieldProblem) {
         text =
             when (problem) {
                 is FieldProblem.Rejected -> stringResource(problem.reason.phrase())
-                is FieldProblem.Unusable -> stringResource(problem.reason.sentence())
             },
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.error,
@@ -383,18 +319,6 @@ private fun RejectionReason.phrase(): Int =
         RejectionReason.AMBIGUOUS -> R.string.x509_claim_ambiguous
         RejectionReason.PLACEHOLDER_IDENTIFIER -> R.string.x509_claim_placeholder_identifier
         RejectionReason.UNKNOWN_ATTRIBUTE -> R.string.x509_claim_unknown_attribute
-    }
-
-/** The string resource wording a rule the certificate fails, which the parser leaves to each client. */
-private fun UnusableReason.sentence(): Int =
-    when (this) {
-        UnusableReason.NO_CLIENT_AUTH_EKU -> R.string.x509_rule_no_client_auth_eku
-        UnusableReason.NO_DIGITAL_SIGNATURE_KEY_USAGE -> R.string.x509_rule_no_digital_signature_key_usage
-        UnusableReason.NOT_YET_VALID -> R.string.x509_rule_not_yet_valid
-        UnusableReason.EXPIRED -> R.string.x509_rule_expired
-        UnusableReason.UNSUPPORTED_KEY_ALGORITHM -> R.string.x509_rule_unsupported_key_algorithm
-        UnusableReason.REFUSED_IDENTITY -> R.string.x509_rule_refused_identity
-        UnusableReason.UNREADABLE -> R.string.x509_rule_unreadable
     }
 
 /** The value of a row, `null` unless the parser read exactly one the clients will attest. */
@@ -439,7 +363,7 @@ private fun X509SettingsScreenPreview() {
 
 @Preview(showSystemUi = true)
 @Composable
-private fun X509SettingsScreenUnusablePreview() {
+private fun X509SettingsScreenRejectedClaimsPreview() {
     FirezoneTheme {
         X509SettingsScreen(
             state =
@@ -447,16 +371,9 @@ private fun X509SettingsScreenUnusablePreview() {
                     alias = "firezone-device",
                     isManaged = true,
                     isUsable = true,
-                    certificateIsUsable = false,
-                    certificateProblems = listOf(UnusableReason.NO_CLIENT_AUTH_EKU),
                     // The parser reads the rows with a problem first.
                     details =
                         listOf(
-                            DetailField(
-                                "Not After",
-                                ClaimValue.Present("2024-01-31 23:59:59 UTC"),
-                                FieldProblem.Unusable(UnusableReason.EXPIRED),
-                            ),
                             DetailField(
                                 "Actor Email",
                                 ClaimValue.Present("jane.doe.example.com"),
@@ -464,6 +381,7 @@ private fun X509SettingsScreenUnusablePreview() {
                             ),
                             DetailField("Account ID", ClaimValue.Absent, FieldProblem.Rejected(RejectionReason.EMPTY)),
                             DetailField("Common Name", ClaimValue.Present("jane.doe@example.com"), null),
+                            DetailField("Not After", ClaimValue.Present("2024-01-31 23:59:59 UTC"), null),
                             DetailField("Issuer", ClaimValue.Present("CN=Example Corp Device CA, O=Example Corp"), null),
                         ),
                 ),

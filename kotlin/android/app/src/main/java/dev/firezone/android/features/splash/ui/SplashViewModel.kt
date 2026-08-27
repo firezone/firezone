@@ -68,9 +68,8 @@ internal class SplashViewModel
 
                 val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
 
-                // Without a token we can only connect if a client certificate names somebody the
-                // portal will resolve; one it refuses has to reach the sign-in screen to say so.
-                if (token.isNullOrBlank() && certificateUser.identity() !is Identity.Resolved) {
+                // Without a token we can only connect if a client certificate claims an identity.
+                if (token.isNullOrBlank() && certificateUser.identity() == Identity.Absent) {
                     actionMutableStateFlow.value = ViewAction.NavigateToSignIn
                     return@launch
                 }

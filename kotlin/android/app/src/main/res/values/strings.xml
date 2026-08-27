@@ -31,9 +31,6 @@
 	<string name="x509_no_certificate_title">No client certificate</string>
 	<string name="x509_issued_by">Issued by %1$s</string>
 	<string name="x509_valid_until">Valid until %1$s</string>
-	<string name="x509_explainer_present">Firezone uses this certificate to identify this device.</string>
-	<string name="x509_explainer_absent">Firezone did not find a certificate to identify this device.</string>
-	<string name="x509_explainer_unusable">Firezone cannot use this certificate to identify this device.</string>
 	<string name="x509_select_certificate">Select Certificate</string>
 	<string name="x509_selection_title">Select your client certificate</string>
 	<string name="x509_selection_description">
@@ -47,7 +44,7 @@
 		Android has not released this certificate to Firezone. Selecting it grants access.
 	</string>
 	<string name="x509_error_title">Unable to read the client certificate</string>
-	<string name="x509_unusable_title">Firezone will not present this certificate</string>
+	<string name="x509_unreadable">Firezone could not read this certificate.</string>
 	<string name="x509_contact_admin">Contact your administrator for support.</string>
 	<string name="x509_claim_absent">Not present</string>
 	<string name="x509_claim_empty">Empty</string>
@@ -57,17 +54,6 @@
 	<string name="x509_claim_ambiguous">More than one value was given</string>
 	<string name="x509_claim_placeholder_identifier">Placeholder identifier</string>
 	<string name="x509_claim_unknown_attribute">Unrecognised attribute</string>
-	<string name="x509_rule_no_client_auth_eku">
-		Firezone only presents a certificate that allows TLS client authentication.
-	</string>
-	<string name="x509_rule_no_digital_signature_key_usage">
-		Firezone only presents a certificate whose key usage allows digital signatures.
-	</string>
-	<string name="x509_rule_not_yet_valid">This certificate is not valid yet.</string>
-	<string name="x509_rule_expired">This certificate has expired.</string>
-	<string name="x509_rule_unsupported_key_algorithm">Firezone cannot sign with this key algorithm.</string>
-	<string name="x509_rule_refused_identity">Firezone cannot identify the user this certificate names.</string>
-	<string name="x509_rule_unreadable">Firezone could not read this certificate.</string>
 
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>
@@ -95,9 +81,6 @@
 	<string name="error_dialog_title">Error</string>
 	<string name="error_dialog_message_browser_required">
 		Please install a browser to sign in to Firezone.
-	</string>
-	<string name="error_dialog_message_invalid_certificate">
-		A certificate has been configured but it is invalid. Please contact your administrator.
 	</string>
 	<string name="error_dialog_button_text">Ok</string>
 	<string name="enable_vpn_permission">Enable VPN Permission</string>

@@ -8,7 +8,6 @@ import dev.firezone.android.core.Log
 import uniffi.connlib.ClientTlsIdentity
 import uniffi.x509claims.Identity
 import uniffi.x509claims.ParsedCertificate
-import uniffi.x509claims.UnusableReason
 import uniffi.x509claims.parseClientCertificate
 import java.security.GeneralSecurityException
 import java.security.PrivateKey
@@ -26,7 +25,7 @@ class X509IdentityException(
  * The client identity Firezone presents to the portal, together with what its leaf certificate says.
  *
  * [certificate] is `null` when the leaf is not a certificate the parser understands, which leaves
- * the identity unusable: none of the rules a certificate has to satisfy could be checked.
+ * nothing to present.
  */
 data class LoadedX509Identity(
     val alias: String,
@@ -36,14 +35,6 @@ data class LoadedX509Identity(
     /** Who the certificate says is connecting, which decides what the sign-in screen offers. */
     val identity: Identity
         get() = certificate?.identity ?: Identity.Absent
-
-    /** Whether the certificate's own rules allow presenting it for mutual TLS. */
-    val certificateIsUsable: Boolean
-        get() = certificate?.isUsable == true
-
-    /** The rules the certificate fails that no detail row carries. */
-    val certificateProblems: List<UnusableReason>
-        get() = certificate?.certificateProblems ?: listOf(UnusableReason.UNREADABLE)
 }
 
 /**

@@ -102,7 +102,7 @@ class SessionActivity : AppCompatActivity() {
                 val endSessionLabel =
                     when (certificateIdentity) {
                         Identity.Absent -> stringResource(R.string.sign_out)
-                        is Identity.Resolved, Identity.Refused -> stringResource(R.string.disconnect)
+                        is Identity.Claimed -> stringResource(R.string.disconnect)
                     }
 
                 SessionScreen(
