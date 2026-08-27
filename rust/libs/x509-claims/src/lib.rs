@@ -283,7 +283,7 @@ impl ParsedCertificate {
 }
 
 /// Who the certificate claims is connecting.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum Identity {
     /// The certificate claims nobody, so the session signs in with a token.
     Absent,

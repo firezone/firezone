@@ -201,7 +201,12 @@ export type X509RejectionReason =
 export type X509Status = {
   problems: X509Problem[];
   sections: X509DetailSection[];
+  identity: X509Identity;
 };
+/**
+ * Mirrors [`x509_keystore::ClientIdentity`].
+ */
+export type X509Identity = "Absent" | { Claimed: { email: string | null } };
 export type X509StatusChanged = X509Status;
 /**
  * Mirrors [`x509_keystore::UnreadableStore`].
