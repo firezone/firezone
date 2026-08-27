@@ -54,6 +54,7 @@ pub enum UnusableReason {
     NotYetValid,
     Expired,
     UnsupportedKeyAlgorithm,
+    RefusedIdentity,
 }
 
 impl UnusableReason {
@@ -65,6 +66,7 @@ impl UnusableReason {
             Self::NotYetValid => "not yet valid",
             Self::Expired => "expired",
             Self::UnsupportedKeyAlgorithm => "unsupported key algorithm",
+            Self::RefusedIdentity => "the user it names cannot be resolved",
         }
     }
 
@@ -72,13 +74,15 @@ impl UnusableReason {
     ///
     /// A reader told that a certificate cannot be used needs the attribute to fix, so a rule
     /// reads underneath the row that shows it wherever the details carry one.
-    fn field_label(self) -> &'static str {
+    fn field_label(self) -> Option<&'static str> {
         match self {
-            Self::NoClientAuthEku => "TLS Client Authentication EKU",
-            Self::NoDigitalSignatureKeyUsage => "Digital Signature Key Usage",
-            Self::NotYetValid => "Not Before",
-            Self::Expired => "Not After",
-            Self::UnsupportedKeyAlgorithm => "Signing Algorithm",
+            Self::NoClientAuthEku => Some("TLS Client Authentication EKU"),
+            Self::NoDigitalSignatureKeyUsage => Some("Digital Signature Key Usage"),
+            Self::NotYetValid => Some("Not Before"),
+            Self::Expired => Some("Not After"),
+            Self::UnsupportedKeyAlgorithm => Some("Signing Algorithm"),
+            // Three rows together name the user, so no one of them carries this.
+            Self::RefusedIdentity => None,
         }
     }
 }
@@ -110,6 +114,11 @@ impl Claim {
             (ClaimValue::Present { value }, None) => Some(value),
             (ClaimValue::Present { .. }, Some(_)) | (ClaimValue::Absent, _) => None,
         }
+    }
+
+    /// Whether the certificate carries the claim at all, attested or not.
+    pub fn is_present(&self) -> bool {
+        matches!(self.value, ClaimValue::Present { .. })
     }
 
     /// A claim the certificate carries and the clients will attest.
@@ -183,7 +192,7 @@ impl RejectionReason {
         match self {
             Self::Empty => "empty",
             Self::TooLong => "longer than 255 characters",
-            Self::NotAnEmailAddress => "not an email address",
+            Self::NotAnEmailAddress => "not a valid email address",
             Self::NotAUuid => "not a UUID",
             Self::Ambiguous => "more than one value was given",
             Self::PlaceholderIdentifier => "a placeholder identifier",
@@ -199,6 +208,7 @@ pub struct ParsedCertificate {
     pub subject_alternative_names: Vec<String>,
     pub actor_email: Claim,
     pub account_id: Claim,
+    pub actor_id: Claim,
     pub mdm_device_id: Claim,
     pub device_serial: Claim,
     /// `firezone://` names whose attribute this parser does not read, e.g. a typo in a template.
@@ -248,6 +258,10 @@ impl ParsedCertificate {
             (
                 UnusableReason::UnsupportedKeyAlgorithm,
                 self.signing_algorithm.is_none(),
+            ),
+            (
+                UnusableReason::RefusedIdentity,
+                self.identity() == Identity::Refused,
             ),
         ]
         .into_iter()
@@ -301,6 +315,7 @@ impl ParsedCertificate {
             field("Issuer", &self.issuer),
             claim_field("Actor Email", self.actor_email.clone()),
             claim_field("Account ID", self.account_id.clone()),
+            claim_field("Actor ID", self.actor_id.clone()),
             claim_field("MDM Device ID", self.mdm_device_id.clone()),
             claim_field("Device Serial", self.device_serial.clone()),
         ];
@@ -344,7 +359,9 @@ impl ParsedCertificate {
         ]);
 
         for reason in self.unusable_reasons() {
-            let label = reason.field_label();
+            let Some(label) = reason.field_label() else {
+                continue;
+            };
             let Some(field) = fields.iter_mut().find(|field| field.label == label) else {
                 continue;
             };
@@ -358,6 +375,43 @@ impl ParsedCertificate {
         fields.sort_by_key(|field| field.problem.is_none());
 
         fields
+    }
+
+    /// Who the certificate says is connecting, decided the way the portal decides it.
+    ///
+    /// The portal commits the connection to X.509 authentication as soon as the certificate
+    /// carries any identity claim, so a claim it cannot resolve refuses the connection rather
+    /// than falling back to a token.
+    pub fn identity(&self) -> Identity {
+        let claimed = [&self.account_id, &self.actor_id, &self.actor_email]
+            .into_iter()
+            .any(Claim::is_present);
+
+        if !claimed {
+            return Identity::Absent;
+        }
+
+        let Some(account_id) = self.account_id.attested() else {
+            return Identity::Refused;
+        };
+
+        // An actor id outranks the email, and claiming one at all commits to it.
+        let actor = if self.actor_id.is_present() {
+            self.actor_id.attested().map(|id| Actor::Id(id.to_owned()))
+        } else {
+            self.actor_email
+                .attested()
+                .map(|email| Actor::Email(email.to_owned()))
+        };
+
+        let Some(actor) = actor else {
+            return Identity::Refused;
+        };
+
+        Identity::Resolved {
+            account_id: account_id.to_owned(),
+            actor,
+        }
     }
 
     pub fn user_identity(&self) -> Option<UserIdentity> {
@@ -409,6 +463,27 @@ impl ParsedCertificate {
         .filter_map(|claim| claim.attested())
         .any(|attested| attested.to_lowercase() == value.to_lowercase())
     }
+}
+
+/// Who the certificate says is connecting.
+///
+/// Naming nobody is not the same as naming somebody unusable: the first signs in with a token
+/// and the second is refused, so the two never collapse into one absent identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Identity {
+    /// The certificate names nobody, so it only attests the device.
+    Absent,
+    /// The portal will look this actor up.
+    Resolved { account_id: String, actor: Actor },
+    /// The certificate names somebody the portal cannot look up.
+    Refused,
+}
+
+/// How a certificate names the actor connecting.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Actor {
+    Id(String),
+    Email(String),
 }
 
 /// A portal user identity encoded in a managed certificate's URI SANs.
@@ -473,6 +548,7 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificat
         .collect::<Vec<_>>();
     let actor_email = extract_actor_email(&uri_subject_alternative_names);
     let account_id = extract_account_id(&uri_subject_alternative_names);
+    let actor_id = extract_actor_id(&uri_subject_alternative_names);
     let mdm_device_id = extract_mdm_device_id(&uri_subject_alternative_names);
     let device_serial = extract_device_serial(&uri_subject_alternative_names);
     let unrecognised_claims = extract_unrecognised_claims(&uri_subject_alternative_names);
@@ -535,6 +611,7 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificat
         subject_alternative_names,
         actor_email,
         account_id,
+        actor_id,
         mdm_device_id,
         device_serial,
         unrecognised_claims,
@@ -589,22 +666,28 @@ fn extract_actor_email(uris: &[&str]) -> Claim {
 }
 
 fn extract_account_id(uris: &[&str]) -> Claim {
-    let account_ids = firezone_attribute_values(uris, "account-id")
+    resolve_claim(uuid_values(uris, "account-id"), str::to_owned)
+}
+
+fn uuid_values(uris: &[&str], attribute: &str) -> Vec<Result<String, Rejected>> {
+    firezone_attribute_values(uris, attribute)
         .into_iter()
         .map(|value| {
             let value = value?;
-            let Ok(account_id) = uuid::Uuid::parse_str(&value) else {
+            let Ok(uuid) = uuid::Uuid::parse_str(&value) else {
                 return Err(Rejected {
                     value,
                     reason: RejectionReason::NotAUuid,
                 });
             };
 
-            Ok(account_id.hyphenated().to_string().to_lowercase())
+            Ok(uuid.hyphenated().to_string().to_lowercase())
         })
-        .collect();
+        .collect()
+}
 
-    resolve_claim(account_ids, str::to_owned)
+fn extract_actor_id(uris: &[&str]) -> Claim {
+    resolve_claim(uuid_values(uris, "actor-id"), str::to_owned)
 }
 
 fn extract_device_serial(uris: &[&str]) -> Claim {
@@ -685,7 +768,14 @@ fn firezone_claim(uri: &str) -> Option<(String, &str)> {
     if !scheme.eq_ignore_ascii_case("firezone") {
         return None;
     }
-    let (attribute, value) = remainder.split_once('/')?;
+    let (attribute, value) = match remainder.split_once('/') {
+        Some(pair) => pair,
+        // A name that stops at the attribute still claims it, with nothing to attest. Only
+        // where the attribute is one we read, though: a bare device identifier is a name in
+        // its own right rather than an empty claim.
+        None if known_attribute(&remainder.to_ascii_lowercase()) => (remainder, ""),
+        None => return None,
+    };
 
     Some((attribute.to_ascii_lowercase(), value))
 }
@@ -805,7 +895,7 @@ fn extract_unrecognised_claims(uris: &[&str]) -> Vec<String> {
 
 /// Whether the parser reads this `firezone://` attribute at all, however it uses the value.
 fn known_attribute(attribute: &str) -> bool {
-    matches!(attribute, "email" | "account-id") || mdm_attribute(attribute)
+    matches!(attribute, "email" | "account-id" | "actor-id") || mdm_attribute(attribute)
 }
 
 /// Whether the attribute is an identifier an MDM writes into a certificate, including the ones
