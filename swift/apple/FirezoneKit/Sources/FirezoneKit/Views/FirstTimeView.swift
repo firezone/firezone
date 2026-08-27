@@ -19,7 +19,7 @@ import SwiftUI
           Image("LogoText")
             .resizable()
             .scaledToFit()
-            .frame(maxWidth: 640)
+            .frame(maxWidth: 430)
             .padding(.horizontal, 10)
           Spacer()
           Text(
