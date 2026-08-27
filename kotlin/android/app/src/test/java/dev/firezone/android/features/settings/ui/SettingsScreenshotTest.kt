@@ -2,46 +2,28 @@
 package dev.firezone.android.features.settings.ui
 
 import android.app.Application
-import android.os.Bundle
-import android.os.Looper
-import android.widget.TextView
-import androidx.activity.viewModels
-import androidx.appcompat.app.AppCompatActivity
-import androidx.fragment.app.Fragment
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
-import androidx.viewpager2.adapter.FragmentStateAdapter
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
-import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
-import dev.firezone.android.core.data.Repository
-import dev.firezone.android.databinding.ActivitySettingsBinding
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.features.settings.ui.compose.SettingsScreen
+import dev.firezone.android.ui.theme.FirezoneTheme
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
-import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import java.io.File
-import java.io.RandomAccessFile
 import dev.firezone.android.core.data.model.Config as FirezoneConfig
 
 // Renders the settings screens to PNGs; `./gradlew recordRoborazziDebug` writes them.
-//
-// `SettingsActivity` only works on top of a Hilt graph, which a screenshot does not need,
-// so `SettingsScreenshotActivity` below hosts the real layout and fragments instead.
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(
@@ -50,53 +32,28 @@ import dev.firezone.android.core.data.model.Config as FirezoneConfig
     qualifiers = RobolectricDeviceQualifiers.Pixel5,
 )
 class SettingsScreenshotTest {
-    @Test
-    fun generalSettings() = captureSettingsPage("settings-general", R.id.settingsGeneral)
+    @get:Rule
+    val composeRule = createComposeRule()
 
     @Test
-    fun advancedSettings() = captureSettingsPage("settings-advanced", R.id.settingsAdvanced)
+    fun generalSettings() = captureSettingsPage("settings-general", R.string.general_settings_title)
 
     @Test
-    fun logSettings() = captureSettingsPage("settings-logs", R.id.settingsLogs)
+    fun advancedSettings() = captureSettingsPage("settings-advanced", R.string.advanced_settings_title)
+
+    @Test
+    fun logSettings() = captureSettingsPage("settings-logs", R.string.log_settings_title)
 
     @OptIn(ExperimentalRoborazziApi::class)
     private fun captureSettingsPage(
         name: String,
-        navigationItemId: Int,
+        tabLabel: Int,
     ) {
-        seedLogDirectory()
+        composeRule.setContent { FirezoneTheme { SettingsScreenSample() } }
+        composeRule.onNodeWithText(RuntimeEnvironment.getApplication().getString(tabLabel)).performClick()
+        composeRule.waitForIdle()
 
-        val activity = Robolectric.buildActivity(SettingsScreenshotActivity::class.java).setup().get()
-        activity.showPage(settingsPages.indexOfFirst { it.first == navigationItemId })
-        shadowOf(Looper.getMainLooper()).idle()
-
-        // The advanced page shows the commit the app was built from, which changes with
-        // every push; pin it so the image only changes when the UI does.
-        activity.findViewById<TextView>(R.id.tvGitSha)?.text = "Build: \"00000000\""
-        shadowOf(Looper.getMainLooper()).idle()
-
-        if (navigationItemId == R.id.settingsLogs) {
-            awaitLogDirectorySize(activity)
-        }
-
-        activity.window.decorView.captureRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
-    }
-
-    // The logs page shows the size of the log directory, so give it one log file to measure.
-    private fun seedLogDirectory() {
-        val logFile = File(RuntimeEnvironment.getApplication().cacheDir, "logs/connlib.log")
-        logFile.parentFile?.mkdirs()
-        RandomAccessFile(logFile, "rw").use { it.setLength(LOG_DIRECTORY_BYTES) }
-    }
-
-    // The directory size is computed on the IO dispatcher, so wait for it to reach the UI.
-    private fun awaitLogDirectorySize(activity: SettingsScreenshotActivity) {
-        val deadline = System.currentTimeMillis() + 10_000
-        while (activity.viewModel.uiState.value.logSizeBytes != LOG_DIRECTORY_BYTES) {
-            check(System.currentTimeMillis() < deadline) { "Log directory size was never computed" }
-            Thread.sleep(10)
-        }
-        shadowOf(Looper.getMainLooper()).idle()
+        captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
     }
 }
 
@@ -114,55 +71,33 @@ private val sampleConfig =
         connectOnStart = false,
     )
 
-// Hosts the settings pages the way `SettingsActivity` does, with the Hilt graph replaced by
-// a view model built by hand from preferences seeded with `sampleConfig`.
-internal class SettingsScreenshotActivity : AppCompatActivity() {
-    private lateinit var binding: ActivitySettingsBinding
+private val nothingManaged =
+    ManagedConfigStatus(
+        isAuthUrlManaged = false,
+        isApiUrlManaged = false,
+        isLogFilterManaged = false,
+        isAccountSlugManaged = false,
+        isStartOnLoginManaged = false,
+        isConnectOnStartManaged = false,
+    )
 
-    val viewModel: SettingsViewModel by viewModels()
-
-    override val defaultViewModelProviderFactory: ViewModelProvider.Factory =
-        viewModelFactory {
-            initializer {
-                val repository =
-                    Repository(
-                        applicationContext,
-                        Dispatchers.Unconfined,
-                        getSharedPreferences("settings-screenshot", MODE_PRIVATE),
-                    )
-                runBlocking { repository.saveSettings(sampleConfig).first() }
-                SettingsViewModel(repository)
-            }
-        }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        setTheme(R.style.AppTheme_Base)
-        super.onCreate(savedInstanceState)
-        binding = ActivitySettingsBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
-        binding.viewPager.adapter =
-            object : FragmentStateAdapter(this) {
-                override fun getItemCount(): Int = settingsPages.size
-
-                override fun createFragment(position: Int): Fragment = settingsPages[position].second()
-            }
-
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.uiState.collect { uiState ->
-                    binding.btSaveSettings.isEnabled = uiState.isSaveButtonEnabled
-                }
-            }
-        }
-
-        viewModel.populateFieldsFromConfig()
-    }
-
-    fun showPage(position: Int) {
-        binding.viewPager.setCurrentItem(position, false)
-        binding.bottomNavigation.menu
-            .findItem(settingsPages[position].first)
-            .isChecked = true
-    }
+@Composable
+private fun SettingsScreenSample() {
+    SettingsScreen(
+        config = sampleConfig,
+        managedStatus = nothingManaged,
+        isSaveEnabled = true,
+        logSizeBytes = LOG_DIRECTORY_BYTES,
+        warnBeforeSaving = false,
+        onConfigChange = {},
+        onResetToDefaults = {},
+        onClearLogs = {},
+        onExportLogs = {},
+        onLogsShown = {},
+        onSave = {},
+        onCancel = {},
+        // The advanced page shows the commit the app was built from, which changes with every
+        // push; pin it so the image only changes when the UI does.
+        buildSha = "Build: \"00000000\"",
+    )
 }
