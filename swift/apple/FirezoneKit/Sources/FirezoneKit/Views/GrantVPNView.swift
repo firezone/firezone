@@ -61,7 +61,7 @@ struct GrantVPNView: View {
           Image("LogoText")
             .resizable()
             .scaledToFit()
-            .frame(maxWidth: 265)
+            .frame(maxWidth: 400)
             .padding(.horizontal, 10)
           Spacer()
           Spacer()
