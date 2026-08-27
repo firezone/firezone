@@ -39,20 +39,20 @@ internal class SettingsViewModel
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
-        // Working config that gets modified during editing using immutable copy
-        private var config =
-            Config(
-                authUrl = "",
-                apiUrl = "",
-                logFilter = "",
-                accountSlug = "",
-                startOnLogin = false,
-                connectOnStart = false,
+        private val _configStateFlow =
+            MutableStateFlow(
+                Config(
+                    authUrl = "",
+                    apiUrl = "",
+                    logFilter = "",
+                    accountSlug = "",
+                    startOnLogin = false,
+                    connectOnStart = false,
+                ),
             )
-
-        // StateFlow that emits config only on load/reset, not during editing
-        private val _configStateFlow = MutableStateFlow(config)
         val configStateFlow: StateFlow<Config> = _configStateFlow
+
+        private val config: Config get() = _configStateFlow.value
 
         private val _managedStatusStateFlow = MutableStateFlow<ManagedConfigStatus?>(null)
         val managedStatusStateFlow: StateFlow<ManagedConfigStatus?> = _managedStatusStateFlow
@@ -62,7 +62,6 @@ internal class SettingsViewModel
         fun populateFieldsFromConfig() {
             viewModelScope.launch {
                 repo.getConfig().collect {
-                    config = it
                     _configStateFlow.value = it
                     _managedStatusStateFlow.value = repo.getManagedStatus()
                     onFieldUpdated()
@@ -103,33 +102,8 @@ internal class SettingsViewModel
             actionMutableStateFlow.value = ViewAction.NavigateBack
         }
 
-        fun onValidateAuthUrl(authUrl: String) {
-            config = config.copy(authUrl = authUrl)
-            onFieldUpdated()
-        }
-
-        fun onValidateApiUrl(apiUrl: String) {
-            config = config.copy(apiUrl = apiUrl)
-            onFieldUpdated()
-        }
-
-        fun onValidateLogFilter(logFilter: String) {
-            config = config.copy(logFilter = logFilter)
-            onFieldUpdated()
-        }
-
-        fun onValidateAccountSlug(accountSlug: String) {
-            config = config.copy(accountSlug = accountSlug)
-            onFieldUpdated()
-        }
-
-        fun onStartOnLoginChanged(isChecked: Boolean) {
-            config = config.copy(startOnLogin = isChecked)
-            onFieldUpdated()
-        }
-
-        fun onConnectOnStartChanged(isChecked: Boolean) {
-            config = config.copy(connectOnStart = isChecked)
+        fun onConfigChanged(config: Config) {
+            _configStateFlow.value = config
             onFieldUpdated()
         }
 
@@ -185,9 +159,8 @@ internal class SettingsViewModel
         }
 
         fun resetSettingsToDefaults() {
-            config = repo.getDefaultConfigSync()
+            _configStateFlow.value = repo.getDefaultConfigSync()
             shouldResetFavoritesOnSave = true
-            _configStateFlow.value = config
             _managedStatusStateFlow.value = repo.getManagedStatus()
             onFieldUpdated()
         }
