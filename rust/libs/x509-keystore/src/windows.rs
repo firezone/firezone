@@ -378,25 +378,19 @@ impl CandidateCertificate for Certificate {
     }
 
     fn unusable(&self) -> UnusableCertificate {
-        let fingerprint = self.metadata.fingerprint.clone();
-        let reasons = self.metadata.unusable_reasons();
-
-        if reasons.is_empty() {
-            // CNG refuses a key held by a legacy CSP rather than a KSP, which is what an older
-            // certificate template provisions.
-            let cause = match &self.key_error {
-                Some(error) => UnusableCause::WindowsKeyRefused {
-                    error: error.clone(),
-                },
-                None => UnusableCause::WindowsKeyMissing,
-            };
-
-            return UnusableCertificate { fingerprint, cause };
-        }
+        // CNG refuses a key held by a legacy CSP rather than a KSP, which is what an older
+        // certificate template provisions.
+        let cause = match (&self.key_error, self.metadata.signing_algorithm) {
+            (Some(error), _) => UnusableCause::WindowsKeyRefused {
+                error: error.clone(),
+            },
+            (None, None) => UnusableCause::UnsupportedKeyAlgorithm,
+            (None, Some(_)) => UnusableCause::WindowsKeyMissing,
+        };
 
         UnusableCertificate {
-            fingerprint,
-            cause: UnusableCause::FailsRules { reasons },
+            fingerprint: self.metadata.fingerprint.clone(),
+            cause,
         }
     }
 }
@@ -494,7 +488,7 @@ unsafe fn enumerate_store(
             context: owned_context,
             chain,
             chain_error,
-            usable: metadata.is_usable(subject_cn) && key_available,
+            usable: metadata.signing_algorithm.is_some() && key_available,
             metadata,
             key_error,
         });
