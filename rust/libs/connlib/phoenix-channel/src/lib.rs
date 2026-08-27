@@ -213,25 +213,32 @@ const CERTIFICATE_REJECTION_CODES: &[&str] = &[
     "x509_user_type_not_allowed",
 ];
 
+/// Every variant's `Display` output is shown to the user verbatim: as a notification on mobile
+/// and as a dialog on desktop.
+///
+/// These are product copy, not log lines. Word them for someone who has never seen this code,
+/// and keep whatever diagnostic detail we have at the end so it never leads the sentence.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Authentication token invalid")]
+    #[error("Your Firezone sign-in has expired. Sign in again to reconnect.")]
     InvalidToken,
     /// The portal refused to authenticate us for a reason we cannot act on specifically.
-    #[error("Failed to authenticate with portal: {0}")]
+    #[error("The Firezone Portal rejected this device's sign-in: {0}")]
     AuthenticationFailed(String),
-    #[error("X.509 client certificate signing failed: {0}")]
+    #[error("This device could not sign in with its certificate: {0}")]
     ClientCertificateSigningFailed(String),
     /// The portal refused the X.509 client certificate we presented.
-    #[error("The portal rejected the client certificate: {0}")]
+    ///
+    /// It words its rejections for the user, so anything we wrap around one only repeats it.
+    #[error("{0}")]
     CertificateRejected(String),
     #[error(
-        "Got disconnected from portal and hit the max-retry limit. Last connection error: {final_error}"
+        "The connection to the Firezone Portal was lost and could not be restored: {final_error}"
     )]
     MaxRetriesReached { final_error: String },
-    #[error("Failed to login with portal: {0}")]
+    #[error("The Firezone Portal refused to start a session for this device: {0}")]
     LoginFailed(String),
-    #[error("Fatal IO error: {0}")]
+    #[error("Firezone ran into an unrecoverable error: {0}")]
     FatalIo(io::Error),
 }
 
@@ -1307,7 +1314,7 @@ mod tests {
         assert!(!error.requires_sign_in());
         assert_eq!(
             error.to_string(),
-            "Failed to authenticate with portal: Invalid token"
+            "The Firezone Portal rejected this device's sign-in: Invalid token"
         );
     }
 
