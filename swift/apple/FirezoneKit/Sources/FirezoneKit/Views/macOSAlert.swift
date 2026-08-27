@@ -312,11 +312,7 @@
     public static func showSignedOutAlert(_ message: String?) async -> Bool {
       let alert = NSAlert()
       alert.messageText = "Your Firezone session has ended"
-      alert.informativeText = """
-        Please sign in again to reconnect.
-
-        \(message ?? "")
-        """
+      alert.informativeText = message ?? "Please sign in again to reconnect."
       alert.addButton(withTitle: "Sign In")
       alert.addButton(withTitle: "Cancel")
       NSApp.activate(ignoringOtherApps: true)

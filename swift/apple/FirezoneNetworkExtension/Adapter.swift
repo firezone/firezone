@@ -495,9 +495,7 @@ actor Adapter {
       // iOS shows the notification from the tunnel process because the UI
       // process isn't guaranteed to be alive; macOS handles it from the UI.
       #if os(iOS)
-        if requiresSignIn {
-          SessionNotification.showSignedOutNotificationiOS()
-        }
+        SessionNotification.showDisconnectedNotificationiOS(errorMessage)
       #endif
 
       let sendableError = SendableError(errorMessage, requiresSignIn: requiresSignIn)

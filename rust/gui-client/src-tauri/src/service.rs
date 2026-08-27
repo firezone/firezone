@@ -93,7 +93,6 @@ pub enum ServerMsg {
     OnDisconnect {
         error_msg: String,
         requires_sign_in: bool,
-        is_certificate_error: bool,
     },
     AllGatewaysOffline {
         resource_id: ResourceId,
@@ -599,7 +598,6 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::OnDisconnect {
                     error_msg: error.to_string(),
                     requires_sign_in: error.requires_sign_in(),
-                    is_certificate_error: error.is_certificate_error(),
                 })
                 .await?
             }

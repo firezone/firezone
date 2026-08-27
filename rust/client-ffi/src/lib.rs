@@ -244,15 +244,6 @@ impl DisconnectError {
     pub fn requires_sign_in(&self) -> bool {
         self.0.requires_sign_in()
     }
-
-    /// Returns whether the X.509 client certificate is what failed.
-    ///
-    /// Lets a client word its error and choose what to offer from what actually went wrong,
-    /// rather than from how it happened to authenticate: a session that presented a certificate
-    /// can still fail for reasons that have nothing to do with it.
-    pub fn is_certificate_error(&self) -> bool {
-        self.0.is_certificate_error()
-    }
 }
 
 #[uniffi::export(with_foreign)]

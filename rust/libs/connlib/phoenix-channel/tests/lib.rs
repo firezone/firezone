@@ -350,18 +350,18 @@ async fn connect_with_zero_backoff_resets_reconnect_backoff() {
 
 // The portal names permanent rejections with a problem code; the HTTP status only decides
 // for a response that carries no code the client knows.
-#[test_case(r#"{"status":401,"detail":"Invalid token","code":"invalid_token"}"# => "Authentication token invalid"; "an unusable token")]
-#[test_case(r#"{"status":401,"detail":"No token","code":"missing_token"}"# => "Authentication token invalid"; "a missing token")]
-#[test_case(r#"{"status":403,"detail":"This device's certificate has been revoked.","code":"certificate_revoked"}"# => "The portal rejected the client certificate: This device's certificate has been revoked."; "a revoked certificate")]
-#[test_case(r#"{"status":403,"detail":"This device is not trusted.","code":"device_untrusted"}"# => "The portal rejected the client certificate: This device is not trusted."; "an untrusted device")]
-#[test_case(r#"{"status":409,"detail":"Different hardware.","code":"device_identity_conflict"}"# => "The portal rejected the client certificate: Different hardware."; "a conflicting device identity")]
-#[test_case(r#"{"status":403,"detail":"This device's certificate does not identify an active user authorized to access this Firezone account. Please contact your administrator.","code":"x509_user_not_authorized"}"# => "The portal rejected the client certificate: This device's certificate does not identify an active user authorized to access this Firezone account. Please contact your administrator."; "an unauthorized X.509 user")]
-#[test_case(r#"{"status":403,"detail":"Incomplete identity.","code":"invalid_x509_identity"}"# => "The portal rejected the client certificate: Incomplete identity."; "invalid X.509 identity claims")]
-#[test_case(r#"{"status":403,"detail":"Provider disabled.","code":"x509_authentication_disabled"}"# => "The portal rejected the client certificate: Provider disabled."; "a disabled X.509 provider")]
-#[test_case(r#"{"status":403,"detail":"No trust anchors.","code":"no_trust_anchors"}"# => "The portal rejected the client certificate: No trust anchors."; "missing X.509 trust anchors")]
-#[test_case(r#"{"status":403,"detail":"Unknown user.","code":"x509_user_not_found"}"# => "The portal rejected the client certificate: Unknown user."; "an unknown X.509 user")]
-#[test_case(r#"{"status":401,"detail":"Invalid token"}"# => "Failed to authenticate with portal: Invalid token"; "a 401 without a code")]
-#[test_case(r#"{"status":401}"# => "Failed to authenticate with portal: no reason provided"; "a 401 without a detail")]
+#[test_case(r#"{"status":401,"detail":"Invalid token","code":"invalid_token"}"# => "Your Firezone sign-in has expired. Sign in again to reconnect."; "an unusable token")]
+#[test_case(r#"{"status":401,"detail":"No token","code":"missing_token"}"# => "Your Firezone sign-in has expired. Sign in again to reconnect."; "a missing token")]
+#[test_case(r#"{"status":403,"detail":"This device's certificate has been revoked.","code":"certificate_revoked"}"# => "This device's certificate has been revoked."; "a revoked certificate")]
+#[test_case(r#"{"status":403,"detail":"This device is not trusted.","code":"device_untrusted"}"# => "This device is not trusted."; "an untrusted device")]
+#[test_case(r#"{"status":409,"detail":"Different hardware.","code":"device_identity_conflict"}"# => "Different hardware."; "a conflicting device identity")]
+#[test_case(r#"{"status":403,"detail":"This device's certificate does not identify an active user authorized to access this Firezone account. Please contact your administrator.","code":"x509_user_not_authorized"}"# => "This device's certificate does not identify an active user authorized to access this Firezone account. Please contact your administrator."; "an unauthorized X.509 user")]
+#[test_case(r#"{"status":403,"detail":"Incomplete identity.","code":"invalid_x509_identity"}"# => "Incomplete identity."; "invalid X.509 identity claims")]
+#[test_case(r#"{"status":403,"detail":"Provider disabled.","code":"x509_authentication_disabled"}"# => "Provider disabled."; "a disabled X.509 provider")]
+#[test_case(r#"{"status":403,"detail":"No trust anchors.","code":"no_trust_anchors"}"# => "No trust anchors."; "missing X.509 trust anchors")]
+#[test_case(r#"{"status":403,"detail":"Unknown user.","code":"x509_user_not_found"}"# => "Unknown user."; "an unknown X.509 user")]
+#[test_case(r#"{"status":401,"detail":"Invalid token"}"# => "The Firezone Portal rejected this device's sign-in: Invalid token"; "a 401 without a code")]
+#[test_case(r#"{"status":401}"# => "The Firezone Portal rejected this device's sign-in: no reason provided"; "a 401 without a detail")]
 #[tokio::test]
 async fn portal_rejection_is_terminal(problem_details: &str) -> String {
     let port = http_problem_details_server(problem_details).await;
@@ -403,7 +403,7 @@ async fn bare_401_is_terminal() {
 
     assert_eq!(
         error.to_string(),
-        "Failed to authenticate with portal: no reason provided"
+        "The Firezone Portal rejected this device's sign-in: no reason provided"
     );
 }
 
@@ -426,7 +426,6 @@ async fn rejected_certificate_does_not_require_sign_in(problem_details: &str) {
 
     let error = expect_error(first_event(port).await);
 
-    assert!(error.is_certificate_error());
     // A new token cannot replace the credential the portal refused.
     assert!(!error.requires_sign_in());
 }

@@ -674,28 +674,16 @@ impl<I: GuiIntegration> Controller<I> {
             service::ServerMsg::OnDisconnect {
                 error_msg,
                 requires_sign_in,
-                is_certificate_error,
             } => {
-                self.sign_out().await?;
+                tracing::error!("Connlib disconnected: {error_msg}");
+
                 if requires_sign_in {
-                    tracing::info!(?error_msg, "Auth error");
-                    self.integration.show_notification(
-                        "Firezone disconnected",
-                        "To access resources, sign in again.",
-                    )?;
+                    self.sign_out().await?;
                 } else {
-                    tracing::error!("Connlib disconnected: {error_msg}");
-
-                    // A certificate the portal refused is not something the user can retry
-                    // their way out of, so point them at whoever installed it.
-                    let body = if is_certificate_error {
-                        format!("{error_msg}\n\nContact your administrator for support.")
-                    } else {
-                        error_msg
-                    };
-
-                    dialog::error(&body)?;
+                    self.disconnect().await?;
                 }
+
+                dialog::error(&error_msg)?;
             }
             service::ServerMsg::OnUpdateResources(resources) => {
                 if !self.status.needs_resource_updates() {
@@ -945,6 +933,25 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     /// Deletes the auth token, stops connlib, and refreshes the tray menu
+    /// Ends the session, leaving the stored token where it is.
+    async fn disconnect(&mut self) -> Result<()> {
+        match self.status {
+            Status::Quitting => return Ok(()),
+            Status::Disconnected
+            | Status::TunnelReady { .. }
+            | Status::WaitingForPortal
+            | Status::WaitingForTunnel => {}
+        }
+        self.status = Status::Disconnected;
+        tracing::debug!("disconnecting connlib");
+        // This is redundant if the token is expired, in that case
+        // connlib already disconnected itself.
+        self.send_ipc(&service::ClientMsg::Disconnect).await?;
+        self.refresh_ui_state();
+        Ok(())
+    }
+
+    /// Ends the session and discards the token, so the next one starts at sign-in.
     async fn sign_out(&mut self) -> Result<()> {
         match self.status {
             Status::Quitting => return Ok(()),
@@ -954,13 +961,8 @@ impl<I: GuiIntegration> Controller<I> {
             | Status::WaitingForTunnel => {}
         }
         self.auth.sign_out()?;
-        self.status = Status::Disconnected;
-        tracing::debug!("disconnecting connlib");
-        // This is redundant if the token is expired, in that case
-        // connlib already disconnected itself.
-        self.send_ipc(&service::ClientMsg::Disconnect).await?;
-        self.refresh_ui_state();
-        Ok(())
+
+        self.disconnect().await
     }
 
     fn resource_by_id(&self, resource_id: ResourceId) -> Result<(ResourceView, Site)> {
