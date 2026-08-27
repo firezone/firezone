@@ -685,8 +685,8 @@ public final class Store: ObservableObject {
 
   /// Starts the session without a token: the portal authenticates the mutual-TLS
   /// connection itself, so nothing has to go through the browser first.
-  func connectWithCertificate(as actor: X509ClaimedActor) async throws {
-    if case .email(let email) = actor {
+  func connectWithCertificate(as email: String?) async throws {
+    if let email {
       configuration.actorName = email
       self.actorName = email
     }

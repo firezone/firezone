@@ -3,7 +3,7 @@
   "vpnStatus": "connected",
   "systemExtension": "installed",
   "notifications": "authorized",
-  "clientCertificate": "unusable",
+  "clientCertificate": "expired",
   "actorName": "Jane Doe",
   "resources": [],
   "connectedDevices": [],

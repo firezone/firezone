@@ -136,7 +136,7 @@ EOF
 # unrecognised claim on that screen.
 issue_certificate usable 1A2B3C4D5E6F7081 serial "$VALID_FROM" "$VALID_UNTIL"
 issue_certificate unknown-attribute 2B3C4D5E6F708192 serial-number "$VALID_FROM" "$VALID_UNTIL"
-issue_certificate unusable 3C4D5E6F708192A3 serial "$EXPIRED_FROM" "$EXPIRED_UNTIL"
+issue_certificate expired 3C4D5E6F708192A3 serial "$EXPIRED_FROM" "$EXPIRED_UNTIL"
 
 echo
 echo "Only the certificates are kept; the CA and the keys go out with ${WORK_DIR}."

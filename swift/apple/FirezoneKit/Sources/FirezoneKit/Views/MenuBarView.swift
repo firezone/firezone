@@ -97,8 +97,8 @@
     var startSessionTitle: String {
       switch store.certificateIdentity {
       case .absent: return "Sign In"
-      case .resolved(_, .email(let email)): return "Connect as \(email)"
-      case .resolved(_, .id), .refused: return "Connect"
+      case .claimed(.some(let email)): return "Connect as \(email)"
+      case .claimed(.none): return "Connect"
       }
     }
 
@@ -106,15 +106,14 @@
     var endSessionTitle: String {
       switch store.certificateIdentity {
       case .absent: return "Sign Out"
-      case .resolved, .refused: return "Disconnect"
+      case .claimed: return "Disconnect"
       }
     }
 
     func startSession() {
       switch store.certificateIdentity {
       case .absent: signIn()
-      case .resolved(_, let actor): connect(as: actor)
-      case .refused: MacOSAlert.showRefusedCertificateAlert()
+      case .claimed(let email): connect(as: email)
       }
     }
 
@@ -129,10 +128,10 @@
       }
     }
 
-    func connect(as actor: X509ClaimedActor) {
+    func connect(as email: String?) {
       Task {
         do {
-          try await store.connectWithCertificate(as: actor)
+          try await store.connectWithCertificate(as: email)
         } catch {
           Log.error(error)
           MacOSAlert.show(for: error)
