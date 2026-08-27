@@ -301,11 +301,7 @@ struct X509SettingsView: View {
         return
       }
 
-      guard let summary = X509CertificateParser.summary(of: certificate) else {
-        loadState = .failed("The certificate could not be parsed.")
-
-        return
-      }
+      let summary = X509CertificateParser.summary(of: certificate) ?? .unreadable
 
       loadState = .loaded(summary, keyProblem: keyProblem)
     } catch {

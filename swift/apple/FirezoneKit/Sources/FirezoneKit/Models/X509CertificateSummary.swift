@@ -43,6 +43,7 @@ public enum X509UnusableReason: Hashable, Sendable {
   case notYetValid
   case expired
   case unsupportedKeyAlgorithm
+  case unreadable
 
   /// A sentence that reads underneath the attribute the rule is about.
   public var sentence: String {
@@ -54,6 +55,7 @@ public enum X509UnusableReason: Hashable, Sendable {
     case .notYetValid: return "This certificate is not valid yet."
     case .expired: return "This certificate has expired."
     case .unsupportedKeyAlgorithm: return "Firezone cannot sign with this key algorithm."
+    case .unreadable: return "Firezone could not read this certificate."
     }
   }
 }
@@ -102,6 +104,11 @@ public struct X509CertificateSummary: Equatable, Sendable {
     self.certificateProblems = certificateProblems
     self.fields = fields
   }
+
+  /// Bytes that are not a certificate, reported as one that fails a rule so that the
+  /// screen states the same verdict it states for every certificate it will not present.
+  public static let unreadable = X509CertificateSummary(
+    isUsable: false, certificateProblems: [.unreadable], fields: [])
 }
 
 /// Where the app installs the certificate parser.
@@ -112,7 +119,7 @@ public struct X509CertificateSummary: Equatable, Sendable {
 /// parser over during startup and the diagnostics screen calls back into it.
 @MainActor
 public enum X509CertificateParser {
-  public typealias Parse = @Sendable (Data) -> X509CertificateSummary?
+  public typealias Parse = @Sendable (Data) -> X509CertificateSummary
 
   private static var parse: Parse?
 
