@@ -39,7 +39,7 @@ const generalSettings: GeneralSettingsViewModel = {
   start_on_login: true,
   connect_on_start: false,
   connect_on_start_is_managed: false,
-  account_slug: "acme-corp",
+  account_slug: "meridian-robotics",
   account_slug_is_managed: false,
 };
 
@@ -59,7 +59,7 @@ const screens: Record<string, Screen> = {
   "overview-signed-in": {
     route: "/overview",
     session: {
-      SignedIn: { account_slug: "acme-corp", actor_name: "Jane Doe" },
+      SignedIn: { account_slug: "meridian-robotics", actor_name: "Maya Ortiz" },
     },
   },
   "general-settings": { route: "/general-settings", generalSettings },
