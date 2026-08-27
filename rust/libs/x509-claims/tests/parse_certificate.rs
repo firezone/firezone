@@ -357,7 +357,10 @@ fn every_rule_reads_underneath_the_attribute_that_causes_it() {
     );
 
     let passing = parse_certificate(
-        &certificate_with_uri_sans(&["firezone://email/alice@example.com"]),
+        &certificate_with_uri_sans(&[
+            "firezone://email/alice@example.com",
+            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+        ]),
         now(),
     )
     .expect("generated certificate should parse");

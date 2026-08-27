@@ -393,6 +393,7 @@ private fun UnusableReason.sentence(): Int =
         UnusableReason.NOT_YET_VALID -> R.string.x509_rule_not_yet_valid
         UnusableReason.EXPIRED -> R.string.x509_rule_expired
         UnusableReason.UNSUPPORTED_KEY_ALGORITHM -> R.string.x509_rule_unsupported_key_algorithm
+        UnusableReason.REFUSED_IDENTITY -> R.string.x509_rule_refused_identity
         UnusableReason.UNREADABLE -> R.string.x509_rule_unreadable
     }
 

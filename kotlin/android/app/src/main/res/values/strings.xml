@@ -66,6 +66,7 @@
 	<string name="x509_rule_not_yet_valid">This certificate is not valid yet.</string>
 	<string name="x509_rule_expired">This certificate has expired.</string>
 	<string name="x509_rule_unsupported_key_algorithm">Firezone cannot sign with this key algorithm.</string>
+	<string name="x509_rule_refused_identity">Firezone cannot identify the user this certificate names.</string>
 	<string name="x509_rule_unreadable">Firezone could not read this certificate.</string>
 
 	<!-- Sign In -->
