@@ -54,7 +54,7 @@ pub enum ClientMsg {
     ClearLogs,
     Connect {
         #[serde(serialize_with = "serialize_token")]
-        token: SecretString,
+        token: Option<SecretString>,
         is_internet_resource_active: bool,
     },
     Disconnect,
@@ -71,11 +71,14 @@ pub enum ClientMsg {
     Panic,
 }
 
-fn serialize_token<S>(token: &SecretString, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_token<S>(token: &Option<SecretString>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
-    serializer.serialize_str(token.expose_secret())
+    match token {
+        Some(token) => serializer.serialize_some(token.expose_secret()),
+        None => serializer.serialize_none(),
+    }
 }
 
 /// Messages that end up in the GUI, either forwarded from connlib or from the Tunnel service.
@@ -252,7 +255,7 @@ enum Session {
         connlib: client_shared::Session,
     },
     WaitingForNetwork {
-        token: SecretString,
+        token: Option<SecretString>,
         is_internet_resource_active: bool,
     },
     #[default]
@@ -783,7 +786,7 @@ impl<'a> Handler<'a> {
     /// connlib eventloop shares this runtime's single worker.
     async fn try_connect(
         &mut self,
-        token: SecretString,
+        token: Option<SecretString>,
         is_internet_resource_active: bool,
     ) -> Result<Session> {
         let started_at = Instant::now();
@@ -796,6 +799,11 @@ impl<'a> Handler<'a> {
             .await
             .context("Failed to join the keystore task")?
             .context("Failed to read the platform keystore")?;
+
+        if token.is_none() && certificate.is_none() {
+            bail!("Cannot authenticate without a token or a client certificate");
+        }
+
         let url = LoginUrl::client(
             Url::parse(&api_url).context("Failed to parse URL")?,
             device_id.id.clone(),

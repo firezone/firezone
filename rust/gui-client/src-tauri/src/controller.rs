@@ -353,7 +353,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         // For backwards-compatibility prior to MDM-config, also call `start_session` if not configured.
         if self.connect_on_start().is_none_or(|c| c) {
-            self.start_session(token).await?;
+            self.start_session(Some(token)).await?;
         }
 
         Ok(())
@@ -390,7 +390,7 @@ impl<I: GuiIntegration> Controller<I> {
         .await
     }
 
-    async fn start_session(&mut self, token: SecretString) -> Result<()> {
+    async fn start_session(&mut self, token: Option<SecretString>) -> Result<()> {
         match self.status {
             Status::Disconnected => {}
             Status::Quitting => Err(anyhow!("Can't connect to Firezone, we're quitting"))?,
@@ -413,13 +413,15 @@ impl<I: GuiIntegration> Controller<I> {
         // Change the status after we begin connecting
         self.status = Status::WaitingForPortal;
 
-        let session = self.auth.session().context("Missing session")?;
-
-        self.general_settings.account_slug = Some(session.account_slug.clone());
-        self.integration
-            .save_general_settings(&self.general_settings)
-            .await?;
-        self.notify_settings_changed()?;
+        // Only the browser callback names the account, so a session authenticated by a
+        // certificate has no slug to record and must not clobber the last one we knew.
+        if let Some(account_slug) = self.auth.session().map(|s| s.account_slug.clone()) {
+            self.general_settings.account_slug = Some(account_slug);
+            self.integration
+                .save_general_settings(&self.general_settings)
+                .await?;
+            self.notify_settings_changed()?;
+        }
 
         self.refresh_ui_state();
 
@@ -461,7 +463,7 @@ impl<I: GuiIntegration> Controller<I> {
             .context("Couldn't handle auth response")?;
 
         self.update_telemetry_context().await?;
-        self.start_session(token).await?;
+        self.start_session(Some(token)).await?;
 
         Ok(())
     }
@@ -526,6 +528,16 @@ impl<I: GuiIntegration> Controller<I> {
             Fail(Failure::Error) => Err(anyhow!("Test error"))?,
             Fail(Failure::Panic) => panic!("Test panic"),
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
+                match self.x509_status.as_ref().map(|status| &status.identity) {
+                    Some(x509_keystore::ClientIdentity::Claimed { .. }) => {
+                        self.start_session(None).await?;
+
+                        return Ok(());
+                    }
+                    Some(x509_keystore::ClientIdentity::Absent) => {}
+                    None => {}
+                }
+
                 let auth_url = self.auth_url().clone();
                 let account_slug = self.account_slug().map(|a| a.to_owned());
 
@@ -1243,6 +1255,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn connects_without_a_token_when_the_certificate_claims_somebody() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+        test_controller
+            .receive_identity(
+                &mut mock_tunnel,
+                x509_keystore::ClientIdentity::Claimed {
+                    email: Some("alice@example.com".to_owned()),
+                },
+            )
+            .await;
+
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::SignIn)
+            .await
+            .unwrap();
+
+        let msg = tokio::time::timeout(Duration::from_secs(1), mock_tunnel.rx.next())
+            .await
+            .expect("should not time out")
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(msg, service::ClientMsg::Connect { token: None, .. }),
+            "expected a token-less `Connect` but got {msg:?}"
+        );
+        assert!(test_controller.integration().opened_urls.is_empty());
+    }
+
+    #[tokio::test]
+    async fn signs_in_with_the_browser_when_the_certificate_claims_nobody() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+        test_controller
+            .receive_identity(&mut mock_tunnel, x509_keystore::ClientIdentity::Absent)
+            .await;
+
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::SignIn)
+            .await
+            .unwrap();
+
+        let url = test_controller
+            .wait_integration(|i| i.opened_urls.first().cloned())
+            .await;
+        assert!(url.starts_with(AdvancedSettings::default().auth_url.as_str()));
+    }
+
+    #[tokio::test]
     async fn shows_page_when_2nd_instance_launches() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
@@ -1581,6 +1648,26 @@ mod tests {
             .unwrap();
             let ack = rx.next().await.unwrap().unwrap();
             assert_eq!(ack, gui::ServerMsg::Ack);
+        }
+
+        /// Pushes what the keystore holds and waits for the controller to have taken it in.
+        async fn receive_identity(
+            &self,
+            mock_tunnel: &mut MockTunnel,
+            identity: x509_keystore::ClientIdentity,
+        ) {
+            mock_tunnel
+                .tx
+                .send(&service::ServerMsg::X509Status(Ok(x509_keystore::Status {
+                    problems: vec![],
+                    sections: vec![],
+                    identity,
+                })))
+                .await
+                .unwrap();
+
+            self.wait_integration(|i| i.x509_statuses.first().cloned())
+                .await;
         }
 
         fn integration(&self) -> MutexGuard<'_, MockIntegration> {
