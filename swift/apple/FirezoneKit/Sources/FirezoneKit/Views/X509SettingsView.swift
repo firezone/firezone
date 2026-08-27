@@ -155,13 +155,7 @@ struct X509SettingsView: View {
   ///
   /// Rows are looked up by the label the parser gives them.
   private func value(_ label: String, of summary: X509CertificateSummary) -> String? {
-    guard let field = summary.fields.first(where: { $0.label == label }),
-      case .present(let value) = field.value
-    else {
-      return nil
-    }
-
-    return value
+    summary.fields.first(where: { $0.label == label })?.value
   }
 
   /// How the screen says that something is wrong with the certificate.
@@ -196,14 +190,12 @@ struct X509SettingsView: View {
   }
 
   @ViewBuilder
-  private func claimValue(_ claim: X509ClaimValue) -> some View {
-    switch claim {
-    case .present(let value):
+  private func claimValue(_ value: String?) -> some View {
+    if let value {
       Text(value)
         .font(.system(valueTextStyle, design: .monospaced))
         .textSelection(.enabled)
-
-    case .absent:
+    } else {
       Text("Not present")
         .font(.system(valueTextStyle))
         .foregroundStyle(.secondary)
@@ -212,9 +204,9 @@ struct X509SettingsView: View {
 
   /// Reads underneath the value it belongs to, the way a form shows an error on its input.
   @ViewBuilder
-  private func fieldProblem(_ rejection: X509ClaimRejection?) -> some View {
-    if let rejection {
-      Label(rejection.reason, systemImage: "exclamationmark.triangle")
+  private func fieldProblem(_ problem: X509ValidationError?) -> some View {
+    if let problem {
+      Label(problem.label, systemImage: "exclamationmark.triangle")
         .font(.system(valueTextStyle))
         .foregroundStyle(.orange)
     }

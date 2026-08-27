@@ -6,11 +6,11 @@
 
 import Foundation
 
-/// Why a `firezone://` claim the certificate carries was not attested.
+/// Why the text a certificate gave a `firezone://` claim is not usable as it.
 ///
-/// Mirrors `RejectionReason` of the `x509claims` bindings, which FirezoneKit cannot import.
-/// The parser ships the reason rather than a sentence so that each client words it itself.
-public enum X509ClaimRejection: Hashable, Sendable {
+/// Mirrors `ValidationError` of the `x509claims` bindings, which FirezoneKit cannot import.
+/// The parser ships the error rather than a sentence so that each client words it itself.
+public enum X509ValidationError: Hashable, Sendable {
   case empty
   case tooLong
   case notAnEmailAddress
@@ -20,7 +20,7 @@ public enum X509ClaimRejection: Hashable, Sendable {
   case unknownAttribute
 
   /// A phrase that reads after the claim it explains.
-  public var reason: String {
+  public var label: String {
     switch self {
     case .empty: return "empty"
     case .tooLong: return "longer than 255 characters"
@@ -33,20 +33,14 @@ public enum X509ClaimRejection: Hashable, Sendable {
   }
 }
 
-/// The text one row of the diagnostics screen shows, above whatever is wrong with it.
-public enum X509ClaimValue: Hashable, Sendable {
-  case present(String)
-  case absent
-}
-
 /// One row of the certificate diagnostics screen.
 public struct X509CertificateField: Hashable, Sendable {
   public let label: String
-  public let value: X509ClaimValue
-  /// Why the value above was not attested, `nil` when it was.
-  public let problem: X509ClaimRejection?
+  public let value: String?
+  /// Why the value above is not usable, `nil` when it is.
+  public let problem: X509ValidationError?
 
-  public init(label: String, value: X509ClaimValue, problem: X509ClaimRejection?) {
+  public init(label: String, value: String?, problem: X509ValidationError?) {
     self.label = label
     self.value = value
     self.problem = problem

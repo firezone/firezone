@@ -146,22 +146,12 @@ func installCertificateParser() {
       fields: parsed.detailFields.map { field in
         X509CertificateField(
           label: field.label,
-          value: X509ClaimValue(field.value),
-          problem: field.problem.map { X509ClaimRejection($0) }
+          value: field.value,
+          problem: field.problem.map { X509ValidationError($0) }
         )
       },
       identity: X509ClaimedIdentity(parsed.identity)
     )
-  }
-}
-
-/// Bridges the parser's claim value into the model the settings screen renders.
-extension X509ClaimValue {
-  init(_ value: ClaimValue) {
-    switch value {
-    case .present(let value): self = .present(value)
-    case .absent: self = .absent
-    }
   }
 }
 
@@ -174,9 +164,9 @@ extension X509ClaimedIdentity {
   }
 }
 
-extension X509ClaimRejection {
-  init(_ reason: RejectionReason) {
-    switch reason {
+extension X509ValidationError {
+  init(_ error: ValidationError) {
+    switch error {
     case .empty: self = .empty
     case .tooLong: self = .tooLong
     case .notAnEmailAddress: self = .notAnEmailAddress
