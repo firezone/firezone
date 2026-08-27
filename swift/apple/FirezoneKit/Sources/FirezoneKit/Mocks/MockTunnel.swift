@@ -5,13 +5,9 @@
 //
 
 // Backs the `--mock-tunnel` launch argument: feeds the real `Store` the state a
-// scenario fixture describes, so the UI can be exercised without a portal, auth,
-// system extension, or live peers. Mirrors the desktop client's
-// `fake_controller.rs`. DEBUG-only, so it ships in no release; only the fixtures
-// travel as ordinary resources.
-//
-// A screen that needs a state no fixture describes wants a new fixture (see
-// `Mocks/Scenarios`) rather than new code here.
+// fixture in `Mocks/Scenarios` describes, so the UI can be exercised without a
+// portal, auth, system extension, or live peers. Mirrors the desktop client's
+// `fake_controller.rs`. DEBUG-only, so it ships in no release.
 
 #if DEBUG
   import Foundation
@@ -26,10 +22,8 @@
     import UIKit
   #endif
 
-  /// The state the `--mock-tunnel` backend presents, as a fixture describes it.
-  ///
-  /// Every field is terminal: the mock reports it unchanged for the life of the
-  /// process, so a screenshot or a demo cannot race a transition.
+  /// The state a fixture describes, reported unchanged for the life of the
+  /// process so that a capture cannot race a transition.
   struct MockScenario: Decodable, Sendable {
     let hasVPNConfiguration: Bool
     let vpnStatus: VPNStatus
@@ -67,28 +61,20 @@
   extension MockScenario {
     static var connected: MockScenario { named("connected") }
 
-    /// A name resolves to a fixture this bundle ships; a path starting with `/` is
-    /// read as it stands.
-    static func named(_ nameOrPath: String) -> MockScenario {
-      guard let url = url(of: nameOrPath) else {
-        fatalError("No mock scenario named '\(nameOrPath)'")
+    static func named(_ name: String) -> MockScenario {
+      guard
+        let url = Bundle.module.url(
+          forResource: name, withExtension: "json", subdirectory: "Scenarios"
+        )
+      else {
+        fatalError("No mock scenario named '\(name)'")
       }
 
       do {
         return try JSONDecoder().decode(MockScenario.self, from: Data(contentsOf: url))
       } catch {
-        fatalError("Mock scenario '\(nameOrPath)' did not load: \(error)")
+        fatalError("Mock scenario '\(name)' did not load: \(error)")
       }
-    }
-
-    private static func url(of nameOrPath: String) -> URL? {
-      guard !nameOrPath.hasPrefix("/") else {
-        return URL(fileURLWithPath: nameOrPath)
-      }
-
-      return Bundle.module.url(
-        forResource: nameOrPath, withExtension: "json", subdirectory: "Scenarios"
-      )
     }
   }
 
@@ -129,27 +115,17 @@
   #endif
 
   extension Store {
-    public static func mockFromCommandLine(
-      _ arguments: [String] = CommandLine.arguments
-    ) -> Store? {
-      guard arguments.contains("--mock-tunnel") else { return nil }
+    public static func mockFromCommandLine() -> Store? {
+      guard MockRun.isActive else { return nil }
 
-      guard let name = flagValue("--mock-scenario", in: arguments) else {
-        return mock()
-      }
+      guard let name = flagValue("--mock-scenario") else { return mock() }
 
       return mock(scenario: .named(name))
     }
 
-    /// A `Store` wired to mock dependencies presenting `scenario`.
-    static func mock(
-      scenario: MockScenario = .connected,
-      logDirectory: URL? = nil,
-      // swiftlint:disable:next no_userdefaults_standard - DI entry point
-      userDefaults: UserDefaults = .standard
-    ) -> Store {
-      // Where `Favorites` reads them back from.
-      userDefaults.set(scenario.favorites, forKey: Favorites.key)
+    static func mock(scenario: MockScenario = .connected, logDirectory: URL? = nil) -> Store {
+      // swiftlint:disable:next no_userdefaults_standard - what `Store` itself defaults to
+      UserDefaults.standard.set(scenario.favorites, forKey: Favorites.key)
 
       #if os(macOS)
         return Store(
@@ -159,22 +135,22 @@
           ),
           updateChecker: MockUpdateChecker(),
           tunnelManagerFactory: MockTunnelProviderManagerFactory(scenario: scenario),
-          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory(),
-          userDefaults: userDefaults
+          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
         )
       #else
         return Store(
           sessionNotification: MockSessionNotification(decision: scenario.notifications.status),
           tunnelManagerFactory: MockTunnelProviderManagerFactory(scenario: scenario),
-          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory(),
-          userDefaults: userDefaults
+          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
         )
       #endif
     }
   }
 
   /// The argument following `flag`, or the value it carries after an `=`.
-  private func flagValue(_ flag: String, in arguments: [String]) -> String? {
+  private func flagValue(_ flag: String) -> String? {
+    let arguments = CommandLine.arguments
+
     for (index, argument) in arguments.enumerated() {
       if argument == flag, index + 1 < arguments.count {
         return arguments[index + 1]
@@ -190,22 +166,19 @@
 
   #if os(iOS)
     extension UIApplication {
-      /// Presents a mocked run the way a capture of it needs.
+      /// Takes the animation and the translucency out of a mocked run.
       ///
-      /// Both changes remove something that has to land the same way twice for
-      /// two captures to match: a bar mid-animation draws its labels through a
-      /// layer and comes out a shade apart, and a translucent bar samples
-      /// whatever is behind it. Either state holds still long enough to be
-      /// photographed, so waiting for the screen to settle does not choose.
+      /// Both hold still long enough to be photographed, so waiting for the
+      /// screen to settle cannot tell a bar mid-animation, or one sampling
+      /// whatever is behind it, from one that has come to rest.
       @MainActor
-      public static func applyMockPresentation(_ arguments: [String] = CommandLine.arguments) {
-        guard arguments.contains("--mock-tunnel") else { return }
+      public static func applyMockPresentation() {
+        guard MockRun.isActive else { return }
 
         UIView.setAnimationsEnabled(false)
 
-        // A bar button's default background image draws it on its own material,
-        // which the bar's background does not cover and which does not come out
-        // the same twice. An empty image leaves it flat.
+        // A bar button's default background image draws it on a material of its
+        // own that does not come out the same twice; an empty image is flat.
         let flatButton = UIBarButtonItemAppearance(style: .plain)
         flatButton.normal.backgroundImage = UIImage()
         flatButton.highlighted.backgroundImage = UIImage()
@@ -238,15 +211,8 @@
     @MainActor private var mockWindowObserver: (any NSObjectProtocol)?
 
     extension AppView.WindowDefinition {
-      /// The window `--mock-window` names, or `nil` when it names none.
-      ///
-      /// Naming one picks the app that launches, each presenting that window and
-      /// nothing else (see `FirezoneApp`). Naming none leaves the app as it
-      /// ships: a menu bar app, showing no window of its own.
-      public static func mockFromCommandLine(
-        _ arguments: [String] = CommandLine.arguments
-      ) -> Self? {
-        guard let name = flagValue("--mock-window", in: arguments) else { return nil }
+      public static func mockFromCommandLine() -> Self? {
+        guard let name = flagValue("--mock-window") else { return nil }
 
         guard let window = Self(rawValue: name) else {
           Log.warning("Ignoring unknown --mock-window '\(name)'")
@@ -259,22 +225,18 @@
     }
 
     extension NSApplication {
-      /// Presents a mocked run the way a capture of it needs.
+      /// Sets the appearance a capture wants and keeps the focus off its windows.
       ///
-      /// The appearance is set here because AppKit resolves it from the system
-      /// setting through `CFPreferences`, which does not read `UserDefaults`'
-      /// argument domain, so an `-AppleInterfaceStyle` argument reaches the app
-      /// and changes nothing. A window inherits it, and this runs before the app
-      /// has one.
+      /// The appearance is set from in here because AppKit resolves it through
+      /// `CFPreferences`, which does not read `UserDefaults`' argument domain: an
+      /// `-AppleInterfaceStyle` argument reaches the app and changes nothing.
       ///
-      /// The focus is cleared because AppKit hands a freshly shown text field the
-      /// focus, and the insertion point it blinks keeps two captures half a second
-      /// apart from ever matching. A window owns its first responder, so clearing
-      /// it needs the window, and it is done a turn behind SwiftUI, which claims
-      /// the focus while the window settles and would take it straight back.
+      /// The focus is cleared because the insertion point a text field blinks keeps
+      /// two captures half a second apart from ever matching. SwiftUI claims it back
+      /// while the window settles, hence the second pass a turn later.
       @MainActor
-      public static func applyMockPresentation(_ arguments: [String] = CommandLine.arguments) {
-        shared.appearance = mockAppearance(arguments)
+      public static func applyMockPresentation() {
+        shared.appearance = mockAppearance()
 
         mockWindowObserver = NotificationCenter.default.addObserver(
           forName: NSWindow.didBecomeKeyNotification,
@@ -292,9 +254,8 @@
         }
       }
 
-      /// The appearance `--mock-appearance` names, or `nil` when it names none.
-      private static func mockAppearance(_ arguments: [String]) -> NSAppearance? {
-        guard let name = flagValue("--mock-appearance", in: arguments) else { return nil }
+      private static func mockAppearance() -> NSAppearance? {
+        guard let name = flagValue("--mock-appearance") else { return nil }
 
         switch name {
         case "light": return NSAppearance(named: .aqua)
@@ -421,7 +382,7 @@
     var localizedDescription: String? = VPNConfigurationManager.bundleDescription
     var protocolConfiguration: NEVPNProtocol?
     var tunnelSession: (any TunnelSessionProtocol)? { session }
-    // Only the system reads this, to launch the extension. The mock never talks to
+    // Only the system would read this, to launch the extension; the mock never talks to
     // the system, so the shipped identifier serves as well as a derived one.
     let extensionBundleIdentifier = "dev.firezone.firezone.network-extension"
 
@@ -430,8 +391,7 @@
     init(scenario: MockScenario) {
       session = MockTunnelSession(scenario: scenario)
 
-      // The signed-in user reaches the app through the provider configuration, the
-      // way a real session hands it over.
+      // The app reads the signed-in user out of the provider configuration.
       let configuration = Configuration()
       configuration.actorName = scenario.actorName
 
@@ -447,8 +407,6 @@
   }
 
   #if os(macOS)
-    /// Reports the scenario's status from `check` and `tryInstall` alike: scenarios
-    /// are terminal, so even the install button on the grant screen changes nothing.
     @MainActor
     private final class MockSystemExtensionManager: SystemExtensionManagerProtocol {
       private let status: SystemExtensionStatus
@@ -463,7 +421,7 @@
 
     /// Reports the client as up to date, so the menu bar shows no update item.
     ///
-    /// The real `UpdateChecker` polls firezone.dev on a timer and registers a
+    /// The real `UpdateChecker` would poll firezone.dev on a timer and register a
     /// notification category, neither of which a demo or a test should be doing.
     @MainActor
     private final class MockUpdateChecker: UpdateCheckerProtocol {
@@ -471,8 +429,7 @@
     }
   #endif
 
-  /// Reports the scenario's answer to the notification prompt, so the iOS app can be
-  /// shown either on `GrantNotificationsView` or past it.
+  /// Reports the scenario's answer to the notification prompt.
   ///
   /// Both platforms use it: the real `SessionNotification` reaches
   /// `UNUserNotificationCenter`, which raises rather than returning an error when

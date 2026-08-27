@@ -13,7 +13,6 @@ struct FirezoneApp: App {
   #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var connectingAnimationFrame: Int = 0
-
   #endif
 
   @StateObject var store: Store
@@ -24,8 +23,7 @@ struct FirezoneApp: App {
     Telemetry.start()
 
     #if DEBUG
-      // `--mock-tunnel` runs the real Store against a canned backend, and
-      // `--mock-scenario` picks the state it presents (see MockTunnel.swift).
+      // `--mock-tunnel` runs the real Store against a canned backend (see MockTunnel.swift).
       let store = Store.mockFromCommandLine() ?? Store()
 
       #if os(iOS)
@@ -144,7 +142,7 @@ struct FirezoneApp: App {
         AppView.subscribeToGlobalEvents(store: store)
       }
 
-      // SwiftUI will show the first window group, so close it on launch.
+      // SwiftUI will show the first window group, so close it on launch
       _ = AppView.WindowDefinition.allCases.map { $0.window()?.close() }
 
       // Show alert for macOS 15.0.x which has issues with Network Extensions.
@@ -226,7 +224,6 @@ struct FirezoneApp: App {
 #endif
 
 #if os(macOS)
-  /// The app's main window, sans the external-event routing `FirezoneApp` adds to it.
   @MainActor
   func mainWindowScene(store: Store) -> some Scene {
     WindowGroup(
@@ -238,7 +235,6 @@ struct FirezoneApp: App {
     }
   }
 
-  /// The settings window, sans the external-event routing `FirezoneApp` adds to it.
   @MainActor
   func settingsWindowScene(store: Store) -> some Scene {
     WindowGroup(
@@ -251,11 +247,7 @@ struct FirezoneApp: App {
 #endif
 
 #if os(macOS) && DEBUG
-  /// Entry points for a screenshot run, one per window `--mock-window` can name
-  /// (see `main.swift`): each declares exactly the scene under test, and the
-  /// system presents an app's leading window scene at launch. `FirezoneApp`
-  /// gets no such presentation, which its menu bar scene appears to cost it,
-  /// so a run through these needs no window opened or closed by hand.
+  // The apps a `--mock-window` run launches, one per window it can name.
   struct UITestMainApp: App {
     @StateObject var store = uiTestStore()
 
@@ -276,10 +268,9 @@ struct FirezoneApp: App {
 
   /// A menu bar scene whose one job is presenting the window scene beside it.
   ///
-  /// The system presents no scene at all when XCUITest launches the app, and
-  /// `openWindow` lives in a view's environment, so presenting a window takes
-  /// a view that exists without one. A menu bar item's label is such a view:
-  /// it is built for the status bar at launch.
+  /// XCUITest's launch presents no scene at all, and `openWindow` lives in a
+  /// view's environment, so opening a window takes a view that exists without
+  /// one: a menu bar item's label is built for the status bar at launch.
   @MainActor
   func windowOpenerExtra(id windowID: String) -> some Scene {
     MenuBarExtra {
@@ -300,7 +291,6 @@ struct FirezoneApp: App {
     }
   }
 
-  /// A started mock `Store`, presented the way `FirezoneApp` presents its own.
   @MainActor
   private func uiTestStore() -> Store {
     NSApplication.applyMockPresentation()
