@@ -26,7 +26,7 @@ fun AdvancedSettingsPage(
     onConfigChange: (Config) -> Unit,
     onResetToDefaults: () -> Unit,
     modifier: Modifier = Modifier,
-    // Pinned by the screenshot test so the image only changes when the UI does.
+    // A parameter so the screenshot test can pin it; the build's commit changes with every push.
     buildSha: String = stringResource(R.string.git_sha),
 ) {
     Column(modifier.fillMaxSize()) {
