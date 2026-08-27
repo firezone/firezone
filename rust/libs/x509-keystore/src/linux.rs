@@ -792,7 +792,7 @@ impl CandidateCertificate for Certificate {
         // same as a token that simply holds none.
         match (&self.key, self.metadata.signing_algorithm) {
             (Some(_), _) => None,
-            (None, Some(_)) => Some(UnusableCause::Pkcs11KeyMissing),
+            (None, Some(_)) => Some(UnusableCause::KeyMissing),
             (None, None) => Some(UnusableCause::UnsupportedKeyAlgorithm),
         }
     }
