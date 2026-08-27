@@ -81,7 +81,11 @@ pub trait ClientTlsIdentity: Send + Sync + fmt::Debug {
     /// Returns the signature schemes the key can sign with, most preferred first.
     ///
     /// All of them must belong to the same key algorithm.
-    fn supported_signature_schemes(&self) -> Vec<TlsSignatureScheme>;
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the keystore cannot be consulted.
+    fn supported_signature_schemes(&self) -> Result<Vec<TlsSignatureScheme>, CallbackError>;
 
     /// Signs the unhashed TLS handshake message with the requested scheme.
     fn sign(&self, scheme: TlsSignatureScheme, message: Vec<u8>) -> Result<Vec<u8>, CallbackError>;

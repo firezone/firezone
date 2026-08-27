@@ -36,7 +36,9 @@ struct PlatformKey {
 
 impl PlatformKey {
     fn new(identity: Arc<dyn ClientTlsIdentity>) -> Result<Self> {
-        let schemes = identity.supported_signature_schemes();
+        let schemes = identity
+            .supported_signature_schemes()
+            .context("Failed to read the supported TLS signature schemes")?;
 
         let Some(first) = schemes.first().copied() else {
             bail!("The client identity supports no TLS signature schemes");
@@ -128,10 +130,10 @@ mod tests {
     #[test]
     fn signs_with_the_scheme_rustls_picked() {
         let key = PlatformKey::new(Arc::new(StubIdentity {
-            schemes: vec![
+            schemes: Ok(vec![
                 TlsSignatureScheme::RsaPssSha512,
                 TlsSignatureScheme::RsaPssSha256,
-            ],
+            ]),
         }))
         .expect("stub identity should yield a key");
 
@@ -146,10 +148,10 @@ mod tests {
     #[test]
     fn reports_a_failing_keystore_with_its_message() {
         let key = PlatformKey::new(Arc::new(StubIdentity {
-            schemes: vec![
+            schemes: Ok(vec![
                 TlsSignatureScheme::RsaPssSha256,
                 TlsSignatureScheme::RsaPssSha512,
-            ],
+            ]),
         }))
         .expect("stub identity should yield a key");
 
@@ -166,7 +168,7 @@ mod tests {
     #[test]
     fn rejects_a_scheme_the_identity_did_not_advertise() {
         let key = PlatformKey::new(Arc::new(StubIdentity {
-            schemes: vec![TlsSignatureScheme::RsaPssSha256],
+            schemes: Ok(vec![TlsSignatureScheme::RsaPssSha256]),
         }))
         .expect("stub identity should yield a key");
 
@@ -180,10 +182,10 @@ mod tests {
     #[test]
     fn rejects_an_identity_that_mixes_key_algorithms() {
         let error = PlatformKey::new(Arc::new(StubIdentity {
-            schemes: vec![
+            schemes: Ok(vec![
                 TlsSignatureScheme::RsaPssSha256,
                 TlsSignatureScheme::EcdsaNistp256Sha256,
-            ],
+            ]),
         }))
         .expect_err("a key cannot be RSA and ECDSA at once");
 
@@ -193,9 +195,22 @@ mod tests {
         );
     }
 
+    #[test]
+    fn reports_a_keystore_that_cannot_list_its_schemes() {
+        let error = PlatformKey::new(Arc::new(StubIdentity {
+            schemes: Err("the keystore is locked".to_owned()),
+        }))
+        .expect_err("a locked keystore cannot list its schemes");
+
+        assert_eq!(
+            format!("{error:#}"),
+            "Failed to read the supported TLS signature schemes: the keystore is locked"
+        );
+    }
+
     #[derive(Debug)]
     struct StubIdentity {
-        schemes: Vec<TlsSignatureScheme>,
+        schemes: Result<Vec<TlsSignatureScheme>, String>,
     }
 
     impl ClientTlsIdentity for StubIdentity {
@@ -203,8 +218,8 @@ mod tests {
             Ok(vec![vec![1, 2, 3]])
         }
 
-        fn supported_signature_schemes(&self) -> Vec<TlsSignatureScheme> {
-            self.schemes.clone()
+        fn supported_signature_schemes(&self) -> Result<Vec<TlsSignatureScheme>, CallbackError> {
+            self.schemes.clone().map_err(CallbackError::Failed)
         }
 
         fn sign(
