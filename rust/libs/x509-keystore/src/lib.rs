@@ -15,8 +15,8 @@ use rustls::pki_types::CertificateDer;
 use serde::{Deserialize, Serialize};
 use x509_credential::{ClientCertificate, PrivateKey};
 
-/// Re-exported because [`Status`] carries them: a caller matching on one needs to name it.
-pub use x509_claims::{RejectionReason, UnusableReason};
+/// Re-exported because [`Status`] carries it: a caller matching on one needs to name it.
+pub use x509_claims::RejectionReason;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 mod sign;
@@ -70,7 +70,10 @@ pub(crate) struct Identity {
     reason = "only the keystore backends rank candidates, and not every build compiles one"
 )]
 pub(crate) trait CandidateCertificate {
-    /// Whether the certificate and its private key can authenticate the client.
+    /// Whether we can sign a TLS handshake with the certificate's private key.
+    ///
+    /// Whether the portal accepts the certificate is the portal's to decide, so nothing the
+    /// certificate itself says belongs in this answer.
     fn usable(&self) -> bool;
 
     /// When the certificate's validity begins, as seconds since the Unix epoch.
@@ -184,8 +187,8 @@ pub struct UnusableCertificate {
 /// What keeps one matching certificate from being presented for mutual TLS.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum UnusableCause {
-    /// The rules the certificate itself fails, at least one of them.
-    FailsRules { reasons: Vec<UnusableReason> },
+    /// Nothing we can sign a TLS handshake with holds the certificate's key algorithm.
+    UnsupportedKeyAlgorithm,
     /// CNG will not use the certificate's private key, as for a key a legacy CSP holds.
     WindowsKeyRefused { error: String },
     /// Windows holds no private key for the certificate.
@@ -244,8 +247,6 @@ impl FieldValue {
 pub enum FieldProblem {
     /// The certificate carries a value the parser will not attest.
     Rejected(RejectionReason),
-    /// A rule the certificate fails because of this attribute.
-    Unusable(UnusableReason),
     /// The keystore could not read the row, in the platform's own words.
     Unreadable(String),
 }
@@ -255,7 +256,6 @@ impl FieldProblem {
     pub fn label(&self) -> &str {
         match self {
             Self::Rejected(reason) => reason.label(),
-            Self::Unusable(reason) => reason.label(),
             Self::Unreadable(message) => message,
         }
     }
@@ -354,15 +354,10 @@ impl fmt::Display for UnusableCertificate {
         let Self { fingerprint, cause } = self;
 
         match cause {
-            UnusableCause::FailsRules { reasons } => {
-                let reasons = reasons
-                    .iter()
-                    .map(|reason| reason.label())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-
-                write!(formatter, "{fingerprint} is unusable: {reasons}")
-            }
+            UnusableCause::UnsupportedKeyAlgorithm => write!(
+                formatter,
+                "{fingerprint} is unusable: we cannot sign with its key algorithm"
+            ),
             UnusableCause::WindowsKeyRefused { error } => write!(
                 formatter,
                 "{fingerprint} has a private key CNG will not use: {error}"
@@ -436,7 +431,7 @@ impl From<x509_claims::DetailField> for DetailField {
         Self {
             label: field.label,
             value: field.value.into(),
-            problem: field.problem.map(FieldProblem::from),
+            problem: field.problem.map(FieldProblem::Rejected),
         }
     }
 }
@@ -446,15 +441,6 @@ impl From<x509_claims::ClaimValue> for FieldValue {
         match value {
             x509_claims::ClaimValue::Present { value } => Self::Present(value),
             x509_claims::ClaimValue::Absent => Self::Absent,
-        }
-    }
-}
-
-impl From<x509_claims::FieldProblem> for FieldProblem {
-    fn from(problem: x509_claims::FieldProblem) -> Self {
-        match problem {
-            x509_claims::FieldProblem::Rejected { reason } => Self::Rejected(reason),
-            x509_claims::FieldProblem::Unusable { reason } => Self::Unusable(reason),
         }
     }
 }
@@ -496,9 +482,9 @@ mod tests {
                 title: "Certificate".to_owned(),
                 fields: vec![
                     DetailField {
-                        label: "Not After".to_owned(),
-                        value: FieldValue::Present("Jan  1 00:00:00 2020 +00:00".to_owned()),
-                        problem: Some(FieldProblem::Unusable(UnusableReason::Expired)),
+                        label: "Account ID".to_owned(),
+                        value: FieldValue::Present("not-a-uuid".to_owned()),
+                        problem: Some(FieldProblem::Rejected(RejectionReason::NotAUuid)),
                     },
                     DetailField {
                         label: "Serial Number".to_owned(),
@@ -513,7 +499,7 @@ mod tests {
 
         assert_eq!(
             status.text_description(),
-            "[Certificate]\nNot After:\n  Jan  1 00:00:00 2020 +00:00\n  (expired)\nSerial Number:\n  Not present\n  (CertGetNameString failed)\n"
+            "[Certificate]\nAccount ID:\n  not-a-uuid\n  (not a UUID)\nSerial Number:\n  Not present\n  (CertGetNameString failed)\n"
         );
     }
 
@@ -541,17 +527,15 @@ mod tests {
     }
 
     #[test]
-    fn an_unusable_certificate_names_every_rule_it_fails() {
+    fn an_unusable_certificate_says_what_stops_us_presenting_it() {
         let certificate = UnusableCertificate {
             fingerprint: "AA:BB".to_owned(),
-            cause: UnusableCause::FailsRules {
-                reasons: vec![UnusableReason::NoClientAuthEku, UnusableReason::Expired],
-            },
+            cause: UnusableCause::UnsupportedKeyAlgorithm,
         };
 
         assert_eq!(
             certificate.to_string(),
-            "AA:BB is unusable: no TLS client authentication extended key usage, expired"
+            "AA:BB is unusable: we cannot sign with its key algorithm"
         );
     }
 
@@ -575,9 +559,7 @@ mod tests {
             fn unusable(&self) -> UnusableCertificate {
                 UnusableCertificate {
                     fingerprint: self.not_before.to_string(),
-                    cause: UnusableCause::FailsRules {
-                        reasons: vec![UnusableReason::Expired],
-                    },
+                    cause: UnusableCause::UnsupportedKeyAlgorithm,
                 }
             }
         }
@@ -603,7 +585,7 @@ mod tests {
                 .iter()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>(),
-            ["3 is unusable: expired"]
+            ["3 is unusable: we cannot sign with its key algorithm"]
         );
         assert_eq!(selected_certificate::<Candidate>(&[]), None);
     }
