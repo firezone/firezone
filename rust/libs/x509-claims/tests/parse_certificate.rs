@@ -902,8 +902,8 @@ fn now() -> SystemTime {
     SystemTime::UNIX_EPOCH + Duration::from_secs(1_798_761_600)
 }
 
-/// The portal commits a connection to X.509 authentication as soon as the certificate names
-/// anyone, so the client has to tell "names nobody" from "names someone unusable".
+/// The portal reads an identity only from a certificate naming an account and an actor in it,
+/// so the client has to tell "names nobody" from "names someone it cannot resolve".
 #[test]
 fn an_identity_is_absent_resolved_or_refused() {
     let identity_of = |uris: &[&str]| {
@@ -920,6 +920,27 @@ fn an_identity_is_absent_resolved_or_refused() {
         Identity::Absent,
         "attesting the device names nobody"
     );
+
+    for uris in [
+        // Half a name is no name: the portal signs these in with a token.
+        vec!["firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"],
+        vec!["firezone://email/jane.doe@example.com"],
+        vec![
+            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+            "firezone://email/",
+        ],
+        // An account the portal cannot read is an account it was never given.
+        vec![
+            "firezone://email/jane.doe@example.com",
+            "firezone://account-id/not-a-uuid",
+        ],
+        vec![
+            "firezone://email/jane.doe@example.com",
+            "firezone://account-id",
+        ],
+    ] {
+        assert_eq!(identity_of(&uris), Identity::Absent, "{uris:?}");
+    }
 
     assert_eq!(
         identity_of(&[
@@ -946,28 +967,22 @@ fn an_identity_is_absent_resolved_or_refused() {
     );
 
     for uris in [
-        // Half an identity resolves to nobody.
-        vec!["firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"],
-        vec!["firezone://email/jane.doe@example.com"],
-        // So does one the portal cannot read.
-        vec![
-            "firezone://email/jane.doe@example.com",
-            "firezone://account-id/not-a-uuid",
-        ],
-        // A name that stops at the attribute claims it with nothing to attest.
-        vec![
-            "firezone://email/jane.doe@example.com",
-            "firezone://account-id",
-        ],
-        vec![
-            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-            "firezone://email/",
-        ],
         // Claiming an actor id commits to it, so a bad one is not a fall back to the email.
         vec![
             "firezone://email/jane.doe@example.com",
             "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
             "firezone://actor-id/not-a-uuid",
+        ],
+        // Two of anything leaves the portal without one value to read.
+        vec![
+            "firezone://email/jane.doe@example.com",
+            "firezone://email/john.doe@example.com",
+            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+        ],
+        vec![
+            "firezone://email/jane.doe@example.com",
+            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+            "firezone://account-id/9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64",
         ],
     ] {
         assert_eq!(identity_of(&uris), Identity::Refused, "{uris:?}");
@@ -977,8 +992,10 @@ fn an_identity_is_absent_resolved_or_refused() {
 /// A certificate naming someone the portal will refuse is one the clients must not present.
 #[test]
 fn a_refused_identity_makes_the_certificate_unusable() {
-    let der =
-        certificate_with_uri_sans(&["firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"]);
+    let der = certificate_with_uri_sans(&[
+        "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+        "firezone://actor-id/not-a-uuid",
+    ]);
     let refused = parse_certificate(&der, now()).expect("generated certificate should parse");
 
     assert!(!refused.passes_its_own_rules());

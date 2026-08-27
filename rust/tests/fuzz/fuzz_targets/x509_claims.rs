@@ -14,7 +14,7 @@ use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use sha2::{Digest as _, Sha256};
 use x509_claims::{
-    Claim, FieldProblem, Identity, ParsedCertificate, RejectionReason, UnusableReason,
+    Actor, Claim, FieldProblem, Identity, ParsedCertificate, RejectionReason, UnusableReason,
     parse_certificate,
 };
 
@@ -212,19 +212,29 @@ fn assert_user_identity_agrees_with_its_fields(certificate: &ParsedCertificate) 
 /// The portal falls back to a token for the first and refuses the connection for the second, so
 /// a certificate that slid from one to the other would be handed over to be rejected.
 fn assert_the_identity_answers_the_claims(certificate: &ParsedCertificate) {
-    let claimed = [
-        &certificate.account_id,
-        &certificate.actor_id,
-        &certificate.actor_email,
-    ]
-    .into_iter()
-    .any(Claim::is_present);
-
     match certificate.identity() {
-        Identity::Absent => assert!(!claimed, "a certificate naming someone is not absent"),
-        Identity::Refused => assert!(claimed, "a certificate naming nobody is refused for it"),
-        Identity::Resolved { account_id, .. } => {
+        Identity::Absent => assert!(
+            certificate.account_id.attested().is_none()
+                || (!certificate.actor_id.is_present()
+                    && certificate.actor_email.attested().is_none()),
+            "a certificate naming an account and an actor in it is not absent"
+        ),
+        Identity::Refused => {}
+        Identity::Resolved { account_id, actor } => {
             assert_eq!(certificate.account_id.attested(), Some(account_id.as_str()));
+
+            match actor {
+                Actor::Id(actor_id) => {
+                    assert_eq!(certificate.actor_id.attested(), Some(actor_id.as_str()));
+                }
+                Actor::Email(email) => {
+                    assert_eq!(certificate.actor_email.attested(), Some(email.as_str()));
+                    assert!(
+                        !certificate.actor_id.is_present(),
+                        "an actor id outranks the email"
+                    );
+                }
+            }
         }
     }
 

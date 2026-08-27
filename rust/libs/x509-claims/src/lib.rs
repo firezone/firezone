@@ -121,6 +121,14 @@ impl Claim {
         matches!(self.value, ClaimValue::Present { .. })
     }
 
+    /// Whether the certificate gave the claim a value the clients would attest.
+    ///
+    /// Ambiguity is not absence: the portal read two values here, so the claim named
+    /// something, just not one thing.
+    fn has_attested_value(&self) -> bool {
+        self.attested().is_some() || self.rejection == Some(RejectionReason::Ambiguous)
+    }
+
     /// A claim the certificate carries and the clients will attest.
     fn present(value: String) -> Self {
         Self {
@@ -379,38 +387,33 @@ impl ParsedCertificate {
 
     /// Who the certificate says is connecting, decided the way the portal decides it.
     ///
-    /// The portal commits the connection to X.509 authentication as soon as the certificate
-    /// carries any identity claim, so a claim it cannot resolve refuses the connection rather
-    /// than falling back to a token.
+    /// A certificate becomes an X.509 identity only once it names an account and an actor in
+    /// that account. Short of that the portal reads no identity at all and the connection signs
+    /// in with a token, so half a name is absent rather than refused.
     pub fn identity(&self) -> Identity {
-        let claimed = [&self.account_id, &self.actor_id, &self.actor_email]
-            .into_iter()
-            .any(Claim::is_present);
-
-        if !claimed {
+        if !self.account_id.has_attested_value() {
             return Identity::Absent;
         }
 
-        let Some(account_id) = self.account_id.attested() else {
-            return Identity::Refused;
-        };
+        if !self.actor_id.is_present() && !self.actor_email.has_attested_value() {
+            return Identity::Absent;
+        }
 
         // An actor id outranks the email, and claiming one at all commits to it.
-        let actor = if self.actor_id.is_present() {
-            self.actor_id.attested().map(|id| Actor::Id(id.to_owned()))
-        } else {
-            self.actor_email
+        let actor = match self.actor_id.is_present() {
+            true => self.actor_id.attested().map(|id| Actor::Id(id.to_owned())),
+            false => self
+                .actor_email
                 .attested()
-                .map(|email| Actor::Email(email.to_owned()))
+                .map(|email| Actor::Email(email.to_owned())),
         };
 
-        let Some(actor) = actor else {
-            return Identity::Refused;
-        };
-
-        Identity::Resolved {
-            account_id: account_id.to_owned(),
-            actor,
+        match (self.account_id.attested(), actor) {
+            (Some(account_id), Some(actor)) => Identity::Resolved {
+                account_id: account_id.to_owned(),
+                actor,
+            },
+            _ => Identity::Refused,
         }
     }
 
