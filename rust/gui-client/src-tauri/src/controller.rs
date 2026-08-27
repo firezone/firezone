@@ -674,7 +674,6 @@ impl<I: GuiIntegration> Controller<I> {
             service::ServerMsg::OnDisconnect {
                 error_msg,
                 requires_sign_in,
-                is_certificate_error,
             } => {
                 self.sign_out().await?;
                 if requires_sign_in {
@@ -686,15 +685,7 @@ impl<I: GuiIntegration> Controller<I> {
                 } else {
                     tracing::error!("Connlib disconnected: {error_msg}");
 
-                    // A certificate the portal refused is not something the user can retry
-                    // their way out of, so point them at whoever installed it.
-                    let body = if is_certificate_error {
-                        format!("{error_msg}\n\nContact your administrator for support.")
-                    } else {
-                        error_msg
-                    };
-
-                    dialog::error(&body)?;
+                    dialog::error(&error_msg)?;
                 }
             }
             service::ServerMsg::OnUpdateResources(resources) => {
