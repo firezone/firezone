@@ -56,7 +56,7 @@
       defer { app.terminate() }
 
       try waitFor(app.staticTexts["Office network"], on: "session")
-      try open(app.staticTexts["Demo GitLab"], in: app, name: "a DNS resource")
+      try open(app.staticTexts["Engineering wiki"], in: app, name: "a DNS resource")
       try waitFor(app.staticTexts["ADDRESS"], on: "resource-details")
       deliver(app, as: "resource-details", in: appearance)
     }
@@ -84,7 +84,7 @@
       defer { app.terminate() }
 
       try waitFor(app.staticTexts["Office network"], on: "session")
-      try open(app.staticTexts["Demo Device 1"], in: app, name: "a connected device")
+      try open(app.staticTexts["bench-controller-01"], in: app, name: "a connected device")
       try waitFor(app.staticTexts["Tunnel IPs"], on: "device-details")
       deliver(app, as: "device-details", in: appearance)
     }
