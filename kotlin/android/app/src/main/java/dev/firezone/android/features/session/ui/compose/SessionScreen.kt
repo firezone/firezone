@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LeadingIconTab
@@ -169,7 +168,7 @@ fun SessionScreen(
                 OutlinedButton(onClick = onSettings, modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.settings))
                 }
-                Button(onClick = onSignOut, modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = onSignOut, modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.sign_out))
                 }
             }
