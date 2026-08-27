@@ -76,6 +76,7 @@ pub enum UnusableReason {
     NotYetValid,
     Expired,
     UnsupportedKeyAlgorithm,
+    RefusedIdentity,
     /// The bytes are not a certificate this client can read, so none of the rules above
     /// could be checked. `x509_claims` reports this by parsing nothing at all.
     Unreadable,
@@ -231,6 +232,7 @@ impl From<x509_claims::UnusableReason> for UnusableReason {
             x509_claims::UnusableReason::NotYetValid => Self::NotYetValid,
             x509_claims::UnusableReason::Expired => Self::Expired,
             x509_claims::UnusableReason::UnsupportedKeyAlgorithm => Self::UnsupportedKeyAlgorithm,
+            x509_claims::UnusableReason::RefusedIdentity => Self::RefusedIdentity,
         }
     }
 }

@@ -8,8 +8,8 @@ use rcgen::{
     SerialNumber, string::Ia5String,
 };
 use x509_claims::{
-    Claim, ClaimValue, DetailField, FieldProblem, ParsedCertificate, RejectionReason,
-    SigningAlgorithm, UnusableReason, UserIdentity, parse_certificate,
+    Actor, Claim, ClaimValue, DetailField, FieldProblem, Identity, ParsedCertificate,
+    RejectionReason, SigningAlgorithm, UnusableReason, UserIdentity, parse_certificate,
 };
 
 const RSA_LEAF: &[u8] =
@@ -646,6 +646,7 @@ fn diagnostics_read_from_the_identity_down_to_the_encoding() {
             "Issuer",
             "Actor Email",
             "Account ID",
+            "Actor ID",
             "MDM Device ID",
             "Device Serial",
             "Subject Alternative Names",
@@ -688,6 +689,7 @@ fn the_rows_with_a_problem_read_first() {
             "Subject",
             "Issuer",
             "Account ID",
+            "Actor ID",
             "MDM Device ID",
             "Device Serial",
         ]),
@@ -717,6 +719,7 @@ fn sparse_diagnostics_keep_the_order_without_leaving_gaps() {
             "Issuer",
             "Actor Email",
             "Account ID",
+            "Actor ID",
             "MDM Device ID",
             "Device Serial",
             "Serial Number",
@@ -897,4 +900,102 @@ fn after(timestamp: i64) -> SystemTime {
 
 fn now() -> SystemTime {
     SystemTime::UNIX_EPOCH + Duration::from_secs(1_798_761_600)
+}
+
+/// The portal commits a connection to X.509 authentication as soon as the certificate names
+/// anyone, so the client has to tell "names nobody" from "names someone unusable".
+#[test]
+fn an_identity_is_absent_resolved_or_refused() {
+    let identity_of = |uris: &[&str]| {
+        let der = certificate_with_uri_sans(uris);
+
+        parse_certificate(&der, now())
+            .expect("generated certificate should parse")
+            .identity()
+    };
+
+    assert_eq!(identity_of(&[]), Identity::Absent);
+    assert_eq!(
+        identity_of(&["firezone://mdm-device-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"]),
+        Identity::Absent,
+        "attesting the device names nobody"
+    );
+
+    assert_eq!(
+        identity_of(&[
+            "firezone://email/jane.doe@example.com",
+            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+        ]),
+        Identity::Resolved {
+            account_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3".to_owned(),
+            actor: Actor::Email("jane.doe@example.com".to_owned()),
+        }
+    );
+
+    assert_eq!(
+        identity_of(&[
+            "firezone://email/jane.doe@example.com",
+            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+            "firezone://actor-id/9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64",
+        ]),
+        Identity::Resolved {
+            account_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3".to_owned(),
+            actor: Actor::Id("9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64".to_owned()),
+        },
+        "an actor id outranks the email"
+    );
+
+    for uris in [
+        // Half an identity resolves to nobody.
+        vec!["firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"],
+        vec!["firezone://email/jane.doe@example.com"],
+        // So does one the portal cannot read.
+        vec![
+            "firezone://email/jane.doe@example.com",
+            "firezone://account-id/not-a-uuid",
+        ],
+        // A name that stops at the attribute claims it with nothing to attest.
+        vec![
+            "firezone://email/jane.doe@example.com",
+            "firezone://account-id",
+        ],
+        vec![
+            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+            "firezone://email/",
+        ],
+        // Claiming an actor id commits to it, so a bad one is not a fall back to the email.
+        vec![
+            "firezone://email/jane.doe@example.com",
+            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+            "firezone://actor-id/not-a-uuid",
+        ],
+    ] {
+        assert_eq!(identity_of(&uris), Identity::Refused, "{uris:?}");
+    }
+}
+
+/// A certificate naming someone the portal will refuse is one the clients must not present.
+#[test]
+fn a_refused_identity_makes_the_certificate_unusable() {
+    let der =
+        certificate_with_uri_sans(&["firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"]);
+    let refused = parse_certificate(&der, now()).expect("generated certificate should parse");
+
+    assert!(!refused.passes_its_own_rules());
+    assert!(
+        refused
+            .unusable_reasons_without_a_field()
+            .contains(&UnusableReason::RefusedIdentity),
+        "no single row names the user, so the verdict carries the reason"
+    );
+
+    let der = certificate_with_uri_sans(&[
+        "firezone://mdm-device-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+    ]);
+    let attesting = parse_certificate(&der, now()).expect("generated certificate should parse");
+
+    assert!(
+        attesting.passes_its_own_rules(),
+        "a certificate that names nobody still attests the device"
+    );
 }
