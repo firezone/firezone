@@ -110,46 +110,35 @@
       "name": "bench-controller-01",
       "tunIPv4": "100.64.3.18",
       "tunIPv6": "fd00:2021:1111::12",
-      "pools": [
-        "Lab hardware",
-        "Shared storage"
-      ]
+      "pools": ["Lab hardware", "Shared storage"]
     },
     {
       "id": "47e9e79b-e4eb-4444-af14-ec24c6a2afc2",
       "name": "build-runner-02",
       "tunIPv4": "100.64.7.41",
       "tunIPv6": "fd00:2021:1111::29",
-      "pools": [
-        "Build farm"
-      ]
+      "pools": ["Build farm"]
     },
     {
       "id": "db8221d1-0277-4f05-b0a8-22b32a5a9a46",
       "name": "build-runner-03",
       "tunIPv4": "100.64.7.42",
       "tunIPv6": "fd00:2021:1111::2a",
-      "pools": [
-        "Build farm"
-      ]
+      "pools": ["Build farm"]
     },
     {
       "id": "c951f7eb-6fa7-428b-aecf-10b654ecccf7",
       "name": "design-nas",
       "tunIPv4": "100.64.11.5",
       "tunIPv6": "fd00:2021:1111::1f5",
-      "pools": [
-        "Shared storage"
-      ]
+      "pools": ["Shared storage"]
     },
     {
       "id": "e8dc5d0d-93ac-4e1b-9532-866dda67ce5b",
       "name": "vision-rig-01",
       "tunIPv4": "100.64.19.86",
       "tunIPv6": "fd00:2021:1111::3c1",
-      "pools": [
-        "Lab hardware"
-      ]
+      "pools": ["Lab hardware"]
     }
   ],
   "favorites": [],
