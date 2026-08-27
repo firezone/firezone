@@ -21,6 +21,8 @@ import UserNotifications
 // TODO: Move some state logic to view models
 public final class Store: ObservableObject {
   @Published private(set) var actorName: String
+  /// The actor a usable client certificate names, `nil` when there is nobody to connect as.
+  @Published private(set) var certificateActor: String?
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
   @Published private(set) var connectedDevices: [ConnectedDevice] = []
@@ -390,6 +392,8 @@ public final class Store: ObservableObject {
         try await initSystemExtension()
         Log.debug("Startup: initVPNConfiguration")
         try await initVPNConfiguration()
+        Log.debug("Startup: loadCertificateActor")
+        await loadCertificateActor()
         Telemetry.setEnvironmentOrClose(configuration.apiURL)
         #if os(macOS)
           Log.debug("Startup: drainFlowLogsOnLaunch")
@@ -488,6 +492,24 @@ public final class Store: ObservableObject {
       SharedAccess.markAppRunning()
     } else {
       self.vpnStatus = .invalid
+    }
+  }
+
+  private func loadCertificateActor() async {
+    let keychain = X509CertificateSource.keychain { try self.manager().identityReference() }
+    let source = x509CertificateSource ?? keychain
+
+    do {
+      let certificate = try await source.read().certificate
+      let summary = certificate.flatMap { X509CertificateParser.summary(of: $0) }
+
+      // A certificate Firezone will not present authenticates nobody, so it names
+      // nobody to connect as either.
+      certificateActor = summary?.isUsable == true ? summary?.actorEmail : nil
+    } catch {
+      Log.error("Failed to read the client certificate: \(error.localizedDescription)")
+
+      certificateActor = nil
     }
   }
 
@@ -661,6 +683,24 @@ public final class Store: ObservableObject {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
     try IPCClient.start(session: session, token: authResponse.token)
+  }
+
+  /// Starts the session without a token: the portal authenticates the mutual-TLS
+  /// connection itself, so nothing has to go through the browser first.
+  func signInWithCertificate(as actorEmail: String) async throws {
+    configuration.actorName = actorEmail
+    self.actorName = actorEmail
+
+    try await manager().save(configuration: configuration)
+    try await manager().enable()
+
+    shownAlertIds.removeAll()
+    userDefaults.removeObject(forKey: "shownAlertIds")
+
+    guard let session = try manager().session() else {
+      throw VPNConfigurationManagerError.managerNotInitialized
+    }
+    try IPCClient.start(session: session)
   }
 
   func signOut() async throws {
