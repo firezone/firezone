@@ -94,21 +94,10 @@ pub struct X509UnusableCertificate {
 /// Mirrors [`x509_keystore::UnusableCause`].
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub enum X509UnusableCause {
-    FailsRules { reasons: Vec<X509UnusableReason> },
+    UnsupportedKeyAlgorithm,
     WindowsKeyRefused { error: String },
     WindowsKeyMissing,
     Pkcs11KeyMissing,
-}
-
-/// Mirrors [`x509_keystore::UnusableReason`].
-#[derive(Clone, serde::Serialize, specta::Type)]
-pub enum X509UnusableReason {
-    NoClientAuthEku,
-    NoDigitalSignatureKeyUsage,
-    NotYetValid,
-    Expired,
-    UnsupportedKeyAlgorithm,
-    RefusedIdentity,
 }
 
 /// Mirrors [`x509_keystore::UnreadableStore`].
@@ -142,7 +131,6 @@ pub enum X509FieldValue {
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub enum X509FieldProblem {
     Rejected(X509RejectionReason),
-    Unusable(X509UnusableReason),
     Unreadable(String),
 }
 
@@ -241,29 +229,12 @@ impl From<x509_keystore::UnusableCertificate> for X509UnusableCertificate {
 impl From<x509_keystore::UnusableCause> for X509UnusableCause {
     fn from(cause: x509_keystore::UnusableCause) -> Self {
         match cause {
-            x509_keystore::UnusableCause::FailsRules { reasons } => Self::FailsRules {
-                reasons: reasons.into_iter().map(Into::into).collect(),
-            },
+            x509_keystore::UnusableCause::UnsupportedKeyAlgorithm => Self::UnsupportedKeyAlgorithm,
             x509_keystore::UnusableCause::WindowsKeyRefused { error } => {
                 Self::WindowsKeyRefused { error }
             }
             x509_keystore::UnusableCause::WindowsKeyMissing => Self::WindowsKeyMissing,
             x509_keystore::UnusableCause::Pkcs11KeyMissing => Self::Pkcs11KeyMissing,
-        }
-    }
-}
-
-impl From<x509_keystore::UnusableReason> for X509UnusableReason {
-    fn from(reason: x509_keystore::UnusableReason) -> Self {
-        match reason {
-            x509_keystore::UnusableReason::NoClientAuthEku => Self::NoClientAuthEku,
-            x509_keystore::UnusableReason::NoDigitalSignatureKeyUsage => {
-                Self::NoDigitalSignatureKeyUsage
-            }
-            x509_keystore::UnusableReason::NotYetValid => Self::NotYetValid,
-            x509_keystore::UnusableReason::Expired => Self::Expired,
-            x509_keystore::UnusableReason::UnsupportedKeyAlgorithm => Self::UnsupportedKeyAlgorithm,
-            x509_keystore::UnusableReason::RefusedIdentity => Self::RefusedIdentity,
         }
     }
 }
@@ -290,7 +261,6 @@ impl From<x509_keystore::FieldProblem> for X509FieldProblem {
     fn from(problem: x509_keystore::FieldProblem) -> Self {
         match problem {
             x509_keystore::FieldProblem::Rejected(reason) => Self::Rejected(reason.into()),
-            x509_keystore::FieldProblem::Unusable(reason) => Self::Unusable(reason.into()),
             x509_keystore::FieldProblem::Unreadable(message) => Self::Unreadable(message),
         }
     }

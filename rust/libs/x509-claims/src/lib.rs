@@ -16,6 +16,7 @@ use std::{
 };
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use x509_parser::{
     extensions::{GeneralName, ParsedExtension},
@@ -131,7 +132,7 @@ impl From<Option<String>> for ClaimValue {
 ///
 /// The clients word these themselves, so a rejection crosses to them as the reason it is rather
 /// than as a sentence: the mobile and Apple clients render them from their own string resources.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub enum RejectionReason {
     Empty,
     TooLong,

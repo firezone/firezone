@@ -10,9 +10,8 @@ import {
   X509UnreadableStore,
   X509UnusableCause,
   X509UnusableCertificate,
-  X509UnusableReason,
 } from "../generated/bindings";
-import RemixIcon, { type RemixIconName } from "./RemixIcon";
+import RemixIcon from "./RemixIcon";
 
 const CERTIFICATE_SECTION = "Certificate";
 // What the keystore backends title a certificate they found and would not present.
@@ -26,28 +25,6 @@ const REJECTION_TEXT: Record<X509RejectionReason, string> = {
   Ambiguous: "more than one value was given",
   PlaceholderIdentifier: "a placeholder identifier",
   UnknownAttribute: "not an attribute we understand",
-};
-
-const UNUSABLE_REASON_TEXT: Record<X509UnusableReason, string> = {
-  NoClientAuthEku: "no TLS client authentication extended key usage",
-  NoDigitalSignatureKeyUsage: "key usage does not allow digital signatures",
-  NotYetValid: "not yet valid",
-  Expired: "expired",
-  UnsupportedKeyAlgorithm: "unsupported key algorithm",
-  RefusedIdentity: "the user it names cannot be resolved",
-};
-
-// The same rules read underneath the attribute they are about, where a phrase from a list of
-// causes would be a fragment.
-const UNUSABLE_FIELD_TEXT: Record<X509UnusableReason, string> = {
-  NoClientAuthEku:
-    "Firezone only presents a certificate that allows TLS client authentication.",
-  NoDigitalSignatureKeyUsage:
-    "Firezone only presents a certificate whose key usage allows digital signatures.",
-  NotYetValid: "This certificate is not valid yet.",
-  Expired: "This certificate has expired.",
-  UnsupportedKeyAlgorithm: "Firezone cannot sign with this key algorithm.",
-  RefusedIdentity: "Firezone cannot resolve the user this certificate names.",
 };
 
 const MISSING_PACKAGE_TEXT: Record<X509Package, string> = {
@@ -116,15 +93,11 @@ function causeText(fingerprint: string, cause: X509UnusableCause): string {
     return `${fingerprint} is unusable: the token holds no private key for it`;
   }
 
-  if ("WindowsKeyRefused" in cause) {
-    return `${fingerprint} has a private key CNG will not use: ${cause.WindowsKeyRefused.error}`;
+  if (cause === "UnsupportedKeyAlgorithm") {
+    return `${fingerprint} is unusable: we cannot sign with its key algorithm`;
   }
 
-  const reasons = cause.FailsRules.reasons
-    .map((reason) => UNUSABLE_REASON_TEXT[reason])
-    .join(", ");
-
-  return `${fingerprint} is unusable: ${reasons}`;
+  return `${fingerprint} has a private key CNG will not use: ${cause.WindowsKeyRefused.error}`;
 }
 
 function storeText(stores: X509UnreadableStore[]): string {
@@ -141,14 +114,6 @@ function FieldValue({ value }: { value: X509FieldValue }) {
 
 // Reads underneath the value it belongs to, the way a form shows an error on its input.
 function FieldProblem({ problem }: { problem: X509FieldProblem }) {
-  if ("Unusable" in problem) {
-    // The rule this attribute breaks is why the certificate is turned down, not a remark
-    // about it, so it reads in the colour the page turns things down in.
-    return (
-      <Note tone="text-error">{UNUSABLE_FIELD_TEXT[problem.Unusable]}</Note>
-    );
-  }
-
   if ("Rejected" in problem) {
     return <Note tone="text-warning">{REJECTION_TEXT[problem.Rejected]}</Note>;
   }
@@ -193,31 +158,6 @@ function Warning({ problem }: { problem: X509Problem }) {
 // What the card says Firezone does with the certificate the keystore found, if it found one,
 // and the mark that leads it.
 //
-// A certificate that was found and turned down is worth saying out loud: the rows below carry
-// the attribute that makes it unusable, and this is what sends the reader to them.
-function verdict(
-  certificate: X509DetailSection | undefined,
-  used: X509DetailSection | undefined
-): { text: string; icon?: { name: RemixIconName; tone: string } } {
-  if (used !== undefined) {
-    return {
-      text: "Firezone uses this certificate to identify this device.",
-      icon: { name: "check", tone: "text-success" },
-    };
-  }
-
-  if (certificate !== undefined) {
-    return {
-      text: "Firezone cannot use this certificate to identify this device.",
-      icon: { name: "close", tone: "text-error" },
-    };
-  }
-
-  return {
-    text: "Firezone did not find a certificate to identify this device.",
-  };
-}
-
 function SummaryCard({ status }: { status: X509Status }) {
   const used = status.sections.find(
     (section) => section.title === CERTIFICATE_SECTION
@@ -233,7 +173,6 @@ function SummaryCard({ status }: { status: X509Status }) {
   const issuer = presentField(certificate, "Issuer");
   const notAfter = presentField(certificate, "Not After");
   const found = certificate !== undefined;
-  const { text, icon } = verdict(certificate, used);
 
   return (
     <section className="panel p-4">
@@ -257,18 +196,11 @@ function SummaryCard({ status }: { status: X509Status }) {
           )}
         </div>
       </div>
-      {/* Outside the row so it reads across the whole card rather than starting
-          where the text beside the icon does: it is about the certificate, not
-          about any one field. */}
-      <p className="mt-2 flex items-center gap-1.5 text-xs text-subtle">
-        {icon !== undefined && (
-          <RemixIcon
-            className={`h-3.5 w-3.5 shrink-0 ${icon.tone}`}
-            name={icon.name}
-          />
-        )}
-        {text}
-      </p>
+      {!found && (
+        <p className="mt-2 text-xs text-subtle">
+          Firezone did not find a certificate to identify this device.
+        </p>
+      )}
       {status.problems.map((problem, problemIndex) => (
         <Warning key={problemIndex} problem={problem} />
       ))}
