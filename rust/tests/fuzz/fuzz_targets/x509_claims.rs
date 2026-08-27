@@ -100,6 +100,7 @@ fn assert_usable_is_the_conjunction(certificate: &ParsedCertificate) {
             && certificate.digital_signature_allowed
             && certificate.is_currently_valid
             && certificate.signing_algorithm.is_some()
+            && certificate.identity() != Identity::Refused
     );
     assert_eq!(
         certificate.is_usable(subject_cn),

@@ -983,6 +983,10 @@ fn a_refused_identity_makes_the_certificate_unusable() {
 
     assert!(!refused.passes_its_own_rules());
     assert!(
+        !refused.is_usable(refused.subject_cn.clone().unwrap_or_default().as_str()),
+        "a refused identity keeps the certificate from being presented"
+    );
+    assert!(
         refused
             .unusable_reasons_without_a_field()
             .contains(&UnusableReason::RefusedIdentity),
