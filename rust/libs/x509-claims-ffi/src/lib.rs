@@ -23,35 +23,28 @@ pub enum Identity {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct DetailField {
     pub label: String,
-    pub value: ClaimValue,
-    /// Why the value above was not attested, `None` when it was.
-    pub problem: Option<RejectionReason>,
-}
-
-/// The text a diagnostics row shows, mirroring [`x509_claims::ClaimValue`].
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
-pub enum ClaimValue {
-    /// What the certificate carries, whether or not the clients will attest it.
-    Present { value: String },
-    /// The certificate carries nothing for this row.
-    Absent,
+    pub value: Option<String>,
+    /// Why the value above is not usable, `None` when it is.
+    pub problem: Option<ValidationError>,
 }
 
 /// What a certificate says about one of the claims the clients read, mirroring
 /// [`x509_claims::Claim`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct Claim {
-    pub value: ClaimValue,
-    /// Why the clients will not attest the value, `None` when they will.
-    pub rejection: Option<RejectionReason>,
+    /// What the certificate carries, `None` when it carries nothing.
+    pub value: Option<String>,
+    /// Why the value is not usable as this claim, `None` when it is.
+    pub error: Option<ValidationError>,
 }
 
-/// Why a `firezone://` claim was not attested, mirroring [`x509_claims::RejectionReason`].
+/// Why the text a certificate gave a `firezone://` claim is not usable as it, mirroring
+/// [`x509_claims::ValidationError`].
 ///
-/// The clients word these from their own string resources, so the reason crosses the binding
+/// The clients word these from their own string resources, so the error crosses the binding
 /// as itself rather than as a sentence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum RejectionReason {
+pub enum ValidationError {
     Empty,
     TooLong,
     NotAnEmailAddress,
@@ -152,17 +145,8 @@ impl From<x509_claims::DetailField> for DetailField {
     fn from(field: x509_claims::DetailField) -> Self {
         Self {
             label: field.label,
-            value: ClaimValue::from(field.value),
-            problem: field.problem.map(RejectionReason::from),
-        }
-    }
-}
-
-impl From<x509_claims::ClaimValue> for ClaimValue {
-    fn from(value: x509_claims::ClaimValue) -> Self {
-        match value {
-            x509_claims::ClaimValue::Present { value } => Self::Present { value },
-            x509_claims::ClaimValue::Absent => Self::Absent,
+            value: field.value,
+            problem: field.problem.map(ValidationError::from),
         }
     }
 }
@@ -170,22 +154,22 @@ impl From<x509_claims::ClaimValue> for ClaimValue {
 impl From<x509_claims::Claim> for Claim {
     fn from(claim: x509_claims::Claim) -> Self {
         Self {
-            value: ClaimValue::from(claim.value),
-            rejection: claim.rejection.map(RejectionReason::from),
+            value: claim.value,
+            error: claim.error.map(ValidationError::from),
         }
     }
 }
 
-impl From<x509_claims::RejectionReason> for RejectionReason {
-    fn from(reason: x509_claims::RejectionReason) -> Self {
-        match reason {
-            x509_claims::RejectionReason::Empty => Self::Empty,
-            x509_claims::RejectionReason::TooLong => Self::TooLong,
-            x509_claims::RejectionReason::NotAnEmailAddress => Self::NotAnEmailAddress,
-            x509_claims::RejectionReason::NotAUuid => Self::NotAUuid,
-            x509_claims::RejectionReason::Ambiguous => Self::Ambiguous,
-            x509_claims::RejectionReason::PlaceholderIdentifier => Self::PlaceholderIdentifier,
-            x509_claims::RejectionReason::UnknownAttribute => Self::UnknownAttribute,
+impl From<x509_claims::ValidationError> for ValidationError {
+    fn from(error: x509_claims::ValidationError) -> Self {
+        match error {
+            x509_claims::ValidationError::Empty => Self::Empty,
+            x509_claims::ValidationError::TooLong => Self::TooLong,
+            x509_claims::ValidationError::NotAnEmailAddress => Self::NotAnEmailAddress,
+            x509_claims::ValidationError::NotAUuid => Self::NotAUuid,
+            x509_claims::ValidationError::Ambiguous => Self::Ambiguous,
+            x509_claims::ValidationError::PlaceholderIdentifier => Self::PlaceholderIdentifier,
+            x509_claims::ValidationError::UnknownAttribute => Self::UnknownAttribute,
         }
     }
 }

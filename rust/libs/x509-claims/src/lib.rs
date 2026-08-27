@@ -43,96 +43,66 @@ impl SigningAlgorithm {
     }
 }
 
-/// The text a diagnostics row shows, above whatever is wrong with it.
-///
-/// A value the clients refuse is still a value, so it stays here and the refusal reads
-/// underneath it as a [`RejectionReason`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ClaimValue {
-    /// What the certificate carries, whether or not the clients will attest it.
-    Present { value: String },
-    /// The certificate carries nothing for this row.
-    Absent,
-}
-
 /// What a certificate says about one of the claims the clients read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Claim {
-    pub value: ClaimValue,
-    /// Why the clients will not attest the value, [`None`] when they will.
-    pub rejection: Option<RejectionReason>,
+    /// What the certificate carries, [`None`] when it carries nothing.
+    pub value: Option<String>,
+    /// Why the value is not usable as this claim, [`None`] when it is.
+    pub error: Option<ValidationError>,
 }
 
 impl Claim {
-    /// The value the clients will attest, [`None`] for a claim they will not.
-    pub fn attested(&self) -> Option<&str> {
-        match (&self.value, self.rejection) {
-            (ClaimValue::Present { value }, None) => Some(value),
-            (ClaimValue::Present { .. }, Some(_)) | (ClaimValue::Absent, _) => None,
-        }
-    }
-
-    /// Whether the certificate carries the claim at all, attested or not.
-    pub fn is_present(&self) -> bool {
-        matches!(self.value, ClaimValue::Present { .. })
+    /// The value usable as this claim, [`None`] when there is none.
+    pub fn valid(&self) -> Option<&str> {
+        self.value.as_deref().filter(|_| self.error.is_none())
     }
 
     /// Whether the certificate wrote this attribute at all, whatever it wrote in it.
     ///
-    /// An attribute written with an empty value has no value to show, so a rejection is the
+    /// An attribute written with an empty value has no value to show, so the error is the
     /// only trace it leaves.
     fn is_carried(&self) -> bool {
-        self.is_present() || self.rejection.is_some()
+        self.value.is_some() || self.error.is_some()
     }
 
-    /// A claim the certificate carries and the clients will attest.
     fn present(value: String) -> Self {
         Self {
-            value: ClaimValue::Present { value },
-            rejection: None,
+            value: Some(value),
+            error: None,
         }
     }
 
-    /// A claim the certificate does not carry at all.
     fn absent() -> Self {
         Self {
-            value: ClaimValue::Absent,
-            rejection: None,
+            value: None,
+            error: None,
         }
     }
 
-    /// A claim the certificate carries and the clients will not attest.
+    /// A claim whose value is not usable as it.
     ///
     /// The value is shown the way the certificate spelled it, bounded the way every other
     /// claim value is: an administrator fixing a template needs to see what it wrote.
-    fn rejected(value: &str, reason: RejectionReason) -> Self {
+    fn invalid(value: &str, error: ValidationError) -> Self {
         let value = format_claim_value(value);
 
         Self {
             value: match value.trim().is_empty() {
-                true => ClaimValue::Absent,
-                false => ClaimValue::Present { value },
+                true => None,
+                false => Some(value),
             },
-            rejection: Some(reason),
+            error: Some(error),
         }
     }
 }
 
-impl From<Option<String>> for ClaimValue {
-    fn from(value: Option<String>) -> Self {
-        match value {
-            Some(value) => Self::Present { value },
-            None => Self::Absent,
-        }
-    }
-}
-
-/// Why the clients will not attest what a claim says, read underneath the value it belongs to.
+/// Why the text a certificate gave a claim is not usable as it, read underneath that text.
 ///
-/// The clients word these themselves, so a rejection crosses to them as the reason it is rather
+/// The clients word these themselves, so an error crosses to them as the error it is rather
 /// than as a sentence: the mobile and Apple clients render them from their own string resources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum RejectionReason {
+pub enum ValidationError {
     Empty,
     TooLong,
     NotAnEmailAddress,
@@ -142,7 +112,7 @@ pub enum RejectionReason {
     UnknownAttribute,
 }
 
-impl RejectionReason {
+impl ValidationError {
     /// A phrase that reads on its own and after the claim it explains.
     pub fn label(self) -> &'static str {
         match self {
@@ -263,7 +233,7 @@ impl ParsedCertificate {
         }
 
         Identity::Claimed {
-            email: self.actor_email.attested().map(str::to_owned),
+            email: self.actor_email.valid().map(str::to_owned),
         }
     }
 
@@ -286,7 +256,7 @@ impl ParsedCertificate {
         };
         let Some((attribute, value)) = firezone_claim(uri) else {
             // A bare device ID has no attribute and is matched by the URI as a whole.
-            return self.attests(uri);
+            return self.matches_a_valid_claim(uri);
         };
         if !known_attribute(&attribute) {
             // An unrecognised claim gets a row of its own.
@@ -294,11 +264,11 @@ impl ParsedCertificate {
         }
         let value = percent_decode(value).unwrap_or_else(|| value.to_owned());
 
-        self.attests(value.trim())
+        self.matches_a_valid_claim(value.trim())
     }
 
-    /// Whether one of the claim rows attests `value`, compared the way the claims are matched.
-    fn attests(&self, value: &str) -> bool {
+    /// Whether one of the claim rows holds `value`, compared the way the claims are matched.
+    fn matches_a_valid_claim(&self, value: &str) -> bool {
         [
             &self.actor_email,
             &self.account_id,
@@ -306,8 +276,8 @@ impl ParsedCertificate {
             &self.device_serial,
         ]
         .into_iter()
-        .filter_map(|claim| claim.attested())
-        .any(|attested| attested.to_lowercase() == value.to_lowercase())
+        .filter_map(|claim| claim.valid())
+        .any(|valid| valid.to_lowercase() == value.to_lowercase())
     }
 }
 
@@ -327,9 +297,9 @@ pub enum Identity {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DetailField {
     pub label: String,
-    pub value: ClaimValue,
-    /// Why the value above was not attested, [`None`] when it was.
-    pub problem: Option<RejectionReason>,
+    pub value: Option<String>,
+    /// Why the value above is not usable, [`None`] when it is.
+    pub problem: Option<ValidationError>,
 }
 
 pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificate> {
@@ -479,9 +449,9 @@ fn extract_actor_email(uris: &[&str]) -> Claim {
         .map(|value| {
             let value = value?;
             if !valid_email(&value) {
-                return Err(Rejected {
+                return Err(Invalid {
                     value,
-                    reason: RejectionReason::NotAnEmailAddress,
+                    error: ValidationError::NotAnEmailAddress,
                 });
             }
 
@@ -496,15 +466,15 @@ fn extract_account_id(uris: &[&str]) -> Claim {
     resolve_claim(uuid_values(uris, "account-id"), str::to_owned)
 }
 
-fn uuid_values(uris: &[&str], attribute: &str) -> Vec<Result<String, Rejected>> {
+fn uuid_values(uris: &[&str], attribute: &str) -> Vec<Result<String, Invalid>> {
     firezone_attribute_values(uris, attribute)
         .into_iter()
         .map(|value| {
             let value = value?;
             let Ok(uuid) = uuid::Uuid::parse_str(&value) else {
-                return Err(Rejected {
+                return Err(Invalid {
                     value,
-                    reason: RejectionReason::NotAUuid,
+                    error: ValidationError::NotAUuid,
                 });
             };
 
@@ -528,7 +498,7 @@ fn extract_device_serial(uris: &[&str]) -> Claim {
 fn firezone_attribute_values(
     uris: &[&str],
     expected_attribute: &str,
-) -> Vec<Result<String, Rejected>> {
+) -> Vec<Result<String, Invalid>> {
     let mut values = Vec::new();
 
     for uri in uris {
@@ -542,9 +512,9 @@ fn firezone_attribute_values(
         let decoded = percent_decode(raw_value).unwrap_or_else(|| raw_value.to_owned());
         let value = decoded.trim();
         if !valid_identifier(value) {
-            values.push(Err(Rejected {
+            values.push(Err(Invalid {
                 value: value.to_owned(),
-                reason: invalid_identifier_reason(value),
+                error: invalid_identifier_error(value),
             }));
             continue;
         }
@@ -555,37 +525,37 @@ fn firezone_attribute_values(
     values
 }
 
-/// A value a certificate gave a claim that the clients will not attest, and why.
-struct Rejected {
+/// A value a certificate gave a claim that is not usable as it, and why.
+struct Invalid {
     value: String,
-    reason: RejectionReason,
+    error: ValidationError,
 }
 
 /// The state a claim resolves to, comparing the values a certificate gave it by `key`.
 ///
 /// Repeating the same value is not a conflict. Giving two different ones is, and neither is
-/// attested: picking one would let a certificate decide which identity it is read as. Both are
+/// usable: picking one would let a certificate decide which identity it is read as. Both are
 /// still shown, because a template that writes two is fixed by seeing which.
-fn resolve_claim(values: Vec<Result<String, Rejected>>, key: impl Fn(&str) -> String) -> Claim {
+fn resolve_claim(values: Vec<Result<String, Invalid>>, key: impl Fn(&str) -> String) -> Claim {
     let mut seen = HashSet::new();
     let mut accepted = Vec::new();
-    let mut rejection = None;
+    let mut error = None;
 
     for value in values {
         match value {
             Ok(value) if seen.insert(key(&value)) => accepted.push(value),
             Ok(_) => {}
-            Err(rejected) => {
-                rejection.get_or_insert(rejected);
+            Err(invalid) => {
+                error.get_or_insert(invalid);
             }
         }
     }
 
-    match (accepted.as_slice(), rejection) {
+    match (accepted.as_slice(), error) {
         ([value], _) => Claim::present(value.clone()),
         ([], None) => Claim::absent(),
-        ([], Some(rejected)) => Claim::rejected(&rejected.value, rejected.reason),
-        (values, _) => Claim::rejected(&values.join(", "), RejectionReason::Ambiguous),
+        ([], Some(invalid)) => Claim::invalid(&invalid.value, invalid.error),
+        (values, _) => Claim::invalid(&values.join(", "), ValidationError::Ambiguous),
     }
 }
 
@@ -597,7 +567,7 @@ fn firezone_claim(uri: &str) -> Option<(String, &str)> {
     }
     let (attribute, value) = match remainder.split_once('/') {
         Some(pair) => pair,
-        // A name that stops at the attribute still claims it, with nothing to attest. Only
+        // A name that stops at the attribute still claims it, with no value in it. Only
         // where the attribute is one we read, though: a bare device identifier is a name in
         // its own right rather than an empty claim.
         None if known_attribute(&remainder.to_ascii_lowercase()) => (remainder, ""),
@@ -654,7 +624,7 @@ fn extract_mdm_device_id(uris: &[&str]) -> Claim {
         .collect::<Vec<_>>();
     let mut saw_typed_identifier = false;
     let mut typed_mdm_device_id = None;
-    let mut rejection = None;
+    let mut error = None;
 
     for uri in &uris {
         let Some((id_type, value)) = firezone_claim(uri) else {
@@ -664,14 +634,14 @@ fn extract_mdm_device_id(uris: &[&str]) -> Claim {
             continue;
         }
         // The same escaping the other typed claims go through: an MDM that percent-encodes its
-        // identifier must not end up attesting the literal escape sequence.
+        // identifier must not end up with the literal escape sequence as its device ID.
         let value = percent_decode(value).unwrap_or_else(|| value.to_owned());
         let value = value.as_str();
         if !valid_identifier(value) {
             if device_id_attribute(&id_type) {
-                rejection.get_or_insert(Rejected {
+                error.get_or_insert(Invalid {
                     value: value.to_owned(),
-                    reason: invalid_identifier_reason(value),
+                    error: invalid_identifier_error(value),
                 });
             }
 
@@ -685,9 +655,9 @@ fn extract_mdm_device_id(uris: &[&str]) -> Claim {
 
         typed_mdm_device_id = normalize_mdm_device_id(value);
         if typed_mdm_device_id.is_none() {
-            rejection.get_or_insert(Rejected {
+            error.get_or_insert(Invalid {
                 value: value.to_owned(),
-                reason: RejectionReason::PlaceholderIdentifier,
+                error: ValidationError::PlaceholderIdentifier,
             });
         }
     }
@@ -703,9 +673,9 @@ fn extract_mdm_device_id(uris: &[&str]) -> Claim {
         })
     };
 
-    match (device_id, rejection) {
+    match (device_id, error) {
         (Some(device_id), _) => Claim::present(device_id),
-        (None, Some(rejected)) => Claim::rejected(&rejected.value, rejected.reason),
+        (None, Some(invalid)) => Claim::invalid(&invalid.value, invalid.error),
         (None, None) => Claim::absent(),
     }
 }
@@ -785,13 +755,13 @@ fn valid_identifier(value: &str) -> bool {
     !value.is_empty() && value.len() <= 255
 }
 
-/// Why [`valid_identifier`] refused a value.
-fn invalid_identifier_reason(value: &str) -> RejectionReason {
+/// Why [`valid_identifier`] does not accept a value.
+fn invalid_identifier_error(value: &str) -> ValidationError {
     if value.trim().is_empty() {
-        return RejectionReason::Empty;
+        return ValidationError::Empty;
     }
 
-    RejectionReason::TooLong
+    ValidationError::TooLong
 }
 
 fn normalize_mdm_device_id(value: &str) -> Option<String> {
@@ -903,9 +873,7 @@ fn format_claim_value(value: &str) -> String {
 fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
     DetailField {
         label: label.into(),
-        value: ClaimValue::Present {
-            value: value.into(),
-        },
+        value: Some(value.into()),
         problem: None,
     }
 }
@@ -914,7 +882,7 @@ fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
 fn optional_field(label: impl Into<String>, value: Option<String>) -> DetailField {
     DetailField {
         label: label.into(),
-        value: ClaimValue::from(value),
+        value,
         problem: None,
     }
 }
@@ -923,7 +891,7 @@ fn claim_field(label: impl Into<String>, claim: Claim) -> DetailField {
     DetailField {
         label: label.into(),
         value: claim.value,
-        problem: claim.rejection,
+        problem: claim.error,
     }
 }
 
@@ -936,13 +904,8 @@ fn unrecognised_claim_field(claim: &str) -> DetailField {
 
     DetailField {
         label: attribute.to_owned(),
-        value: match value {
-            Some(value) if !value.is_empty() => ClaimValue::Present {
-                value: value.to_owned(),
-            },
-            Some(_) | None => ClaimValue::Absent,
-        },
-        problem: Some(RejectionReason::UnknownAttribute),
+        value: value.filter(|value| !value.is_empty()).map(str::to_owned),
+        problem: Some(ValidationError::UnknownAttribute),
     }
 }
 

@@ -13,7 +13,7 @@ use std::{
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use sha2::{Digest as _, Sha256};
-use x509_claims::{Claim, Identity, ParsedCertificate, RejectionReason, parse_certificate};
+use x509_claims::{Claim, Identity, ParsedCertificate, ValidationError, parse_certificate};
 
 fuzz_target!(|input: Input| {
     let Some(certificate) = parse_certificate(input.der, instant(input.seconds_since_epoch)) else {
@@ -33,7 +33,7 @@ fuzz_target!(|input: Input| {
     assert_device_serial_is_printable(&certificate);
     assert_claims_are_rendered_as_they_were_read(&certificate);
     assert_unrecognised_claims_are_shown(&certificate);
-    assert_every_rejection_reason_reads();
+    assert_every_validation_error_reads();
     assert_fingerprint_covers_the_input(&certificate, input.der);
     assert_serial_is_bounded(&certificate);
     assert_detail_fields_are_labelled(&certificate);
@@ -78,7 +78,7 @@ fn assert_validity_is_contiguous(der: &[u8], first: u32, second: u32) {
 ///
 /// The first signs the session in with a token and the second commits it to mutual TLS, so a
 /// certificate that slid from one to the other would authenticate as the wrong thing. A claim
-/// the parser refused still names somebody: only the address it will attest reaches the client.
+/// the parser could not use still names somebody: only a usable address reaches the client.
 fn assert_the_identity_answers_the_claims(certificate: &ParsedCertificate) {
     let claims_somebody = [
         &certificate.account_id,
@@ -86,7 +86,7 @@ fn assert_the_identity_answers_the_claims(certificate: &ParsedCertificate) {
         &certificate.actor_email,
     ]
     .into_iter()
-    .any(|claim| claim.is_present() || claim.rejection.is_some());
+    .any(|claim| claim.value.is_some() || claim.error.is_some());
 
     match certificate.identity() {
         Identity::Absent => assert!(
@@ -95,14 +95,14 @@ fn assert_the_identity_answers_the_claims(certificate: &ParsedCertificate) {
         ),
         Identity::Claimed { email } => {
             assert!(claims_somebody, "an identity was claimed by nothing");
-            assert_eq!(email.as_deref(), certificate.actor_email.attested());
+            assert_eq!(email.as_deref(), certificate.actor_email.valid());
         }
     }
 }
 
 /// Asserts that an account ID reaches the portal as a hyphenated, lower-case UUID.
 fn assert_account_id_is_a_uuid(certificate: &ParsedCertificate) {
-    let Some(account_id) = certificate.account_id.attested() else {
+    let Some(account_id) = certificate.account_id.valid() else {
         return;
     };
 
@@ -113,7 +113,7 @@ fn assert_account_id_is_a_uuid(certificate: &ParsedCertificate) {
 
 /// Asserts that an actor email is a lower-case address the portal can look an actor up by.
 fn assert_actor_email_is_addressable(certificate: &ParsedCertificate) {
-    let Some(actor_email) = certificate.actor_email.attested() else {
+    let Some(actor_email) = certificate.actor_email.valid() else {
         return;
     };
     let (local, domain) = actor_email.split_once('@').expect("an email has a domain");
@@ -128,7 +128,7 @@ fn assert_actor_email_is_addressable(certificate: &ParsedCertificate) {
 
 /// Asserts that an MDM device ID is already in the form devices are matched by.
 fn assert_mdm_device_id_is_normalised(certificate: &ParsedCertificate) {
-    let Some(mdm_device_id) = certificate.mdm_device_id.attested() else {
+    let Some(mdm_device_id) = certificate.mdm_device_id.valid() else {
         return;
     };
 
@@ -138,7 +138,7 @@ fn assert_mdm_device_id_is_normalised(certificate: &ParsedCertificate) {
 
 /// Asserts that a device serial carries something to show.
 fn assert_device_serial_is_printable(certificate: &ParsedCertificate) {
-    let Some(device_serial) = certificate.device_serial.attested() else {
+    let Some(device_serial) = certificate.device_serial.valid() else {
         return;
     };
 
@@ -166,7 +166,7 @@ fn assert_claims_are_rendered_as_they_were_read(certificate: &ParsedCertificate)
             .unwrap_or_else(|| panic!("diagnostics should show {label}"));
 
         assert_eq!(field.value, claim.value);
-        assert_eq!(field.problem, claim.rejection);
+        assert_eq!(field.problem, claim.error);
     }
 }
 
@@ -178,7 +178,7 @@ fn assert_unrecognised_claims_are_shown(certificate: &ParsedCertificate) {
     let unrecognised = certificate
         .detail_fields()
         .into_iter()
-        .filter(|field| field.problem == Some(RejectionReason::UnknownAttribute))
+        .filter(|field| field.problem == Some(ValidationError::UnknownAttribute))
         .map(|field| field.label)
         .collect::<Vec<_>>();
 
@@ -193,21 +193,21 @@ fn assert_unrecognised_claims_are_shown(certificate: &ParsedCertificate) {
     }
 }
 
-/// Asserts that every refusal a claim can carry renders a phrase of its own.
+/// Asserts that every error a claim can carry renders a phrase of its own.
 ///
-/// The clients show these to an administrator, so a blank phrase says nothing and two reasons
+/// The clients show these to an administrator, so a blank phrase says nothing and two errors
 /// sharing one phrase sends them after the wrong part of their certificate template.
-fn assert_every_rejection_reason_reads() {
+fn assert_every_validation_error_reads() {
     let labels = [
-        RejectionReason::Empty,
-        RejectionReason::TooLong,
-        RejectionReason::NotAnEmailAddress,
-        RejectionReason::NotAUuid,
-        RejectionReason::Ambiguous,
-        RejectionReason::PlaceholderIdentifier,
-        RejectionReason::UnknownAttribute,
+        ValidationError::Empty,
+        ValidationError::TooLong,
+        ValidationError::NotAnEmailAddress,
+        ValidationError::NotAUuid,
+        ValidationError::Ambiguous,
+        ValidationError::PlaceholderIdentifier,
+        ValidationError::UnknownAttribute,
     ]
-    .map(RejectionReason::label);
+    .map(ValidationError::label);
 
     for label in labels {
         assert!(!label.is_empty());

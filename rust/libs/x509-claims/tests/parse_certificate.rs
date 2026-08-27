@@ -8,7 +8,7 @@ use rcgen::{
     SerialNumber, string::Ia5String,
 };
 use x509_claims::{
-    Claim, ClaimValue, DetailField, Identity, ParsedCertificate, RejectionReason, SigningAlgorithm,
+    Claim, DetailField, Identity, ParsedCertificate, SigningAlgorithm, ValidationError,
     parse_certificate,
 };
 
@@ -85,16 +85,16 @@ fn extracts_typed_mdm_device_id_like_the_portal() {
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
 
     assert_eq!(
-        metadata.mdm_device_id.attested(),
+        metadata.mdm_device_id.valid(),
         Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
     );
-    assert_eq!(metadata.device_serial.attested(), Some("C02XK1ZGJGH5"));
+    assert_eq!(metadata.device_serial.valid(), Some("C02XK1ZGJGH5"));
 }
 
 #[test]
 fn percent_decodes_typed_mdm_identifiers() {
     // The portal runs every typed claim through `URI.decode`, so a client that reported the
-    // escape sequence verbatim would attest a device the portal has never heard of.
+    // escape sequence verbatim would name a device the portal has never heard of.
     let der = certificate_with_uri_sans(&[
         "firezone://intune-id/5F2E7B7A%2D9D54%2D4BD2%2D9D4F%2D8F6C2A01F9D3",
         "firezone://serial/C02XK1%5AGJGH5",
@@ -103,10 +103,10 @@ fn percent_decodes_typed_mdm_identifiers() {
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
 
     assert_eq!(
-        metadata.mdm_device_id.attested(),
+        metadata.mdm_device_id.valid(),
         Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
     );
-    assert_eq!(metadata.device_serial.attested(), Some("C02XK1ZGJGH5"));
+    assert_eq!(metadata.device_serial.valid(), Some("C02XK1ZGJGH5"));
 }
 
 #[test]
@@ -118,10 +118,10 @@ fn extracts_mdm_device_id_from_intune_comma_joined_uri() {
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
 
     assert_eq!(
-        metadata.mdm_device_id.attested(),
+        metadata.mdm_device_id.valid(),
         Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
     );
-    assert_eq!(metadata.device_serial.attested(), Some("C02XK1ZGJGH5"));
+    assert_eq!(metadata.device_serial.valid(), Some("C02XK1ZGJGH5"));
 }
 
 #[test]
@@ -132,16 +132,16 @@ fn extracts_claims_from_intune_comma_joined_uri() {
 
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
 
-    assert_eq!(metadata.actor_email.attested(), Some("alice@example.com"));
+    assert_eq!(metadata.actor_email.valid(), Some("alice@example.com"));
     assert_eq!(
-        metadata.account_id.attested(),
+        metadata.account_id.valid(),
         Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
     );
-    assert_eq!(metadata.device_serial.attested(), Some("C02XK1ZGJGH5"));
+    assert_eq!(metadata.device_serial.valid(), Some("C02XK1ZGJGH5"));
 }
 
 #[test]
-fn attests_a_claim_only_when_it_is_unambiguous_and_valid() {
+fn accepts_a_claim_only_when_it_is_unambiguous_and_valid() {
     let conflicting_emails = certificate_with_uri_sans(&[
         "firezone://email/alice@example.com",
         "firezone://email/bob@example.com",
@@ -167,22 +167,22 @@ fn attests_a_claim_only_when_it_is_unambiguous_and_valid() {
 
     assert_eq!(
         conflicting_emails.actor_email,
-        rejected(
+        invalid(
             "alice@example.com, bob@example.com",
-            RejectionReason::Ambiguous
+            ValidationError::Ambiguous
         )
     );
     assert_eq!(
         malformed_account_id.account_id,
-        rejected("not-a-uuid", RejectionReason::NotAUuid)
+        invalid("not-a-uuid", ValidationError::NotAUuid)
     );
     assert_eq!(
-        equivalent_duplicates.actor_email.attested(),
+        equivalent_duplicates.actor_email.valid(),
         Some("alice@example.com"),
         "the same value written twice is one value"
     );
     assert_eq!(
-        equivalent_duplicates.account_id.attested(),
+        equivalent_duplicates.account_id.valid(),
         Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
     );
 }
@@ -201,7 +201,7 @@ fn extracts_bare_guid_only_when_no_typed_identifier_exists() {
         parse_certificate(&guid_beside_serial, now()).expect("generated certificate should parse");
 
     assert_eq!(
-        bare_guid.mdm_device_id.attested(),
+        bare_guid.mdm_device_id.valid(),
         Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
     );
     assert_eq!(guid_beside_serial.mdm_device_id, absent());
@@ -210,10 +210,10 @@ fn extracts_bare_guid_only_when_no_typed_identifier_exists() {
 #[test]
 fn diagnostics_show_derived_firezone_attributes() {
     let mut metadata = parse_certificate(RSA_LEAF, now()).expect("test certificate should parse");
-    metadata.actor_email = attested("alice@example.com");
-    metadata.account_id = attested("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3");
-    metadata.mdm_device_id = attested("intune-device-123");
-    metadata.device_serial = attested("C02XK1ZGJGH5");
+    metadata.actor_email = valid("alice@example.com");
+    metadata.account_id = valid("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3");
+    metadata.mdm_device_id = valid("intune-device-123");
+    metadata.device_serial = valid("C02XK1ZGJGH5");
 
     let fields = metadata.detail_fields();
 
@@ -226,7 +226,7 @@ fn diagnostics_show_derived_firezone_attributes() {
         assert!(
             fields
                 .iter()
-                .any(|field| field.label == label && field.value == present(value)),
+                .any(|field| field.label == label && field.value.as_deref() == Some(value)),
             "diagnostics should show {label}"
         );
     }
@@ -239,16 +239,16 @@ fn diagnostics_show_what_a_certificate_lacks_without_judging_it() {
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
 
     assert_eq!(
-        detail_value(&metadata, "TLS Client Authentication EKU"),
-        present("No")
+        detail_value(&metadata, "TLS Client Authentication EKU").as_deref(),
+        Some("No")
     );
     assert_eq!(
-        detail_value(&metadata, "Digital Signature Key Usage"),
-        present("Not allowed")
+        detail_value(&metadata, "Digital Signature Key Usage").as_deref(),
+        Some("Not allowed")
     );
     assert_eq!(
-        detail_value(&metadata, "Signing Algorithm"),
-        present("1.3.101.112"),
+        detail_value(&metadata, "Signing Algorithm").as_deref(),
+        Some("1.3.101.112"),
         "an algorithm the parser has no name for should still be shown"
     );
     assert!(
@@ -284,7 +284,7 @@ fn elides_a_serial_number_no_issuer_would_have_produced() {
 }
 
 #[test]
-fn reports_every_firezone_claim_it_will_not_attest() {
+fn reports_every_firezone_claim_it_cannot_use() {
     let der = certificate_with_uri_sans(&[
         "firezone://email/not-an-address",
         "firezone://account-id/not-a-uuid",
@@ -296,17 +296,17 @@ fn reports_every_firezone_claim_it_will_not_attest() {
 
     assert_eq!(
         metadata.actor_email,
-        rejected("not-an-address", RejectionReason::NotAnEmailAddress)
+        invalid("not-an-address", ValidationError::NotAnEmailAddress)
     );
     assert_eq!(
         metadata.account_id,
-        rejected("not-a-uuid", RejectionReason::NotAUuid)
+        invalid("not-a-uuid", ValidationError::NotAUuid)
     );
     assert_eq!(
         metadata.mdm_device_id,
-        rejected(
+        invalid(
             "00000000-0000-0000-0000-000000000000",
-            RejectionReason::PlaceholderIdentifier
+            ValidationError::PlaceholderIdentifier
         )
     );
     assert_eq!(metadata.device_serial, absent());
@@ -328,16 +328,16 @@ fn reports_conflicting_claims_rather_than_picking_one() {
 
     assert_eq!(
         metadata.actor_email,
-        rejected(
+        invalid(
             "alice@example.com, bob@example.com",
-            RejectionReason::Ambiguous
+            ValidationError::Ambiguous
         ),
         "a certificate naming two actors should authenticate as neither"
     );
 }
 
 #[test]
-fn attests_a_valid_claim_beside_a_rejected_one() {
+fn keeps_a_valid_claim_beside_an_invalid_one() {
     let der = certificate_with_uri_sans(&[
         "firezone://email/alice@example.com",
         "firezone://email/not-an-address",
@@ -347,8 +347,8 @@ fn attests_a_valid_claim_beside_a_rejected_one() {
 
     assert_eq!(
         metadata.actor_email,
-        attested("alice@example.com"),
-        "a value the parser refuses should not sink the one beside it"
+        valid("alice@example.com"),
+        "a value the parser cannot use should not sink the one beside it"
     );
 }
 
@@ -371,7 +371,7 @@ fn elides_an_unrecognised_claim_too_long_to_display() {
 }
 
 #[test]
-fn diagnostics_show_why_a_claim_was_not_attested() {
+fn diagnostics_show_why_a_claim_is_not_usable() {
     let der = certificate_with_uri_sans(&[
         "firezone://email/not-an-address",
         "firezone://not-a-real-attribute/x",
@@ -381,21 +381,21 @@ fn diagnostics_show_why_a_claim_was_not_attested() {
     let fields = metadata.detail_fields();
 
     assert_eq!(
-        detail_value(&metadata, "Actor Email"),
-        present("not-an-address"),
-        "a value the parser refused should still be shown"
+        detail_value(&metadata, "Actor Email").as_deref(),
+        Some("not-an-address"),
+        "a value the parser cannot use should still be shown"
     );
     assert_eq!(
         detail_problem(&metadata, "Actor Email"),
-        Some(RejectionReason::NotAnEmailAddress)
+        Some(ValidationError::NotAnEmailAddress)
     );
     assert_eq!(
-        detail_value(&metadata, "firezone://not-a-real-attribute"),
-        present("x")
+        detail_value(&metadata, "firezone://not-a-real-attribute").as_deref(),
+        Some("x")
     );
     assert_eq!(
         detail_problem(&metadata, "firezone://not-a-real-attribute"),
-        Some(RejectionReason::UnknownAttribute)
+        Some(ValidationError::UnknownAttribute)
     );
     assert!(
         position(&fields, "firezone://not-a-real-attribute")
@@ -403,9 +403,9 @@ fn diagnostics_show_why_a_claim_was_not_attested() {
         "an unrecognised claim should sit with the other Firezone claims"
     );
     assert_eq!(
-        detail_value(&metadata, "Subject Alternative Names"),
-        present("URI: firezone://email/not-an-address"),
-        "a value no claim row attests should stay visible"
+        detail_value(&metadata, "Subject Alternative Names").as_deref(),
+        Some("URI: firezone://email/not-an-address"),
+        "a value no claim row shows should stay visible"
     );
 }
 
@@ -414,10 +414,10 @@ fn lists_only_the_alternative_names_no_claim_row_shows() {
     let metadata =
         parse_certificate(P384_LEAF, now()).expect("fixture should be a valid P-384 certificate");
 
-    assert_eq!(metadata.device_serial.attested(), Some("C02XK1ZGJGH5"));
+    assert_eq!(metadata.device_serial.valid(), Some("C02XK1ZGJGH5"));
     assert_eq!(
-        detail_value(&metadata, "Subject Alternative Names"),
-        present(
+        detail_value(&metadata, "Subject Alternative Names").as_deref(),
+        Some(
             "URI: firezone://udid/7a461ff9-0be2-64a9-a418-539d9a21827b\nDNS: UDID=7A461FF9\nDNS: host.test.invalid"
         ),
         "the serial the Device Serial row shows should not be repeated"
@@ -444,7 +444,7 @@ fn omits_the_alternative_names_row_when_the_claim_rows_show_them_all() {
             .any(|field| field.label == "Subject Alternative Names")
     );
     assert_eq!(
-        bare_guid.mdm_device_id.attested(),
+        bare_guid.mdm_device_id.valid(),
         Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
     );
     assert!(
@@ -466,14 +466,17 @@ fn diagnostics_distinguish_an_invalid_claim_from_a_valid_one() {
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
 
     assert_eq!(
-        detail_value(&metadata, "Actor Email"),
-        present("alice@example.com")
+        detail_value(&metadata, "Actor Email").as_deref(),
+        Some("alice@example.com")
     );
     assert_eq!(detail_problem(&metadata, "Actor Email"), None);
-    assert_eq!(detail_value(&metadata, "Account ID"), present("not-a-uuid"));
+    assert_eq!(
+        detail_value(&metadata, "Account ID").as_deref(),
+        Some("not-a-uuid")
+    );
     assert_eq!(
         detail_problem(&metadata, "Account ID"),
-        Some(RejectionReason::NotAUuid)
+        Some(ValidationError::NotAUuid)
     );
 }
 
@@ -484,9 +487,9 @@ fn diagnostics_show_a_row_for_a_claim_the_certificate_does_not_carry() {
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
 
     assert_eq!(metadata.account_id, absent());
-    assert_eq!(detail_value(&metadata, "Account ID"), ClaimValue::Absent);
-    assert_eq!(detail_value(&metadata, "MDM Device ID"), ClaimValue::Absent);
-    assert_eq!(detail_value(&metadata, "Device Serial"), ClaimValue::Absent);
+    assert_eq!(detail_value(&metadata, "Account ID"), None);
+    assert_eq!(detail_value(&metadata, "MDM Device ID"), None);
+    assert_eq!(detail_value(&metadata, "Device Serial"), None);
 }
 
 #[test]
@@ -504,7 +507,7 @@ fn diagnostics_omit_unrecognised_claims_when_there_are_none() {
         !metadata
             .detail_fields()
             .iter()
-            .any(|field| field.problem == Some(RejectionReason::UnknownAttribute))
+            .any(|field| field.problem == Some(ValidationError::UnknownAttribute))
     );
 }
 
@@ -532,7 +535,7 @@ fn diagnostics_read_from_the_identity_down_to_the_encoding() {
         &metadata.device_serial,
     ] {
         assert!(
-            claim.attested().is_some(),
+            claim.valid().is_some(),
             "this certificate should carry every claim"
         );
     }
@@ -611,7 +614,7 @@ fn sparse_diagnostics_keep_the_order_without_leaving_gaps() {
     let der = certificate_with_uri_sans(&["firezone://email/alice@example.com"]);
 
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
-    assert_eq!(metadata.actor_email.attested(), Some("alice@example.com"));
+    assert_eq!(metadata.actor_email.valid(), Some("alice@example.com"));
 
     let labels = metadata
         .detail_fields()
@@ -683,7 +686,7 @@ fn position(fields: &[DetailField], label: &str) -> usize {
         .unwrap_or_else(|| panic!("diagnostics should show {label}"))
 }
 
-fn detail_value(metadata: &ParsedCertificate, label: &str) -> ClaimValue {
+fn detail_value(metadata: &ParsedCertificate, label: &str) -> Option<String> {
     metadata
         .detail_fields()
         .into_iter()
@@ -692,35 +695,29 @@ fn detail_value(metadata: &ParsedCertificate, label: &str) -> ClaimValue {
         .value
 }
 
-fn present(value: &str) -> ClaimValue {
-    ClaimValue::Present {
-        value: value.to_owned(),
-    }
-}
-
 fn absent() -> Claim {
     Claim {
-        value: ClaimValue::Absent,
-        rejection: None,
+        value: None,
+        error: None,
     }
 }
 
-fn attested(value: &str) -> Claim {
+fn valid(value: &str) -> Claim {
     Claim {
-        value: present(value),
-        rejection: None,
+        value: Some(value.to_owned()),
+        error: None,
     }
 }
 
-fn rejected(value: &str, reason: RejectionReason) -> Claim {
+fn invalid(value: &str, error: ValidationError) -> Claim {
     Claim {
-        value: present(value),
-        rejection: Some(reason),
+        value: Some(value.to_owned()),
+        error: Some(error),
     }
 }
 
 /// What a row says is wrong with it, [`None`] when nothing is.
-fn detail_problem(metadata: &ParsedCertificate, label: &str) -> Option<RejectionReason> {
+fn detail_problem(metadata: &ParsedCertificate, label: &str) -> Option<ValidationError> {
     metadata
         .detail_fields()
         .into_iter()
@@ -817,7 +814,7 @@ fn an_identity_is_absent_or_claimed() {
     assert_eq!(
         identity_of(&["firezone://serial/C02XK1ZGJGH5"]),
         Identity::Absent,
-        "attesting the device claims nobody"
+        "naming the device claims nobody"
     );
 
     for uris in [
