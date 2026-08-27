@@ -9,10 +9,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -60,34 +60,36 @@ private fun PermissionScreen(
     modifier: Modifier = Modifier,
     onSkip: (() -> Unit)? = null,
 ) {
-    Column(
-        modifier.fillMaxSize().safeDrawingPadding().padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Image(
-            painter = painterResource(R.drawable.ic_firezone_logo),
-            contentDescription = null,
-            modifier = Modifier.size(120.dp),
-        )
-        Text(text = stringResource(R.string.app_short_name), style = MaterialTheme.typography.displaySmall)
+    Scaffold(modifier = modifier) { innerPadding ->
+        Column(
+            Modifier.fillMaxSize().padding(innerPadding).padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_firezone_logo),
+                contentDescription = null,
+                modifier = Modifier.size(120.dp),
+            )
+            Text(text = stringResource(R.string.app_short_name), style = MaterialTheme.typography.displaySmall)
 
-        Spacer(Modifier.height(48.dp))
+            Spacer(Modifier.height(48.dp))
 
-        Text(text = title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+            Text(text = title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
 
-        Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(16.dp))
 
-        Text(text = description, textAlign = TextAlign.Center)
+            Text(text = description, textAlign = TextAlign.Center)
 
-        Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(24.dp))
 
-        Button(onClick = onRequestPermission, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.request_permission))
-        }
-        if (onSkip != null) {
-            TextButton(onClick = onSkip, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.skip))
+            Button(onClick = onRequestPermission, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.request_permission))
+            }
+            if (onSkip != null) {
+                TextButton(onClick = onSkip, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.skip))
+                }
             }
         }
     }
