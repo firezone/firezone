@@ -588,8 +588,39 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert capture_log(fn ->
                assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
-                        {:error, :device_untrusted}
+                        {:error, :invalid_x509_identity}
              end) =~ "invalid_x509_identity"
+    end
+
+    test "does not fall back to a token when only one X.509 identity claim is present", %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      for identity_uris <- [
+            ["firezone://account-id/#{account.id}"],
+            ["firezone://email/#{actor.email}"]
+          ] do
+        certificate = x509_authentication_cert(pki, identity_uris)
+        assert_invalid_x509_identity(certificate, token)
+      end
+    end
+
+    test "does not fall back to a token when an X.509 identity claim is malformed", %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      for identity_uris <- [
+            ["firezone://account-id/not-a-uuid", "firezone://email/#{actor.email}"],
+            ["firezone://account-id", "firezone://email/#{actor.email}"],
+            ["firezone://account-id/#{account.id}", "firezone://email/"]
+          ] do
+        certificate = x509_authentication_cert(pki, identity_uris)
+        assert_invalid_x509_identity(certificate, token)
+      end
     end
 
     test "rejects two distinct X.509 account ID claims", %{
@@ -663,7 +694,7 @@ defmodule PortalAPI.Client.SocketTest do
       log =
         capture_log(fn ->
           assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
-                   {:error, :x509_user_not_authorized}
+                   {:error, :x509_user_not_found}
         end)
 
       assert log =~ "x509_user_not_found"
@@ -721,7 +752,7 @@ defmodule PortalAPI.Client.SocketTest do
                {:error, :missing_token}
     end
 
-    test "requires a client token when the X.509 provider is disabled", %{
+    test "returns a specific error when the X.509 provider is disabled", %{
       account: account,
       actor: actor,
       pki: pki
@@ -735,10 +766,10 @@ defmodule PortalAPI.Client.SocketTest do
         )
 
       assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
-               {:error, :missing_token}
+               {:error, :x509_authentication_disabled}
     end
 
-    test "authenticates by token and attests by certificate when the X.509 provider is disabled",
+    test "does not fall back to a token when the X.509 provider is disabled",
          %{
            account: account,
            actor: actor,
@@ -754,12 +785,61 @@ defmodule PortalAPI.Client.SocketTest do
           client_cert: x509_identity_cert(pki, account, actor)
         )
 
-      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
-      assert socket.assigns.subject.credential.type == :client_token
-      assert socket.assigns.subject.credential.id == client_token.id
-      assert socket.assigns.client.client_token_id == client_token.id
-      assert socket.assigns.client.attested?
-      assert socket.assigns.client.last_attested_cert_fingerprint
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_authentication_disabled}
+    end
+
+    test "does not fall back to a token when the X.509 provider is missing", %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_authentication_not_found}
+    end
+
+    test "returns a specific error when the certificate account does not exist", %{
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      unknown_account = %{id: Ecto.UUID.generate()}
+
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, unknown_account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_account_not_found}
+    end
+
+    test "returns a specific error when the certificate account is disabled", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      account |> Ecto.Changeset.change(is_disabled: true) |> Repo.update!()
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_account_disabled}
     end
 
     test "returns a specific error when no active user matches the certificate", %{
@@ -781,7 +861,7 @@ defmodule PortalAPI.Client.SocketTest do
       log =
         capture_log(fn ->
           assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
-                   {:error, :x509_user_not_authorized}
+                   {:error, :x509_user_not_found}
         end)
 
       assert log =~ "x509_user_not_found"
@@ -806,7 +886,7 @@ defmodule PortalAPI.Client.SocketTest do
       log =
         capture_log(fn ->
           assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
-                   {:error, :x509_user_not_authorized}
+                   {:error, :x509_user_disabled}
         end)
 
       assert log =~ "x509_user_disabled"
@@ -814,7 +894,24 @@ defmodule PortalAPI.Client.SocketTest do
       assert log =~ "email=#{actor.email}"
     end
 
-    test "requires a client token when trust anchors are globally disabled", %{
+    test "returns a specific error when the certificate actor type is not allowed", %{
+      account: account,
+      pki: pki
+    } do
+      actor = actor_fixture(account: account, type: :api_client)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_user_type_not_allowed}
+    end
+
+    test "returns a trust-anchor error when trust anchors are globally disabled", %{
       account: account,
       actor: actor,
       pki: pki
@@ -829,7 +926,7 @@ defmodule PortalAPI.Client.SocketTest do
         )
 
       assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
-               {:error, :missing_token}
+               {:error, :no_trust_anchors}
     end
 
     test "refuses a connect through the mutual-TLS host without a certificate", %{token: token} do
@@ -886,7 +983,7 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert capture_log(fn ->
                assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
-                        {:error, :device_untrusted}
+                        {:error, :no_trust_anchors}
              end) =~ "no_trust_anchors"
     end
 
@@ -909,7 +1006,7 @@ defmodule PortalAPI.Client.SocketTest do
       log =
         capture_log(fn ->
           assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
-                   {:error, :device_untrusted}
+                   {:error, :untrusted_chain}
         end)
 
       assert log =~ "untrusted_chain"
@@ -933,7 +1030,7 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert capture_log(fn ->
                assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
-                        {:error, :device_untrusted}
+                        {:error, :untrusted_chain}
              end) =~ "untrusted_chain"
 
       connect_info_with_bogus_token =
@@ -1629,13 +1726,13 @@ defmodule PortalAPI.Client.SocketTest do
     %{account: account, actor: actor, pki: pki, token: encode_token(token)}
   end
 
-  defp assert_invalid_x509_identity(certificate) do
+  defp assert_invalid_x509_identity(certificate, token \\ nil) do
     connect_info =
-      build_connect_info(host: "mtls.firezone.test", client_cert: certificate)
+      build_connect_info(token: token, host: "mtls.firezone.test", client_cert: certificate)
 
     assert capture_log(fn ->
              assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
-                      {:error, :device_untrusted}
+                      {:error, :invalid_x509_identity}
            end) =~ "invalid_x509_identity"
   end
 

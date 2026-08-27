@@ -62,6 +62,10 @@ defmodule PortalAPI.Client.DeviceTrust do
   }
 
   @typed_uri_regex ~r{^firezone://([^/]+)/(.+)$}i
+  # Authentication must distinguish an absent identity URI from a recognized
+  # identity claim whose value is empty or invalid. The latter commits the
+  # connection to X.509 authentication and must fail closed.
+  @authentication_uri_regex ~r{^firezone://([^/]+)(?:/(.*))?$}i
 
   # Intune emits every SAN row as one comma-joined URI value. Splitting only
   # where a URI scheme follows keeps the comma inside
@@ -135,6 +139,13 @@ defmodule PortalAPI.Client.DeviceTrust do
   @type reason ::
           :not_x509_identity
           | :invalid_x509_identity
+          | :x509_authentication_not_found
+          | :x509_authentication_disabled
+          | :x509_account_not_found
+          | :x509_account_disabled
+          | :x509_user_not_found
+          | :x509_user_disabled
+          | :x509_user_type_not_allowed
           | :x509_user_not_authorized
           | :not_attestation_host
           | :no_trust_anchors
@@ -159,22 +170,18 @@ defmodule PortalAPI.Client.DeviceTrust do
   @spec prepare_authentication(map()) ::
           {:ok, prepared_authentication()} | {:error, reason()}
   def prepare_authentication(connect_info) do
-    if Portal.Features.enabled?(:trust_anchors) do
-      with :ok <- validate_attestation_host(connect_info),
-           {:ok, der} <- presented_certificate(connect_info),
-           {:ok, leaf} <- decode_leaf(der),
-           {:ok, account_id, identity} <- extract_authentication_identity(leaf) do
-        {:ok, %{der: der, leaf: leaf, account_id: account_id, identity: identity}}
-      else
-        {:error, reason}
-        when reason in [:not_attestation_host, :no_certificate_presented, :not_x509_identity] ->
-          {:error, :not_x509_identity}
-
-        error ->
-          error
-      end
+    with :ok <- validate_attestation_host(connect_info),
+         {:ok, der} <- presented_certificate(connect_info),
+         {:ok, leaf} <- decode_leaf(der),
+         {:ok, account_id, identity} <- extract_authentication_identity(leaf) do
+      {:ok, %{der: der, leaf: leaf, account_id: account_id, identity: identity}}
     else
-      {:error, :not_x509_identity}
+      {:error, reason}
+      when reason in [:not_attestation_host, :no_certificate_presented, :not_x509_identity] ->
+        {:error, :not_x509_identity}
+
+      error ->
+        error
     end
   end
 
@@ -196,6 +203,7 @@ defmodule PortalAPI.Client.DeviceTrust do
          {:ok, anchors} <- fetch_anchors(account.id),
          :ok <- validate_leaf(leaf, der, anchors),
          :ok <- ensure_account_enabled(account),
+         {:ok, auth_provider} <- ensure_x509_authentication_enabled(auth_provider),
          {:ok, actor} <- Database.fetch_x509_actor(account, identity),
          %DateTime{} = expires_at <- X509.not_after(leaf),
          subject = %Subject{
@@ -212,12 +220,10 @@ defmodule PortalAPI.Client.DeviceTrust do
          {:ok, proof} <- attest_validated(der, leaf, subject) do
       {:ok, subject, proof}
     else
-      {:error, :x509_authentication_not_found} ->
-        {:error, :not_x509_identity}
-
       {:error, reason}
       when reason in [
-             :invalid_x509_identity,
+             :x509_authentication_not_found,
+             :x509_authentication_disabled,
              :x509_account_not_found,
              :x509_account_disabled,
              :x509_user_not_found,
@@ -229,7 +235,7 @@ defmodule PortalAPI.Client.DeviceTrust do
           [reason: reason, account_id: account_id] ++ authentication_identity_log(identity)
         )
 
-        {:error, :x509_user_not_authorized}
+        {:error, reason}
 
       nil ->
         {:error, :invalid_certificate}
@@ -338,6 +344,15 @@ defmodule PortalAPI.Client.DeviceTrust do
 
   defp ensure_account_enabled(%Portal.Account{is_disabled: false}), do: :ok
   defp ensure_account_enabled(%Portal.Account{is_disabled: true}), do: {:error, :x509_account_disabled}
+
+  defp ensure_x509_authentication_enabled(nil),
+    do: {:error, :x509_authentication_not_found}
+
+  defp ensure_x509_authentication_enabled(%Portal.X509.AuthProvider{is_disabled: true}),
+    do: {:error, :x509_authentication_disabled}
+
+  defp ensure_x509_authentication_enabled(%Portal.X509.AuthProvider{is_disabled: false} = provider),
+    do: {:ok, provider}
 
   defp presented_certificate(%{peer_data: %{ssl_cert: der}})
        when is_binary(der) and byte_size(der) > 0 and byte_size(der) <= @max_cert_bytes,
@@ -738,13 +753,16 @@ defmodule PortalAPI.Client.DeviceTrust do
       |> Enum.reduce(
         %{
           account_ids: MapSet.new(),
+          account_id_claim?: false,
           actor_ids: MapSet.new(),
           actor_id_claim?: false,
-          emails: MapSet.new()
+          emails: MapSet.new(),
+          email_claim?: false
         },
         fn uri, claims ->
-          case Regex.run(@typed_uri_regex, uri) do
+          case Regex.run(@authentication_uri_regex, uri) do
             [_all, idtype, value] -> put_authentication_claim(claims, idtype, value)
+            [_all, idtype] -> put_authentication_claim(claims, idtype, "")
             nil -> claims
           end
         end
@@ -754,21 +772,20 @@ defmodule PortalAPI.Client.DeviceTrust do
       MapSet.to_list(claims.account_ids),
       MapSet.to_list(claims.actor_ids),
       MapSet.to_list(claims.emails),
-      claims.actor_id_claim?
+      claims.account_id_claim?,
+      claims.actor_id_claim?,
+      claims.email_claim?
     } do
-      {[account_id], [actor_id], _emails, true} ->
+      {[], [], [], false, false, false} ->
+        {:error, :not_x509_identity}
+
+      {[account_id], [actor_id], _emails, true, true, _email_claim?} ->
         {:ok, account_id, {:actor_id, actor_id}}
 
-      {[account_id], [], [email], false} ->
+      {[account_id], [], [email], true, false, true} ->
         {:ok, account_id, {:email, email}}
 
-      {[], _actor_ids, _emails, _actor_id_claim?} ->
-        {:error, :not_x509_identity}
-
-      {_account_ids, [], [], false} ->
-        {:error, :not_x509_identity}
-
-      {_account_ids, _actor_ids, _emails, _actor_id_claim?} ->
+      {_account_ids, _actor_ids, _emails, _account_id_claim?, _actor_id_claim?, _email_claim?} ->
         {:error, :invalid_x509_identity}
     end
   end
@@ -776,7 +793,9 @@ defmodule PortalAPI.Client.DeviceTrust do
   defp put_authentication_claim(claims, idtype, value) do
     case String.downcase(idtype) do
       "account-id" ->
-        put_uuid_authentication_claim(claims, :account_ids, value)
+        claims
+        |> Map.put(:account_id_claim?, true)
+        |> put_uuid_authentication_claim(:account_ids, value)
 
       "actor-id" ->
         claims
@@ -784,7 +803,9 @@ defmodule PortalAPI.Client.DeviceTrust do
         |> put_uuid_authentication_claim(:actor_ids, value)
 
       "email" ->
-        put_email_authentication_claim(claims, value)
+        claims
+        |> Map.put(:email_claim?, true)
+        |> put_email_authentication_claim(value)
 
       _idtype ->
         claims
@@ -921,16 +942,7 @@ defmodule PortalAPI.Client.DeviceTrust do
         nil ->
           {:error, :x509_account_not_found}
 
-        %{auth_provider: nil} ->
-          {:error, :x509_authentication_not_found}
-
-        %{auth_provider: %Portal.X509.AuthProvider{is_disabled: true}} ->
-          {:error, :x509_authentication_not_found}
-
-        %{
-          account: %Portal.Account{} = account,
-          auth_provider: %Portal.X509.AuthProvider{is_disabled: false} = auth_provider
-        } ->
+        %{account: %Portal.Account{} = account, auth_provider: auth_provider} ->
           {:ok, account, auth_provider}
       end
     end
