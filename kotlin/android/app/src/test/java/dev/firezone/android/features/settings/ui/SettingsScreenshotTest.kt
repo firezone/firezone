@@ -166,7 +166,7 @@ private val usableCertificate =
         isUsable = true,
         details =
             certificateDetails(
-                actorEmail = row("Actor Email", ClaimValue.Present("alice@example.com")),
+                actorEmail = row("Actor Email", ClaimValue.Present("jane.doe@example.com")),
                 unattestedNames = emptyList(),
             ),
     )
@@ -189,10 +189,10 @@ private val certificateWithRejectedClaim =
                 actorEmail =
                     row(
                         "Actor Email",
-                        ClaimValue.Present("alice.example.com"),
+                        ClaimValue.Present("jane.doe.example.com"),
                         FieldProblem.Rejected(RejectionReason.NOT_AN_EMAIL_ADDRESS),
                     ),
-                unattestedNames = listOf("URI: firezone://email/alice.example.com"),
+                unattestedNames = listOf("URI: firezone://email/jane.doe.example.com"),
             ),
     )
 
@@ -214,7 +214,7 @@ private val refusedCertificate =
         certificateProblems = listOf(UnusableReason.NO_CLIENT_AUTH_EKU),
         details =
             certificateDetails(
-                actorEmail = row("Actor Email", ClaimValue.Present("alice@example.com")),
+                actorEmail = row("Actor Email", ClaimValue.Present("jane.doe@example.com")),
                 unattestedNames = emptyList(),
                 notAfter =
                     row(
@@ -235,9 +235,9 @@ private fun certificateDetails(
     // `x509_claims::ParsedCertificate::detail_fields` reads the rows with a problem first, so a
     // mock that left them in place would draw a screen the client cannot produce.
     buildList {
-        add(row("Common Name", ClaimValue.Present("alice@example.com")))
-        add(row("Subject", ClaimValue.Present("CN=alice@example.com, O=Example Corp")))
-        add(row("Issuer", ClaimValue.Present("CN=Example Corp Device CA, O=Example Corp")))
+        add(row("Common Name", ClaimValue.Present("jane.doe@example.com")))
+        add(row("Subject", ClaimValue.Present("CN=jane.doe@example.com, O=Example Corp.")))
+        add(row("Issuer", ClaimValue.Present("CN=Example Corp. Device CA, O=Example Corp.")))
         add(actorEmail)
         add(row("Account ID", ClaimValue.Present("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")))
         add(row("MDM Device ID", ClaimValue.Present("9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64")))
