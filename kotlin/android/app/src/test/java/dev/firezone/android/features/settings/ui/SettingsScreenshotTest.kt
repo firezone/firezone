@@ -84,6 +84,9 @@ class SettingsScreenshotTest {
     fun x509SettingsWithRefusedCertificate() = captureX509Page("x509-refused", refusedCertificate)
 
     @Test
+    fun x509SettingsWithUnreadableCertificate() = captureX509Page("x509-unreadable", unreadableCertificate)
+
+    @Test
     fun x509SettingsWithManagedCertificate() = captureX509Page("x509-managed", managedCertificate)
 
     @Test
@@ -223,6 +226,16 @@ private val refusedCertificate =
                         FieldProblem.Unusable(UnusableReason.EXPIRED),
                     ),
             ),
+    )
+
+// A certificate the KeyChain released and the parser could not read, which leaves no rule
+// checked and no row to carry the reason.
+private val unreadableCertificate =
+    X509SettingsViewModel.UiState(
+        alias = CERTIFICATE_ALIAS,
+        isUsable = true,
+        certificateIsUsable = false,
+        certificateProblems = listOf(UnusableReason.UNREADABLE),
     )
 
 // One certificate as the Rust parser describes it, in the order the screen lists its rows.
