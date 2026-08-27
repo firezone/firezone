@@ -67,6 +67,9 @@ const SUBJECT_CN = "dev.firezone.device-trust";
 const CERTIFICATE = "Certificate";
 const UNUSED_CERTIFICATE = "Unused Certificate";
 
+// The actor the provisioned certificate names, which the overview offers to connect as.
+const ACTOR_EMAIL = "jane.doe@example.com";
+
 // One certificate as the diagnostics describe it. Every value is fixed: a field read from the
 // clock, or from a certificate minted at test time, would put a new image in the gallery on
 // every run.
@@ -135,7 +138,7 @@ const windowsCertificate: Certificate = {
   commonName: SUBJECT_CN,
   subject: `O=Example Corp, CN=${SUBJECT_CN}`,
   issuer: "DC=com, DC=example, CN=Example Corp Issuing CA 1",
-  actorEmail: present("jane.doe@example.com"),
+  actorEmail: present(ACTOR_EMAIL),
   accountId: present("6f3f8a2c-0b74-4f8a-9b1f-1c2d3e4f5a6b"),
   mdmDeviceId: present("9a1c7d4e-5f60-4b28-8c3a-2d5e7f9b0c14"),
   deviceSerial: present("PF2X9K7L"),
@@ -177,6 +180,26 @@ const screens: Record<string, Screen> = {
       SignedIn: { account_slug: "example-corp", actor_name: "Jane Doe" },
     },
   },
+  "overview-certificate-signed-out": {
+    route: "/overview",
+    session: "SignedOut",
+    x509: {
+      problems: [],
+      sections: [],
+      identity: { Claimed: { email: ACTOR_EMAIL } },
+    },
+  },
+  "overview-certificate-signed-in": {
+    route: "/overview",
+    session: {
+      SignedIn: { account_slug: "example-corp", actor_name: "Jane Doe" },
+    },
+    x509: {
+      problems: [],
+      sections: [],
+      identity: { Claimed: { email: ACTOR_EMAIL } },
+    },
+  },
   "general-settings": { route: "/general-settings", generalSettings },
   "general-settings-managed": {
     route: "/general-settings",
@@ -200,6 +223,7 @@ const screens: Record<string, Screen> = {
   "x509-empty-windows": {
     route: "/x509",
     x509: {
+      identity: "Absent",
       problems: [{ NoWindowsCertificate: { subject_cn: SUBJECT_CN } }],
       sections: [],
     },
@@ -207,6 +231,7 @@ const screens: Record<string, Screen> = {
   "x509-empty-linux": {
     route: "/x509",
     x509: {
+      identity: "Absent",
       problems: [{ NoPkcs11Certificate: { subject_cn: SUBJECT_CN } }],
       sections: [],
     },
@@ -214,6 +239,7 @@ const screens: Record<string, Screen> = {
   "x509-happy": {
     route: "/x509",
     x509: {
+      identity: "Absent",
       problems: [],
       sections: [certificateSection(CERTIFICATE, windowsCertificate)],
     },
@@ -221,6 +247,7 @@ const screens: Record<string, Screen> = {
   "x509-missing-package-linux": {
     route: "/x509",
     x509: {
+      identity: "Absent",
       problems: [{ MissingPackage: { package: "P11Kit" } }],
       sections: [],
     },
@@ -228,6 +255,7 @@ const screens: Record<string, Screen> = {
   "x509-invalid-attribute": {
     route: "/x509",
     x509: {
+      identity: "Absent",
       problems: [],
       sections: [certificateSection(CERTIFICATE, invalidAttributeCertificate)],
     },
@@ -237,6 +265,7 @@ const screens: Record<string, Screen> = {
   "x509-unusable": {
     route: "/x509",
     x509: {
+      identity: "Absent",
       problems: [
         {
           NoUsableWindowsCertificate: {

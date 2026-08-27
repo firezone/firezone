@@ -1138,6 +1138,7 @@ fn unreadable_keystore_status(error: String) -> x509_keystore::Status {
                 problem: None,
             }],
         }],
+        identity: x509_keystore::ClientIdentity::Absent,
     }
 }
 
@@ -1194,6 +1195,7 @@ mod tests {
         let expected = x509_keystore::Status {
             problems: vec![],
             sections: vec![],
+            identity: x509_keystore::ClientIdentity::Absent,
         };
         mock_tunnel
             .tx
