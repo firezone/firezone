@@ -8,11 +8,13 @@ use std::time::SystemTime;
 
 uniffi::setup_scaffolding!();
 
-/// A portal user identity encoded in a managed certificate's URI SANs.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct UserIdentity {
-    pub email: String,
-    pub account_id: String,
+/// Who the certificate claims is connecting, mirroring [`x509_claims::Identity`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum Identity {
+    /// The certificate claims nobody, so the session signs in with a token.
+    Absent,
+    /// The certificate claims somebody, named by `email` where one could be read.
+    Claimed { email: Option<String> },
 }
 
 /// A row for certificate diagnostics screens, mirroring [`x509_claims::DetailField`].
@@ -85,7 +87,7 @@ pub struct ParsedCertificate {
     /// Colon-separated uppercase hex SHA-256 fingerprint of the DER bytes.
     pub fingerprint: String,
     pub der_bytes: u64,
-    pub user_identity: Option<UserIdentity>,
+    pub identity: Identity,
     /// Ready-to-display diagnostics rows derived from the fields above.
     pub detail_fields: Vec<DetailField>,
 }
@@ -102,7 +104,7 @@ pub fn parse_client_certificate(der: Vec<u8>) -> Option<ParsedCertificate> {
 
 impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
     fn from(parsed: x509_claims::ParsedCertificate) -> Self {
-        let user_identity = parsed.user_identity().map(UserIdentity::from);
+        let identity = Identity::from(parsed.identity());
         let detail_fields = parsed
             .detail_fields()
             .into_iter()
@@ -131,17 +133,17 @@ impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
                 .map(|algorithm| algorithm.label().to_owned()),
             fingerprint: parsed.fingerprint,
             der_bytes: parsed.der_bytes as u64,
-            user_identity,
+            identity,
             detail_fields,
         }
     }
 }
 
-impl From<x509_claims::UserIdentity> for UserIdentity {
-    fn from(identity: x509_claims::UserIdentity) -> Self {
-        Self {
-            email: identity.email,
-            account_id: identity.account_id,
+impl From<x509_claims::Identity> for Identity {
+    fn from(identity: x509_claims::Identity) -> Self {
+        match identity {
+            x509_claims::Identity::Absent => Self::Absent,
+            x509_claims::Identity::Claimed { email } => Self::Claimed { email },
         }
     }
 }

@@ -8,8 +8,8 @@ use rcgen::{
     SerialNumber, string::Ia5String,
 };
 use x509_claims::{
-    Actor, Claim, ClaimValue, DetailField, Identity, ParsedCertificate, RejectionReason,
-    SigningAlgorithm, UserIdentity, parse_certificate,
+    Claim, ClaimValue, DetailField, Identity, ParsedCertificate, RejectionReason, SigningAlgorithm,
+    parse_certificate,
 };
 
 const RSA_LEAF: &[u8] =
@@ -125,25 +125,23 @@ fn extracts_mdm_device_id_from_intune_comma_joined_uri() {
 }
 
 #[test]
-fn extracts_user_identity_from_intune_comma_joined_uri() {
+fn extracts_claims_from_intune_comma_joined_uri() {
     let der = certificate_with_uri_sans(&[
         "tag:microsoft.com,2022-09-14:sid:S-1-12-1-1, firezone://email/Alice%40Example.COM, firezone://account-id/5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3, firezone://serial/C02XK1ZGJGH5",
     ]);
 
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
 
+    assert_eq!(metadata.actor_email.attested(), Some("alice@example.com"));
     assert_eq!(
-        metadata.user_identity(),
-        Some(UserIdentity {
-            email: "alice@example.com".to_owned(),
-            account_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3".to_owned(),
-        })
+        metadata.account_id.attested(),
+        Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
     );
     assert_eq!(metadata.device_serial.attested(), Some("C02XK1ZGJGH5"));
 }
 
 #[test]
-fn user_identity_requires_unambiguous_valid_attributes() {
+fn attests_a_claim_only_when_it_is_unambiguous_and_valid() {
     let conflicting_emails = certificate_with_uri_sans(&[
         "firezone://email/alice@example.com",
         "firezone://email/bob@example.com",
@@ -174,18 +172,18 @@ fn user_identity_requires_unambiguous_valid_attributes() {
             RejectionReason::Ambiguous
         )
     );
-    assert_eq!(conflicting_emails.user_identity(), None);
     assert_eq!(
         malformed_account_id.account_id,
         rejected("not-a-uuid", RejectionReason::NotAUuid)
     );
-    assert_eq!(malformed_account_id.user_identity(), None);
     assert_eq!(
-        equivalent_duplicates.user_identity(),
-        Some(UserIdentity {
-            email: "alice@example.com".to_owned(),
-            account_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3".to_owned(),
-        })
+        equivalent_duplicates.actor_email.attested(),
+        Some("alice@example.com"),
+        "the same value written twice is one value"
+    );
+    assert_eq!(
+        equivalent_duplicates.account_id.attested(),
+        Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
     );
 }
 
@@ -232,13 +230,6 @@ fn diagnostics_show_derived_firezone_attributes() {
             "diagnostics should show {label}"
         );
     }
-    assert_eq!(
-        metadata.user_identity(),
-        Some(UserIdentity {
-            email: "alice@example.com".to_owned(),
-            account_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3".to_owned(),
-        })
-    );
 }
 
 #[test]
@@ -343,7 +334,6 @@ fn reports_conflicting_claims_rather_than_picking_one() {
         ),
         "a certificate naming two actors should authenticate as neither"
     );
-    assert_eq!(metadata.user_identity(), None);
 }
 
 #[test]
@@ -811,10 +801,10 @@ fn now() -> SystemTime {
     SystemTime::UNIX_EPOCH + Duration::from_secs(1_798_761_600)
 }
 
-/// The portal reads an identity only from a certificate naming an account and an actor in it,
-/// so the client has to tell "names nobody" from "names someone it cannot resolve".
+/// Claiming an identity at all is what suppresses signing in with a token, so the client has to
+/// tell "claims nobody" from "claims somebody it cannot name".
 #[test]
-fn an_identity_is_absent_resolved_or_refused() {
+fn an_identity_is_absent_or_claimed() {
     let identity_of = |uris: &[&str]| {
         let der = certificate_with_uri_sans(uris);
 
@@ -825,75 +815,49 @@ fn an_identity_is_absent_resolved_or_refused() {
 
     assert_eq!(identity_of(&[]), Identity::Absent);
     assert_eq!(
-        identity_of(&["firezone://mdm-device-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"]),
+        identity_of(&["firezone://serial/C02XK1ZGJGH5"]),
         Identity::Absent,
-        "attesting the device names nobody"
+        "attesting the device claims nobody"
     );
 
     for uris in [
-        // Half a name is no name: the portal signs these in with a token.
-        vec!["firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"],
         vec!["firezone://email/jane.doe@example.com"],
         vec![
+            "firezone://email/jane.doe@example.com",
             "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-            "firezone://email/",
         ],
-        // An account the portal cannot read is an account it was never given.
         vec![
             "firezone://email/jane.doe@example.com",
             "firezone://account-id/not-a-uuid",
-        ],
-        vec![
-            "firezone://email/jane.doe@example.com",
-            "firezone://account-id",
-        ],
-    ] {
-        assert_eq!(identity_of(&uris), Identity::Absent, "{uris:?}");
-    }
-
-    assert_eq!(
-        identity_of(&[
-            "firezone://email/jane.doe@example.com",
-            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-        ]),
-        Identity::Resolved {
-            account_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3".to_owned(),
-            actor: Actor::Email("jane.doe@example.com".to_owned()),
-        }
-    );
-
-    assert_eq!(
-        identity_of(&[
-            "firezone://email/jane.doe@example.com",
-            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-            "firezone://actor-id/9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64",
-        ]),
-        Identity::Resolved {
-            account_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3".to_owned(),
-            actor: Actor::Id("9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64".to_owned()),
-        },
-        "an actor id outranks the email"
-    );
-
-    for uris in [
-        // Claiming an actor id commits to it, so a bad one is not a fall back to the email.
-        vec![
-            "firezone://email/jane.doe@example.com",
-            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
             "firezone://actor-id/not-a-uuid",
         ],
-        // Two of anything leaves the portal without one value to read.
+    ] {
+        assert_eq!(
+            identity_of(&uris),
+            Identity::Claimed {
+                email: Some("jane.doe@example.com".to_owned())
+            },
+            "{uris:?}"
+        );
+    }
+
+    for uris in [
+        vec!["firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"],
+        vec!["firezone://actor-id/9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64"],
+        // An address no user could have is a claim on nobody the client can name.
+        vec!["firezone://email/jane.doe"],
         vec![
             "firezone://email/jane.doe@example.com",
             "firezone://email/john.doe@example.com",
-            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
         ],
-        vec![
-            "firezone://email/jane.doe@example.com",
-            "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-            "firezone://account-id/9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64",
-        ],
+        // An attribute written with no value at all still claims the certificate is somebody's.
+        vec!["firezone://email/"],
+        vec!["firezone://email"],
     ] {
-        assert_eq!(identity_of(&uris), Identity::Refused, "{uris:?}");
+        assert_eq!(
+            identity_of(&uris),
+            Identity::Claimed { email: None },
+            "{uris:?}"
+        );
     }
 }
