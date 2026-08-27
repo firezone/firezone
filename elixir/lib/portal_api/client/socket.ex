@@ -11,6 +11,28 @@ defmodule PortalAPI.Client.Socket do
   import Ecto.Changeset
   import Portal.Changeset
 
+  @certificate_authentication_errors [
+    :certificate_revoked,
+    :invalid_certificate,
+    :invalid_x509_identity,
+    :malformed_cert_issuer,
+    :malformed_cert_serial,
+    :missing_client_auth_eku,
+    :missing_digital_signature_key_usage,
+    :no_device_identifiers,
+    :no_trust_anchors,
+    :outside_validity_window,
+    :untrusted_chain,
+    :x509_account_disabled,
+    :x509_account_not_found,
+    :x509_authentication_disabled,
+    :x509_authentication_not_found,
+    :x509_user_disabled,
+    :x509_user_not_authorized,
+    :x509_user_not_found,
+    :x509_user_type_not_allowed
+  ]
+
   ## Channels
 
   channel "client", PortalAPI.Client.Channel
@@ -135,14 +157,11 @@ defmodule PortalAPI.Client.Socket do
     end
   end
 
-  defp handle_certificate_authentication_error(:certificate_revoked) do
-    OpenTelemetry.Tracer.set_status(:error, "certificate_revoked")
-    {:error, :certificate_revoked}
-  end
-
-  defp handle_certificate_authentication_error(:x509_user_not_authorized) do
-    OpenTelemetry.Tracer.set_status(:error, "x509_user_not_authorized")
-    {:error, :x509_user_not_authorized}
+  defp handle_certificate_authentication_error(reason)
+       when reason in @certificate_authentication_errors do
+    Logger.warning("Refusing client connect: X.509 authentication failed", reason: reason)
+    OpenTelemetry.Tracer.set_status(:error, Atom.to_string(reason))
+    {:error, reason}
   end
 
   defp handle_certificate_authentication_error(reason) do
