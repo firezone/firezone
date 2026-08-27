@@ -609,8 +609,8 @@ actor Adapter {
 
   /// Loads the client certificate to present, if the VPN profile configures one.
   ///
-  /// An identity that is configured but unusable is fatal only when there is no token to
-  /// fall back on. Whether a session may proceed without a certificate is the portal's
+  /// An identity that is configured but cannot be read is fatal only when there is no token
+  /// to fall back on. Whether a session may proceed without a certificate is the portal's
   /// decision, and it reports a far more actionable reason than we could here.
   private func resolveTlsIdentity() throws -> ClientTlsIdentity? {
     guard identityReference != nil else {
@@ -643,15 +643,13 @@ actor Adapter {
 
     logClientCertificate(identity, parsed)
 
-    // connlib dials the portal's mTLS host whenever it is handed an identity, so a
-    // certificate that cannot be presented is withheld rather than tried.
-    guard parsed?.isUsable == true else {
+    // The portal accepts every client certificate at the TLS layer and judges it at the
+    // application layer, so whether this one is acceptable is not ours to decide.
+    guard parsed != nil else {
       guard token != nil else {
         throw AdapterError.authenticationUnavailable(
-          "the client certificate cannot be presented")
+          "the client certificate could not be read")
       }
-
-      Log.error("Withholding an unusable client certificate for the saved sign-in token")
 
       return nil
     }
