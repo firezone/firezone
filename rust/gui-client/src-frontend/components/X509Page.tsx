@@ -12,7 +12,7 @@ import {
   X509UnusableCertificate,
   X509UnusableReason,
 } from "../generated/bindings";
-import RemixIcon from "./RemixIcon";
+import RemixIcon, { type RemixIconName } from "./RemixIcon";
 
 const CERTIFICATE_SECTION = "Certificate";
 // What the keystore backends title a certificate they found and would not present.
@@ -190,23 +190,30 @@ function Warning({ problem }: { problem: X509Problem }) {
   );
 }
 
-// What the card says Firezone does with the certificate the keystore found, if it found one.
+// What the card says Firezone does with the certificate the keystore found, if it found one,
+// and the mark that leads it.
 //
 // A certificate that was found and turned down is worth saying out loud: the rows below carry
 // the attribute that makes it unusable, and this is what sends the reader to them.
 function verdict(
   certificate: X509DetailSection | undefined,
   used: X509DetailSection | undefined
-): string {
+): { text: string; icon?: { name: RemixIconName; tone: string } } {
   if (used !== undefined) {
-    return "Firezone uses this certificate to identify this device.";
+    return {
+      text: "Firezone uses this certificate to identify this device.",
+      icon: { name: "check", tone: "text-success" },
+    };
   }
 
   if (certificate !== undefined) {
-    return "Firezone cannot use this certificate to identify this device.";
+    return {
+      text: "Firezone cannot use this certificate to identify this device.",
+      icon: { name: "close", tone: "text-error" },
+    };
   }
 
-  return "Firezone did not find a certificate to identify this device.";
+  return { text: "Firezone did not find a certificate to identify this device." };
 }
 
 function SummaryCard({ status }: { status: X509Status }) {
@@ -224,6 +231,7 @@ function SummaryCard({ status }: { status: X509Status }) {
   const issuer = presentField(certificate, "Issuer");
   const notAfter = presentField(certificate, "Not After");
   const found = certificate !== undefined;
+  const { text, icon } = verdict(certificate, used);
 
   return (
     <section className="panel p-4">
@@ -251,13 +259,13 @@ function SummaryCard({ status }: { status: X509Status }) {
           where the text beside the icon does: it is about the certificate, not
           about any one field. */}
       <p className="mt-2 flex items-center gap-1.5 text-xs text-subtle">
-        {used !== undefined && (
+        {icon !== undefined && (
           <RemixIcon
-            className="h-3.5 w-3.5 shrink-0 text-success"
-            name="check"
+            className={`h-3.5 w-3.5 shrink-0 ${icon.tone}`}
+            name={icon.name}
           />
         )}
-        {verdict(certificate, used)}
+        {text}
       </p>
       {status.problems.map((problem, problemIndex) => (
         <Warning key={problemIndex} problem={problem} />
