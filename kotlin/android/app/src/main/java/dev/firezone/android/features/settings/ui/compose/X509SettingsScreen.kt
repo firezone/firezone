@@ -32,9 +32,8 @@ import androidx.compose.ui.unit.em
 import dev.firezone.android.R
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.settings.ui.X509SettingsViewModel
-import uniffi.x509claims.ClaimValue
 import uniffi.x509claims.DetailField
-import uniffi.x509claims.RejectionReason
+import uniffi.x509claims.ValidationError
 
 /**
  * Shows which client certificate this device signs in with and what it contains.
@@ -172,9 +171,9 @@ private fun WarningBanner(text: String) {
  */
 @Composable
 private fun CertificateCard(state: X509SettingsViewModel.UiState) {
-    val commonName = state.details.attested(COMMON_NAME_LABEL) ?: state.details.attested(SUBJECT_LABEL)
-    val issuer = state.details.attested(ISSUER_LABEL)
-    val notAfter = state.details.attested(NOT_AFTER_LABEL)
+    val commonName = state.details.valueOf(COMMON_NAME_LABEL) ?: state.details.valueOf(SUBJECT_LABEL)
+    val issuer = state.details.valueOf(ISSUER_LABEL)
+    val notAfter = state.details.valueOf(NOT_AFTER_LABEL)
     val readFailure =
         when {
             state.error != null -> state.error
@@ -273,56 +272,49 @@ private fun DetailField(field: DetailField) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        when (val value = field.value) {
-            is ClaimValue.Present -> {
-                Text(
-                    text = value.value,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
+        val value = field.value
 
-            ClaimValue.Absent -> {
-                Text(
-                    text = stringResource(R.string.x509_claim_absent),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        if (value != null) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+            )
+        } else {
+            Text(
+                text = stringResource(R.string.x509_claim_absent),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
-        field.problem?.let { problem -> ClaimRejection(problem) }
+        field.problem?.let { problem -> ClaimProblem(problem) }
     }
 }
 
 /** Reads underneath the value it belongs to, the way a form shows an error on its input. */
 @Composable
-private fun ClaimRejection(reason: RejectionReason) {
+private fun ClaimProblem(error: ValidationError) {
     Text(
-        text = stringResource(reason.phrase()),
+        text = stringResource(error.phrase()),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.error,
     )
 }
 
-/** The string resource wording a rejection, which the parser leaves to each client. */
-private fun RejectionReason.phrase(): Int =
+/** The string resource wording a problem, which the parser leaves to each client. */
+private fun ValidationError.phrase(): Int =
     when (this) {
-        RejectionReason.EMPTY -> R.string.x509_claim_empty
-        RejectionReason.TOO_LONG -> R.string.x509_claim_too_long
-        RejectionReason.NOT_AN_EMAIL_ADDRESS -> R.string.x509_claim_not_an_email_address
-        RejectionReason.NOT_A_UUID -> R.string.x509_claim_not_a_uuid
-        RejectionReason.AMBIGUOUS -> R.string.x509_claim_ambiguous
-        RejectionReason.PLACEHOLDER_IDENTIFIER -> R.string.x509_claim_placeholder_identifier
-        RejectionReason.UNKNOWN_ATTRIBUTE -> R.string.x509_claim_unknown_attribute
+        ValidationError.EMPTY -> R.string.x509_claim_empty
+        ValidationError.TOO_LONG -> R.string.x509_claim_too_long
+        ValidationError.NOT_AN_EMAIL_ADDRESS -> R.string.x509_claim_not_an_email_address
+        ValidationError.NOT_A_UUID -> R.string.x509_claim_not_a_uuid
+        ValidationError.AMBIGUOUS -> R.string.x509_claim_ambiguous
+        ValidationError.PLACEHOLDER_IDENTIFIER -> R.string.x509_claim_placeholder_identifier
+        ValidationError.UNKNOWN_ATTRIBUTE -> R.string.x509_claim_unknown_attribute
     }
 
-/** The value of a row, `null` unless the parser read exactly one the clients will attest. */
-private fun List<DetailField>.attested(label: String): String? {
-    val value = firstOrNull { it.label == label }?.value
-
-    return (value as? ClaimValue.Present)?.value
-}
+private fun List<DetailField>.valueOf(label: String): String? = firstOrNull { it.label == label }?.value
 
 // Labels the Rust parser gives the rows the card is built from.
 private const val COMMON_NAME_LABEL = "Common Name"
@@ -344,11 +336,11 @@ private fun X509SettingsScreenPreview() {
                     isUsable = true,
                     details =
                         listOf(
-                            DetailField("Common Name", ClaimValue.Present("jane.doe@example.com"), null),
-                            DetailField("Subject", ClaimValue.Present("CN=jane.doe@example.com, O=Example Corp"), null),
-                            DetailField("Issuer", ClaimValue.Present("CN=Example Corp Device CA, O=Example Corp"), null),
-                            DetailField("Not After", ClaimValue.Present("2027-01-31 23:59:59 UTC"), null),
-                            DetailField("Account ID", ClaimValue.Absent, null),
+                            DetailField("Common Name", "jane.doe@example.com", null),
+                            DetailField("Subject", "CN=jane.doe@example.com, O=Example Corp", null),
+                            DetailField("Issuer", "CN=Example Corp Device CA, O=Example Corp", null),
+                            DetailField("Not After", "2027-01-31 23:59:59 UTC", null),
+                            DetailField("Account ID", null, null),
                         ),
                 ),
             onSelectCertificate = {},
@@ -359,7 +351,7 @@ private fun X509SettingsScreenPreview() {
 
 @Preview(showSystemUi = true)
 @Composable
-private fun X509SettingsScreenRejectedClaimsPreview() {
+private fun X509SettingsScreenInvalidClaimsPreview() {
     FirezoneTheme {
         X509SettingsScreen(
             state =
@@ -370,15 +362,11 @@ private fun X509SettingsScreenRejectedClaimsPreview() {
                     // The parser reads the rows with a problem first.
                     details =
                         listOf(
-                            DetailField(
-                                "Actor Email",
-                                ClaimValue.Present("jane.doe.example.com"),
-                                RejectionReason.NOT_AN_EMAIL_ADDRESS,
-                            ),
-                            DetailField("Account ID", ClaimValue.Absent, RejectionReason.EMPTY),
-                            DetailField("Common Name", ClaimValue.Present("jane.doe@example.com"), null),
-                            DetailField("Not After", ClaimValue.Present("2024-01-31 23:59:59 UTC"), null),
-                            DetailField("Issuer", ClaimValue.Present("CN=Example Corp Device CA, O=Example Corp"), null),
+                            DetailField("Actor Email", "jane.doe.example.com", ValidationError.NOT_AN_EMAIL_ADDRESS),
+                            DetailField("Account ID", null, ValidationError.EMPTY),
+                            DetailField("Common Name", "jane.doe@example.com", null),
+                            DetailField("Not After", "2024-01-31 23:59:59 UTC", null),
+                            DetailField("Issuer", "CN=Example Corp Device CA, O=Example Corp", null),
                         ),
                 ),
             onSelectCertificate = {},

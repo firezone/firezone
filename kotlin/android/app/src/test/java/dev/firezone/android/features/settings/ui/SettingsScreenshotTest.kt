@@ -41,9 +41,8 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import uniffi.x509claims.ClaimValue
 import uniffi.x509claims.DetailField
-import uniffi.x509claims.RejectionReason
+import uniffi.x509claims.ValidationError
 import java.io.File
 import java.io.RandomAccessFile
 import dev.firezone.android.core.data.model.Config as FirezoneConfig
@@ -73,7 +72,7 @@ class SettingsScreenshotTest {
     fun x509SettingsWithoutCertificate() = captureX509Page("x509-empty", noCertificate)
 
     @Test
-    fun x509SettingsWithRejectedClaim() = captureX509Page("x509-rejected-claim", certificateWithRejectedClaim)
+    fun x509SettingsWithInvalidClaim() = captureX509Page("x509-invalid-claim", certificateWithInvalidClaim)
 
     @Test
     fun x509SettingsWithUnusableCertificate() = captureX509Page("x509-unusable", unusableCertificate)
@@ -160,15 +159,15 @@ private const val CERTIFICATE_ALIAS = "firezone-device"
 // The state `X509ScreenshotFragment` renders, set before the activity reaches the X.509 page.
 private var x509ScreenshotState = X509SettingsViewModel.UiState()
 
-// A certificate the KeyChain released and whose every claim the parser attested.
+// A certificate the KeyChain released and whose every claim holds a usable value.
 private val usableCertificate =
     X509SettingsViewModel.UiState(
         alias = CERTIFICATE_ALIAS,
         isUsable = true,
         details =
             certificateDetails(
-                actorEmail = row("Actor Email", ClaimValue.Present("jane.doe@example.com")),
-                unattestedNames = emptyList(),
+                actorEmail = row("Actor Email", "jane.doe@example.com"),
+                unmatchedNames = emptyList(),
             ),
     )
 
@@ -179,21 +178,16 @@ private val managedCertificate = usableCertificate.copy(isManaged = true)
 // No administrator handed a certificate down and the user picked none.
 private val noCertificate = X509SettingsViewModel.UiState()
 
-// The same certificate, spelling the actor's email in a way the parser will not attest. Claims
+// The same certificate, spelling the actor's email in a way that is not usable as one. Claims
 // have no say in whether a certificate can be presented, so Firezone still signs in with it.
-private val certificateWithRejectedClaim =
+private val certificateWithInvalidClaim =
     X509SettingsViewModel.UiState(
         alias = CERTIFICATE_ALIAS,
         isUsable = true,
         details =
             certificateDetails(
-                actorEmail =
-                    row(
-                        "Actor Email",
-                        ClaimValue.Present("jane.doe.example.com"),
-                        RejectionReason.NOT_AN_EMAIL_ADDRESS,
-                    ),
-                unattestedNames = listOf("URI: firezone://email/jane.doe.example.com"),
+                actorEmail = row("Actor Email", "jane.doe.example.com", ValidationError.NOT_AN_EMAIL_ADDRESS),
+                unmatchedNames = listOf("URI: firezone://email/jane.doe.example.com"),
             ),
     )
 
@@ -213,9 +207,9 @@ private val expiredCertificate =
         isUsable = true,
         details =
             certificateDetails(
-                actorEmail = row("Actor Email", ClaimValue.Present("jane.doe@example.com")),
-                unattestedNames = emptyList(),
-                notAfter = row("Not After", ClaimValue.Present("Jan  5 09:00:00 2025 +00:00")),
+                actorEmail = row("Actor Email", "jane.doe@example.com"),
+                unmatchedNames = emptyList(),
+                notAfter = row("Not After", "Jan  5 09:00:00 2025 +00:00"),
             ),
     )
 
@@ -231,42 +225,35 @@ private val unreadableCertificate =
 // Every value is pinned, so a capture only moves when the screen does.
 private fun certificateDetails(
     actorEmail: DetailField,
-    unattestedNames: List<String>,
-    notAfter: DetailField = row("Not After", ClaimValue.Present("Jan  5 09:00:00 2027 +00:00")),
+    unmatchedNames: List<String>,
+    notAfter: DetailField = row("Not After", "Jan  5 09:00:00 2027 +00:00"),
 ): List<DetailField> =
     // `x509_claims::ParsedCertificate::detail_fields` reads the rows with a problem first, so a
     // mock that left them in place would draw a screen the client cannot produce.
     buildList {
-        add(row("Common Name", ClaimValue.Present("jane.doe@example.com")))
-        add(row("Subject", ClaimValue.Present("CN=jane.doe@example.com, O=Example Corp")))
-        add(row("Issuer", ClaimValue.Present("CN=Example Corp Device CA, O=Example Corp")))
+        add(row("Common Name", "jane.doe@example.com"))
+        add(row("Subject", "CN=jane.doe@example.com, O=Example Corp"))
+        add(row("Issuer", "CN=Example Corp Device CA, O=Example Corp"))
         add(actorEmail)
-        add(row("Account ID", ClaimValue.Present("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")))
-        add(row("MDM Device ID", ClaimValue.Present("9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64")))
-        add(row("Device Serial", ClaimValue.Present("C02XK1ZGJGH5")))
+        add(row("Account ID", "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"))
+        add(row("MDM Device ID", "9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64"))
+        add(row("Device Serial", "C02XK1ZGJGH5"))
 
         // The parser lists the alternative names no claim row shows, which is where a name it
-        // refused to attest ends up.
-        if (unattestedNames.isNotEmpty()) {
-            add(
-                row(
-                    "Subject Alternative Names",
-                    ClaimValue.Present(unattestedNames.joinToString("\n")),
-                ),
-            )
+        // could not read a usable claim from ends up.
+        if (unmatchedNames.isNotEmpty()) {
+            add(row("Subject Alternative Names", unmatchedNames.joinToString("\n")))
         }
 
-        add(row("Serial Number", ClaimValue.Present("4a:1f:8c:52:0d:9b:36:e7:11:c4:58:a3:7f:20:6b:d9")))
-        add(row("Not Before", ClaimValue.Present("Jan  5 09:00:00 2026 +00:00")))
+        add(row("Serial Number", "4a:1f:8c:52:0d:9b:36:e7:11:c4:58:a3:7f:20:6b:d9"))
+        add(row("Not Before", "Jan  5 09:00:00 2026 +00:00"))
         add(notAfter)
-        add(row("Signing Algorithm", ClaimValue.Present("SHA256withECDSA")))
+        add(row("Signing Algorithm", "SHA256withECDSA"))
         add(
             row(
                 "SHA-256 Fingerprint",
-                ClaimValue.Present(
-                    "3B:1D:0C:7E:59:A4:F2:68:8D:31:C0:5B:7A:96:E4:2F:" +
-                        "10:D8:63:4C:B5:27:9E:0A:F1:6D:82:34:C7:5E:19:AB",
-                ),
+                "3B:1D:0C:7E:59:A4:F2:68:8D:31:C0:5B:7A:96:E4:2F:" +
+                    "10:D8:63:4C:B5:27:9E:0A:F1:6D:82:34:C7:5E:19:AB",
             ),
         )
     }.sortedBy { it.problem == null }
@@ -274,8 +261,8 @@ private fun certificateDetails(
 // A row as the parser hands it over: what the certificate said, and what is wrong with it.
 private fun row(
     label: String,
-    value: ClaimValue,
-    problem: RejectionReason? = null,
+    value: String?,
+    problem: ValidationError? = null,
 ): DetailField = DetailField(label, value, problem)
 
 // Hosts the settings pages the way `SettingsActivity` does, with the Hilt graph replaced by
