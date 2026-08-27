@@ -4,7 +4,6 @@ package dev.firezone.android.features.signin.ui
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
-import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
@@ -18,7 +17,6 @@ import dev.firezone.android.features.auth.ui.AuthActivity
 import dev.firezone.android.features.session.ui.SessionActivity
 import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.launch
-import uniffi.x509claims.Actor
 import uniffi.x509claims.Identity
 
 @AndroidEntryPoint
@@ -55,18 +53,10 @@ internal class SignInFragment : Fragment(R.layout.fragment_sign_in) {
         }
     }
 
-    /** What the sign-in control reads. A refused certificate still claims an account, so it offers to connect. */
     private fun startSessionLabel(identity: Identity): String =
         when (identity) {
             Identity.Absent -> getString(R.string.sign_in)
-            is Identity.Resolved -> connectLabel(identity.actor)
-            Identity.Refused -> getString(R.string.connect)
-        }
-
-    private fun connectLabel(actor: Actor): String =
-        when (actor) {
-            is Actor.Email -> getString(R.string.connect_as, actor.email)
-            is Actor.Id -> getString(R.string.connect)
+            is Identity.Claimed -> identity.email?.let { getString(R.string.connect_as, it) } ?: getString(R.string.connect)
         }
 
     private fun setupButtonListener() {
@@ -78,7 +68,7 @@ internal class SignInFragment : Fragment(R.layout.fragment_sign_in) {
                         requireActivity().finish()
                     }
 
-                    is Identity.Resolved -> {
+                    is Identity.Claimed -> {
                         // The certificate is the credential, so connect instead of opening a browser.
                         TunnelService.start(requireContext())
                         startActivity(
@@ -87,10 +77,6 @@ internal class SignInFragment : Fragment(R.layout.fragment_sign_in) {
                             },
                         )
                         requireActivity().finish()
-                    }
-
-                    Identity.Refused -> {
-                        showInvalidCertificateDialog()
                     }
                 }
             }
@@ -105,14 +91,5 @@ internal class SignInFragment : Fragment(R.layout.fragment_sign_in) {
                 )
             }
         }
-    }
-
-    private fun showInvalidCertificateDialog() {
-        AlertDialog
-            .Builder(requireContext())
-            .setTitle(R.string.error_dialog_title)
-            .setMessage(R.string.error_dialog_message_invalid_certificate)
-            .setPositiveButton(R.string.error_dialog_button_text, null)
-            .show()
     }
 }

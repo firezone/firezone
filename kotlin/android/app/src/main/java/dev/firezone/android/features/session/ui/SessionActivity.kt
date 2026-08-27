@@ -27,7 +27,6 @@ import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.model.isInternetResource
 import kotlinx.collections.immutable.toImmutableList
-import uniffi.x509claims.Actor
 import uniffi.x509claims.Identity
 
 @AndroidEntryPoint
@@ -102,15 +101,14 @@ class SessionActivity : AppCompatActivity() {
                     }
 
                 val signedInActorName = remember { viewModel.getActorName() }
-                val certificateEmail =
-                    ((certificateIdentity as? Identity.Resolved)?.actor as? Actor.Email)?.email
+                val certificateEmail = (certificateIdentity as? Identity.Claimed)?.email
                 val actorName =
                     certificateEmail?.let { getString(R.string.connected_as, it) }
                         ?: signedInActorName
                 val endSessionLabel =
                     when (certificateIdentity) {
                         Identity.Absent -> stringResource(R.string.sign_out)
-                        is Identity.Resolved, Identity.Refused -> stringResource(R.string.disconnect)
+                        is Identity.Claimed -> stringResource(R.string.disconnect)
                     }
 
                 SessionScreen(
