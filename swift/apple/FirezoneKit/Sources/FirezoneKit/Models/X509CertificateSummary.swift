@@ -88,6 +88,40 @@ public struct X509CertificateField: Hashable, Sendable {
   }
 }
 
+/// Who the certificate says is connecting.
+///
+/// Mirrors `Identity` of the `x509claims` bindings, which FirezoneKit cannot import.
+/// Naming nobody and naming somebody the parser will not attest are different answers:
+/// only the first falls back to signing in through the browser.
+public enum X509ClaimedIdentity: Hashable, Sendable {
+  case absent
+  case resolved(accountId: String, actor: X509ClaimedActor)
+  case refused
+}
+
+/// How a certificate names the actor connecting.
+///
+/// Mirrors `Actor` of the `x509claims` bindings, which FirezoneKit cannot import.
+public enum X509ClaimedActor: Hashable, Sendable {
+  /// A service account, which carries no email to name it by.
+  case id(String)
+  case email(String)
+}
+
+/// Why Firezone will not start a session with the certificate that is configured.
+public enum X509ConnectError: LocalizedError {
+  /// The certificate names somebody the parser will not attest.
+  case refusedIdentity
+
+  public var errorDescription: String? {
+    switch self {
+    case .refusedIdentity:
+      return
+        "A certificate has been configured but it is invalid. Please contact your administrator."
+    }
+  }
+}
+
 /// What the parser made of the client certificate the VPN profile references.
 public struct X509CertificateSummary: Equatable, Sendable {
   /// Whether the certificate's own rules allow presenting it for mutual TLS.
@@ -96,25 +130,25 @@ public struct X509CertificateSummary: Equatable, Sendable {
   public let certificateProblems: [X509UnusableReason]
   /// Rows to render, in the order the parser produced them.
   public let fields: [X509CertificateField]
-  /// The actor the portal will attest, `nil` when the certificate names none.
-  public let actorEmail: String?
+  /// Who the certificate says is connecting, which decides what the clients offer.
+  public let identity: X509ClaimedIdentity
 
   public init(
     isUsable: Bool,
     certificateProblems: [X509UnusableReason],
     fields: [X509CertificateField],
-    actorEmail: String?
+    identity: X509ClaimedIdentity
   ) {
     self.isUsable = isUsable
     self.certificateProblems = certificateProblems
     self.fields = fields
-    self.actorEmail = actorEmail
+    self.identity = identity
   }
 
   /// Bytes that are not a certificate, reported as one that fails a rule so that the
   /// screen states the same verdict it states for every certificate it will not present.
   public static let unreadable = X509CertificateSummary(
-    isUsable: false, certificateProblems: [.unreadable], fields: [], actorEmail: nil)
+    isUsable: false, certificateProblems: [.unreadable], fields: [], identity: .absent)
 }
 
 /// Where the app installs the certificate parser.
