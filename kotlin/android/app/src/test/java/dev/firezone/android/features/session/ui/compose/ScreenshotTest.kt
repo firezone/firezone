@@ -18,6 +18,7 @@ import dev.firezone.android.R
 import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.features.session.ui.ResourceUiModel
 import dev.firezone.android.tunnel.model.ConnectedDevice
+import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import org.junit.Rule

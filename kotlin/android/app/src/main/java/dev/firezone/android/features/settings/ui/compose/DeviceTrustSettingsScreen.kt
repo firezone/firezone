@@ -30,8 +30,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import dev.firezone.android.R
-import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
+import dev.firezone.android.ui.theme.FirezoneTheme
 import uniffi.x509claims.DetailField
 import uniffi.x509claims.ValidationError
 

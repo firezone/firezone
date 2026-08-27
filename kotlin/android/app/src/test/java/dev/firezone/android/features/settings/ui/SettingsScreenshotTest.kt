@@ -31,9 +31,10 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.model.Config as FirezoneConfig
 import dev.firezone.android.databinding.ActivitySettingsBinding
-import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.settings.ui.compose.DeviceTrustSettingsScreen
+import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -50,7 +51,6 @@ import org.robolectric.annotation.GraphicsMode
 import uniffi.x509claims.DetailField
 import java.io.File
 import java.io.RandomAccessFile
-import dev.firezone.android.core.data.model.Config as FirezoneConfig
 
 // Renders the settings screens to PNGs; `./gradlew recordRoborazziDebug` writes them.
 //

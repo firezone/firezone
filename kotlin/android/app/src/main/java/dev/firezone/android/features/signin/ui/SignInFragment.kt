@@ -12,8 +12,8 @@ import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import dev.firezone.android.R
 import dev.firezone.android.features.auth.ui.AuthActivity
-import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.signin.ui.compose.SignInScreen
+import dev.firezone.android.ui.theme.FirezoneTheme
 
 internal class SignInFragment : Fragment() {
     override fun onCreateView(

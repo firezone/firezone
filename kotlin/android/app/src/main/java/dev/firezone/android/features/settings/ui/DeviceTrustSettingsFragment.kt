@@ -15,8 +15,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.x509.KeyChain
-import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.settings.ui.compose.DeviceTrustSettingsScreen
+import dev.firezone.android.ui.theme.FirezoneTheme
 import javax.inject.Inject
 
 @AndroidEntryPoint

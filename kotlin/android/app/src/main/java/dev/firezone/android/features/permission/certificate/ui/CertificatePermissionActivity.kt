@@ -11,7 +11,7 @@ import dev.firezone.android.R
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.x509.KeyChain
 import dev.firezone.android.features.permission.certificate.ui.compose.CertificatePermissionScreen
-import dev.firezone.android.features.session.ui.compose.FirezoneTheme
+import dev.firezone.android.ui.theme.FirezoneTheme
 import javax.inject.Inject
 
 /**

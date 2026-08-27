@@ -12,8 +12,8 @@ import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
 import dev.firezone.android.features.permission.certificate.ui.compose.CertificatePermissionScreen
 import dev.firezone.android.features.permission.vpn.ui.VpnPermissionActivity
-import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.signin.ui.compose.SignInScreen
+import dev.firezone.android.ui.theme.FirezoneTheme
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric

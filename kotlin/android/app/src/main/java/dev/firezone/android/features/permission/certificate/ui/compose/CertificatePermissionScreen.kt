@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.firezone.android.R
-import dev.firezone.android.features.session.ui.compose.FirezoneTheme
+import dev.firezone.android.ui.theme.FirezoneTheme
 
 /**
  * Explains why the client certificate needs picking and offers to start the selection.
