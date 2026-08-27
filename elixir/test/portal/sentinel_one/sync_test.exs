@@ -4,6 +4,7 @@ defmodule Portal.SentinelOne.SyncTest do
 
   import Portal.DevicePostureFixtures
   import Portal.SentinelOneFixtures
+  import ExUnit.CaptureLog
 
   alias Portal.SentinelOne.{APIClient, Device, PostureProvider, Sync}
 
@@ -45,7 +46,7 @@ defmodule Portal.SentinelOne.SyncTest do
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
-    device = Repo.get_by!(Device, sentinelone_id: "225494730938493804")
+    device = Repo.get_by!(Device, uuid: "ff819e70af13be381993075eb0ce5f2f6de05be2")
 
     inventory_fields =
       Device.__schema__(:fields) --
@@ -156,13 +157,48 @@ defmodule Portal.SentinelOne.SyncTest do
     end
   end
 
-  test "raises when an agent has no id" do
+  test "skips and warns when an agent has no uuid without failing the page" do
     provider = sentinelone_posture_provider_fixture()
-    stub_agents([agent(%{"id" => nil})])
+    valid_agent = agent(%{"uuid" => "valid-agent-uuid"})
 
-    assert_raise Portal.SentinelOne.SyncError, fn ->
+    invalid_agent =
+      agent(%{
+        "uuid" => nil,
+        "id" => "225494730938493804",
+        "computerName" => "WORKSTATION-1",
+        "serialNumber" => "SERIAL-1",
+        "siteId" => "225494730938493805"
+      })
+
+    stub_agents([invalid_agent, valid_agent])
+
+    log = capture_log(fn ->
       perform_job(Sync, sync_args(provider))
-    end
+    end)
+
+    assert Repo.get_by!(Device, account_id: provider.account_id, uuid: valid_agent["uuid"])
+    assert Repo.aggregate(Device, :count) == 1
+    assert log =~ "Skipping SentinelOne agent without a UUID"
+    assert log =~ "account_id=#{provider.account_id}"
+    assert log =~ "sentinelone_agent_id=225494730938493804"
+    assert log =~ "computer_name=WORKSTATION-1"
+    assert log =~ "serial_number=SERIAL-1"
+    assert log =~ "site_id=225494730938493805"
+  end
+
+  test "uses the universal uuid rather than the numeric API id as device identity" do
+    provider = sentinelone_posture_provider_fixture()
+    uuid = "ff819e70af13be381993075eb0ce5f2f6de05be2"
+
+    stub_agents([agent(%{"id" => "225494730938493804", "uuid" => uuid})])
+    assert :ok = perform_job(Sync, sync_args(provider))
+
+    stub_agents([agent(%{"id" => "225494730938493999", "uuid" => uuid})])
+    assert :ok = perform_job(Sync, sync_args(provider))
+
+    assert Repo.aggregate(Device, :count) == 1
+    assert Repo.get_by!(Device, account_id: provider.account_id, uuid: uuid).sentinelone_id ==
+             "225494730938493999"
   end
 
   test "deletes endpoints no completed run has seen for a day" do
@@ -174,7 +210,7 @@ defmodule Portal.SentinelOne.SyncTest do
 
     refute Repo.get_by(Device,
              account_id: provider.account_id,
-             sentinelone_id: stale.sentinelone_id
+             uuid: stale.uuid
            )
   end
 
@@ -189,7 +225,7 @@ defmodule Portal.SentinelOne.SyncTest do
 
     assert Repo.get_by(Device,
              account_id: provider.account_id,
-             sentinelone_id: skipped.sentinelone_id
+             uuid: skipped.uuid
            )
   end
 
@@ -203,7 +239,7 @@ defmodule Portal.SentinelOne.SyncTest do
 
     assert Repo.get_by(Device,
              account_id: provider.account_id,
-             sentinelone_id: skipped.sentinelone_id
+             uuid: skipped.uuid
            )
   end
 
@@ -216,7 +252,7 @@ defmodule Portal.SentinelOne.SyncTest do
 
     assert Repo.get_by(Device,
              account_id: provider.account_id,
-             sentinelone_id: ancient.sentinelone_id
+             uuid: ancient.uuid
            )
   end
 
@@ -264,18 +300,21 @@ defmodule Portal.SentinelOne.SyncTest do
   end
 
   defp agent(overrides) do
-    Map.merge(
-      %{
-        "id" => "225494730938493804",
-        "computerName" => "JOHN-WIN-4125",
-        "osName" => "Windows 11",
-        "osType" => "windows",
-        "agentVersion" => "24.1.4.257",
-        "isActive" => true,
-        "infected" => false
-      },
-      overrides
-    )
+    agent =
+      Map.merge(
+        %{
+          "id" => "225494730938493804",
+          "computerName" => "JOHN-WIN-4125",
+          "osName" => "Windows 11",
+          "osType" => "windows",
+          "agentVersion" => "24.1.4.257",
+          "isActive" => true,
+          "infected" => false
+        },
+        overrides
+      )
+
+    Map.put_new(agent, "uuid", "agent-uuid-#{agent["id"]}")
   end
 
   # Every top-level property in SentinelOne's Management API v2.1

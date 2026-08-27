@@ -5,7 +5,7 @@ defmodule PortalAPI.Schemas.SentinelOneDevice do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @required [:account_id, :posture_provider_id, :sentinelone_id, :synced_at]
+    @required [:account_id, :posture_provider_id, :uuid, :synced_at]
     @public_fields Portal.SentinelOne.Device.__schema__(:fields) -- [:license_key]
 
     @properties Map.new(@public_fields, fn field ->

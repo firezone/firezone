@@ -56,7 +56,7 @@ defmodule Portal.SentinelOne.ErrorHandlerTest do
   end
 
   test "ignores an error for a provider that no longer exists" do
-    assert :ok = ErrorHandler.handle(sync_error(:missing_agent_id), Ecto.UUID.generate())
+    assert :ok = ErrorHandler.handle(sync_error(:missing_agent_uuid), Ecto.UUID.generate())
   end
 
   defp reload(provider) do

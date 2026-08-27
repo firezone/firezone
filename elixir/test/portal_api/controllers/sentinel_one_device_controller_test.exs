@@ -32,9 +32,9 @@ defmodule PortalAPI.SentinelOneDeviceControllerTest do
       |> json_response(200)
 
     assert response["metadata"]["count"] == 1
-    assert [%{"sentinelone_id" => id}] = response["data"]
-    assert id == device.sentinelone_id
-    refute id == other.sentinelone_id
+    assert [%{"uuid" => uuid}] = response["data"]
+    assert uuid == device.uuid
+    refute uuid == other.uuid
   end
 
   test "show returns inventory but redacts the endpoint license key", %{
@@ -49,7 +49,7 @@ defmodule PortalAPI.SentinelOneDeviceControllerTest do
     data =
       conn
       |> authorize_conn(actor)
-      |> get("/sentinelone_devices/#{device.sentinelone_id}")
+      |> get("/sentinelone_devices/#{device.uuid}")
       |> json_response(200)
       |> Map.fetch!("data")
 
@@ -67,6 +67,6 @@ defmodule PortalAPI.SentinelOneDeviceControllerTest do
   end
 
   test "show requires authorization", %{conn: conn, device: device} do
-    assert conn |> get("/sentinelone_devices/#{device.sentinelone_id}") |> json_response(401)
+    assert conn |> get("/sentinelone_devices/#{device.uuid}") |> json_response(401)
   end
 end

@@ -16,7 +16,7 @@ defmodule Portal.SentinelOne.Device do
 
   schema "sentinelone_devices" do
     belongs_to :account, Portal.Account, primary_key: true
-    field :sentinelone_id, :string, primary_key: true
+    field :uuid, :string, primary_key: true
     belongs_to :posture_provider, Portal.PostureProvider
 
     field :source_created_at, :utc_datetime_usec
@@ -31,7 +31,7 @@ defmodule Portal.SentinelOne.Device do
     field :group_id, :string
     field :group_name, :string
     field :license_key, :string, redact: true
-    field :uuid, :string
+    field :sentinelone_id, :string
     field :agent_version, :string
 
     field :network_interfaces, {:array, :map}
@@ -140,7 +140,7 @@ defmodule Portal.SentinelOne.Device do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_required([:account_id, :posture_provider_id, :sentinelone_id, :synced_at])
+    |> validate_required([:account_id, :posture_provider_id, :uuid, :synced_at])
     |> assoc_constraint(:account)
     |> assoc_constraint(:posture_provider)
   end

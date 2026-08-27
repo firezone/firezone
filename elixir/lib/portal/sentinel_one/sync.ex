@@ -26,7 +26,7 @@ defmodule Portal.SentinelOne.Sync do
   @stale_after_seconds 24 * 60 * 60
 
   @replace_fields SentinelOne.Device.__schema__(:fields) --
-                    [:account_id, :posture_provider_id, :sentinelone_id, :inserted_at]
+                    [:account_id, :posture_provider_id, :uuid, :inserted_at]
 
   @upsert_chunk_size div(65_535, length(SentinelOne.Device.__schema__(:fields)))
 
@@ -245,10 +245,10 @@ defmodule Portal.SentinelOne.Sync do
   defp sync_page(_provider, [], _started_at), do: :ok
 
   defp sync_page(provider, agents, started_at) do
-    validate_agents!(provider, agents)
     now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
 
     agents
+    |> Enum.filter(&has_uuid_or_warn(&1, provider))
     |> Enum.map(fn agent ->
       agent
       |> device_attrs(provider, started_at)
@@ -258,10 +258,23 @@ defmodule Portal.SentinelOne.Sync do
     |> Enum.each(&Database.upsert_devices(&1, @replace_fields))
   end
 
-  defp validate_agents!(provider, agents) do
-    unless Enum.all?(agents, &(is_map(&1) and is_binary(&1["id"]) and &1["id"] != "")) do
-      raise_sync_error(provider, :validate_agents, :missing_agent_id)
-    end
+  defp has_uuid_or_warn(%{"uuid" => uuid}, _provider)
+       when is_binary(uuid) and uuid != "",
+       do: true
+
+  defp has_uuid_or_warn(agent, provider) do
+    agent = map_or_empty(agent)
+
+    Logger.warning("Skipping SentinelOne agent without a UUID",
+      account_id: provider.account_id,
+      posture_provider_id: provider.id,
+      sentinelone_agent_id: agent["id"],
+      computer_name: agent["computerName"],
+      serial_number: agent["serialNumber"],
+      site_id: agent["siteId"]
+    )
+
+    false
   end
 
   defp device_attrs(agent, provider, synced_at) do
@@ -359,7 +372,7 @@ defmodule Portal.SentinelOne.Sync do
     def upsert_devices(rows, replace_fields) do
       Safe.unscoped()
       |> Safe.insert_all(SentinelOne.Device, rows,
-        conflict_target: [:account_id, :sentinelone_id],
+        conflict_target: [:account_id, :uuid],
         on_conflict: {:replace, replace_fields}
       )
     end

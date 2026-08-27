@@ -39,7 +39,7 @@ defmodule PortalAPI.SentinelOneDeviceController do
     parameters: [
       sentinelone_agent: [
         in: :path,
-        description: "Synced SentinelOne agent ID",
+        description: "Synced SentinelOne agent UUID",
         type: :string
       ]
     ],
@@ -88,7 +88,7 @@ defmodule PortalAPI.SentinelOneDeviceController do
     end
 
     def fetch_device(id, subject) do
-      case from(d in SentinelOne.Device, where: d.sentinelone_id == ^id)
+      case from(d in SentinelOne.Device, where: d.uuid == ^id)
            |> Safe.scoped(subject)
            |> Safe.one() do
         nil -> {:error, :not_found}
@@ -100,7 +100,7 @@ defmodule PortalAPI.SentinelOneDeviceController do
     def cursor_fields do
       [
         {:sentinelone_devices, :asc, :inserted_at},
-        {:sentinelone_devices, :asc, :sentinelone_id}
+        {:sentinelone_devices, :asc, :uuid}
       ]
     end
 

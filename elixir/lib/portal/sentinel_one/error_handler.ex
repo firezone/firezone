@@ -23,7 +23,7 @@ defmodule Portal.SentinelOne.ErrorHandler do
 
   defp classify(%Req.Response{}), do: :transient
   defp classify(%Req.TransportError{}), do: :transient
-  defp classify(:missing_agent_id), do: :transient
+  defp classify(:missing_agent_uuid), do: :transient
   defp classify(_unrecognized), do: :transient
 
   defp format(%Req.TransportError{} = error), do: SharedErrorHandler.format_transport_error(error)
@@ -54,7 +54,8 @@ defmodule Portal.SentinelOne.ErrorHandler do
 
   defp format(%Req.Response{status: status}), do: "SentinelOne returned HTTP #{status}"
 
-  defp format(:missing_agent_id), do: "SentinelOne returned an endpoint without an agent ID."
+  defp format(:missing_agent_uuid),
+    do: "SentinelOne returned an endpoint without its universally unique UUID."
   defp format(error), do: format_generic(error)
 
   defp truncate(message) when byte_size(message) > 500,

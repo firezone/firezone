@@ -50,9 +50,9 @@ defmodule Portal.Repo.Migrations.CreateSentinelOneDeviceInventory do
         primary_key: true
       )
 
-      # SentinelOne describes the Agent ID as a decimal string rather than a
-      # UUID. It is unique within the containing SentinelOne account.
-      add(:sentinelone_id, :string, null: false, primary_key: true)
+      # SentinelOne explicitly documents this value as the agent's universally
+      # unique identifier, so it is the stable inventory identity.
+      add(:uuid, :string, null: false, primary_key: true)
 
       add(
         :posture_provider_id,
@@ -77,7 +77,9 @@ defmodule Portal.Repo.Migrations.CreateSentinelOneDeviceInventory do
       add(:group_id, :string)
       add(:group_name, :string)
       add(:license_key, :text)
-      add(:uuid, :string)
+      # SentinelOne's numeric API object ID is retained as telemetry, but is
+      # not used as identity because its uniqueness scope is undocumented.
+      add(:sentinelone_id, :string)
       add(:agent_version, :string)
       # Ecto's {:array, :map} is encoded as one JSON array in a jsonb column.
       add(:network_interfaces, :map)
@@ -179,7 +181,7 @@ defmodule Portal.Repo.Migrations.CreateSentinelOneDeviceInventory do
       timestamps()
     end
 
-    create(index(:sentinelone_devices, [:account_id, :inserted_at, :sentinelone_id]))
+    create(index(:sentinelone_devices, [:account_id, :inserted_at, :uuid]))
 
     create(
       index(:sentinelone_devices, [:account_id, :posture_provider_id, :synced_at],

@@ -3614,7 +3614,7 @@
             "type": "string"
           },
           "sentinelone_id": {
-            "nullable": false,
+            "nullable": true,
             "type": "string"
           },
           "user_actions_needed": {
@@ -4015,7 +4015,7 @@
             "type": "string"
           },
           "uuid": {
-            "nullable": true,
+            "nullable": false,
             "type": "string"
           },
           "ranger_version": {
@@ -4074,7 +4074,7 @@
         "required": [
           "account_id",
           "posture_provider_id",
-          "sentinelone_id",
+          "uuid",
           "synced_at"
         ],
         "title": "SentinelOneDevice",
@@ -13333,7 +13333,7 @@
         "operationId": "PortalAPI.SentinelOneDeviceController.show",
         "parameters": [
           {
-            "description": "Synced SentinelOne agent ID",
+            "description": "Synced SentinelOne agent UUID",
             "in": "path",
             "name": "sentinelone_agent",
             "required": true,
