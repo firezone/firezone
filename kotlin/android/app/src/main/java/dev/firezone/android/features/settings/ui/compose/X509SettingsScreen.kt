@@ -423,9 +423,9 @@ private fun X509SettingsScreenPreview() {
                     isUsable = true,
                     details =
                         listOf(
-                            DetailField("Common Name", ClaimValue.Present("alice@example.com"), null),
-                            DetailField("Subject", ClaimValue.Present("CN=alice@example.com"), null),
-                            DetailField("Issuer", ClaimValue.Present("Example Corp Device CA"), null),
+                            DetailField("Common Name", ClaimValue.Present("jane.doe@example.com"), null),
+                            DetailField("Subject", ClaimValue.Present("CN=jane.doe@example.com, O=Example Corp"), null),
+                            DetailField("Issuer", ClaimValue.Present("CN=Example Corp Device CA, O=Example Corp"), null),
                             DetailField("Not After", ClaimValue.Present("2027-01-31 23:59:59 UTC"), null),
                             DetailField("Account ID", ClaimValue.Absent, null),
                         ),
@@ -458,12 +458,12 @@ private fun X509SettingsScreenUnusablePreview() {
                             ),
                             DetailField(
                                 "Actor Email",
-                                ClaimValue.Present("alice(at)example.com"),
+                                ClaimValue.Present("jane.doe.example.com"),
                                 FieldProblem.Rejected(RejectionReason.NOT_AN_EMAIL_ADDRESS),
                             ),
                             DetailField("Account ID", ClaimValue.Absent, FieldProblem.Rejected(RejectionReason.EMPTY)),
-                            DetailField("Common Name", ClaimValue.Present("alice@example.com"), null),
-                            DetailField("Issuer", ClaimValue.Present("Example Corp Device CA"), null),
+                            DetailField("Common Name", ClaimValue.Present("jane.doe@example.com"), null),
+                            DetailField("Issuer", ClaimValue.Present("CN=Example Corp Device CA, O=Example Corp"), null),
                         ),
                 ),
             onSelectCertificate = {},
