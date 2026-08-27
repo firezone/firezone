@@ -38,8 +38,7 @@ import java.io.File
 import java.io.RandomAccessFile
 import dev.firezone.android.core.data.model.Config as FirezoneConfig
 
-// Renders the settings screens to PNGs so their states can be reviewed without an emulator.
-// `./gradlew recordRoborazziDebug` writes them; a plain unit-test run captures nothing.
+// Renders the settings screens to PNGs; `./gradlew recordRoborazziDebug` writes them.
 //
 // `SettingsActivity` only works on top of a Hilt graph, which a screenshot does not need,
 // so `SettingsScreenshotActivity` below hosts the real layout and fragments instead.
@@ -90,8 +89,7 @@ class SettingsScreenshotTest {
         RandomAccessFile(logFile, "rw").use { it.setLength(LOG_DIRECTORY_BYTES) }
     }
 
-    // The directory size is computed on the IO dispatcher, so wait for it to land in the
-    // UI state (and for the main looper to render it) before photographing.
+    // The directory size is computed on the IO dispatcher, so wait for it to reach the UI.
     private fun awaitLogDirectorySize(activity: SettingsScreenshotActivity) {
         val deadline = System.currentTimeMillis() + 10_000
         while (activity.viewModel.uiState.value.logSizeBytes != LOG_DIRECTORY_BYTES) {
@@ -105,8 +103,7 @@ class SettingsScreenshotTest {
 // Renders as "3.4 MB", mirroring the desktop client's screenshot fixture.
 private const val LOG_DIRECTORY_BYTES = 3_400_000L
 
-// What a signed-in user of a production account sees; also mirrors the desktop client's
-// screenshot fixtures.
+// What a signed-in user of a production account sees.
 private val sampleConfig =
     FirezoneConfig(
         authUrl = "https://app.firezone.dev",
@@ -117,9 +114,8 @@ private val sampleConfig =
         connectOnStart = false,
     )
 
-// Hosts the settings pages the way `SettingsActivity` does: the same layout, fragments, and
-// view model, with the pager and the save button wired the same way. Only the Hilt graph is
-// replaced, by building the view model by hand from preferences seeded with `sampleConfig`.
+// Hosts the settings pages the way `SettingsActivity` does, with the Hilt graph replaced by
+// a view model built by hand from preferences seeded with `sampleConfig`.
 internal class SettingsScreenshotActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
 

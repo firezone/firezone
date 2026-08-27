@@ -67,8 +67,7 @@ internal val sampleConnectedDevices: ImmutableList<ConnectedDevice> =
         )
     }.toImmutableList()
 
-// The gateway site the mocked resources are served through, so the resource details
-// sheet has a site section to show.
+// So that the resource details sheet has a site section to show.
 private val sampleSite = Site(id = "site-1", name = "Sydney office")
 
 internal val sampleResources: ImmutableList<ResourceUiModel> =

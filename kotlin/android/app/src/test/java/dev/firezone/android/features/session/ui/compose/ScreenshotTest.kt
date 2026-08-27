@@ -23,8 +23,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-// Renders the app's screens to PNGs so their states can be reviewed without an emulator.
-// `./gradlew recordRoborazziDebug` writes them; a plain unit-test run captures nothing.
+// Renders the app's screens to PNGs; `./gradlew recordRoborazziDebug` writes them.
 //
 // The real Application is Hilt-annotated and starts Sentry and Firebase, none of which a
 // screenshot needs, so the plain framework Application stands in for it.
@@ -41,43 +40,23 @@ class ScreenshotTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun sessionScreen() = captureSessionScreen("session-screen")
+    fun sessionScreen() = capture("session-screen") { SessionScreenSample() }
 
     @Test
     fun sessionScreenWithFavorites() =
-        captureSessionScreen(
-            "session-screen-favorites",
-            favorites = Favorites(hashSetOf("gitlab")),
-        )
+        capture("session-screen-favorites") {
+            SessionScreenSample(favorites = Favorites(hashSetOf("gitlab")))
+        }
 
-    // Signing in before the portal has sent any resources, which is also what an account
-    // with nothing shared with it looks like.
+    // Signing in before the portal has sent any resources, or an account with nothing shared.
     @Test
     fun sessionScreenWithoutResources() =
-        captureSessionScreen(
-            "session-screen-no-resources",
-            resources = persistentListOf(),
-            connectedDevices = persistentListOf(),
-        )
-
-    private fun captureSessionScreen(
-        name: String,
-        resources: ImmutableList<ResourceUiModel> = sampleResources,
-        connectedDevices: ImmutableList<ConnectedDevice> = sampleConnectedDevices,
-        favorites: Favorites = Favorites(HashSet()),
-    ) = capture(name) {
-        SessionScreen(
-            actorName = "Jane Doe",
-            resources = resources,
-            connectedDevices = connectedDevices,
-            favorites = favorites,
-            onToggleInternet = {},
-            onAddFavorite = {},
-            onRemoveFavorite = {},
-            onSettings = {},
-            onSignOut = {},
-        )
-    }
+        capture("session-screen-no-resources") {
+            SessionScreenSample(
+                resources = persistentListOf(),
+                connectedDevices = persistentListOf(),
+            )
+        }
 
     @Test
     fun resourceDetailsInternet() = captureSheet("resource-details-internet", rowText = "Internet Resource")
@@ -97,32 +76,36 @@ class ScreenshotTest {
         FirezoneTheme(content)
     }
 
-    // The detail sheets open on top of the session screen, so each capture drives the real
-    // screen and taps the row whose sheet it wants. A `ModalBottomSheet` renders into a
-    // window of its own, which the main-window capture above misses; photographing the whole
-    // screen composites the list, the scrim, and the sheet like the live app.
+    // A `ModalBottomSheet` renders into a window of its own, which the main-window capture
+    // above misses; photographing the whole screen composites the list, the scrim and the
+    // sheet the way the live app draws them.
     @OptIn(ExperimentalRoborazziApi::class)
     private fun captureSheet(
         name: String,
         rowText: String,
     ) {
-        composeRule.setContent {
-            FirezoneTheme {
-                SessionScreen(
-                    actorName = "Jane Doe",
-                    resources = sampleResources,
-                    connectedDevices = sampleConnectedDevices,
-                    favorites = Favorites(HashSet()),
-                    onToggleInternet = {},
-                    onAddFavorite = {},
-                    onRemoveFavorite = {},
-                    onSettings = {},
-                    onSignOut = {},
-                )
-            }
-        }
+        composeRule.setContent { FirezoneTheme { SessionScreenSample() } }
         composeRule.onNodeWithText(rowText, substring = true).performClick()
         composeRule.waitForIdle()
         captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
+    }
+
+    @Composable
+    private fun SessionScreenSample(
+        resources: ImmutableList<ResourceUiModel> = sampleResources,
+        connectedDevices: ImmutableList<ConnectedDevice> = sampleConnectedDevices,
+        favorites: Favorites = Favorites(HashSet()),
+    ) {
+        SessionScreen(
+            actorName = "Jane Doe",
+            resources = resources,
+            connectedDevices = connectedDevices,
+            favorites = favorites,
+            onToggleInternet = {},
+            onAddFavorite = {},
+            onRemoveFavorite = {},
+            onSettings = {},
+            onSignOut = {},
+        )
     }
 }
