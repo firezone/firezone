@@ -34,9 +34,9 @@ use x509_claims::{ParsedCertificate, parse_certificate};
 use x509_credential::SigningError;
 
 use crate::{
-    CandidateCertificate, DetailField, DetailSection, Identity, Problem, Status, UnreadableStore,
-    UnusableCause, UnusableCertificate, failed_field, join, selected_certificate, sign,
-    unusable_certificates,
+    CandidateCertificate, ClientIdentity, DetailField, DetailSection, Identity, Problem, Status,
+    UnreadableStore, UnusableCause, UnusableCertificate, failed_field, join, selected_certificate,
+    sign, unusable_certificates,
 };
 
 /// The store MDM-provisioned identities land in.
@@ -90,7 +90,15 @@ pub(crate) fn status(subject_cn: &str) -> Result<Status> {
         .chain(store_problem)
         .collect();
 
-    Ok(Status { problems, sections })
+    let identity = selected
+        .map(|index| certificates[index].metadata.identity())
+        .unwrap_or(ClientIdentity::Absent);
+
+    Ok(Status {
+        problems,
+        sections,
+        identity,
+    })
 }
 
 pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
