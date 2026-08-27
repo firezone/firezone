@@ -380,10 +380,6 @@ class TunnelService : VpnService() {
                         withContext(Dispatchers.IO) { x509Identity.load(certificateAlias) }
                     _certificateIdentityState.value = identity?.identity ?: Identity.Absent
 
-                    if (identity?.certificateIsUsable == false) {
-                        Log.e(TAG, "Withholding an unusable client certificate for the saved sign-in token")
-                    }
-
                     sessionFactory
                         .open(
                             AndroidSessionConfig(
@@ -394,10 +390,11 @@ class TunnelService : VpnService() {
                                 isInternetResourceActive = resourceState.isEnabled(),
                                 deviceInfo = deviceInfo,
                             ),
-                            // connlib dials the portal's mTLS host whenever it is handed an
-                            // identity, so one that cannot be presented is withheld rather
-                            // than tried.
-                            tlsIdentity = identity?.takeIf { it.certificateIsUsable }?.tlsIdentity,
+                            // The portal accepts every client certificate at the TLS layer and
+                            // judges it at the application layer, so whether this one is
+                            // acceptable is not ours to decide. One we cannot read is another
+                            // matter: there is nothing to present.
+                            tlsIdentity = identity?.takeIf { it.certificate != null }?.tlsIdentity,
                         ).use { session ->
                             startNetworkMonitoring()
                             startLogCleanup()
