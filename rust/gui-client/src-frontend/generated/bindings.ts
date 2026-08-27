@@ -156,7 +156,7 @@ export type SessionViewModel =
   | "SignedOut";
 export type X509DetailField = {
   label: string;
-  value: X509FieldValue;
+  value: string | null;
   problem: X509FieldProblem | null;
 };
 export type X509DetailSection = { title: string; fields: X509DetailField[] };
@@ -164,12 +164,8 @@ export type X509DetailSection = { title: string; fields: X509DetailField[] };
  * Mirrors [`x509_keystore::FieldProblem`] so the frontend writes the sentence it shows.
  */
 export type X509FieldProblem =
-  | { Rejected: X509RejectionReason }
+  | { Invalid: X509ValidationError }
   | { Unreadable: string };
-/**
- * Mirrors [`x509_keystore::FieldValue`].
- */
-export type X509FieldValue = { Present: string } | "Absent";
 /**
  * Mirrors [`x509_keystore::Package`].
  */
@@ -187,17 +183,6 @@ export type X509Problem =
   | "UnreadableKeystore"
   | { MissingPackage: { package: X509Package } }
   | "UnsupportedPlatform";
-/**
- * Mirrors [`x509_keystore::RejectionReason`].
- */
-export type X509RejectionReason =
-  | "Empty"
-  | "TooLong"
-  | "NotAnEmailAddress"
-  | "NotAUuid"
-  | "Ambiguous"
-  | "PlaceholderIdentifier"
-  | "UnknownAttribute";
 export type X509Status = {
   problems: X509Problem[];
   sections: X509DetailSection[];
@@ -227,6 +212,17 @@ export type X509UnusableCertificate = {
   fingerprint: string;
   cause: X509UnusableCause;
 };
+/**
+ * Mirrors [`x509_keystore::ValidationError`].
+ */
+export type X509ValidationError =
+  | "Empty"
+  | "TooLong"
+  | "NotAnEmailAddress"
+  | "NotAUuid"
+  | "Ambiguous"
+  | "PlaceholderIdentifier"
+  | "UnknownAttribute";
 
 /** tauri-specta globals **/
 

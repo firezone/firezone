@@ -1126,7 +1126,7 @@ fn unreadable_keystore_status(error: String) -> x509_keystore::Status {
             title: "Keystore".to_owned(),
             fields: vec![x509_keystore::DetailField {
                 label: "Error".to_owned(),
-                value: x509_keystore::FieldValue::Present(error),
+                value: Some(error),
                 problem: None,
             }],
         }],
@@ -1230,8 +1230,8 @@ mod tests {
                 .flat_map(|section| &section.fields)
                 .any(|field| field
                     .value
-                    .text()
-                    .contains("Failed to enumerate PKCS#11 tokens")),
+                    .as_deref()
+                    .is_some_and(|value| value.contains("Failed to enumerate PKCS#11 tokens"))),
             "the diagnostics should carry the error"
         );
     }
