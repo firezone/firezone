@@ -47,6 +47,16 @@
       deliver(app, as: "session", in: appearance)
     }
 
+    func testSessionScrolled() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "connected")
+      defer { app.terminate() }
+
+      try waitFor(app.staticTexts["Office network"], on: "session-scrolled")
+      scrollDown(in: app)
+      deliver(app, as: "session-scrolled", in: appearance)
+    }
+
     // Each detail screen takes its own launch: photographed one after another, a
     // screen carries what the ones before it left behind, and the glass the back
     // button is drawn on comes out a shade different for it.

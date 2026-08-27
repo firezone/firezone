@@ -3,9 +3,11 @@ package dev.firezone.android.features.session.ui.compose
 
 import android.app.Application
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -35,7 +37,8 @@ import org.robolectric.annotation.GraphicsMode
     qualifiers = RobolectricDeviceQualifiers.Pixel5,
 )
 class ScreenshotTest {
-    // Only the sheet captures drive composition through this rule; see `captureSheet`.
+    // Only the captures that have to drive the UI compose through this rule: the sheets and the
+    // scrolled list.
     @get:Rule
     val composeRule = createComposeRule()
 
@@ -57,6 +60,19 @@ class ScreenshotTest {
                 connectedDevices = persistentListOf(),
             )
         }
+
+    // Any row part-way down does; it is scrolled to by index rather than by swipe because a fling
+    // settles wherever its momentum leaves it, and the capture has to come out the same each run.
+    @OptIn(ExperimentalRoborazziApi::class)
+    @Test
+    fun sessionScreenScrolled() {
+        composeRule.setContent { FirezoneTheme { SessionScreenSample() } }
+        // The screen resets the list to the top once its tab settles, so let that land first.
+        composeRule.waitForIdle()
+        composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(5)
+        composeRule.waitForIdle()
+        captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/session-screen-scrolled.png")
+    }
 
     @Test
     fun resourceDetailsInternet() = captureSheet("resource-details-internet", rowText = "Internet Resource")
