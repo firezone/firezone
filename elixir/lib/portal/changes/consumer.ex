@@ -43,7 +43,8 @@ defmodule Portal.Changes.Consumer do
     "intune_posture_providers" => Hooks.IntunePostureProviders,
     "iru_posture_providers" => Hooks.IruPostureProviders,
     "defender_posture_providers" => Hooks.DefenderPostureProviders,
-    "santa_posture_providers" => Hooks.SantaPostureProviders
+    "santa_posture_providers" => Hooks.SantaPostureProviders,
+    "sentinelone_posture_providers" => Hooks.SentinelOnePostureProviders
   }
 
   @impl true

@@ -64,12 +64,14 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert "iru_posture_providers" in tables
       assert "defender_posture_providers" in tables
       assert "santa_posture_providers" in tables
+      assert "sentinelone_posture_providers" in tables
 
       refute "posture_providers" in tables
       refute "intune_devices" in tables
       refute "iru_devices" in tables
       refute "defender_devices" in tables
       refute "santa_devices" in tables
+      refute "sentinelone_devices" in tables
     end
   end
 

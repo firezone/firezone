@@ -54,6 +54,8 @@ defmodule Portal.Account do
     has_many :defender_devices, Portal.Defender.Device
     has_many :santa_posture_providers, Portal.Santa.PostureProvider
     has_many :santa_devices, Portal.Santa.Device
+    has_many :sentinelone_posture_providers, Portal.SentinelOne.PostureProvider
+    has_many :sentinelone_devices, Portal.SentinelOne.Device
     has_many :clients, Portal.Device, where: [type: :client]
     has_many :gateways, Portal.Device, where: [type: :gateway]
     has_many :sites, Portal.Site

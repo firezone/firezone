@@ -197,6 +197,12 @@ config :portal, Portal.Santa.APIClient,
     retry: false
   ]
 
+config :portal, Portal.SentinelOne.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.SentinelOne.APIClient},
+    retry: false
+  ]
+
 config :portal, Portal.Workers.SyncErrorNotification, []
 
 config :portal, Portal.Workers.LogSinkErrorNotification, []

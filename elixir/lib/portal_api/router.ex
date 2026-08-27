@@ -126,6 +126,12 @@ defmodule PortalAPI.Router do
       only: [:index, :show]
 
     resources "/santa_devices", SantaDeviceController, only: [:index, :show]
+
+    resources "/sentinelone_posture_providers", SentinelOnePostureProviderController,
+      only: [:index, :show]
+
+    resources "/sentinelone_devices", SentinelOneDeviceController, only: [:index]
+    get "/sentinelone_devices/:sentinelone_agent", SentinelOneDeviceController, :show
   end
 
   scope "/integrations", PortalAPI.Integrations do
