@@ -25,8 +25,8 @@ class X509IdentityException(
 /**
  * The client identity Firezone presents to the portal, together with what its leaf certificate says.
  *
- * [certificate] is `null` when the leaf is not a certificate the parser understands. The identity
- * stays usable in that case: only the portal decides whether it accepts a certificate.
+ * [certificate] is `null` when the leaf is not a certificate the parser understands, which leaves
+ * the identity unusable: none of the rules a certificate has to satisfy could be checked.
  */
 data class LoadedX509Identity(
     val alias: String,
@@ -39,11 +39,11 @@ data class LoadedX509Identity(
 
     /** Whether the certificate's own rules allow presenting it for mutual TLS. */
     val certificateIsUsable: Boolean
-        get() = certificate?.isUsable != false
+        get() = certificate?.isUsable == true
 
     /** The rules the certificate fails that no detail row carries. */
     val certificateProblems: List<UnusableReason>
-        get() = certificate?.certificateProblems.orEmpty()
+        get() = certificate?.certificateProblems ?: listOf(UnusableReason.UNREADABLE)
 }
 
 /**
