@@ -324,7 +324,7 @@ impl fmt::Display for Problem {
                 "No PKCS#11 token holds an X.509 certificate with subject CN '{subject_cn}'."
             ),
             Self::UnreadablePkcs11Keystore => formatter.write_str(
-                "The PKCS#11 keystore cannot be read, so no X.509 client identity certificate can be found. See https://www.firezone.dev/kb/reference/device-certificates for what the keystore needs installed and running.",
+                "The PKCS#11 keystore cannot be read, so no X.509 client identity certificate can be found. See https://www.firezone.dev/kb/install/linux#device-certificates for what the keystore needs installed and running.",
             ),
             Self::UnreadableKeystore => formatter.write_str(
                 "The platform keystore could not be read, so no X.509 client identity certificate can be found.",
@@ -345,7 +345,7 @@ impl Package {
     fn missing_description(self) -> &'static str {
         match self {
             Self::P11Kit => {
-                "No PKCS#11 module is registered, so no X.509 client identity certificate can be found. Firezone reads certificates through PKCS#11 modules registered with p11-kit. See https://www.firezone.dev/kb/reference/device-certificates for what to install."
+                "No PKCS#11 module is registered, so no X.509 client identity certificate can be found. Firezone reads certificates through PKCS#11 modules registered with p11-kit. See https://www.firezone.dev/kb/install/linux#device-certificates for what to install."
             }
         }
     }

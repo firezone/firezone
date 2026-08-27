@@ -39,7 +39,7 @@ fn an_unloadable_module_is_no_identity_rather_than_an_error() {
     assert_eq!(status.problems, [Problem::UnreadablePkcs11Keystore]);
     let warning = status.text_description();
     assert!(
-        warning.contains("https://www.firezone.dev/kb/reference/device-certificates"),
+        warning.contains("https://www.firezone.dev/kb/install/linux#device-certificates"),
         "{warning} should point at the knowledge base"
     );
     let section = section(&status, "PKCS#11 Module");

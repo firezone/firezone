@@ -25,12 +25,12 @@ const VALIDATION_ERROR_TEXT: Record<X509ValidationError, string> = {
 
 const MISSING_PACKAGE_TEXT: Record<X509Package, string> = {
   P11Kit:
-    "No PKCS#11 module is registered, so no X.509 client identity certificate can be found. Firezone reads certificates through PKCS#11 modules registered with p11-kit. See https://www.firezone.dev/kb/reference/device-certificates for what to install.",
+    "No PKCS#11 module is registered, so no X.509 client identity certificate can be found. Firezone reads certificates through PKCS#11 modules registered with p11-kit. See https://www.firezone.dev/kb/install/linux#device-certificates for what to install.",
 };
 
 function problemText(problem: X509Problem): string {
   if (problem === "UnreadablePkcs11Keystore") {
-    return "The PKCS#11 keystore cannot be read, so no X.509 client identity certificate can be found. See https://www.firezone.dev/kb/reference/device-certificates for what the keystore needs installed and running.";
+    return "The PKCS#11 keystore cannot be read, so no X.509 client identity certificate can be found. See https://www.firezone.dev/kb/install/linux#device-certificates for what the keystore needs installed and running.";
   }
 
   if (problem === "UnreadableKeystore") {
