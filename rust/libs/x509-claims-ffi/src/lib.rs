@@ -76,6 +76,9 @@ pub enum UnusableReason {
     NotYetValid,
     Expired,
     UnsupportedKeyAlgorithm,
+    /// The bytes are not a certificate this client can read, so none of the rules above
+    /// could be checked. `x509_claims` reports this by parsing nothing at all.
+    Unreadable,
 }
 
 /// Metadata parsed from a client certificate, mirroring [`x509_claims::ParsedCertificate`].
