@@ -67,17 +67,16 @@ import SwiftUI
               signOutButtonTapped()
             },
             label: {
-              Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+              Label(endSessionTitle, systemImage: "rectangle.portrait.and.arrow.right")
             }
           )
         } else {
           Button(
             action: {
-              signInButtonTapped()
-
+              startSession()
             },
             label: {
-              Label("Sign in", systemImage: "person.crop.circle.fill.badge.plus")
+              Label(startSessionTitle, systemImage: "person.crop.circle.fill.badge.plus")
             }
           )
         }
@@ -105,6 +104,36 @@ import SwiftUI
       }
     }
 
+    /// What the control that starts a session reads, given who the certificate names.
+    private var startSessionTitle: String {
+      switch store.certificateIdentity {
+      case .absent: return "Sign in"
+      case .resolved(_, .email(let email)): return "Connect as \(email)"
+      case .resolved(_, .id), .refused: return "Connect"
+      }
+    }
+
+    /// A session a certificate started is disconnected from rather than signed out of.
+    private var endSessionTitle: String {
+      switch store.certificateIdentity {
+      case .absent: return "Sign out"
+      case .resolved, .refused: return "Disconnect"
+      }
+    }
+
+    func startSession() {
+      switch store.certificateIdentity {
+      case .absent:
+        signInButtonTapped()
+      case .resolved:
+        connectButtonTapped()
+      case .refused:
+        self.errorHandler.handle(
+          ErrorAlert(title: "Cannot connect", error: X509ConnectError.refusedIdentity)
+        )
+      }
+    }
+
     func signInButtonTapped() {
       Task {
         do {
@@ -115,6 +144,23 @@ import SwiftUI
           self.errorHandler.handle(
             ErrorAlert(
               title: "Error signing in",
+              error: error
+            )
+          )
+        }
+      }
+    }
+
+    func connectButtonTapped() {
+      Task {
+        do {
+          try await store.connectWithCertificate()
+        } catch {
+          Log.error(error)
+
+          self.errorHandler.handle(
+            ErrorAlert(
+              title: "Error connecting",
               error: error
             )
           )

@@ -152,7 +152,7 @@ func installCertificateParser() {
           problem: field.problem.map { X509FieldProblem($0) }
         )
       },
-      actorEmail: parsed.userIdentity?.email
+      identity: X509ClaimedIdentity(parsed.identity)
     )
   }
 }
@@ -186,6 +186,21 @@ extension X509UnusableReason {
     case .unsupportedKeyAlgorithm: self = .unsupportedKeyAlgorithm
     case .refusedIdentity: self = .refusedIdentity
     case .unreadable: self = .unreadable
+    }
+  }
+}
+
+extension X509ClaimedIdentity {
+  init(_ identity: Identity) {
+    switch identity {
+    case .absent:
+      self = .absent
+    case .resolved(let accountId, .id(let actorId)):
+      self = .resolved(accountId: accountId, actor: .id(actorId))
+    case .resolved(let accountId, .email(let email)):
+      self = .resolved(accountId: accountId, actor: .email(email))
+    case .refused:
+      self = .refused
     }
   }
 }

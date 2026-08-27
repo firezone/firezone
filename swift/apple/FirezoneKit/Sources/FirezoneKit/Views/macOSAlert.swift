@@ -335,6 +335,19 @@
       show(alert)
     }
 
+    /// Tells the user that the certificate configured for them cannot start a session.
+    ///
+    /// Returns without waiting for the user, so callers don't stall behind the alert.
+    public static func showRefusedCertificateAlert() {
+      let alert = NSAlert()
+      alert.messageText = "Firezone cannot connect with this certificate"
+      alert.informativeText = X509ConnectError.refusedIdentity.localizedDescription
+      alert.addButton(withTitle: "OK")
+      NSApp.activate(ignoringOtherApps: true)
+
+      show(alert)
+    }
+
     /// Shows a disconnected alert explaining why Firezone disconnected.
     public static func showDisconnectedAlert(
       _ message: String?,

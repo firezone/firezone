@@ -30,8 +30,8 @@ public final class Store: ObservableObject {
     return "Signed in as \(actorName)"
   }
 
-  /// The actor a usable client certificate names, `nil` when there is nobody to connect as.
-  @Published private(set) var certificateActor: String?
+  /// Who the client certificate says is connecting, which decides what the controls offer.
+  @Published private(set) var certificateIdentity: X509ClaimedIdentity = .absent
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
   @Published private(set) var connectedDevices: [ConnectedDevice] = []
@@ -399,8 +399,8 @@ public final class Store: ObservableObject {
         try await initSystemExtension()
         Log.debug("Startup: initVPNConfiguration")
         try await initVPNConfiguration()
-        Log.debug("Startup: loadCertificateActor")
-        await loadCertificateActor()
+        Log.debug("Startup: loadCertificateIdentity")
+        await loadCertificateIdentity()
         Telemetry.setEnvironmentOrClose(configuration.apiURL)
         #if os(macOS)
           Log.debug("Startup: drainFlowLogsOnLaunch")
@@ -501,7 +501,7 @@ public final class Store: ObservableObject {
     }
   }
 
-  private func loadCertificateActor() async {
+  private func loadCertificateIdentity() async {
     let keychain = X509CertificateSource.keychain { try self.manager().identityReference() }
     let source = x509CertificateSource ?? keychain
 
@@ -509,13 +509,11 @@ public final class Store: ObservableObject {
       let certificate = try await source.read().certificate
       let summary = certificate.flatMap { X509CertificateParser.summary(of: $0) }
 
-      // A certificate Firezone will not present authenticates nobody, so it names
-      // nobody to connect as either.
-      certificateActor = summary?.isUsable == true ? summary?.actorEmail : nil
+      certificateIdentity = summary?.identity ?? .absent
     } catch {
       Log.error("Failed to read the client certificate: \(error.localizedDescription)")
 
-      certificateActor = nil
+      certificateIdentity = .absent
     }
   }
 
@@ -683,7 +681,7 @@ public final class Store: ObservableObject {
 
   /// Starts the session without a token: the portal authenticates the mutual-TLS
   /// connection itself, so nothing has to go through the browser first.
-  func signInWithCertificate() async throws {
+  func connectWithCertificate() async throws {
     try await manager().save(configuration: configuration)
     try await manager().enable()
 
