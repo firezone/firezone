@@ -779,6 +779,7 @@ impl<I: GuiIntegration> Controller<I> {
                 }
 
                 self.notify_x509_status_changed()?;
+                self.refresh_ui_state();
             }
             service::ServerMsg::GatewayVersionMismatch { resource_id } => {
                 let (resource, site) = self.resource_by_id(resource_id)?;
@@ -950,6 +951,11 @@ impl<I: GuiIntegration> Controller<I> {
 
         self.integration.set_tray_menu(system_tray::AppState {
             connlib,
+            identity: self
+                .x509_status
+                .as_ref()
+                .map(|status| status.identity.clone())
+                .unwrap_or(x509_keystore::ClientIdentity::Absent),
             release: self.release.clone(),
             hide_admin_portal_menu_item: self
                 .mdm_settings
