@@ -346,11 +346,11 @@ impl CandidateCertificate for Certificate {
             self.metadata.signing_algorithm,
             self.usable,
         ) {
-            (Some(error), _, _) => Some(UnusableCause::WindowsKeyRefused {
+            (Some(error), _, _) => Some(UnusableCause::KeyRefused {
                 error: error.clone(),
             }),
             (None, None, _) => Some(UnusableCause::UnsupportedKeyAlgorithm),
-            (None, Some(_), false) => Some(UnusableCause::WindowsKeyMissing),
+            (None, Some(_), false) => Some(UnusableCause::KeyMissing),
             (None, Some(_), true) => None,
         }
     }
