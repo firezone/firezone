@@ -15,6 +15,51 @@ pub struct UserIdentity {
     pub account_id: String,
 }
 
+/// Who the certificate says is connecting, mirroring [`x509_claims::Identity`].
+///
+/// Naming nobody and naming somebody the portal cannot look up are different answers: the
+/// first signs in through the browser, the second cannot connect at all.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum Identity {
+    Absent,
+    Resolved { account_id: String, actor: Actor },
+    Refused,
+}
+
+/// How a certificate names the actor connecting, mirroring [`x509_claims::Actor`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum Actor {
+    /// A service account, which carries no email to name it by.
+    Id {
+        actor_id: String,
+    },
+    Email {
+        email: String,
+    },
+}
+
+impl From<x509_claims::Identity> for Identity {
+    fn from(identity: x509_claims::Identity) -> Self {
+        match identity {
+            x509_claims::Identity::Absent => Self::Absent,
+            x509_claims::Identity::Refused => Self::Refused,
+            x509_claims::Identity::Resolved { account_id, actor } => Self::Resolved {
+                account_id,
+                actor: Actor::from(actor),
+            },
+        }
+    }
+}
+
+impl From<x509_claims::Actor> for Actor {
+    fn from(actor: x509_claims::Actor) -> Self {
+        match actor {
+            x509_claims::Actor::Id(actor_id) => Self::Id { actor_id },
+            x509_claims::Actor::Email(email) => Self::Email { email },
+        }
+    }
+}
+
 /// A row for certificate diagnostics screens, mirroring [`x509_claims::DetailField`].
 ///
 /// The value reads on top and the problem, if there is one, underneath it.
@@ -113,6 +158,8 @@ pub struct ParsedCertificate {
     /// The rules it fails that no detail row carries, which the clients state with the verdict.
     pub certificate_problems: Vec<UnusableReason>,
     pub user_identity: Option<UserIdentity>,
+    /// Who the certificate says is connecting, which decides what the clients offer.
+    pub identity: Identity,
     /// Ready-to-display diagnostics rows derived from the fields above.
     pub detail_fields: Vec<DetailField>,
 }
@@ -136,6 +183,7 @@ impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
             .map(UnusableReason::from)
             .collect();
         let user_identity = parsed.user_identity().map(UserIdentity::from);
+        let identity = Identity::from(parsed.identity());
         let detail_fields = parsed
             .detail_fields()
             .into_iter()
@@ -167,6 +215,7 @@ impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
             is_usable,
             certificate_problems,
             user_identity,
+            identity,
             detail_fields,
         }
     }
