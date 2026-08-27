@@ -67,7 +67,7 @@ internal val sampleConnectedDevices: ImmutableList<ConnectedDevice> =
         )
     }.toImmutableList()
 
-// So that the resource details sheet has a site section to show.
+// The resource details sheet has a site section, so the samples need a site.
 private val sampleSite = Site(id = "site-1", name = "Sydney office")
 
 internal val sampleResources: ImmutableList<ResourceUiModel> =

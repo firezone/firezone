@@ -124,7 +124,7 @@
     }
 
     static func mock(scenario: MockScenario = .connected, logDirectory: URL? = nil) -> Store {
-      // swiftlint:disable:next no_userdefaults_standard - what `Store` itself defaults to
+      // swiftlint:disable:next no_userdefaults_standard - DI entry point
       UserDefaults.standard.set(scenario.favorites, forKey: Favorites.key)
 
       #if os(macOS)
