@@ -133,9 +133,9 @@ function certificateSection(
 // An identity an MDM enrolled into the Windows certificate stores.
 const windowsCertificate: Certificate = {
   commonName: SUBJECT_CN,
-  subject: `O=Acme Corp, CN=${SUBJECT_CN}`,
-  issuer: "DC=example, DC=acme, CN=Acme Corp Issuing CA 1",
-  actorEmail: present("alice@example.com"),
+  subject: `O=Example Corp, CN=${SUBJECT_CN}`,
+  issuer: "DC=com, DC=example, CN=Example Corp Issuing CA 1",
+  actorEmail: present("jane.doe@example.com"),
   accountId: present("6f3f8a2c-0b74-4f8a-9b1f-1c2d3e4f5a6b"),
   mdmDeviceId: present("9a1c7d4e-5f60-4b28-8c3a-2d5e7f9b0c14"),
   deviceSerial: present("PF2X9K7L"),
@@ -152,7 +152,7 @@ const windowsCertificate: Certificate = {
 const invalidAttributeCertificate: Certificate = {
   ...windowsCertificate,
   actorEmail: {
-    value: { Present: "alice(at)example.com" },
+    value: { Present: "jane.doe(at)example.com" },
     problem: { Rejected: "NotAnEmailAddress" },
   },
   accountId: { value: "Absent", problem: { Rejected: "Empty" } },
