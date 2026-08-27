@@ -16,7 +16,6 @@ import {
   X509DetailField,
   X509DetailSection,
   X509FieldProblem,
-  X509FieldValue,
   X509Status,
 } from "./generated/bindings";
 import "./main.css";
@@ -90,7 +89,7 @@ interface Certificate {
 
 // One row as the parser hands it over: what the certificate said, and what is wrong with it.
 interface Row {
-  value: X509FieldValue;
+  value: string | null;
   problem?: X509FieldProblem;
 }
 
@@ -99,7 +98,7 @@ function row(label: string, { value, problem }: Row): X509DetailField {
 }
 
 function present(value: string): Row {
-  return { value: { Present: value } };
+  return { value };
 }
 
 // The rows in the order `x509_claims::ParsedCertificate::detail_fields` builds them.
@@ -150,15 +149,15 @@ const windowsCertificate: Certificate = {
     "90:E4:45:C9:E2:8E:8F:5B:57:D2:30:90:8C:6F:B2:3D:CE:A1:61:CA:96:3E:BF:B2:8E:E7:3D:A9:CF:70:DD:B7",
 };
 
-// A certificate the client presents even though two of its claims will not be attested: one
-// whose value the parser refuses, and one the certificate leaves empty.
+// A certificate the client presents even though two of its claims hold nothing usable: one
+// whose value is not an email address, and one the certificate leaves empty.
 const invalidAttributeCertificate: Certificate = {
   ...windowsCertificate,
   actorEmail: {
-    value: { Present: "jane.doe(at)example.com" },
-    problem: { Rejected: "NotAnEmailAddress" },
+    value: "jane.doe(at)example.com",
+    problem: { Invalid: "NotAnEmailAddress" },
   },
-  accountId: { value: "Absent", problem: { Rejected: "Empty" } },
+  accountId: { value: null, problem: { Invalid: "Empty" } },
 };
 
 const expiredCertificate: Certificate = {

@@ -124,27 +124,20 @@ pub struct X509DetailSection {
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub struct X509DetailField {
     pub label: String,
-    pub value: X509FieldValue,
+    pub value: Option<String>,
     pub problem: Option<X509FieldProblem>,
-}
-
-/// Mirrors [`x509_keystore::FieldValue`].
-#[derive(Clone, serde::Serialize, specta::Type)]
-pub enum X509FieldValue {
-    Present(String),
-    Absent,
 }
 
 /// Mirrors [`x509_keystore::FieldProblem`] so the frontend writes the sentence it shows.
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub enum X509FieldProblem {
-    Rejected(X509RejectionReason),
+    Invalid(X509ValidationError),
     Unreadable(String),
 }
 
-/// Mirrors [`x509_keystore::RejectionReason`].
+/// Mirrors [`x509_keystore::ValidationError`].
 #[derive(Clone, serde::Serialize, specta::Type)]
-pub enum X509RejectionReason {
+pub enum X509ValidationError {
     Empty,
     TooLong,
     NotAnEmailAddress,
@@ -185,7 +178,7 @@ impl From<&x509_keystore::Status> for X509Status {
                         .iter()
                         .map(|field| X509DetailField {
                             label: field.label.clone(),
-                            value: field.value.clone().into(),
+                            value: field.value.clone(),
                             problem: field.problem.clone().map(X509FieldProblem::from),
                         })
                         .collect(),
@@ -268,34 +261,25 @@ impl From<x509_keystore::UnreadableStore> for X509UnreadableStore {
     }
 }
 
-impl From<x509_keystore::FieldValue> for X509FieldValue {
-    fn from(value: x509_keystore::FieldValue) -> Self {
-        match value {
-            x509_keystore::FieldValue::Present(value) => Self::Present(value),
-            x509_keystore::FieldValue::Absent => Self::Absent,
-        }
-    }
-}
-
 impl From<x509_keystore::FieldProblem> for X509FieldProblem {
     fn from(problem: x509_keystore::FieldProblem) -> Self {
         match problem {
-            x509_keystore::FieldProblem::Rejected(reason) => Self::Rejected(reason.into()),
+            x509_keystore::FieldProblem::Invalid(error) => Self::Invalid(error.into()),
             x509_keystore::FieldProblem::Unreadable(message) => Self::Unreadable(message),
         }
     }
 }
 
-impl From<x509_keystore::RejectionReason> for X509RejectionReason {
-    fn from(reason: x509_keystore::RejectionReason) -> Self {
-        match reason {
-            x509_keystore::RejectionReason::Empty => Self::Empty,
-            x509_keystore::RejectionReason::TooLong => Self::TooLong,
-            x509_keystore::RejectionReason::NotAnEmailAddress => Self::NotAnEmailAddress,
-            x509_keystore::RejectionReason::NotAUuid => Self::NotAUuid,
-            x509_keystore::RejectionReason::Ambiguous => Self::Ambiguous,
-            x509_keystore::RejectionReason::PlaceholderIdentifier => Self::PlaceholderIdentifier,
-            x509_keystore::RejectionReason::UnknownAttribute => Self::UnknownAttribute,
+impl From<x509_keystore::ValidationError> for X509ValidationError {
+    fn from(error: x509_keystore::ValidationError) -> Self {
+        match error {
+            x509_keystore::ValidationError::Empty => Self::Empty,
+            x509_keystore::ValidationError::TooLong => Self::TooLong,
+            x509_keystore::ValidationError::NotAnEmailAddress => Self::NotAnEmailAddress,
+            x509_keystore::ValidationError::NotAUuid => Self::NotAUuid,
+            x509_keystore::ValidationError::Ambiguous => Self::Ambiguous,
+            x509_keystore::ValidationError::PlaceholderIdentifier => Self::PlaceholderIdentifier,
+            x509_keystore::ValidationError::UnknownAttribute => Self::UnknownAttribute,
         }
     }
 }

@@ -2,14 +2,13 @@ import React from "react";
 import {
   X509DetailSection,
   X509FieldProblem,
-  X509FieldValue,
   X509Package,
   X509Problem,
-  X509RejectionReason,
   X509Status,
   X509UnreadableStore,
   X509UnusableCause,
   X509UnusableCertificate,
+  X509ValidationError,
 } from "../generated/bindings";
 import RemixIcon from "./RemixIcon";
 
@@ -17,7 +16,7 @@ const CERTIFICATE_SECTION = "Certificate";
 // What the keystore backends title a certificate they found and would not present.
 const UNUSED_CERTIFICATE_SECTION = "Unused Certificate";
 
-const REJECTION_TEXT: Record<X509RejectionReason, string> = {
+const VALIDATION_ERROR_TEXT: Record<X509ValidationError, string> = {
   Empty: "empty",
   TooLong: "longer than 255 characters",
   NotAnEmailAddress: "not a valid email address",
@@ -104,18 +103,20 @@ function storeText(stores: X509UnreadableStore[]): string {
   return stores.map(({ store, error }) => `${store}: ${error}`).join("; ");
 }
 
-function FieldValue({ value }: { value: X509FieldValue }) {
-  if (value === "Absent") {
+function FieldValue({ value }: { value: string | null }) {
+  if (value === null) {
     return <span className="text-subtle">Not present</span>;
   }
 
-  return <>{value.Present}</>;
+  return <>{value}</>;
 }
 
 // Reads underneath the value it belongs to, the way a form shows an error on its input.
 function FieldProblem({ problem }: { problem: X509FieldProblem }) {
-  if ("Rejected" in problem) {
-    return <Note tone="text-warning">{REJECTION_TEXT[problem.Rejected]}</Note>;
+  if ("Invalid" in problem) {
+    return (
+      <Note tone="text-warning">{VALIDATION_ERROR_TEXT[problem.Invalid]}</Note>
+    );
   }
 
   return <Note tone="text-warning">{problem.Unreadable}</Note>;
@@ -134,13 +135,7 @@ function presentField(
   section: X509DetailSection | undefined,
   label: string
 ): string | null {
-  const value = section?.fields.find((field) => field.label === label)?.value;
-
-  if (value === undefined || value === "Absent") {
-    return null;
-  }
-
-  return value.Present;
+  return section?.fields.find((field) => field.label === label)?.value ?? null;
 }
 
 function Warning({ problem }: { problem: X509Problem }) {

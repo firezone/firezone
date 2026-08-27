@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use x509_credential::{ClientCertificate, PrivateKey};
 
 /// Re-exported because [`Status`] carries it: a caller matching on one needs to name it.
-pub use x509_claims::{Identity as ClientIdentity, RejectionReason};
+pub use x509_claims::{Identity as ClientIdentity, ValidationError};
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 mod sign;
@@ -222,26 +222,10 @@ pub struct DetailSection {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct DetailField {
     pub label: String,
-    pub value: FieldValue,
+    /// What the row carries, [`None`] when it carries nothing.
+    pub value: Option<String>,
     /// What is wrong with the value, [`None`] when nothing is.
     pub problem: Option<FieldProblem>,
-}
-
-/// What the keystore knows about one row.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub enum FieldValue {
-    Present(String),
-    Absent,
-}
-
-impl FieldValue {
-    /// The text a caller with nowhere to show a state renders instead.
-    pub fn text(&self) -> &str {
-        match self {
-            Self::Present(value) => value,
-            Self::Absent => "Not present",
-        }
-    }
 }
 
 /// What is wrong with one row of the diagnostics.
@@ -250,8 +234,8 @@ impl FieldValue {
 /// a platform refusal has no closed set of rules behind it the way the parser's problems have.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum FieldProblem {
-    /// The certificate carries a value the parser will not attest.
-    Rejected(RejectionReason),
+    /// The certificate carries a value that is not usable as what the row names.
+    Invalid(ValidationError),
     /// The keystore could not read the row, in the platform's own words.
     Unreadable(String),
 }
@@ -260,7 +244,7 @@ impl FieldProblem {
     /// A phrase that reads after the row it explains.
     pub fn label(&self) -> &str {
         match self {
-            Self::Rejected(reason) => reason.label(),
+            Self::Invalid(error) => error.label(),
             Self::Unreadable(message) => message,
         }
     }
@@ -286,7 +270,7 @@ impl Status {
             for field in &section.fields {
                 let _ = writeln!(output, "{}:", field.label);
 
-                for line in field.value.text().split('\n') {
+                for line in field.value.as_deref().unwrap_or("Not present").split('\n') {
                     let _ = writeln!(output, "  {line}");
                 }
 
@@ -398,7 +382,7 @@ fn join(items: &[impl fmt::Display], separator: &str) -> String {
 pub(crate) fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
     DetailField {
         label: label.into(),
-        value: FieldValue::Present(value.into()),
+        value: Some(value.into()),
         problem: None,
     }
 }
@@ -412,7 +396,7 @@ pub(crate) fn field(label: impl Into<String>, value: impl Into<String>) -> Detai
 pub(crate) fn absent_field(label: impl Into<String>) -> DetailField {
     DetailField {
         label: label.into(),
-        value: FieldValue::Absent,
+        value: None,
         problem: None,
     }
 }
@@ -426,7 +410,7 @@ pub(crate) fn absent_field(label: impl Into<String>) -> DetailField {
 pub(crate) fn failed_field(label: impl Into<String>, message: impl Into<String>) -> DetailField {
     DetailField {
         label: label.into(),
-        value: FieldValue::Absent,
+        value: None,
         problem: Some(FieldProblem::Unreadable(message.into())),
     }
 }
@@ -435,17 +419,8 @@ impl From<x509_claims::DetailField> for DetailField {
     fn from(field: x509_claims::DetailField) -> Self {
         Self {
             label: field.label,
-            value: field.value.into(),
-            problem: field.problem.map(FieldProblem::Rejected),
-        }
-    }
-}
-
-impl From<x509_claims::ClaimValue> for FieldValue {
-    fn from(value: x509_claims::ClaimValue) -> Self {
-        match value {
-            x509_claims::ClaimValue::Present { value } => Self::Present(value),
-            x509_claims::ClaimValue::Absent => Self::Absent,
+            value: field.value,
+            problem: field.problem.map(FieldProblem::Invalid),
         }
     }
 }
@@ -490,12 +465,12 @@ mod tests {
                 fields: vec![
                     DetailField {
                         label: "Account ID".to_owned(),
-                        value: FieldValue::Present("not-a-uuid".to_owned()),
-                        problem: Some(FieldProblem::Rejected(RejectionReason::NotAUuid)),
+                        value: Some("not-a-uuid".to_owned()),
+                        problem: Some(FieldProblem::Invalid(ValidationError::NotAUuid)),
                     },
                     DetailField {
                         label: "Serial Number".to_owned(),
-                        value: FieldValue::Absent,
+                        value: None,
                         problem: Some(FieldProblem::Unreadable(
                             "CertGetNameString failed".to_owned(),
                         )),
