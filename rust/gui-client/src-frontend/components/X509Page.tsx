@@ -150,11 +150,7 @@ function FieldProblem({ problem }: { problem: X509FieldProblem }) {
   }
 
   if ("Rejected" in problem) {
-    return (
-      <Note tone="text-warning">
-        Ignored: {REJECTION_TEXT[problem.Rejected]}
-      </Note>
-    );
+    return <Note tone="text-warning">{REJECTION_TEXT[problem.Rejected]}</Note>;
   }
 
   return <Note tone="text-warning">{problem.Unreadable}</Note>;
