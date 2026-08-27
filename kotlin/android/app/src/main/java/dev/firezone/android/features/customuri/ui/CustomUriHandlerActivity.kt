@@ -5,27 +5,32 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.R
 import dev.firezone.android.core.presentation.MainActivity
-import dev.firezone.android.databinding.ActivityCustomUriHandlerBinding
 import dev.firezone.android.features.customuri.notifications.CustomUriNotification
+import dev.firezone.android.features.customuri.ui.compose.CustomUriScreen
 import dev.firezone.android.tunnel.TunnelService
+import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-class CustomUriHandlerActivity : AppCompatActivity(R.layout.activity_custom_uri_handler) {
-    private lateinit var binding: ActivityCustomUriHandlerBinding
+class CustomUriHandlerActivity : AppCompatActivity() {
     private val viewModel: CustomUriViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityCustomUriHandlerBinding.inflate(layoutInflater)
+
+        setContent {
+            FirezoneTheme {
+                CustomUriScreen()
+            }
+        }
 
         setupActionObservers()
         viewModel.parseCustomUri(intent)
