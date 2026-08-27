@@ -7,9 +7,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -68,7 +70,11 @@ fun SettingsScreen(
             CenterAlignedTopAppBar(
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
-                    TextButton(onClick = onCancel) {
+                    // M3 labels text buttons with `primary`, which the brand makes orange.
+                    TextButton(
+                        onClick = onCancel,
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+                    ) {
                         Text(stringResource(android.R.string.cancel))
                     }
                 },
@@ -76,6 +82,7 @@ fun SettingsScreen(
                     TextButton(
                         onClick = { if (warnBeforeSaving) showSaveWarning = true else onSave() },
                         enabled = isSaveEnabled,
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
                     ) {
                         Text(stringResource(R.string.save))
                     }
@@ -149,6 +156,7 @@ fun SettingsScreen(
                         showSaveWarning = false
                         onSave()
                     },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
                 ) {
                     Text(stringResource(R.string.settings_save_warning_confirm))
                 }

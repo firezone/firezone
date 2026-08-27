@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -87,7 +88,12 @@ private fun PermissionScreen(
                 Text(stringResource(R.string.request_permission))
             }
             if (onSkip != null) {
-                TextButton(onClick = onSkip, modifier = Modifier.fillMaxWidth()) {
+                // M3 labels text buttons with `primary`, which the brand makes orange.
+                TextButton(
+                    onClick = onSkip,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+                ) {
                     Text(stringResource(R.string.skip))
                 }
             }
