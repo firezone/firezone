@@ -278,15 +278,13 @@ const screens: Record<string, Screen> = {
     },
   },
   // The certificate is past its validity window, which the page shows without
-  // remarking on: what stops it being presented is that Windows holds no key.
+  // remarking on: what stops it being presented is that the keystore holds no key.
   "x509-unusable": {
     route: "/x509",
     x509: {
       identity: "Absent",
       problems: [],
-      sections: [
-        unusedCertificateSection(expiredCertificate, "WindowsKeyMissing"),
-      ],
+      sections: [unusedCertificateSection(expiredCertificate, "KeyMissing")],
     },
   },
   "diagnostics-no-logs": { route: "/diagnostics" },

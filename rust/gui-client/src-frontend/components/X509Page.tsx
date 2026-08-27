@@ -65,19 +65,15 @@ function problemText(problem: X509Problem): string {
 }
 
 function causeText(cause: X509UnusableCause): string {
-  if (cause === "WindowsKeyMissing") {
-    return "Windows holds no private key for this certificate";
-  }
-
-  if (cause === "Pkcs11KeyMissing") {
-    return "the token holds no private key for this certificate";
+  if (cause === "KeyMissing") {
+    return "the keystore holds no private key for this certificate";
   }
 
   if (cause === "UnsupportedKeyAlgorithm") {
     return "we cannot sign with this certificate's key algorithm";
   }
 
-  return `Windows would not hand over the private key: ${cause.WindowsKeyRefused.error}`;
+  return `the keystore would not hand over the private key: ${cause.KeyRefused.error}`;
 }
 
 function storeText(stores: X509UnreadableStore[]): string {
