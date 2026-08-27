@@ -43,30 +43,4 @@
 
     <!-- Status Colors -->
     <color name="live_green">#22a559</color>
-
-    <!--
-        Portal semantic palette. These mirror the tokens defined under `:root` in
-        `elixir/assets/css/main.css`, converted from OKLCH to sRGB, so the app and the admin
-        portal render the same colours. Keep them in sync with that file.
-    -->
-    <color name="portal_brand">#ff7605</color>
-    <color name="portal_brand_secondary">#ff9a47</color>
-    <color name="portal_brand_tertiary">#fff1e5</color>
-    <color name="portal_brand_hover">#c25700</color>
-
-    <color name="portal_canvas">#eef1f6</color>
-    <color name="portal_surface">#ffffff</color>
-    <color name="portal_surface_raised">#f7f9fc</color>
-    <color name="portal_border_strong">#290f172a</color>
-
-    <color name="portal_text_primary">#0f172a</color>
-    <color name="portal_text_secondary">#475569</color>
-    <color name="portal_text_tertiary">#6e8197</color>
-    <color name="portal_text_inverse">#f8fafc</color>
-
-    <color name="portal_success">#16a34a</color>
-    <color name="portal_success_light">#f0fdf4</color>
-    <color name="portal_success_dark">#15803d</color>
-    <color name="portal_danger">#dc2626</color>
-    <color name="portal_danger_light">#fee2e2</color>
 </resources>
