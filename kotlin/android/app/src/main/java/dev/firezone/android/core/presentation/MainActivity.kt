@@ -4,18 +4,33 @@ package dev.firezone.android.core.presentation
 import android.content.Context
 import android.content.RestrictionsManager
 import android.os.Bundle
+import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope // For launching coroutines
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.R
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.ui.AppNavHost
+import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
-internal class MainActivity : AppCompatActivity(R.layout.activity_main) {
+internal class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var repository: Repository
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        setContent {
+            FirezoneTheme {
+                AppNavHost(
+                    onNotificationPermissionRequested = repository::setNotificationPermissionRequested,
+                    onSignInLaunched = ::finish,
+                )
+            }
+        }
+    }
 
     override fun onResume() {
         super.onResume()

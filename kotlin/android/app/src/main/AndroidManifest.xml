@@ -47,8 +47,6 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
-            <nav-graph android:value="@navigation/app_nav_graph" />
         </activity>
 
         <activity
@@ -66,14 +64,6 @@
                 <data android:scheme="firezone-fd0020211111" />
             </intent-filter>
         </activity>
-
-        <activity
-            android:name="dev.firezone.android.features.permission.vpn.ui.VpnPermissionActivity"
-            android:exported="false" />
-
-        <activity
-            android:name="dev.firezone.android.features.permission.notification.ui.NotificationPermissionActivity"
-            android:exported="false" />
 
         <activity
             android:name="dev.firezone.android.features.session.ui.SessionActivity"
