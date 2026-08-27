@@ -162,10 +162,7 @@ const expiredCertificate: Certificate = {
   ...windowsCertificate,
   serialNumber: "7d:f2:02:1f:e6:58:05:32:af:9c:0f:07:46:91:15:24",
   notBefore: "Feb 14 08:30:00 2023 +00:00",
-  notAfter: {
-    value: { Present: "May 19 08:30:00 2025 +00:00" },
-    problem: { Unusable: "Expired" },
-  },
+  notAfter: present("May 19 08:30:00 2025 +00:00"),
   fingerprint:
     "DA:A5:4F:C1:B7:D1:F0:DA:C3:AC:A5:F1:07:16:4E:DA:AE:63:15:BC:CB:7E:59:AA:FC:1D:E3:C0:63:C2:3C:AC",
 };
@@ -235,7 +232,8 @@ const screens: Record<string, Screen> = {
       sections: [certificateSection(CERTIFICATE, invalidAttributeCertificate)],
     },
   },
-  // Nothing was picked, so the certificate that was found is an unused one.
+  // The certificate is past its validity window, which the page shows without
+  // remarking on: what stops it being presented is that Windows holds no key.
   "x509-unusable": {
     route: "/x509",
     x509: {
@@ -245,7 +243,7 @@ const screens: Record<string, Screen> = {
             certificates: [
               {
                 fingerprint: expiredCertificate.fingerprint,
-                cause: { FailsRules: { reasons: ["Expired"] } },
+                cause: "WindowsKeyMissing",
               },
             ],
           },
