@@ -145,7 +145,8 @@ func installCertificateParser() {
           value: X509ClaimValue(field.value),
           problem: field.problem.map { X509FieldProblem($0) }
         )
-      }
+      },
+      actorEmail: parsed.userIdentity?.email
     )
   }
 }

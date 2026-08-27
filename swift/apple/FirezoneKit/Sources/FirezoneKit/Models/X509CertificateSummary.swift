@@ -94,21 +94,25 @@ public struct X509CertificateSummary: Equatable, Sendable {
   public let certificateProblems: [X509UnusableReason]
   /// Rows to render, in the order the parser produced them.
   public let fields: [X509CertificateField]
+  /// The actor the portal will attest, `nil` when the certificate names none.
+  public let actorEmail: String?
 
   public init(
     isUsable: Bool,
     certificateProblems: [X509UnusableReason],
-    fields: [X509CertificateField]
+    fields: [X509CertificateField],
+    actorEmail: String?
   ) {
     self.isUsable = isUsable
     self.certificateProblems = certificateProblems
     self.fields = fields
+    self.actorEmail = actorEmail
   }
 
   /// Bytes that are not a certificate, reported as one that fails a rule so that the
   /// screen states the same verdict it states for every certificate it will not present.
   public static let unreadable = X509CertificateSummary(
-    isUsable: false, certificateProblems: [.unreadable], fields: [])
+    isUsable: false, certificateProblems: [.unreadable], fields: [], actorEmail: nil)
 }
 
 /// Where the app installs the certificate parser.
