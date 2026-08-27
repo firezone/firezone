@@ -7,8 +7,7 @@
 
     <fragment
         android:id="@+id/splashFragment"
-        android:name="dev.firezone.android.features.splash.ui.SplashFragment"
-        tools:layout="@layout/fragment_splash" />
+        android:name="dev.firezone.android.features.splash.ui.SplashFragment" />
 
     <fragment
         android:id="@+id/signInFragment"
@@ -17,8 +16,7 @@
     <activity
         android:id="@+id/settingsActivity"
         android:name="dev.firezone.android.features.settings.ui.SettingsActivity"
-        android:label="SettingsActivity"
-        tools:layout="@layout/activity_settings">
+        android:label="SettingsActivity">
         <argument
             android:name="isUserSignedIn"
             app:argType="boolean" />
@@ -26,8 +24,7 @@
 
     <activity
         android:id="@+id/sessionActivity"
-        android:name="dev.firezone.android.features.session.ui.SessionActivity"
-        tools:layout="@layout/activity_session" />
+        android:name="dev.firezone.android.features.session.ui.SessionActivity" />
 
     <activity
         android:id="@+id/vpnPermissionActivity"
