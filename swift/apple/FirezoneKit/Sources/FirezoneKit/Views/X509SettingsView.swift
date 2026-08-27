@@ -173,7 +173,7 @@ struct X509SettingsView: View {
       }
 
       if let explainer {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
+        HStack(spacing: 4) {
           if isAttesting {
             Image(systemName: "checkmark.circle")
               .foregroundStyle(.tint)
