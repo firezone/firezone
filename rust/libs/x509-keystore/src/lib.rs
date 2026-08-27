@@ -63,24 +63,25 @@ pub(crate) struct Identity {
     pub(crate) key: Arc<dyn PrivateKey>,
 }
 
-/// What [`selected_certificate`] and [`unusable_certificates`] read from a backend's certificate.
+/// What [`certificate_sections`] and [`selected_certificate`] read from a backend's certificate.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 #[allow(
     dead_code,
     reason = "only the keystore backends rank candidates, and not every build compiles one"
 )]
 pub(crate) trait CandidateCertificate {
-    /// Whether we can sign a TLS handshake with the certificate's private key.
+    /// Says why we cannot sign a TLS handshake with the certificate's private key, [`None`]
+    /// when we can.
     ///
-    /// Whether the portal accepts the certificate is the portal's to decide, so nothing the
-    /// certificate itself says belongs in this answer.
-    fn usable(&self) -> bool;
+    /// Whether the portal accepts the certificate is the portal's to decide, so only what stops
+    /// us signing with it belongs in this answer.
+    fn unusable(&self) -> Option<UnusableCause>;
 
     /// When the certificate's validity begins, as seconds since the Unix epoch.
     fn not_before_timestamp(&self) -> i64;
 
-    /// Says why this certificate cannot be presented for mutual TLS.
-    fn unusable(&self) -> UnusableCertificate;
+    /// The rows describing the certificate, as the backend read it.
+    fn detail_fields(&self) -> Vec<DetailField>;
 }
 
 /// Returns the certificate a backend presents as the client identity, as an index into
@@ -97,7 +98,7 @@ pub(crate) fn selected_certificate<C: CandidateCertificate>(certificates: &[C]) 
     certificates
         .iter()
         .enumerate()
-        .filter(|(_, certificate)| certificate.usable())
+        .filter(|(_, certificate)| certificate.unusable().is_none())
         .max_by_key(|(_, certificate)| certificate.not_before_timestamp())
         .map(|(index, _)| index)
 }
@@ -108,25 +109,61 @@ pub(crate) fn selected_certificate<C: CandidateCertificate>(certificates: &[C]) 
     dead_code,
     reason = "only the keystore backends rank candidates, and not every build compiles one"
 )]
-pub(crate) fn unusable_certificates<C: CandidateCertificate>(
+pub(crate) fn unusable_causes<C: CandidateCertificate>(certificates: &[C]) -> Vec<UnusableCause> {
+    certificates.iter().filter_map(C::unusable).collect()
+}
+
+/// Describes every certificate a backend found, starting with the one it presents.
+///
+/// A certificate we could read is described whatever is wrong with it, and what is wrong reads as
+/// a row of its own section rather than as a warning about the keystore: the keystore did find it.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[allow(
+    dead_code,
+    reason = "only the keystore backends rank candidates, and not every build compiles one"
+)]
+pub(crate) fn certificate_sections<C: CandidateCertificate>(
     certificates: &[C],
-) -> Vec<UnusableCertificate> {
-    certificates
-        .iter()
-        .filter(|certificate| !certificate.usable())
-        .map(C::unusable)
+    selected: Option<usize>,
+) -> Vec<DetailSection> {
+    let mut order = (0..certificates.len()).collect::<Vec<_>>();
+    order.sort_by_key(|index| Some(*index) != selected);
+
+    order
+        .into_iter()
+        .map(|index| {
+            let certificate = &certificates[index];
+            let unusable = certificate.unusable().map(|cause| DetailField {
+                // No X.509 attribute says whether we hold a key we can sign with, so the row
+                // names what the keystore looked for.
+                label: "Private Key".to_owned(),
+                value: None,
+                problem: Some(FieldProblem::Unusable(cause)),
+            });
+
+            DetailSection {
+                title: match Some(index) == selected {
+                    true => "Certificate".to_owned(),
+                    false => "Unused Certificate".to_owned(),
+                },
+                fields: unusable
+                    .into_iter()
+                    .chain(certificate.detail_fields())
+                    .collect(),
+            }
+        })
         .collect()
 }
 
 /// Read-only diagnostics about the keystore's X.509 identities.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Status {
-    /// What keeps a client identity from being used, if anything.
+    /// What the keystore could not do, if anything.
     ///
-    /// A status without a problem reports a usable identity: the certificate it describes says
-    /// the rest, so there is no all-good text to repeat. Backends report the problems they found
-    /// separately rather than as one sentence, because a keystore can hold both an unusable
-    /// certificate and a part it could not read at all.
+    /// A problem describes the keystore, never a certificate we managed to read: what is wrong
+    /// with one of those reads as a row of its own section. Backends report the problems they
+    /// found separately rather than as one sentence, because a keystore can hold both a part it
+    /// could not read and a part that holds nothing for us.
     pub problems: Vec<Problem>,
     pub sections: Vec<DetailSection>,
     /// Who the certificate the keystore would present says is connecting.
@@ -146,18 +183,10 @@ pub struct Status {
 pub enum Problem {
     /// No certificate in the Windows certificate stores carries the subject common name.
     NoWindowsCertificate { subject_cn: String },
-    /// The Windows certificate stores carry matching certificates, none of them usable.
-    NoUsableWindowsCertificate {
-        certificates: Vec<UnusableCertificate>,
-    },
     /// Some of the Windows certificate stores could not be read.
     UnreadableWindowsStores { stores: Vec<UnreadableStore> },
     /// No PKCS#11 token holds a certificate carrying the subject common name.
     NoPkcs11Certificate { subject_cn: String },
-    /// A PKCS#11 token holds matching certificates, none of them usable.
-    NoUsablePkcs11Certificate {
-        certificates: Vec<UnusableCertificate>,
-    },
     /// Every registered PKCS#11 module failed, so the keystore could not be read at all.
     UnreadablePkcs11Keystore,
     /// The keystore could not be read, in a client that has only the failure to go on.
@@ -179,14 +208,6 @@ pub enum Problem {
 pub enum Package {
     /// p11-kit, whose registry names the PKCS#11 modules a machine has.
     P11Kit,
-}
-
-/// A certificate that carries the subject common name and cannot authenticate the client.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct UnusableCertificate {
-    /// The SHA-256 fingerprint, which is how the diagnostics name a certificate.
-    pub fingerprint: String,
-    pub cause: UnusableCause,
 }
 
 /// What keeps one matching certificate from being presented for mutual TLS.
@@ -238,16 +259,8 @@ pub enum FieldProblem {
     Invalid(ValidationError),
     /// The keystore could not read the row, in the platform's own words.
     Unreadable(String),
-}
-
-impl FieldProblem {
-    /// A phrase that reads after the row it explains.
-    pub fn label(&self) -> &str {
-        match self {
-            Self::Invalid(error) => error.label(),
-            Self::Unreadable(message) => message,
-        }
-    }
+    /// The row says why the certificate cannot be presented for mutual TLS.
+    Unusable(UnusableCause),
 }
 
 impl Status {
@@ -275,7 +288,7 @@ impl Status {
                 }
 
                 if let Some(problem) = &field.problem {
-                    let _ = writeln!(output, "  ({})", problem.label());
+                    let _ = writeln!(output, "  ({problem})");
                 }
             }
         }
@@ -291,11 +304,6 @@ impl fmt::Display for Problem {
                 formatter,
                 "No X.509 certificate with subject CN '{subject_cn}' is in the Windows certificate stores."
             ),
-            Self::NoUsableWindowsCertificate { certificates } => write!(
-                formatter,
-                "Matching certificates are in the Windows certificate store, but none is usable as a client identity: {}",
-                join(certificates, "; ")
-            ),
             Self::UnreadableWindowsStores { stores } => write!(
                 formatter,
                 "Some Windows certificate stores could not be read: {}",
@@ -304,11 +312,6 @@ impl fmt::Display for Problem {
             Self::NoPkcs11Certificate { subject_cn } => write!(
                 formatter,
                 "No PKCS#11 token holds an X.509 certificate with subject CN '{subject_cn}'."
-            ),
-            Self::NoUsablePkcs11Certificate { certificates } => write!(
-                formatter,
-                "Matching certificates were found, but none is usable as a client identity: {}",
-                join(certificates, "; ")
             ),
             Self::UnreadablePkcs11Keystore => formatter.write_str(
                 "The PKCS#11 keystore cannot be read, so no X.509 client identity certificate can be found. See https://www.firezone.dev/kb/reference/device-certificates for what the keystore needs installed and running.",
@@ -338,26 +341,34 @@ impl Package {
     }
 }
 
-impl fmt::Display for UnusableCertificate {
+impl fmt::Display for UnusableCause {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { fingerprint, cause } = self;
-
-        match cause {
-            UnusableCause::UnsupportedKeyAlgorithm => write!(
-                formatter,
-                "{fingerprint} is unusable: we cannot sign with its key algorithm"
-            ),
-            UnusableCause::WindowsKeyRefused { error } => write!(
-                formatter,
-                "{fingerprint} has a private key CNG will not use: {error}"
-            ),
-            UnusableCause::WindowsKeyMissing => {
-                write!(formatter, "{fingerprint} has no usable private key")
+        match self {
+            Self::UnsupportedKeyAlgorithm => {
+                formatter.write_str("we cannot sign with this certificate's key algorithm")
             }
-            UnusableCause::Pkcs11KeyMissing => write!(
-                formatter,
-                "{fingerprint} is unusable: the token holds no private key for it"
-            ),
+            Self::WindowsKeyRefused { error } => {
+                write!(
+                    formatter,
+                    "Windows would not hand over the private key: {error}"
+                )
+            }
+            Self::WindowsKeyMissing => {
+                formatter.write_str("Windows holds no private key for this certificate")
+            }
+            Self::Pkcs11KeyMissing => {
+                formatter.write_str("the token holds no private key for this certificate")
+            }
+        }
+    }
+}
+
+impl fmt::Display for FieldProblem {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Invalid(error) => formatter.write_str(error.label()),
+            Self::Unreadable(message) => formatter.write_str(message),
+            Self::Unusable(cause) => cause.fmt(formatter),
         }
     }
 }
@@ -510,67 +521,75 @@ mod tests {
         );
     }
 
-    #[test]
-    fn an_unusable_certificate_says_what_stops_us_presenting_it() {
-        let certificate = UnusableCertificate {
-            fingerprint: "AA:BB".to_owned(),
-            cause: UnusableCause::UnsupportedKeyAlgorithm,
-        };
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    struct Candidate {
+        unusable: Option<UnusableCause>,
+        not_before: i64,
+    }
 
-        assert_eq!(
-            certificate.to_string(),
-            "AA:BB is unusable: we cannot sign with its key algorithm"
-        );
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    impl CandidateCertificate for Candidate {
+        fn unusable(&self) -> Option<UnusableCause> {
+            self.unusable.clone()
+        }
+
+        fn not_before_timestamp(&self) -> i64 {
+            self.not_before
+        }
+
+        fn detail_fields(&self) -> Vec<DetailField> {
+            vec![field("Not Before", self.not_before.to_string())]
+        }
     }
 
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     #[test]
     fn the_newest_usable_certificate_wins() {
-        struct Candidate {
-            usable: bool,
-            not_before: i64,
-        }
-
-        impl CandidateCertificate for Candidate {
-            fn usable(&self) -> bool {
-                self.usable
-            }
-
-            fn not_before_timestamp(&self) -> i64 {
-                self.not_before
-            }
-
-            fn unusable(&self) -> UnusableCertificate {
-                UnusableCertificate {
-                    fingerprint: self.not_before.to_string(),
-                    cause: UnusableCause::UnsupportedKeyAlgorithm,
-                }
-            }
-        }
-
         let certificates = [
             Candidate {
-                usable: true,
+                unusable: None,
                 not_before: 1,
             },
             Candidate {
-                usable: false,
+                unusable: Some(UnusableCause::WindowsKeyMissing),
                 not_before: 3,
             },
             Candidate {
-                usable: true,
+                unusable: None,
                 not_before: 2,
             },
         ];
 
         assert_eq!(selected_certificate(&certificates), Some(2));
         assert_eq!(
-            unusable_certificates(&certificates)
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>(),
-            ["3 is unusable: we cannot sign with its key algorithm"]
+            unusable_causes(&certificates),
+            [UnusableCause::WindowsKeyMissing]
         );
         assert_eq!(selected_certificate::<Candidate>(&[]), None);
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    fn a_certificate_we_cannot_present_says_why_in_its_own_section() {
+        let certificates = [
+            Candidate {
+                unusable: Some(UnusableCause::WindowsKeyMissing),
+                not_before: 3,
+            },
+            Candidate {
+                unusable: None,
+                not_before: 2,
+            },
+        ];
+        let status = Status {
+            problems: Vec::new(),
+            sections: certificate_sections(&certificates, selected_certificate(&certificates)),
+            identity: ClientIdentity::Absent,
+        };
+
+        assert_eq!(
+            status.text_description(),
+            "[Certificate]\nNot Before:\n  2\n\n[Unused Certificate]\nPrivate Key:\n  Not present\n  (Windows holds no private key for this certificate)\nNot Before:\n  3\n"
+        );
     }
 }

@@ -7,7 +7,6 @@ import {
   X509Status,
   X509UnreadableStore,
   X509UnusableCause,
-  X509UnusableCertificate,
   X509ValidationError,
 } from "../generated/bindings";
 import RemixIcon from "./RemixIcon";
@@ -50,12 +49,6 @@ function problemText(problem: X509Problem): string {
     return `No X.509 certificate with subject CN '${subject_cn}' is in the Windows certificate stores.`;
   }
 
-  if ("NoUsableWindowsCertificate" in problem) {
-    const { certificates } = problem.NoUsableWindowsCertificate;
-
-    return `Matching certificates are in the Windows certificate store, but none is usable as a client identity: ${unusableText(certificates)}`;
-  }
-
   if ("UnreadableWindowsStores" in problem) {
     const { stores } = problem.UnreadableWindowsStores;
 
@@ -68,35 +61,23 @@ function problemText(problem: X509Problem): string {
     return `No PKCS#11 token holds an X.509 certificate with subject CN '${subject_cn}'.`;
   }
 
-  if ("NoUsablePkcs11Certificate" in problem) {
-    const { certificates } = problem.NoUsablePkcs11Certificate;
-
-    return `Matching certificates were found, but none is usable as a client identity: ${unusableText(certificates)}`;
-  }
-
   return MISSING_PACKAGE_TEXT[problem.MissingPackage.package];
 }
 
-function unusableText(certificates: X509UnusableCertificate[]): string {
-  return certificates
-    .map(({ fingerprint, cause }) => causeText(fingerprint, cause))
-    .join("; ");
-}
-
-function causeText(fingerprint: string, cause: X509UnusableCause): string {
+function causeText(cause: X509UnusableCause): string {
   if (cause === "WindowsKeyMissing") {
-    return `${fingerprint} has no usable private key`;
+    return "Windows holds no private key for this certificate";
   }
 
   if (cause === "Pkcs11KeyMissing") {
-    return `${fingerprint} is unusable: the token holds no private key for it`;
+    return "the token holds no private key for this certificate";
   }
 
   if (cause === "UnsupportedKeyAlgorithm") {
-    return `${fingerprint} is unusable: we cannot sign with its key algorithm`;
+    return "we cannot sign with this certificate's key algorithm";
   }
 
-  return `${fingerprint} has a private key CNG will not use: ${cause.WindowsKeyRefused.error}`;
+  return `Windows would not hand over the private key: ${cause.WindowsKeyRefused.error}`;
 }
 
 function storeText(stores: X509UnreadableStore[]): string {
@@ -117,6 +98,10 @@ function FieldProblem({ problem }: { problem: X509FieldProblem }) {
     return (
       <Note tone="text-warning">{VALIDATION_ERROR_TEXT[problem.Invalid]}</Note>
     );
+  }
+
+  if ("Unusable" in problem) {
+    return <Note tone="text-warning">{causeText(problem.Unusable)}</Note>;
   }
 
   return <Note tone="text-warning">{problem.Unreadable}</Note>;
@@ -142,9 +127,9 @@ function Warning({ problem }: { problem: X509Problem }) {
   return (
     <div className="mt-4 flex gap-2.5 rounded border border-warning/30 bg-warning-light p-3 text-sm text-warning">
       <RemixIcon className="mt-0.5 h-4 w-4 shrink-0" name="alert" />
-      {/* A fingerprint is one long word, and a flex item is by default as wide as
-          its longest word. Left alone it makes the box wider than the page and
-          takes the right-hand border off the window with it. */}
+      {/* A knowledge-base URL is one long word, and a flex item is by default as
+          wide as its longest word. Left alone it makes the box wider than the
+          page and takes the right-hand border off the window with it. */}
       <p className="min-w-0 break-words">{problemText(problem)}</p>
     </div>
   );
