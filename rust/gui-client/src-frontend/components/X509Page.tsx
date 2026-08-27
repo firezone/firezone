@@ -213,7 +213,9 @@ function verdict(
     };
   }
 
-  return { text: "Firezone did not find a certificate to identify this device." };
+  return {
+    text: "Firezone did not find a certificate to identify this device.",
+  };
 }
 
 function SummaryCard({ status }: { status: X509Status }) {
