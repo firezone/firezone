@@ -3,7 +3,11 @@ package dev.firezone.android.features.splash.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
@@ -12,22 +16,35 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
-import dev.firezone.android.databinding.FragmentSplashBinding
 import dev.firezone.android.features.session.ui.SessionActivity
+import dev.firezone.android.features.splash.ui.compose.SplashScreen
+import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-internal class SplashFragment : Fragment(R.layout.fragment_splash) {
-    private lateinit var binding: FragmentSplashBinding
+internal class SplashFragment : Fragment() {
     private val viewModel: SplashViewModel by viewModels()
     private var isInitialLaunch: Boolean = true
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View =
+        ComposeView(requireContext()).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                FirezoneTheme {
+                    SplashScreen()
+                }
+            }
+        }
 
     override fun onViewCreated(
         view: View,
         savedInstanceState: Bundle?,
     ) {
         super.onViewCreated(view, savedInstanceState)
-        binding = FragmentSplashBinding.bind(view)
 
         setupActionObservers()
 
