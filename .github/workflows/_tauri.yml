@@ -52,8 +52,8 @@ jobs:
       - run: pnpm install
       - run: pnpm eslint .
 
-  # Renders every screen the client can show to a PNG so UI changes can be reviewed
-  # without installing the client. The images are not compared against references.
+  # Renders every screen the client can show to a PNG; nothing is compared against
+  # a reference.
   screenshots:
     runs-on: ubuntu-24.04
     steps:

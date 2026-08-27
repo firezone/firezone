@@ -37,8 +37,7 @@ jobs:
       # (debug). Narrowing to one ABI reuses the cargo build from lint above.
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest -Pandroid.injected.build.abi=x86_64
-      # Renders the app's screens to PNGs so UI changes can be reviewed without an
-      # emulator. The images are not compared against references.
+      # Renders the app's screens to PNGs; nothing is compared against a reference.
       - name: Record screenshots
         run: ./gradlew recordRoborazziDebug -Pandroid.injected.build.abi=x86_64
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

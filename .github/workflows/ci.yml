@@ -274,10 +274,9 @@ jobs:
           fi
           git commit -m "chore(ci): re-render the screenshots"
 
-          # GITHUB_TOKEN is deliberate: GitHub starts no workflows for its pushes, so a
-          # re-render does not chain into the next one.
-
-          # The branch may have moved while the clients were building.
+          # Pushed with GITHUB_TOKEN deliberately: GitHub starts no workflows for its
+          # own pushes, so a re-render does not chain into the next one. The branch may
+          # have moved while the clients were building.
           for _ in 1 2 3; do
             git fetch origin "$HEAD_REF"
             git rebase "origin/$HEAD_REF"
