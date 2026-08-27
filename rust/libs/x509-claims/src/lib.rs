@@ -77,12 +77,12 @@ impl Claim {
         matches!(self.value, ClaimValue::Present { .. })
     }
 
-    /// Whether the certificate gave the claim a value the clients would attest.
+    /// Whether the certificate wrote this attribute at all, whatever it wrote in it.
     ///
-    /// Ambiguity is not absence: the portal read two values here, so the claim named
-    /// something, just not one thing.
-    fn has_attested_value(&self) -> bool {
-        self.attested().is_some() || self.rejection == Some(RejectionReason::Ambiguous)
+    /// An attribute written with an empty value has no value to show, so a rejection is the
+    /// only trace it leaves.
+    fn is_carried(&self) -> bool {
+        self.is_present() || self.rejection.is_some()
     }
 
     /// A claim the certificate carries and the clients will attest.
@@ -249,43 +249,22 @@ impl ParsedCertificate {
         fields
     }
 
-    /// Who the certificate says is connecting, decided the way the portal decides it.
+    /// Who the certificate claims is connecting.
     ///
-    /// A certificate becomes an X.509 identity only once it names an account and an actor in
-    /// that account. Short of that the portal reads no identity at all and the connection signs
-    /// in with a token, so half a name is absent rather than refused.
+    /// Carrying an account, actor or email claim at all commits the session to mutual TLS,
+    /// whatever the claim says: what the portal makes of it is the portal's answer.
     pub fn identity(&self) -> Identity {
-        if !self.account_id.has_attested_value() {
+        let claims_somebody = [&self.account_id, &self.actor_id, &self.actor_email]
+            .into_iter()
+            .any(Claim::is_carried);
+
+        if !claims_somebody {
             return Identity::Absent;
         }
 
-        if !self.actor_id.is_present() && !self.actor_email.has_attested_value() {
-            return Identity::Absent;
+        Identity::Claimed {
+            email: self.actor_email.attested().map(str::to_owned),
         }
-
-        // An actor id outranks the email, and claiming one at all commits to it.
-        let actor = match self.actor_id.is_present() {
-            true => self.actor_id.attested().map(|id| Actor::Id(id.to_owned())),
-            false => self
-                .actor_email
-                .attested()
-                .map(|email| Actor::Email(email.to_owned())),
-        };
-
-        match (self.account_id.attested(), actor) {
-            (Some(account_id), Some(actor)) => Identity::Resolved {
-                account_id: account_id.to_owned(),
-                actor,
-            },
-            _ => Identity::Refused,
-        }
-    }
-
-    pub fn user_identity(&self) -> Option<UserIdentity> {
-        Some(UserIdentity {
-            email: self.actor_email.attested()?.to_owned(),
-            account_id: self.account_id.attested()?.to_owned(),
-        })
     }
 
     /// The subject alternative names that no claim row shows.
@@ -332,32 +311,13 @@ impl ParsedCertificate {
     }
 }
 
-/// Who the certificate says is connecting.
-///
-/// Naming nobody is not the same as naming somebody unusable: the first signs in with a token
-/// and the second is refused, so the two never collapse into one absent identity.
+/// Who the certificate claims is connecting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Identity {
-    /// The certificate names nobody, so it only attests the device.
+    /// The certificate claims nobody, so the session signs in with a token.
     Absent,
-    /// The portal will look this actor up.
-    Resolved { account_id: String, actor: Actor },
-    /// The certificate names somebody the portal cannot look up.
-    Refused,
-}
-
-/// How a certificate names the actor connecting.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Actor {
-    Id(String),
-    Email(String),
-}
-
-/// A portal user identity encoded in a managed certificate's URI SANs.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserIdentity {
-    pub email: String,
-    pub account_id: String,
+    /// The certificate claims somebody, named by `email` where one could be read.
+    Claimed { email: Option<String> },
 }
 
 /// A row for the clients' certificate diagnostics screens.

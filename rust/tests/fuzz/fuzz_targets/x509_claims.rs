@@ -13,7 +13,7 @@ use std::{
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use sha2::{Digest as _, Sha256};
-use x509_claims::{Actor, Claim, Identity, ParsedCertificate, RejectionReason, parse_certificate};
+use x509_claims::{Claim, Identity, ParsedCertificate, RejectionReason, parse_certificate};
 
 fuzz_target!(|input: Input| {
     let Some(certificate) = parse_certificate(input.der, instant(input.seconds_since_epoch)) else {
@@ -26,7 +26,6 @@ fuzz_target!(|input: Input| {
         input.seconds_since_epoch,
         input.other_seconds_since_epoch,
     );
-    assert_user_identity_agrees_with_its_fields(&certificate);
     assert_the_identity_answers_the_claims(&certificate);
     assert_account_id_is_a_uuid(&certificate);
     assert_actor_email_is_addressable(&certificate);
@@ -75,57 +74,28 @@ fn assert_validity_is_contiguous(der: &[u8], first: u32, second: u32) {
     assert!(is_valid_at(der, earlier + (later - earlier) / 2));
 }
 
-/// Asserts that a portal identity is present exactly when both of the claims it is made of are.
-fn assert_user_identity_agrees_with_its_fields(certificate: &ParsedCertificate) {
-    let user_identity = certificate.user_identity();
-
-    assert_eq!(
-        user_identity.is_some(),
-        certificate.actor_email.attested().is_some() && certificate.account_id.attested().is_some()
-    );
-
-    let Some(user_identity) = user_identity else {
-        return;
-    };
-
-    assert_eq!(
-        certificate.actor_email.attested(),
-        Some(user_identity.email.as_str())
-    );
-    assert_eq!(
-        certificate.account_id.attested(),
-        Some(user_identity.account_id.as_str())
-    );
-}
-
-/// Asserts that naming nobody and naming somebody unusable stay separate answers.
+/// Asserts that claiming nobody and claiming somebody stay separate answers.
 ///
-/// The portal falls back to a token for the first and refuses the connection for the second, so
-/// a certificate that slid from one to the other would be handed over to be rejected.
+/// The first signs the session in with a token and the second commits it to mutual TLS, so a
+/// certificate that slid from one to the other would authenticate as the wrong thing. A claim
+/// the parser refused still names somebody: only the address it will attest reaches the client.
 fn assert_the_identity_answers_the_claims(certificate: &ParsedCertificate) {
+    let claims_somebody = [
+        &certificate.account_id,
+        &certificate.actor_id,
+        &certificate.actor_email,
+    ]
+    .into_iter()
+    .any(|claim| claim.is_present() || claim.rejection.is_some());
+
     match certificate.identity() {
         Identity::Absent => assert!(
-            certificate.account_id.attested().is_none()
-                || (!certificate.actor_id.is_present()
-                    && certificate.actor_email.attested().is_none()),
-            "a certificate naming an account and an actor in it is not absent"
+            !claims_somebody,
+            "a certificate carrying an identity claim is not absent"
         ),
-        Identity::Refused => {}
-        Identity::Resolved { account_id, actor } => {
-            assert_eq!(certificate.account_id.attested(), Some(account_id.as_str()));
-
-            match actor {
-                Actor::Id(actor_id) => {
-                    assert_eq!(certificate.actor_id.attested(), Some(actor_id.as_str()));
-                }
-                Actor::Email(email) => {
-                    assert_eq!(certificate.actor_email.attested(), Some(email.as_str()));
-                    assert!(
-                        !certificate.actor_id.is_present(),
-                        "an actor id outranks the email"
-                    );
-                }
-            }
+        Identity::Claimed { email } => {
+            assert!(claims_somebody, "an identity was claimed by nothing");
+            assert_eq!(email.as_deref(), certificate.actor_email.attested());
         }
     }
 }
