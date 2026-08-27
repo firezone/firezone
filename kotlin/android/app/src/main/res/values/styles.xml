@@ -44,18 +44,6 @@
         <item name="android:textColorPrimary">@color/neutral_900</item>
     </style>
 
-    <style name="AppTheme.Base.H5">
-        <item name="fontFamily">@font/source_sans_pro_bold</item>
-        <item name="android:textSize">@dimen/text_h5</item>
-        <item name="android:textColorPrimary">@color/neutral_900</item>
-    </style>
-
-    <style name="AppTheme.Base.Body1">
-        <item name="fontFamily">@font/source_sans_pro</item>
-        <item name="android:textSize">@dimen/text_body1</item>
-        <item name="android:textColorPrimary">@color/neutral_900</item>
-    </style>
-
     <style name="AppTheme.Base.Body2">
         <item name="fontFamily">@font/source_sans_pro</item>
         <item name="android:textSize">@dimen/text_body2</item>
