@@ -45,7 +45,7 @@ class ScreenshotTest {
     @Test
     fun sessionScreenWithFavorites() =
         capture("session-screen-favorites") {
-            SessionScreenSample(favorites = Favorites(hashSetOf("gitlab")))
+            SessionScreenSample(favorites = Favorites(hashSetOf("0854dca1-2c5b-468a-be85-0eec2f02a211")))
         }
 
     // Signing in before the portal has sent any resources, or an account with nothing shared.
@@ -62,11 +62,11 @@ class ScreenshotTest {
     fun resourceDetailsInternet() = captureSheet("resource-details-internet", rowText = "Internet Resource")
 
     @Test
-    fun resourceDetails() = captureSheet("resource-details", rowText = "GitLab")
+    fun resourceDetails() = captureSheet("resource-details", rowText = "Engineering wiki")
 
-    // The second sample device belongs to two pools, so the sheet shows the plural row.
+    // The first sample device belongs to two pools, so the sheet shows the plural row.
     @Test
-    fun deviceDetails() = captureSheet("device-details", rowText = "Demo Device 2")
+    fun deviceDetails() = captureSheet("device-details", rowText = "bench-controller-01")
 
     @OptIn(ExperimentalRoborazziApi::class)
     private fun capture(
@@ -98,7 +98,7 @@ private fun SessionScreenSample(
     favorites: Favorites = Favorites(HashSet()),
 ) {
     SessionScreen(
-        actorName = "Jane Doe",
+        actorName = "Maya Ortiz",
         resources = resources,
         connectedDevices = connectedDevices,
         favorites = favorites,

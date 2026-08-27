@@ -393,6 +393,12 @@
       let configuration = Configuration()
       configuration.actorName = scenario.actorName
 
+      // A DEBUG build points these at the staging stack, which a screenshot of the
+      // settings screens would then advertise.
+      configuration.authURL = "https://app.firezone.dev"
+      configuration.apiURL = "wss://api.firezone.dev"
+      configuration.logFilter = "info"
+
       let proto = NETunnelProviderProtocol()
       proto.providerConfiguration = configuration.toProviderConfiguration()
       proto.providerBundleIdentifier = extensionBundleIdentifier
