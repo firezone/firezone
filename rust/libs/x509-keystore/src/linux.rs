@@ -33,8 +33,8 @@ use x509_credential::SigningError;
 
 use crate::{
     CandidateCertificate, ClientIdentity, DetailField, DetailSection, Identity, Package, Problem,
-    Status, UnusableCause, UnusableCertificate, field, join, selected_certificate, sign,
-    unusable_certificates,
+    Status, UnusableCause, certificate_sections, field, join, selected_certificate, sign,
+    unusable_causes,
 };
 
 /// The directories p11-kit module configuration is read from, the administrator's first.
@@ -125,32 +125,10 @@ fn status_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<S
 /// The diagnostics for the token that holds a matching certificate.
 fn token_status(token: Token) -> Status {
     let selected = selected_certificate(&token.certificates);
-
-    let mut sections = Vec::new();
-    sections.extend(selected.map(|index| DetailSection {
-        title: "Certificate".to_owned(),
-        fields: token.certificates[index].detail_fields(),
-    }));
-    sections.extend(
-        token
-            .certificates
-            .iter()
-            .enumerate()
-            .filter(|(index, _)| Some(*index) != selected)
-            .map(|(_, certificate)| DetailSection {
-                title: "Unused Certificate".to_owned(),
-                fields: certificate.detail_fields(),
-            }),
-    );
-
-    let problem = selected
-        .is_none()
-        .then(|| Problem::NoUsablePkcs11Certificate {
-            certificates: unusable_certificates(&token.certificates),
-        });
+    let sections = certificate_sections(&token.certificates, selected);
 
     Status {
-        problems: problem.into_iter().collect(),
+        problems: Vec::new(),
         sections,
         identity: selected
             .map(|index| token.certificates[index].metadata.identity())
@@ -206,7 +184,7 @@ fn select_identity(candidate: Candidate, pin_file: &Path) -> Result<Identity> {
         mut certificates,
         ..
     } = unlock_token(candidate, pin_file)?;
-    let unusable = unusable_certificates(&certificates);
+    let unusable = unusable_causes(&certificates);
 
     let Some(index) = selected_certificate(&certificates) else {
         // Skipping a certificate that was provisioned for Firezone reads to an administrator as if
@@ -786,7 +764,6 @@ struct Certificate {
     der: Vec<u8>,
     metadata: ParsedCertificate,
     key: Option<ObjectHandle>,
-    usable: bool,
 }
 
 /// Says whether the token can sign with a certificate it holds, and how it describes it.
@@ -804,43 +781,32 @@ fn describe_certificate(
 
     Ok(Certificate {
         der: object.der.clone(),
-        usable: key.is_some(),
         metadata,
         key,
     })
 }
 
-impl Certificate {
-    fn detail_fields(&self) -> Vec<DetailField> {
-        self.metadata
-            .detail_fields()
-            .into_iter()
-            .map(DetailField::from)
-            .collect()
-    }
-}
-
 impl CandidateCertificate for Certificate {
-    fn usable(&self) -> bool {
-        self.usable
+    fn unusable(&self) -> Option<UnusableCause> {
+        // A key algorithm we cannot sign with is why no key was looked for, so it is not the
+        // same as a token that simply holds none.
+        match (&self.key, self.metadata.signing_algorithm) {
+            (Some(_), _) => None,
+            (None, Some(_)) => Some(UnusableCause::Pkcs11KeyMissing),
+            (None, None) => Some(UnusableCause::UnsupportedKeyAlgorithm),
+        }
     }
 
     fn not_before_timestamp(&self) -> i64 {
         self.metadata.not_before_timestamp
     }
 
-    fn unusable(&self) -> UnusableCertificate {
-        // A key algorithm we cannot sign with is why no key was looked for, so it is not the
-        // same as a token that simply holds none.
-        let cause = match self.metadata.signing_algorithm {
-            Some(_) => UnusableCause::Pkcs11KeyMissing,
-            None => UnusableCause::UnsupportedKeyAlgorithm,
-        };
-
-        UnusableCertificate {
-            fingerprint: self.metadata.fingerprint.clone(),
-            cause,
-        }
+    fn detail_fields(&self) -> Vec<DetailField> {
+        self.metadata
+            .detail_fields()
+            .into_iter()
+            .map(DetailField::from)
+            .collect()
     }
 }
 
