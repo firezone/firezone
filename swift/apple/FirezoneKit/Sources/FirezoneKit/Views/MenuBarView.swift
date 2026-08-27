@@ -69,8 +69,14 @@
           .foregroundStyle(.secondary)
 
       case .disconnected:
-        Button("Sign In") {
-          signIn()
+        if let actor = store.certificateActor {
+          Button("Connect as \(actor)") {
+            connectWithCertificate(as: actor)
+          }
+        } else {
+          Button("Sign In") {
+            signIn()
+          }
         }
 
       case .disconnecting:
@@ -97,6 +103,17 @@
       Task {
         do {
           try await WebAuthSession.signIn(store: store)
+        } catch {
+          Log.error(error)
+          MacOSAlert.show(for: error)
+        }
+      }
+    }
+
+    func connectWithCertificate(as actor: String) {
+      Task {
+        do {
+          try await store.signInWithCertificate(as: actor)
         } catch {
           Log.error(error)
           MacOSAlert.show(for: error)
