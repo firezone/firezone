@@ -23,7 +23,7 @@ private final class StubTunnelProviderManager: TunnelProviderManager {
     let configuration = NETunnelProviderProtocol()
     configuration.providerBundleIdentifier = providerBundleIdentifier
     configuration.identityReference = identityReference
-    configuration.providerConfiguration = ["accountSlug": "acme"]
+    configuration.providerConfiguration = ["accountSlug": "example-corp"]
     configuration.serverAddress = "Firezone"
     self.protocolConfiguration = configuration
   }
@@ -143,7 +143,7 @@ struct VPNConfigurationManagerTests {
     #expect(stub.saveCount == 0)
     #expect(
       (stub.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration
-        as? [String: String] == ["accountSlug": "acme"])
+        as? [String: String] == ["accountSlug": "example-corp"])
   }
 
   @Test("A managed profile makes settings read-only")
@@ -164,6 +164,6 @@ struct VPNConfigurationManagerTests {
     #expect(configuration.isVPNConfigurationManaged)
     #expect(configuration.isApiURLForced)
     #expect(configuration.isAccountSlugForced)
-    #expect(configuration.accountSlug == "acme")
+    #expect(configuration.accountSlug == "example-corp")
   }
 }

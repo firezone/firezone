@@ -4,7 +4,7 @@
   "systemExtension": "installed",
   "notifications": "authorized",
   "clientCertificate": "absent",
-  "actorName": "Demo User",
+  "actorName": "Jane Doe",
   "resources": [],
   "connectedDevices": [],
   "favorites": [],
