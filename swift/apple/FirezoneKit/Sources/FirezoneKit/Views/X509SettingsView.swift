@@ -262,12 +262,15 @@ struct X509SettingsView: View {
   }
 
   /// Reads underneath the value it belongs to, the way a form shows an error on its input.
+  ///
+  /// Red marks a certificate Firezone will not present, orange a claim it will not attest.
   @ViewBuilder
   private func fieldProblem(_ problem: X509FieldProblem?) -> some View {
     switch problem {
     case .rejected(let rejection):
-      Label("Ignored: \(rejection.reason)", systemImage: "exclamationmark.triangle")
+      Label(rejection.reason, systemImage: "exclamationmark.triangle")
         .font(.system(valueTextStyle))
+        .foregroundStyle(.orange)
 
     case .unusable(let reason):
       Label(reason.sentence, systemImage: "exclamationmark.triangle")
