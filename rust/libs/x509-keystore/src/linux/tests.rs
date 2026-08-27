@@ -848,7 +848,7 @@ const NOT_AFTER: &[u8] = b"491231235959Z";
 /// Builds the certificate the token stores for `public_key`, signed by `sign`.
 ///
 /// It carries the client authentication purpose, a key usage allowing digital signatures and a
-/// subject CN, which is what [`ParsedCertificate::is_usable`] asks of a client identity.
+/// subject CN, which is how the keystore finds it.
 fn self_signed_certificate(
     subject_cn: &str,
     public_key: &PublicKey,

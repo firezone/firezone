@@ -99,7 +99,7 @@ fn status_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<S
             continue;
         };
 
-        let token = unlock_token(candidate, pin_file, subject_cn)?;
+        let token = unlock_token(candidate, pin_file)?;
 
         return Ok(token_status(token));
     }
@@ -183,7 +183,7 @@ fn identity_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result
 
         // A matching token's verdict is final: a certificate that was provisioned for Firezone
         // and cannot be used fails the connect rather than falling through to another module.
-        let identity = select_identity(candidate, pin_file, subject_cn)?;
+        let identity = select_identity(candidate, pin_file)?;
 
         return Ok(Some(identity));
     }
@@ -194,13 +194,13 @@ fn identity_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result
 }
 
 /// Unlocks the candidate's token and selects the certificate it presents for mutual TLS.
-fn select_identity(candidate: Candidate, pin_file: &Path, subject_cn: &str) -> Result<Identity> {
+fn select_identity(candidate: Candidate, pin_file: &Path) -> Result<Identity> {
     let Token {
         session,
         objects,
         mut certificates,
         ..
-    } = unlock_token(candidate, pin_file, subject_cn)?;
+    } = unlock_token(candidate, pin_file)?;
     let unusable = unusable_certificates(&certificates);
 
     let Some(index) = selected_certificate(&certificates) else {
@@ -551,7 +551,7 @@ fn find_token(module: &Path, subject_cn: &str) -> Result<Option<Candidate>> {
 }
 
 /// Unlocks the candidate's token and reads how each matching certificate can be used.
-fn unlock_token(candidate: Candidate, pin_file: &Path, subject_cn: &str) -> Result<Token> {
+fn unlock_token(candidate: Candidate, pin_file: &Path) -> Result<Token> {
     let Candidate {
         info,
         session,
@@ -563,9 +563,7 @@ fn unlock_token(candidate: Candidate, pin_file: &Path, subject_cn: &str) -> Resu
 
     let certificates = matches
         .into_iter()
-        .map(|(object, metadata)| {
-            describe_certificate(&session, &objects[object], metadata, subject_cn)
-        })
+        .map(|(object, metadata)| describe_certificate(&session, &objects[object], metadata))
         .collect::<Result<Vec<_>>>()?;
 
     Ok(Token {
@@ -791,7 +789,6 @@ fn describe_certificate(
     session: &Session,
     object: &CertificateObject,
     metadata: ParsedCertificate,
-    subject_cn: &str,
 ) -> Result<Certificate> {
     let key = find_private_key(
         session,
@@ -802,7 +799,7 @@ fn describe_certificate(
 
     Ok(Certificate {
         der: object.der.clone(),
-        usable: metadata.is_usable(subject_cn) && key.is_some(),
+        usable: key.is_some(),
         metadata,
         key,
     })
@@ -828,19 +825,16 @@ impl CandidateCertificate for Certificate {
     }
 
     fn unusable(&self) -> UnusableCertificate {
-        let fingerprint = self.metadata.fingerprint.clone();
-        let reasons = self.metadata.unusable_reasons();
-
-        if reasons.is_empty() {
-            return UnusableCertificate {
-                fingerprint,
-                cause: UnusableCause::Pkcs11KeyMissing,
-            };
-        }
+        // A key algorithm we cannot sign with is why no key was looked for, so it is not the
+        // same as a token that simply holds none.
+        let cause = match self.metadata.signing_algorithm {
+            Some(_) => UnusableCause::Pkcs11KeyMissing,
+            None => UnusableCause::UnsupportedKeyAlgorithm,
+        };
 
         UnusableCertificate {
-            fingerprint,
-            cause: UnusableCause::FailsRules { reasons },
+            fingerprint: self.metadata.fingerprint.clone(),
+            cause,
         }
     }
 }
