@@ -13,10 +13,7 @@ use std::{
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use sha2::{Digest as _, Sha256};
-use x509_claims::{
-    Actor, Claim, FieldProblem, Identity, ParsedCertificate, RejectionReason, UnusableReason,
-    parse_certificate,
-};
+use x509_claims::{Actor, Claim, Identity, ParsedCertificate, RejectionReason, parse_certificate};
 
 fuzz_target!(|input: Input| {
     let Some(certificate) = parse_certificate(input.der, instant(input.seconds_since_epoch)) else {
@@ -28,16 +25,6 @@ fuzz_target!(|input: Input| {
         input.der,
         input.seconds_since_epoch,
         input.other_seconds_since_epoch,
-    );
-    assert_usable_is_the_conjunction(&certificate);
-    assert_unusable_reasons_mirror_the_rules(&certificate);
-    assert_every_unusable_reason_is_shown_once(&certificate);
-    // An arbitrary common name almost never matches, so it covers the rejection while the
-    // certificate's own one covers the match.
-    assert_usable_requires_an_exact_common_name(&certificate, input.expected_subject_cn);
-    assert_usable_requires_an_exact_common_name(
-        &certificate,
-        certificate.subject_cn.as_deref().unwrap_or_default(),
     );
     assert_user_identity_agrees_with_its_fields(&certificate);
     assert_the_identity_answers_the_claims(&certificate);
@@ -62,7 +49,6 @@ struct Input<'a> {
     /// [`SystemTime`] nor exceed the `i64` timestamp the parser compares it against.
     seconds_since_epoch: u32,
     other_seconds_since_epoch: u32,
-    expected_subject_cn: &'a str,
     der: &'a [u8],
 }
 
@@ -87,101 +73,6 @@ fn assert_validity_is_contiguous(der: &[u8], first: u32, second: u32) {
     }
 
     assert!(is_valid_at(der, earlier + (later - earlier) / 2));
-}
-
-/// Asserts that `is_usable` is the conjunction of the checks that make up a usable certificate.
-fn assert_usable_is_the_conjunction(certificate: &ParsedCertificate) {
-    let subject_cn = certificate.subject_cn.as_deref().unwrap_or_default();
-
-    assert_eq!(
-        certificate.is_usable(subject_cn),
-        certificate.subject_cn.as_deref() == Some(subject_cn)
-            && certificate.has_client_auth_eku
-            && certificate.digital_signature_allowed
-            && certificate.is_currently_valid
-            && certificate.signing_algorithm.is_some()
-            && certificate.identity() != Identity::Refused
-    );
-    assert_eq!(
-        certificate.is_usable(subject_cn),
-        certificate.subject_cn.as_deref() == Some(subject_cn)
-            && certificate.unusable_reasons().is_empty()
-    );
-}
-
-/// Asserts that every rule reports itself exactly when the field it is derived from fails.
-///
-/// The clients show these to an administrator, so a reason that is missing or spurious sends
-/// them after the wrong part of their certificate template.
-fn assert_unusable_reasons_mirror_the_rules(certificate: &ParsedCertificate) {
-    let reasons = certificate.unusable_reasons();
-    let rules = [
-        (
-            UnusableReason::NoClientAuthEku,
-            !certificate.has_client_auth_eku,
-        ),
-        (
-            UnusableReason::NoDigitalSignatureKeyUsage,
-            !certificate.digital_signature_allowed,
-        ),
-        (
-            UnusableReason::NotYetValid,
-            !certificate.is_currently_valid
-                && certificate.checked_at_timestamp <= certificate.not_after_timestamp,
-        ),
-        (
-            UnusableReason::Expired,
-            !certificate.is_currently_valid
-                && certificate.checked_at_timestamp > certificate.not_after_timestamp,
-        ),
-        (
-            UnusableReason::UnsupportedKeyAlgorithm,
-            certificate.signing_algorithm.is_none(),
-        ),
-        (
-            UnusableReason::RefusedIdentity,
-            certificate.identity() == Identity::Refused,
-        ),
-    ];
-
-    for (reason, failed) in rules {
-        assert!(!reason.label().is_empty());
-        assert_eq!(reasons.contains(&reason), failed);
-    }
-
-    assert_eq!(certificate.passes_its_own_rules(), reasons.is_empty());
-}
-
-/// Asserts that every rule the certificate fails reaches the reader exactly once.
-///
-/// A rule reads underneath the attribute that causes it where the details show one, and beside
-/// the verdict where they do not, so one that lands in neither place is a rule nobody is told.
-fn assert_every_unusable_reason_is_shown_once(certificate: &ParsedCertificate) {
-    let fields = certificate.detail_fields();
-    let without_a_field = certificate.unusable_reasons_without_a_field();
-
-    for reason in certificate.unusable_reasons() {
-        let rows = fields
-            .iter()
-            .filter(|field| field.problem == Some(FieldProblem::Unusable { reason }))
-            .count();
-
-        assert!(rows <= 1, "{reason:?} reads underneath more than one row");
-        assert_eq!(rows == 0, without_a_field.contains(&reason));
-    }
-
-    for reason in without_a_field {
-        assert!(certificate.unusable_reasons().contains(&reason));
-    }
-}
-
-/// Asserts that `is_usable` accepts a common name only on an exact match.
-fn assert_usable_requires_an_exact_common_name(certificate: &ParsedCertificate, candidate: &str) {
-    if certificate.subject_cn.as_deref() == Some(candidate) {
-        return;
-    }
-
-    assert!(!certificate.is_usable(candidate));
 }
 
 /// Asserts that a portal identity is present exactly when both of the claims it is made of are.
@@ -237,14 +128,6 @@ fn assert_the_identity_answers_the_claims(certificate: &ParsedCertificate) {
             }
         }
     }
-
-    assert_eq!(
-        certificate
-            .unusable_reasons()
-            .contains(&UnusableReason::RefusedIdentity),
-        certificate.identity() == Identity::Refused,
-        "only a refused identity is a rule the certificate fails"
-    );
 }
 
 /// Asserts that an account ID reaches the portal as a hyphenated, lower-case UUID.
@@ -313,12 +196,7 @@ fn assert_claims_are_rendered_as_they_were_read(certificate: &ParsedCertificate)
             .unwrap_or_else(|| panic!("diagnostics should show {label}"));
 
         assert_eq!(field.value, claim.value);
-        assert_eq!(
-            field.problem,
-            claim
-                .rejection
-                .map(|reason| FieldProblem::Rejected { reason })
-        );
+        assert_eq!(field.problem, claim.rejection);
     }
 }
 
@@ -330,12 +208,7 @@ fn assert_unrecognised_claims_are_shown(certificate: &ParsedCertificate) {
     let unrecognised = certificate
         .detail_fields()
         .into_iter()
-        .filter(|field| {
-            field.problem
-                == Some(FieldProblem::Rejected {
-                    reason: RejectionReason::UnknownAttribute,
-                })
-        })
+        .filter(|field| field.problem == Some(RejectionReason::UnknownAttribute))
         .map(|field| field.label)
         .collect::<Vec<_>>();
 

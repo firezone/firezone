@@ -1,9 +1,9 @@
 //! X.509 client identity certificates for the Firezone clients.
 //!
-//! This crate reads certificates and evaluates Firezone's rules for them: [`parse_certificate`]
-//! turns DER bytes into a [`ParsedCertificate`] plus the label-value rows the clients render on
-//! their diagnostics screens. Discovering certificates in a platform keystore and signing with
-//! them happens elsewhere.
+//! [`parse_certificate`] turns DER bytes into a [`ParsedCertificate`] plus the label-value rows
+//! the clients render on their diagnostics screens. Whether a certificate is accepted is the
+//! portal's answer, not this crate's. Discovering certificates in a platform keystore and
+//! signing with them happens elsewhere.
 //!
 //! Nothing here depends on `uniffi`, so the GUI and headless clients can link it
 //! directly. `x509-claims-ffi` wraps this crate for the mobile and Apple clients and is
@@ -43,54 +43,10 @@ impl SigningAlgorithm {
     }
 }
 
-/// A rule a certificate has to satisfy before a client can present it for mutual TLS.
-///
-/// Whether the platform keystore holds a private key for the certificate is not part of this:
-/// only what the certificate itself says is in scope here.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnusableReason {
-    NoClientAuthEku,
-    NoDigitalSignatureKeyUsage,
-    NotYetValid,
-    Expired,
-    UnsupportedKeyAlgorithm,
-    RefusedIdentity,
-}
-
-impl UnusableReason {
-    /// A phrase that reads both on its own and after "is unusable: ".
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::NoClientAuthEku => "no TLS client authentication extended key usage",
-            Self::NoDigitalSignatureKeyUsage => "key usage does not allow digital signatures",
-            Self::NotYetValid => "not yet valid",
-            Self::Expired => "expired",
-            Self::UnsupportedKeyAlgorithm => "unsupported key algorithm",
-            Self::RefusedIdentity => "the user it names cannot be resolved",
-        }
-    }
-
-    /// The attribute this rule is about, labelled the way the diagnostics label its row.
-    ///
-    /// A reader told that a certificate cannot be used needs the attribute to fix, so a rule
-    /// reads underneath the row that shows it wherever the details carry one.
-    fn field_label(self) -> Option<&'static str> {
-        match self {
-            Self::NoClientAuthEku => Some("TLS Client Authentication EKU"),
-            Self::NoDigitalSignatureKeyUsage => Some("Digital Signature Key Usage"),
-            Self::NotYetValid => Some("Not Before"),
-            Self::Expired => Some("Not After"),
-            Self::UnsupportedKeyAlgorithm => Some("Signing Algorithm"),
-            // Three rows together name the user, so no one of them carries this.
-            Self::RefusedIdentity => None,
-        }
-    }
-}
-
 /// The text a diagnostics row shows, above whatever is wrong with it.
 ///
 /// A value the clients refuse is still a value, so it stays here and the refusal reads
-/// underneath it as a [`FieldProblem`].
+/// underneath it as a [`RejectionReason`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimValue {
     /// What the certificate carries, whether or not the clients will attest it.
@@ -171,18 +127,10 @@ impl From<Option<String>> for ClaimValue {
     }
 }
 
-/// What is wrong with one diagnostics row, read underneath the value it belongs to.
+/// Why the clients will not attest what a claim says, read underneath the value it belongs to.
 ///
-/// The clients word these themselves, so a problem crosses to them as the reason it is rather
+/// The clients word these themselves, so a rejection crosses to them as the reason it is rather
 /// than as a sentence: the mobile and Apple clients render them from their own string resources.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FieldProblem {
-    /// The certificate carries this claim and the clients will not attest what it says.
-    Rejected { reason: RejectionReason },
-    /// The certificate cannot be presented for mutual TLS because of this attribute.
-    Unusable { reason: UnusableReason },
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RejectionReason {
     Empty,
@@ -227,9 +175,6 @@ pub struct ParsedCertificate {
     pub digital_signature_allowed: bool,
     pub is_currently_valid: bool,
     /// The instant the validity window was compared against, in seconds since the Unix epoch.
-    ///
-    /// A certificate that is not currently valid is expired or not yet valid depending on it,
-    /// and the diagnostics say which.
     pub checked_at_timestamp: i64,
     pub not_before: String,
     pub not_before_timestamp: i64,
@@ -246,76 +191,6 @@ pub struct ParsedCertificate {
 }
 
 impl ParsedCertificate {
-    fn matches_subject(&self, expected_subject_cn: &str) -> bool {
-        self.subject_cn.as_deref() == Some(expected_subject_cn)
-    }
-
-    /// Every rule this certificate fails, empty if it can be presented for mutual TLS.
-    ///
-    /// The clients show these to an administrator whose certificate was found but skipped, which
-    /// is why all of them are reported rather than just the first.
-    pub fn unusable_reasons(&self) -> Vec<UnusableReason> {
-        [
-            (UnusableReason::NoClientAuthEku, !self.has_client_auth_eku),
-            (
-                UnusableReason::NoDigitalSignatureKeyUsage,
-                !self.digital_signature_allowed,
-            ),
-            (UnusableReason::NotYetValid, self.is_not_yet_valid()),
-            (UnusableReason::Expired, self.is_expired()),
-            (
-                UnusableReason::UnsupportedKeyAlgorithm,
-                self.signing_algorithm.is_none(),
-            ),
-            (
-                UnusableReason::RefusedIdentity,
-                self.identity() == Identity::Refused,
-            ),
-        ]
-        .into_iter()
-        .filter_map(|(reason, failed)| failed.then_some(reason))
-        .collect()
-    }
-
-    /// The rules this certificate fails that no diagnostics row carries.
-    ///
-    /// Every other rule reads underneath the attribute that causes it, so the clients state
-    /// only these where they state the verdict.
-    pub fn unusable_reasons_without_a_field(&self) -> Vec<UnusableReason> {
-        let fields = self.detail_fields();
-
-        self.unusable_reasons()
-            .into_iter()
-            .filter(|reason| {
-                !fields
-                    .iter()
-                    .any(|field| field.problem == Some(FieldProblem::Unusable { reason: *reason }))
-            })
-            .collect()
-    }
-
-    /// Whether the certificate's own rules allow presenting it for mutual TLS.
-    ///
-    /// A client that also expects a particular subject common name checks that with
-    /// [`Self::is_usable`].
-    pub fn passes_its_own_rules(&self) -> bool {
-        self.unusable_reasons().is_empty()
-    }
-
-    /// Whether the validity period has not started yet, which the clock decides.
-    fn is_not_yet_valid(&self) -> bool {
-        !self.is_currently_valid && !self.is_expired()
-    }
-
-    /// Whether the validity period has passed, which the clock decides.
-    fn is_expired(&self) -> bool {
-        !self.is_currently_valid && self.checked_at_timestamp > self.not_after_timestamp
-    }
-
-    pub fn is_usable(&self, expected_subject_cn: &str) -> bool {
-        self.matches_subject(expected_subject_cn) && self.unusable_reasons().is_empty()
-    }
-
     pub fn detail_fields(&self) -> Vec<DetailField> {
         let mut fields = vec![
             optional_field("Common Name", self.subject_cn.clone()),
@@ -365,17 +240,6 @@ impl ParsedCertificate {
             ),
             field("SHA-256 Fingerprint", &self.fingerprint),
         ]);
-
-        for reason in self.unusable_reasons() {
-            let Some(label) = reason.field_label() else {
-                continue;
-            };
-            let Some(field) = fields.iter_mut().find(|field| field.label == label) else {
-                continue;
-            };
-
-            field.problem = Some(FieldProblem::Unusable { reason });
-        }
 
         // What is wrong with a certificate is what the reader came for, so it reads before the
         // rows that are merely true. The sort is stable, which is what keeps a row from moving
@@ -504,8 +368,8 @@ pub struct UserIdentity {
 pub struct DetailField {
     pub label: String,
     pub value: ClaimValue,
-    /// What is wrong with the value above, [`None`] when nothing is.
-    pub problem: Option<FieldProblem>,
+    /// Why the value above was not attested, [`None`] when it was.
+    pub problem: Option<RejectionReason>,
 }
 
 pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificate> {
@@ -1099,9 +963,7 @@ fn claim_field(label: impl Into<String>, claim: Claim) -> DetailField {
     DetailField {
         label: label.into(),
         value: claim.value,
-        problem: claim
-            .rejection
-            .map(|reason| FieldProblem::Rejected { reason }),
+        problem: claim.rejection,
     }
 }
 
@@ -1120,9 +982,7 @@ fn unrecognised_claim_field(claim: &str) -> DetailField {
             },
             Some(_) | None => ClaimValue::Absent,
         },
-        problem: Some(FieldProblem::Rejected {
-            reason: RejectionReason::UnknownAttribute,
-        }),
+        problem: Some(RejectionReason::UnknownAttribute),
     }
 }
 
