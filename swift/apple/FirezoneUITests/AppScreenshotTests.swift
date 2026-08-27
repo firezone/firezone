@@ -29,6 +29,7 @@
       "x509-empty",
       "x509-unknown-attribute",
       "x509-unusable",
+      "x509-unreadable",
     ]
 
     private var brightness: [String: Double] = [:]
@@ -85,8 +86,8 @@
         }
       }
 
-      // Four scenarios describing four screens should photograph as four
-      // pictures. They collapse into one the moment the tab cannot read the
+      // Each scenario describes its own screen, so each should photograph as its
+      // own picture. They collapse into one the moment the tab cannot read the
       // certificate it was handed, and every such screen says the same thing,
       // so the gallery looks plausible while carrying nothing.
       for appearance in Appearance.allCases {

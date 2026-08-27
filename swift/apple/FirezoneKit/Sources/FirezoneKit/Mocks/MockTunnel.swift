@@ -62,7 +62,7 @@
     /// The certificate the diagnostics screen is handed, named by the state it leaves
     /// the screen in.
     ///
-    /// Every case but `absent` names a certificate this bundle ships under
+    /// Every case but `absent` and `unreadable` names a certificate this bundle ships under
     /// `Mocks/Certificates`, whose subject, serial, fingerprint and validity dates are
     /// fixed. A capture of the screen is then the same picture on every run, and the
     /// wording on it comes from the parser rather than from a fixture.
@@ -75,6 +75,8 @@
       case unknownAttribute = "unknown-attribute"
       /// A certificate the client will not present, because it has expired.
       case unusable
+      /// Bytes that are not a certificate, which the client cannot read.
+      case unreadable
     }
   }
 
@@ -123,22 +125,29 @@
     /// Where the certificate screen reads this state's certificate from.
     var source: X509CertificateSource { .fixed(certificate: der) }
 
-    /// The DER-encoded certificate this state names, `nil` when it names none.
+    /// The bytes the certificate screen is handed, `nil` when this state has none.
     ///
     /// A certificate that will not load ends the process, the way a scenario that
     /// will not load does: a screen reporting no certificate instead would go
     /// unnoticed until someone read the screenshots.
     private var der: Data? {
-      guard self != .absent else { return nil }
+      switch self {
+      case .absent:
+        return nil
 
-      guard let url = Self.url(of: rawValue) else {
-        fatalError("No mock certificate named '\(rawValue)'")
-      }
+      case .unreadable:
+        return Data("These bytes are not a certificate.".utf8)
 
-      do {
-        return try Data(contentsOf: url)
-      } catch {
-        fatalError("Mock certificate '\(rawValue)' did not load: \(error)")
+      case .usable, .unknownAttribute, .unusable:
+        guard let url = Self.url(of: rawValue) else {
+          fatalError("No mock certificate named '\(rawValue)'")
+        }
+
+        do {
+          return try Data(contentsOf: url)
+        } catch {
+          fatalError("Mock certificate '\(rawValue)' did not load: \(error)")
+        }
       }
     }
 
