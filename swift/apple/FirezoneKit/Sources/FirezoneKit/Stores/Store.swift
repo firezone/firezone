@@ -23,18 +23,32 @@ public final class Store: ObservableObject {
   /// The actor the portal named in `init`, `nil` until it arrives.
   @Published private(set) var actorName: String?
 
-  /// How the session names itself, which is only the actor when the portal named one.
-  var sessionHeading: String {
-    guard let actorName else { return "Signed in" }
-
-    return "Signed in as \(actorName)"
-  }
-
   /// Who the client certificate says is connecting, which decides what the controls offer.
   @Published private(set) var certificateIdentity: X509ClaimedIdentity = .absent
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
   @Published private(set) var connectedDevices: [ConnectedDevice] = []
+
+  /// How a running session reads, which the certificate decides along with the controls.
+  var sessionHeading: String {
+    let state: String
+    switch certificateIdentity {
+    case .absent: state = "Signed in"
+    case .claimed: state = "Connected"
+    }
+
+    guard let actorName else { return state }
+
+    return "\(state) as \(actorName)"
+  }
+
+  /// How a session ending reads, matching the control the user pressed to end it.
+  var endingSessionTitle: String {
+    switch certificateIdentity {
+    case .absent: return "Signing out…"
+    case .claimed: return "Disconnecting…"
+    }
+  }
 
   // Encapsulate Tunnel status here to make it easier for other components to observe
   @Published public private(set) var vpnStatus: NEVPNStatus?

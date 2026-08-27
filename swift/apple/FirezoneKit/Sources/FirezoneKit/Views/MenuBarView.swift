@@ -74,7 +74,7 @@
         }
 
       case .disconnecting:
-        Text("Signing out…")
+        Text(store.endingSessionTitle)
           .foregroundStyle(.secondary)
 
       case .connected, .reasserting, .connecting:
