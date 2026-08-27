@@ -50,6 +50,14 @@ pub struct X509StatusChanged(pub X509Status);
 pub struct X509Status {
     pub problems: Vec<X509Problem>,
     pub sections: Vec<X509DetailSection>,
+    pub identity: X509Identity,
+}
+
+/// Mirrors [`x509_keystore::ClientIdentity`], which decides what the sign-in control says.
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509Identity {
+    Absent,
+    Claimed { email: Option<String> },
 }
 
 /// Mirrors [`x509_keystore::Problem`] so the frontend writes the sentence it shows.
@@ -146,9 +154,21 @@ pub enum X509RejectionReason {
     UnknownAttribute,
 }
 
+impl From<&x509_keystore::ClientIdentity> for X509Identity {
+    fn from(identity: &x509_keystore::ClientIdentity) -> Self {
+        match identity {
+            x509_keystore::ClientIdentity::Absent => Self::Absent,
+            x509_keystore::ClientIdentity::Claimed { email } => Self::Claimed {
+                email: email.clone(),
+            },
+        }
+    }
+}
+
 impl From<&x509_keystore::Status> for X509Status {
     fn from(status: &x509_keystore::Status) -> Self {
         Self {
+            identity: X509Identity::from(&status.identity),
             problems: status
                 .problems
                 .iter()

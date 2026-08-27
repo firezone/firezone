@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use crate::{DetailSection, Identity, Problem, Status, field};
+use crate::{ClientIdentity, DetailSection, Identity, Problem, Status, field};
 
 #[expect(
     clippy::unnecessary_wraps,
@@ -23,5 +23,6 @@ pub(crate) fn status(_subject_cn: &str) -> Result<Status> {
             title: "Keystore".to_owned(),
             fields: vec![field("Platform", std::env::consts::OS)],
         }],
+        identity: ClientIdentity::Absent,
     })
 }

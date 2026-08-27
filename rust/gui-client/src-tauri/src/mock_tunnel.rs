@@ -79,6 +79,7 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
         .send(&ServerMsg::X509Status(Ok(x509_keystore::Status {
             problems: vec![x509_keystore::Problem::UnsupportedPlatform],
             sections: vec![],
+            identity: x509_keystore::ClientIdentity::Absent,
         })))
         .await?;
 

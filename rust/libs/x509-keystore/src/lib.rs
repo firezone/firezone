@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use x509_credential::{ClientCertificate, PrivateKey};
 
 /// Re-exported because [`Status`] carries it: a caller matching on one needs to name it.
-pub use x509_claims::RejectionReason;
+pub use x509_claims::{Identity as ClientIdentity, RejectionReason};
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 mod sign;
@@ -129,6 +129,11 @@ pub struct Status {
     /// certificate and a part it could not read at all.
     pub problems: Vec<Problem>,
     pub sections: Vec<DetailSection>,
+    /// Who the certificate the keystore would present says is connecting.
+    ///
+    /// The clients read this to decide whether to offer signing in with a token, so it comes
+    /// from the same read that describes the certificate rather than from a second one.
+    pub identity: ClientIdentity,
 }
 
 /// What keeps a keystore from handing out an X.509 client identity.
@@ -458,10 +463,12 @@ mod tests {
         let with_problem = Status {
             problems: vec![Problem::UnsupportedPlatform],
             sections: sections.clone(),
+            identity: ClientIdentity::Absent,
         };
         let without_problem = Status {
             problems: Vec::new(),
             sections,
+            identity: ClientIdentity::Absent,
         };
 
         assert_eq!(
@@ -495,6 +502,7 @@ mod tests {
                     },
                 ],
             }],
+            identity: ClientIdentity::Absent,
         };
 
         assert_eq!(
@@ -518,6 +526,7 @@ mod tests {
                 },
             ],
             sections: Vec::new(),
+            identity: ClientIdentity::Absent,
         };
 
         assert_eq!(
