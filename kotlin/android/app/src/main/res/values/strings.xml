@@ -52,7 +52,7 @@
 	<string name="x509_claim_absent">Not present</string>
 	<string name="x509_claim_empty">Empty</string>
 	<string name="x509_claim_too_long">Longer than 255 characters</string>
-	<string name="x509_claim_not_an_email_address">Not an email address</string>
+	<string name="x509_claim_not_an_email_address">Not a valid email address</string>
 	<string name="x509_claim_not_a_uuid">Not a UUID</string>
 	<string name="x509_claim_ambiguous">More than one value was given</string>
 	<string name="x509_claim_placeholder_identifier">Placeholder identifier</string>
