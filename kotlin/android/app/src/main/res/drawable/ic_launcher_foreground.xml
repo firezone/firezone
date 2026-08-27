@@ -3,29 +3,22 @@
     android:height="108dp"
     android:viewportWidth="512"
     android:viewportHeight="512">
-  <group android:scaleX="0.54"
-      android:scaleY="0.54"
-      android:translateX="117.76"
-      android:translateY="117.76">
-    <group>
-      <clip-path
-          android:pathData="M0,0h512v512h-512z"/>
-      <group>
-        <clip-path
-            android:pathData="M0,0h512v512h-512z"/>
+    <group
+        android:scaleX="0.587675"
+        android:scaleY="0.587675"
+        android:translateX="156.011414"
+        android:translateY="121.180974">
         <path
-            android:pathData="M330.14,41.89C435.1,129.31 326.44,323.06 364.79,401.29C285.99,288.23 393.35,191.06 330.14,41.89Z"
-            android:fillColor="#C25700"
-            android:fillType="evenOdd"/>
+            android:pathData="M69.7066 407.374C70.7777 390.095 80.71 374.601 95.9627 366.413L193.604 314L190.148 369.749C189.013 388.06 177.94 404.279 161.3 412.005L66.6964 455.931L69.7066 407.374Z"
+            android:fillColor="#FCFCFC"
+            android:fillType="evenOdd" />
         <path
-            android:pathData="M388.35,210.16C456.95,254.74 374.6,359.18 418.44,385.92C462.84,413 457.81,300.46 519.12,329.33C455.29,307.62 481.77,441.6 402.68,423.77C312.17,403.36 424.73,259.39 388.35,210.16Z"
-            android:fillColor="#8D1E00"
-            android:fillType="evenOdd"/>
+            android:pathData="M34.999 302.361C36.3005 274.202 53.2818 249.15 78.9569 237.513L306.774 134.254L304.819 176.542C303.518 204.702 286.536 229.753 260.861 241.39L33.0446 344.649L34.999 302.361Z"
+            android:fillColor="#FCFCFC"
+            android:fillType="evenOdd" />
         <path
-            android:pathData="M-9.31,362.8C121.36,258.69 299.34,425.75 383.33,436.19C491.34,449.61 462.57,324.73 516.63,329.38C466.82,335.39 496.72,466 385.34,470.03C264.05,474.43 143.04,289.5 -9.31,362.8H-9.31Z"
-            android:fillColor="#331700"
-            android:fillType="evenOdd"/>
-      </group>
+            android:pathData="M67.0444 159.798C67.0443 130.322 84.3099 103.579 111.173 91.4457L307.241 2.8911L307.241 40.7432C307.241 70.2192 289.975 96.9622 263.112 109.095L67.0446 197.65L67.0444 159.798Z"
+            android:fillColor="#FCFCFC"
+            android:fillType="evenOdd" />
     </group>
-  </group>
 </vector>

@@ -11,6 +11,10 @@ import SwiftUI
 
 struct FirezoneApp: App {
   #if os(macOS)
+    /// Frames in the menu bar connecting / disconnecting animations, which run
+    /// from an empty "F" to a full one and back.
+    private static let animationFrameCount = 4
+
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var connectingAnimationFrame: Int = 0
   #endif
@@ -68,7 +72,7 @@ struct FirezoneApp: App {
         MenuBarView()
           .environmentObject(store)
           .onReceive(connectingAnimationPublisher) { _ in
-            connectingAnimationFrame = (connectingAnimationFrame + 1) % 3
+            connectingAnimationFrame = (connectingAnimationFrame + 1) % Self.animationFrameCount
           }
           .onReceive(store.$menuBarOpenRequested) { requested in
             if requested {
@@ -99,8 +103,10 @@ struct FirezoneApp: App {
   #if os(macOS)
     var menuBarIconName: String {
       switch store.vpnStatus {
-      case .connecting, .disconnecting, .reasserting:
+      case .connecting, .reasserting:
         return "MenuBarIconConnecting\(connectingAnimationFrame + 1)"
+      case .disconnecting:
+        return "MenuBarIconDisconnecting\(connectingAnimationFrame + 1)"
       default:
         return store.menuBarIconName
       }
@@ -108,7 +114,7 @@ struct FirezoneApp: App {
 
     /// Publisher that emits timer ticks only when VPN is in a transitional state
     private var connectingAnimationPublisher: AnyPublisher<Date, Never> {
-      Timer.publish(every: 0.25, on: .main, in: .common)
+      Timer.publish(every: 0.125, on: .main, in: .common)
         .autoconnect()
         .filter { [store] _ in
           switch store.vpnStatus {
