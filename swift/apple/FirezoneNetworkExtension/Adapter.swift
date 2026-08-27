@@ -54,7 +54,7 @@ private final class AppleClientTlsIdentity: ClientTlsIdentity, @unchecked Sendab
     identity.certificateChain
   }
 
-  func supportedSignatureSchemes() -> [TlsSignatureScheme] {
+  func supportedSignatureSchemes() throws -> [TlsSignatureScheme] {
     identity.signatureSchemes.map { $0.tlsSignatureScheme }
   }
 
