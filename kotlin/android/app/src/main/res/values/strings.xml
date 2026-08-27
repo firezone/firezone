@@ -71,6 +71,7 @@
 
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>
+	<string name="connect">Connect</string>
 	<string name="connect_as">Connect as %1$s</string>
 	<string name="settings">Settings</string>
 	<string name="sign_in_welcome">Welcome to Firezone.</string>
@@ -80,6 +81,7 @@
 	<string name="resources">Resources</string>
 	<string name="connected_devices">Connected Devices</string>
 	<string name="sign_out">Sign Out</string>
+	<string name="disconnect">Disconnect</string>
 	<string name="connected_as">Connected as %1$s</string>
 
 	<!-- Profile -->
@@ -93,6 +95,9 @@
 	<string name="error_dialog_title">Error</string>
 	<string name="error_dialog_message_browser_required">
 		Please install a browser to sign in to Firezone.
+	</string>
+	<string name="error_dialog_message_invalid_certificate">
+		A certificate has been configured but it is invalid. Please contact your administrator.
 	</string>
 	<string name="error_dialog_button_text">Ok</string>
 	<string name="enable_vpn_permission">Enable VPN Permission</string>

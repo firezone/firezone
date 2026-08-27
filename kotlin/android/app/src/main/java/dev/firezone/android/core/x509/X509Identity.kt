@@ -6,9 +6,9 @@ import android.security.KeyChain
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.firezone.android.core.Log
 import uniffi.connlib.ClientTlsIdentity
+import uniffi.x509claims.Identity
 import uniffi.x509claims.ParsedCertificate
 import uniffi.x509claims.UnusableReason
-import uniffi.x509claims.UserIdentity
 import uniffi.x509claims.parseClientCertificate
 import java.security.GeneralSecurityException
 import java.security.PrivateKey
@@ -33,9 +33,9 @@ data class LoadedX509Identity(
     val tlsIdentity: ClientTlsIdentity,
     val certificate: ParsedCertificate?,
 ) {
-    /** The portal user this certificate authenticates, if it names a complete one. */
-    val userIdentity: UserIdentity?
-        get() = certificate?.userIdentity
+    /** Who the certificate says is connecting, which decides what the sign-in screen offers. */
+    val identity: Identity
+        get() = certificate?.identity ?: Identity.Absent
 
     /** Whether the certificate's own rules allow presenting it for mutual TLS. */
     val certificateIsUsable: Boolean

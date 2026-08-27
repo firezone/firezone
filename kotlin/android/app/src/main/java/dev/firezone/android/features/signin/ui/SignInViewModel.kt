@@ -8,7 +8,7 @@ import dev.firezone.android.core.x509.CertificateUser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import uniffi.x509claims.UserIdentity
+import uniffi.x509claims.Identity
 import javax.inject.Inject
 
 @HiltViewModel
@@ -17,14 +17,14 @@ internal class SignInViewModel
     constructor(
         private val certificateUser: CertificateUser,
     ) : ViewModel() {
-        private val certificateUserMutableStateFlow = MutableStateFlow<UserIdentity?>(null)
+        private val certificateIdentityMutableStateFlow = MutableStateFlow<Identity>(Identity.Absent)
 
-        /** The user a configured client certificate authenticates, who needs no browser sign-in. */
-        val certificateUserStateFlow: StateFlow<UserIdentity?> = certificateUserMutableStateFlow
+        /** Who the configured client certificate says is connecting, which decides what we offer. */
+        val certificateIdentityStateFlow: StateFlow<Identity> = certificateIdentityMutableStateFlow
 
-        fun refreshCertificateUser() {
+        fun refreshCertificateIdentity() {
             viewModelScope.launch {
-                certificateUserMutableStateFlow.value = certificateUser.identity()
+                certificateIdentityMutableStateFlow.value = certificateUser.identity()
             }
         }
     }

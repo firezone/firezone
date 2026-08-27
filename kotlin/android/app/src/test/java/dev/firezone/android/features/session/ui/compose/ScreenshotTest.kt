@@ -135,6 +135,6 @@ private fun SessionScreenSample(
         onAddFavorite = {},
         onRemoveFavorite = {},
         onSettings = {},
-        onSignOut = {},
+        onEndSession = {},
     )
 }

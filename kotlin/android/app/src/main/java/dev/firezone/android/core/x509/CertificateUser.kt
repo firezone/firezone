@@ -7,15 +7,15 @@ import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import uniffi.x509claims.UserIdentity
+import uniffi.x509claims.Identity
 import javax.inject.Inject
 
 /**
  * Answers whom the configured client certificate authenticates.
  *
- * The sign-in screens use this to decide whether a browser sign-in is still needed and whom to name
- * while they wait. Failures end up as "nobody" and stay at debug level: the tunnel loads the
- * identity itself and is the one that reports a broken keystore to the user and to telemetry.
+ * The sign-in screens use this to decide what to offer and whom to name while they wait. Failures
+ * end up as [Identity.Absent] and stay at debug level: the tunnel loads the identity itself and is
+ * the one that reports a broken keystore to the user and to telemetry.
  */
 class CertificateUser
     @Inject
@@ -53,18 +53,19 @@ class CertificateUser
                 }
             }
 
-        suspend fun identity(): UserIdentity? =
+        suspend fun identity(): Identity =
             withContext(Dispatchers.IO) {
                 try {
                     x509Identity
                         .load(repository.getX509CertificateAliasSync(applicationRestrictions))
-                        ?.userIdentity
+                        ?.identity
+                        ?: Identity.Absent
                 } catch (exception: CancellationException) {
                     throw exception
                 } catch (exception: Exception) {
                     Log.d(TAG, "Could not read the configured client certificate", exception)
 
-                    null
+                    Identity.Absent
                 }
             }
 

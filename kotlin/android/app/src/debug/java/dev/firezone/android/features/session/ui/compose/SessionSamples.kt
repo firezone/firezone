@@ -29,7 +29,7 @@ private fun SessionScreenPreview() {
             onAddFavorite = {},
             onRemoveFavorite = {},
             onSettings = {},
-            onSignOut = {},
+            onEndSession = {},
         )
     }
 }

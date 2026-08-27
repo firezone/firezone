@@ -48,8 +48,9 @@ fun SessionScreen(
     onAddFavorite: (String) -> Unit,
     onRemoveFavorite: (String) -> Unit,
     onSettings: () -> Unit,
-    onSignOut: () -> Unit,
+    onEndSession: () -> Unit,
     modifier: Modifier = Modifier,
+    endSessionLabel: String = stringResource(R.string.sign_out),
 ) {
     val hasFavorites = favorites.inner.isNotEmpty()
     var selectedTab by rememberSaveable { mutableIntStateOf(TAB_FAVORITES) }
@@ -92,7 +93,12 @@ fun SessionScreen(
         modifier = modifier,
         topBar = {
             FirezoneTopBar {
-                ProfileMenu(actorName = profileName, onSettings = onSettings, onSignOut = onSignOut)
+                ProfileMenu(
+                    actorName = profileName,
+                    onSettings = onSettings,
+                    onEndSession = onEndSession,
+                    endSessionLabel = endSessionLabel,
+                )
             }
         },
     ) { innerPadding ->
