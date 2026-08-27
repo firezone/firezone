@@ -148,6 +148,8 @@ private val SourceSans =
 private val FirezoneTypography =
     Typography().let { base ->
         base.copy(
+            displaySmall = base.displaySmall.copy(fontFamily = SourceSans, fontWeight = FontWeight.Bold),
+            headlineLarge = base.headlineLarge.copy(fontFamily = SourceSans, fontWeight = FontWeight.Bold),
             headlineSmall = base.headlineSmall.copy(fontFamily = SourceSans, fontWeight = FontWeight.Bold),
             titleLarge = base.titleLarge.copy(fontFamily = SourceSans, fontWeight = FontWeight.Bold),
             bodyLarge = base.bodyLarge.copy(fontFamily = SourceSans),
