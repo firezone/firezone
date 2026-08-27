@@ -178,6 +178,7 @@ extension X509UnusableReason {
     case .notYetValid: self = .notYetValid
     case .expired: self = .expired
     case .unsupportedKeyAlgorithm: self = .unsupportedKeyAlgorithm
+    case .refusedIdentity: self = .refusedIdentity
     case .unreadable: self = .unreadable
     }
   }

@@ -43,6 +43,7 @@ public enum X509UnusableReason: Hashable, Sendable {
   case notYetValid
   case expired
   case unsupportedKeyAlgorithm
+  case refusedIdentity
   case unreadable
 
   /// A sentence that reads underneath the attribute the rule is about.
@@ -55,6 +56,7 @@ public enum X509UnusableReason: Hashable, Sendable {
     case .notYetValid: return "This certificate is not valid yet."
     case .expired: return "This certificate has expired."
     case .unsupportedKeyAlgorithm: return "Firezone cannot sign with this key algorithm."
+    case .refusedIdentity: return "This certificate names a user Firezone cannot resolve."
     case .unreadable: return "Firezone could not read this certificate."
     }
   }
