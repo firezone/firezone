@@ -199,13 +199,21 @@ const screens: Record<string, Screen> = {
   },
   "overview-certificate-signed-in": {
     route: "/overview",
-    session: {
-      SignedIn: { account_slug: "example-corp", actor_name: "Jane Doe" },
-    },
+    session: { Connected: { email: ACTOR_EMAIL } },
     x509: {
       problems: [],
       sections: [],
       identity: { Claimed: { email: ACTOR_EMAIL } },
+    },
+  },
+  // A certificate can claim an account or an actor without carrying a readable email.
+  "overview-certificate-signed-in-without-email": {
+    route: "/overview",
+    session: { Connected: { email: null } },
+    x509: {
+      problems: [],
+      sections: [],
+      identity: { Claimed: { email: null } },
     },
   },
   "general-settings": { route: "/general-settings", generalSettings },

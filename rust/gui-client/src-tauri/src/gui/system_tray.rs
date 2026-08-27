@@ -171,7 +171,7 @@ pub enum ConnlibState {
 }
 
 pub struct SignedIn {
-    pub actor_name: String,
+    pub actor_name: Option<String>,
     pub favorite_resources: HashSet<ResourceId>,
     pub resources: Vec<ResourceView>,
     pub connected_devices: Vec<ConnectedDeviceView>,
@@ -276,7 +276,7 @@ fn signed_in(signed_in: &SignedIn, identity: &ClientIdentity) -> Menu {
         .any(|res| favorite_resources.contains(&res.id()));
 
     let mut menu = Menu::default()
-        .disabled(session_heading(identity, actor_name))
+        .disabled(session_heading(identity, actor_name.as_deref()))
         .item(Event::SignOut, end_session_title(identity))
         .separator();
 
@@ -391,10 +391,12 @@ fn start_session_title(identity: &ClientIdentity) -> String {
     }
 }
 
-fn session_heading(identity: &ClientIdentity, actor_name: &str) -> String {
-    match identity {
-        ClientIdentity::Absent => format!("Signed in as {actor_name}"),
-        ClientIdentity::Claimed { .. } => format!("Connected as {actor_name}"),
+fn session_heading(identity: &ClientIdentity, actor_name: Option<&str>) -> String {
+    match (identity, actor_name) {
+        (ClientIdentity::Absent, Some(actor_name)) => format!("Signed in as {actor_name}"),
+        (ClientIdentity::Absent, None) => "Signed in".to_owned(),
+        (ClientIdentity::Claimed { .. }, Some(actor_name)) => format!("Connected as {actor_name}"),
+        (ClientIdentity::Claimed { .. }, None) => "Connected".to_owned(),
     }
 }
 
@@ -500,7 +502,7 @@ mod tests {
     ) -> AppState {
         AppState {
             connlib: ConnlibState::SignedIn(SignedIn {
-                actor_name: "Jane Doe".into(),
+                actor_name: Some("Jane Doe".to_owned()),
                 favorite_resources,
                 resources,
                 connected_devices: Vec::new(),
@@ -675,6 +677,36 @@ mod tests {
 
         let expected = Menu::default()
             .disabled("Connected as Jane Doe")
+            .item(Event::SignOut, DISCONNECT)
+            .separator()
+            .disabled(RESOURCES)
+            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None);
+
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual).unwrap()
+        );
+    }
+
+    #[test]
+    fn certificate_session_without_an_email_says_connected() {
+        let actual = AppState {
+            connlib: ConnlibState::SignedIn(SignedIn {
+                actor_name: None,
+                favorite_resources: HashSet::default(),
+                resources: vec![],
+                connected_devices: vec![],
+                internet_resource_enabled: None,
+            }),
+            identity: ClientIdentity::Claimed { email: None },
+            ..Default::default()
+        }
+        .into_menu();
+
+        let expected = Menu::default()
+            .disabled("Connected")
             .item(Event::SignOut, DISCONNECT)
             .separator()
             .disabled(RESOURCES)

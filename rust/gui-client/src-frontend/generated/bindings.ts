@@ -152,6 +152,7 @@ export type LogsRecounted = FileCount;
 export type SessionChanged = SessionViewModel;
 export type SessionViewModel =
   | { SignedIn: { account_slug: string; actor_name: string } }
+  | { Connected: { email: string | null } }
   | "Loading"
   | "SignedOut";
 export type X509DetailField = {

@@ -912,56 +912,68 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     fn build_ui_state(&self) -> (system_tray::ConnlibState, SessionViewModel) {
-        // TODO: Refactor `Controller` and the auth module so that "Are we logged in?"
-        // doesn't require such complicated control flow to answer.
-        if let Some(auth_session) = self.auth.session() {
-            match &self.status {
-                Status::Disconnected => {
-                    // If we have an `auth_session` but no connlib session, we are most likely configured to
-                    // _not_ auto-connect on startup. Thus, we treat this the same as being signed out.
-
-                    (
-                        system_tray::ConnlibState::SignedOut,
-                        SessionViewModel::SignedOut,
-                    )
-                }
-                Status::Quitting => (
-                    system_tray::ConnlibState::Quitting,
-                    SessionViewModel::Loading,
-                ),
-                Status::TunnelReady { resources } => (
-                    system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
-                        actor_name: auth_session.actor_name.clone(),
-                        favorite_resources: self.general_settings.favorite_resources.clone(),
-                        internet_resource_enabled: self.general_settings.internet_resource_enabled,
-                        resources: resources.resources.clone(),
-                        connected_devices: resources.connected_devices.clone(),
-                    }),
-                    SessionViewModel::SignedIn {
-                        account_slug: auth_session.account_slug.clone(),
-                        actor_name: auth_session.actor_name.clone(),
-                    },
-                ),
-                Status::WaitingForPortal => (
-                    system_tray::ConnlibState::WaitingForPortal,
-                    SessionViewModel::Loading,
-                ),
-                Status::WaitingForTunnel => (
-                    system_tray::ConnlibState::WaitingForTunnel,
-                    SessionViewModel::Loading,
-                ),
-            }
-        } else if self.auth.ongoing_request().is_some() {
+        if self.auth.ongoing_request().is_some() {
             // Signing in, waiting on deep link callback
-            (
+            return (
                 system_tray::ConnlibState::WaitingForBrowser,
                 SessionViewModel::Loading,
-            )
-        } else {
-            (
+            );
+        }
+
+        let Some(signed_in_as) = self.signed_in_as() else {
+            return (
                 system_tray::ConnlibState::SignedOut,
                 SessionViewModel::SignedOut,
-            )
+            );
+        };
+
+        match &self.status {
+            Status::Disconnected => {
+                // If we know who we are but have no connlib session, we are most likely configured to
+                // _not_ auto-connect on startup. Thus, we treat this the same as being signed out.
+
+                (
+                    system_tray::ConnlibState::SignedOut,
+                    SessionViewModel::SignedOut,
+                )
+            }
+            Status::Quitting => (
+                system_tray::ConnlibState::Quitting,
+                SessionViewModel::Loading,
+            ),
+            Status::TunnelReady { resources } => (
+                system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
+                    actor_name: signed_in_as.actor_name().map(str::to_owned),
+                    favorite_resources: self.general_settings.favorite_resources.clone(),
+                    internet_resource_enabled: self.general_settings.internet_resource_enabled,
+                    resources: resources.resources.clone(),
+                    connected_devices: resources.connected_devices.clone(),
+                }),
+                signed_in_as.view_model(),
+            ),
+            Status::WaitingForPortal => (
+                system_tray::ConnlibState::WaitingForPortal,
+                SessionViewModel::Loading,
+            ),
+            Status::WaitingForTunnel => (
+                system_tray::ConnlibState::WaitingForTunnel,
+                SessionViewModel::Loading,
+            ),
+        }
+    }
+
+    /// Returns who the client signs in as: the actor a browser callback named, or the one the
+    /// certificate claims.
+    fn signed_in_as(&self) -> Option<SignedInAs<'_>> {
+        if let Some(session) = self.auth.session() {
+            return Some(SignedInAs::Token(session));
+        }
+
+        match self.x509_status.as_ref().map(|status| &status.identity)? {
+            x509_keystore::ClientIdentity::Claimed { email } => Some(SignedInAs::Certificate {
+                email: email.as_deref(),
+            }),
+            x509_keystore::ClientIdentity::Absent => None,
         }
     }
 
@@ -1078,6 +1090,36 @@ impl<I: GuiIntegration> Controller<I> {
         self.mdm_settings
             .connect_on_start
             .or(self.general_settings.connect_on_start)
+    }
+}
+
+/// Who the client is signed in as.
+enum SignedInAs<'a> {
+    /// The browser callback named the account and the actor.
+    Token(&'a auth::Session),
+    /// The certificate claims the actor. The portal does not name the account back over mutual
+    /// TLS, so there is no slug.
+    Certificate { email: Option<&'a str> },
+}
+
+impl SignedInAs<'_> {
+    fn actor_name(&self) -> Option<&str> {
+        match self {
+            SignedInAs::Token(session) => Some(&session.actor_name),
+            SignedInAs::Certificate { email } => *email,
+        }
+    }
+
+    fn view_model(&self) -> SessionViewModel {
+        match self {
+            SignedInAs::Token(session) => SessionViewModel::SignedIn {
+                account_slug: session.account_slug.clone(),
+                actor_name: session.actor_name.clone(),
+            },
+            SignedInAs::Certificate { email } => SessionViewModel::Connected {
+                email: email.map(str::to_owned),
+            },
+        }
     }
 }
 
@@ -1307,6 +1349,41 @@ mod tests {
             .wait_integration(|i| i.opened_urls.first().cloned())
             .await;
         assert!(url.starts_with(AdvancedSettings::default().auth_url.as_str()));
+    }
+
+    #[tokio::test]
+    async fn a_certificate_session_is_signed_in_as_the_actor_it_claims() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        boot_certificate_tunnel(
+            &mut test_controller,
+            &mut mock_tunnel,
+            Some("alice@example.com".to_owned()),
+        )
+        .await;
+
+        assert_eq!(
+            test_controller.started_session().await,
+            SessionViewModel::Connected {
+                email: Some("alice@example.com".to_owned())
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_certificate_session_that_claims_no_email_is_still_signed_in() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        boot_certificate_tunnel(&mut test_controller, &mut mock_tunnel, None).await;
+
+        assert_eq!(
+            test_controller.started_session().await,
+            SessionViewModel::Connected { email: None }
+        );
     }
 
     #[tokio::test]
@@ -1586,6 +1663,30 @@ mod tests {
         mock_tunnel.send_resources(resources).await;
     }
 
+    /// Raises the tunnel the way a certificate that claims `email` does: no browser, no token.
+    async fn boot_certificate_tunnel(
+        test_controller: &mut TestController,
+        mock_tunnel: &mut MockTunnel,
+        email: Option<String>,
+    ) {
+        mock_tunnel.send_hello().await;
+        test_controller
+            .receive_identity(
+                mock_tunnel,
+                x509_keystore::ClientIdentity::Claimed { email },
+            )
+            .await;
+
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::SignIn)
+            .await
+            .unwrap();
+
+        mock_tunnel.start_ok().await;
+        mock_tunnel.send_resources(vec![dns_resource_foo()]).await;
+    }
+
     fn canned_advanced_settings() -> AdvancedSettings {
         AdvancedSettings {
             auth_url: Url::parse("https://canned.example.com").unwrap(),
@@ -1668,6 +1769,21 @@ mod tests {
 
             self.wait_integration(|i| i.x509_statuses.first().cloned())
                 .await;
+        }
+
+        /// Waits for the GUI to have been told about a session that started.
+        async fn started_session(&self) -> SessionViewModel {
+            self.wait_integration(|i| {
+                let session = i.sessions.last()?;
+
+                match session {
+                    SessionViewModel::SignedIn { .. } => Some(session.clone()),
+                    SessionViewModel::Connected { .. } => Some(session.clone()),
+                    SessionViewModel::Loading => None,
+                    SessionViewModel::SignedOut => None,
+                }
+            })
+            .await
         }
 
         fn integration(&self) -> MutexGuard<'_, MockIntegration> {

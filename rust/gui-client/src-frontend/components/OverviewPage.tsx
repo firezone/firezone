@@ -33,6 +33,15 @@ function Session(props: OverviewPageProps) {
     return <Loading />;
   }
 
+  if ("Connected" in props.session) {
+    return (
+      <Connected
+        email={props.session.Connected.email}
+        signOut={props.signOut}
+      />
+    );
+  }
+
   return (
     <SignedIn
       accountSlug={props.session.SignedIn.account_slug}
@@ -112,6 +121,36 @@ function SignedIn({
       </p>
       <Button onClick={signOut} variant="primary">
         {identity === "Absent" ? "Sign out" : "Disconnect"}
+      </Button>
+      <p className="text-xs text-subtle">
+        Firezone will continue running in the taskbar after this window is
+        closed.
+      </p>
+    </div>
+  );
+}
+
+interface ConnectedProps {
+  email: string | null;
+  signOut: () => void;
+}
+
+function Connected({ email, signOut }: ConnectedProps) {
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <p className="text-sm text-body">
+        You are currently connected
+        {email !== null && (
+          <>
+            &nbsp;as&nbsp;
+            <span className="font-bold text-heading">{email}</span>
+          </>
+        )}
+        .<br />
+        Click the Firezone icon in the taskbar to see the list of Resources.
+      </p>
+      <Button onClick={signOut} variant="primary">
+        Disconnect
       </Button>
       <p className="text-xs text-subtle">
         Firezone will continue running in the taskbar after this window is

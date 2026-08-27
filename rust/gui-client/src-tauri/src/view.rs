@@ -26,6 +26,9 @@ pub enum SessionViewModel {
         account_slug: String,
         actor_name: String,
     },
+    Connected {
+        email: Option<String>,
+    },
     Loading,
     SignedOut,
 }
