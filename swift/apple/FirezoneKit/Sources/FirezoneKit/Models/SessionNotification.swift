@@ -136,7 +136,7 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
       }
     }
 
-    /// Tells the user a certificate-authenticated session ended and who can fix it.
+    /// Tells the user a certificate-authenticated session ended, in the words it ended with.
     nonisolated public static func showCertificateFailureNotificationiOS(_ message: String) {
       UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
         guard notificationSettings.authorizationStatus == .authorized else {
@@ -146,7 +146,7 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
 
         let content = UNMutableNotificationContent()
         content.title = "Your Firezone session has ended"
-        content.body = "\(message)\n\nContact your administrator for support."
+        content.body = message
         content.sound = .default
         content.categoryIdentifier =
           NotificationIndentifier.administratorActionRequiredNotificationCategory.rawValue
