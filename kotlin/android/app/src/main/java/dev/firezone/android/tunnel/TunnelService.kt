@@ -359,8 +359,20 @@ class TunnelService : VpnService() {
 
                             Log.i(TAG, "Event-loop finished: $stopReason")
 
-                            if (startedByUser && stopReason is StopReason.Disconnected) {
-                                TunnelNotification.showDisconnectedNotification(context, stopReason.message)
+                            val message =
+                                when (stopReason) {
+                                    is StopReason.Disconnected -> stopReason.message
+
+                                    StopReason.Error -> UNRECOVERABLE_ERROR
+
+                                    StopReason.ExplicitDisconnect,
+                                    StopReason.EventChannelClosed,
+                                    StopReason.CommandChannelClosed,
+                                    -> null
+                                }
+
+                            if (startedByUser && message != null) {
+                                TunnelNotification.showDisconnectedNotification(context, message)
                             }
                         }
                 } catch (e: ConnlibException) {
@@ -785,6 +797,10 @@ class TunnelService : VpnService() {
         private const val SESSION_NAME: String = "Firezone Connection"
         private const val MTU: Int = 1280
         private const val TAG: String = "TunnelService"
+
+        // Whatever the event loop threw reads like a stack trace, so the user is told that the
+        // session ended rather than what raised it.
+        private const val UNRECOVERABLE_ERROR: String = "Firezone ran into an unrecoverable error."
         private const val FEATURE_FLAG_POLL_INTERVAL_MS: Long = 5_000
 
         fun logDir(context: Context): String {
