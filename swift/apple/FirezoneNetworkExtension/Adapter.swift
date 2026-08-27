@@ -622,13 +622,10 @@ actor Adapter {
       return nil
     }
 
+    let identity: X509ClientIdentity?
+
     do {
-      guard let identity = try X509Identity.load(persistentReference: identityReference)
-      else { return nil }
-
-      logClientCertificate(identity)
-
-      return AppleClientTlsIdentity(identity)
+      identity = try X509Identity.load(persistentReference: identityReference)
     } catch {
       guard token != nil else {
         throw AdapterError.authenticationUnavailable(error.localizedDescription)
@@ -639,18 +636,39 @@ actor Adapter {
 
       return nil
     }
+
+    guard let identity else { return nil }
+
+    let parsed = identity.certificateChain.first.flatMap { parseClientCertificate(der: $0) }
+
+    logClientCertificate(identity, parsed)
+
+    // connlib dials the portal's mTLS host whenever it is handed an identity, so a
+    // certificate that cannot be presented is withheld rather than tried.
+    guard parsed?.isUsable != false else {
+      guard token != nil else {
+        throw AdapterError.authenticationUnavailable(
+          "the client certificate cannot be presented")
+      }
+
+      Log.error("Withholding an unusable client certificate for the saved sign-in token")
+
+      return nil
+    }
+
+    return AppleClientTlsIdentity(identity)
   }
 
-  private func logClientCertificate(_ identity: X509ClientIdentity) {
-    guard let leaf = identity.certificateChain.first,
-      let parsed = parseClientCertificate(der: leaf)
-    else {
+  private func logClientCertificate(
+    _ identity: X509ClientIdentity, _ parsed: ParsedCertificate?
+  ) {
+    guard let parsed else {
       Log.warning("Presenting a client certificate that could not be parsed")
       return
     }
 
     Log.info(
-      "Presenting client certificate "
+      "Client certificate "
         + "(fingerprint=\(parsed.fingerprint), valid=\(parsed.isCurrentlyValid), "
         + "notAfter=\(parsed.notAfter), clientAuthEku=\(parsed.hasClientAuthEku), "
         + "mdmDeviceId=\(Self.describe(parsed.mdmDeviceId)), schemes=\(identity.signatureSchemes))"
