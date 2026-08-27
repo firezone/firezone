@@ -2,6 +2,7 @@
 package dev.firezone.android.features.session.ui.compose
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,21 +28,22 @@ fun FirezoneTopBar(
     modifier: Modifier = Modifier,
 ) {
     TopAppBar(
+        // M3 has a `subtitle` slot but keeps it internal, so the two lines share the title slot.
         title = {
-            Text(
-                text = stringResource(R.string.app_short_name),
-                style = MaterialTheme.typography.titleLarge,
-            )
-        },
-        subtitle = {
-            subtitle?.let {
+            Column {
                 Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    text = stringResource(R.string.app_short_name),
+                    style = MaterialTheme.typography.titleLarge,
                 )
+                subtitle?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         },
         modifier = modifier,
