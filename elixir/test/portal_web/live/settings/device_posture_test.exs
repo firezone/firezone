@@ -150,6 +150,95 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     refute html =~ "Upgrade to Unlock"
   end
 
+  test "shows coming-soon posture providers with their logos", context do
+    {:ok, lv, html} =
+      context.conn
+      |> authorize_conn(context.actor)
+      |> live(~p"/#{context.account}/settings/device_posture/new")
+
+    for provider <- [
+          "CrowdStrike Falcon",
+          "Sophos XDR",
+          "Jamf Pro",
+          "Workspace ONE",
+          "Mosyle",
+          "Other"
+        ] do
+      assert html =~ provider
+    end
+
+    assert has_element?(lv, ~s(img[src="/images/logo-crowdstrike.svg"]))
+    assert has_element?(lv, ~s(img[src="/images/logo-sophos.svg"]))
+    assert has_element?(lv, ~s(img[src="/images/logo-jamf.svg"]))
+    assert has_element?(lv, ~s(img[src="/images/logo-workspace-one-uem.png"]))
+    assert has_element?(lv, ~s(img[src="/images/logo-mosyle.svg"]))
+    assert has_element?(lv, "#register-interest-other .ri-apps-2-add-line")
+  end
+
+  test "registers interest and sends follow-up feedback", context do
+    {:ok, lv, _html} =
+      context.conn
+      |> authorize_conn(context.actor)
+      |> live(~p"/#{context.account}/settings/device_posture/new")
+
+    html =
+      lv
+      |> element("#register-interest-crowdstrike")
+      |> render_click()
+
+    assert html =~ "This provider is coming soon!"
+
+    assert html =~
+             "We&#39;ve registered your interest in CrowdStrike Falcon support in Firezone."
+
+    assert_email_sent(fn email ->
+      assert email.to == [{"", "support@firezone.dev"}]
+      assert email.subject == "Posture Provider interest"
+      assert email.text_body =~ "Actor ID: #{context.actor.id}"
+      assert email.text_body =~ "Account ID: #{context.account.id}"
+      assert email.text_body =~ "Provider: CrowdStrike Falcon"
+      refute email.text_body =~ "Feedback:"
+      true
+    end)
+
+    html =
+      lv
+      |> form("#posture-provider-feedback-form",
+        feedback: %{message: "We need risk score and active threat posture."}
+      )
+      |> render_submit()
+
+    assert html =~ "Thanks for your feedback!"
+    refute html =~ "Send feedback"
+
+    assert_email_sent(fn email ->
+      assert email.to == [{"", "support@firezone.dev"}]
+      assert email.subject == "Posture Provider interest"
+      assert email.text_body =~ "Actor ID: #{context.actor.id}"
+      assert email.text_body =~ "Account ID: #{context.account.id}"
+      assert email.text_body =~ "Provider: CrowdStrike Falcon"
+      assert email.text_body =~ "Feedback:\nWe need risk score and active threat posture."
+      true
+    end)
+  end
+
+  test "requires non-empty interest feedback", context do
+    {:ok, lv, _html} =
+      context.conn
+      |> authorize_conn(context.actor)
+      |> live(~p"/#{context.account}/settings/device_posture/new")
+
+    lv |> element("#register-interest-other") |> render_click()
+
+    html =
+      lv
+      |> form("#posture-provider-feedback-form", feedback: %{message: "   "})
+      |> render_submit()
+
+    assert html =~ "Please enter your feedback."
+    refute html =~ "Thanks for your feedback!"
+  end
+
   test "summarises synced devices by compliance state", %{
     conn: conn,
     account: account,
