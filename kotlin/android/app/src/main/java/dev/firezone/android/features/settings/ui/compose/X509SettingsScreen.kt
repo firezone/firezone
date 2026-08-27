@@ -34,7 +34,6 @@ import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.settings.ui.X509SettingsViewModel
 import uniffi.x509claims.ClaimValue
 import uniffi.x509claims.DetailField
-import uniffi.x509claims.FieldProblem
 import uniffi.x509claims.RejectionReason
 
 /**
@@ -292,18 +291,15 @@ private fun DetailField(field: DetailField) {
             }
         }
 
-        field.problem?.let { problem -> FieldProblem(problem) }
+        field.problem?.let { problem -> ClaimRejection(problem) }
     }
 }
 
 /** Reads underneath the value it belongs to, the way a form shows an error on its input. */
 @Composable
-private fun FieldProblem(problem: FieldProblem) {
+private fun ClaimRejection(reason: RejectionReason) {
     Text(
-        text =
-            when (problem) {
-                is FieldProblem.Rejected -> stringResource(problem.reason.phrase())
-            },
+        text = stringResource(reason.phrase()),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.error,
     )
@@ -377,9 +373,9 @@ private fun X509SettingsScreenRejectedClaimsPreview() {
                             DetailField(
                                 "Actor Email",
                                 ClaimValue.Present("jane.doe.example.com"),
-                                FieldProblem.Rejected(RejectionReason.NOT_AN_EMAIL_ADDRESS),
+                                RejectionReason.NOT_AN_EMAIL_ADDRESS,
                             ),
-                            DetailField("Account ID", ClaimValue.Absent, FieldProblem.Rejected(RejectionReason.EMPTY)),
+                            DetailField("Account ID", ClaimValue.Absent, RejectionReason.EMPTY),
                             DetailField("Common Name", ClaimValue.Present("jane.doe@example.com"), null),
                             DetailField("Not After", ClaimValue.Present("2024-01-31 23:59:59 UTC"), null),
                             DetailField("Issuer", ClaimValue.Present("CN=Example Corp Device CA, O=Example Corp"), null),
