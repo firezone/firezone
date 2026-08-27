@@ -30,7 +30,7 @@ interface Screen {
   generalSettings?: GeneralSettingsViewModel;
   advancedSettings?: AdvancedSettingsViewModel;
   logCount?: FileCount;
-  /// Label of a field to leave the pointer over, for a screen whose tooltip is the point.
+  // Label of a field to leave the pointer over, for a screen whose tooltip is the point.
   hover?: string;
 }
 
@@ -52,8 +52,7 @@ const advancedSettings: AdvancedSettingsViewModel = {
   log_filter_is_managed: false,
 };
 
-// Every screen the client can show, in the states worth eyeballing. Add an entry here
-// to have it rendered; nothing else needs to change.
+// Every screen the client can show, in the states worth eyeballing.
 const screens: Record<string, Screen> = {
   "overview-signed-out": { route: "/overview", session: "SignedOut" },
   "overview-loading": { route: "/overview", session: "Loading" },
@@ -128,7 +127,6 @@ afterEach(async () => {
 
 // A screenshot taken straight after the last DOM mutation can catch the frame before it,
 // and the emulated colour scheme reaches the page a moment after the CDP call returns.
-// Both make an image differ from run to run, which would show up as a spurious diff.
 async function settle() {
   await document.fonts.ready;
   await new Promise((resolve) =>
@@ -147,8 +145,6 @@ async function useColorScheme(colorScheme: (typeof COLOR_SCHEMES)[number]) {
 
 for (const [name, screen] of Object.entries(screens)) {
   for (const colorScheme of COLOR_SCHEMES) {
-    // The scheme is emulated before anything mounts, so no screen is ever captured
-    // mid-way through a theme change.
     test(`${name}-${colorScheme}`, async () => {
       await useColorScheme(colorScheme);
 

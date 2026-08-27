@@ -17,9 +17,8 @@ export default mergeConfig(
       include: ["react", "react/jsx-dev-runtime", "react-dom/client"],
     },
 
-    // The About screen shows the version and the commit it was built from, and the commit
-    // changes with every push, so its image would differ on every pull request whether or
-    // not anything about the UI moved.
+    // The About screen prints the version and the commit it was built from, which would
+    // move its image on every push.
     define: {
       __APP_VERSION__: JSON.stringify("0.0.0"),
       __GIT_VERSION__: JSON.stringify(
