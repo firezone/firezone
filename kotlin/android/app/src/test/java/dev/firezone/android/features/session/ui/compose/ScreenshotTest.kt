@@ -14,6 +14,7 @@ import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
+import dev.firezone.android.R
 import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.features.session.ui.ResourceUiModel
 import dev.firezone.android.tunnel.model.ConnectedDevice
@@ -23,6 +24,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -79,7 +81,8 @@ class ScreenshotTest {
     @Test
     fun sessionScreenMenu() {
         composeRule.setContent { FirezoneTheme { SessionScreenSample() } }
-        composeRule.onNodeWithContentDescription("More options").performClick()
+        val moreOptions = RuntimeEnvironment.getApplication().getString(R.string.more_options)
+        composeRule.onNodeWithContentDescription(moreOptions).performClick()
         composeRule.waitForIdle()
         captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/session-screen-menu.png")
     }
