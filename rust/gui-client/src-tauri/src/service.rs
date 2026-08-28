@@ -58,8 +58,7 @@ pub enum ClientMsg {
     /// Fire-and-forget: the GUI sends it for every shown window and never awaits it.
     ReloadX509,
     Connect {
-        #[serde(serialize_with = "serialize_token")]
-        token: SecretString,
+        authentication: Authentication,
         is_internet_resource_active: bool,
     },
     Disconnect,
@@ -73,6 +72,20 @@ pub enum ClientMsg {
     },
     #[cfg(debug_assertions)]
     Panic,
+}
+
+/// What authenticates a session to the portal.
+///
+/// The certificate itself never crosses this message: the Tunnel service loads it from the
+/// platform keystore at connect time, so a variant only states whether to present it.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub enum Authentication {
+    /// The keystore's certificate alone; its claims name who is connecting.
+    Certificate,
+    /// A portal token alone.
+    Token(#[serde(serialize_with = "serialize_token")] SecretString),
+    /// A portal token, with the keystore's certificate alongside for device attestation.
+    TokenAndCertificate(#[serde(serialize_with = "serialize_token")] SecretString),
 }
 
 fn serialize_token<S>(token: &SecretString, serializer: S) -> Result<S::Ok, S::Error>
@@ -262,7 +275,7 @@ enum Session {
         connlib: client_shared::Session,
     },
     WaitingForNetwork {
-        token: SecretString,
+        authentication: Authentication,
         is_internet_resource_active: bool,
     },
     #[default]
@@ -589,14 +602,16 @@ impl<'a> Handler<'a> {
                 connlib.reset(reason.to_owned());
             }
             Session::WaitingForNetwork {
-                token,
+                authentication,
                 is_internet_resource_active,
             } => {
                 tracing::info!(%reason, "Attempting to re-connect");
 
-                let token = token.clone();
+                let authentication = authentication.clone();
                 let is_internet_resource_active = *is_internet_resource_active;
-                let result = self.try_connect(token, is_internet_resource_active).await;
+                let result = self
+                    .try_connect(authentication, is_internet_resource_active)
+                    .await;
 
                 if let Some(e) = result
                     .as_ref()
@@ -728,7 +743,7 @@ impl<'a> Handler<'a> {
                     .await?
             }
             ClientMsg::Connect {
-                token,
+                authentication,
                 is_internet_resource_active,
             } => {
                 if !self.session.is_none() {
@@ -742,7 +757,7 @@ impl<'a> Handler<'a> {
                 telemetry::set_account_slug(None);
 
                 let result = self
-                    .try_connect(token.clone(), is_internet_resource_active)
+                    .try_connect(authentication.clone(), is_internet_resource_active)
                     .await;
 
                 if let Some(e) = result
@@ -754,7 +769,7 @@ impl<'a> Handler<'a> {
                         "Encountered IO error when connecting to portal, most likely we don't have Internet: {e}"
                     );
                     self.session = Session::WaitingForNetwork {
-                        token,
+                        authentication,
                         is_internet_resource_active,
                     };
 
@@ -849,7 +864,7 @@ impl<'a> Handler<'a> {
     /// the one pushed to the GUI come from the same walk, so they cannot diverge.
     async fn try_connect(
         &mut self,
-        token: SecretString,
+        authentication: Authentication,
         is_internet_resource_active: bool,
     ) -> Result<Session> {
         let started_at = Instant::now();
@@ -858,24 +873,48 @@ impl<'a> Handler<'a> {
             device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
         // The certificate the GUI displays is the one this connect presents: both read the
-        // held reference, which only a reload replaces. A keystore we could not read must not
-        // keep the Client from connecting: without p11-kit, or with only broken PKCS#11
-        // modules, we connect without a certificate while the GUI shows the greeting's error.
-        // Anything else that kept an identity from being handed over still fails the connect.
-        let certificate = match &self.keystore {
-            Ok(identity) => Ok(identity.as_ref()),
-            Err(
-                x509_keystore::Error::MissingP11Kit
-                | x509_keystore::Error::UnreadablePkcs11Keystore { .. },
-            ) => Ok(None),
-            Err(error) => Err(error.clone()),
-        }
-        .and_then(|identity| {
-            identity
-                .map(|identity| identity.client_certificate())
-                .transpose()
-        })
-        .context("Failed to read the platform keystore")?;
+        // held reference, which only a reload replaces. How much the keystore may fail is the
+        // intent's to say: a token must not be kept from connecting by a keystore we could not
+        // read (without p11-kit, or with only broken PKCS#11 modules, it connects alone while
+        // the GUI shows the greeting's error), while a connect the certificate itself
+        // authenticates has nothing without it.
+        let (token, certificate) = match (authentication, &self.keystore) {
+            (Authentication::Certificate, Ok(Some(identity))) => {
+                let certificate = identity
+                    .client_certificate()
+                    .context("Failed to read the platform keystore")?;
+
+                (None, Some(certificate))
+            }
+            (Authentication::Certificate, Ok(None)) => {
+                bail!("Cannot authenticate: the platform keystore holds no client certificate")
+            }
+            (Authentication::Certificate, Err(error)) => {
+                return Err(anyhow::Error::new(error.clone())
+                    .context("Failed to read the platform keystore"));
+            }
+            (Authentication::Token(token), Ok(_)) => (Some(token), None),
+            (Authentication::Token(token), Err(_)) => (Some(token), None),
+            (Authentication::TokenAndCertificate(token), Ok(Some(identity))) => {
+                let certificate = identity
+                    .client_certificate()
+                    .context("Failed to read the platform keystore")?;
+
+                (Some(token), Some(certificate))
+            }
+            (Authentication::TokenAndCertificate(token), Ok(None)) => (Some(token), None),
+            (
+                Authentication::TokenAndCertificate(token),
+                Err(
+                    x509_keystore::Error::MissingP11Kit
+                    | x509_keystore::Error::UnreadablePkcs11Keystore { .. },
+                ),
+            ) => (Some(token), None),
+            (Authentication::TokenAndCertificate(_), Err(error)) => {
+                return Err(anyhow::Error::new(error.clone())
+                    .context("Failed to read the platform keystore"));
+            }
+        };
 
         let api_url = self.api_url().to_string();
         let url = LoginUrl::client(
