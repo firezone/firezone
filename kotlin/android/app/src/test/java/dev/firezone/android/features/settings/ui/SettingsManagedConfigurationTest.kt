@@ -6,13 +6,13 @@ import android.content.Context
 import android.content.RestrictionsManager
 import android.os.Bundle
 import android.os.Looper
+import androidx.lifecycle.SavedStateHandle
 import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -38,7 +38,7 @@ class SettingsManagedConfigurationTest {
         val sharedPreferences =
             context.getSharedPreferences("settings-managed-configuration-test", Context.MODE_PRIVATE)
         sharedPreferences.edit().clear().commit()
-        repository = Repository(context, Dispatchers.Unconfined, sharedPreferences)
+        repository = Repository(Dispatchers.Unconfined, sharedPreferences)
         source =
             ManagedConfigurationSource(
                 context,
@@ -46,14 +46,14 @@ class SettingsManagedConfigurationTest {
                 repository,
                 CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
             )
-        runBlocking { repository.saveSettings(userConfig).first() }
-        viewModel = SettingsViewModel(repository, source)
+        runBlocking { repository.saveUserConfig(userConfig) }
+        viewModel = SettingsViewModel(repository, source, SavedStateHandle())
     }
 
     @Test
     fun `open settings follow managed configuration changes`() =
         runBlocking {
-            repository.saveSettings(userConfig).first()
+            repository.saveUserConfig(userConfig)
 
             source.applyRestrictions(
                 Bundle().apply {
@@ -63,18 +63,18 @@ class SettingsManagedConfigurationTest {
             )
             shadowOf(Looper.getMainLooper()).idle()
 
-            assertEquals("https://managed.example.com", viewModel.configStateFlow.value.authUrl)
-            assertTrue(viewModel.configStateFlow.value.connectOnStart)
-            assertTrue(viewModel.managedStatusStateFlow.value!!.isAuthUrlManaged)
-            assertTrue(viewModel.managedStatusStateFlow.value!!.isConnectOnStartManaged)
+            assertEquals("https://managed.example.com", viewModel.uiState.value.config.authUrl)
+            assertTrue(viewModel.uiState.value.config.connectOnStart)
+            assertTrue(viewModel.uiState.value.managedStatus.isAuthUrlManaged)
+            assertTrue(viewModel.uiState.value.managedStatus.isConnectOnStartManaged)
 
-            viewModel.onValidateLogFilter("trace")
+            viewModel.onConfigChanged(viewModel.uiState.value.config.copy(logFilter = "trace"))
             source.applyRestrictions(Bundle())
             shadowOf(Looper.getMainLooper()).idle()
 
-            assertEquals(userConfig.copy(logFilter = "trace"), viewModel.configStateFlow.value)
-            assertFalse(viewModel.managedStatusStateFlow.value!!.isAuthUrlManaged)
-            assertFalse(viewModel.managedStatusStateFlow.value!!.isConnectOnStartManaged)
+            assertEquals(userConfig.copy(logFilter = "trace"), viewModel.uiState.value.config)
+            assertFalse(viewModel.uiState.value.managedStatus.isAuthUrlManaged)
+            assertFalse(viewModel.uiState.value.managedStatus.isConnectOnStartManaged)
         }
 
     @Test
@@ -92,29 +92,35 @@ class SettingsManagedConfigurationTest {
             viewModel.onCancel()
 
             assertTrue(FAVORITE_ID in repository.favorites.value.inner)
-            assertEquals("https://managed.example.com", viewModel.configStateFlow.value.authUrl)
+            assertEquals("https://managed.example.com", viewModel.uiState.value.config.authUrl)
         }
 
     @Test
     fun `managed field restores its unsaved user edit after revocation`() =
         runBlocking {
-            repository.saveSettings(userConfig).first()
+            repository.saveUserConfig(userConfig)
             source.applyRestrictions(Bundle())
             shadowOf(Looper.getMainLooper()).idle()
+            val savedStateHandle = SavedStateHandle()
+            val initialViewModel = SettingsViewModel(repository, source, savedStateHandle)
 
-            viewModel.onValidateAuthUrl("https://unsaved.example.com")
+            initialViewModel.onConfigChanged(
+                initialViewModel.uiState.value.config.copy(authUrl = "https://unsaved.example.com"),
+            )
             source.applyRestrictions(
                 Bundle().apply {
                     putString("authUrl", "https://managed.example.com")
                 },
             )
             shadowOf(Looper.getMainLooper()).idle()
-            assertEquals("https://managed.example.com", viewModel.configStateFlow.value.authUrl)
+            assertEquals("https://managed.example.com", initialViewModel.uiState.value.config.authUrl)
+
+            val recreatedViewModel = SettingsViewModel(repository, source, savedStateHandle)
 
             source.applyRestrictions(Bundle())
             shadowOf(Looper.getMainLooper()).idle()
 
-            assertEquals("https://unsaved.example.com", viewModel.configStateFlow.value.authUrl)
+            assertEquals("https://unsaved.example.com", recreatedViewModel.uiState.value.config.authUrl)
         }
 
     @Test
@@ -125,13 +131,15 @@ class SettingsManagedConfigurationTest {
                     Bundle().apply {
                         putString("authUrl", "https://managed.example.com")
                     },
-                ).first()
-            val preSnapshotViewModel = SettingsViewModel(repository, source)
+                )
+            val preSnapshotViewModel = SettingsViewModel(repository, source, SavedStateHandle())
 
-            preSnapshotViewModel.onValidateLogFilter("trace")
+            preSnapshotViewModel.onConfigChanged(
+                preSnapshotViewModel.uiState.value.config.copy(logFilter = "trace"),
+            )
 
-            assertEquals("https://managed.example.com", preSnapshotViewModel.configStateFlow.value.authUrl)
-            assertEquals("trace", preSnapshotViewModel.configStateFlow.value.logFilter)
+            assertEquals("https://managed.example.com", preSnapshotViewModel.uiState.value.config.authUrl)
+            assertEquals("trace", preSnapshotViewModel.uiState.value.config.logFilter)
         }
 
     @Test
@@ -139,7 +147,9 @@ class SettingsManagedConfigurationTest {
         runBlocking {
             source.applyRestrictions(Bundle())
             shadowOf(Looper.getMainLooper()).idle()
-            viewModel.onValidateAuthUrl("https://unsaved.example.com")
+            viewModel.onConfigChanged(
+                viewModel.uiState.value.config.copy(authUrl = "https://unsaved.example.com"),
+            )
 
             source.applyRestrictions(
                 Bundle().apply {

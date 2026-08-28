@@ -1,7 +1,6 @@
 // Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.core.data
 
-import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
 import com.google.gson.Gson
@@ -12,11 +11,9 @@ import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.ManagedConfiguration
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import javax.inject.Inject
 
@@ -65,7 +62,6 @@ enum class AuthCallbackResult {
 class Repository
     @Inject
     constructor(
-        private val context: Context,
         private val coroutineDispatcher: CoroutineDispatcher,
         private val sharedPreferences: SharedPreferences,
     ) {
@@ -121,13 +117,6 @@ class Repository
                         ?: userConfig.connectOnStart,
             )
 
-        fun getConfig(): Flow<Config> =
-            flow {
-                emit(getConfigSync())
-            }.flowOn(coroutineDispatcher)
-
-        fun getDefaultConfigSync(): Config = getDefaultUserConfigSync().withManagedOverrides()
-
         fun getDefaultUserConfigSync(): Config =
             Config(
                 authUrl = BuildConfig.AUTH_URL,
@@ -138,26 +127,14 @@ class Repository
                 connectOnStart = false,
             )
 
-        fun getDefaultConfig(): Flow<Config> =
-            flow {
-                emit(getDefaultConfigSync())
-            }.flowOn(coroutineDispatcher)
-
-        fun saveSettings(value: Config): Flow<Unit> =
-            flow {
-                val userConfig = mergeUnmanagedConfig(getUserConfigSync(), value, getManagedStatus())
-                emit(saveUserConfigSync(userConfig))
-            }.flowOn(coroutineDispatcher)
-
-        fun saveUserConfig(value: Config): Flow<Unit> =
-            flow {
-                emit(saveUserConfigSync(value))
-            }.flowOn(coroutineDispatcher)
+        suspend fun saveUserConfig(value: Config) {
+            withContext(coroutineDispatcher) { saveUserConfigSync(value) }
+        }
 
         // TODO: Consider adding support for the legacy managed configuration keys like token,
         //  allowedApplications, etc from pilot customer.
-        fun saveManagedConfiguration(bundle: Bundle): Flow<Unit> =
-            flow {
+        suspend fun saveManagedConfiguration(bundle: Bundle) {
+            withContext(coroutineDispatcher) {
                 val editor = sharedPreferences.edit()
 
                 if (bundle.containsKey(AUTH_URL_KEY)) {
@@ -191,8 +168,9 @@ class Repository
                     editor.remove(MANAGED_CONNECT_ON_START_KEY)
                 }
 
-                emit(editor.apply())
-            }.flowOn(coroutineDispatcher)
+                editor.apply()
+            }
+        }
 
         fun getDeviceIdSync(): String? = sharedPreferences.getString(DEVICE_ID_KEY, null)
 
@@ -216,38 +194,13 @@ class Repository
             saveFavoritesSync()
         }
 
-        fun getToken(): Flow<String?> =
-            flow {
-                emit(sharedPreferences.getString(TOKEN_KEY, null))
-            }.flowOn(coroutineDispatcher)
-
         fun getTokenSync(): String? = sharedPreferences.getString(TOKEN_KEY, null)
 
         fun getStateSync(): String? = sharedPreferences.getString(STATE_KEY, null)
 
-        fun getAccountSlug(): Flow<String?> =
-            flow {
-                emit(sharedPreferences.getString(ACCOUNT_SLUG_KEY, null))
-            }.flowOn(coroutineDispatcher)
-
-        fun getActorName(): Flow<String?> =
-            flow {
-                emit(getActorNameSync())
-            }.flowOn(coroutineDispatcher)
-
         fun getActorNameSync(): String? = sharedPreferences.getString(ACTOR_NAME_KEY, null)?.takeIf { it.isNotEmpty() }
 
         fun getNonceSync(): String? = sharedPreferences.getString(NONCE_KEY, null)
-
-        fun saveAccountSlug(value: String): Flow<Unit> =
-            flow {
-                emit(
-                    sharedPreferences
-                        .edit()
-                        .putString(ACCOUNT_SLUG_KEY, value)
-                        .apply(),
-                )
-            }.flowOn(coroutineDispatcher)
 
         fun saveDeviceIdSync(value: String): Unit =
             sharedPreferences
@@ -281,69 +234,45 @@ class Repository
             }
         }
 
-        fun saveToken(value: String): Flow<Unit> =
-            flow {
-                val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
-                emit(
-                    sharedPreferences
-                        .edit()
-                        .putString(TOKEN_KEY, nonce.plus(value))
-                        .apply(),
-                )
-            }.flowOn(coroutineDispatcher)
-
-        fun saveActorName(value: String): Flow<Unit> =
-            flow {
-                emit(
-                    sharedPreferences
-                        .edit()
-                        .putString(ACTOR_NAME_KEY, value)
-                        .apply(),
-                )
-            }.flowOn(coroutineDispatcher)
-
-        fun saveAuthCallbackIfStateValid(
+        suspend fun saveAuthCallbackIfStateValid(
             state: String,
             fragment: String,
             accountSlug: String,
             actorName: String,
-        ): Flow<AuthCallbackResult> =
-            flow {
-                val result =
-                    synchronized(authStateLock) {
-                        val stateHash = hashAuthState(state)
-                        val pendingStateHash = sharedPreferences.getString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, null)
-                        val isPendingHandoff = constantTimeEquals(pendingStateHash, stateHash)
-                        val expectedState = sharedPreferences.getString(STATE_KEY, "").orEmpty()
-                        val isExpectedState = constantTimeEquals(expectedState, state)
-                        when {
-                            isPendingHandoff -> {
-                                AuthCallbackResult.PENDING_HANDOFF
-                            }
+        ): AuthCallbackResult =
+            withContext(coroutineDispatcher) {
+                synchronized(authStateLock) {
+                    val stateHash = hashAuthState(state)
+                    val pendingStateHash = sharedPreferences.getString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, null)
+                    val isPendingHandoff = constantTimeEquals(pendingStateHash, stateHash)
+                    val expectedState = sharedPreferences.getString(STATE_KEY, "").orEmpty()
+                    val isExpectedState = constantTimeEquals(expectedState, state)
+                    when {
+                        isPendingHandoff -> {
+                            AuthCallbackResult.PENDING_HANDOFF
+                        }
 
-                            !isExpectedState -> {
-                                AuthCallbackResult.INVALID
-                            }
+                        !isExpectedState -> {
+                            AuthCallbackResult.INVALID
+                        }
 
-                            else -> {
-                                val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
-                                sharedPreferences
-                                    .edit()
-                                    .putString(TOKEN_KEY, nonce.plus(fragment))
-                                    .remove(NONCE_KEY)
-                                    .remove(STATE_KEY)
-                                    .putString(ACCOUNT_SLUG_KEY, accountSlug)
-                                    .putString(ACTOR_NAME_KEY, actorName)
-                                    .putString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, stateHash)
-                                    .apply()
+                        else -> {
+                            val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
+                            sharedPreferences
+                                .edit()
+                                .putString(TOKEN_KEY, nonce.plus(fragment))
+                                .remove(NONCE_KEY)
+                                .remove(STATE_KEY)
+                                .putString(ACCOUNT_SLUG_KEY, accountSlug)
+                                .putString(ACTOR_NAME_KEY, actorName)
+                                .putString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, stateHash)
+                                .apply()
 
-                                AuthCallbackResult.NEW_HANDOFF
-                            }
+                            AuthCallbackResult.NEW_HANDOFF
                         }
                     }
-
-                emit(result)
-            }.flowOn(coroutineDispatcher)
+                }
+            }
 
         fun acknowledgeAuthCallbackHandoff(state: String): Boolean =
             synchronized(authStateLock) {
@@ -364,20 +293,6 @@ class Repository
                     remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY)
                     apply()
                 }
-            }
-        }
-
-        fun clearNonce() {
-            sharedPreferences.edit().apply {
-                remove(NONCE_KEY)
-                apply()
-            }
-        }
-
-        fun clearState() {
-            sharedPreferences.edit().apply {
-                remove(STATE_KEY)
-                apply()
             }
         }
 
