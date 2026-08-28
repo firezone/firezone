@@ -67,6 +67,28 @@
       deliver(app, as: "session-scrolled", in: appearance)
     }
 
+    /// A session a certificate claims. Its heading and the control that ends it
+    /// both sit in the account menu, so the capture opens it.
+    func testSessionCertificate() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "connected-unreadable-certificate")
+      defer { app.terminate() }
+
+      try waitFor(app.staticTexts["Office network"], on: "session-certificate")
+
+      // The account menu is an icon carrying no text, so it is taken as the
+      // navigation bar button that is not Settings.
+      let account = app.navigationBars.buttons.matching(
+        NSPredicate(format: "label != %@", "Settings")
+      ).firstMatch
+      try waitFor(account, on: "session-certificate")
+      account.tap()
+
+      // SwiftUI has drawn menu items as different controls across releases.
+      try waitFor(app.descendants(matching: .any)["Disconnect"], on: "session-certificate")
+      deliver(app, as: "session-certificate", in: appearance)
+    }
+
     // Each detail screen takes its own launch: photographed one after another, a
     // screen carries what the ones before it left behind, and the glass the back
     // button is drawn on comes out a shade different for it.
