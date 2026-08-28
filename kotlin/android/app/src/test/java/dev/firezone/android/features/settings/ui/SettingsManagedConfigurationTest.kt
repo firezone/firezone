@@ -34,8 +34,9 @@ class SettingsManagedConfigurationTest {
 
     @Before
     fun setUp() {
-        val context = RuntimeEnvironment.getApplication<Application>()
-        val sharedPreferences = context.getSharedPreferences("settings-managed-configuration-test", Context.MODE_PRIVATE)
+        val context: Application = RuntimeEnvironment.getApplication()
+        val sharedPreferences =
+            context.getSharedPreferences("settings-managed-configuration-test", Context.MODE_PRIVATE)
         sharedPreferences.edit().clear().commit()
         repository = Repository(context, Dispatchers.Unconfined, sharedPreferences)
         source =
@@ -75,7 +76,60 @@ class SettingsManagedConfigurationTest {
             assertFalse(viewModel.managedStatusStateFlow.value!!.isConnectOnStartManaged)
         }
 
+    @Test
+    fun `canceling a reset keeps favorites and managed values`() =
+        runBlocking {
+            repository.addFavoriteResource(FAVORITE_ID)
+            source.applyRestrictions(
+                Bundle().apply {
+                    putString("authUrl", "https://managed.example.com")
+                },
+            )
+            shadowOf(Looper.getMainLooper()).idle()
+
+            viewModel.resetSettingsToDefaults()
+            viewModel.onCancel()
+
+            assertTrue(FAVORITE_ID in repository.favorites.value.inner)
+            assertEquals("https://managed.example.com", viewModel.configStateFlow.value.authUrl)
+        }
+
+    @Test
+    fun `managed field restores its unsaved user edit after revocation`() =
+        runBlocking {
+            repository.saveSettings(userConfig).first()
+            source.applyRestrictions(Bundle())
+            shadowOf(Looper.getMainLooper()).idle()
+
+            viewModel.onValidateAuthUrl("https://unsaved.example.com")
+            source.applyRestrictions(
+                Bundle().apply {
+                    putString("authUrl", "https://managed.example.com")
+                },
+            )
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals("https://managed.example.com", viewModel.configStateFlow.value.authUrl)
+
+            source.applyRestrictions(Bundle())
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertEquals("https://unsaved.example.com", viewModel.configStateFlow.value.authUrl)
+        }
+
+    @Test
+    fun `saving a reset clears favorites`() {
+        repository.addFavoriteResource(FAVORITE_ID)
+
+        viewModel.resetSettingsToDefaults()
+        viewModel.onSaveSettingsCompleted()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertTrue(repository.favorites.value.inner.isEmpty())
+    }
+
     private companion object {
+        const val FAVORITE_ID = "favorite-resource"
+
         val userConfig =
             Config(
                 authUrl = "https://user.example.com",

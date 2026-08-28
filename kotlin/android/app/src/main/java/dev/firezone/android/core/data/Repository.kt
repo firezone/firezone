@@ -76,14 +76,61 @@ class Repository
         val favorites = _favorites.asStateFlow()
         private val authStateLock = Any()
 
-        fun getConfigSync(): Config = getUserConfigSync().withManagedOverrides()
+        fun getConfigSync(): Config = getEffectiveConfig(getUserConfigSync())
+
+        fun getUserConfigSync(): Config {
+            val defaults = getDefaultUserConfigSync()
+
+            return Config(
+                authUrl = sharedPreferences.getString(AUTH_URL_KEY, null) ?: defaults.authUrl,
+                apiUrl = sharedPreferences.getString(API_URL_KEY, null) ?: defaults.apiUrl,
+                logFilter = sharedPreferences.getString(LOG_FILTER_KEY, null) ?: defaults.logFilter,
+                accountSlug = sharedPreferences.getString(ACCOUNT_SLUG_KEY, null) ?: defaults.accountSlug,
+                startOnLogin = sharedPreferences.getBoolean(START_ON_LOGIN_KEY, defaults.startOnLogin),
+                connectOnStart = sharedPreferences.getBoolean(CONNECT_ON_START_KEY, defaults.connectOnStart),
+            )
+        }
+
+        fun getEffectiveConfig(userConfig: Config): Config = userConfig.withManagedOverrides()
+
+        fun mergeUnmanagedConfig(
+            userConfig: Config,
+            editedConfig: Config,
+            managedStatus: ManagedConfigStatus,
+        ): Config =
+            userConfig.copy(
+                authUrl = editedConfig.authUrl.takeUnless { managedStatus.isAuthUrlManaged } ?: userConfig.authUrl,
+                apiUrl = editedConfig.apiUrl.takeUnless { managedStatus.isApiUrlManaged } ?: userConfig.apiUrl,
+                logFilter =
+                    editedConfig.logFilter.takeUnless { managedStatus.isLogFilterManaged }
+                        ?: userConfig.logFilter,
+                accountSlug =
+                    editedConfig.accountSlug.takeUnless { managedStatus.isAccountSlugManaged }
+                        ?: userConfig.accountSlug,
+                startOnLogin =
+                    editedConfig.startOnLogin.takeUnless { managedStatus.isStartOnLoginManaged }
+                        ?: userConfig.startOnLogin,
+                connectOnStart =
+                    editedConfig.connectOnStart.takeUnless { managedStatus.isConnectOnStartManaged }
+                        ?: userConfig.connectOnStart,
+            )
 
         fun getConfig(): Flow<Config> =
             flow {
                 emit(getConfigSync())
             }.flowOn(coroutineDispatcher)
 
-        fun getDefaultConfigSync(): Config = getBuildDefaultConfig().withManagedOverrides()
+        fun getDefaultConfigSync(): Config = getEffectiveConfig(getDefaultUserConfigSync())
+
+        fun getDefaultUserConfigSync(): Config =
+            Config(
+                authUrl = BuildConfig.AUTH_URL,
+                apiUrl = BuildConfig.API_URL,
+                logFilter = BuildConfig.LOG_FILTER,
+                accountSlug = "",
+                startOnLogin = false,
+                connectOnStart = false,
+            )
 
         fun getDefaultConfig(): Flow<Config> =
             flow {
@@ -92,29 +139,18 @@ class Repository
 
         fun saveSettings(value: Config): Flow<Unit> =
             flow {
-                val managedStatus = getManagedStatus()
-                val editor = sharedPreferences.edit()
-
-                if (!managedStatus.isAuthUrlManaged) {
-                    editor.putString(AUTH_URL_KEY, value.authUrl)
-                }
-                if (!managedStatus.isApiUrlManaged) {
-                    editor.putString(API_URL_KEY, value.apiUrl)
-                }
-                if (!managedStatus.isLogFilterManaged) {
-                    editor.putString(LOG_FILTER_KEY, value.logFilter)
-                }
-                if (!managedStatus.isAccountSlugManaged) {
-                    editor.putString(ACCOUNT_SLUG_KEY, value.accountSlug)
-                }
-                if (!managedStatus.isStartOnLoginManaged) {
-                    editor.putBoolean(START_ON_LOGIN_KEY, value.startOnLogin)
-                }
-                if (!managedStatus.isConnectOnStartManaged) {
-                    editor.putBoolean(CONNECT_ON_START_KEY, value.connectOnStart)
-                }
-
-                emit(editor.apply())
+                val userConfig = mergeUnmanagedConfig(getUserConfigSync(), value, getManagedStatus())
+                emit(
+                    sharedPreferences
+                        .edit()
+                        .putString(AUTH_URL_KEY, userConfig.authUrl)
+                        .putString(API_URL_KEY, userConfig.apiUrl)
+                        .putString(LOG_FILTER_KEY, userConfig.logFilter)
+                        .putString(ACCOUNT_SLUG_KEY, userConfig.accountSlug)
+                        .putBoolean(START_ON_LOGIN_KEY, userConfig.startOnLogin)
+                        .putBoolean(CONNECT_ON_START_KEY, userConfig.connectOnStart)
+                        .apply(),
+                )
             }.flowOn(coroutineDispatcher)
 
         // TODO: Consider adding support for the legacy managed configuration keys like token,
@@ -378,29 +414,6 @@ class Repository
         fun setNotificationPermissionRequested() {
             sharedPreferences.edit().putBoolean(NOTIFICATION_PERMISSION_REQUESTED_KEY, true).apply()
         }
-
-        private fun getUserConfigSync(): Config {
-            val defaults = getBuildDefaultConfig()
-
-            return Config(
-                authUrl = sharedPreferences.getString(AUTH_URL_KEY, null) ?: defaults.authUrl,
-                apiUrl = sharedPreferences.getString(API_URL_KEY, null) ?: defaults.apiUrl,
-                logFilter = sharedPreferences.getString(LOG_FILTER_KEY, null) ?: defaults.logFilter,
-                accountSlug = sharedPreferences.getString(ACCOUNT_SLUG_KEY, null) ?: defaults.accountSlug,
-                startOnLogin = sharedPreferences.getBoolean(START_ON_LOGIN_KEY, defaults.startOnLogin),
-                connectOnStart = sharedPreferences.getBoolean(CONNECT_ON_START_KEY, defaults.connectOnStart),
-            )
-        }
-
-        private fun getBuildDefaultConfig(): Config =
-            Config(
-                authUrl = BuildConfig.AUTH_URL,
-                apiUrl = BuildConfig.API_URL,
-                logFilter = BuildConfig.LOG_FILTER,
-                accountSlug = "",
-                startOnLogin = false,
-                connectOnStart = false,
-            )
 
         private fun Config.withManagedOverrides(): Config =
             copy(

@@ -21,6 +21,11 @@ import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
+internal data class ManagedConfigurationUpdate(
+    val revision: Long,
+    val configuration: ManagedConfiguration,
+)
+
 @Singleton
 internal class ManagedConfigurationSource
     @Inject
@@ -33,8 +38,11 @@ internal class ManagedConfigurationSource
         private val refreshMutex = Mutex()
         private val _configuration = MutableStateFlow<ManagedConfiguration?>(null)
         val configuration = _configuration.asStateFlow()
+        private val _updates = MutableStateFlow<ManagedConfigurationUpdate?>(null)
+        val updates = _updates.asStateFlow()
 
         private var started = false
+        private var revision = 0L
 
         private val restrictionsReceiver =
             object : BroadcastReceiver() {
@@ -69,14 +77,30 @@ internal class ManagedConfigurationSource
             applicationScope.launch { refresh() }
         }
 
-        suspend fun refresh(): ManagedConfiguration = applyRestrictions(restrictionsManager.applicationRestrictions)
+        suspend fun refresh(): ManagedConfiguration = refreshUpdate().configuration
+
+        internal suspend fun refreshUpdate(): ManagedConfigurationUpdate =
+            refreshMutex.withLock {
+                applyRestrictionsLocked(restrictionsManager.applicationRestrictions)
+            }
+
+        internal suspend fun refresh(readRestrictions: suspend () -> Bundle): ManagedConfiguration =
+            refreshMutex.withLock {
+                applyRestrictionsLocked(readRestrictions()).configuration
+            }
 
         internal suspend fun applyRestrictions(bundle: Bundle): ManagedConfiguration =
             refreshMutex.withLock {
-                repository.saveManagedConfiguration(bundle).first()
-
-                val configuration = ManagedConfiguration.from(bundle)
-                _configuration.value = configuration
-                configuration
+                applyRestrictionsLocked(bundle).configuration
             }
+
+        private suspend fun applyRestrictionsLocked(bundle: Bundle): ManagedConfigurationUpdate {
+            repository.saveManagedConfiguration(bundle).first()
+
+            val configuration = ManagedConfiguration.from(bundle)
+            val update = ManagedConfigurationUpdate(++revision, configuration)
+            _configuration.value = configuration
+            _updates.value = update
+            return update
+        }
     }
