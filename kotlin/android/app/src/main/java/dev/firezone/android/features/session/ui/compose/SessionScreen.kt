@@ -86,9 +86,12 @@ fun SessionScreen(
             (selection as? Selection.Device)?.let { sel -> connectedDevices.firstOrNull { it.id == sel.id } }
         }
 
+    var profileOpen by rememberSaveable { mutableStateOf(false) }
+    val profileName = actorName ?: stringResource(R.string.signed_in)
+
     Scaffold(
         modifier = modifier,
-        topBar = { FirezoneTopBar(subtitle = actorName, onSettings = onSettings, onSignOut = onSignOut) },
+        topBar = { FirezoneTopBar { ProfileButton(actorName = profileName, onClick = { profileOpen = true }) } },
     ) { innerPadding ->
         Column(Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
             // The tab bar is the top-level switcher, pinned below the app bar so it stays visible and
@@ -159,6 +162,15 @@ fun SessionScreen(
         ConnectedDeviceDetailsSheet(
             device = device,
             onDismiss = { selection = null },
+        )
+    }
+
+    if (profileOpen) {
+        ProfileSheet(
+            actorName = profileName,
+            onSettings = onSettings,
+            onSignOut = onSignOut,
+            onDismiss = { profileOpen = false },
         )
     }
 }

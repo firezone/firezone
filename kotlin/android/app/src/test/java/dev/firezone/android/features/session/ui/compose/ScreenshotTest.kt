@@ -79,12 +79,12 @@ class ScreenshotTest {
 
     @OptIn(ExperimentalRoborazziApi::class)
     @Test
-    fun sessionScreenMenu() {
+    fun sessionScreenProfile() {
         composeRule.setContent { FirezoneTheme { SessionScreenSample() } }
-        val moreOptions = RuntimeEnvironment.getApplication().getString(R.string.more_options)
-        composeRule.onNodeWithContentDescription(moreOptions).performClick()
+        val profile = RuntimeEnvironment.getApplication().getString(R.string.profile)
+        composeRule.onNodeWithContentDescription(profile).performClick()
         composeRule.waitForIdle()
-        captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/session-screen-menu.png")
+        captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/session-screen-profile.png")
     }
 
     @Test
