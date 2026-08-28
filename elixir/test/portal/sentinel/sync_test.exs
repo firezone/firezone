@@ -191,7 +191,7 @@ defmodule Portal.Sentinel.SyncTest do
       })
 
       log_output =
-        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+        capture_log_for_sink(sink, [level: :error], fn ->
           assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
@@ -224,7 +224,7 @@ defmodule Portal.Sentinel.SyncTest do
       })
 
       log_output =
-        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+        capture_log_for_sink(sink, [level: :error], fn ->
           assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
