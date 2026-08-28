@@ -25,6 +25,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
 
@@ -40,7 +41,7 @@ fun ProfileMenu(
     Box(modifier) {
         ProfileButton(actorName = actorName, onClick = { expanded = true })
 
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, offset = DpOffset(x = (-4).dp, y = 0.dp)) {
             Text(
                 text = actorName,
                 style = MaterialTheme.typography.titleMedium,
