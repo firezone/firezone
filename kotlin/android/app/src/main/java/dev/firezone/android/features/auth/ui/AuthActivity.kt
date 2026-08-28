@@ -24,11 +24,11 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class AuthActivity : AppCompatActivity() {
     private val viewModel: AuthViewModel by viewModels()
-    private var hasLaunchedBrowser = false
+    private var browserState = AuthBrowserState.NOT_STARTED
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        hasLaunchedBrowser = savedInstanceState?.getBoolean(BROWSER_LAUNCHED_KEY) == true
+        browserState = AuthBrowserState.restore(savedInstanceState?.getString(BROWSER_STATE_KEY))
 
         setContent {
             FirezoneTheme {
@@ -37,21 +37,24 @@ class AuthActivity : AppCompatActivity() {
         }
 
         setupActionObservers()
+
+        if (browserState == AuthBrowserState.UNAVAILABLE) {
+            showBrowserRequiredError()
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putBoolean(BROWSER_LAUNCHED_KEY, hasLaunchedBrowser)
+        outState.putString(BROWSER_STATE_KEY, browserState.name)
         super.onSaveInstanceState(outState)
     }
 
     override fun onResume() {
         super.onResume()
 
-        if (hasLaunchedBrowser) {
-            // User returned from Custom Tab without completing auth, navigate back to main app
-            navigateToSignIn()
-        } else {
-            viewModel.onActivityResume()
+        when (browserState.resumeAction()) {
+            AuthBrowserState.ResumeAction.START_AUTH_FLOW -> viewModel.onActivityResume()
+            AuthBrowserState.ResumeAction.NAVIGATE_TO_SIGN_IN -> navigateToSignIn()
+            AuthBrowserState.ResumeAction.NONE -> Unit
         }
     }
 
@@ -71,12 +74,16 @@ class AuthActivity : AppCompatActivity() {
     }
 
     private fun setupWebView(url: String) {
+        if (browserState != AuthBrowserState.NOT_STARTED) {
+            return
+        }
+
         val url = Uri.parse(url)
 
         // Try to use Custom Tabs with the default browser first
         try {
             launchCustomTabsIntent(url)
-            hasLaunchedBrowser = true
+            browserState = AuthBrowserState.LAUNCHED
             return
         } catch (e: ActivityNotFoundException) {
             Log.d(TAG, "CustomTabs don't appear to be available, falling back to ACTION_VIEW intent")
@@ -85,8 +92,9 @@ class AuthActivity : AppCompatActivity() {
         // Fallback to default browser if Custom Tabs unavailable
         try {
             launchActionViewIntent(url)
-            hasLaunchedBrowser = true
+            browserState = AuthBrowserState.LAUNCHED
         } catch (e: ActivityNotFoundException) {
+            browserState = AuthBrowserState.UNAVAILABLE
             showBrowserRequiredError()
         }
     }
@@ -127,7 +135,7 @@ class AuthActivity : AppCompatActivity() {
     }
 
     companion object {
-        private const val BROWSER_LAUNCHED_KEY = "browserLaunched"
+        private const val BROWSER_STATE_KEY = "browserState"
         private const val TAG = "AuthActivity"
     }
 }
