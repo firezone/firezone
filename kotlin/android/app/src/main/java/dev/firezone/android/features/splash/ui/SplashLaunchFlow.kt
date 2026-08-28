@@ -1,9 +1,13 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.features.splash.ui
 
-internal class SplashLaunchFlow {
-    private var isInitialLaunch = true
+import androidx.lifecycle.SavedStateHandle
 
+private const val INITIAL_LAUNCH_CONSUMED = "initialLaunchConsumed"
+
+internal class SplashLaunchFlow(
+    private val savedStateHandle: SavedStateHandle,
+) {
     fun vpnPermissionRequired(): Action = Action.REQUEST_VPN_PERMISSION
 
     fun notificationPermissionRequired(): Action = Action.REQUEST_NOTIFICATION_PERMISSION
@@ -15,8 +19,8 @@ internal class SplashLaunchFlow {
         isTunnelRunning: Boolean,
         connectOnStart: Boolean,
     ): Action {
-        val shouldConnect = isInitialLaunch && connectOnStart
-        isInitialLaunch = false
+        val shouldConnect = savedStateHandle[INITIAL_LAUNCH_CONSUMED] != true && connectOnStart
+        savedStateHandle[INITIAL_LAUNCH_CONSUMED] = true
 
         if (!hasToken) {
             return Action.SIGN_IN
