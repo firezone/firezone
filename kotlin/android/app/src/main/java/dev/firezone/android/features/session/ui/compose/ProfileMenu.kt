@@ -3,6 +3,7 @@ package dev.firezone.android.features.session.ui.compose
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -43,7 +44,7 @@ fun ProfileMenu(
             Text(
                 text = actorName,
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             )
 
             HorizontalDivider()
@@ -55,6 +56,7 @@ fun ProfileMenu(
                     onSettings()
                 },
                 leadingIcon = { Icon(painterResource(R.drawable.rounded_settings_black_24dp), contentDescription = null) },
+                contentPadding = PaddingValues(horizontal = 16.dp),
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.sign_out)) },
@@ -63,6 +65,7 @@ fun ProfileMenu(
                     onSignOut()
                 },
                 leadingIcon = { Icon(painterResource(R.drawable.rounded_logout_24dp), contentDescription = null) },
+                contentPadding = PaddingValues(horizontal = 16.dp),
             )
         }
     }
