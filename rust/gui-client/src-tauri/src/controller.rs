@@ -344,19 +344,47 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    /// Resume a session at startup: if a token is available and connect-on-start
-    /// is enabled, reconnect.
+    /// Resume a session at startup: if connect-on-start is enabled and we can authenticate
+    /// ourselves without asking anybody, reconnect.
     async fn maybe_start_session(&mut self) -> Result<()> {
-        let Some(token) = self.auth.token() else {
-            tracing::info!("No token in the keyring, starting in signed-out state");
+        // For backwards-compatibility prior to MDM-config, also connect if not configured.
+        if self.connect_on_start().is_some_and(|connect| !connect) {
             return Ok(());
-        };
-
-        // For backwards-compatibility prior to MDM-config, also call `start_session` if not configured.
-        if self.connect_on_start().is_none_or(|c| c) {
-            self.start_session(service::Authentication::TokenAndCertificate(token))
-                .await?;
         }
+
+        // A certificate that claims an identity outranks a stored token: it is the identity
+        // this device was provisioned with. It only connects on start when connect-on-start is
+        // explicitly configured; a stored token is used only when the certificate claims
+        // nobody.
+        if let x509_keystore::ClientIdentity::Claimed { .. } = self.client_identity() {
+            if self.connect_on_start() == Some(true) {
+                return self.start_certificate_session().await;
+            }
+
+            tracing::debug!("Certificate claims an identity, waiting to be told to connect");
+
+            return Ok(());
+        }
+
+        if let Some(token) = self.auth.token() {
+            return self
+                .start_session(service::Authentication::TokenAndCertificate(token))
+                .await;
+        }
+
+        tracing::info!("No token and no certificate, starting in signed-out state");
+
+        Ok(())
+    }
+
+    /// Starts a session the platform keystore's certificate authenticates, so nobody has to
+    /// sign in through a browser.
+    async fn start_certificate_session(&mut self) -> Result<()> {
+        self.auth.sign_in_with_certificate();
+
+        self.update_telemetry_context().await?;
+        self.start_session(service::Authentication::Certificate)
+            .await?;
 
         Ok(())
     }
@@ -520,11 +548,7 @@ impl<I: GuiIntegration> Controller<I> {
             Fail(Failure::Panic) => panic!("Test panic"),
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => match self.client_identity() {
                 x509_keystore::ClientIdentity::Claimed { .. } => {
-                    self.auth.sign_in_with_certificate();
-
-                    self.update_telemetry_context().await?;
-                    self.start_session(service::Authentication::Certificate)
-                        .await?;
+                    self.start_certificate_session().await?
                 }
                 x509_keystore::ClientIdentity::Absent => {
                     let auth_url = self.auth_url().clone();
@@ -1367,6 +1391,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_claimed_certificate_connects_on_start_when_configured() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test_with_settings(GeneralSettings {
+            connect_on_start: Some(true),
+            ..Default::default()
+        });
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel
+            .send_hello_claiming(x509_keystore::ClientIdentity::Claimed {
+                email: Some("jane@example.com".to_owned()),
+            })
+            .await;
+
+        let authentication = tokio::time::timeout(Duration::from_secs(1), mock_tunnel.rx_connect())
+            .await
+            .expect("should connect without anybody clicking anything");
+        let service::Authentication::Certificate = authentication else {
+            panic!("the certificate should authenticate the session, got {authentication:?}");
+        };
+        assert!(
+            test_controller.integration().opened_urls.is_empty(),
+            "should not have opened a browser"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_claimed_certificate_does_not_connect_on_start_by_default() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel
+            .send_hello_claiming(x509_keystore::ClientIdentity::Claimed {
+                email: Some("jane@example.com".to_owned()),
+            })
+            .await;
+
+        let connect =
+            tokio::time::timeout(Duration::from_millis(500), mock_tunnel.rx_connect()).await;
+        assert!(
+            connect.is_err(),
+            "connecting on start with the certificate is opt-in"
+        );
+    }
+
+    #[tokio::test]
+    async fn without_a_token_or_a_certificate_we_stay_signed_out() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel
+            .send_hello_claiming(x509_keystore::ClientIdentity::Absent)
+            .await;
+
+        let connect =
+            tokio::time::timeout(Duration::from_millis(500), mock_tunnel.rx_connect()).await;
+        assert!(connect.is_err(), "should not connect on its own");
+
+        assert_eq!(
+            test_controller.integration().shown_overview_page,
+            [SessionViewModel::SignedOut]
+        );
+    }
+
+    #[tokio::test]
     async fn an_absent_certificate_signs_in_through_the_browser() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
@@ -2010,6 +2098,10 @@ mod tests {
 
     impl Controller<Arc<Mutex<MockIntegration>>> {
         fn start_for_test() -> TestController {
+            Self::start_for_test_with_settings(GeneralSettings::default())
+        }
+
+        fn start_for_test_with_settings(general_settings: GeneralSettings) -> TestController {
             let tunnel_id = rand::random::<u32>();
             let gui_id = rand::random::<u32>();
 
@@ -2028,7 +2120,7 @@ mod tests {
                 SocketId::Test(tunnel_id),
                 integration.clone(),
                 ctrl_rx,
-                GeneralSettings::default(),
+                general_settings,
                 legacy_advanced_settings_path.clone(),
                 log_filter_reloader,
                 false,
