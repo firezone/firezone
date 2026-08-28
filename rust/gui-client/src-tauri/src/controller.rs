@@ -339,12 +339,8 @@ impl<I: GuiIntegration> Controller<I> {
     /// Resume a session at startup: if a token is available and connect-on-start
     /// is enabled, reconnect.
     async fn maybe_start_session(&mut self) -> Result<()> {
-        let Some(token) = self
-            .auth
-            .token()
-            .context("Failed to load token from disk during app start")?
-        else {
-            tracing::info!("No token / actor_name on disk, starting in signed-out state");
+        let Some(token) = self.auth.token() else {
+            tracing::info!("No token in the keyring, starting in signed-out state");
             return Ok(());
         };
 
