@@ -17,7 +17,8 @@ internal class SplashLaunchFlow(
         isTunnelRunning: Boolean,
         connectOnStart: Boolean,
     ): Action {
-        val shouldConnect = savedStateHandle[INITIAL_LAUNCH_CONSUMED] != true && connectOnStart
+        val initialLaunchConsumed: Boolean = savedStateHandle[INITIAL_LAUNCH_CONSUMED] ?: false
+        val shouldConnect = !initialLaunchConsumed && connectOnStart
         savedStateHandle[INITIAL_LAUNCH_CONSUMED] = true
 
         if (!hasToken) {
