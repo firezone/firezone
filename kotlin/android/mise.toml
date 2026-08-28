@@ -10,7 +10,9 @@ auto_install = false
 # Single source of truth for Android tool versions used by tasks and setup.sh.
 # Keep the NDK version in sync with `ndkVersion` in `app/build.gradle.kts`.
 NDK_VERSION = "28.2.13676358"
-ANDROID_CMD_TOOLS_VERSION = "11076708"
+# Download URLs carry the build ID, `source.properties` the revision; setup.sh needs both.
+ANDROID_CMD_TOOLS_VERSION = "16111833"
+ANDROID_CMD_TOOLS_REVISION = "23.0"
 
 [task_config]
 includes = ["mise-tasks"]
