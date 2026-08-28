@@ -13,13 +13,16 @@ import dev.firezone.android.R
 import dev.firezone.android.features.permission.vpn.ui.VpnPermissionActivity
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.signin.ui.compose.SignInScreen
+import dev.firezone.android.features.signin.ui.startSessionLabel
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import uniffi.x509claims.Identity
 
 // Renders the screens shown before a session starts to PNGs; `./gradlew recordRoborazziDebug` writes them.
 //
@@ -45,6 +48,27 @@ class OnboardingScreenshotTest {
                 )
             }
         }
+
+    // The email matches the certificate the X.509 settings captures show, so the gallery tells one story.
+    @OptIn(ExperimentalRoborazziApi::class)
+    @Test
+    fun signInWithCertificate() {
+        val label =
+            startSessionLabel(
+                RuntimeEnvironment.getApplication(),
+                Identity.Claimed(email = "jane.doe@example.com"),
+            )
+
+        captureRoboImage("${roborazziSystemPropertyOutputDirectory()}/sign-in-certificate.png") {
+            FirezoneTheme {
+                SignInScreen(
+                    onSignIn = {},
+                    onSettings = {},
+                    signInLabel = label,
+                )
+            }
+        }
+    }
 
     @Test
     fun vpnPermission() = capture("vpn-permission", VpnPermissionActivity::class.java)
