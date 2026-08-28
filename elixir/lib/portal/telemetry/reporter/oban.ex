@@ -66,6 +66,11 @@ defmodule Portal.Telemetry.Reporter.Oban do
     build_sentry_context(job)
   end
 
+  defp handle_error(%{reason: reason, job: %{worker: "Portal.SentinelOne.Sync"} = job}) do
+    Portal.SentinelOne.ErrorHandler.handle(reason, job.args["posture_provider_id"])
+    build_sentry_context(job)
+  end
+
   defp handle_error(%{job: job}) do
     # Default Sentry context for jobs without a domain-specific handler
     build_sentry_context(job)

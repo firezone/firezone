@@ -56,7 +56,8 @@ defmodule Portal.ChangeLogs.Consumer do
     "intune_posture_providers" => Portal.Intune.PostureProvider,
     "iru_posture_providers" => Portal.Iru.PostureProvider,
     "defender_posture_providers" => Portal.Defender.PostureProvider,
-    "santa_posture_providers" => Portal.Santa.PostureProvider
+    "santa_posture_providers" => Portal.Santa.PostureProvider,
+    "sentinelone_posture_providers" => Portal.SentinelOne.PostureProvider
   }
 
   @impl true

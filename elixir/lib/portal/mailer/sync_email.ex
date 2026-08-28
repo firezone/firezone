@@ -76,6 +76,9 @@ defmodule Portal.Mailer.SyncEmail do
   defp provider_details_rows(%Portal.Santa.PostureProvider{} = provider),
     do: [{"Workshop URL", provider.api_url}]
 
+  defp provider_details_rows(%Portal.SentinelOne.PostureProvider{} = provider),
+    do: [{"Management URL", provider.management_url}]
+
   defp provider_remediation(%Portal.Intune.PostureProvider{}),
     do: "Please verify the Firezone app registration still has admin consent in Microsoft Entra."
 
@@ -87,4 +90,7 @@ defmodule Portal.Mailer.SyncEmail do
 
   defp provider_remediation(%Portal.Santa.PostureProvider{}),
     do: "Please verify the Workshop API key is still valid and can read hosts."
+
+  defp provider_remediation(%Portal.SentinelOne.PostureProvider{}),
+    do: "Please verify the SentinelOne API token is still valid and can view endpoints."
 end

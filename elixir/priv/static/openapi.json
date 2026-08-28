@@ -230,6 +230,15 @@
         "title": "IruPostureProvider",
         "type": "object"
       },
+      "SentinelOneDeviceResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SentinelOneDevice"
+          }
+        },
+        "title": "SentinelOneDeviceResponse",
+        "type": "object"
+      },
       "IntuneDeviceListResponse": {
         "properties": {
           "data": {
@@ -2839,6 +2848,15 @@
         "title": "DefenderPostureProviderResponse",
         "type": "object"
       },
+      "SentinelOnePostureProviderResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SentinelOnePostureProvider"
+          }
+        },
+        "title": "SentinelOnePostureProviderResponse",
+        "type": "object"
+      },
       "PaginationMetadata": {
         "description": "Pagination metadata for paginated responses.",
         "example": {
@@ -3588,6 +3606,480 @@
         "title": "DefenderDevice",
         "type": "object"
       },
+      "SentinelOneDevice": {
+        "description": "Endpoint agent synced from SentinelOne",
+        "properties": {
+          "last_logged_in_user_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sentinelone_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "user_actions_needed": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "operational_state": {
+            "nullable": true,
+            "type": "string"
+          },
+          "os_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "os_arch": {
+            "nullable": true,
+            "type": "string"
+          },
+          "remote_profiling_state": {
+            "nullable": true,
+            "type": "string"
+          },
+          "has_containerized_workload": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "firewall_enabled": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "proxy_console": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "model_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "infected": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "proxy_deep_visibility": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "console_migration_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "is_hyper_automate": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "network_quarantine_enabled": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "scan_finished_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "is_active": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "external_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "last_successful_scan_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "os_username": {
+            "nullable": true,
+            "type": "string"
+          },
+          "active_protection": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "threat_reboot_required": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "nullable": false,
+            "type": "string"
+          },
+          "inserted_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "location_enabled": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "group_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "site_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "storage_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "source_created_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "machine_sid": {
+            "nullable": true,
+            "type": "string"
+          },
+          "remote_profiling_state_expires_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "group_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "allow_remote_shell": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "tags": {
+            "items": {
+              "type": "object"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "protected_pods_count": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "os_type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "proxy_pac_file_usage": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "serial_number": {
+            "nullable": true,
+            "type": "string"
+          },
+          "ad_computer_member_of": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "locations": {
+            "items": {
+              "type": "object"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "installer_type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "last_active_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "is_ad_connector": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "ad_user_principal_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "core_count": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "detection_state": {
+            "nullable": true,
+            "type": "string"
+          },
+          "active_threats": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "is_decommissioned": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "account_id": {
+            "format": "uuid",
+            "nullable": false,
+            "type": "string"
+          },
+          "proxy_console_address": {
+            "nullable": true,
+            "type": "string"
+          },
+          "cpu_count": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "group_ip": {
+            "nullable": true,
+            "type": "string"
+          },
+          "protected_tasks_count": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "proxy_deep_visibility_address": {
+            "nullable": true,
+            "type": "string"
+          },
+          "storage_type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "account_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "ranger_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "scan_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "total_memory": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "policy_updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "encrypted_applications": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "ad_last_user_distinguished_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "missing_permissions": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "is_uninstalled": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "computer_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "scan_aborted_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "in_remote_shell_session": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "first_full_mode_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "ad_last_user_member_of": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "source_updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "ad_mail": {
+            "nullable": true,
+            "type": "string"
+          },
+          "show_alert_icon": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "external_ip": {
+            "nullable": true,
+            "type": "string"
+          },
+          "is_pending_uninstall": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "sentinelone_account_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "last_ip_to_management": {
+            "nullable": true,
+            "type": "string"
+          },
+          "proxy_method": {
+            "nullable": true,
+            "type": "string"
+          },
+          "group_updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "network_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "os_revision": {
+            "nullable": true,
+            "type": "string"
+          },
+          "agent_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "registered_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "is_up_to_date": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "site_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "apps_vulnerability_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "domain": {
+            "nullable": true,
+            "type": "string"
+          },
+          "ad_computer_distinguished_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "os_start_time": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "mitigation_mode_suspicious": {
+            "nullable": true,
+            "type": "string"
+          },
+          "machine_type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "uuid": {
+            "nullable": false,
+            "type": "string"
+          },
+          "ranger_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "mitigation_mode": {
+            "nullable": true,
+            "type": "string"
+          },
+          "operational_state_expires_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "network_interfaces": {
+            "items": {
+              "type": "object"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "full_disk_scan_updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "cloud_providers": {
+            "additionalProperties": true,
+            "nullable": true,
+            "type": "object"
+          },
+          "posture_provider_id": {
+            "format": "uuid",
+            "nullable": false,
+            "type": "string"
+          },
+          "scan_started_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "protected_containers_count": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "cpu_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "location_type": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "posture_provider_id",
+          "uuid",
+          "synced_at"
+        ],
+        "title": "SentinelOneDevice",
+        "type": "object"
+      },
       "Resource": {
         "description": "Resource",
         "example": {
@@ -3830,6 +4322,21 @@
           }
         },
         "title": "LogsResponse",
+        "type": "object"
+      },
+      "SentinelOnePostureProviderListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SentinelOnePostureProvider"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "title": "SentinelOnePostureProviderListResponse",
         "type": "object"
       },
       "PoolMemberResponse": {
@@ -5193,6 +5700,21 @@
         "title": "Account",
         "type": "object"
       },
+      "SentinelOneDeviceListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SentinelOneDevice"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "title": "SentinelOneDeviceListResponse",
+        "type": "object"
+      },
       "AccountLimits": {
         "description": "Account limits and usage information",
         "properties": {
@@ -5468,6 +5990,75 @@
           "site"
         ],
         "title": "SiteUpdateRequest",
+        "type": "object"
+      },
+      "SentinelOnePostureProvider": {
+        "description": "SentinelOne posture provider",
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "disabled_reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "error_message": {
+            "nullable": true,
+            "type": "string"
+          },
+          "errored_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "inserted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "is_disabled": {
+            "type": "boolean"
+          },
+          "is_verified": {
+            "type": "boolean"
+          },
+          "management_url": {
+            "format": "uri",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "sentinelone"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "type",
+          "name",
+          "management_url",
+          "is_verified",
+          "is_disabled"
+        ],
+        "title": "SentinelOnePostureProvider",
         "type": "object"
       },
       "PoolMemberPatchRequest": {
@@ -8068,6 +8659,112 @@
         "summary": "Delete a Gateway Token",
         "tags": [
           "Gateway Tokens"
+        ]
+      }
+    },
+    "/sentinelone_posture_providers": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SentinelOnePostureProviderController.index",
+        "parameters": [
+          {
+            "description": "Limit providers returned",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/previous page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentinelOnePostureProviderListResponse"
+                }
+              }
+            },
+            "description": "SentinelOne posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List SentinelOne posture providers",
+        "tags": [
+          "SentinelOne Posture Providers"
         ]
       }
     },
@@ -11472,6 +12169,112 @@
         ]
       }
     },
+    "/sentinelone_devices": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SentinelOneDeviceController.index",
+        "parameters": [
+          {
+            "description": "Limit devices returned",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/previous page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentinelOneDeviceListResponse"
+                }
+              }
+            },
+            "description": "SentinelOne device response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List synced SentinelOne devices",
+        "tags": [
+          "SentinelOne Devices"
+        ]
+      }
+    },
     "/okta_auth_providers": {
       "get": {
         "callbacks": {},
@@ -12521,6 +13324,119 @@
         "summary": "List Google Directories",
         "tags": [
           "Google Directories"
+        ]
+      }
+    },
+    "/sentinelone_devices/{sentinelone_agent}": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SentinelOneDeviceController.show",
+        "parameters": [
+          {
+            "description": "Synced SentinelOne agent UUID",
+            "in": "path",
+            "name": "sentinelone_agent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentinelOneDeviceResponse"
+                }
+              }
+            },
+            "description": "SentinelOne device response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show a synced SentinelOne device",
+        "tags": [
+          "SentinelOne Devices"
         ]
       }
     },
@@ -14653,6 +15569,119 @@
         "summary": "Show Entra Directory",
         "tags": [
           "Entra Directories"
+        ]
+      }
+    },
+    "/sentinelone_posture_providers/{id}": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SentinelOnePostureProviderController.show",
+        "parameters": [
+          {
+            "description": "SentinelOne posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentinelOnePostureProviderResponse"
+                }
+              }
+            },
+            "description": "SentinelOne posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show a SentinelOne posture provider",
+        "tags": [
+          "SentinelOne Posture Providers"
         ]
       }
     },

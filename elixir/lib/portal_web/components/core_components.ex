@@ -1454,6 +1454,14 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("sentinelone") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-sentinelone.svg",
+      alt: "SentinelOne"
+    }
+  end
+
   defp provider_icon_spec("okta") do
     %{
       type: :image,

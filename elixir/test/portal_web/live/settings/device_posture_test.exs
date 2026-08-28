@@ -8,6 +8,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
   import Portal.IruFixtures
   import Portal.DefenderFixtures
   import Portal.SantaFixtures
+  import Portal.SentinelOneFixtures
 
   setup do
     enable_device_posture()
@@ -668,6 +669,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert html =~ "Iru"
       assert html =~ "Microsoft Defender for Endpoint"
       assert html =~ "Santa"
+      assert html =~ "SentinelOne"
 
       assert has_element?(
                lv,
@@ -681,12 +683,92 @@ defmodule PortalWeb.Settings.DevicePostureTest do
                ~s|a[href="/#{account.slug}/settings/device_posture/defender/new"]|
              )
       assert has_element?(lv, ~s|a[href="/#{account.slug}/settings/device_posture/santa/new"]|)
+
+      assert has_element?(
+               lv,
+               ~s|a[href="/#{account.slug}/settings/device_posture/sentinelone/new"]|
+             )
     end
 
     test "raises on an unknown provider type", %{conn: conn, account: account, actor: actor} do
       assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture/jamf/new")
       end
+    end
+  end
+
+  describe "SentinelOne providers" do
+    setup %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/sentinelone/new")
+
+      %{lv: lv}
+    end
+
+    test "verifies endpoint access and creates the provider", %{lv: lv, account: account} do
+      Req.Test.stub(Portal.SentinelOne.APIClient, fn conn ->
+        Req.Test.json(conn, %{"data" => [], "pagination" => %{"nextCursor" => nil}})
+      end)
+
+      Req.Test.allow(Portal.SentinelOne.APIClient, self(), lv.pid)
+
+      html = render(lv)
+      assert html =~ "GET /web/api/v2.1/agents"
+      assert html =~ "logo-sentinelone.svg"
+
+      attrs = %{
+        name: "Production S1",
+        management_url: "Tenant-US1.SentinelOne.net/dashboard/agents",
+        api_token: "token"
+      }
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_submit()
+      assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+      provider =
+        Portal.Repo.get_by!(Portal.SentinelOne.PostureProvider, account_id: account.id)
+
+      assert provider_name(provider) == "Production S1"
+      assert provider.management_url == "https://tenant-us1.sentinelone.net"
+      assert provider.api_token == "token"
+      assert provider.is_verified
+
+      assert_enqueued(
+        worker: Portal.SentinelOne.Sync,
+        args: %{"account_id" => account.id, "posture_provider_id" => provider.id}
+      )
+    end
+
+    test "reports a rejected token and saves nothing", %{lv: lv} do
+      Req.Test.stub(Portal.SentinelOne.APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(401)
+        |> Req.Test.json(%{"errors" => [%{"title" => "Unauthorized"}]})
+      end)
+
+      Req.Test.allow(Portal.SentinelOne.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{
+          name: "Production S1",
+          management_url: "https://tenant.sentinelone.net",
+          api_token: "wrong"
+        }
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert render(lv) =~ "SentinelOne rejected the API token"
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.SentinelOne.PostureProvider, :count) == 0
     end
   end
 
@@ -1143,6 +1225,18 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     defender_device_fixture(provider: defender_provider, health_status: "Active")
     defender_device_fixture(provider: defender_provider, health_status: "Inactive")
 
+    sentinelone_provider =
+      sentinelone_posture_provider_fixture(account: account, name: "Production S1")
+
+    sentinelone_device_fixture(
+      provider: sentinelone_provider,
+      sentinelone_id: nil,
+      is_active: true
+    )
+
+    sentinelone_device_fixture(provider: sentinelone_provider, is_active: true)
+    sentinelone_device_fixture(provider: sentinelone_provider, is_active: false)
+
     {:ok, lv, html} =
       conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
@@ -1153,12 +1247,16 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     assert html =~ "Microsoft Defender for Endpoint"
     assert html =~ "Acme Santa"
     assert html =~ "Santa (Workshop)"
+    assert html =~ "Production S1"
+    assert html =~ "SentinelOne"
 
     summary = lv |> element("#device-posture-summary") |> render()
     assert summary =~ ~r/1.*FileVault off/s
     assert summary =~ ~r/1.*Sensor active/s
     assert summary =~ ~r/1.*Sensor inactive/s
     assert summary =~ ~r/1.*Santa Lockdown/s
+    assert summary =~ ~r/2.*S1 agent active/s
+    assert summary =~ ~r/1.*S1 agent inactive/s
   end
 
   describe "verified fields" do
