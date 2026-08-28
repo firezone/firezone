@@ -112,6 +112,8 @@ pub enum ValidationError {
     UnknownAttribute,
     NotYetValid,
     Expired,
+    MissingClientAuthEku,
+    DigitalSignatureNotAllowed,
 }
 
 impl ValidationError {
@@ -127,6 +129,8 @@ impl ValidationError {
             Self::UnknownAttribute => "not an attribute we understand",
             Self::NotYetValid => "not yet valid",
             Self::Expired => "expired",
+            Self::MissingClientAuthEku => "required for mutual TLS",
+            Self::DigitalSignatureNotAllowed => "required to sign the TLS handshake",
         }
     }
 }
@@ -203,21 +207,24 @@ impl ParsedCertificate {
                     .is_some_and(|at| at > self.not_after_timestamp)
                     .then_some(ValidationError::Expired),
             ),
-            field(
+            gate_field(
                 "TLS Client Authentication EKU",
                 if self.has_client_auth_eku {
                     "Yes"
                 } else {
                     "No"
                 },
+                (!self.has_client_auth_eku).then_some(ValidationError::MissingClientAuthEku),
             ),
-            field(
+            gate_field(
                 "Digital Signature Key Usage",
                 if self.digital_signature_allowed {
                     "Allowed"
                 } else {
                     "Not allowed"
                 },
+                (!self.digital_signature_allowed)
+                    .then_some(ValidationError::DigitalSignatureNotAllowed),
             ),
             field(
                 "Signing Algorithm",
@@ -228,6 +235,8 @@ impl ParsedCertificate {
             ),
             field("SHA-256 Fingerprint", &self.fingerprint),
         ]);
+
+        fields.retain(DetailField::is_worth_reading);
 
         // What is wrong with a certificate is what the reader came for, so it reads before the
         // rows that are merely true. The sort is stable, which is what keeps a row from moving
@@ -326,6 +335,23 @@ pub struct DetailField {
     pub value: Option<String>,
     /// Why the value above is not usable, [`None`] when it is.
     pub problem: Option<ValidationError>,
+    pub visibility: Visibility,
+}
+
+/// Whether a row reads on a healthy certificate, or only once something is wrong with it.
+///
+/// A requirement the certificate meets is not what the reader came for, so its row is
+/// [`Visibility::OnlyWhenWrong`] and [`ParsedCertificate::detail_fields`] drops it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    Always,
+    OnlyWhenWrong,
+}
+
+impl DetailField {
+    fn is_worth_reading(&self) -> bool {
+        self.problem.is_some() || self.visibility == Visibility::Always
+    }
 }
 
 pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificate> {
@@ -897,6 +923,21 @@ fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
         label: label.into(),
         value: Some(value.into()),
         problem: None,
+        visibility: Visibility::Always,
+    }
+}
+
+/// A row for a requirement the certificate as a whole has to meet.
+fn gate_field(
+    label: impl Into<String>,
+    value: impl Into<String>,
+    problem: Option<ValidationError>,
+) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: Some(value.into()),
+        problem,
+        visibility: Visibility::OnlyWhenWrong,
     }
 }
 
@@ -909,6 +950,7 @@ fn field_with_problem(
         label: label.into(),
         value: Some(value.into()),
         problem,
+        visibility: Visibility::Always,
     }
 }
 
@@ -918,6 +960,7 @@ fn optional_field(label: impl Into<String>, value: Option<String>) -> DetailFiel
         label: label.into(),
         value,
         problem: None,
+        visibility: Visibility::Always,
     }
 }
 
@@ -926,6 +969,7 @@ fn claim_field(label: impl Into<String>, claim: Claim) -> DetailField {
         label: label.into(),
         value: claim.value,
         problem: claim.error,
+        visibility: Visibility::Always,
     }
 }
 
@@ -940,6 +984,7 @@ fn unrecognised_claim_field(claim: &str) -> DetailField {
         label: attribute.to_owned(),
         value: value.filter(|value| !value.is_empty()).map(str::to_owned),
         problem: Some(ValidationError::UnknownAttribute),
+        visibility: Visibility::Always,
     }
 }
 

@@ -237,6 +237,8 @@ fn assert_every_validation_error_reads() {
         ValidationError::UnknownAttribute,
         ValidationError::NotYetValid,
         ValidationError::Expired,
+        ValidationError::MissingClientAuthEku,
+        ValidationError::DigitalSignatureNotAllowed,
     ]
     .map(ValidationError::label);
 
