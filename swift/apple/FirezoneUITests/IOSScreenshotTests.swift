@@ -48,6 +48,17 @@
       deliver(app, as: "welcome", in: appearance)
     }
 
+    func testWelcomeCertificate() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "welcome-usable-certificate")
+      defer { app.terminate() }
+
+      // The control offers whom the certificate claims, and the certificate
+      // `gen-mock-certificates.sh` mints into `usable.der` claims this address.
+      try waitFor(app.buttons["Connect as jane.doe@example.com"], on: "welcome-certificate")
+      deliver(app, as: "welcome-certificate", in: appearance)
+    }
+
     func testSession() throws {
       let appearance = try currentAppearance()
       let app = launchApp(scenario: "connected")
