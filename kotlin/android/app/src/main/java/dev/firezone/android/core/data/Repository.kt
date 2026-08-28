@@ -58,6 +58,12 @@ class Favorites(
     val inner: HashSet<String>,
 )
 
+enum class AuthCallbackResult {
+    NEW_HANDOFF,
+    PENDING_HANDOFF,
+    INVALID,
+}
+
 class Repository
     @Inject
     constructor(
@@ -260,7 +266,7 @@ class Repository
                     .edit()
                     .putString(NONCE_KEY, nonce)
                     .putString(STATE_KEY, state)
-                    .remove(CONSUMED_AUTH_STATE_HASH_KEY)
+                    .remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY)
                     .apply()
             }
         }
@@ -281,23 +287,24 @@ class Repository
             fragment: String,
             accountSlug: String,
             actorName: String,
-        ): Flow<Boolean> =
+        ): Flow<AuthCallbackResult> =
             flow {
-                val isAccepted =
+                val result =
                     synchronized(authStateLock) {
                         val stateHash = hashAuthState(state)
-                        val consumedStateHash = sharedPreferences.getString(CONSUMED_AUTH_STATE_HASH_KEY, null)
-                        val isConsumedState =
-                            consumedStateHash?.let {
-                                MessageDigest.isEqual(
-                                    it.toByteArray(Charsets.UTF_8),
-                                    stateHash.toByteArray(Charsets.UTF_8),
-                                )
-                            } ?: false
+                        val pendingStateHash = sharedPreferences.getString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, null)
+                        val isPendingHandoff = constantTimeEquals(pendingStateHash, stateHash)
                         val expectedState = sharedPreferences.getString(STATE_KEY, "").orEmpty()
+                        val isExpectedState = constantTimeEquals(expectedState, state)
                         when {
-                            isConsumedState -> true
-                            !MessageDigest.isEqual(expectedState.toByteArray(), state.toByteArray()) -> false
+                            isPendingHandoff -> {
+                                AuthCallbackResult.PENDING_HANDOFF
+                            }
+
+                            !isExpectedState -> {
+                                AuthCallbackResult.INVALID
+                            }
+
                             else -> {
                                 val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
                                 sharedPreferences
@@ -307,22 +314,34 @@ class Repository
                                     .remove(STATE_KEY)
                                     .putString(ACCOUNT_SLUG_KEY, accountSlug)
                                     .putString(ACTOR_NAME_KEY, actorName)
-                                    .putString(CONSUMED_AUTH_STATE_HASH_KEY, stateHash)
+                                    .putString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, stateHash)
                                     .apply()
 
-                                true
+                                AuthCallbackResult.NEW_HANDOFF
                             }
                         }
                     }
 
-                emit(isAccepted)
+                emit(result)
             }.flowOn(coroutineDispatcher)
+
+        fun acknowledgeAuthCallbackHandoff(state: String): Boolean =
+            synchronized(authStateLock) {
+                val stateHash = hashAuthState(state)
+                val pendingStateHash = sharedPreferences.getString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, null)
+                val isPendingHandoff = constantTimeEquals(pendingStateHash, stateHash)
+                if (isPendingHandoff) {
+                    sharedPreferences.edit().remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY).apply()
+                }
+
+                isPendingHandoff
+            }
 
         fun clearToken() {
             synchronized(authStateLock) {
                 sharedPreferences.edit().apply {
                     remove(TOKEN_KEY)
-                    remove(CONSUMED_AUTH_STATE_HASH_KEY)
+                    remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY)
                     apply()
                 }
             }
@@ -419,6 +438,17 @@ class Repository
                 .digest(state.toByteArray(Charsets.UTF_8))
                 .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
 
+        private fun constantTimeEquals(
+            expected: String?,
+            actual: String,
+        ): Boolean =
+            expected?.let {
+                MessageDigest.isEqual(
+                    it.toByteArray(Charsets.UTF_8),
+                    actual.toByteArray(Charsets.UTF_8),
+                )
+            } ?: false
+
         companion object {
             private const val AUTH_URL_KEY = "authUrl"
             private const val API_URL_KEY = "apiUrl"
@@ -437,7 +467,7 @@ class Repository
             private const val TOKEN_KEY = "token"
             private const val NONCE_KEY = "nonce"
             private const val STATE_KEY = "state"
-            private const val CONSUMED_AUTH_STATE_HASH_KEY = "consumedAuthStateHash"
+            private const val PENDING_AUTH_HANDOFF_STATE_HASH_KEY = "pendingAuthHandoffStateHash"
             private const val DEVICE_ID_KEY = "deviceId"
             private const val ENABLED_INTERNET_RESOURCE_KEY = "enabledInternetResource"
             private const val NOTIFICATION_PERMISSION_REQUESTED_KEY = "notificationPermissionRequested"
