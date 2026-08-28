@@ -8,7 +8,7 @@ use crate::{
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{
-    DnsControlMethod, DnsController, TunDeviceManager,
+    DnsControlMethod, DnsController, ResumeNotifier, TunDeviceManager,
     device_id::{self, DeviceId},
     device_info,
     platform::{UdpSocketFactory, tcp_socket_factory},
@@ -231,6 +231,7 @@ struct Handler<'a> {
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
     network_notifier: BoxStream<'static, Result<()>>,
+    resume_notifier: ResumeNotifier,
 }
 
 #[derive(Default, Debug)]
@@ -354,6 +355,7 @@ enum Event {
     Terminate,
     NetworkChanged(Result<()>),
     DnsChanged(Result<()>),
+    Resumed(Result<()>),
 }
 
 // Open to better names
@@ -399,6 +401,11 @@ impl<'a> Handler<'a> {
             .await
             .context("Failed to initialize network change monitor")?
             .boxed();
+        // Missing resumes only costs us a slower recovery, so don't fail the session over it.
+        let resume_notifier = bin_shared::new_resume_notifier()
+            .await
+            .inspect_err(|e| tracing::warn!("Failed to initialize resume monitor: {e:#}"))
+            .unwrap_or_default();
 
         let advanced_settings = load_advanced_settings()
             .inspect_err(|e| {
@@ -441,6 +448,7 @@ impl<'a> Handler<'a> {
             tun_device,
             dns_notifier,
             network_notifier,
+            resume_notifier,
         })
     }
 
@@ -494,37 +502,11 @@ impl<'a> Handler<'a> {
                 Event::DnsChanged(Err(e)) => {
                     tracing::warn!("Error while listening for DNS change events: {e:#}")
                 }
-                Event::NetworkChanged(Ok(())) => match &self.session {
-                    Session::Creating { .. } => {
-                        tracing::debug!("Ignoring network change since we're still signing in");
-                    }
-                    Session::Connected { connlib, .. } => {
-                        connlib.reset("network changed".to_owned());
-                    }
-                    Session::WaitingForNetwork {
-                        token,
-                        is_internet_resource_active,
-                    } => {
-                        tracing::info!("Attempting to re-connect upon network change");
-
-                        let token = token.clone();
-                        let is_internet_resource_active = *is_internet_resource_active;
-                        let result = self.try_connect(token, is_internet_resource_active);
-
-                        if let Some(e) = result
-                            .as_ref()
-                            .err()
-                            .and_then(|e| e.any_downcast_ref::<io::Error>())
-                        {
-                            tracing::debug!("Still cannot connect to Firezone: {e}");
-
-                            continue;
-                        }
-
-                        let _ = self.handle_connect_result(result).await;
-                    }
-                    Session::None => continue,
-                },
+                Event::Resumed(Err(e)) => {
+                    tracing::warn!("Error while listening for resume events: {e:#}")
+                }
+                Event::NetworkChanged(Ok(())) => self.reset_session("network changed").await,
+                Event::Resumed(Ok(())) => self.reset_session("resumed from sleep").await,
                 Event::DnsChanged(Ok(())) => {
                     let Session::Connected { connlib, .. } = &self.session else {
                         continue;
@@ -540,6 +522,42 @@ impl<'a> Handler<'a> {
         telemetry::stop(); // Flush telemetry as the service shuts down.
 
         ret
+    }
+
+    /// Tells connlib that the network underneath it has changed, or retries the connection if we
+    /// were waiting for a network in the first place.
+    async fn reset_session(&mut self, reason: &str) {
+        match &self.session {
+            Session::Creating { .. } => {
+                tracing::debug!(%reason, "Ignoring reset since we're still signing in");
+            }
+            Session::Connected { connlib, .. } => {
+                connlib.reset(reason.to_owned());
+            }
+            Session::WaitingForNetwork {
+                token,
+                is_internet_resource_active,
+            } => {
+                tracing::info!(%reason, "Attempting to re-connect");
+
+                let token = token.clone();
+                let is_internet_resource_active = *is_internet_resource_active;
+                let result = self.try_connect(token, is_internet_resource_active);
+
+                if let Some(e) = result
+                    .as_ref()
+                    .err()
+                    .and_then(|e| e.any_downcast_ref::<io::Error>())
+                {
+                    tracing::debug!("Still cannot connect to Firezone: {e}");
+
+                    return;
+                }
+
+                let _ = self.handle_connect_result(result).await;
+            }
+            Session::None => {}
+        }
     }
 
     fn next_event(
@@ -558,6 +576,10 @@ impl<'a> Handler<'a> {
 
         if let Poll::Ready(Some(result)) = self.dns_notifier.poll_next_unpin(cx) {
             return Poll::Ready(Event::DnsChanged(result));
+        }
+
+        if let Poll::Ready(Some(result)) = self.resume_notifier.poll_next_unpin(cx) {
+            return Poll::Ready(Event::Resumed(result));
         }
 
         // `FramedRead::next` is cancel-safe.

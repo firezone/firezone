@@ -9,7 +9,7 @@ use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
-    new_dns_notifier, new_network_notifier,
+    new_dns_notifier, new_network_notifier, new_resume_notifier,
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
@@ -466,6 +466,10 @@ fn try_main() -> Result<()> {
             .await
             .inspect_err(|e| tracing::info!("Failed to initialize network change monitor: {e:#}"))
             .unwrap_or_default();
+        let mut resume_notifier = new_resume_notifier()
+            .await
+            .inspect_err(|e| tracing::info!("Failed to initialize resume monitor: {e:#}"))
+            .unwrap_or_default();
         drop(tokio_handle);
 
         let tun = tun_device.make_tun()?;
@@ -492,6 +496,11 @@ fn try_main() -> Result<()> {
                 result = network_notifier.next() => {
                     result.context("Network notifier stream ended")??;
                     session.reset("network changed".to_owned());
+                    continue;
+                },
+                result = resume_notifier.next() => {
+                    result.context("Resume notifier stream ended")??;
+                    session.reset("resumed from sleep".to_owned());
                     continue;
                 },
                 event = event_stream.next() => event.context("event stream unexpectedly ran empty")?,
