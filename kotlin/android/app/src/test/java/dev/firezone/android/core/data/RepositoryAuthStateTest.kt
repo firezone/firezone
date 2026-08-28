@@ -17,7 +17,7 @@ import org.robolectric.annotation.Config
 class RepositoryAuthStateTest {
     @Test
     fun `nonce and state are persisted in one transaction`() {
-        val context = RuntimeEnvironment.getApplication<Application>()
+        val context = RuntimeEnvironment.getApplication()
         val delegate = context.getSharedPreferences("repository-auth-state", Context.MODE_PRIVATE)
         delegate.edit().clear().commit()
         val preferences = RecordingSharedPreferences(delegate)
