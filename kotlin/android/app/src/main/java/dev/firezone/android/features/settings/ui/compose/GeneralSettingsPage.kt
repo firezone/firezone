@@ -18,7 +18,7 @@ import dev.firezone.android.core.data.model.ManagedConfigStatus
 @Composable
 fun GeneralSettingsPage(
     config: Config,
-    managedStatus: ManagedConfigStatus?,
+    managedStatus: ManagedConfigStatus,
     onConfigChange: (Config) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -32,19 +32,19 @@ fun GeneralSettingsPage(
         ManagedTextField(
             label = stringResource(R.string.account_slug),
             value = config.accountSlug,
-            isManaged = managedStatus?.isAccountSlugManaged == true,
+            isManaged = managedStatus.isAccountSlugManaged,
             onValueChange = { onConfigChange(config.copy(accountSlug = it)) },
         )
         ManagedSwitchRow(
             label = stringResource(R.string.start_on_login),
             checked = config.startOnLogin,
-            isManaged = managedStatus?.isStartOnLoginManaged == true,
+            isManaged = managedStatus.isStartOnLoginManaged,
             onCheckedChange = { onConfigChange(config.copy(startOnLogin = it)) },
         )
         ManagedSwitchRow(
             label = stringResource(R.string.connect_on_start),
             checked = config.connectOnStart,
-            isManaged = managedStatus?.isConnectOnStartManaged == true,
+            isManaged = managedStatus.isConnectOnStartManaged,
             onCheckedChange = { onConfigChange(config.copy(connectOnStart = it)) },
         )
     }

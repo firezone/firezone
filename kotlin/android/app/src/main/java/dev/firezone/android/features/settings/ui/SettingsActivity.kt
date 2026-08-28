@@ -1,6 +1,10 @@
 // Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.features.settings.ui
 
+import android.content.ClipData
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -19,12 +23,10 @@ internal class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val isUserSignedIn = intent.getBooleanExtra("isUserSignedIn", false)
+        val isUserSignedIn = intent.getBooleanExtra(EXTRA_IS_USER_SIGNED_IN, false)
 
         setContent {
             FirezoneTheme {
-                val config by viewModel.configStateFlow.collectAsStateWithLifecycle()
-                val managedStatus by viewModel.managedStatusStateFlow.collectAsStateWithLifecycle()
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val action by viewModel.actionStateFlow.collectAsStateWithLifecycle()
 
@@ -33,34 +35,34 @@ internal class SettingsActivity : AppCompatActivity() {
                         viewModel.clearAction()
                         when (it) {
                             is SettingsViewModel.ViewAction.NavigateBack -> finish()
+                            is SettingsViewModel.ViewAction.ShareLogs -> shareLogs(it.uri)
                         }
                     }
                 }
 
                 SettingsScreen(
-                    config = config,
-                    managedStatus = managedStatus,
+                    config = uiState.config,
+                    managedStatus = uiState.managedStatus,
                     isSaveEnabled = uiState.isSaveButtonEnabled,
                     logSizeBytes = uiState.logSizeBytes,
                     warnBeforeSaving = isUserSignedIn,
                     onConfigChange = viewModel::onConfigChanged,
                     onResetToDefaults = viewModel::resetSettingsToDefaults,
-                    onClearLogs = { viewModel.deleteLogDirectory(this@SettingsActivity) },
-                    onExportLogs = { viewModel.createLogZip(this@SettingsActivity) },
-                    onLogsShown = { viewModel.onViewResume(this@SettingsActivity) },
+                    onClearLogs = { viewModel.deleteLogDirectory(applicationContext) },
+                    onExportLogs = { viewModel.createLogZip(applicationContext) },
+                    onLogsShown = { viewModel.onViewResume(applicationContext) },
                     onSave = viewModel::onSaveSettingsCompleted,
                     onCancel = viewModel::onCancel,
                 )
             }
         }
 
-        viewModel.populateFieldsFromConfig()
         viewModel.deleteLogZip(this@SettingsActivity)
     }
 
     override fun onResume() {
         super.onResume()
-        viewModel.onViewResume(this@SettingsActivity)
+        viewModel.onViewResume(applicationContext)
     }
 
     override fun onStop() {
@@ -68,5 +70,28 @@ internal class SettingsActivity : AppCompatActivity() {
         if (isFinishing) {
             viewModel.deleteLogZip(this@SettingsActivity)
         }
+    }
+
+    private fun shareLogs(uri: Uri) {
+        val sendIntent =
+            Intent(Intent.ACTION_SEND).apply {
+                type = "application/zip"
+                putExtra(Intent.EXTRA_SUBJECT, "Sharing diagnostic logs")
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = ClipData.newRawUri("Diagnostic logs", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        startActivity(Intent.createChooser(sendIntent, null))
+    }
+
+    companion object {
+        private const val EXTRA_IS_USER_SIGNED_IN = "isUserSignedIn"
+
+        fun createIntent(
+            context: Context,
+            isUserSignedIn: Boolean,
+        ): Intent =
+            Intent(context, SettingsActivity::class.java)
+                .putExtra(EXTRA_IS_USER_SIGNED_IN, isUserSignedIn)
     }
 }

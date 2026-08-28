@@ -42,7 +42,7 @@ private const val PAGE_COUNT = 3
 @Composable
 fun SettingsScreen(
     config: Config,
-    managedStatus: ManagedConfigStatus?,
+    managedStatus: ManagedConfigStatus,
     isSaveEnabled: Boolean,
     logSizeBytes: Long,
     warnBeforeSaving: Boolean,

@@ -22,7 +22,7 @@ import dev.firezone.android.core.data.model.ManagedConfigStatus
 @Composable
 fun AdvancedSettingsPage(
     config: Config,
-    managedStatus: ManagedConfigStatus?,
+    managedStatus: ManagedConfigStatus,
     onConfigChange: (Config) -> Unit,
     onResetToDefaults: () -> Unit,
     modifier: Modifier = Modifier,
@@ -40,19 +40,19 @@ fun AdvancedSettingsPage(
             ManagedTextField(
                 label = stringResource(R.string.auth_url),
                 value = config.authUrl,
-                isManaged = managedStatus?.isAuthUrlManaged == true,
+                isManaged = managedStatus.isAuthUrlManaged,
                 onValueChange = { onConfigChange(config.copy(authUrl = it)) },
             )
             ManagedTextField(
                 label = stringResource(R.string.api_url),
                 value = config.apiUrl,
-                isManaged = managedStatus?.isApiUrlManaged == true,
+                isManaged = managedStatus.isApiUrlManaged,
                 onValueChange = { onConfigChange(config.copy(apiUrl = it)) },
             )
             ManagedTextField(
                 label = stringResource(R.string.log_filter),
                 value = config.logFilter,
-                isManaged = managedStatus?.isLogFilterManaged == true,
+                isManaged = managedStatus.isLogFilterManaged,
                 onValueChange = { onConfigChange(config.copy(logFilter = it)) },
             )
             OutlinedButton(onClick = onResetToDefaults, modifier = Modifier.fillMaxWidth()) {
