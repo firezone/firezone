@@ -413,7 +413,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         let session = self.auth.session().context("Missing session")?;
 
-        // Not what we render as the connected account, only the seed for the next sign-in URL.
+        // A first guess at the account we are connecting to; `init` names the real one.
         self.general_settings.account_slug = Some(session.account_slug.clone());
         self.integration
             .save_general_settings(&self.general_settings)
@@ -689,6 +689,16 @@ impl<I: GuiIntegration> Controller<I> {
             }
             service::ServerMsg::AccountSlugUpdated(account_slug) => {
                 telemetry::set_account_slug(account_slug.clone());
+
+                // An MDM-forced slug is the admin's answer to the same question and wins
+                // every read of it, so it is left alone rather than cached over.
+                if self.mdm_settings.account_slug.is_none() {
+                    self.general_settings.account_slug = Some(account_slug.clone());
+                    self.integration
+                        .save_general_settings(&self.general_settings)
+                        .await?;
+                    self.notify_settings_changed()?;
+                }
 
                 self.connected_account_slug = Some(account_slug);
                 self.refresh_ui_state();
