@@ -62,6 +62,7 @@ internal class SettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        viewModel.populateFieldsFromConfig()
         viewModel.onViewResume(applicationContext)
     }
 

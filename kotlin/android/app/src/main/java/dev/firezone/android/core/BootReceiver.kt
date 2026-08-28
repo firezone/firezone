@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.di.ApplicationScope
 import dev.firezone.android.tunnel.TunnelService
@@ -19,6 +20,9 @@ class BootReceiver : BroadcastReceiver() {
     lateinit var repo: Repository
 
     @Inject
+    internal lateinit var managedConfigurationSource: ManagedConfigurationSource
+
+    @Inject
     @ApplicationScope
     lateinit var applicationScope: CoroutineScope
 
@@ -27,11 +31,17 @@ class BootReceiver : BroadcastReceiver() {
         intent: Intent,
     ) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
+            val pendingResult = goAsync()
             applicationScope.launch(Dispatchers.IO) {
-                val userConfig = repo.getConfigSync()
-                if (userConfig.startOnLogin) {
-                    val serviceIntent = Intent(context, TunnelService::class.java)
-                    context.startService(serviceIntent)
+                try {
+                    managedConfigurationSource.refresh()
+                    val userConfig = repo.getConfigSync()
+                    if (userConfig.startOnLogin) {
+                        val serviceIntent = Intent(context, TunnelService::class.java)
+                        context.startService(serviceIntent)
+                    }
+                } finally {
+                    pendingResult.finish()
                 }
             }
         }

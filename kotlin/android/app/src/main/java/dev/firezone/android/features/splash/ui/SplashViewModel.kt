@@ -5,13 +5,13 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Bundle
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.ApplicationMode
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.Job
@@ -28,7 +28,7 @@ internal class SplashViewModel
     @Inject
     constructor(
         private val repo: Repository,
-        private val applicationRestrictions: Bundle,
+        private val managedConfigurationSource: ManagedConfigurationSource,
         private val applicationMode: ApplicationMode,
         savedStateHandle: SavedStateHandle,
     ) : ViewModel() {
@@ -56,13 +56,17 @@ internal class SplashViewModel
                         return@launch
                     }
 
-                    val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
+                    val managedConfiguration = managedConfigurationSource.refresh()
+                    val credential = managedConfiguration.resolveSessionCredential(repo.getTokenSync())
                     val isRunning = TunnelService.isRunning(context)
-                    val connectOnStart = repo.getConfigSync().connectOnStart
+                    val connectOnStart =
+                        repo
+                            .getEffectiveConfig(repo.getUserConfigSync(), managedConfiguration)
+                            .connectOnStart
 
                     publish(
                         launchFlow.permissionsReady(
-                            hasToken = !token.isNullOrBlank(),
+                            hasToken = credential != null,
                             isTunnelRunning = isRunning,
                             connectOnStart = connectOnStart,
                         ),

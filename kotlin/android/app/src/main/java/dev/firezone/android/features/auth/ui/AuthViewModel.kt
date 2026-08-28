@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +18,7 @@ internal class AuthViewModel
     @Inject
     constructor(
         private val repo: Repository,
+        private val managedConfigurationSource: ManagedConfigurationSource,
         savedStateHandle: SavedStateHandle,
     ) : ViewModel() {
         private val requestState = AuthRequestState(savedStateHandle)
@@ -31,10 +33,11 @@ internal class AuthViewModel
 
             viewModelScope.launch {
                 try {
+                    val managedConfiguration = managedConfigurationSource.refresh()
                     val state = generateRandomString(NONCE_LENGTH)
                     val nonce = generateRandomString(NONCE_LENGTH)
                     repo.saveNonceAndStateSync(nonce = nonce, state = state)
-                    val config = repo.getConfigSync()
+                    val config = repo.getEffectiveConfig(repo.getUserConfigSync(), managedConfiguration)
                     val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=gui-client"
 
                     requestState.markIssued(authUrl)
