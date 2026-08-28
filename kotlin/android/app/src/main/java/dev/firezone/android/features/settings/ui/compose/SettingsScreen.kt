@@ -70,7 +70,7 @@ fun SettingsScreen(
             CenterAlignedTopAppBar(
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
-                    // M3 labels text buttons with `primary`, which the brand makes orange.
+                    // Brand orange marks the call to action, which on this bar is Save.
                     TextButton(
                         onClick = onCancel,
                         colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
@@ -82,7 +82,6 @@ fun SettingsScreen(
                     TextButton(
                         onClick = { if (warnBeforeSaving) showSaveWarning = true else onSave() },
                         enabled = isSaveEnabled,
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
                     ) {
                         Text(stringResource(R.string.save))
                     }
@@ -156,7 +155,6 @@ fun SettingsScreen(
                         showSaveWarning = false
                         onSave()
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
                 ) {
                     Text(stringResource(R.string.settings_save_warning_confirm))
                 }
