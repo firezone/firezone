@@ -425,9 +425,10 @@ class TunnelService : VpnService() {
                     e.close()
                 } catch (e: X509IdentityException) {
                     Log.e(TAG, "Failed to load the client certificate", e)
+                    val advice = "Contact your administrator for support."
                     showErrorNotification(
                         "Client certificate unavailable",
-                        "${e.message} Contact your administrator for support.",
+                        e.message?.takeUnless(String::isBlank)?.let { "$it $advice" } ?: advice,
                     )
                 } finally {
                     commandChannel = null
