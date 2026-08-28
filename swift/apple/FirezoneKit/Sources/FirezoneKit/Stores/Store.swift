@@ -596,9 +596,7 @@ public final class Store: ObservableObject {
     session.stopTunnel()
   }
 
-  func signIn(authResponse: AuthResponse) async throws {
-    configuration.accountSlug = authResponse.accountSlug
-
+  func signIn(token: String) async throws {
     try await manager().save(configuration: configuration)
     try await manager().enable()
 
@@ -610,7 +608,7 @@ public final class Store: ObservableObject {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
-    try IPCClient.start(session: session, token: authResponse.token)
+    try IPCClient.start(session: session, token: token)
   }
 
   func signOut() async throws {

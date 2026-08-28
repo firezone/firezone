@@ -54,23 +54,17 @@ struct AuthClient {
       .appendingQueryItem(URLQueryItem(name: "as", value: "gui-client"))
   }
 
-  func response(url: URL?) throws -> AuthResponse {
+  func token(from url: URL?) throws -> String {
     guard let url = url,
       let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
       let returnedState = urlComponents.sanitizedQueryParam("state"),
       areStringsEqualConstantTime(state, returnedState),
-      let fragment = urlComponents.sanitizedQueryParam("fragment"),
-      let accountSlug = urlComponents.sanitizedQueryParam("account_slug")
+      let fragment = urlComponents.sanitizedQueryParam("fragment")
     else {
       throw AuthClientError.invalidCallbackURL
     }
 
-    let token = nonce + fragment
-
-    return AuthResponse(
-      accountSlug: accountSlug,
-      token: token
-    )
+    return nonce + fragment
   }
 
   private static func createRandomHexString(byteCount: Int) throws -> String {
