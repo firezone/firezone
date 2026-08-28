@@ -42,7 +42,7 @@ class RepositoryAuthStateTest {
             listOf(
                 PreferenceTransaction(
                     putStringKeys = setOf("nonce", "state"),
-                    removedKeys = setOf("consumedAuthStateHash"),
+                    removedKeys = setOf("pendingAuthHandoffStateHash"),
                 ),
             ),
             recordingPreferences.appliedTransactions,
@@ -52,17 +52,18 @@ class RepositoryAuthStateTest {
     }
 
     @Test
-    fun `callback persists credentials and consumed state in one transaction`() =
+    fun `callback persists credentials and pending handoff in one transaction`() =
         runBlocking {
             val recordingPreferences = RecordingSharedPreferences(preferences)
             val repository = newRepository(recordingPreferences)
-            repository.saveNonceAndStateSync(nonce = "nonce-", state = "consumed-state")
+            repository.saveNonceAndStateSync(nonce = "nonce-", state = "handoff-state")
             recordingPreferences.appliedTransactions.clear()
 
-            assertTrue(
+            assertEquals(
+                AuthCallbackResult.NEW_HANDOFF,
                 repository
                     .saveAuthCallbackIfStateValid(
-                        state = "consumed-state",
+                        state = "handoff-state",
                         fragment = "fragment",
                         accountSlug = "account",
                         actorName = "Actor",
@@ -72,7 +73,7 @@ class RepositoryAuthStateTest {
             assertEquals(
                 listOf(
                     PreferenceTransaction(
-                        putStringKeys = setOf("token", "accountSlug", "actorName", "consumedAuthStateHash"),
+                        putStringKeys = setOf("token", "accountSlug", "actorName", "pendingAuthHandoffStateHash"),
                         removedKeys = setOf("nonce", "state"),
                     ),
                 ),
@@ -80,10 +81,11 @@ class RepositoryAuthStateTest {
             )
 
             val recreatedRepository = newRepository(recordingPreferences)
-            assertTrue(
+            assertEquals(
+                AuthCallbackResult.PENDING_HANDOFF,
                 recreatedRepository
                     .saveAuthCallbackIfStateValid(
-                        state = "consumed-state",
+                        state = "handoff-state",
                         fragment = "replacement-fragment",
                         accountSlug = "replacement-account",
                         actorName = "Replacement Actor",
@@ -98,14 +100,15 @@ class RepositoryAuthStateTest {
         }
 
     @Test
-    fun `new auth request invalidates consumed callback`() =
+    fun `new auth request invalidates pending handoff`() =
         runBlocking {
             val repository = newRepository(preferences)
             completeAuth(repository, state = "old-state")
 
             repository.saveNonceAndStateSync(nonce = "new-nonce-", state = "new-state")
 
-            assertFalse(
+            assertEquals(
+                AuthCallbackResult.INVALID,
                 repository
                     .saveAuthCallbackIfStateValid(
                         state = "old-state",
@@ -122,18 +125,19 @@ class RepositoryAuthStateTest {
         }
 
     @Test
-    fun `clearing token invalidates consumed callback`() =
+    fun `clearing token invalidates pending handoff`() =
         runBlocking {
             val repository = newRepository(preferences)
-            completeAuth(repository, state = "consumed-state")
+            completeAuth(repository, state = "handoff-state")
 
             repository.clearToken()
 
             val recreatedRepository = newRepository(preferences)
-            assertFalse(
+            assertEquals(
+                AuthCallbackResult.INVALID,
                 recreatedRepository
                     .saveAuthCallbackIfStateValid(
-                        state = "consumed-state",
+                        state = "handoff-state",
                         fragment = "replacement-fragment",
                         accountSlug = "replacement-account",
                         actorName = "Replacement Actor",
@@ -144,15 +148,41 @@ class RepositoryAuthStateTest {
             assertEquals("Actor", recreatedRepository.getActorNameSync())
         }
 
-    private fun newRepository(preferences: SharedPreferences): Repository =
-        Repository(context, Dispatchers.Unconfined, preferences)
+    @Test
+    fun `acknowledging handoff rejects later callback replay`() =
+        runBlocking {
+            val repository = newRepository(preferences)
+            completeAuth(repository, state = "handoff-state")
+
+            assertFalse(repository.acknowledgeAuthCallbackHandoff("other-state"))
+            assertTrue(repository.acknowledgeAuthCallbackHandoff("handoff-state"))
+            assertFalse(repository.acknowledgeAuthCallbackHandoff("handoff-state"))
+
+            val recreatedRepository = newRepository(preferences)
+            assertEquals(
+                AuthCallbackResult.INVALID,
+                recreatedRepository
+                    .saveAuthCallbackIfStateValid(
+                        state = "handoff-state",
+                        fragment = "replacement-fragment",
+                        accountSlug = "replacement-account",
+                        actorName = "Replacement Actor",
+                    ).first(),
+            )
+            assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
+            assertEquals("account", recreatedRepository.getAccountSlug().first())
+            assertEquals("Actor", recreatedRepository.getActorNameSync())
+        }
+
+    private fun newRepository(preferences: SharedPreferences): Repository = Repository(context, Dispatchers.Unconfined, preferences)
 
     private suspend fun completeAuth(
         repository: Repository,
         state: String,
     ) {
         repository.saveNonceAndStateSync(nonce = "nonce-", state = state)
-        assertTrue(
+        assertEquals(
+            AuthCallbackResult.NEW_HANDOFF,
             repository
                 .saveAuthCallbackIfStateValid(
                     state = state,

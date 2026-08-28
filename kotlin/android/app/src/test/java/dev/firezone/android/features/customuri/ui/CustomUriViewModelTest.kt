@@ -77,7 +77,7 @@ class CustomUriViewModelTest {
         }
 
     @Test
-    fun `replayed callback completes after recreation without mutating credentials`() =
+    fun `pending callback replay recovers once and acknowledgment rejects later replay`() =
         runBlocking {
             repository.saveNonceAndStateSync(nonce = "nonce-", state = EXPECTED_STATE)
             val callback = callbackIntent(state = EXPECTED_STATE, fragment = "fragment")
@@ -101,6 +101,19 @@ class CustomUriViewModelTest {
             assertEquals("New Actor", recreatedRepository.getActorNameSync())
             assertNull(recreatedRepository.getNonceSync())
             assertNull(recreatedRepository.getStateSync())
+
+            recreatedViewModel.acknowledgeAuthFlowComplete()
+
+            val laterRepository = Repository(context, Dispatchers.Unconfined, preferences)
+            val laterViewModel = CustomUriViewModel(laterRepository)
+            laterViewModel.processCustomUri(replay)
+
+            assertTrue(
+                laterViewModel.actionStateFlow.value is CustomUriViewModel.ViewAction.AuthFlowError,
+            )
+            assertEquals("nonce-fragment", laterRepository.getTokenSync())
+            assertEquals("new-account", laterRepository.getAccountSlug().first())
+            assertEquals("New Actor", laterRepository.getActorNameSync())
         }
 
     @Test

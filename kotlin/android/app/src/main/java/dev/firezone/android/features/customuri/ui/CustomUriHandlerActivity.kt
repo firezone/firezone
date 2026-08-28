@@ -47,21 +47,20 @@ class CustomUriHandlerActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.actionStateFlow.collect { action ->
                     action?.let {
-                        viewModel.clearAction()
                         when (it) {
                             CustomUriViewModel.ViewAction.AuthFlowComplete -> {
                                 TunnelService.start(this@CustomUriHandlerActivity)
-                                startActivity(
-                                    Intent(this@CustomUriHandlerActivity, MainActivity::class.java),
-                                )
+                                startActivity(mainActivityHandoffIntent(this@CustomUriHandlerActivity))
+                                viewModel.acknowledgeAuthFlowComplete()
                             }
 
                             is CustomUriViewModel.ViewAction.AuthFlowError -> {
                                 notifyError("Errors occurred during authentication:\n${it.errors.joinToString(separator = "\n")}")
-                                startActivity(Intent(this@CustomUriHandlerActivity, MainActivity::class.java))
+                                startActivity(mainActivityHandoffIntent(this@CustomUriHandlerActivity))
                             }
                         }
 
+                        viewModel.clearAction()
                         finish()
                     }
                 }
@@ -75,3 +74,8 @@ class CustomUriHandlerActivity : AppCompatActivity() {
         manager.notify(CustomUriNotification.ID, notification)
     }
 }
+
+internal fun mainActivityHandoffIntent(context: Context): Intent =
+    Intent(context, MainActivity::class.java).apply {
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+    }
