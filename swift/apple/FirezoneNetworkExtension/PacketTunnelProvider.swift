@@ -136,7 +136,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       token: token,
       deviceId: firezoneId.uuid,
       logFilter: logFilter,
-      accountSlug: accountSlug,
       internetResourceEnabled: internetResourceEnabled,
       providerCommandSender: commandSender
     )

@@ -343,7 +343,6 @@ class TunnelService : VpnService() {
                                 AndroidSessionConfig(
                                     apiUrl = config.apiUrl,
                                     token = token,
-                                    accountSlug = config.accountSlug,
                                     deviceId = deviceIdValue,
                                     deviceName = getDeviceName(),
                                     isInternetResourceActive = resourceState.isEnabled(),

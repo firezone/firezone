@@ -52,6 +52,8 @@ pub struct Controller<I: GuiIntegration> {
     release: Option<updates::Release>,
     ctrl_rx: ReceiverStream<ControllerRequest>,
     status: Status,
+    /// The account the portal named in the current session's `init`.
+    connected_account_slug: Option<String>,
     quit_timeout: Option<Pin<Box<tokio::time::Sleep>>>,
     telemetry_allowed: bool,
     updates_rx: Option<ReceiverStream<Option<updates::Release>>>,
@@ -238,6 +240,7 @@ impl<I: GuiIntegration> Controller<I> {
             release: None,
             ctrl_rx: ReceiverStream::new(ctrl_rx),
             status: Default::default(),
+            connected_account_slug: None,
             quit_timeout: None,
             telemetry_allowed,
             updates_rx,
@@ -406,8 +409,11 @@ impl<I: GuiIntegration> Controller<I> {
         // Change the status after we begin connecting
         self.status = Status::WaitingForPortal;
 
+        self.connected_account_slug = None;
+
         let session = self.auth.session().context("Missing session")?;
 
+        // Not what we render as the connected account, only the seed for the next sign-in URL.
         self.general_settings.account_slug = Some(session.account_slug.clone());
         self.integration
             .save_general_settings(&self.general_settings)
@@ -421,9 +427,6 @@ impl<I: GuiIntegration> Controller<I> {
 
     async fn update_telemetry_context(&mut self) -> Result<()> {
         let environment = self.api_url().to_string();
-        let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
-
-        telemetry::set_account_slug(account_slug.clone());
 
         if !self.telemetry_allowed {
             return Ok(());
@@ -434,7 +437,6 @@ impl<I: GuiIntegration> Controller<I> {
         self.send_ipc(&service::ClientMsg::StartTelemetry {
             environment: environment.clone(),
             release: crate::RELEASE.to_string(),
-            account_slug,
         })
         .await?;
 
@@ -685,6 +687,12 @@ impl<I: GuiIntegration> Controller<I> {
 
                 dialog::error(&error_msg)?;
             }
+            service::ServerMsg::AccountSlugUpdated(account_slug) => {
+                telemetry::set_account_slug(account_slug.clone());
+
+                self.connected_account_slug = Some(account_slug);
+                self.refresh_ui_state();
+            }
             service::ServerMsg::OnUpdateResources(resources) => {
                 if !self.status.needs_resource_updates() {
                     return Ok(ControlFlow::Continue(()));
@@ -887,7 +895,11 @@ impl<I: GuiIntegration> Controller<I> {
                         connected_devices: resources.connected_devices.clone(),
                     }),
                     SessionViewModel::SignedIn {
-                        account_slug: auth_session.account_slug.clone(),
+                        // Portals older than the `init` slug leave us with the sign-in response.
+                        account_slug: self
+                            .connected_account_slug
+                            .clone()
+                            .unwrap_or_else(|| auth_session.account_slug.clone()),
                         actor_name: auth_session.actor_name.clone(),
                     },
                 ),
@@ -943,6 +955,8 @@ impl<I: GuiIntegration> Controller<I> {
             | Status::WaitingForTunnel => {}
         }
         self.status = Status::Disconnected;
+        self.connected_account_slug = None;
+        telemetry::set_account_slug(None);
         tracing::debug!("disconnecting connlib");
         // This is redundant if the token is expired, in that case
         // connlib already disconnected itself.

@@ -56,9 +56,6 @@ actor Adapter {
   private static let featureFlagPollInterval: Duration = .seconds(5)
   private static let resourceNotificationTTL: Duration = .seconds(15)
 
-  // Our local copy of the accountSlug
-  private let accountSlug: String
-
   /// Current network settings for tunnel configuration.
   private var networkSettings = NetworkSettings()
 
@@ -145,7 +142,6 @@ actor Adapter {
     token: Token,
     deviceId: String,
     logFilter: String,
-    accountSlug: String,
     internetResourceEnabled: Bool,
     providerCommandSender: Sender<ProviderCommand>
   ) {
@@ -153,7 +149,6 @@ actor Adapter {
     self.token = token
     self.deviceId = deviceId
     self.logFilter = logFilter
-    self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
     self.providerCommandSender = providerCommandSender
     self.pendingUnreachableResources = []
@@ -162,7 +157,7 @@ actor Adapter {
   }
 
   func start() async throws {
-    Log.log("Adapter.start: Starting session for account: \(accountSlug)")
+    Log.log("Adapter.start: Starting session")
 
     // Get device metadata - asynchronously get values from MainActor
     let deviceName: String
@@ -208,7 +203,6 @@ actor Adapter {
         apiUrl: apiURL,
         token: token.description,
         deviceId: deviceId,
-        accountSlug: accountSlug,
         deviceName: deviceName,
         deviceInfo: deviceInfo,
         isInternetResourceActive: internetResourceEnabled,

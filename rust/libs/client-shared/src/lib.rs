@@ -46,6 +46,7 @@ pub struct EventStream {
     eventloop: Fuse<JoinHandle<Result<(), DisconnectError>>>,
     resource_list_receiver: WatchStream<ResourceList>,
     tun_config_receiver: WatchStream<Option<TunConfig>>,
+    account_slug_receiver: WatchStream<Option<String>>,
     user_notification_receiver: mpsc::Receiver<UserNotification>,
 
     seen_notifications: HashSet<UserNotification>,
@@ -58,6 +59,8 @@ pub enum Event {
     TunInterfaceUpdated(TunConfig),
     /// The resource list has been updated.
     ResourcesUpdated(ResourceList),
+    /// The portal named the account this session belongs to.
+    AccountSlugUpdated(String),
     /// Establishing a tunnel for a resource failed because all Gateways are offline in the corresponding site.
     AllGatewaysOffline { resource_id: ResourceId },
     /// Establishing a tunnel for a resource failed because there are no version-compatible Gateways in the corresponding site.
@@ -79,7 +82,10 @@ impl Session {
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let event_stream = EventStream::new(
-            |resource_list_sender, tun_config_sender, user_notification_sender| {
+            |resource_list_sender,
+             tun_config_sender,
+             account_slug_sender,
+             user_notification_sender| {
                 Eventloop::new(
                     tcp_socket_factory,
                     udp_socket_factory,
@@ -91,6 +97,7 @@ impl Session {
                     cmd_rx,
                     resource_list_sender,
                     tun_config_sender,
+                    account_slug_sender,
                     user_notification_sender,
                 )
                 .run()
@@ -139,6 +146,14 @@ impl Session {
 impl EventStream {
     pub fn poll_next(&mut self, cx: &mut Context) -> Poll<Option<Event>> {
         loop {
+            // Polled first so the account is known before anything else the same
+            // `init` produced.
+            if let Poll::Ready(Some(Some(account_slug))) =
+                self.account_slug_receiver.poll_next_unpin(cx)
+            {
+                return Poll::Ready(Some(Event::AccountSlugUpdated(account_slug)));
+            }
+
             if let Poll::Ready(Some(resources)) = self.resource_list_receiver.poll_next_unpin(cx) {
                 return Poll::Ready(Some(Event::ResourcesUpdated(resources)));
             }
@@ -211,6 +226,7 @@ impl EventStream {
         make_event_loop: impl FnOnce(
             watch::Sender<ResourceList>,
             watch::Sender<Option<TunConfig>>,
+            watch::Sender<Option<String>>,
             mpsc::Sender<UserNotification>,
         ) -> E,
         handle: tokio::runtime::Handle,
@@ -221,11 +237,13 @@ impl EventStream {
         let (tun_config_sender, tun_config_receiver) = watch::channel(None);
         let (resource_list_sender, resource_list_receiver) =
             watch::channel(ResourceList::default());
+        let (account_slug_sender, account_slug_receiver) = watch::channel(None);
         let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
 
         let event_loop = make_event_loop(
             resource_list_sender,
             tun_config_sender,
+            account_slug_sender,
             user_notification_sender,
         );
 
@@ -235,6 +253,7 @@ impl EventStream {
             eventloop: eventloop.fuse(),
             resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
             tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
+            account_slug_receiver: WatchStream::from_changes(account_slug_receiver),
             user_notification_receiver,
             seen_notifications: Default::default(),
         }
@@ -248,7 +267,7 @@ mod tests {
     #[tokio::test]
     async fn event_stream_turn_panic_into_disconnected() {
         let mut stream = EventStream::new(
-            |_, _, _| async move { panic!("Boom!") },
+            |_, _, _, _| async move { panic!("Boom!") },
             tokio::runtime::Handle::current(),
         );
 
@@ -262,7 +281,7 @@ mod tests {
     #[tokio::test]
     async fn repeated_polls_dont_panic() {
         let mut stream = EventStream::new(
-            |_, _, _| async move { panic!("Boom!") },
+            |_, _, _, _| async move { panic!("Boom!") },
             tokio::runtime::Handle::current(),
         );
 
@@ -275,7 +294,7 @@ mod tests {
     #[tokio::test]
     async fn stream_ends_after_disconnect() {
         let mut stream = EventStream::new(
-            |_, _, _| async move { Err(DisconnectError::from(anyhow::anyhow!("Boom!"))) },
+            |_, _, _, _| async move { Err(DisconnectError::from(anyhow::anyhow!("Boom!"))) },
             tokio::runtime::Handle::current(),
         );
 
@@ -290,9 +309,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn account_slug_precedes_resources_from_the_same_init() {
+        let mut stream = EventStream::new(
+            |resource_list, _, account_slug, _| async move {
+                account_slug.send(Some("acme".to_owned())).unwrap();
+                resource_list.send(ResourceList::default()).unwrap();
+
+                Ok(())
+            },
+            tokio::runtime::Handle::current(),
+        );
+
+        let Event::AccountSlugUpdated(account_slug) = stream.next().await.unwrap() else {
+            panic!("Unexpected event")
+        };
+
+        assert_eq!(account_slug, "acme");
+    }
+
+    #[tokio::test]
     async fn deduplicates_offline_notifications() {
         let mut stream = EventStream::new(
-            |_, _, sender| async move {
+            |_, _, _, sender| async move {
                 sender
                     .send(UserNotification::AllGatewaysOffline {
                         resource_id: ResourceId::from_u128(1),
@@ -325,7 +363,7 @@ mod tests {
     #[tokio::test]
     async fn deduplicates_version_mismatch_notifications() {
         let mut stream = EventStream::new(
-            |_, _, sender| async move {
+            |_, _, _, sender| async move {
                 sender
                     .send(UserNotification::GatewayVersionMismatch {
                         resource_id: ResourceId::from_u128(1),

@@ -120,7 +120,6 @@ pub struct AndroidSessionConfig {
     pub api_url: String,
     pub token: Option<String>,
     pub device_id: String,
-    pub account_slug: String,
     pub device_name: String,
     pub device_info: DeviceInfo,
     pub is_internet_resource_active: bool,
@@ -264,7 +263,6 @@ impl Session {
             api_url,
             token,
             device_id,
-            account_slug,
             device_name,
             device_info,
             is_internet_resource_active,
@@ -276,7 +274,6 @@ impl Session {
             api_url,
             token,
             device_id,
-            account_slug,
             Some(device_name),
             device_info,
             is_internet_resource_active,
@@ -291,15 +288,10 @@ impl Session {
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 impl Session {
     #[uniffi::constructor]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "This is the API we want to expose over FFI."
-    )]
     pub fn new_apple(
         api_url: String,
         token: Option<String>,
         device_id: String,
-        account_slug: String,
         device_name: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
@@ -318,7 +310,6 @@ impl Session {
             api_url,
             token,
             device_id,
-            account_slug,
             device_name,
             device_info,
             is_internet_resource_active,
@@ -336,10 +327,6 @@ impl Session {
 #[uniffi::export]
 impl Session {
     #[uniffi::constructor]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "This is the API we want to expose over FFI."
-    )]
     /// Dummy constructor that isn't feature-gated by an OS.
     ///
     /// This only exists to make working on the FFI module from Linux/Windows more convenient without many "unused code" warnings.
@@ -347,7 +334,6 @@ impl Session {
         api_url: String,
         token: Option<String>,
         device_id: String,
-        account_slug: String,
         device_name: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
@@ -360,7 +346,6 @@ impl Session {
             api_url,
             token,
             device_id,
-            account_slug,
             device_name,
             device_info,
             is_internet_resource_active,
@@ -449,69 +434,81 @@ impl Session {
     }
 
     pub async fn next_event(&self) -> Option<Event> {
-        match self.events.lock().await.next().await? {
-            client_shared::Event::TunInterfaceUpdated(config) => {
-                let dns = config
-                    .dns_by_sentinel
-                    .sentinel_ips()
-                    .into_iter()
-                    .map(|ip| ip.to_string())
-                    .collect();
+        loop {
+            let event = self.events.lock().await.next().await?;
 
-                let (ipv4_routes, ipv6_routes) =
-                    config
-                        .routes
+            match event {
+                // Only relevant to the Rust-side telemetry, so it isn't surfaced to the app.
+                client_shared::Event::AccountSlugUpdated(account_slug) => {
+                    telemetry::set_account_slug(account_slug.clone());
+
+                    analytics::identify(RELEASE.to_owned(), account_slug, None, None);
+                }
+                client_shared::Event::TunInterfaceUpdated(config) => {
+                    let dns = config
+                        .dns_by_sentinel
+                        .sentinel_ips()
                         .into_iter()
-                        .partition_map(|route| match route {
-                            IpNetwork::V4(v4) => itertools::Either::Left(Cidr {
-                                address: v4.network_address().to_string(),
-                                prefix: v4.netmask(),
-                            }),
-                            IpNetwork::V6(v6) => itertools::Either::Right(Cidr {
-                                address: v6.network_address().to_string(),
-                                prefix: v6.netmask(),
-                            }),
-                        });
+                        .map(|ip| ip.to_string())
+                        .collect();
 
-                Some(Event::TunInterfaceUpdated {
-                    ipv4: config.ip.v4.to_string(),
-                    ipv6: config.ip.v6.to_string(),
-                    dns,
-                    search_domain: config.search_domain.map(|d| d.to_string()),
-                    ipv4_routes,
-                    ipv6_routes,
-                })
-            }
-            client_shared::Event::ResourcesUpdated(resource_list) => {
-                let resources = resource_list
-                    .resources
-                    .into_iter()
-                    .map(Into::into)
-                    .collect();
-                let connected_devices = resource_list
-                    .connected_devices
-                    .into_iter()
-                    .map(Into::into)
-                    .collect();
+                    let (ipv4_routes, ipv6_routes) =
+                        config
+                            .routes
+                            .into_iter()
+                            .partition_map(|route| match route {
+                                IpNetwork::V4(v4) => itertools::Either::Left(Cidr {
+                                    address: v4.network_address().to_string(),
+                                    prefix: v4.netmask(),
+                                }),
+                                IpNetwork::V6(v6) => itertools::Either::Right(Cidr {
+                                    address: v6.network_address().to_string(),
+                                    prefix: v6.netmask(),
+                                }),
+                            });
 
-                Some(Event::ResourcesUpdated {
-                    resources,
-                    connected_devices,
-                })
+                    return Some(Event::TunInterfaceUpdated {
+                        ipv4: config.ip.v4.to_string(),
+                        ipv6: config.ip.v6.to_string(),
+                        dns,
+                        search_domain: config.search_domain.map(|d| d.to_string()),
+                        ipv4_routes,
+                        ipv6_routes,
+                    });
+                }
+                client_shared::Event::ResourcesUpdated(resource_list) => {
+                    let resources = resource_list
+                        .resources
+                        .into_iter()
+                        .map(Into::into)
+                        .collect();
+                    let connected_devices = resource_list
+                        .connected_devices
+                        .into_iter()
+                        .map(Into::into)
+                        .collect();
+
+                    return Some(Event::ResourcesUpdated {
+                        resources,
+                        connected_devices,
+                    });
+                }
+                client_shared::Event::AllGatewaysOffline { resource_id } => {
+                    return Some(Event::AllGatewaysOffline {
+                        resource_id: resource_id.to_string(),
+                    });
+                }
+                client_shared::Event::GatewayVersionMismatch { resource_id } => {
+                    return Some(Event::GatewayVersionMismatch {
+                        resource_id: resource_id.to_string(),
+                    });
+                }
+                client_shared::Event::Disconnected(error) => {
+                    return Some(Event::Disconnected {
+                        error: Arc::new(DisconnectError(error)),
+                    });
+                }
             }
-            client_shared::Event::AllGatewaysOffline { resource_id } => {
-                Some(Event::AllGatewaysOffline {
-                    resource_id: resource_id.to_string(),
-                })
-            }
-            client_shared::Event::GatewayVersionMismatch { resource_id } => {
-                Some(Event::GatewayVersionMismatch {
-                    resource_id: resource_id.to_string(),
-                })
-            }
-            client_shared::Event::Disconnected(error) => Some(Event::Disconnected {
-                error: Arc::new(DisconnectError(error)),
-            }),
         }
     }
 }
@@ -551,7 +548,6 @@ fn connect(
     api_url: String,
     token: Option<String>,
     device_id: String,
-    account_slug: String,
     device_name: Option<String>,
     device_info: DeviceInfo,
     is_internet_resource_active: bool,
@@ -593,9 +589,10 @@ fn connect(
 
     telemetry::start(&api_url, RELEASE, platform::DSN);
     telemetry::set_firezone_id(device_id.clone());
-    telemetry::set_account_slug(account_slug.clone());
+    // The portal names the account in `init`; until then this session has none.
+    telemetry::set_account_slug(None);
 
-    analytics::identify(RELEASE.to_owned(), account_slug, None, None);
+    analytics::identify(RELEASE.to_owned(), None, None, None);
 
     let certificate = tls_identity
         .map(client_identity::certificate)

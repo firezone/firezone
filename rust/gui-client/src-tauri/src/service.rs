@@ -65,7 +65,6 @@ pub enum ClientMsg {
     StartTelemetry {
         environment: String,
         release: String,
-        account_slug: Option<String>,
     },
     #[cfg(debug_assertions)]
     Panic,
@@ -101,6 +100,8 @@ pub enum ServerMsg {
         resource_id: ResourceId,
     },
     OnUpdateResources(ResourceList),
+    /// The portal named the account the current session belongs to.
+    AccountSlugUpdated(String),
     /// Result of an `ApplyAdvancedSettings` from the GUI. `Ok` echoes the
     /// persisted struct so the GUI is certain about what landed.
     AdvancedSettingsApplied(Result<AdvancedSettings, String>),
@@ -652,6 +653,16 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::OnUpdateResources(resources))
                     .await?;
             }
+            client_shared::Event::AccountSlugUpdated(account_slug) => {
+                telemetry::set_account_slug(account_slug.clone());
+
+                if let Some(release) = self.telemetry_release.clone() {
+                    analytics::identify(release, account_slug.clone(), None, None);
+                }
+
+                self.send_ipc(ServerMsg::AccountSlugUpdated(account_slug))
+                    .await?;
+            }
         }
         Ok(())
     }
@@ -672,6 +683,10 @@ impl<'a> Handler<'a> {
 
                     shut_down_session(mem::take(&mut self.session)).await;
                 }
+
+                // The portal names the account in `init`; a session that never gets
+                // there must not report the previous one's.
+                telemetry::set_account_slug(None);
 
                 let result = self.try_connect(token.clone(), is_internet_resource_active);
 
@@ -732,7 +747,6 @@ impl<'a> Handler<'a> {
             ClientMsg::StartTelemetry {
                 environment,
                 release,
-                account_slug,
             } => {
                 // This is a bit hacky.
                 // It would be cleaner to pass it down from the `Cli` struct.
@@ -752,9 +766,7 @@ impl<'a> Handler<'a> {
                         telemetry::SentryMeterProvider::default(),
                     );
 
-                    telemetry::set_account_slug(account_slug.clone());
-
-                    analytics::identify(release, account_slug, None, None);
+                    analytics::identify(release, None, None, None);
                 }
             }
             #[cfg(debug_assertions)]
