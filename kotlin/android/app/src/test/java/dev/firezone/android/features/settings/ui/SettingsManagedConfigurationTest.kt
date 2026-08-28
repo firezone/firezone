@@ -118,6 +118,23 @@ class SettingsManagedConfigurationTest {
         }
 
     @Test
+    fun `edit before the first managed snapshot updates the overlaid user draft`() =
+        runBlocking {
+            repository
+                .saveManagedConfiguration(
+                    Bundle().apply {
+                        putString("authUrl", "https://managed.example.com")
+                    },
+                ).first()
+            val preSnapshotViewModel = SettingsViewModel(repository, source)
+
+            preSnapshotViewModel.onValidateLogFilter("trace")
+
+            assertEquals("https://managed.example.com", preSnapshotViewModel.configStateFlow.value.authUrl)
+            assertEquals("trace", preSnapshotViewModel.configStateFlow.value.logFilter)
+        }
+
+    @Test
     fun `saving after policy arrival preserves the prior user edit`() =
         runBlocking {
             source.applyRestrictions(Bundle())

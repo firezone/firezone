@@ -249,7 +249,7 @@ internal class SettingsViewModel
 
         private fun getEffectiveConfig(): Config =
             managedConfiguration?.let { repo.getEffectiveConfig(userConfig, it) }
-                ?: repo.getConfigSync()
+                ?: repo.getEffectiveConfigFromPersistedManaged(userConfig)
 
         private fun areFieldsValid(): Boolean =
             URLUtil.isValidUrl(config.authUrl) &&
