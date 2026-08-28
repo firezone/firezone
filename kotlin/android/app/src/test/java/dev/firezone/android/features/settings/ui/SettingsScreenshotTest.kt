@@ -12,6 +12,11 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
@@ -33,6 +38,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -59,6 +65,11 @@ import dev.firezone.android.core.data.model.Config as FirezoneConfig
     qualifiers = RobolectricDeviceQualifiers.Pixel5,
 )
 class SettingsScreenshotTest {
+    // Reaches into the Compose content the fragments host, which the scrolled X.509 captures have
+    // to drive. The rule hosts nothing itself; the activity below is still Robolectric's to build.
+    @get:Rule
+    val composeRule = createEmptyComposeRule()
+
     @Test
     fun generalSettings() = captureSettingsPage("settings-general", R.id.settingsGeneral)
 
@@ -83,8 +94,13 @@ class SettingsScreenshotTest {
     @Test
     fun x509SettingsWithUnreadableCertificate() = captureX509Page("x509-unreadable", unreadableCertificate)
 
+    // The buttons follow the rows, so only the end of the scroll shows what an administrator's
+    // certificate takes away: the same certificate, picked by the user, still offers Forget.
     @Test
-    fun x509SettingsWithManagedCertificate() = captureX509Page("x509-managed", managedCertificate)
+    fun x509SettingsWithManagedCertificate() = captureX509PageEnd("x509-managed-scrolled", managedCertificate)
+
+    @Test
+    fun x509SettingsWithUnmanagedCertificate() = captureX509PageEnd("x509-unmanaged-scrolled", usableCertificate)
 
     @Test
     fun logSettings() = captureSettingsPage("settings-logs", R.id.settingsLogs)
@@ -98,10 +114,20 @@ class SettingsScreenshotTest {
         captureSettingsPage(name, R.id.settingsX509)
     }
 
+    private fun captureX509PageEnd(
+        name: String,
+        state: X509SettingsViewModel.UiState,
+    ) {
+        x509ScreenshotState = state
+
+        captureSettingsPage(name, R.id.settingsX509, scrollToEnd = true)
+    }
+
     @OptIn(ExperimentalRoborazziApi::class)
     private fun captureSettingsPage(
         name: String,
         navigationItemId: Int,
+        scrollToEnd: Boolean = false,
     ) {
         seedLogDirectory()
 
@@ -118,7 +144,21 @@ class SettingsScreenshotTest {
             awaitLogDirectorySize(activity)
         }
 
+        if (scrollToEnd) {
+            scrollToEnd()
+        }
+
         activity.window.decorView.captureRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
+    }
+
+    // `SessionScreen` scrolls a list, which can be driven to a row number; this screen is a plain
+    // scrolling `Column`, so the distance left to travel is read off the semantics tree instead.
+    private fun scrollToEnd() {
+        val rows = composeRule.onNode(hasScrollAction())
+        val range = rows.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
+
+        rows.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, range.maxValue() - range.value()) }
+        composeRule.waitForIdle()
     }
 
     // The logs page shows the size of the log directory, so give it one log file to measure.
