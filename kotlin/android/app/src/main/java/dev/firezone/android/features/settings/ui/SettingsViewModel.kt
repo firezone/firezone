@@ -195,7 +195,7 @@ internal class SettingsViewModel
 
         private fun getEffectiveConfig(): Config =
             managedConfiguration?.let { repo.getEffectiveConfig(userConfig, it) }
-                ?: repo.getEffectiveConfig(userConfig)
+                ?: repo.getEffectiveConfigFromPersistedManaged(userConfig)
 
         private fun getManagedStatus(): ManagedConfigStatus =
             managedConfiguration?.managedStatus() ?: repo.getManagedStatus()
