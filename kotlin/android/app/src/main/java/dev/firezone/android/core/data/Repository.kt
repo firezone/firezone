@@ -282,21 +282,9 @@ class Repository
                 )
             }.flowOn(coroutineDispatcher)
 
-        fun saveActorName(value: String): Flow<Unit> =
-            flow {
-                emit(
-                    sharedPreferences
-                        .edit()
-                        .putString(ACTOR_NAME_KEY, value)
-                        .apply(),
-                )
-            }.flowOn(coroutineDispatcher)
-
         fun saveAuthCallbackIfStateValid(
             state: String,
             fragment: String,
-            accountSlug: String,
-            actorName: String,
         ): Flow<AuthCallbackResult> =
             flow {
                 val result =
@@ -305,25 +293,26 @@ class Repository
                         val pendingStateHash = sharedPreferences.getString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, null)
                         val isPendingHandoff = constantTimeEquals(pendingStateHash, stateHash)
                         val expectedState = sharedPreferences.getString(STATE_KEY, "").orEmpty()
-                        val isExpectedState = constantTimeEquals(expectedState, state)
+                        val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
+                        val hasValidRequest =
+                            expectedState.isNotBlank() &&
+                                nonce.isNotBlank() &&
+                                constantTimeEquals(expectedState, state)
                         when {
                             isPendingHandoff -> {
                                 AuthCallbackResult.PENDING_HANDOFF
                             }
 
-                            !isExpectedState -> {
+                            !hasValidRequest -> {
                                 AuthCallbackResult.INVALID
                             }
 
                             else -> {
-                                val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
                                 sharedPreferences
                                     .edit()
                                     .putString(TOKEN_KEY, nonce.plus(fragment))
                                     .remove(NONCE_KEY)
                                     .remove(STATE_KEY)
-                                    .putString(ACCOUNT_SLUG_KEY, accountSlug)
-                                    .putString(ACTOR_NAME_KEY, actorName)
                                     .putString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, stateHash)
                                     .apply()
 
@@ -347,27 +336,15 @@ class Repository
                 isPendingHandoff
             }
 
-        fun clearToken() {
+        fun clearCredentials() {
             synchronized(authStateLock) {
-                sharedPreferences.edit().apply {
-                    remove(TOKEN_KEY)
-                    remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY)
-                    apply()
-                }
-            }
-        }
-
-        fun clearNonce() {
-            sharedPreferences.edit().apply {
-                remove(NONCE_KEY)
-                apply()
-            }
-        }
-
-        fun clearState() {
-            sharedPreferences.edit().apply {
-                remove(STATE_KEY)
-                apply()
+                sharedPreferences
+                    .edit()
+                    .remove(TOKEN_KEY)
+                    .remove(NONCE_KEY)
+                    .remove(STATE_KEY)
+                    .remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY)
+                    .apply()
             }
         }
 

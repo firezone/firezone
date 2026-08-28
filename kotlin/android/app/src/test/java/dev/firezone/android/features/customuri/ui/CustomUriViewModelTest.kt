@@ -13,7 +13,6 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -54,8 +53,6 @@ class CustomUriViewModelTest {
             val action = viewModel.handleCustomUri(callbackIntent(state = EXPECTED_STATE, fragment = "fragment"))
 
             assertEquals(CustomUriViewModel.ViewAction.AuthFlowComplete, action)
-            assertEquals("new-account", repository.getAccountSlug().first())
-            assertEquals("New Actor", repository.getActorName().first())
             assertEquals("nonce-fragment", repository.getTokenSync())
             assertNull(repository.getNonceSync())
             assertNull(repository.getStateSync())
@@ -89,16 +86,12 @@ class CustomUriViewModelTest {
                 callbackIntent(
                     state = EXPECTED_STATE,
                     fragment = "replacement-fragment",
-                    accountSlug = "replacement-account",
-                    actorName = "Replacement Actor",
                 )
 
             recreatedViewModel.processCustomUri(replay)
 
             assertEquals(CustomUriViewModel.ViewAction.AuthFlowComplete, recreatedViewModel.actionStateFlow.value)
             assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
-            assertEquals("new-account", recreatedRepository.getAccountSlug().first())
-            assertEquals("New Actor", recreatedRepository.getActorNameSync())
             assertNull(recreatedRepository.getNonceSync())
             assertNull(recreatedRepository.getStateSync())
 
@@ -110,8 +103,6 @@ class CustomUriViewModelTest {
 
             assertTrue(laterAction is CustomUriViewModel.ViewAction.AuthFlowError)
             assertEquals("nonce-fragment", laterRepository.getTokenSync())
-            assertEquals("new-account", laterRepository.getAccountSlug().first())
-            assertEquals("New Actor", laterRepository.getActorNameSync())
         }
 
     @Test
@@ -131,15 +122,15 @@ class CustomUriViewModelTest {
 
             assertTrue(action is CustomUriViewModel.ViewAction.AuthFlowError)
             assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
-            assertEquals("new-account", recreatedRepository.getAccountSlug().first())
-            assertEquals("New Actor", recreatedRepository.getActorNameSync())
             assertNull(recreatedRepository.getNonceSync())
             assertNull(recreatedRepository.getStateSync())
         }
 
     @Test
-    fun `missing state does not mutate credentials`() =
+    fun `missing and blank states do not mutate credentials`() {
         assertInvalidCallbackDoesNotMutateCredentials(callbackIntent(state = null, fragment = "new-fragment"))
+        assertInvalidCallbackDoesNotMutateCredentials(callbackIntent(state = " ", fragment = "new-fragment"))
+    }
 
     @Test
     fun `invalid state does not mutate credentials`() =
@@ -149,22 +140,6 @@ class CustomUriViewModelTest {
     fun `missing and blank fragments do not mutate credentials`() {
         assertInvalidCallbackDoesNotMutateCredentials(callbackIntent(state = EXPECTED_STATE, fragment = null))
         assertInvalidCallbackDoesNotMutateCredentials(callbackIntent(state = EXPECTED_STATE, fragment = " "))
-    }
-
-    @Test
-    fun `missing and blank profile fields do not mutate credentials`() {
-        assertInvalidCallbackDoesNotMutateCredentials(
-            callbackIntent(state = EXPECTED_STATE, fragment = "new-fragment", accountSlug = null),
-        )
-        assertInvalidCallbackDoesNotMutateCredentials(
-            callbackIntent(state = EXPECTED_STATE, fragment = "new-fragment", accountSlug = " "),
-        )
-        assertInvalidCallbackDoesNotMutateCredentials(
-            callbackIntent(state = EXPECTED_STATE, fragment = "new-fragment", actorName = null),
-        )
-        assertInvalidCallbackDoesNotMutateCredentials(
-            callbackIntent(state = EXPECTED_STATE, fragment = "new-fragment", actorName = " "),
-        )
     }
 
     @Test
@@ -215,8 +190,6 @@ class CustomUriViewModelTest {
             val action = viewModel.handleCustomUri(intent)
 
             check(action is CustomUriViewModel.ViewAction.AuthFlowError)
-            assertEquals("existing-account", repository.getAccountSlug().first())
-            assertEquals("Existing Actor", repository.getActorName().first())
             assertEquals("existing-nonce-existing-fragment", repository.getTokenSync())
             assertEquals("existing-nonce-", repository.getNonceSync())
             assertEquals(EXPECTED_STATE, repository.getStateSync())
@@ -224,8 +197,6 @@ class CustomUriViewModelTest {
 
     private suspend fun seedExistingCredentials() {
         preferences.edit().clear().commit()
-        repository.saveAccountSlug("existing-account").collect()
-        repository.saveActorName("Existing Actor").collect()
         repository.saveNonceAndStateSync(nonce = "existing-nonce-", state = EXPECTED_STATE)
         repository.saveToken("existing-fragment").collect()
     }
@@ -233,8 +204,6 @@ class CustomUriViewModelTest {
     private fun callbackIntent(
         state: String?,
         fragment: String?,
-        accountSlug: String? = "new-account",
-        actorName: String? = "New Actor",
     ): Intent {
         val uri =
             Uri
@@ -242,8 +211,6 @@ class CustomUriViewModelTest {
                 .scheme("firezone-fd0020211111")
                 .authority("handle_client_sign_in_callback")
                 .apply {
-                    accountSlug?.let { appendQueryParameter("account_slug", it) }
-                    actorName?.let { appendQueryParameter("actor_name", it) }
                     state?.let { appendQueryParameter("state", it) }
                     fragment?.let { appendQueryParameter("fragment", it) }
                 }.build()

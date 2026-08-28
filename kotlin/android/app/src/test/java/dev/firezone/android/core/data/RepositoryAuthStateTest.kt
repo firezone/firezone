@@ -17,6 +17,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
@@ -65,15 +68,13 @@ class RepositoryAuthStateTest {
                     .saveAuthCallbackIfStateValid(
                         state = "handoff-state",
                         fragment = "fragment",
-                        accountSlug = "account",
-                        actorName = "Actor",
                     ).first(),
             )
 
             assertEquals(
                 listOf(
                     PreferenceTransaction(
-                        putStringKeys = setOf("token", "accountSlug", "actorName", "pendingAuthHandoffStateHash"),
+                        putStringKeys = setOf("token", "pendingAuthHandoffStateHash"),
                         removedKeys = setOf("nonce", "state"),
                     ),
                 ),
@@ -87,14 +88,10 @@ class RepositoryAuthStateTest {
                     .saveAuthCallbackIfStateValid(
                         state = "handoff-state",
                         fragment = "replacement-fragment",
-                        accountSlug = "replacement-account",
-                        actorName = "Replacement Actor",
                     ).first(),
             )
             assertEquals(1, recordingPreferences.appliedTransactions.size)
             assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
-            assertEquals("account", recreatedRepository.getAccountSlug().first())
-            assertEquals("Actor", recreatedRepository.getActorNameSync())
             assertNull(recreatedRepository.getNonceSync())
             assertNull(recreatedRepository.getStateSync())
         }
@@ -113,24 +110,84 @@ class RepositoryAuthStateTest {
                     .saveAuthCallbackIfStateValid(
                         state = "old-state",
                         fragment = "replacement-fragment",
-                        accountSlug = "replacement-account",
-                        actorName = "Replacement Actor",
                     ).first(),
             )
             assertEquals("nonce-fragment", repository.getTokenSync())
-            assertEquals("account", repository.getAccountSlug().first())
-            assertEquals("Actor", repository.getActorNameSync())
             assertEquals("new-nonce-", repository.getNonceSync())
             assertEquals("new-state", repository.getStateSync())
         }
 
     @Test
-    fun `clearing token invalidates pending handoff`() =
+    fun `partial and blank legacy requests reject callback without mutating durable state`() =
+        runBlocking {
+            listOf(
+                null to "expected-state",
+                "" to "expected-state",
+                "existing-nonce-" to null,
+                "existing-nonce-" to "",
+            ).forEach { (nonce, state) ->
+                val editor =
+                    preferences
+                        .edit()
+                        .clear()
+                        .putString("token", "existing-token")
+                nonce?.let { editor.putString("nonce", it) }
+                state?.let { editor.putString("state", it) }
+                editor.commit()
+                val repository = newRepository(preferences)
+
+                assertEquals(
+                    AuthCallbackResult.INVALID,
+                    repository
+                        .saveAuthCallbackIfStateValid(
+                            state = "expected-state",
+                            fragment = "replacement-fragment",
+                        ).first(),
+                )
+                assertEquals("existing-token", repository.getTokenSync())
+                assertEquals(nonce, repository.getNonceSync())
+                assertEquals(state, repository.getStateSync())
+            }
+        }
+
+    @Test
+    fun `clearing credentials uses one transaction`() {
+        preferences
+            .edit()
+            .putString("token", "existing-token")
+            .putString("nonce", "existing-nonce")
+            .putString("state", "existing-state")
+            .putString("pendingAuthHandoffStateHash", "existing-hash")
+            .putString("x509CertificateAlias", "existing-alias")
+            .commit()
+        val recordingPreferences = RecordingSharedPreferences(preferences)
+        val repository = newRepository(recordingPreferences)
+
+        repository.clearCredentials()
+
+        assertEquals(
+            listOf(
+                PreferenceTransaction(
+                    putStringKeys = emptySet(),
+                    removedKeys = setOf("token", "nonce", "state", "pendingAuthHandoffStateHash"),
+                ),
+            ),
+            recordingPreferences.appliedTransactions,
+        )
+        assertNull(repository.getTokenSync())
+        assertNull(repository.getNonceSync())
+        assertNull(repository.getStateSync())
+        assertNull(preferences.getString("pendingAuthHandoffStateHash", null))
+        assertEquals("existing-alias", preferences.getString("x509CertificateAlias", null))
+    }
+
+    @Test
+    fun `clearing credentials invalidates pending handoff`() =
         runBlocking {
             val repository = newRepository(preferences)
             completeAuth(repository, state = "handoff-state")
 
-            repository.clearToken()
+            repository.clearCredentials()
 
             val recreatedRepository = newRepository(preferences)
             assertEquals(
@@ -139,14 +196,51 @@ class RepositoryAuthStateTest {
                     .saveAuthCallbackIfStateValid(
                         state = "handoff-state",
                         fragment = "replacement-fragment",
-                        accountSlug = "replacement-account",
-                        actorName = "Replacement Actor",
                     ).first(),
             )
             assertNull(recreatedRepository.getTokenSync())
-            assertEquals("account", recreatedRepository.getAccountSlug().first())
-            assertEquals("Actor", recreatedRepository.getActorNameSync())
+            assertNull(recreatedRepository.getNonceSync())
+            assertNull(recreatedRepository.getStateSync())
         }
+
+    @Test
+    fun `clearing credentials waits for callback persistence and wins`() {
+        val coordinatedPreferences = BlockingAuthCallbackPreferences(preferences)
+        val repository = newRepository(coordinatedPreferences)
+        val callbackExecutor = Executors.newSingleThreadExecutor()
+        val clearThread = Thread(repository::clearCredentials)
+
+        repository.saveNonceAndStateSync(nonce = "nonce-", state = "handoff-state")
+        val callback =
+            callbackExecutor.submit<AuthCallbackResult> {
+                runBlocking {
+                    repository
+                        .saveAuthCallbackIfStateValid(
+                            state = "handoff-state",
+                            fragment = "fragment",
+                        ).first()
+                }
+            }
+
+        try {
+            coordinatedPreferences.awaitCallbackApply()
+            clearThread.start()
+            awaitBlocked(clearThread)
+            coordinatedPreferences.releaseCallbackApply()
+
+            assertEquals(AuthCallbackResult.NEW_HANDOFF, callback.get(10, TimeUnit.SECONDS))
+            clearThread.join(TimeUnit.SECONDS.toMillis(10))
+            assertFalse(clearThread.isAlive)
+            assertNull(repository.getTokenSync())
+            assertNull(repository.getNonceSync())
+            assertNull(repository.getStateSync())
+            assertNull(preferences.getString("pendingAuthHandoffStateHash", null))
+        } finally {
+            coordinatedPreferences.releaseCallbackApply()
+            callbackExecutor.shutdownNow()
+            clearThread.join(TimeUnit.SECONDS.toMillis(10))
+        }
+    }
 
     @Test
     fun `acknowledging handoff rejects later callback replay`() =
@@ -165,13 +259,9 @@ class RepositoryAuthStateTest {
                     .saveAuthCallbackIfStateValid(
                         state = "handoff-state",
                         fragment = "replacement-fragment",
-                        accountSlug = "replacement-account",
-                        actorName = "Replacement Actor",
                     ).first(),
             )
             assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
-            assertEquals("account", recreatedRepository.getAccountSlug().first())
-            assertEquals("Actor", recreatedRepository.getActorNameSync())
         }
 
     private fun newRepository(preferences: SharedPreferences): Repository = Repository(context, Dispatchers.Unconfined, preferences)
@@ -187,10 +277,17 @@ class RepositoryAuthStateTest {
                 .saveAuthCallbackIfStateValid(
                     state = state,
                     fragment = "fragment",
-                    accountSlug = "account",
-                    actorName = "Actor",
                 ).first(),
         )
+    }
+
+    private fun awaitBlocked(thread: Thread) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        while (thread.state != Thread.State.BLOCKED && thread.isAlive && System.nanoTime() < deadline) {
+            Thread.yield()
+        }
+
+        assertEquals(Thread.State.BLOCKED, thread.state)
     }
 }
 
@@ -237,3 +334,46 @@ private data class PreferenceTransaction(
     val putStringKeys: Set<String>,
     val removedKeys: Set<String>,
 )
+
+private class BlockingAuthCallbackPreferences(
+    private val delegate: SharedPreferences,
+) : SharedPreferences by delegate {
+    private val callbackApplyStarted = CountDownLatch(1)
+    private val callbackApplyRelease = CountDownLatch(1)
+
+    override fun edit(): SharedPreferences.Editor {
+        val editor = delegate.edit()
+        val stringKeys = mutableSetOf<String>()
+        return object : SharedPreferences.Editor by editor {
+            override fun putString(
+                key: String?,
+                value: String?,
+            ): SharedPreferences.Editor {
+                key?.let { stringKeys += it }
+                editor.putString(key, value)
+                return this
+            }
+
+            override fun remove(key: String?): SharedPreferences.Editor {
+                editor.remove(key)
+                return this
+            }
+
+            override fun apply() {
+                if ("token" in stringKeys) {
+                    callbackApplyStarted.countDown()
+                    check(callbackApplyRelease.await(10, TimeUnit.SECONDS))
+                }
+                editor.apply()
+            }
+        }
+    }
+
+    fun awaitCallbackApply() {
+        check(callbackApplyStarted.await(10, TimeUnit.SECONDS))
+    }
+
+    fun releaseCallbackApply() {
+        callbackApplyRelease.countDown()
+    }
+}

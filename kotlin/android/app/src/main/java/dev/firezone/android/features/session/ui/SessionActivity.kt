@@ -111,7 +111,7 @@ class SessionActivity : AppCompatActivity() {
                         startActivity(settings)
                     },
                     onEndSession = {
-                        viewModel.clearToken()
+                        viewModel.clearCredentials()
                         tunnelService?.disconnect()
                     },
                 )

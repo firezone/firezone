@@ -717,7 +717,7 @@ class TunnelService : VpnService() {
                                     Log.i(TAG, "Disconnected by connlib: ${event.error.message()}")
 
                                     if (event.error.requiresSignIn()) {
-                                        repo.clearToken()
+                                        repo.clearCredentials()
                                     }
 
                                     stopReason = StopReason.Disconnected(event.error.message())

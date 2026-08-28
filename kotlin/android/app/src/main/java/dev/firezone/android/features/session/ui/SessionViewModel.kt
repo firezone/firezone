@@ -27,5 +27,5 @@ internal class SessionViewModel
             repo.removeFavoriteResource(id)
         }
 
-        fun clearToken() = repo.clearToken()
+        fun clearCredentials() = repo.clearCredentials()
     }
