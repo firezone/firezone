@@ -96,7 +96,13 @@ fun SessionScreen(
             }
         },
     ) { innerPadding ->
-        Column(Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
+        // No top padding: the app bar centres its title in a 64dp box, so it already leaves space below it.
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 16.dp),
+        ) {
             // The tab bar is the top-level switcher, pinned below the app bar so it stays visible and
             // accessible no matter how far the list is scrolled.
             if (hasFavorites) {
