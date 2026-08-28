@@ -7,7 +7,7 @@ use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, ErrorExt, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{
-    TunDeviceManager, device_id, http_health_check,
+    TunDeviceManager, device_id, device_info, http_health_check,
     platform::{UdpSocketFactory, tcp_socket_factory},
 };
 use clap::Parser;
@@ -192,8 +192,14 @@ async fn try_main(cli: Cli) -> Result<()> {
         }
     }
 
-    let login = LoginUrl::gateway(cli.api_url, firezone_id, cli.firezone_name)
-        .context("Failed to construct URL for logging into portal")?;
+    let login = LoginUrl::gateway(
+        cli.api_url,
+        firezone_id,
+        cli.firezone_name,
+        device_info::serial(),
+        device_info::uuid(),
+    )
+    .context("Failed to construct URL for logging into portal")?;
 
     let resolv_conf = resolv_conf::Config::parse(
         std::fs::read_to_string("/etc/resolv.conf").context("Failed to read /etc/resolv.conf")?,

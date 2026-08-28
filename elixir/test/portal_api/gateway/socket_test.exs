@@ -81,7 +81,15 @@ defmodule PortalAPI.Gateway.SocketTest do
       token = gateway_token_fixture()
       encrypted_secret = encode_gateway_token(token)
 
-      attrs = connect_attrs(token: encrypted_secret)
+      attrs =
+        connect_attrs(
+          token: encrypted_secret,
+          name: "reported-name",
+          device_serial: "reported-serial",
+          device_uuid: "reported-uuid",
+          identifier_for_vendor: "mobile-only-ifv",
+          firebase_installation_id: "mobile-only-firebase-id"
+        )
 
       connect_info =
         build_connect_info(user_agent: "iOS/12.7 (iPhone) connlib/#{@connlib_version}")
@@ -90,6 +98,18 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert gateway = Map.fetch!(socket.assigns, :gateway)
 
       assert gateway.firezone_id == attrs["external_id"]
+      assert gateway.name == "reported-name"
+      assert gateway.device_serial == "reported-serial"
+      assert gateway.device_uuid == "reported-uuid"
+      assert is_nil(gateway.identifier_for_vendor)
+      assert is_nil(gateway.firebase_installation_id)
+
+      persisted = Portal.Repo.get_by!(Portal.Device, account_id: gateway.account_id, id: gateway.id)
+      assert persisted.name == "reported-name"
+      assert persisted.device_serial == "reported-serial"
+      assert persisted.device_uuid == "reported-uuid"
+      assert is_nil(persisted.identifier_for_vendor)
+      assert is_nil(persisted.firebase_installation_id)
 
       assert is_reference(Map.fetch!(socket.assigns, :session_ref))
       assert gateway.public_key == attrs["public_key"]
@@ -156,6 +176,42 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert connected_gateway.last_seen_remote_ip_location_city == "Kyiv"
       assert connected_gateway.last_seen_remote_ip_location_lat == 50.4333
       assert connected_gateway.last_seen_remote_ip_location_lon == 30.5167
+    end
+
+    test "updates an existing multi-owner gateway with its reported metadata" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          name: "old-name",
+          device_serial: "old-serial",
+          device_uuid: "old-uuid"
+        )
+
+      token = gateway_token_fixture(account: account, site: site)
+
+      attrs =
+        connect_attrs(
+          token: encode_gateway_token(token),
+          external_id: gateway.firezone_id,
+          name: "new-name",
+          device_serial: "new-serial",
+          device_uuid: "new-uuid"
+        )
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.id == gateway.id
+      assert socket.assigns.gateway.name == "new-name"
+      assert socket.assigns.gateway.device_serial == "new-serial"
+      assert socket.assigns.gateway.device_uuid == "new-uuid"
+
+      persisted = Portal.Repo.get_by!(Portal.Device, account_id: account.id, id: gateway.id)
+      assert persisted.name == "new-name"
+      assert persisted.device_serial == "new-serial"
+      assert persisted.device_uuid == "new-uuid"
     end
 
     test "preserves ipv4 and ipv6 addresses on reconnection" do
@@ -233,19 +289,63 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert socket.assigns.gateway.firezone_id == "reported-id"
     end
 
-    test "single-owner connect updates a changed firezone_id" do
+    test "single-owner connect updates the reported firezone_id and metadata" do
       account = account_fixture()
       site = site_fixture(account: account)
-      gateway = gateway_fixture(account: account, site: site)
+
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          name: "old-name",
+          device_serial: "old-serial",
+          device_uuid: "old-uuid"
+        )
+
       token = gateway_token_fixture(gateway: gateway)
 
-      attrs = connect_attrs(token: encode_gateway_token(token), external_id: "different-id")
+      attrs =
+        connect_attrs(
+          token: encode_gateway_token(token),
+          external_id: "different-id",
+          name: "new-name",
+          device_serial: "new-serial",
+          device_uuid: "new-uuid"
+        )
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
       assert socket.assigns.gateway.firezone_id == "different-id"
+      assert socket.assigns.gateway.name == "new-name"
+      assert socket.assigns.gateway.device_serial == "new-serial"
+      assert socket.assigns.gateway.device_uuid == "new-uuid"
 
       persisted = Portal.Repo.get_by!(Portal.Device, account_id: account.id, id: gateway.id)
       assert persisted.firezone_id == "different-id"
+      assert persisted.name == "new-name"
+      assert persisted.device_serial == "new-serial"
+      assert persisted.device_uuid == "new-uuid"
+    end
+
+    test "single-owner connect preserves metadata the gateway omits" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          name: "stored-name",
+          device_serial: "stored-serial",
+          device_uuid: "stored-uuid"
+        )
+
+      token = gateway_token_fixture(gateway: gateway)
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: gateway.firezone_id)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.name == "stored-name"
+      assert socket.assigns.gateway.device_serial == "stored-serial"
+      assert socket.assigns.gateway.device_uuid == "stored-uuid"
     end
 
     test "single-owner connect keeps the firezone_id when none is reported" do

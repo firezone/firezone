@@ -132,6 +132,8 @@ impl LoginUrl<PublicKeyParam> {
         url: impl TryInto<Url, Error = E>,
         device_id: String,
         device_name: Option<String>,
+        device_serial: Option<String>,
+        device_uuid: Option<String>,
     ) -> Result<Self, LoginUrlError<E>> {
         let external_id = if uuid::Uuid::from_str(&device_id).is_ok() {
             hex::encode(sha2::Sha256::digest(device_id))
@@ -151,7 +153,11 @@ impl LoginUrl<PublicKeyParam> {
             None,
             None,
             None,
-            Default::default(),
+            DeviceInfo {
+                device_serial,
+                device_uuid,
+                ..Default::default()
+            },
         )?;
 
         let (host, port) = parse_host(&url)?;
@@ -575,13 +581,28 @@ mod tests {
             "wss://api.firez.one",
             "some-id".to_owned(),
             Some("some-name".to_owned()),
+            Some("serial".to_owned()),
+            Some("uuid".to_owned()),
         )
         .unwrap();
 
+        let url = login_url.to_url(PublicKeyParam([0; 32]));
+
+        assert_eq!(url.path(), "/gateway/v2/websocket");
         assert_eq!(
-            login_url.to_url(PublicKeyParam([0; 32])).path(),
-            "/gateway/v2/websocket"
-        )
+            url.query_pairs()
+                .collect::<std::collections::HashMap<_, _>>(),
+            std::collections::HashMap::from([
+                (Cow::Borrowed("external_id"), Cow::Borrowed("some-id")),
+                (Cow::Borrowed("name"), Cow::Borrowed("some-name")),
+                (Cow::Borrowed("device_serial"), Cow::Borrowed("serial")),
+                (Cow::Borrowed("device_uuid"), Cow::Borrowed("uuid")),
+                (
+                    Cow::Borrowed("public_key"),
+                    Cow::Borrowed("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+                ),
+            ])
+        );
     }
 
     #[test]

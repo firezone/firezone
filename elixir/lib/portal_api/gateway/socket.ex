@@ -11,6 +11,12 @@ defmodule PortalAPI.Gateway.Socket do
   import Ecto.Changeset
   import Portal.Changeset
 
+  @reported_metadata_fields ~w[
+    name
+    device_serial
+    device_uuid
+  ]a
+
   ## Channels
 
   channel "gateway", PortalAPI.Gateway.Channel
@@ -54,7 +60,9 @@ defmodule PortalAPI.Gateway.Socket do
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
          {:ok, public_key} <- validate_public_key(attrs),
          {:ok, site, gateway} <- resolve_gateway(gateway_token, attrs),
-         :ok <- ensure_gateway_not_connected(gateway) do
+         :ok <- ensure_gateway_not_connected(gateway),
+         {:ok, gateway} <- put_reported_metadata(gateway, attrs),
+         {:ok, gateway} <- maybe_put_firezone_id(gateway, attrs) do
       version = derive_version(context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(context, version)
       gateway = apply_session(gateway, gateway_token.id, public_key, context, version)
@@ -119,11 +127,26 @@ defmodule PortalAPI.Gateway.Socket do
 
   # Single-owner token: the token identifies the gateway directly; the
   # reported firezone_id is kept in sync as a telemetry hint
-  defp resolve_gateway(%Portal.GatewayToken{} = gateway_token, attrs) do
+  defp resolve_gateway(%Portal.GatewayToken{} = gateway_token, _attrs) do
     with {:ok, gateway} <-
-           Database.fetch_gateway(gateway_token.account_id, gateway_token.device_id),
-         {:ok, gateway} <- maybe_put_firezone_id(gateway, attrs) do
+           Database.fetch_gateway(gateway_token.account_id, gateway_token.device_id) do
       {:ok, gateway.site, gateway}
+    end
+  end
+
+  # Device metadata is self-reported on every connection. Only fields present
+  # in the socket params are cast, so an older gateway that omits a field keeps
+  # the value already stored on its device row.
+  defp put_reported_metadata(%Device{} = gateway, attrs) do
+    changeset =
+      gateway
+      |> cast(attrs, @reported_metadata_fields)
+      |> Device.changeset()
+
+    if changeset.changes == %{} do
+      {:ok, gateway}
+    else
+      Database.update_gateway(changeset)
     end
   end
 
@@ -161,7 +184,7 @@ defmodule PortalAPI.Gateway.Socket do
   defp maybe_put_firezone_id(%Device{} = gateway, _attrs), do: {:ok, gateway}
 
   defp insert_changeset(site, attrs) do
-    insert_fields = ~w[firezone_id name]a
+    insert_fields = [:firezone_id | @reported_metadata_fields]
     required_fields = ~w[firezone_id name]a
 
     %Device{}
