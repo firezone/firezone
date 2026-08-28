@@ -4,6 +4,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   import Ecto.Changeset
 
   alias Portal.{Changes.Change, Defender, PostureProvider, Intune, Iru, Santa, SentinelOne, PubSub}
+  alias Portal.Mailer.PostureProviderInterestEmail
   alias __MODULE__.Database
 
   require Logger
@@ -11,6 +12,42 @@ defmodule PortalWeb.Settings.DevicePosture do
   @feature_disabled "Device posture is not enabled for your account."
 
   @types ~w[intune iru defender santa sentinelone]
+
+  @coming_soon_providers [
+    %{
+      type: "crowdstrike",
+      title: "CrowdStrike Falcon",
+      description: "Register interest in CrowdStrike Falcon endpoint posture support."
+    },
+    %{
+      type: "sophos",
+      title: "Sophos XDR",
+      description: "Register interest in Sophos XDR endpoint posture support."
+    },
+    %{
+      type: "jamf",
+      title: "Jamf Pro",
+      description: "Register interest in Jamf Pro device posture support."
+    },
+    %{
+      type: "workspace_one",
+      title: "Workspace ONE",
+      description: "Register interest in Workspace ONE device posture support."
+    },
+    %{
+      type: "mosyle",
+      title: "Mosyle",
+      description: "Register interest in Mosyle device posture support."
+    },
+    %{
+      type: "other",
+      title: "Other",
+      description: "Tell us about another posture provider you would like Firezone to support."
+    }
+  ]
+
+  @coming_soon_types Enum.map(@coming_soon_providers, & &1.type)
+  @feedback_max_length 5_000
 
   @select_type_classes [
     "flex items-center w-full p-4 rounded border transition-colors cursor-pointer",
@@ -71,7 +108,12 @@ defmodule PortalWeb.Settings.DevicePosture do
        active_verification: nil,
        pending_verification: nil,
        verifying: false,
-       open_provider_actions_id: nil
+       open_provider_actions_id: nil,
+       coming_soon_providers: @coming_soon_providers,
+       feedback_max_length: @feedback_max_length,
+       interest_provider: nil,
+       feedback_sent?: false,
+       feedback_error: nil
      )
      |> init()}
   end
@@ -144,6 +186,104 @@ defmodule PortalWeb.Settings.DevicePosture do
   end
 
   def handle_event("handle_keydown", _params, socket), do: {:noreply, socket}
+
+  def handle_event("register_interest", %{"provider" => type}, socket)
+      when type in @coming_soon_types do
+    if account_feature_enabled?(socket) do
+      provider = coming_soon_provider(type)
+      email = PostureProviderInterestEmail.interest_email(socket.assigns.subject, provider.title)
+
+      case deliver_interest_email(email, socket, type, :interest) do
+        {:ok, _result} ->
+          {:noreply,
+           assign(socket,
+             interest_provider: provider,
+             feedback_sent?: false,
+             feedback_error: nil
+           )}
+
+        {:error, reason} ->
+          Logger.warning("Failed to register posture provider interest",
+            account_id: socket.assigns.subject.account.id,
+            actor_id: socket.assigns.subject.actor.id,
+            provider: type,
+            reason: inspect(reason)
+          )
+
+          {:noreply,
+           put_flash(socket, :error, "We couldn't register your interest. Please try again.")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, @feature_disabled)}
+    end
+  end
+
+  def handle_event("register_interest", _params, socket), do: {:noreply, socket}
+
+  def handle_event("clear_interest", _params, socket) do
+    {:noreply,
+     assign(socket, interest_provider: nil, feedback_sent?: false, feedback_error: nil)}
+  end
+
+  def handle_event(
+        "submit_interest_feedback",
+        %{"feedback" => %{"message" => feedback}},
+        %{assigns: %{interest_provider: %{type: type} = provider}} = socket
+      )
+      when type in @coming_soon_types and is_binary(feedback) do
+    feedback = String.trim(feedback)
+
+    cond do
+      not account_feature_enabled?(socket) ->
+        {:noreply, put_flash(socket, :error, @feature_disabled)}
+
+      feedback == "" ->
+        {:noreply, assign(socket, feedback_error: "Please enter your feedback.")}
+
+      String.length(feedback) > @feedback_max_length ->
+        {:noreply,
+         assign(socket, feedback_error: "Feedback must be 5,000 characters or fewer.")}
+
+      true ->
+        email =
+          PostureProviderInterestEmail.feedback_email(
+            socket.assigns.subject,
+            provider.title,
+            feedback
+          )
+
+        case deliver_interest_email(email, socket, type, :feedback) do
+          {:ok, _result} ->
+            {:noreply, assign(socket, feedback_sent?: true, feedback_error: nil)}
+
+          {:error, reason} ->
+            Logger.warning("Failed to send posture provider interest feedback",
+              account_id: socket.assigns.subject.account.id,
+              actor_id: socket.assigns.subject.actor.id,
+              provider: type,
+              reason: inspect(reason)
+            )
+
+            {:noreply,
+             assign(socket, feedback_error: "We couldn't send your feedback. Please try again.")}
+        end
+    end
+  end
+
+  def handle_event(
+        "submit_interest_feedback",
+        _params,
+        %{assigns: %{interest_provider: %{type: type}}} = socket
+      )
+      when type in @coming_soon_types do
+    if account_feature_enabled?(socket) do
+      {:noreply, assign(socket, feedback_error: "Please enter your feedback.")}
+    else
+      {:noreply, put_flash(socket, :error, @feature_disabled)}
+    end
+  end
+
+  def handle_event("submit_interest_feedback", _params, socket), do: {:noreply, socket}
 
   def handle_event("validate", %{"provider" => attrs}, socket) do
     changeset = socket.assigns.form.source
@@ -644,7 +784,10 @@ defmodule PortalWeb.Settings.DevicePosture do
         phx-window-keydown="handle_keydown"
         phx-key="Escape"
       >
-        <div :if={@live_action == :select_type} class="flex flex-col h-full overflow-hidden">
+        <div
+          :if={@live_action == :select_type and is_nil(@interest_provider)}
+          class="flex flex-col h-full overflow-hidden"
+        >
           <.panel_header title="Select Provider Type" variant="plain" />
           <div class="flex-1 overflow-y-auto px-5 py-4">
             <p class="mb-4 text-xs text-subtle">
@@ -723,7 +866,93 @@ defmodule PortalWeb.Settings.DevicePosture do
                   </span>
                 </.link>
               </li>
+              <li class="pt-3 pb-1">
+                <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+                  Coming soon
+                </p>
+              </li>
+              <li :for={provider <- @coming_soon_providers}>
+                <button
+                  id={"register-interest-#{provider.type}"}
+                  type="button"
+                  phx-click="register_interest"
+                  phx-value-provider={provider.type}
+                  class={select_type_classes()}
+                >
+                  <span class="flex items-center gap-3 w-2/5 shrink-0">
+                    <.provider_icon provider={provider.type} size="xl" />
+                    <span class="text-sm font-medium text-heading">{provider.title}</span>
+                  </span>
+                  <span class="text-xs text-body text-left">{provider.description}</span>
+                </button>
+              </li>
             </ul>
+          </div>
+        </div>
+
+        <div
+          :if={@live_action == :select_type and not is_nil(@interest_provider)}
+          id="posture-provider-interest"
+          class="flex flex-col h-full overflow-hidden"
+        >
+          <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                phx-click="clear_interest"
+                class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
+                title="Back"
+              >
+                <.icon name="ri-arrow-left-line" class="w-4 h-4" />
+              </button>
+              <.provider_icon provider={@interest_provider.type} size="sm" />
+              <h2 class="text-sm font-semibold text-heading">{@interest_provider.title}</h2>
+            </div>
+            <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          </div>
+
+          <div class="flex-1 overflow-y-auto px-5 py-6">
+            <div class="max-w-xl">
+              <h3 class="text-base font-semibold text-heading">
+                This provider is coming soon!
+              </h3>
+              <p class="mt-2 text-sm leading-6 text-body">
+                We've registered your interest in {@interest_provider.title} support in Firezone.
+                Feel free to provide feedback below to pass on to the team.
+              </p>
+
+              <div
+                :if={@feedback_sent?}
+                id="posture-provider-feedback-thanks"
+                class="mt-6 rounded border border-success/30 bg-success-light p-4 text-sm text-success"
+              >
+                <div class="flex items-center gap-2 font-medium">
+                  <.icon name="ri-checkbox-circle-line" class="size-4" />
+                  Thanks for your feedback!
+                </div>
+              </div>
+
+              <form
+                :if={not @feedback_sent?}
+                id="posture-provider-feedback-form"
+                phx-submit="submit_interest_feedback"
+                class="mt-6 space-y-3"
+              >
+                <.input
+                  id="posture-provider-feedback"
+                  name="feedback[message]"
+                  type="textarea"
+                  label="Feedback"
+                  value=""
+                  placeholder="Tell us what you'd like to see from this integration."
+                  maxlength={@feedback_max_length}
+                  errors={List.wrap(@feedback_error)}
+                />
+                <div class="flex justify-end">
+                  <.button type="submit" style="primary">Send feedback</.button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
 
@@ -1306,6 +1535,21 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp provider_title("santa"), do: "Santa (Workshop)"
   defp provider_title("sentinelone"), do: "SentinelOne"
 
+  defp coming_soon_provider(type) do
+    Enum.find(@coming_soon_providers, &(&1.type == type))
+  end
+
+  defp deliver_interest_email(email, socket, provider, kind) do
+    subject = socket.assigns.subject
+
+    Portal.Mailer.deliver_with_rate_limit(email,
+      rate_limit_key:
+        {:posture_provider_interest, subject.account.id, subject.actor.id, provider, kind},
+      rate_limit: 3,
+      rate_limit_interval: :timer.hours(1)
+    )
+  end
+
   defp new_provider("intune"), do: %Intune.PostureProvider{}
   defp new_provider("iru"), do: %Iru.PostureProvider{}
   defp new_provider("defender"), do: %Defender.PostureProvider{}
@@ -1562,7 +1806,10 @@ defmodule PortalWeb.Settings.DevicePosture do
       verification_error: nil,
       active_verification: nil,
       pending_verification: nil,
-      verifying: false
+      verifying: false,
+      interest_provider: nil,
+      feedback_sent?: false,
+      feedback_error: nil
     )
   end
 
