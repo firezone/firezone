@@ -83,7 +83,7 @@
             .foregroundStyle(.secondary)
 
           Button(endSessionTitle) {
-            signOut()
+            endSession()
           }
         }
 
@@ -139,10 +139,10 @@
       }
     }
 
-    func signOut() {
+    func endSession() {
       Task {
         do {
-          try await store.signOut()
+          try await store.endSession()
         } catch {
           Log.error(error)
           MacOSAlert.show(for: error)

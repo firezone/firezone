@@ -702,6 +702,14 @@ public final class Store: ObservableObject {
     try await IPCClient.signOut(session: session)
   }
 
+  /// Ends the session the way its controls read it: only signing out gives up the token.
+  func endSession() async throws {
+    switch certificateIdentity {
+    case .absent: try await signOut()
+    case .claimed: requestStop()
+    }
+  }
+
   // Calculates the total size of our logs by summing the size of the
   // app, tunnel, and connlib log directories.
   //

@@ -64,7 +64,7 @@ import SwiftUI
           Text(store.sessionHeading)
           Button(
             action: {
-              signOutButtonTapped()
+              endSession()
             },
             label: {
               Label(endSessionTitle, systemImage: "rectangle.portrait.and.arrow.right")
@@ -164,16 +164,16 @@ import SwiftUI
       }
     }
 
-    func signOutButtonTapped() {
+    func endSession() {
       Task {
         do {
-          try await store.signOut()
+          try await store.endSession()
         } catch {
           Log.error(error)
 
           self.errorHandler.handle(
             ErrorAlert(
-              title: "Error signing out",
+              title: "Error ending session",
               error: error
             )
           )
