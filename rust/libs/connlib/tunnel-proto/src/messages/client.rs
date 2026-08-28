@@ -142,6 +142,8 @@ pub struct InitClient {
     #[serde(default)]
     pub authorizations: Vec<Authorization>,
     pub flow_logs: FlowLogsConfig,
+    #[serde(default)]
+    pub account_slug: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -444,6 +446,33 @@ mod tests {
         assert_eq!(init.flow_logs.upload_interval_secs, 60);
         assert_eq!(init.flow_logs.upload_batch_size, 1000);
         assert!(init.flow_logs.upload_enabled());
+    }
+
+    #[test]
+    fn account_slug_is_optional() {
+        let with_slug = r#"{
+            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "account_slug": "acme",
+            "flow_logs": {
+                "api_url": "https://flow-api.firezone.dev",
+                "upload_interval_secs": 60,
+                "upload_batch_size": 1000
+            }
+        }"#;
+        let without_slug = r#"{
+            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "flow_logs": {
+                "api_url": "https://flow-api.firezone.dev",
+                "upload_interval_secs": 60,
+                "upload_batch_size": 1000
+            }
+        }"#;
+
+        let with_slug = serde_json::from_str::<InitClient>(with_slug).unwrap();
+        let without_slug = serde_json::from_str::<InitClient>(without_slug).unwrap();
+
+        assert_eq!(with_slug.account_slug.as_deref(), Some("acme"));
+        assert_eq!(without_slug.account_slug, None);
     }
 
     #[test]
