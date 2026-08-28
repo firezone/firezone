@@ -46,7 +46,12 @@ fun SettingsScreen(
     isSaveEnabled: Boolean,
     logSizeBytes: Long,
     warnBeforeSaving: Boolean,
-    onConfigChange: (Config) -> Unit,
+    onAuthUrlChange: (String) -> Unit,
+    onApiUrlChange: (String) -> Unit,
+    onLogFilterChange: (String) -> Unit,
+    onAccountSlugChange: (String) -> Unit,
+    onStartOnLoginChange: (Boolean) -> Unit,
+    onConnectOnStartChange: (Boolean) -> Unit,
     onResetToDefaults: () -> Unit,
     onClearLogs: () -> Unit,
     onExportLogs: () -> Unit,
@@ -125,7 +130,9 @@ fun SettingsScreen(
                     GeneralSettingsPage(
                         config = config,
                         managedStatus = managedStatus,
-                        onConfigChange = onConfigChange,
+                        onAccountSlugChange = onAccountSlugChange,
+                        onStartOnLoginChange = onStartOnLoginChange,
+                        onConnectOnStartChange = onConnectOnStartChange,
                     )
                 }
 
@@ -133,7 +140,9 @@ fun SettingsScreen(
                     AdvancedSettingsPage(
                         config = config,
                         managedStatus = managedStatus,
-                        onConfigChange = onConfigChange,
+                        onAuthUrlChange = onAuthUrlChange,
+                        onApiUrlChange = onApiUrlChange,
+                        onLogFilterChange = onLogFilterChange,
                         onResetToDefaults = onResetToDefaults,
                         buildSha = buildSha,
                     )

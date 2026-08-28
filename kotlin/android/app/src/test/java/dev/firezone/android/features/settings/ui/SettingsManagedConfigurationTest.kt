@@ -68,7 +68,7 @@ class SettingsManagedConfigurationTest {
             assertTrue(viewModel.uiState.value.managedStatus.isAuthUrlManaged)
             assertTrue(viewModel.uiState.value.managedStatus.isConnectOnStartManaged)
 
-            viewModel.onConfigChanged(viewModel.uiState.value.config.copy(logFilter = "trace"))
+            viewModel.onLogFilterChanged("trace")
             source.applyRestrictions(Bundle())
             shadowOf(Looper.getMainLooper()).idle()
 
@@ -104,9 +104,7 @@ class SettingsManagedConfigurationTest {
             val savedStateHandle = SavedStateHandle()
             val initialViewModel = SettingsViewModel(repository, source, savedStateHandle)
 
-            initialViewModel.onConfigChanged(
-                initialViewModel.uiState.value.config.copy(authUrl = "https://unsaved.example.com"),
-            )
+            initialViewModel.onAuthUrlChanged("https://unsaved.example.com")
             source.applyRestrictions(
                 Bundle().apply {
                     putString("authUrl", "https://managed.example.com")
@@ -120,7 +118,16 @@ class SettingsManagedConfigurationTest {
             source.applyRestrictions(Bundle())
             shadowOf(Looper.getMainLooper()).idle()
 
+            recreatedViewModel.onLogFilterChanged("trace")
             assertEquals("https://unsaved.example.com", recreatedViewModel.uiState.value.config.authUrl)
+            assertEquals("trace", recreatedViewModel.uiState.value.config.logFilter)
+
+            recreatedViewModel.onSaveSettingsCompleted()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(
+                userConfig.copy(authUrl = "https://unsaved.example.com", logFilter = "trace"),
+                repository.getUserConfigSync(),
+            )
         }
 
     @Test
@@ -134,9 +141,7 @@ class SettingsManagedConfigurationTest {
                 )
             val preSnapshotViewModel = SettingsViewModel(repository, source, SavedStateHandle())
 
-            preSnapshotViewModel.onConfigChanged(
-                preSnapshotViewModel.uiState.value.config.copy(logFilter = "trace"),
-            )
+            preSnapshotViewModel.onLogFilterChanged("trace")
 
             assertEquals("https://managed.example.com", preSnapshotViewModel.uiState.value.config.authUrl)
             assertEquals("trace", preSnapshotViewModel.uiState.value.config.logFilter)
@@ -147,9 +152,7 @@ class SettingsManagedConfigurationTest {
         runBlocking {
             source.applyRestrictions(Bundle())
             shadowOf(Looper.getMainLooper()).idle()
-            viewModel.onConfigChanged(
-                viewModel.uiState.value.config.copy(authUrl = "https://unsaved.example.com"),
-            )
+            viewModel.onAuthUrlChanged("https://unsaved.example.com")
 
             source.applyRestrictions(
                 Bundle().apply {
@@ -164,6 +167,26 @@ class SettingsManagedConfigurationTest {
             shadowOf(Looper.getMainLooper()).idle()
 
             assertEquals("https://unsaved.example.com", repository.getConfigSync().authUrl)
+        }
+
+    @Test
+    fun `editing another field after policy removal preserves the raw user value`() =
+        runBlocking {
+            source.applyRestrictions(
+                Bundle().apply {
+                    putString("authUrl", "https://managed.example.com")
+                },
+            )
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals("https://managed.example.com", viewModel.uiState.value.config.authUrl)
+
+            source.applyRestrictions(Bundle())
+            shadowOf(Looper.getMainLooper()).idle()
+            viewModel.onLogFilterChanged("trace")
+            viewModel.onSaveSettingsCompleted()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertEquals(userConfig.copy(logFilter = "trace"), repository.getUserConfigSync())
         }
 
     @Test

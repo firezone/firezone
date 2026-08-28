@@ -98,28 +98,6 @@ class Repository
 
         internal fun getEffectiveConfigFromPersistedManaged(userConfig: Config): Config = userConfig.withManagedOverrides()
 
-        fun mergeUnmanagedConfig(
-            userConfig: Config,
-            editedConfig: Config,
-            managedStatus: ManagedConfigStatus,
-        ): Config =
-            userConfig.copy(
-                authUrl = editedConfig.authUrl.takeUnless { managedStatus.isAuthUrlManaged } ?: userConfig.authUrl,
-                apiUrl = editedConfig.apiUrl.takeUnless { managedStatus.isApiUrlManaged } ?: userConfig.apiUrl,
-                logFilter =
-                    editedConfig.logFilter.takeUnless { managedStatus.isLogFilterManaged }
-                        ?: userConfig.logFilter,
-                accountSlug =
-                    editedConfig.accountSlug.takeUnless { managedStatus.isAccountSlugManaged }
-                        ?: userConfig.accountSlug,
-                startOnLogin =
-                    editedConfig.startOnLogin.takeUnless { managedStatus.isStartOnLoginManaged }
-                        ?: userConfig.startOnLogin,
-                connectOnStart =
-                    editedConfig.connectOnStart.takeUnless { managedStatus.isConnectOnStartManaged }
-                        ?: userConfig.connectOnStart,
-            )
-
         fun getDefaultUserConfigSync(): Config =
             Config(
                 authUrl = BuildConfig.AUTH_URL,
@@ -338,17 +316,17 @@ class Repository
                 isConnectOnStartManaged = isConnectOnStartManaged(),
             )
 
-        fun isAuthUrlManaged(): Boolean = sharedPreferences.contains(MANAGED_AUTH_URL_KEY)
+        private fun isAuthUrlManaged(): Boolean = sharedPreferences.contains(MANAGED_AUTH_URL_KEY)
 
-        fun isApiUrlManaged(): Boolean = sharedPreferences.contains(MANAGED_API_URL_KEY)
+        private fun isApiUrlManaged(): Boolean = sharedPreferences.contains(MANAGED_API_URL_KEY)
 
-        fun isLogFilterManaged(): Boolean = sharedPreferences.contains(MANAGED_LOG_FILTER_KEY)
+        private fun isLogFilterManaged(): Boolean = sharedPreferences.contains(MANAGED_LOG_FILTER_KEY)
 
-        fun isAccountSlugManaged(): Boolean = sharedPreferences.contains(MANAGED_ACCOUNT_SLUG_KEY)
+        private fun isAccountSlugManaged(): Boolean = sharedPreferences.contains(MANAGED_ACCOUNT_SLUG_KEY)
 
-        fun isStartOnLoginManaged(): Boolean = sharedPreferences.contains(MANAGED_START_ON_LOGIN_KEY)
+        private fun isStartOnLoginManaged(): Boolean = sharedPreferences.contains(MANAGED_START_ON_LOGIN_KEY)
 
-        fun isConnectOnStartManaged(): Boolean = sharedPreferences.contains(MANAGED_CONNECT_ON_START_KEY)
+        private fun isConnectOnStartManaged(): Boolean = sharedPreferences.contains(MANAGED_CONNECT_ON_START_KEY)
 
         fun hasRequestedNotificationPermission(): Boolean = sharedPreferences.getBoolean(NOTIFICATION_PERMISSION_REQUESTED_KEY, false)
 

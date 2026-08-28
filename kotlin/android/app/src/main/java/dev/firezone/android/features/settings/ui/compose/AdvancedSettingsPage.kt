@@ -23,7 +23,9 @@ import dev.firezone.android.core.data.model.ManagedConfigStatus
 fun AdvancedSettingsPage(
     config: Config,
     managedStatus: ManagedConfigStatus,
-    onConfigChange: (Config) -> Unit,
+    onAuthUrlChange: (String) -> Unit,
+    onApiUrlChange: (String) -> Unit,
+    onLogFilterChange: (String) -> Unit,
     onResetToDefaults: () -> Unit,
     modifier: Modifier = Modifier,
     // A parameter so the screenshot test can pin it; the build's commit changes with every push.
@@ -41,19 +43,19 @@ fun AdvancedSettingsPage(
                 label = stringResource(R.string.auth_url),
                 value = config.authUrl,
                 isManaged = managedStatus.isAuthUrlManaged,
-                onValueChange = { onConfigChange(config.copy(authUrl = it)) },
+                onValueChange = onAuthUrlChange,
             )
             ManagedTextField(
                 label = stringResource(R.string.api_url),
                 value = config.apiUrl,
                 isManaged = managedStatus.isApiUrlManaged,
-                onValueChange = { onConfigChange(config.copy(apiUrl = it)) },
+                onValueChange = onApiUrlChange,
             )
             ManagedTextField(
                 label = stringResource(R.string.log_filter),
                 value = config.logFilter,
                 isManaged = managedStatus.isLogFilterManaged,
-                onValueChange = { onConfigChange(config.copy(logFilter = it)) },
+                onValueChange = onLogFilterChange,
             )
             OutlinedButton(onClick = onResetToDefaults, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.button_reset_to_defaults))

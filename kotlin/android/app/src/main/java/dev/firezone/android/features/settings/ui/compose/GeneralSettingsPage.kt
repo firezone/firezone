@@ -19,7 +19,9 @@ import dev.firezone.android.core.data.model.ManagedConfigStatus
 fun GeneralSettingsPage(
     config: Config,
     managedStatus: ManagedConfigStatus,
-    onConfigChange: (Config) -> Unit,
+    onAccountSlugChange: (String) -> Unit,
+    onStartOnLoginChange: (Boolean) -> Unit,
+    onConnectOnStartChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -33,19 +35,19 @@ fun GeneralSettingsPage(
             label = stringResource(R.string.account_slug),
             value = config.accountSlug,
             isManaged = managedStatus.isAccountSlugManaged,
-            onValueChange = { onConfigChange(config.copy(accountSlug = it)) },
+            onValueChange = onAccountSlugChange,
         )
         ManagedSwitchRow(
             label = stringResource(R.string.start_on_login),
             checked = config.startOnLogin,
             isManaged = managedStatus.isStartOnLoginManaged,
-            onCheckedChange = { onConfigChange(config.copy(startOnLogin = it)) },
+            onCheckedChange = onStartOnLoginChange,
         )
         ManagedSwitchRow(
             label = stringResource(R.string.connect_on_start),
             checked = config.connectOnStart,
             isManaged = managedStatus.isConnectOnStartManaged,
-            onCheckedChange = { onConfigChange(config.copy(connectOnStart = it)) },
+            onCheckedChange = onConnectOnStartChange,
         )
     }
 }

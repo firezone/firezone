@@ -81,7 +81,7 @@ class RepositoryManagedConfigurationTest {
         }
 
     @Test
-    fun `saving settings preserves underlying values for managed fields`() =
+    fun `saving user settings does not replace active managed values`() =
         runBlocking {
             repository.saveUserConfig(userConfig)
             repository
@@ -92,27 +92,24 @@ class RepositoryManagedConfigurationTest {
                     },
                 )
 
-            val editedConfig =
-                repository.getConfigSync().copy(
+            val editedUserConfig =
+                userConfig.copy(
+                    authUrl = "https://unsaved.example.com",
                     logFilter = "trace",
                     accountSlug = "changed-account",
                 )
-            repository.saveUserConfig(
-                repository.mergeUnmanagedConfig(
-                    userConfig = repository.getUserConfigSync(),
-                    editedConfig = editedConfig,
-                    managedStatus = repository.getManagedStatus(),
-                ),
-            )
-            repository.saveManagedConfiguration(Bundle())
+            repository.saveUserConfig(editedUserConfig)
 
             assertEquals(
-                userConfig.copy(
-                    logFilter = "trace",
-                    accountSlug = "changed-account",
+                editedUserConfig.copy(
+                    authUrl = "https://managed.example.com",
+                    connectOnStart = false,
                 ),
                 repository.getConfigSync(),
             )
+            repository.saveManagedConfiguration(Bundle())
+
+            assertEquals(editedUserConfig, repository.getConfigSync())
         }
 
     @Test
