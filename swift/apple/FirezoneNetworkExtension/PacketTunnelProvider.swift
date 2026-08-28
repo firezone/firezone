@@ -97,7 +97,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     guard token != nil || identityReference != nil
     else {
-      completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
+      completionHandler(PacketTunnelProviderError.credentialNotConfigured)
       return
     }
 

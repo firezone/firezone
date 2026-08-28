@@ -6,10 +6,10 @@
 
 import Foundation
 
-public enum PacketTunnelProviderError: Error, CustomNSError {
+public enum PacketTunnelProviderError: Error, CustomNSError, LocalizedError {
   case providerConfigurationIsInvalid
   case firezoneIdIsInvalid
-  case tokenNotFoundInKeychain
+  case credentialNotConfigured
 
   public static var errorDomain: String {
     "FirezoneKit.PacketTunnelProviderError"
@@ -19,7 +19,18 @@ public enum PacketTunnelProviderError: Error, CustomNSError {
     switch self {
     case .providerConfigurationIsInvalid: 0
     case .firezoneIdIsInvalid: 1
-    case .tokenNotFoundInKeychain: 2
+    case .credentialNotConfigured: 2
+    }
+  }
+
+  public var errorDescription: String? {
+    switch self {
+    case .providerConfigurationIsInvalid:
+      return "The VPN profile is missing the settings the tunnel needs to start."
+    case .firezoneIdIsInvalid:
+      return "The device identifier could not be read."
+    case .credentialNotConfigured:
+      return "Neither a sign-in token nor a client certificate is configured."
     }
   }
 }
