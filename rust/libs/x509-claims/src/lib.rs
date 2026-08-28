@@ -97,7 +97,7 @@ impl Claim {
     }
 }
 
-/// Why the text a certificate gave a claim is not usable as it, read underneath that text.
+/// Why a diagnostics row is not usable as what it names, read underneath its value.
 ///
 /// The clients word these themselves, so an error crosses to them as the error it is rather
 /// than as a sentence: the mobile and Apple clients render them from their own string resources.
@@ -110,6 +110,8 @@ pub enum ValidationError {
     Ambiguous,
     PlaceholderIdentifier,
     UnknownAttribute,
+    NotYetValid,
+    Expired,
 }
 
 impl ValidationError {
@@ -123,6 +125,8 @@ impl ValidationError {
             Self::Ambiguous => "more than one value was given",
             Self::PlaceholderIdentifier => "a placeholder identifier",
             Self::UnknownAttribute => "not an attribute we understand",
+            Self::NotYetValid => "in the future, so this certificate is not valid yet",
+            Self::Expired => "in the past, so this certificate has expired",
         }
     }
 }
@@ -143,9 +147,11 @@ pub struct ParsedCertificate {
     pub serial: String,
     pub has_client_auth_eku: bool,
     pub digital_signature_allowed: bool,
-    pub is_currently_valid: bool,
     /// The instant the validity window was compared against, in seconds since the Unix epoch.
-    pub checked_at_timestamp: i64,
+    ///
+    /// [`None`] when the system clock could not be read, which leaves the window compared
+    /// against nothing rather than against the epoch.
+    pub checked_at_timestamp: Option<i64>,
     pub not_before: String,
     pub not_before_timestamp: i64,
     pub not_after: String,
@@ -183,8 +189,20 @@ impl ParsedCertificate {
         }
         fields.extend([
             field("Serial Number", &self.serial),
-            field("Not Before", &self.not_before),
-            field("Not After", &self.not_after),
+            field_with_problem(
+                "Not Before",
+                &self.not_before,
+                self.checked_at_timestamp
+                    .is_some_and(|at| at < self.not_before_timestamp)
+                    .then_some(ValidationError::NotYetValid),
+            ),
+            field_with_problem(
+                "Not After",
+                &self.not_after,
+                self.checked_at_timestamp
+                    .is_some_and(|at| at > self.not_after_timestamp)
+                    .then_some(ValidationError::Expired),
+            ),
             field(
                 "TLS Client Authentication EKU",
                 if self.has_client_auth_eku {
@@ -217,6 +235,14 @@ impl ParsedCertificate {
         fields.sort_by_key(|field| field.problem.is_none());
 
         fields
+    }
+
+    /// Whether the validity window covers the instant the certificate was checked at.
+    ///
+    /// A clock that could not be read compares the window against nothing, which is not current.
+    pub fn is_currently_valid(&self) -> bool {
+        self.checked_at_timestamp
+            .is_some_and(|at| at >= self.not_before_timestamp && at <= self.not_after_timestamp)
     }
 
     /// Who the certificate claims is connecting.
@@ -369,9 +395,6 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificat
         .duration_since(SystemTime::UNIX_EPOCH)
         .ok()
         .and_then(|duration| i64::try_from(duration.as_secs()).ok());
-    let is_currently_valid = now_timestamp.is_some_and(|timestamp| {
-        timestamp >= not_before_timestamp && timestamp <= not_after_timestamp
-    });
 
     let signing_algorithm = {
         let algorithm = &certificate.subject_pki.algorithm;
@@ -416,8 +439,7 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificat
         serial: format_serial(certificate.raw_serial()),
         has_client_auth_eku,
         digital_signature_allowed,
-        is_currently_valid,
-        checked_at_timestamp: now_timestamp.unwrap_or_default(),
+        checked_at_timestamp: now_timestamp,
         not_before: certificate.validity().not_before.to_string(),
         not_before_timestamp,
         not_after: certificate.validity().not_after.to_string(),
@@ -875,6 +897,18 @@ fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
         label: label.into(),
         value: Some(value.into()),
         problem: None,
+    }
+}
+
+fn field_with_problem(
+    label: impl Into<String>,
+    value: impl Into<String>,
+    problem: Option<ValidationError>,
+) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: Some(value.into()),
+        problem,
     }
 }
 

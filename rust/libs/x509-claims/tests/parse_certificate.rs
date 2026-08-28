@@ -5,7 +5,7 @@ use std::{
 
 use rcgen::{
     CertificateParams, DnType, ExtendedKeyUsagePurpose, KeyPair, KeyUsagePurpose, SanType,
-    SerialNumber, string::Ia5String,
+    SerialNumber, date_time_ymd, string::Ia5String,
 };
 use x509_claims::{
     Claim, DetailField, Identity, ParsedCertificate, SigningAlgorithm, ValidationError,
@@ -27,7 +27,7 @@ fn recognizes_rsa_client_identity() {
     assert_eq!(metadata.subject_cn.as_deref(), Some(SUBJECT_CN));
     assert!(metadata.has_client_auth_eku);
     assert!(metadata.digital_signature_allowed);
-    assert!(metadata.is_currently_valid);
+    assert!(metadata.is_currently_valid());
     assert_eq!(
         metadata.signing_algorithm,
         Some(SigningAlgorithm::RsaSha256)
@@ -610,6 +610,44 @@ fn the_rows_with_a_problem_read_first() {
 }
 
 #[test]
+fn a_certificate_outside_its_validity_window_says_which_date_is_wrong() {
+    let expired = certificate_valid_between(2018, 2020);
+    let not_yet_valid = certificate_valid_between(2030, 2032);
+
+    let expired = parse_certificate(&expired, now()).expect("generated certificate should parse");
+    let not_yet_valid =
+        parse_certificate(&not_yet_valid, now()).expect("generated certificate should parse");
+
+    assert_eq!(
+        detail_problem(&expired, "Not After"),
+        Some(ValidationError::Expired)
+    );
+    assert_eq!(detail_problem(&expired, "Not Before"), None);
+    assert_eq!(
+        detail_problem(&not_yet_valid, "Not Before"),
+        Some(ValidationError::NotYetValid)
+    );
+    assert_eq!(detail_problem(&not_yet_valid, "Not After"), None);
+    assert_eq!(
+        position(&expired.detail_fields(), "Not After"),
+        0,
+        "the date that expired the certificate is what the reader came for"
+    );
+}
+
+#[test]
+fn an_unreadable_clock_leaves_both_validity_dates_unjudged() {
+    let der = certificate_valid_between(2018, 2020);
+
+    let metadata = parse_certificate(&der, a_clock_that_cannot_be_read())
+        .expect("generated certificate should parse");
+
+    assert!(!metadata.is_currently_valid());
+    assert_eq!(detail_problem(&metadata, "Not Before"), None);
+    assert_eq!(detail_problem(&metadata, "Not After"), None);
+}
+
+#[test]
 fn sparse_diagnostics_keep_the_order_without_leaving_gaps() {
     let der = certificate_with_uri_sans(&["firezone://email/alice@example.com"]);
 
@@ -776,6 +814,24 @@ fn certificate_with_serial(serial: &[u8]) -> Vec<u8> {
     certificate.der().to_vec()
 }
 
+/// A certificate whose validity window opens and closes on the first of January.
+fn certificate_valid_between(first_year: i32, last_year: i32) -> Vec<u8> {
+    let key = KeyPair::generate().expect("should generate a key pair");
+
+    let mut params = CertificateParams::default();
+    params.not_before = date_time_ymd(first_year, 1, 1);
+    params.not_after = date_time_ymd(last_year, 1, 1);
+    params
+        .distinguished_name
+        .push(DnType::CommonName, SUBJECT_CN);
+
+    let certificate = params
+        .self_signed(&key)
+        .expect("should self-sign the certificate");
+
+    certificate.der().to_vec()
+}
+
 fn certificate_with_sans(subject_alt_names: Vec<SanType>) -> Vec<u8> {
     let key = KeyPair::generate().expect("should generate a key pair");
 
@@ -796,6 +852,11 @@ fn certificate_with_sans(subject_alt_names: Vec<SanType>) -> Vec<u8> {
 
 fn now() -> SystemTime {
     SystemTime::UNIX_EPOCH + Duration::from_secs(1_798_761_600)
+}
+
+/// An instant with no Unix timestamp, the way a clock the platform cannot read reaches the parser.
+fn a_clock_that_cannot_be_read() -> SystemTime {
+    SystemTime::UNIX_EPOCH - Duration::from_secs(1)
 }
 
 /// Claiming an identity at all is what suppresses signing in with a token, so the client has to

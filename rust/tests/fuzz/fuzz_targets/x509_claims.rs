@@ -21,6 +21,7 @@ fuzz_target!(|input: Input| {
     };
 
     assert_validity_window(&certificate, input.seconds_since_epoch);
+    assert_the_validity_date_at_fault_says_so(&certificate, input.seconds_since_epoch);
     assert_validity_is_contiguous(
         input.der,
         input.seconds_since_epoch,
@@ -56,8 +57,36 @@ fn assert_validity_window(certificate: &ParsedCertificate, seconds_since_epoch: 
     let window = certificate.not_before_timestamp..=certificate.not_after_timestamp;
 
     assert_eq!(
-        certificate.is_currently_valid,
+        certificate.is_currently_valid(),
         window.contains(&i64::from(seconds_since_epoch))
+    );
+}
+
+/// Asserts that an instant outside the validity window is blamed on the date it falls outside of.
+///
+/// The clients sort the rows carrying a problem to the top, so a window blamed on the wrong end
+/// sends an administrator after a date that is fine.
+fn assert_the_validity_date_at_fault_says_so(
+    certificate: &ParsedCertificate,
+    seconds_since_epoch: u32,
+) {
+    let checked_at = i64::from(seconds_since_epoch);
+    let fields = certificate.detail_fields();
+    let problem_of = |label: &str| {
+        fields
+            .iter()
+            .find(|field| field.label == label)
+            .unwrap_or_else(|| panic!("diagnostics should show {label}"))
+            .problem
+    };
+
+    assert_eq!(
+        problem_of("Not Before"),
+        (checked_at < certificate.not_before_timestamp).then_some(ValidationError::NotYetValid)
+    );
+    assert_eq!(
+        problem_of("Not After"),
+        (checked_at > certificate.not_after_timestamp).then_some(ValidationError::Expired)
     );
 }
 
@@ -206,6 +235,8 @@ fn assert_every_validation_error_reads() {
         ValidationError::Ambiguous,
         ValidationError::PlaceholderIdentifier,
         ValidationError::UnknownAttribute,
+        ValidationError::NotYetValid,
+        ValidationError::Expired,
     ]
     .map(ValidationError::label);
 
@@ -263,7 +294,7 @@ fn assert_parsing_is_deterministic(
 fn is_valid_at(der: &[u8], seconds_since_epoch: u32) -> bool {
     parse_certificate(der, instant(seconds_since_epoch))
         .expect("DER that parses once parses at any instant")
-        .is_currently_valid
+        .is_currently_valid()
 }
 
 fn instant(seconds_since_epoch: u32) -> SystemTime {
