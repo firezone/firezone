@@ -476,6 +476,17 @@ defmodule PortalAPI.Client.ChannelTest do
       assert account_slug == account.slug
     end
 
+    test "sends actor name in init message", %{
+      actor: actor,
+      client: client,
+      subject: subject
+    } do
+      join_channel(client, subject)
+
+      assert_push "init", %{actor_name: actor_name}
+      assert actor_name == actor.name
+    end
+
     test "sends list of available resources after join", %{
       client: client,
       subject: subject,
