@@ -49,14 +49,18 @@ class AuthActivity : AppCompatActivity() {
     }
 
     override fun onResume() {
+        // Snapshot this before `super` advances the lifecycle. A restored issued URL can replay as
+        // soon as the Activity reaches RESUMED and mark the browser launched during that call.
+        val resumeAction = browserState.resumeAction()
         super.onResume()
 
-        handleAction(browserState.resumeAction())
+        handleAction(resumeAction)
     }
 
     private fun setupActionObservers() {
         lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
+            // Let the first resume interpret restored browser state before replaying an issued URL.
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 viewModel.actionStateFlow.collect { action ->
                     action?.let {
                         viewModel.clearAction()
