@@ -198,7 +198,7 @@ private class RecordingEditor(
     }
 
     override fun apply() {
-        onApply(PreferenceTransaction(putStringKeys = stringKeys, removedKeys = removedKeys))
+        onApply(PreferenceTransaction(putStringKeys = stringKeys.toSet(), removedKeys = removedKeys.toSet()))
         delegate.apply()
     }
 }

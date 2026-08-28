@@ -49,8 +49,7 @@ class CustomUriViewModelTest {
     @Test
     fun `valid callback persists credentials and consumes state`() =
         runBlocking {
-            repository.saveState(EXPECTED_STATE).collect()
-            repository.saveNonce("nonce-").collect()
+            repository.saveNonceAndStateSync(nonce = "nonce-", state = EXPECTED_STATE)
 
             val action = viewModel.handleCustomUri(callbackIntent(state = EXPECTED_STATE, fragment = "fragment"))
 
@@ -65,8 +64,7 @@ class CustomUriViewModelTest {
     @Test
     fun `duplicate callback does not overwrite completed action`() =
         runBlocking {
-            repository.saveState(EXPECTED_STATE).collect()
-            repository.saveNonce("nonce-").collect()
+            repository.saveNonceAndStateSync(nonce = "nonce-", state = EXPECTED_STATE)
             val intent = callbackIntent(state = EXPECTED_STATE, fragment = "fragment")
 
             viewModel.processCustomUri(intent)
@@ -171,8 +169,7 @@ class CustomUriViewModelTest {
             try {
                 val repository = Repository(context, dispatcher, coordinatedPreferences)
                 val viewModel = CustomUriViewModel(repository)
-                repository.saveState(EXPECTED_STATE).collect()
-                repository.saveNonce("nonce-").collect()
+                repository.saveNonceAndStateSync(nonce = "nonce-", state = EXPECTED_STATE)
                 coordinatedPreferences.resetAppliedTransactions()
 
                 val first =
@@ -191,7 +188,7 @@ class CustomUriViewModelTest {
                 val actions = awaitAll(first, second)
 
                 assertEquals(2, actions.count { it == CustomUriViewModel.ViewAction.AuthFlowComplete })
-                assertEquals(1, coordinatedPreferences.appliedTransactionCount())
+                assertEquals(1, coordinatedPreferences.recordedApplyCount())
                 assertNull(repository.getNonceSync())
                 assertNull(repository.getStateSync())
                 assertTrue(repository.getTokenSync() in setOf("nonce-first", "nonce-second"))
@@ -218,8 +215,7 @@ class CustomUriViewModelTest {
         preferences.edit().clear().commit()
         repository.saveAccountSlug("existing-account").collect()
         repository.saveActorName("Existing Actor").collect()
-        repository.saveNonce("existing-nonce-").collect()
-        repository.saveState(EXPECTED_STATE).collect()
+        repository.saveNonceAndStateSync(nonce = "existing-nonce-", state = EXPECTED_STATE)
         repository.saveToken("existing-fragment").collect()
     }
 
@@ -252,7 +248,7 @@ class CustomUriViewModelTest {
 private class CoordinatedStateReads(
     private val delegate: SharedPreferences,
 ) : SharedPreferences by delegate {
-    private val appliedTransactions = AtomicInteger()
+    private val applyCount = AtomicInteger()
     private val firstStateRead = CountDownLatch(1)
     private val stateReads = AtomicInteger()
     private val stateReadsRelease = CountDownLatch(1)
@@ -261,7 +257,7 @@ private class CoordinatedStateReads(
         val editor = delegate.edit()
         return object : SharedPreferences.Editor by editor {
             override fun apply() {
-                appliedTransactions.incrementAndGet()
+                applyCount.incrementAndGet()
                 editor.apply()
             }
         }
@@ -294,8 +290,8 @@ private class CoordinatedStateReads(
     }
 
     fun resetAppliedTransactions() {
-        appliedTransactions.set(0)
+        applyCount.set(0)
     }
 
-    fun appliedTransactionCount(): Int = appliedTransactions.get()
+    fun recordedApplyCount(): Int = applyCount.get()
 }
