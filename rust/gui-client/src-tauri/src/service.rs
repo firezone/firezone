@@ -53,6 +53,10 @@ pub(crate) use platform::ProcessToken;
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
     ClearLogs,
+    /// Reload the held keystore reference; the result arrives as [`ServerMsg::X509Certificate`].
+    ///
+    /// Fire-and-forget: the GUI sends it for every shown window and never awaits it.
+    ReloadX509,
     Connect {
         #[serde(serialize_with = "serialize_token")]
         token: SecretString,
@@ -85,6 +89,7 @@ pub enum ServerMsg {
         firezone_id: String,
         advanced_settings: AdvancedSettings,
         mdm_settings: MdmSettings,
+        x509_certificate: Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
     },
     /// The Tunnel service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
@@ -108,8 +113,9 @@ pub enum ServerMsg {
     AdvancedSettingsApplied(Result<AdvancedSettings, String>),
     /// What the platform keystore holds, pushed whenever it may have changed.
     ///
-    /// The GUI never asks for this: it arrives after `Hello` and again whenever we read the
-    /// keystore to sign in, which covers everything the certificate screen renders.
+    /// `Hello` carries the first load; this arrives for every [`ClientMsg::ReloadX509`] and
+    /// whenever we re-read the keystore to sign in, which covers everything the certificate
+    /// screen renders.
     X509Certificate(Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>),
     /// The Tunnel service is terminating, maybe due to a software update
     ///
@@ -226,6 +232,8 @@ async fn ipc_listen(
 
 /// Handles one IPC client
 struct Handler<'a> {
+    /// The keystore load this GUI connection displays and presents.
+    keystore: Result<Option<x509_keystore::Identity>, x509_keystore::Error>,
     device_id: DeviceId,
     dns_controller: &'a mut DnsController,
     ipc_rx: ipc::ServerRead<ClientMsg>,
@@ -338,6 +346,20 @@ async fn load_identity() -> Result<Option<x509_keystore::Identity>, x509_keystor
     Ok(identity)
 }
 
+/// What the GUI shows of a held keystore load.
+fn x509_of(
+    keystore: &Result<Option<x509_keystore::Identity>, x509_keystore::Error>,
+) -> Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error> {
+    keystore
+        .as_ref()
+        .map(|identity| {
+            identity
+                .as_ref()
+                .map(|identity| identity.certificate.clone())
+        })
+        .map_err(Clone::clone)
+}
+
 /// Shuts down the session and waits until its eventloop has exited.
 ///
 /// The eventloop owns the TUN device; only once the event stream ends is the
@@ -445,23 +467,29 @@ impl<'a> Handler<'a> {
             .inspect_err(|e| tracing::warn!("Failed to load MDM settings, using defaults: {e:#}"))
             .unwrap_or_default();
 
+        // One load serves this GUI connection: the greeting, the page and every connect all
+        // read the same held reference, so what is shown is what is presented. Bounded,
+        // because a keystore that answers slowly, or never, must not hold up the greeting past
+        // the deadline the GUI gives us to prove we are alive.
+        let keystore = tokio::time::timeout(Duration::from_secs(3), load_identity())
+            .await
+            .map_err(|_| x509_keystore::Error::UnreadableKeystore {
+                message: "Timed out reading the keystore after 3s".to_owned(),
+            })
+            .and_then(std::convert::identity);
+
         ipc_tx
             .send(&ServerMsg::Hello {
                 firezone_id: device_id.id.clone(),
                 advanced_settings: advanced_settings.clone(),
                 mdm_settings: mdm_settings.clone(),
+                x509_certificate: x509_of(&keystore),
             })
             .await
             .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
 
-        ipc_tx
-            .send(&ServerMsg::X509Certificate(load_identity().await.map(
-                |identity| identity.map(|identity| identity.certificate),
-            )))
-            .await
-            .context("Failed to send the keystore certificate to the new GUI process")?;
-
         Ok(Self {
+            keystore,
             device_id,
             dns_controller,
             ipc_rx,
@@ -735,6 +763,11 @@ impl<'a> Handler<'a> {
 
                 self.handle_connect_result(result).await?;
             }
+            ClientMsg::ReloadX509 => {
+                self.keystore = load_identity().await;
+                self.send_ipc(ServerMsg::X509Certificate(x509_of(&self.keystore)))
+                    .await?;
+            }
             ClientMsg::Disconnect => {
                 self.session = Session::None;
                 self.reset_telemetry_environment();
@@ -824,30 +857,18 @@ impl<'a> Handler<'a> {
         let device_id =
             device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
-        let loaded = load_identity().await;
-
-        self.send_ipc(ServerMsg::X509Certificate(
-            loaded
-                .as_ref()
-                .map(|identity| {
-                    identity
-                        .as_ref()
-                        .map(|identity| identity.certificate.clone())
-                })
-                .map_err(Clone::clone),
-        ))
-        .await?;
-
-        // A keystore we cannot read must not keep the Client from connecting: without p11-kit,
-        // or with only broken PKCS#11 modules, we connect without a certificate while the GUI
-        // shows the error pushed above. Anything else that keeps an identity from being handed
-        // over still fails the connect.
-        let certificate = match loaded {
+        // The certificate the GUI displays is the one this connect presents: both read the
+        // held reference, which only a reload replaces. A keystore we could not read must not
+        // keep the Client from connecting: without p11-kit, or with only broken PKCS#11
+        // modules, we connect without a certificate while the GUI shows the greeting's error.
+        // Anything else that kept an identity from being handed over still fails the connect.
+        let certificate = match &self.keystore {
+            Ok(identity) => Ok(identity.as_ref()),
             Err(
                 x509_keystore::Error::MissingP11Kit
                 | x509_keystore::Error::UnreadablePkcs11Keystore { .. },
             ) => Ok(None),
-            other => other,
+            Err(error) => Err(error.clone()),
         }
         .and_then(|identity| {
             identity

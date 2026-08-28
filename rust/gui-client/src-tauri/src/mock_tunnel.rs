@@ -72,10 +72,9 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
             firezone_id: "00000000-0000-0000-0000-000000000000".to_owned(),
             advanced_settings: AdvancedSettings::default(),
             mdm_settings: MdmSettings::default(),
+            x509_certificate: Ok(None),
         })
         .await?;
-
-    ipc_tx.send(&ServerMsg::X509Certificate(Ok(None))).await?;
 
     while let Some(msg) = ipc_rx.next().await {
         match msg? {
@@ -84,6 +83,9 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
                 ipc_tx
                     .send(&ServerMsg::OnUpdateResources(mock_resource_list()))
                     .await?;
+            }
+            ClientMsg::ReloadX509 => {
+                ipc_tx.send(&ServerMsg::X509Certificate(Ok(None))).await?;
             }
             ClientMsg::Disconnect => {
                 ipc_tx.send(&ServerMsg::DisconnectedGracefully).await?;
