@@ -20,7 +20,6 @@ import kotlinx.coroutines.launch
 internal class SplashFragment : Fragment(R.layout.fragment_splash) {
     private lateinit var binding: FragmentSplashBinding
     private val viewModel: SplashViewModel by viewModels()
-    private var isInitialLaunch: Boolean = true
 
     override fun onViewCreated(
         view: View,
@@ -30,24 +29,11 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
         binding = FragmentSplashBinding.bind(view)
 
         setupActionObservers()
-
-        savedInstanceState?.let {
-            isInitialLaunch = it.getBoolean("isInitialLaunch", true)
-        }
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-
-        // Save the initial launch state to handle edge cases where the fragment is recreated
-        outState.putBoolean("isInitialLaunch", isInitialLaunch)
     }
 
     override fun onResume() {
         super.onResume()
-        viewModel.checkTunnelState(requireContext(), isInitialLaunch)
-
-        isInitialLaunch = false
+        viewModel.checkTunnelState(requireContext())
     }
 
     private fun setupActionObservers() {
