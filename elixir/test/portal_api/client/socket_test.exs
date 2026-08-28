@@ -1041,8 +1041,15 @@ defmodule PortalAPI.Client.SocketTest do
           client_cert: x509_identity_cert(untrusted_pki, account, actor)
         )
 
-      assert connect(Socket, connect_attrs([]), connect_info: connect_info_with_bogus_token) ==
-               {:error, :rate_limit}
+      # Use Enum.any? to avoid flakiness from crossing second boundaries with the
+      # slow (1/s) refill rate.
+      rate_limited =
+        Enum.any?(1..3, fn _ ->
+          connect(Socket, connect_attrs([]), connect_info: connect_info_with_bogus_token) ==
+            {:error, :rate_limit}
+        end)
+
+      assert rate_limited, "Expected the repeated X.509 failure to be rate limited"
     end
   end
 
