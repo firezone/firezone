@@ -208,7 +208,7 @@ pub enum Event {
         resources: Vec<Resource>,
         connected_devices: Vec<ConnectedDevice>,
     },
-    AccountSlugUpdated {
+    ConnectedToPortal {
         account_slug: String,
     },
     AllGatewaysOffline {
@@ -487,12 +487,12 @@ impl Session {
                     connected_devices,
                 })
             }
-            client_shared::Event::AccountSlugUpdated(account_slug) => {
+            client_shared::Event::ConnectedToPortal { account_slug } => {
                 telemetry::set_account_slug(account_slug.clone());
 
                 analytics::identify(RELEASE.to_owned(), account_slug.clone(), None, None);
 
-                Some(Event::AccountSlugUpdated { account_slug })
+                Some(Event::ConnectedToPortal { account_slug })
             }
             client_shared::Event::AllGatewaysOffline { resource_id } => {
                 Some(Event::AllGatewaysOffline {

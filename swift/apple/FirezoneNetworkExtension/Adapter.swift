@@ -462,8 +462,8 @@ actor Adapter {
         }
       }
 
-    case .accountSlugUpdated(let accountSlug):
-      Log.log("Received AccountSlugUpdated event")
+    case .connectedToPortal(let accountSlug):
+      Log.log("Received ConnectedToPortal event")
 
       self.accountSlug = accountSlug
       Telemetry.setUser(

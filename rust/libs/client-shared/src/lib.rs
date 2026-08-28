@@ -59,8 +59,8 @@ pub enum Event {
     TunInterfaceUpdated(TunConfig),
     /// The resource list has been updated.
     ResourcesUpdated(ResourceList),
-    /// The portal named the account this session belongs to.
-    AccountSlugUpdated(String),
+    /// Connlib connected to the portal, which named the account this session belongs to.
+    ConnectedToPortal { account_slug: String },
     /// Establishing a tunnel for a resource failed because all Gateways are offline in the corresponding site.
     AllGatewaysOffline { resource_id: ResourceId },
     /// Establishing a tunnel for a resource failed because there are no version-compatible Gateways in the corresponding site.
@@ -151,7 +151,7 @@ impl EventStream {
             if let Poll::Ready(Some(Some(account_slug))) =
                 self.account_slug_receiver.poll_next_unpin(cx)
             {
-                return Poll::Ready(Some(Event::AccountSlugUpdated(account_slug)));
+                return Poll::Ready(Some(Event::ConnectedToPortal { account_slug }));
             }
 
             if let Poll::Ready(Some(resources)) = self.resource_list_receiver.poll_next_unpin(cx) {
@@ -309,7 +309,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn account_slug_precedes_resources_from_the_same_init() {
+    async fn connected_to_portal_precedes_resources_from_the_same_init() {
         let mut stream = EventStream::new(
             |resource_list, _, account_slug, _| async move {
                 account_slug.send(Some("acme".to_owned())).unwrap();
@@ -320,7 +320,7 @@ mod tests {
             tokio::runtime::Handle::current(),
         );
 
-        let Event::AccountSlugUpdated(account_slug) = stream.next().await.unwrap() else {
+        let Event::ConnectedToPortal { account_slug } = stream.next().await.unwrap() else {
             panic!("Unexpected event")
         };
 

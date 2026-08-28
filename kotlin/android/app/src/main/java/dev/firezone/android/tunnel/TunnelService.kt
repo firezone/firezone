@@ -681,7 +681,7 @@ class TunnelService : VpnService() {
                                     buildVpnService()
                                 }
 
-                                is Event.AccountSlugUpdated -> {
+                                is Event.ConnectedToPortal -> {
                                     Telemetry.setAccountSlug(event.accountSlug)
 
                                     // A slug forced through managed configuration already wins

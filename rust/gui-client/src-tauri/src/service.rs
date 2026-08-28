@@ -100,8 +100,10 @@ pub enum ServerMsg {
         resource_id: ResourceId,
     },
     OnUpdateResources(ResourceList),
-    /// The portal named the account the current session belongs to.
-    AccountSlugUpdated(String),
+    /// Connlib connected to the portal, which named the account this session belongs to.
+    ConnectedToPortal {
+        account_slug: String,
+    },
     /// Result of an `ApplyAdvancedSettings` from the GUI. `Ok` echoes the
     /// persisted struct so the GUI is certain about what landed.
     AdvancedSettingsApplied(Result<AdvancedSettings, String>),
@@ -653,14 +655,14 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::OnUpdateResources(resources))
                     .await?;
             }
-            client_shared::Event::AccountSlugUpdated(account_slug) => {
+            client_shared::Event::ConnectedToPortal { account_slug } => {
                 telemetry::set_account_slug(account_slug.clone());
 
                 if let Some(release) = self.telemetry_release.clone() {
                     analytics::identify(release, account_slug.clone(), None, None);
                 }
 
-                self.send_ipc(ServerMsg::AccountSlugUpdated(account_slug))
+                self.send_ipc(ServerMsg::ConnectedToPortal { account_slug })
                     .await?;
             }
         }

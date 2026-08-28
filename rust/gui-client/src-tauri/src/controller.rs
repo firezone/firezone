@@ -687,7 +687,7 @@ impl<I: GuiIntegration> Controller<I> {
 
                 dialog::error(&error_msg)?;
             }
-            service::ServerMsg::AccountSlugUpdated(account_slug) => {
+            service::ServerMsg::ConnectedToPortal { account_slug } => {
                 telemetry::set_account_slug(account_slug.clone());
 
                 // An MDM-forced slug is the admin's answer to the same question and wins
