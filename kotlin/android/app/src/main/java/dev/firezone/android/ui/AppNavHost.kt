@@ -11,9 +11,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -63,13 +60,11 @@ private fun SplashRoute(
 ) {
     val context = LocalContext.current
     val action by viewModel.actionStateFlow.collectAsStateWithLifecycle()
-    var isInitialLaunch by rememberSaveable { mutableStateOf(true) }
 
     // The other destinations hand control back here when they are done, and the answer can change
     // while the app is in the background, so the check runs on every resume rather than once.
     LifecycleResumeEffect(Unit) {
-        viewModel.checkTunnelState(context, isInitialLaunch)
-        isInitialLaunch = false
+        viewModel.checkTunnelState(context)
         onPauseOrDispose {}
     }
 
