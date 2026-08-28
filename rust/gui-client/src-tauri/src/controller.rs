@@ -411,15 +411,6 @@ impl<I: GuiIntegration> Controller<I> {
 
         self.connected_account_slug = None;
 
-        let session = self.auth.session().context("Missing session")?;
-
-        // A first guess at the account we are connecting to; `init` names the real one.
-        self.general_settings.account_slug = Some(session.account_slug.clone());
-        self.integration
-            .save_general_settings(&self.general_settings)
-            .await?;
-        self.notify_settings_changed()?;
-
         self.refresh_ui_state();
 
         Ok(())

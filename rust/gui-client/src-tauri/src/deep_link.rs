@@ -61,7 +61,7 @@ pub async fn open(url: url::Url) -> Result<()> {
 
 /// Parses a deep-link URL into a struct.
 ///
-/// e.g. `firezone-fd0020211111://handle_client_sign_in_callback/?state=secret&fragment=secret&account_name=Firezone&account_slug=firezone&actor_name=Jane+Doe&identity_provider_identifier=secret`
+/// e.g. `firezone-fd0020211111://handle_client_sign_in_callback/?state=secret&fragment=secret&account_name=Firezone&actor_name=Jane+Doe&identity_provider_identifier=secret`
 pub(crate) fn parse_auth_callback(url: &Url) -> Result<auth::Response> {
     if Some(url::Host::Domain("handle_client_sign_in_callback")) != url.host() {
         bail!("URL host should be `handle_client_sign_in_callback`");
@@ -73,7 +73,6 @@ pub(crate) fn parse_auth_callback(url: &Url) -> Result<auth::Response> {
         _ => bail!("URL path should be `/` or empty"),
     }
 
-    let mut account_slug = None;
     let mut actor_name = None;
     let mut fragment = None;
     let mut state = None;
@@ -81,12 +80,6 @@ pub(crate) fn parse_auth_callback(url: &Url) -> Result<auth::Response> {
     // There's probably a way to get serde to do this
     for (key, value) in url.query_pairs() {
         match key.as_ref() {
-            "account_slug" => {
-                if account_slug.is_some() {
-                    bail!("`account_slug` should appear exactly once");
-                }
-                account_slug = Some(value.to_string());
-            }
             "actor_name" => {
                 if actor_name.is_some() {
                     bail!("`actor_name` should appear exactly once");
@@ -110,7 +103,6 @@ pub(crate) fn parse_auth_callback(url: &Url) -> Result<auth::Response> {
     }
 
     Ok(auth::Response {
-        account_slug: account_slug.context("URL should have `account_slug`")?,
         actor_name: actor_name.context("URL should have `actor_name`")?,
         fragment: fragment.context("URL should have `fragment`")?,
         state: state.context("URL should have `state`")?,
@@ -139,7 +131,6 @@ pub(crate) fn fake_callback_url(real_auth_url: &SecretString) -> Result<Url> {
     let mut url = Url::parse("firezone-fd0020211111://handle_client_sign_in_callback/")
         .context("Static deep-link URL should be valid")?;
     url.query_pairs_mut()
-        .append_pair("account_slug", &response.account_slug)
         .append_pair("actor_name", &response.actor_name)
         .append_pair("fragment", response.fragment.expose_secret())
         .append_pair("state", response.state.expose_secret());
@@ -155,27 +146,24 @@ mod tests {
     #[test]
     fn parse_auth_callback() -> Result<()> {
         // Positive cases
-        let input = "firezone://handle_client_sign_in_callback/?account_slug=firezone&actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
+        let input = "firezone://handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
         let actual = parse_callback_wrapper(input)?;
 
-        assert_eq!(actual.account_slug, "firezone");
         assert_eq!(actual.actor_name, "Reactor Scram");
         assert_eq!(actual.fragment.expose_secret(), "a_very_secret_string");
         assert_eq!(actual.state.expose_secret(), "a_less_secret_string");
 
-        let input = "firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Reactor+Scram&fragment=a_very_secret_string&identity_provider_identifier=1234&state=a_less_secret_string";
+        let input = "firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&actor_name=Reactor+Scram&fragment=a_very_secret_string&identity_provider_identifier=1234&state=a_less_secret_string";
         let actual = parse_callback_wrapper(input)?;
 
-        assert_eq!(actual.account_slug, "firezone");
         assert_eq!(actual.actor_name, "Reactor Scram");
         assert_eq!(actual.fragment.expose_secret(), "a_very_secret_string");
         assert_eq!(actual.state.expose_secret(), "a_less_secret_string");
 
         // Empty string "" `actor_name` is fine
-        let input = "firezone://handle_client_sign_in_callback/?account_slug=firezone&actor_name=&fragment=&state=&identity_provider_identifier=12345";
+        let input = "firezone://handle_client_sign_in_callback/?actor_name=&fragment=&state=&identity_provider_identifier=12345";
         let actual = parse_callback_wrapper(input)?;
 
-        assert_eq!(actual.account_slug, "firezone");
         assert_eq!(actual.actor_name, "");
         assert_eq!(actual.fragment.expose_secret(), "");
         assert_eq!(actual.state.expose_secret(), "");
@@ -183,12 +171,12 @@ mod tests {
         // Negative cases
 
         // URL host is wrong
-        let input = "firezone://not_handle_client_sign_in_callback/?account_slug=firezone&actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
+        let input = "firezone://not_handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
         let actual = parse_callback_wrapper(input);
         assert!(actual.is_err());
 
         // `actor_name` is not just blank but totally missing
-        let input = "firezone://handle_client_sign_in_callback/?account_slug=firezone&fragment=&state=&identity_provider_identifier=12345";
+        let input = "firezone://handle_client_sign_in_callback/?fragment=&state=&identity_provider_identifier=12345";
         let actual = parse_callback_wrapper(input);
         assert!(actual.is_err());
 

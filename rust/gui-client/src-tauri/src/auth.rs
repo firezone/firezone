@@ -101,7 +101,6 @@ impl Request {
 }
 
 pub(crate) struct Response {
-    pub(crate) account_slug: String,
     pub(crate) actor_name: String,
     pub(crate) fragment: SecretString,
     pub(crate) state: SecretString,
@@ -115,7 +114,6 @@ impl Response {
     /// token's value. Debug builds only.
     pub(crate) fn fake(state: SecretString) -> Self {
         Self {
-            account_slug: "demo-co".to_owned(),
             actor_name: "Demo User".to_owned(),
             fragment: SecretString::from("fake-fragment"),
             state,
@@ -125,7 +123,6 @@ impl Response {
 
 #[derive(Default, Clone, Deserialize, Serialize)]
 pub struct Session {
-    pub(crate) account_slug: String,
     pub(crate) actor_name: String,
 }
 
@@ -276,7 +273,6 @@ impl Auth {
         let token = SecretString::from(token);
 
         let session = Session {
-            account_slug: resp.account_slug,
             actor_name: resp.actor_name,
         };
 
@@ -416,7 +412,6 @@ pub fn replicate_6791() -> Result<()> {
     let this = Auth::new()?;
     this.save_session(
         &Session {
-            account_slug: "firezone".to_string(),
             actor_name: "Jane Doe".to_string(),
         },
         &SecretString::from("obviously invalid token for testing #6791".to_string()),
@@ -527,7 +522,6 @@ mod tests {
             // User clicks "Sign In", build a fake server response
             let req = state.start_sign_in().unwrap();
             let resp = Response {
-                account_slug: "firezone".into(),
                 actor_name: actor_name.into(),
                 fragment: bogus_secret("fragment"),
                 state: req.state.clone(),
@@ -581,7 +575,6 @@ mod tests {
 
         // If we get a deep link with no in-flight request, it's invalid
         let r = state.handle_response(Response {
-            account_slug: "firezone".into(),
             actor_name: "Jane Doe".into(),
             fragment: bogus_secret("fragment"),
             state: bogus_secret("state"),
@@ -615,7 +608,6 @@ mod tests {
         // User clicks "Sign In", build a fake server response
         state.start_sign_in().unwrap();
         let resp = Response {
-            account_slug: "firezone".into(),
             actor_name: "Jane Doe".into(),
             fragment: bogus_secret("fragment"),
             state: SecretString::from(
