@@ -44,6 +44,8 @@ import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
@@ -87,10 +89,6 @@ class TunnelService : VpnService() {
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
     private var tunnelSearchDomain: String? = null
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
-    private var _tunnelResources: List<Resource> = emptyList()
-    private var _tunnelConnectedDevices: List<ConnectedDevice> = emptyList()
-    private var _tunnelActorName: String? = null
-    private var _tunnelState: State = State.DOWN
     private var resourceState: ResourceState = ResourceState.UNSET
 
     // For reacting to changes to the network
@@ -103,36 +101,37 @@ class TunnelService : VpnService() {
     private var commandChannel: Channel<TunnelCommand>? = null
     private val serviceScope = CoroutineScope(SupervisorJob())
 
+    private val _serviceState = MutableStateFlow(State.DOWN)
+    private val _resourcesState = MutableStateFlow<List<Resource>>(emptyList())
+    private val _connectedDevicesState = MutableStateFlow<List<ConnectedDevice>>(emptyList())
+    private val _actorNameState = MutableStateFlow<String?>(null)
+
+    // A `StateFlow` replays its current value to every new collector, so a newly bound SessionActivity catches up on its own.
+    val serviceState: StateFlow<State> = _serviceState.asStateFlow()
+    val resourcesState: StateFlow<List<Resource>> = _resourcesState.asStateFlow()
+    val connectedDevicesState: StateFlow<List<ConnectedDevice>> = _connectedDevicesState.asStateFlow()
+    val actorNameState: StateFlow<String?> = _actorNameState.asStateFlow()
+
     var tunnelResources: List<Resource>
-        get() = _tunnelResources
+        get() = _resourcesState.value
         set(value) {
-            _tunnelResources = value
-            updateResourcesStateFlow(value)
+            _resourcesState.value = value
         }
     var tunnelConnectedDevices: List<ConnectedDevice>
-        get() = _tunnelConnectedDevices
+        get() = _connectedDevicesState.value
         set(value) {
-            _tunnelConnectedDevices = value
-            updateConnectedDevicesStateFlow(value)
+            _connectedDevicesState.value = value
         }
     var tunnelActorName: String?
-        get() = _tunnelActorName
+        get() = _actorNameState.value
         set(value) {
-            _tunnelActorName = value
-            updateActorNameStateFlow(value)
+            _actorNameState.value = value
         }
     var tunnelState: State
-        get() = _tunnelState
+        get() = _serviceState.value
         set(value) {
-            _tunnelState = value
-            updateServiceStateFlow(value)
+            _serviceState.value = value
         }
-
-    // Used to update the UI when the SessionActivity is bound to this service
-    private var serviceStateMutableStateFlow: MutableStateFlow<State?>? = null
-    private var resourcesMutableStateFlow: MutableStateFlow<List<Resource>>? = null
-    private var connectedDevicesMutableStateFlow: MutableStateFlow<List<ConnectedDevice>>? = null
-    private var actorNameMutableStateFlow: MutableStateFlow<String?>? = null
 
     // For binding the SessionActivity view to this service
     private val binder = LocalBinder()
@@ -491,50 +490,6 @@ class TunnelService : VpnService() {
         Log.setStreamingActive(false)
     }
 
-    fun setServiceStateMutableStateFlow(stateFlow: MutableStateFlow<State?>) {
-        serviceStateMutableStateFlow = stateFlow
-
-        // Update the newly bound SessionActivity with our current state
-        serviceStateMutableStateFlow?.value = tunnelState
-    }
-
-    fun setResourcesMutableStateFlow(stateFlow: MutableStateFlow<List<Resource>>) {
-        resourcesMutableStateFlow = stateFlow
-
-        // Update the newly bound SessionActivity with our current resources
-        resourcesMutableStateFlow?.value = tunnelResources
-    }
-
-    fun setConnectedDevicesMutableStateFlow(stateFlow: MutableStateFlow<List<ConnectedDevice>>) {
-        connectedDevicesMutableStateFlow = stateFlow
-
-        // Update the newly bound SessionActivity with our current connected devices
-        connectedDevicesMutableStateFlow?.value = tunnelConnectedDevices
-    }
-
-    fun setActorNameMutableStateFlow(stateFlow: MutableStateFlow<String?>) {
-        actorNameMutableStateFlow = stateFlow
-
-        // Update the newly bound SessionActivity with our current actor name
-        actorNameMutableStateFlow?.value = tunnelActorName
-    }
-
-    private fun updateServiceStateFlow(state: State) {
-        serviceStateMutableStateFlow?.value = state
-    }
-
-    private fun updateResourcesStateFlow(resources: List<Resource>) {
-        resourcesMutableStateFlow?.value = resources
-    }
-
-    private fun updateConnectedDevicesStateFlow(devices: List<ConnectedDevice>) {
-        connectedDevicesMutableStateFlow?.value = devices
-    }
-
-    private fun updateActorNameStateFlow(actorName: String?) {
-        actorNameMutableStateFlow?.value = actorName
-    }
-
     // `Tasks.await` throws when called on the main thread, which is the thread `onStartCommand`
     // runs `connect` on.
     private suspend fun firebaseInstallationId(): String? =
@@ -612,7 +567,7 @@ class TunnelService : VpnService() {
     }
 
     private fun resourceById(resourceId: String): Pair<Resource, Site>? {
-        val resource = _tunnelResources.find { it.id == resourceId } ?: return null
+        val resource = tunnelResources.find { it.id == resourceId } ?: return null
         val site = resource.sites?.firstOrNull() ?: return null
         return Pair(resource, site)
     }
