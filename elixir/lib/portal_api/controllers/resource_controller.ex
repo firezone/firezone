@@ -382,6 +382,19 @@ defmodule PortalAPI.ResourceController do
     # read, update, delete, and the /resources/:id/pool_members endpoints -
     # works normally against a pool that already exists.
     #
+    # Why: a pool is only useful once it has members, and there is no stable,
+    # human-writable handle for a Client to populate one with. Client names
+    # are not unique, and firezone_id is unique per actor rather than per
+    # account, so neither identifies a single device. That leaves raw device
+    # IDs - fine to click through in the portal, where you search and pick
+    # devices one at a time, but cumbersome in API scripting and unworkable
+    # in Terraform, where the IDs are opaque and do not exist until a device
+    # enrolls. Creating a pool that cannot then be populated declaratively is
+    # worse than not creating it, so the whole operation waits on a unique
+    # client identifier. Note this blocks *authoring* only: adopting an
+    # existing pool is unaffected, since its member IDs already exist and can
+    # be read back.
+    #
     # What this rejects is any request that *changes* a Resource's type to
     # static_device_pool, which is why it runs on the update path too: doing
     # it there would be creating a pool by another name. It is not a block on
@@ -407,9 +420,10 @@ defmodule PortalAPI.ResourceController do
     # required-fields branches above and in Database.changeset/3 already
     # special-case them, Portal.Resource nulls site_id for pool types, and
     # PortalAPI.PoolMemberController manages membership. Outside this repo,
-    # the Terraform provider's firezone_resource still advertises
-    # static_device_pool in its type validator - it will start getting 422s
-    # until it is updated to match.
+    # the Terraform provider's firezone_resource still accepts
+    # static_device_pool in its type validator, but rejects creating one in
+    # ModifyPlan, so it fails in plan rather than reaching this 422. Dropping
+    # that guard is the matching change there.
     def reject_device_pool_type(changeset) do
       Ecto.Changeset.validate_exclusion(changeset, :type, [:static_device_pool],
         message: "device pools cannot be created via the API"
