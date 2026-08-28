@@ -3,6 +3,19 @@ package dev.firezone.android.core.data.model
 
 import android.os.Bundle
 
+internal enum class CredentialOrigin {
+    MANAGED,
+    USER,
+}
+
+internal fun CredentialOrigin.shouldClearSavedCredentials(requiresSignIn: Boolean): Boolean =
+    requiresSignIn && this == CredentialOrigin.USER
+
+internal data class SessionCredential(
+    val token: String,
+    val origin: CredentialOrigin,
+)
+
 internal data class ManagedConfiguration(
     val token: String? = null,
     val allowedApplications: String? = null,
@@ -24,6 +37,14 @@ internal data class ManagedConfiguration(
     fun requiresVpnRebuild(previous: ManagedConfiguration): Boolean =
         allowedApplications != previous.allowedApplications ||
             disallowedApplications != previous.disallowedApplications
+
+    fun resolveSessionCredential(userToken: String?): SessionCredential? {
+        val origin = if (token != null) CredentialOrigin.MANAGED else CredentialOrigin.USER
+        val resolvedToken = token ?: userToken
+
+        // A present but blank managed token explicitly disables the saved user-token fallback.
+        return resolvedToken?.takeIf { it.isNotBlank() }?.let { SessionCredential(it, origin) }
+    }
 
     companion object {
         fun from(bundle: Bundle): ManagedConfiguration =
