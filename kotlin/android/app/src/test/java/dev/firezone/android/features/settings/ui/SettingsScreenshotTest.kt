@@ -209,6 +209,7 @@ private val expiredCertificate =
             certificateDetails(
                 actorEmail = row("Actor Email", "jane.doe@example.com"),
                 unmatchedNames = emptyList(),
+                notBefore = row("Not Before", "Jan  5 09:00:00 2024 +00:00"),
                 notAfter = row("Not After", "Jan  5 09:00:00 2025 +00:00"),
             ),
     )
@@ -226,6 +227,7 @@ private val unreadableCertificate =
 private fun certificateDetails(
     actorEmail: DetailField,
     unmatchedNames: List<String>,
+    notBefore: DetailField = row("Not Before", "Jan  5 09:00:00 2026 +00:00"),
     notAfter: DetailField = row("Not After", "Jan  5 09:00:00 2027 +00:00"),
 ): List<DetailField> =
     // `x509_claims::ParsedCertificate::detail_fields` reads the rows with a problem first, so a
@@ -246,7 +248,7 @@ private fun certificateDetails(
         }
 
         add(row("Serial Number", "4a:1f:8c:52:0d:9b:36:e7:11:c4:58:a3:7f:20:6b:d9"))
-        add(row("Not Before", "Jan  5 09:00:00 2026 +00:00"))
+        add(notBefore)
         add(notAfter)
         add(row("Signing Algorithm", "SHA256withECDSA"))
         add(
