@@ -512,11 +512,9 @@ impl Eventloop {
                 flow_logs,
                 account_slug,
             }) => {
-                if let Some(account_slug) = account_slug {
-                    self.account_slug_sender
-                        .send(Some(account_slug))
-                        .context("Failed to emit event")?;
-                }
+                self.account_slug_sender
+                    .send(Some(account_slug))
+                    .context("Failed to emit event")?;
 
                 tracing::info!(
                     upload_enabled = flow_logs.upload_enabled(),

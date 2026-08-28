@@ -904,13 +904,12 @@ impl<I: GuiIntegration> Controller<I> {
                         resources: resources.resources.clone(),
                         connected_devices: resources.connected_devices.clone(),
                     }),
-                    SessionViewModel::SignedIn {
-                        // Portals older than the `init` slug leave us with the sign-in response.
-                        account_slug: self
-                            .connected_account_slug
-                            .clone()
-                            .unwrap_or_else(|| auth_session.account_slug.clone()),
-                        actor_name: auth_session.actor_name.clone(),
+                    match self.connected_account_slug.clone() {
+                        Some(account_slug) => SessionViewModel::SignedIn {
+                            account_slug,
+                            actor_name: auth_session.actor_name.clone(),
+                        },
+                        None => SessionViewModel::Loading,
                     },
                 ),
                 Status::WaitingForPortal => (

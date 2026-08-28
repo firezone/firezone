@@ -142,8 +142,7 @@ pub struct InitClient {
     #[serde(default)]
     pub authorizations: Vec<Authorization>,
     pub flow_logs: FlowLogsConfig,
-    #[serde(default)]
-    pub account_slug: Option<String>,
+    pub account_slug: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -433,6 +432,7 @@ mod tests {
     fn can_deserialize_init_with_flow_logs_config() {
         let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "account_slug": "acme",
             "flow_logs": {
                 "api_url": "https://flow-api.firezone.dev",
                 "upload_interval_secs": 60,
@@ -449,8 +449,8 @@ mod tests {
     }
 
     #[test]
-    fn account_slug_is_optional() {
-        let with_slug = r#"{
+    fn can_deserialize_init_with_account_slug() {
+        let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
             "account_slug": "acme",
             "flow_logs": {
@@ -459,7 +459,15 @@ mod tests {
                 "upload_batch_size": 1000
             }
         }"#;
-        let without_slug = r#"{
+
+        let init = serde_json::from_str::<InitClient>(init).unwrap();
+
+        assert_eq!(init.account_slug, "acme");
+    }
+
+    #[test]
+    fn init_without_account_slug_is_rejected() {
+        let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
             "flow_logs": {
                 "api_url": "https://flow-api.firezone.dev",
@@ -468,17 +476,14 @@ mod tests {
             }
         }"#;
 
-        let with_slug = serde_json::from_str::<InitClient>(with_slug).unwrap();
-        let without_slug = serde_json::from_str::<InitClient>(without_slug).unwrap();
-
-        assert_eq!(with_slug.account_slug.as_deref(), Some("acme"));
-        assert_eq!(without_slug.account_slug, None);
+        serde_json::from_str::<InitClient>(init).unwrap_err();
     }
 
     #[test]
     fn init_without_flow_logs_config_is_rejected() {
         let init = r#"{
-            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" }
+            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "account_slug": "acme"
         }"#;
 
         serde_json::from_str::<InitClient>(init).unwrap_err();
@@ -689,6 +694,7 @@ mod tests {
                     "ipv6": "fd00:2021:1111::13:efb9",
                     "upstream_dns": []
                 },
+                "account_slug": "acme",
                 "resources": [
                     {
                         "address": "172.172.0.0/16",
@@ -749,6 +755,7 @@ mod tests {
                     "ipv6": "fd00:2021:1111::13:efb9",
                     "upstream_dns": []
                 },
+                "account_slug": "acme",
                 "resources": [
                     {
                         "address_foobar": "172.172.0.0/16",
