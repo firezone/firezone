@@ -111,4 +111,19 @@ class ManagedConnectionStateTest {
         assertFalse(state.stopIfIdle {})
         assertTrue(state.claim(secondRequest) { Any() } is ConnectionClaim.Started)
     }
+
+    @Test
+    fun `disconnect invalidates a pending start`() {
+        val state = ManagedConnectionState<Any>()
+        val pendingStart = state.requestStart()
+
+        state.disconnect()
+
+        assertEquals(
+            ConnectionClaim.Unavailable,
+            state.claim(pendingStart) { Any() },
+        )
+        assertTrue(state.stopIfIdle {})
+        assertNull(state.owner())
+    }
 }

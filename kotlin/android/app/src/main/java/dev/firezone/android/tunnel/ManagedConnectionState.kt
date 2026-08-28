@@ -69,11 +69,11 @@ internal class ManagedConnectionState<T : Any> {
         create: (ManagedConfiguration) -> T?,
     ): ConnectionClaim<T> =
         synchronized(lock) {
+            if (!desiredRunning || startRequest != latestStartRequest) {
+                return@synchronized ConnectionClaim.Unavailable
+            }
+
             owner?.let {
-                if (!desiredRunning) {
-                    reconnectRequested = true
-                }
-                desiredRunning = true
                 return@synchronized ConnectionClaim.Existing(it)
             }
 
@@ -103,6 +103,7 @@ internal class ManagedConnectionState<T : Any> {
 
     fun disconnect(): T? =
         synchronized(lock) {
+            latestStartRequest += 1
             desiredRunning = false
             reconnectRequested = false
             owner

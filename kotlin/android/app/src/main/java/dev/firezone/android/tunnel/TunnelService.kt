@@ -105,6 +105,9 @@ class TunnelService : VpnService() {
     private val appliedManagedConfigurationRevision = MutableStateFlow(0L)
     private val tunnelConfigurationLock = Any()
 
+    @Volatile
+    private var latestStartId = 0
+
     var tunnelResources: List<Resource>
         get() = _tunnelResources
         set(value) {
@@ -228,7 +231,9 @@ class TunnelService : VpnService() {
         if (update.updateLogFilter) {
             sendTunnelCommand(
                 update.owner.commandChannel,
-                TunnelCommand.SetLogDirectives(repo.getConfigSync().logFilter),
+                TunnelCommand.SetLogDirectives(
+                    repo.getEffectiveConfig(repo.getUserConfigSync(), configuration).logFilter,
+                ),
             )
         }
         if (update.rebuildVpn) {
@@ -248,11 +253,12 @@ class TunnelService : VpnService() {
             startedByUser = true
         }
         val startRequest = connectionState.requestStart()
+        latestStartId = startId
         serviceScope.launch {
             val update = managedConfigurationSource.refreshUpdate()
             appliedManagedConfigurationRevision.first { it >= update.revision }
             if (!connect(startRequest)) {
-                connectionState.stopIfIdle { stopSelf(startId) }
+                connectionState.stopIfIdle { stopSelfResult(startId) }
             }
         }
         return START_STICKY
@@ -323,16 +329,21 @@ class TunnelService : VpnService() {
         sendTunnelCommand(TunnelCommand.Reset)
     }
 
-    private fun connect(startRequest: Long): Boolean {
-        return when (val claim = connectionState.claim(startRequest, ::createConnection)) {
-            ConnectionClaim.Unavailable -> false
-            is ConnectionClaim.Existing -> true
+    private fun connect(startRequest: Long): Boolean =
+        when (val claim = connectionState.claim(startRequest, ::createConnection)) {
+            ConnectionClaim.Unavailable -> {
+                false
+            }
+
+            is ConnectionClaim.Existing -> {
+                true
+            }
+
             is ConnectionClaim.Started -> {
                 startConnection(claim.owner)
                 true
             }
         }
-    }
 
     private fun createConnection(managedConfiguration: ManagedConfiguration): ConnectionParameters? {
         val credential = managedConfiguration.resolveSessionCredential(repo.getTokenSync()) ?: return null
@@ -340,7 +351,7 @@ class TunnelService : VpnService() {
         return ConnectionParameters(
             commandChannel = Channel(Channel.UNLIMITED),
             credential = credential,
-            config = repo.getConfigSync(),
+            config = repo.getEffectiveConfig(repo.getUserConfigSync(), managedConfiguration),
             resourceState = repo.getInternetResourceStateSync(),
             managedConfiguration = managedConfiguration,
         )
@@ -439,12 +450,16 @@ class TunnelService : VpnService() {
 
     private fun completeConnection(connection: ConnectionParameters) {
         when (val completion = connectionState.complete(connection, ::createConnection)) {
-            ConnectionCompletion.Stale -> Unit
+            ConnectionCompletion.Stale -> {
+                Unit
+            }
+
             ConnectionCompletion.Stopped -> {
                 connectionState.stopIfIdle {
-                    tunnelState = State.DOWN
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
+                    if (stopSelfResult(latestStartId)) {
+                        tunnelState = State.DOWN
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                    }
                 }
             }
 
@@ -723,6 +738,7 @@ class TunnelService : VpnService() {
         connection: ConnectionParameters,
     ): StopReason {
         val commandChannel = connection.commandChannel
+
         @OptIn(ExperimentalCoroutinesApi::class)
         val eventChannel =
             serviceScope.produce {

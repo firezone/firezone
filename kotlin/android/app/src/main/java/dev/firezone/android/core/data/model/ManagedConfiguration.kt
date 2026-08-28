@@ -38,6 +38,26 @@ internal data class ManagedConfiguration(
         allowedApplications != previous.allowedApplications ||
             disallowedApplications != previous.disallowedApplications
 
+    fun applyTo(userConfig: Config): Config =
+        userConfig.copy(
+            authUrl = authUrl ?: userConfig.authUrl,
+            apiUrl = apiUrl ?: userConfig.apiUrl,
+            logFilter = logFilter ?: userConfig.logFilter,
+            accountSlug = accountSlug ?: userConfig.accountSlug,
+            startOnLogin = startOnLogin ?: userConfig.startOnLogin,
+            connectOnStart = connectOnStart ?: userConfig.connectOnStart,
+        )
+
+    fun managedStatus(): ManagedConfigStatus =
+        ManagedConfigStatus(
+            isAuthUrlManaged = authUrl != null,
+            isApiUrlManaged = apiUrl != null,
+            isLogFilterManaged = logFilter != null,
+            isAccountSlugManaged = accountSlug != null,
+            isStartOnLoginManaged = startOnLogin != null,
+            isConnectOnStartManaged = connectOnStart != null,
+        )
+
     fun resolveSessionCredential(userToken: String?): SessionCredential? {
         val origin = if (token != null) CredentialOrigin.MANAGED else CredentialOrigin.USER
         val resolvedToken = token ?: userToken

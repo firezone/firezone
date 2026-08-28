@@ -10,10 +10,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
+import org.robolectric.annotation.Config as RobolectricConfig
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class)
+@RobolectricConfig(application = Application::class)
 class ManagedConfigurationTest {
     @Test
     fun `parsing preserves absent and explicit boolean values`() {
@@ -77,5 +77,44 @@ class ManagedConfigurationTest {
     fun `managed authentication failure preserves saved user credentials`() {
         assertFalse(CredentialOrigin.MANAGED.shouldClearSavedCredentials(requiresSignIn = true))
         assertTrue(CredentialOrigin.USER.shouldClearSavedCredentials(requiresSignIn = true))
+    }
+
+    @Test
+    fun `effective config and mask come from one managed snapshot`() {
+        val userConfig =
+            Config(
+                authUrl = "https://user.example.com",
+                apiUrl = "wss://user.example.com",
+                logFilter = "info",
+                accountSlug = "user-account",
+                startOnLogin = false,
+                connectOnStart = false,
+            )
+        val snapshot =
+            ManagedConfiguration(
+                authUrl = "https://managed.example.com",
+                apiUrl = "wss://managed.example.com",
+                connectOnStart = true,
+            )
+
+        assertEquals(
+            userConfig.copy(
+                authUrl = "https://managed.example.com",
+                apiUrl = "wss://managed.example.com",
+                connectOnStart = true,
+            ),
+            snapshot.applyTo(userConfig),
+        )
+        assertEquals(
+            ManagedConfigStatus(
+                isAuthUrlManaged = true,
+                isApiUrlManaged = true,
+                isLogFilterManaged = false,
+                isAccountSlugManaged = false,
+                isStartOnLoginManaged = false,
+                isConnectOnStartManaged = true,
+            ),
+            snapshot.managedStatus(),
+        )
     }
 }
