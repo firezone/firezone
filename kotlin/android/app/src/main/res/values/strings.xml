@@ -28,12 +28,17 @@
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>
 	<string name="settings">Settings</string>
-	<string name="signed_out">Signed Out</string>
+	<string name="sign_in_welcome">Welcome to Firezone.</string>
+	<string name="sign_in_prompt">Sign in to access Resources.</string>
 
 	<!-- Sign Out -->
 	<string name="resources">Resources</string>
 	<string name="connected_devices">Connected Devices</string>
 	<string name="sign_out">Sign Out</string>
+
+	<!-- Profile -->
+	<string name="profile">Profile</string>
+	<string name="signed_in">Signed in</string>
 
 	<!-- Auth -->
 	<string name="launching_auth_flow">Launching Browser to sign in…</string>

@@ -5,6 +5,7 @@ import android.app.Application
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
@@ -13,6 +14,7 @@ import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
+import dev.firezone.android.R
 import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.features.session.ui.ResourceUiModel
 import dev.firezone.android.tunnel.model.ConnectedDevice
@@ -22,6 +24,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -72,6 +75,16 @@ class ScreenshotTest {
         composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(5)
         composeRule.waitForIdle()
         captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/session-screen-scrolled.png")
+    }
+
+    @OptIn(ExperimentalRoborazziApi::class)
+    @Test
+    fun sessionScreenProfile() {
+        composeRule.setContent { FirezoneTheme { SessionScreenSample() } }
+        val profile = RuntimeEnvironment.getApplication().getString(R.string.profile)
+        composeRule.onNodeWithContentDescription(profile).performClick()
+        composeRule.waitForIdle()
+        captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/session-screen-profile.png")
     }
 
     @Test

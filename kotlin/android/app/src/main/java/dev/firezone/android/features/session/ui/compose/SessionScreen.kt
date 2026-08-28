@@ -2,15 +2,9 @@
 package dev.firezone.android.features.session.ui.compose
 
 import android.os.Parcelable
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -18,7 +12,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LeadingIconTab
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -30,7 +23,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -94,23 +86,23 @@ fun SessionScreen(
             (selection as? Selection.Device)?.let { sel -> connectedDevices.firstOrNull { it.id == sel.id } }
         }
 
-    Scaffold(modifier = modifier) { innerPadding ->
-        Column(Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    painter = painterResource(R.drawable.ic_firezone_logo),
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                )
-                Text(
-                    text = stringResource(R.string.app_short_name),
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-                Spacer(Modifier.weight(1f))
-                actorName?.let { Text(text = it, style = MaterialTheme.typography.bodySmall) }
-            }
+    val profileName = actorName ?: stringResource(R.string.signed_in)
 
+    Scaffold(
+        modifier = modifier,
+        topBar = {
+            FirezoneTopBar {
+                ProfileMenu(actorName = profileName, onSettings = onSettings, onSignOut = onSignOut)
+            }
+        },
+    ) { innerPadding ->
+        // No top padding: the app bar centres its title in a 64dp box, so it already leaves space below it.
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 16.dp),
+        ) {
             // The tab bar is the top-level switcher, pinned below the app bar so it stays visible and
             // accessible no matter how far the list is scrolled.
             if (hasFavorites) {
@@ -119,7 +111,6 @@ fun SessionScreen(
                 TabRow(
                     selectedTabIndex = effectiveTab,
                     contentColor = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(top = 16.dp),
                 ) {
                     LeadingIconTab(
                         selected = effectiveTab == TAB_FAVORITES,
@@ -153,23 +144,13 @@ fun SessionScreen(
                 // Connected devices is a niche feature, so it sits in its own section below the
                 // resources, sharing the same heading style rather than drawing extra attention.
                 if (effectiveTab == TAB_ALL && connectedDevices.isNotEmpty()) {
-                    item(key = "devices-heading") { SectionTitle(text = connectedDevicesTitle) }
+                    item(key = "devices-heading") {
+                        SectionTitle(text = connectedDevicesTitle, modifier = Modifier.padding(top = 24.dp))
+                    }
                     itemsIndexed(connectedDevices, key = { _, device -> "dev-${device.id}" }) { index, device ->
                         if (index > 0) HorizontalDivider()
                         ConnectedDeviceRow(device = device, onClick = { selection = Selection.Device(device.id) })
                     }
-                }
-            }
-
-            Row(
-                Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedButton(onClick = onSettings, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.settings))
-                }
-                OutlinedButton(onClick = onSignOut, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.sign_out))
                 }
             }
         }
@@ -202,7 +183,7 @@ private fun SectionTitle(
     Text(
         text = text,
         style = MaterialTheme.typography.headlineSmall,
-        modifier = modifier.padding(top = 24.dp, bottom = 8.dp),
+        modifier = modifier.padding(bottom = 8.dp),
     )
 }
 

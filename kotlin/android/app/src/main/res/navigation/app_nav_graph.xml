@@ -12,8 +12,7 @@
 
     <fragment
         android:id="@+id/signInFragment"
-        android:name="dev.firezone.android.features.signin.ui.SignInFragment"
-        tools:layout="@layout/fragment_sign_in" />
+        android:name="dev.firezone.android.features.signin.ui.SignInFragment" />
 
     <activity
         android:id="@+id/settingsActivity"

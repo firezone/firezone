@@ -219,10 +219,7 @@ class Repository
                 emit(getActorNameSync())
             }.flowOn(coroutineDispatcher)
 
-        fun getActorNameSync(): String? =
-            sharedPreferences.getString(ACTOR_NAME_KEY, null)?.let {
-                if (it.isNotEmpty()) "Signed in as $it" else "Signed in"
-            }
+        fun getActorNameSync(): String? = sharedPreferences.getString(ACTOR_NAME_KEY, null)?.takeIf { it.isNotEmpty() }
 
         fun getNonceSync(): String? = sharedPreferences.getString(NONCE_KEY, null)
 

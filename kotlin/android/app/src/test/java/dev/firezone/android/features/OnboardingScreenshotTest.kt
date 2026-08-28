@@ -11,6 +11,8 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
 import dev.firezone.android.features.permission.vpn.ui.VpnPermissionActivity
+import dev.firezone.android.features.session.ui.compose.FirezoneTheme
+import dev.firezone.android.features.signin.ui.compose.SignInScreen
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -21,9 +23,9 @@ import org.robolectric.annotation.GraphicsMode
 
 // Renders the screens shown before a session starts to PNGs; `./gradlew recordRoborazziDebug` writes them.
 //
-// `SignInFragment` and `NotificationPermissionActivity` only work on top of a Hilt graph, which a
-// screenshot does not need, so `ScreenshotActivity` below hosts their layouts instead.
-// `VpnPermissionActivity` needs no graph, so it is rendered as it ships.
+// `NotificationPermissionActivity` only works on top of a Hilt graph, which a screenshot does not
+// need, so the activity below hosts its layout instead. `VpnPermissionActivity` needs no graph,
+// so it is rendered as it ships.
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(
@@ -32,8 +34,17 @@ import org.robolectric.annotation.GraphicsMode
     qualifiers = RobolectricDeviceQualifiers.Pixel5,
 )
 class OnboardingScreenshotTest {
+    @OptIn(ExperimentalRoborazziApi::class)
     @Test
-    fun signIn() = capture("sign-in", SignInScreenshotActivity::class.java)
+    fun signIn() =
+        captureRoboImage("${roborazziSystemPropertyOutputDirectory()}/sign-in.png") {
+            FirezoneTheme {
+                SignInScreen(
+                    onSignIn = {},
+                    onSettings = {},
+                )
+            }
+        }
 
     @Test
     fun vpnPermission() = capture("vpn-permission", VpnPermissionActivity::class.java)
@@ -53,16 +64,10 @@ class OnboardingScreenshotTest {
     }
 }
 
-internal open class ScreenshotActivity(
-    private val layout: Int,
-) : AppCompatActivity() {
+internal class NotificationPermissionScreenshotActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(R.style.AppTheme_Base)
         super.onCreate(savedInstanceState)
-        setContentView(layout)
+        setContentView(R.layout.activity_notification_permission)
     }
 }
-
-internal class SignInScreenshotActivity : ScreenshotActivity(R.layout.fragment_sign_in)
-
-internal class NotificationPermissionScreenshotActivity : ScreenshotActivity(R.layout.activity_notification_permission)
