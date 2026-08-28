@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LeadingIconTab
@@ -115,7 +114,13 @@ fun SessionScreen(
             // The tab bar is the top-level switcher, pinned below the app bar so it stays visible and
             // accessible no matter how far the list is scrolled.
             if (hasFavorites) {
-                TabRow(selectedTabIndex = effectiveTab, modifier = Modifier.padding(top = 16.dp)) {
+                // M3 labels tabs with `primary`, which the brand makes orange; only the indicator
+                // under the selected tab should carry it.
+                TabRow(
+                    selectedTabIndex = effectiveTab,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 16.dp),
+                ) {
                     LeadingIconTab(
                         selected = effectiveTab == TAB_FAVORITES,
                         onClick = { selectedTab = TAB_FAVORITES },
@@ -163,7 +168,7 @@ fun SessionScreen(
                 OutlinedButton(onClick = onSettings, modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.settings))
                 }
-                Button(onClick = onSignOut, modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = onSignOut, modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.sign_out))
                 }
             }
