@@ -95,6 +95,21 @@ class SettingsViewModelTest {
         assertTrue(repository.favorites.value.inner.isEmpty())
     }
 
+    @Test
+    fun `reset remains pending across recreation until save`() {
+        repository.addFavoriteResource(FAVORITE_ID)
+        val savedState = SavedStateHandle()
+        val viewModel = SettingsViewModel(repository, savedState)
+
+        viewModel.resetSettingsToDefaults()
+        val recreatedViewModel = SettingsViewModel(repository, savedState)
+
+        assertTrue(FAVORITE_ID in repository.favorites.value.inner)
+        recreatedViewModel.onSaveSettingsCompleted()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(repository.favorites.value.inner.isEmpty())
+    }
+
     private companion object {
         const val FAVORITE_ID = "favorite-resource"
 

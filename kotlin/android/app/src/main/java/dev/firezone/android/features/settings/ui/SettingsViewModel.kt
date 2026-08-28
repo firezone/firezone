@@ -49,8 +49,8 @@ internal class SettingsViewModel
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
         private val config: Config get() = _uiState.value.config
-
-        private var shouldResetFavoritesOnSave = false
+        private var shouldResetFavoritesOnSave: Boolean =
+            savedStateHandle[RESET_FAVORITES_ON_SAVE_KEY] ?: false
 
         fun onViewResume(context: Context) {
             val directory = File(context.cacheDir.absolutePath + "/logs")
@@ -78,13 +78,16 @@ internal class SettingsViewModel
                         shouldResetFavoritesOnSave = false
                     }
                     savedStateHandle.remove<Config>(DRAFT_CONFIG_KEY)
+                    savedStateHandle.remove<Boolean>(RESET_FAVORITES_ON_SAVE_KEY)
                     actionMutableStateFlow.value = ViewAction.NavigateBack
                 }
             }
         }
 
         fun onCancel() {
+            shouldResetFavoritesOnSave = false
             savedStateHandle.remove<Config>(DRAFT_CONFIG_KEY)
+            savedStateHandle.remove<Boolean>(RESET_FAVORITES_ON_SAVE_KEY)
             actionMutableStateFlow.value = ViewAction.NavigateBack
         }
 
@@ -135,6 +138,7 @@ internal class SettingsViewModel
         fun resetSettingsToDefaults() {
             val config = repo.getDefaultConfigSync()
             savedStateHandle[DRAFT_CONFIG_KEY] = config
+            savedStateHandle[RESET_FAVORITES_ON_SAVE_KEY] = true
             shouldResetFavoritesOnSave = true
             _uiState.update {
                 it.copy(
@@ -209,6 +213,7 @@ internal class SettingsViewModel
 
         companion object {
             private const val DRAFT_CONFIG_KEY = "settingsDraftConfig"
+            private const val RESET_FAVORITES_ON_SAVE_KEY = "resetFavoritesOnSave"
             private const val TAG = "SettingsViewModel"
         }
     }
