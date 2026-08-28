@@ -233,6 +233,17 @@ class Repository
 
         fun saveNonceSync(value: String) = sharedPreferences.edit().putString(NONCE_KEY, value).apply()
 
+        fun saveNonceAndStateSync(
+            nonce: String,
+            state: String,
+        ) {
+            sharedPreferences
+                .edit()
+                .putString(NONCE_KEY, nonce)
+                .putString(STATE_KEY, state)
+                .apply()
+        }
+
         fun saveState(value: String): Flow<Unit> =
             flow {
                 emit(saveStateSync(value))
