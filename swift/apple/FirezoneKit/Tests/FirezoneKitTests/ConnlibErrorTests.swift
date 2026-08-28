@@ -11,19 +11,11 @@ import Testing
 
 @Suite("ConnlibError Tests")
 struct ConnlibErrorTests {
-  @Test("A disconnect carries whether the certificate is what failed")
-  func disconnectCarriesTheCertificateFlag() {
-    let error = ConnlibError.disconnected("revoked", isCertificateError: true) as NSError
+  @Test("A disconnect carries its reason in userInfo")
+  func disconnectCarriesItsReasonInUserInfo() {
+    let error = ConnlibError.disconnected("revoked") as NSError
 
     #expect(error.userInfo["reason"] as? String == "revoked")
-    #expect(error.userInfo[ConnlibError.isCertificateErrorKey] as? Bool == true)
-  }
-
-  @Test("A disconnect defaults to blaming something other than the certificate")
-  func disconnectDefaultsToNotBlamingTheCertificate() {
-    let error = ConnlibError.disconnected("gateway went away") as NSError
-
-    #expect(error.userInfo[ConnlibError.isCertificateErrorKey] as? Bool == false)
   }
 
   #if os(macOS)

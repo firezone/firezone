@@ -28,15 +28,9 @@ enum ProviderCommand: Sendable {
 struct SendableError: Sendable {
   let message: String
   let requiresSignIn: Bool
-  let isCertificateError: Bool
 
-  init(
-    _ message: String,
-    requiresSignIn: Bool = false,
-    isCertificateError: Bool = false
-  ) {
+  init(_ message: String, requiresSignIn: Bool = false) {
     self.message = message
     self.requiresSignIn = requiresSignIn
-    self.isCertificateError = isCertificateError
   }
 }

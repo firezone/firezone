@@ -565,28 +565,22 @@ actor Adapter {
     case .disconnected(let error):
       let errorMessage = error.message()
       let requiresSignIn = error.requiresSignIn()
-      // Connlib reports what actually failed, which is not the same as how the session
-      // authenticated: one that presented a certificate can still fail for reasons that
-      // have nothing to do with it.
-      let isCertificateError = error.isCertificateError()
       Log.info(
-        "Received Disconnected event (isCertificateError=\(isCertificateError)): " + errorMessage)
+        "Received Disconnected event (requiresSignIn=\(requiresSignIn)): " + errorMessage)
 
       // iOS shows the notification from the tunnel process because the UI
       // process isn't guaranteed to be alive; macOS handles it from the UI.
       #if os(iOS)
+        // Only a session ended by an unusable token can be restored by signing in again.
+        // Offering it for anything else sends the user somewhere that cannot help them.
         if requiresSignIn {
           SessionNotification.showDisconnectedNotificationiOS(errorMessage)
-        } else if isCertificateError {
-          SessionNotification.showCertificateFailureNotificationiOS(errorMessage)
+        } else {
+          SessionNotification.showDisconnectedNotificationWithoutSignIniOS(errorMessage)
         }
       #endif
 
-      let sendableError = SendableError(
-        errorMessage,
-        requiresSignIn: requiresSignIn,
-        isCertificateError: isCertificateError
-      )
+      let sendableError = SendableError(errorMessage, requiresSignIn: requiresSignIn)
       providerCommandSender.send(.cancelWithError(sendableError))
 
     case .allGatewaysOffline(let resourceId):

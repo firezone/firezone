@@ -13,7 +13,7 @@ import UserNotifications
 
 public enum NotificationIndentifier: String {
   case sessionEndedNotificationCategory
-  case administratorActionRequiredNotificationCategory
+  case sessionEndedWithoutSignInNotificationCategory
   case signInNotificationAction
   case dismissNotificationAction
 }
@@ -46,9 +46,9 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
         hiddenPreviewsBodyPlaceholder: "",
         options: [])
 
-      // A certificate session offers no sign-in, so this category only dismisses.
-      let administratorActionRequiredCategory = UNNotificationCategory(
-        identifier: NotificationIndentifier.administratorActionRequiredNotificationCategory
+      // Signing in again cannot restore these sessions, so this category only dismisses.
+      let sessionEndedWithoutSignInCategory = UNNotificationCategory(
+        identifier: NotificationIndentifier.sessionEndedWithoutSignInNotificationCategory
           .rawValue,
         actions: [dismissAction],
         intentIdentifiers: [],
@@ -56,7 +56,7 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
         options: [])
 
       notificationCenter.setNotificationCategories([
-        sessionEndedCategory, administratorActionRequiredCategory,
+        sessionEndedCategory, sessionEndedWithoutSignInCategory,
       ])
     #endif
   }
@@ -136,11 +136,12 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
       }
     }
 
-    /// Tells the user a certificate-authenticated session ended, in the words it ended with.
-    nonisolated public static func showCertificateFailureNotificationiOS(_ message: String) {
+    /// Tells the user the session ended, in the words it ended with, when signing in
+    /// again cannot restore it.
+    nonisolated public static func showDisconnectedNotificationWithoutSignIniOS(_ message: String) {
       UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
         guard notificationSettings.authorizationStatus == .authorized else {
-          Log.warning("Cannot show the certificate failure notification: notifications denied")
+          Log.warning("Cannot show the disconnected notification: notifications denied")
           return
         }
 
@@ -149,9 +150,9 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
         content.body = message
         content.sound = .default
         content.categoryIdentifier =
-          NotificationIndentifier.administratorActionRequiredNotificationCategory.rawValue
+          NotificationIndentifier.sessionEndedWithoutSignInNotificationCategory.rawValue
         let request = UNNotificationRequest(
-          identifier: "FirezoneCertificateFailure",
+          identifier: "FirezoneTunnelShutdownWithoutSignIn",
           content: content,
           trigger: nil
         )
@@ -159,7 +160,7 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
           if let error {
             Log.error(error)
           } else {
-            Log.debug("Certificate failure notification requested")
+            Log.debug("Disconnected notification without sign-in requested")
           }
         }
       }
