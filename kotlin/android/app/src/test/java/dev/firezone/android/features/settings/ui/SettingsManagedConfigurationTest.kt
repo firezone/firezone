@@ -46,6 +46,7 @@ class SettingsManagedConfigurationTest {
                 repository,
                 CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
             )
+        runBlocking { repository.saveSettings(userConfig).first() }
         viewModel = SettingsViewModel(repository, source)
     }
 
@@ -117,6 +118,28 @@ class SettingsManagedConfigurationTest {
         }
 
     @Test
+    fun `saving after policy arrival preserves the prior user edit`() =
+        runBlocking {
+            source.applyRestrictions(Bundle())
+            shadowOf(Looper.getMainLooper()).idle()
+            viewModel.onValidateAuthUrl("https://unsaved.example.com")
+
+            source.applyRestrictions(
+                Bundle().apply {
+                    putString("authUrl", "https://managed.example.com")
+                },
+            )
+            shadowOf(Looper.getMainLooper()).idle()
+            viewModel.onSaveSettingsCompleted()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            source.applyRestrictions(Bundle())
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertEquals("https://unsaved.example.com", repository.getConfigSync().authUrl)
+        }
+
+    @Test
     fun `saving a reset clears favorites`() {
         repository.addFavoriteResource(FAVORITE_ID)
 
@@ -124,7 +147,10 @@ class SettingsManagedConfigurationTest {
         viewModel.onSaveSettingsCompleted()
         shadowOf(Looper.getMainLooper()).idle()
 
-        assertTrue(repository.favorites.value.inner.isEmpty())
+        assertTrue(
+            repository.favorites.value.inner
+                .isEmpty(),
+        )
     }
 
     private companion object {

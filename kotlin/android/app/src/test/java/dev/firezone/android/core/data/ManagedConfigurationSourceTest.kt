@@ -8,8 +8,8 @@ import android.content.SharedPreferences
 import android.os.Bundle
 import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -127,28 +127,30 @@ class ManagedConfigurationSourceTest {
     fun `user draft survives policy removal across recreation`() =
         runBlocking {
             repository.saveSettings(userConfig).first()
-            source.applyRestrictions(
-                Bundle().apply {
-                    putString("authUrl", "https://managed.example.com")
-                },
-            )
+            val managedConfiguration =
+                source.applyRestrictions(
+                    Bundle().apply {
+                        putString("authUrl", "https://managed.example.com")
+                    },
+                )
 
             val userDraft = repository.getUserConfigSync()
-            val managedStatus = repository.getManagedStatus()
-            val editedEffectiveConfig = repository.getEffectiveConfig(userDraft).copy(logFilter = "trace")
+            val managedStatus = managedConfiguration.managedStatus()
+            val editedEffectiveConfig =
+                repository.getEffectiveConfig(userDraft, managedConfiguration).copy(logFilter = "trace")
             val retainedUserDraft =
                 repository.mergeUnmanagedConfig(userDraft, editedEffectiveConfig, managedStatus)
             assertEquals(userConfig.copy(logFilter = "trace"), retainedUserDraft)
             assertEquals(
                 "https://managed.example.com",
-                repository.getEffectiveConfig(retainedUserDraft).authUrl,
+                repository.getEffectiveConfig(retainedUserDraft, managedConfiguration).authUrl,
             )
 
-            source.applyRestrictions(Bundle())
+            val revokedConfiguration = source.applyRestrictions(Bundle())
 
             assertEquals(
                 userConfig.copy(logFilter = "trace"),
-                repository.getEffectiveConfig(retainedUserDraft),
+                repository.getEffectiveConfig(retainedUserDraft, revokedConfiguration),
             )
         }
 
