@@ -32,13 +32,14 @@ import java.util.concurrent.atomic.AtomicInteger
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
 class CustomUriViewModelTest {
+    private lateinit var context: Context
     private lateinit var preferences: SharedPreferences
     private lateinit var repository: Repository
     private lateinit var viewModel: CustomUriViewModel
 
     @Before
     fun setUp() {
-        val context = RuntimeEnvironment.getApplication()
+        context = RuntimeEnvironment.getApplication()
         preferences = context.getSharedPreferences("custom-uri-view-model", Context.MODE_PRIVATE)
         preferences.edit().clear().commit()
         repository = Repository(context, Dispatchers.Unconfined, preferences)
@@ -78,6 +79,56 @@ class CustomUriViewModelTest {
         }
 
     @Test
+    fun `replayed callback completes after recreation without mutating credentials`() =
+        runBlocking {
+            repository.saveNonceAndStateSync(nonce = "nonce-", state = EXPECTED_STATE)
+            val callback = callbackIntent(state = EXPECTED_STATE, fragment = "fragment")
+            assertEquals(CustomUriViewModel.ViewAction.AuthFlowComplete, viewModel.handleCustomUri(callback))
+
+            val recreatedRepository = Repository(context, Dispatchers.Unconfined, preferences)
+            val recreatedViewModel = CustomUriViewModel(recreatedRepository)
+            val replay =
+                callbackIntent(
+                    state = EXPECTED_STATE,
+                    fragment = "replacement-fragment",
+                    accountSlug = "replacement-account",
+                    actorName = "Replacement Actor",
+                )
+
+            recreatedViewModel.processCustomUri(replay)
+
+            assertEquals(CustomUriViewModel.ViewAction.AuthFlowComplete, recreatedViewModel.actionStateFlow.value)
+            assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
+            assertEquals("new-account", recreatedRepository.getAccountSlug().first())
+            assertEquals("New Actor", recreatedRepository.getActorNameSync())
+            assertNull(recreatedRepository.getNonceSync())
+            assertNull(recreatedRepository.getStateSync())
+        }
+
+    @Test
+    fun `malformed replay fails after recreation without mutating credentials`() =
+        runBlocking {
+            repository.saveNonceAndStateSync(nonce = "nonce-", state = EXPECTED_STATE)
+            val callback = callbackIntent(state = EXPECTED_STATE, fragment = "fragment")
+            assertEquals(CustomUriViewModel.ViewAction.AuthFlowComplete, viewModel.handleCustomUri(callback))
+
+            val recreatedRepository = Repository(context, Dispatchers.Unconfined, preferences)
+            val recreatedViewModel = CustomUriViewModel(recreatedRepository)
+
+            val action =
+                recreatedViewModel.handleCustomUri(
+                    callbackIntent(state = EXPECTED_STATE, fragment = " "),
+                )
+
+            assertTrue(action is CustomUriViewModel.ViewAction.AuthFlowError)
+            assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
+            assertEquals("new-account", recreatedRepository.getAccountSlug().first())
+            assertEquals("New Actor", recreatedRepository.getActorNameSync())
+            assertNull(recreatedRepository.getNonceSync())
+            assertNull(recreatedRepository.getStateSync())
+        }
+
+    @Test
     fun `missing state does not mutate credentials`() =
         assertInvalidCallbackDoesNotMutateCredentials(callbackIntent(state = null, fragment = "new-fragment"))
 
@@ -108,13 +159,13 @@ class CustomUriViewModelTest {
     }
 
     @Test
-    fun `concurrent callbacks consume state once`() =
+    fun `concurrent callbacks complete after consuming state once`() =
         runBlocking {
             val context = RuntimeEnvironment.getApplication()
             val delegate = context.getSharedPreferences("custom-uri-view-model-concurrent", Context.MODE_PRIVATE)
             delegate.edit().clear().commit()
             val coordinatedPreferences = CoordinatedStateReads(delegate)
-            val executor = Executors.newFixedThreadPool(2)
+            val executor = Executors.newFixedThreadPool(3)
             val dispatcher = executor.asCoroutineDispatcher()
 
             try {
@@ -122,6 +173,7 @@ class CustomUriViewModelTest {
                 val viewModel = CustomUriViewModel(repository)
                 repository.saveState(EXPECTED_STATE).collect()
                 repository.saveNonce("nonce-").collect()
+                coordinatedPreferences.resetAppliedTransactions()
 
                 val first =
                     async(start = CoroutineStart.UNDISPATCHED) {
@@ -131,11 +183,15 @@ class CustomUriViewModelTest {
                     async(start = CoroutineStart.UNDISPATCHED) {
                         viewModel.handleCustomUri(callbackIntent(state = EXPECTED_STATE, fragment = "second"))
                     }
-                executor.execute { coordinatedPreferences.releaseStateReads() }
+                executor.execute {
+                    coordinatedPreferences.awaitStateRead()
+                    coordinatedPreferences.releaseStateReads()
+                }
 
                 val actions = awaitAll(first, second)
 
-                assertEquals(1, actions.count { it == CustomUriViewModel.ViewAction.AuthFlowComplete })
+                assertEquals(2, actions.count { it == CustomUriViewModel.ViewAction.AuthFlowComplete })
+                assertEquals(1, coordinatedPreferences.appliedTransactionCount())
                 assertNull(repository.getNonceSync())
                 assertNull(repository.getStateSync())
                 assertTrue(repository.getTokenSync() in setOf("nonce-first", "nonce-second"))
@@ -196,8 +252,20 @@ class CustomUriViewModelTest {
 private class CoordinatedStateReads(
     private val delegate: SharedPreferences,
 ) : SharedPreferences by delegate {
+    private val appliedTransactions = AtomicInteger()
+    private val firstStateRead = CountDownLatch(1)
     private val stateReads = AtomicInteger()
     private val stateReadsRelease = CountDownLatch(1)
+
+    override fun edit(): SharedPreferences.Editor {
+        val editor = delegate.edit()
+        return object : SharedPreferences.Editor by editor {
+            override fun apply() {
+                appliedTransactions.incrementAndGet()
+                editor.apply()
+            }
+        }
+    }
 
     override fun getString(
         key: String?,
@@ -208,6 +276,7 @@ private class CoordinatedStateReads(
             return value
         }
 
+        firstStateRead.countDown()
         if (stateReads.incrementAndGet() == 2) {
             stateReadsRelease.countDown()
         }
@@ -216,7 +285,17 @@ private class CoordinatedStateReads(
         return value
     }
 
+    fun awaitStateRead() {
+        check(firstStateRead.await(10, TimeUnit.SECONDS))
+    }
+
     fun releaseStateReads() {
         stateReadsRelease.countDown()
     }
+
+    fun resetAppliedTransactions() {
+        appliedTransactions.set(0)
+    }
+
+    fun appliedTransactionCount(): Int = appliedTransactions.get()
 }
