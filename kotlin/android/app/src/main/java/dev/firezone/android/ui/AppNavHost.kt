@@ -2,7 +2,6 @@
 package dev.firezone.android.ui
 
 import android.Manifest
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.VpnService
@@ -91,10 +90,6 @@ private fun SplashRoute(
                 navController.navigateOnce(ROUTE_SIGN_IN)
             }
 
-            is SplashViewModel.ViewAction.NavigateToSettings -> {
-                context.startActivity(settingsIntent(context))
-            }
-
             is SplashViewModel.ViewAction.NavigateToSession -> {
                 context.startActivity(
                     Intent(context, SessionActivity::class.java).apply {
@@ -117,7 +112,7 @@ private fun SignInRoute(onSignInLaunched: () -> Unit) {
             context.startActivity(Intent(context, AuthActivity::class.java))
             onSignInLaunched()
         },
-        onSettings = { context.startActivity(settingsIntent(context)) },
+        onSettings = { context.startActivity(SettingsActivity.createIntent(context, isUserSignedIn = false)) },
     )
 }
 
@@ -175,5 +170,3 @@ private fun NotificationPermissionRoute(
 
 // The splash check runs again on every resume, so it can ask for the same destination twice.
 private fun NavHostController.navigateOnce(route: String) = navigate(route) { launchSingleTop = true }
-
-private fun settingsIntent(context: Context) = Intent(context, SettingsActivity::class.java).putExtra("isUserSignedIn", false)

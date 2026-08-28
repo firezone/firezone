@@ -7,8 +7,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -122,8 +120,6 @@ internal class SplashViewModel
             object NavigateToVpnPermission : ViewAction()
 
             object NavigateToNotificationPermission : ViewAction()
-
-            object NavigateToSettings : ViewAction()
 
             object NavigateToSignIn : ViewAction()
 
