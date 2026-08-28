@@ -62,6 +62,22 @@ class CustomUriViewModelTest {
         }
 
     @Test
+    fun `duplicate callback does not overwrite completed action`() =
+        runBlocking {
+            repository.saveState(EXPECTED_STATE).collect()
+            repository.saveNonce("nonce-").collect()
+            val intent = callbackIntent(state = EXPECTED_STATE, fragment = "fragment")
+
+            viewModel.processCustomUri(intent)
+            viewModel.processCustomUri(intent)
+
+            assertEquals(CustomUriViewModel.ViewAction.AuthFlowComplete, viewModel.actionStateFlow.value)
+            viewModel.clearAction()
+            viewModel.processCustomUri(intent)
+            assertNull(viewModel.actionStateFlow.value)
+        }
+
+    @Test
     fun `missing state does not mutate credentials`() =
         assertInvalidCallbackDoesNotMutateCredentials(callbackIntent(state = null, fragment = "new-fragment"))
 
