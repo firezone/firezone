@@ -92,7 +92,6 @@ internal class SettingsActivity : AppCompatActivity() {
         setupViews()
         setupStateObservers()
 
-        viewModel.populateFieldsFromConfig()
         viewModel.deleteLogZip(this@SettingsActivity)
     }
 

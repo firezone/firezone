@@ -3,6 +3,7 @@ package dev.firezone.android.core.data.model
 
 import android.app.Application
 import android.os.Bundle
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -49,5 +50,32 @@ class ManagedConfigurationTest {
         assertTrue(ManagedConfiguration(allowedApplications = "com.example.allowed").requiresVpnRebuild(previous))
         assertTrue(ManagedConfiguration(disallowedApplications = "com.example.blocked").requiresVpnRebuild(previous))
         assertFalse(ManagedConfiguration(token = "token").requiresVpnRebuild(previous))
+    }
+
+    @Test
+    fun `absent managed token uses the saved user token`() {
+        assertEquals(
+            SessionCredential("user-token", CredentialOrigin.USER),
+            ManagedConfiguration().resolveSessionCredential("user-token"),
+        )
+    }
+
+    @Test
+    fun `blank managed token explicitly disables the saved user token`() {
+        assertNull(ManagedConfiguration(token = "").resolveSessionCredential("user-token"))
+    }
+
+    @Test
+    fun `managed token records its credential origin`() {
+        assertEquals(
+            SessionCredential("managed-token", CredentialOrigin.MANAGED),
+            ManagedConfiguration(token = "managed-token").resolveSessionCredential("user-token"),
+        )
+    }
+
+    @Test
+    fun `managed authentication failure preserves saved user credentials`() {
+        assertFalse(CredentialOrigin.MANAGED.shouldClearSavedCredentials(requiresSignIn = true))
+        assertTrue(CredentialOrigin.USER.shouldClearSavedCredentials(requiresSignIn = true))
     }
 }

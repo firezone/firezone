@@ -42,16 +42,8 @@ internal class SettingsViewModel
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
-        // Working config that gets modified during editing using immutable copy
-        private var config =
-            Config(
-                authUrl = "",
-                apiUrl = "",
-                logFilter = "",
-                accountSlug = "",
-                startOnLogin = false,
-                connectOnStart = false,
-            )
+        private var userConfig = repo.getUserConfigSync()
+        private var config = repo.getEffectiveConfig(userConfig)
 
         // StateFlow that emits config only on load/reset, not during editing
         private val _configStateFlow = MutableStateFlow(config)
@@ -65,15 +57,9 @@ internal class SettingsViewModel
         init {
             viewModelScope.launch {
                 managedConfigurationSource.configuration.filterNotNull().collect {
-                    val effectiveConfig = repo.getConfigSync()
                     val managedStatus = repo.getManagedStatus()
-                    config =
-                        _managedStatusStateFlow.value?.let { previousManagedStatus ->
-                            config.withManagedUpdates(effectiveConfig, previousManagedStatus, managedStatus)
-                        } ?: effectiveConfig
-                    _configStateFlow.value = config
                     _managedStatusStateFlow.value = managedStatus
-                    onFieldUpdated()
+                    publishEffectiveConfig()
                 }
             }
         }
@@ -101,7 +87,7 @@ internal class SettingsViewModel
 
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
-                repo.saveSettings(config).collect {
+                repo.saveSettings(userConfig).collect {
                     if (shouldResetFavoritesOnSave) {
                         repo.resetFavorites()
                         shouldResetFavoritesOnSave = false
@@ -116,33 +102,27 @@ internal class SettingsViewModel
         }
 
         fun onValidateAuthUrl(authUrl: String) {
-            config = config.copy(authUrl = authUrl)
-            onFieldUpdated()
+            updateUserConfig(config.copy(authUrl = authUrl))
         }
 
         fun onValidateApiUrl(apiUrl: String) {
-            config = config.copy(apiUrl = apiUrl)
-            onFieldUpdated()
+            updateUserConfig(config.copy(apiUrl = apiUrl))
         }
 
         fun onValidateLogFilter(logFilter: String) {
-            config = config.copy(logFilter = logFilter)
-            onFieldUpdated()
+            updateUserConfig(config.copy(logFilter = logFilter))
         }
 
         fun onValidateAccountSlug(accountSlug: String) {
-            config = config.copy(accountSlug = accountSlug)
-            onFieldUpdated()
+            updateUserConfig(config.copy(accountSlug = accountSlug))
         }
 
         fun onStartOnLoginChanged(isChecked: Boolean) {
-            config = config.copy(startOnLogin = isChecked)
-            onFieldUpdated()
+            updateUserConfig(config.copy(startOnLogin = isChecked))
         }
 
         fun onConnectOnStartChanged(isChecked: Boolean) {
-            config = config.copy(connectOnStart = isChecked)
-            onFieldUpdated()
+            updateUserConfig(config.copy(connectOnStart = isChecked))
         }
 
         fun deleteLogDirectory(context: Context) {
@@ -197,11 +177,10 @@ internal class SettingsViewModel
         }
 
         fun resetSettingsToDefaults() {
-            config = repo.getDefaultConfigSync()
+            userConfig = repo.getDefaultUserConfigSync()
             shouldResetFavoritesOnSave = true
-            _configStateFlow.value = config
             _managedStatusStateFlow.value = repo.getManagedStatus()
-            onFieldUpdated()
+            publishEffectiveConfig()
         }
 
         fun clearAction() {
@@ -248,41 +227,17 @@ internal class SettingsViewModel
                 )
         }
 
-        private fun Config.withManagedUpdates(
-            effectiveConfig: Config,
-            previousStatus: ManagedConfigStatus,
-            currentStatus: ManagedConfigStatus,
-        ): Config =
-            copy(
-                authUrl =
-                    effectiveConfig.authUrl.takeIf {
-                        previousStatus.isAuthUrlManaged || currentStatus.isAuthUrlManaged
-                    } ?: authUrl,
-                apiUrl =
-                    effectiveConfig.apiUrl.takeIf {
-                        previousStatus.isApiUrlManaged || currentStatus.isApiUrlManaged
-                    } ?: apiUrl,
-                logFilter =
-                    effectiveConfig.logFilter.takeIf {
-                        previousStatus.isLogFilterManaged || currentStatus.isLogFilterManaged
-                    } ?: logFilter,
-                accountSlug =
-                    effectiveConfig.accountSlug.takeIf {
-                        previousStatus.isAccountSlugManaged || currentStatus.isAccountSlugManaged
-                    } ?: accountSlug,
-                startOnLogin =
-                    if (previousStatus.isStartOnLoginManaged || currentStatus.isStartOnLoginManaged) {
-                        effectiveConfig.startOnLogin
-                    } else {
-                        startOnLogin
-                    },
-                connectOnStart =
-                    if (previousStatus.isConnectOnStartManaged || currentStatus.isConnectOnStartManaged) {
-                        effectiveConfig.connectOnStart
-                    } else {
-                        connectOnStart
-                    },
-            )
+        private fun updateUserConfig(editedConfig: Config) {
+            val managedStatus = _managedStatusStateFlow.value ?: repo.getManagedStatus()
+            userConfig = repo.mergeUnmanagedConfig(userConfig, editedConfig, managedStatus)
+            publishEffectiveConfig()
+        }
+
+        private fun publishEffectiveConfig() {
+            config = repo.getEffectiveConfig(userConfig)
+            _configStateFlow.value = config
+            onFieldUpdated()
+        }
 
         private fun areFieldsValid(): Boolean =
             URLUtil.isValidUrl(config.authUrl) &&
