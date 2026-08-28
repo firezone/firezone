@@ -4,7 +4,6 @@ package dev.firezone.android.features.session.ui.compose
 import android.os.Parcelable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -13,7 +12,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LeadingIconTab
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -90,7 +88,7 @@ fun SessionScreen(
 
     Scaffold(
         modifier = modifier,
-        topBar = { FirezoneTopBar(subtitle = actorName, onSettings = onSettings) },
+        topBar = { FirezoneTopBar(subtitle = actorName, onSettings = onSettings, onSignOut = onSignOut) },
     ) { innerPadding ->
         Column(Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
             // The tab bar is the top-level switcher, pinned below the app bar so it stays visible and
@@ -142,13 +140,6 @@ fun SessionScreen(
                         ConnectedDeviceRow(device = device, onClick = { selection = Selection.Device(device.id) })
                     }
                 }
-            }
-
-            OutlinedButton(
-                onClick = onSignOut,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            ) {
-                Text(stringResource(R.string.sign_out))
             }
         }
     }

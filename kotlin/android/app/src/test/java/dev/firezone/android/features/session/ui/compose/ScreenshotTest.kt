@@ -5,6 +5,7 @@ import android.app.Application
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
@@ -72,6 +73,15 @@ class ScreenshotTest {
         composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(5)
         composeRule.waitForIdle()
         captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/session-screen-scrolled.png")
+    }
+
+    @OptIn(ExperimentalRoborazziApi::class)
+    @Test
+    fun sessionScreenMenu() {
+        composeRule.setContent { FirezoneTheme { SessionScreenSample() } }
+        composeRule.onNodeWithContentDescription("More options").performClick()
+        composeRule.waitForIdle()
+        captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/session-screen-menu.png")
     }
 
     @Test
