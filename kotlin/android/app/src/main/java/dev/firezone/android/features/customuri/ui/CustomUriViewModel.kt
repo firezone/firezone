@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 
 @HiltViewModel
@@ -23,10 +25,21 @@ internal class CustomUriViewModel
     ) : ViewModel() {
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
+        private val callbackMutex = Mutex()
+        private var hasPublishedTerminalAction = false
 
         fun parseCustomUri(intent: Intent) {
-            viewModelScope.launch {
+            viewModelScope.launch { processCustomUri(intent) }
+        }
+
+        internal suspend fun processCustomUri(intent: Intent) {
+            callbackMutex.withLock {
+                if (hasPublishedTerminalAction) {
+                    return@withLock
+                }
+
                 val action = handleCustomUri(intent)
+                hasPublishedTerminalAction = true
                 if (action is ViewAction.AuthFlowError) {
                     action.errors.forEach { error ->
                         Firebase.crashlytics.log(error)
