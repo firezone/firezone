@@ -239,6 +239,27 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     refute html =~ "Thanks for your feedback!"
   end
 
+  test "rejects malformed interest feedback without crashing", context do
+    {:ok, lv, _html} =
+      context.conn
+      |> authorize_conn(context.actor)
+      |> live(~p"/#{context.account}/settings/device_posture/new")
+
+    lv |> element("#register-interest-other") |> render_click()
+
+    for params <- [
+          %{},
+          %{"feedback" => %{}},
+          %{"feedback" => %{"message" => nil}},
+          %{"feedback" => %{"message" => 42}}
+        ] do
+      html = render_hook(lv, "submit_interest_feedback", params)
+
+      assert html =~ "Please enter your feedback."
+      refute html =~ "Thanks for your feedback!"
+    end
+  end
+
   test "summarises synced devices by compliance state", %{
     conn: conn,
     account: account,

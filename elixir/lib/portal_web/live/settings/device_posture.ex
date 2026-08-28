@@ -230,7 +230,7 @@ defmodule PortalWeb.Settings.DevicePosture do
         %{"feedback" => %{"message" => feedback}},
         %{assigns: %{interest_provider: %{type: type} = provider}} = socket
       )
-      when type in @coming_soon_types do
+      when type in @coming_soon_types and is_binary(feedback) do
     feedback = String.trim(feedback)
 
     cond do
@@ -267,6 +267,19 @@ defmodule PortalWeb.Settings.DevicePosture do
             {:noreply,
              assign(socket, feedback_error: "We couldn't send your feedback. Please try again.")}
         end
+    end
+  end
+
+  def handle_event(
+        "submit_interest_feedback",
+        _params,
+        %{assigns: %{interest_provider: %{type: type}}} = socket
+      )
+      when type in @coming_soon_types do
+    if account_feature_enabled?(socket) do
+      {:noreply, assign(socket, feedback_error: "Please enter your feedback.")}
+    else
+      {:noreply, put_flash(socket, :error, @feature_disabled)}
     end
   end
 
