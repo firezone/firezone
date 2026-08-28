@@ -2,22 +2,21 @@
 package dev.firezone.android.features.settings.ui
 
 import android.content.Context
-import android.content.Intent
+import android.net.Uri
 import android.webkit.URLUtil
 import androidx.core.content.FileProvider
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.firezone.android.core.Log
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
@@ -32,40 +31,23 @@ internal class SettingsViewModel
     @Inject
     constructor(
         private val repo: Repository,
+        private val savedStateHandle: SavedStateHandle,
     ) : ViewModel() {
-        private val _uiState = MutableStateFlow(UiState())
+        private val initialConfig = savedStateHandle[DRAFT_CONFIG_KEY] ?: repo.getConfigSync()
+        private val _uiState =
+            MutableStateFlow(
+                UiState(
+                    config = initialConfig,
+                    managedStatus = repo.getManagedStatus(),
+                    isSaveButtonEnabled = areFieldsValid(initialConfig),
+                ),
+            )
         val uiState: StateFlow<UiState> = _uiState
 
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
-        private val _configStateFlow =
-            MutableStateFlow(
-                Config(
-                    authUrl = "",
-                    apiUrl = "",
-                    logFilter = "",
-                    accountSlug = "",
-                    startOnLogin = false,
-                    connectOnStart = false,
-                ),
-            )
-        val configStateFlow: StateFlow<Config> = _configStateFlow
-
-        private val config: Config get() = _configStateFlow.value
-
-        private val _managedStatusStateFlow = MutableStateFlow<ManagedConfigStatus?>(null)
-        val managedStatusStateFlow: StateFlow<ManagedConfigStatus?> = _managedStatusStateFlow
-
-        fun populateFieldsFromConfig() {
-            viewModelScope.launch {
-                repo.getConfig().collect {
-                    _configStateFlow.value = it
-                    _managedStatusStateFlow.value = repo.getManagedStatus()
-                    onFieldUpdated()
-                }
-            }
-        }
+        private val config: Config get() = _uiState.value.config
 
         fun onViewResume(context: Context) {
             val directory = File(context.cacheDir.absolutePath + "/logs")
@@ -87,18 +69,24 @@ internal class SettingsViewModel
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
                 repo.saveSettings(config).collect {
+                    savedStateHandle.remove<Config>(DRAFT_CONFIG_KEY)
                     actionMutableStateFlow.value = ViewAction.NavigateBack
                 }
             }
         }
 
         fun onCancel() {
+            savedStateHandle.remove<Config>(DRAFT_CONFIG_KEY)
             actionMutableStateFlow.value = ViewAction.NavigateBack
         }
 
         fun onConfigChanged(config: Config) {
-            _configStateFlow.value = config
-            onFieldUpdated()
+            savedStateHandle[DRAFT_CONFIG_KEY] = config
+            _uiState.value =
+                _uiState.value.copy(
+                    config = config,
+                    isSaveButtonEnabled = areFieldsValid(config),
+                )
         }
 
         fun deleteLogDirectory(context: Context) {
@@ -116,47 +104,35 @@ internal class SettingsViewModel
         }
 
         fun createLogZip(context: Context) {
-            viewModelScope.launch {
+            viewModelScope.launch(Dispatchers.IO) {
                 val logDir = context.cacheDir.absolutePath + "/logs"
                 val sourceFolder = File(logDir)
                 val zipFile = File(getLogZipPath(context))
 
-                zipFolder(sourceFolder, zipFile).collect()
-
-                val sendIntent =
-                    Intent(Intent.ACTION_SEND).apply {
-                        putExtra(
-                            Intent.EXTRA_SUBJECT,
-                            "Sharing diagnostic logs",
-                        )
-
-                        // Add additional details to the share intent, for ex: email body.
-                        // putExtra(
-                        //    Intent.EXTRA_TEXT,
-                        //    "Sharing diagnostic logs for $input"
-                        // )
-
+                runCatching { zipFolder(sourceFolder, zipFile) }
+                    .onSuccess {
                         val fileURI =
                             FileProvider.getUriForFile(
                                 context,
                                 "${context.applicationContext.packageName}.provider",
                                 zipFile,
                             )
-                        putExtra(Intent.EXTRA_STREAM, fileURI)
-
-                        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        data = fileURI
+                        actionMutableStateFlow.value = ViewAction.ShareLogs(fileURI)
                     }
-                val shareIntent = Intent.createChooser(sendIntent, null)
-                context.startActivity(shareIntent)
+                    .onFailure { Log.e(TAG, "Failed to create diagnostic log archive", it) }
             }
         }
 
         fun resetSettingsToDefaults() {
-            _configStateFlow.value = repo.getDefaultConfigSync()
+            val config = repo.getDefaultConfigSync()
+            savedStateHandle[DRAFT_CONFIG_KEY] = config
             repo.resetFavorites()
-            _managedStatusStateFlow.value = repo.getManagedStatus()
-            onFieldUpdated()
+            _uiState.value =
+                _uiState.value.copy(
+                    config = config,
+                    managedStatus = repo.getManagedStatus(),
+                    isSaveButtonEnabled = areFieldsValid(config),
+                )
         }
 
         fun clearAction() {
@@ -170,12 +146,12 @@ internal class SettingsViewModel
             }
         }
 
-        private suspend fun zipFolder(
+        private fun zipFolder(
             sourceFolder: File,
             zipFile: File,
-        ) = flow {
+        ) {
             ZipOutputStream(FileOutputStream(zipFile)).use { zipStream ->
-                sourceFolder.walkTopDown().forEach { file ->
+                sourceFolder.walkTopDown().filter { it != sourceFolder }.forEach { file ->
                     val entryName = sourceFolder.toPath().relativize(file.toPath()).toString()
                     if (file.isDirectory) {
                         zipStream.putNextEntry(ZipEntry("$entryName/"))
@@ -187,23 +163,13 @@ internal class SettingsViewModel
                         }
                         zipStream.closeEntry()
                     }
-                    emit(Result.success(zipFile))
                 }
             }
-        }.catch { e ->
-            emit(Result.failure(e))
-        }.flowOn(Dispatchers.IO)
+        }
 
         private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/logs.zip"
 
-        private fun onFieldUpdated() {
-            _uiState.value =
-                _uiState.value.copy(
-                    isSaveButtonEnabled = areFieldsValid(),
-                )
-        }
-
-        private fun areFieldsValid(): Boolean =
+        private fun areFieldsValid(config: Config): Boolean =
             URLUtil.isValidUrl(config.authUrl) &&
                 isUriValid(config.apiUrl) &&
                 config.logFilter.isNotBlank()
@@ -217,11 +183,22 @@ internal class SettingsViewModel
             }
 
         internal data class UiState(
+            val config: Config,
+            val managedStatus: ManagedConfigStatus,
             val isSaveButtonEnabled: Boolean = false,
             val logSizeBytes: Long = 0,
         )
 
         internal sealed class ViewAction {
             data object NavigateBack : ViewAction()
+
+            data class ShareLogs(
+                val uri: Uri,
+            ) : ViewAction()
+        }
+
+        companion object {
+            private const val DRAFT_CONFIG_KEY = "settingsDraftConfig"
+            private const val TAG = "SettingsViewModel"
         }
     }
