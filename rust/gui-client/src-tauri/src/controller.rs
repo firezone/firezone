@@ -45,11 +45,7 @@ pub struct Controller<I: GuiIntegration> {
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
-    /// What the Tunnel service last loaded from the platform keystore.
-    ///
-    /// The service pushes this; we keep it so the GUI can be told again whenever it asks for the
-    /// current state, e.g. after a window reload.
-    x509: Option<Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>>,
+    x509: Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
     ipc_rx: ipc::ClientRead<service::ServerMsg>,
     integration: I,
@@ -206,7 +202,7 @@ impl<I: GuiIntegration> Controller<I> {
         let (mut ipc_rx, mut ipc_client) =
             ipc::connect(socket, ipc::ConnectOptions::default()).await?;
 
-        let (firezone_id, advanced_settings, mdm_settings) = receive_hello(&mut ipc_rx)
+        let (firezone_id, advanced_settings, mdm_settings, x509) = receive_hello(&mut ipc_rx)
             .await
             .map_err(FailedToReceiveHello)?;
 
@@ -243,7 +239,7 @@ impl<I: GuiIntegration> Controller<I> {
             legacy_advanced_settings_path,
             auth,
             clear_logs_callback: None,
-            x509: None,
+            x509,
             ipc_client,
             ipc_rx,
             integration,
@@ -275,12 +271,14 @@ impl<I: GuiIntegration> Controller<I> {
     pub async fn main_loop(mut self) -> Result<()> {
         self.update_telemetry_context().await?;
         self.maybe_start_session().await?;
+        self.notify_x509_changed()?;
         self.refresh_ui_state();
 
         if !ran_before::get().await? || !self.general_settings.start_minimized {
             let (_, session_view_model) = self.build_ui_state();
 
             self.integration.show_overview_page(&session_view_model)?;
+            self.reload_x509().await?;
         }
 
         loop {
@@ -596,6 +594,7 @@ impl<I: GuiIntegration> Controller<I> {
                         self.advanced_settings.clone(),
                     )?,
                 };
+                self.reload_x509().await?;
 
                 // When the About or Settings windows are hidden / shown, log the
                 // run ID and uptime. This makes it easy to check client stability on
@@ -770,7 +769,7 @@ impl<I: GuiIntegration> Controller<I> {
                     tracing::debug!("Failed to read the platform keystore: {error}");
                 }
 
-                self.x509 = Some(result);
+                self.x509 = result;
 
                 self.notify_x509_changed()?;
                 self.refresh_ui_state();
@@ -821,6 +820,7 @@ impl<I: GuiIntegration> Controller<I> {
                 let (_, session_view_model) = self.build_ui_state();
 
                 self.integration.show_overview_page(&session_view_model)?;
+                self.reload_x509().await?;
             }
         }
 
@@ -1028,13 +1028,18 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    /// Tells the GUI what the keystore holds, if the Tunnel service has said so yet.
-    fn notify_x509_changed(&self) -> Result<()> {
-        let Some(x509) = self.x509.as_ref() else {
-            return Ok(());
-        };
+    /// Asks the Tunnel service to re-read the platform keystore.
+    ///
+    /// Sent for every shown window: the tray menu re-shows the same windows for the life of
+    /// the process, so only this keeps the X.509 page's certificate current. Fire-and-forget:
+    /// the fresh read arrives as an ordinary [`service::ServerMsg::X509Certificate`] push.
+    async fn reload_x509(&mut self) -> Result<()> {
+        self.send_ipc(&service::ClientMsg::ReloadX509).await
+    }
 
-        self.integration.notify_x509_changed(x509)?;
+    /// Tells the GUI what the Tunnel service last loaded from the keystore.
+    fn notify_x509_changed(&self) -> Result<()> {
+        self.integration.notify_x509_changed(&self.x509)?;
 
         Ok(())
     }
@@ -1042,10 +1047,9 @@ impl<I: GuiIntegration> Controller<I> {
     /// Who the certificate the Tunnel service last loaded claims is connecting.
     fn client_identity(&self) -> x509_keystore::ClientIdentity {
         match &self.x509 {
-            Some(Ok(Some(certificate))) => certificate.identity(),
-            Some(Ok(None)) => x509_keystore::ClientIdentity::Absent,
-            Some(Err(_)) => x509_keystore::ClientIdentity::Absent,
-            None => x509_keystore::ClientIdentity::Absent,
+            Ok(Some(certificate)) => certificate.identity(),
+            Ok(None) => x509_keystore::ClientIdentity::Absent,
+            Err(_) => x509_keystore::ClientIdentity::Absent,
         }
     }
 
@@ -1079,7 +1083,12 @@ impl<I: GuiIntegration> Controller<I> {
 
 async fn receive_hello(
     ipc_rx: &mut ipc::ClientRead<service::ServerMsg>,
-) -> Result<(String, AdvancedSettings, MdmSettings)> {
+) -> Result<(
+    String,
+    AdvancedSettings,
+    MdmSettings,
+    Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+)> {
     const TIMEOUT: Duration = Duration::from_secs(5);
 
     let server_msg = tokio::time::timeout(TIMEOUT, ipc_rx.next())
@@ -1094,12 +1103,18 @@ async fn receive_hello(
         firezone_id,
         advanced_settings,
         mdm_settings,
+        x509_certificate,
     } = server_msg
     else {
         bail!("Expected `Hello` from tunnel service but got `{server_msg}`")
     };
 
-    Ok((firezone_id, advanced_settings, mdm_settings))
+    Ok((
+        firezone_id,
+        advanced_settings,
+        mdm_settings,
+        x509_certificate,
+    ))
 }
 
 fn try_delete_legacy_config(path: &Path) -> Result<()> {
@@ -1176,6 +1191,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn asks_for_a_fresh_certificate_on_every_show() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        // Startup shows the overview page.
+        mock_tunnel.rx_reload_x509().await;
+
+        for window in [system_tray::Window::Settings, system_tray::Window::About] {
+            test_controller
+                .ctrl_tx
+                .send(ControllerRequest::SystemTrayMenu(
+                    system_tray::Event::ShowWindow(window),
+                ))
+                .await
+                .unwrap();
+
+            mock_tunnel.rx_reload_x509().await;
+        }
+    }
+
+    #[tokio::test]
     async fn forwards_the_pushed_x509_certificate_to_the_gui() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
@@ -1189,27 +1227,24 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        // The greeting's certificate is the first; the pushed one has to land after it.
+        let x509 = test_controller
+            .wait_integration(|i| i.x509.get(1).cloned())
+            .await;
 
-        assert_eq!(test_controller.integration().x509, vec![expected]);
+        assert_eq!(x509, expected);
     }
 
     #[tokio::test]
-    async fn forwards_a_keystore_failure_to_the_gui() {
+    async fn a_keystore_read_failure_in_the_greeting_reaches_the_gui() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
-        mock_tunnel.send_hello().await;
-
         mock_tunnel
-            .tx
-            .send(&service::ServerMsg::X509Certificate(Err(
-                x509_keystore::Error::UnreadableKeystore {
-                    message: "Failed to enumerate PKCS#11 tokens".to_owned(),
-                },
-            )))
-            .await
-            .unwrap();
+            .send_hello_with_x509(Err(x509_keystore::Error::UnreadableKeystore {
+                message: "Failed to enumerate PKCS#11 tokens".to_owned(),
+            }))
+            .await;
 
         let x509 = test_controller
             .wait_integration(|i| i.x509.first().cloned())
@@ -1719,18 +1754,51 @@ mod tests {
 
     impl MockTunnel {
         async fn send_hello(&mut self) {
+            self.send_hello_with_x509(Ok(None)).await
+        }
+
+        async fn send_hello_with_x509(
+            &mut self,
+            x509_certificate: Result<
+                Option<x509_keystore::ParsedCertificate>,
+                x509_keystore::Error,
+            >,
+        ) {
             self.tx
                 .send(&service::ServerMsg::Hello {
                     firezone_id: "test-firezone-id".to_owned(),
                     advanced_settings: AdvancedSettings::default(),
                     mdm_settings: MdmSettings::default(),
+                    x509_certificate,
                 })
                 .await
                 .unwrap();
         }
 
-        async fn start_ok(&mut self) {
+        /// The next message that is not the fire-and-forget keystore reload.
+        async fn next_msg(&mut self) -> service::ClientMsg {
+            loop {
+                let msg = self.rx.next().await.unwrap().unwrap();
+
+                if matches!(msg, service::ClientMsg::ReloadX509) {
+                    continue;
+                }
+
+                return msg;
+            }
+        }
+
+        /// Awaits the keystore reload the GUI sends for a shown window.
+        async fn rx_reload_x509(&mut self) {
             let msg = self.rx.next().await.unwrap().unwrap();
+            assert!(
+                matches!(msg, service::ClientMsg::ReloadX509),
+                "expected `ReloadX509` but got {msg:?}"
+            );
+        }
+
+        async fn start_ok(&mut self) {
+            let msg = self.next_msg().await;
             assert!(
                 matches!(msg, service::ClientMsg::Connect { .. }),
                 "expected `Connect` but got {msg:?}"
@@ -1767,7 +1835,7 @@ mod tests {
         }
 
         async fn rx_apply_advanced_settings(&mut self) -> AdvancedSettings {
-            let msg = self.rx.next().await.unwrap().unwrap();
+            let msg = self.next_msg().await;
             let service::ClientMsg::ApplyAdvancedSettings(s) = msg else {
                 panic!("expected `ApplyAdvancedSettings` but got {msg:?}");
             };
