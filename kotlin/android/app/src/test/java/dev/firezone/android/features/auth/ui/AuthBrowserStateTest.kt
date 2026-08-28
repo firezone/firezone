@@ -13,6 +13,13 @@ class AuthBrowserStateTest {
     }
 
     @Test
+    fun `restored unlaunched request starts before its URL is replayed`() {
+        val restoredState = AuthBrowserState.restore(AuthBrowserState.NOT_STARTED.name)
+
+        assertEquals(AuthBrowserState.Action.START_AUTH_FLOW, restoredState.resumeAction())
+    }
+
+    @Test
     fun `returns to sign in after restoring a launched browser`() {
         val restoredState = AuthBrowserState.restore(AuthBrowserState.LAUNCHED.name)
 
