@@ -7,18 +7,27 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
 import dev.firezone.android.core.data.Repository
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
@@ -82,6 +91,43 @@ class CustomUriViewModelTest {
         )
     }
 
+    @Test
+    fun `concurrent callbacks consume state once`() =
+        runBlocking {
+            val context = RuntimeEnvironment.getApplication()
+            val delegate = context.getSharedPreferences("custom-uri-view-model-concurrent", Context.MODE_PRIVATE)
+            delegate.edit().clear().commit()
+            val coordinatedPreferences = CoordinatedStateReads(delegate)
+            val executor = Executors.newFixedThreadPool(2)
+            val dispatcher = executor.asCoroutineDispatcher()
+
+            try {
+                val repository = Repository(context, dispatcher, coordinatedPreferences)
+                val viewModel = CustomUriViewModel(repository)
+                repository.saveState(EXPECTED_STATE).collect()
+                repository.saveNonce("nonce-").collect()
+
+                val first =
+                    async(start = CoroutineStart.UNDISPATCHED) {
+                        viewModel.handleCustomUri(callbackIntent(state = EXPECTED_STATE, fragment = "first"))
+                    }
+                val second =
+                    async(start = CoroutineStart.UNDISPATCHED) {
+                        viewModel.handleCustomUri(callbackIntent(state = EXPECTED_STATE, fragment = "second"))
+                    }
+                executor.execute { coordinatedPreferences.releaseStateReads() }
+
+                val actions = awaitAll(first, second)
+
+                assertEquals(1, actions.count { it == CustomUriViewModel.ViewAction.AuthFlowComplete })
+                assertNull(repository.getNonceSync())
+                assertNull(repository.getStateSync())
+                assertTrue(repository.getTokenSync() in setOf("nonce-first", "nonce-second"))
+            } finally {
+                dispatcher.close()
+            }
+        }
+
     private fun assertInvalidCallbackDoesNotMutateCredentials(intent: Intent) =
         runBlocking {
             seedExistingCredentials()
@@ -128,5 +174,33 @@ class CustomUriViewModelTest {
 
     private companion object {
         const val EXPECTED_STATE = "expected-state"
+    }
+}
+
+private class CoordinatedStateReads(
+    private val delegate: SharedPreferences,
+) : SharedPreferences by delegate {
+    private val stateReads = AtomicInteger()
+    private val stateReadsRelease = CountDownLatch(1)
+
+    override fun getString(
+        key: String?,
+        defValue: String?,
+    ): String? {
+        val value = delegate.getString(key, defValue)
+        if (key != "state") {
+            return value
+        }
+
+        if (stateReads.incrementAndGet() == 2) {
+            stateReadsRelease.countDown()
+        }
+        check(stateReadsRelease.await(10, TimeUnit.SECONDS))
+
+        return value
+    }
+
+    fun releaseStateReads() {
+        stateReadsRelease.countDown()
     }
 }
