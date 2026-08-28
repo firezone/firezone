@@ -3,9 +3,9 @@ package dev.firezone.android.features.signin.ui.compose
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
@@ -51,7 +51,10 @@ fun SignInScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = onSignIn,
+                contentPadding = PaddingValues(horizontal = 32.dp, vertical = 12.dp),
+            ) {
                 Text(text = stringResource(R.string.sign_in))
             }
         }
