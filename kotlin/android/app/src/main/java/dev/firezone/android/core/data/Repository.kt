@@ -97,6 +97,8 @@ class Repository
             managedConfiguration: ManagedConfiguration,
         ): Config = managedConfiguration.applyTo(userConfig)
 
+        internal fun getEffectiveConfigFromPersistedManaged(userConfig: Config): Config = userConfig.withManagedOverrides()
+
         fun mergeUnmanagedConfig(
             userConfig: Config,
             editedConfig: Config,
