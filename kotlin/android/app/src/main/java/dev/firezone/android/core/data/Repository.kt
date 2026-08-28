@@ -251,13 +251,6 @@ class Repository
                 .putString(ENABLED_INTERNET_RESOURCE_KEY, Gson().toJson(value))
                 .apply()
 
-        fun saveNonce(value: String): Flow<Unit> =
-            flow {
-                emit(saveNonceSync(value))
-            }.flowOn(coroutineDispatcher)
-
-        fun saveNonceSync(value: String) = sharedPreferences.edit().putString(NONCE_KEY, value).apply()
-
         fun saveNonceAndStateSync(
             nonce: String,
             state: String,
@@ -271,13 +264,6 @@ class Repository
                     .apply()
             }
         }
-
-        fun saveState(value: String): Flow<Unit> =
-            flow {
-                emit(saveStateSync(value))
-            }.flowOn(coroutineDispatcher)
-
-        fun saveStateSync(value: String) = sharedPreferences.edit().putString(STATE_KEY, value).apply()
 
         fun saveToken(value: String): Flow<Unit> =
             flow {
@@ -297,7 +283,7 @@ class Repository
             actorName: String,
         ): Flow<Boolean> =
             flow {
-                val didSave =
+                val isAccepted =
                     synchronized(authStateLock) {
                         val stateHash = hashAuthState(state)
                         val consumedStateHash = sharedPreferences.getString(CONSUMED_AUTH_STATE_HASH_KEY, null)
@@ -329,7 +315,7 @@ class Repository
                         }
                     }
 
-                emit(didSave)
+                emit(isAccepted)
             }.flowOn(coroutineDispatcher)
 
         fun clearToken() {
