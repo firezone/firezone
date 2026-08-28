@@ -24,8 +24,7 @@ internal class AuthViewModel
             viewModelScope.launch {
                 val state = generateRandomString(NONCE_LENGTH)
                 val nonce = generateRandomString(NONCE_LENGTH)
-                repo.saveNonceSync(nonce)
-                repo.saveStateSync(state)
+                repo.saveNonceAndStateSync(nonce = nonce, state = state)
                 val config = repo.getConfigSync()
                 val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=gui-client"
 
