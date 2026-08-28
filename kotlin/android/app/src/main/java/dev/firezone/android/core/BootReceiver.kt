@@ -34,9 +34,9 @@ class BootReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             applicationScope.launch(Dispatchers.IO) {
                 try {
-                    managedConfigurationSource.refresh()
-                    val userConfig = repo.getConfigSync()
-                    if (userConfig.startOnLogin) {
+                    val managedConfiguration = managedConfigurationSource.refresh()
+                    val config = repo.getEffectiveConfig(repo.getUserConfigSync(), managedConfiguration)
+                    if (config.startOnLogin) {
                         val serviceIntent = Intent(context, TunnelService::class.java)
                         context.startService(serviceIntent)
                     }

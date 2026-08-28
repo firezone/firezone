@@ -12,6 +12,7 @@ import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.ManagedConfiguration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,22 +44,26 @@ internal class SettingsViewModel
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
         private var userConfig = repo.getUserConfigSync()
-        private var config = repo.getEffectiveConfig(userConfig)
+        private var managedConfiguration: ManagedConfiguration? = managedConfigurationSource.configuration.value
+        private var config = getEffectiveConfig()
 
         // StateFlow that emits config only on load/reset, not during editing
         private val _configStateFlow = MutableStateFlow(config)
         val configStateFlow: StateFlow<Config> = _configStateFlow
 
-        private val _managedStatusStateFlow = MutableStateFlow<ManagedConfigStatus?>(null)
+        private val _managedStatusStateFlow =
+            MutableStateFlow<ManagedConfigStatus?>(
+                managedConfiguration?.managedStatus() ?: repo.getManagedStatus(),
+            )
         val managedStatusStateFlow: StateFlow<ManagedConfigStatus?> = _managedStatusStateFlow
 
         private var shouldResetFavoritesOnSave = false
 
         init {
             viewModelScope.launch {
-                managedConfigurationSource.configuration.filterNotNull().collect {
-                    val managedStatus = repo.getManagedStatus()
-                    _managedStatusStateFlow.value = managedStatus
+                managedConfigurationSource.configuration.filterNotNull().collect { configuration ->
+                    managedConfiguration = configuration
+                    _managedStatusStateFlow.value = configuration.managedStatus()
                     publishEffectiveConfig()
                 }
             }
@@ -87,7 +92,7 @@ internal class SettingsViewModel
 
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
-                repo.saveSettings(userConfig).collect {
+                repo.saveUserConfig(userConfig).collect {
                     if (shouldResetFavoritesOnSave) {
                         repo.resetFavorites()
                         shouldResetFavoritesOnSave = false
@@ -179,7 +184,7 @@ internal class SettingsViewModel
         fun resetSettingsToDefaults() {
             userConfig = repo.getDefaultUserConfigSync()
             shouldResetFavoritesOnSave = true
-            _managedStatusStateFlow.value = repo.getManagedStatus()
+            _managedStatusStateFlow.value = managedConfiguration?.managedStatus() ?: repo.getManagedStatus()
             publishEffectiveConfig()
         }
 
@@ -228,16 +233,23 @@ internal class SettingsViewModel
         }
 
         private fun updateUserConfig(editedConfig: Config) {
-            val managedStatus = _managedStatusStateFlow.value ?: repo.getManagedStatus()
+            val managedStatus =
+                _managedStatusStateFlow.value
+                    ?: managedConfiguration?.managedStatus()
+                    ?: repo.getManagedStatus()
             userConfig = repo.mergeUnmanagedConfig(userConfig, editedConfig, managedStatus)
             publishEffectiveConfig()
         }
 
         private fun publishEffectiveConfig() {
-            config = repo.getEffectiveConfig(userConfig)
+            config = getEffectiveConfig()
             _configStateFlow.value = config
             onFieldUpdated()
         }
+
+        private fun getEffectiveConfig(): Config =
+            managedConfiguration?.let { repo.getEffectiveConfig(userConfig, it) }
+                ?: repo.getConfigSync()
 
         private fun areFieldsValid(): Boolean =
             URLUtil.isValidUrl(config.authUrl) &&

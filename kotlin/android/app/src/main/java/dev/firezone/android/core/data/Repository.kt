@@ -10,6 +10,7 @@ import com.google.gson.reflect.TypeToken
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.ManagedConfiguration
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,7 +72,7 @@ class Repository
             MutableStateFlow(Favorites(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())))
         val favorites = _favorites.asStateFlow()
 
-        fun getConfigSync(): Config = getEffectiveConfig(getUserConfigSync())
+        fun getConfigSync(): Config = getUserConfigSync().withManagedOverrides()
 
         fun getUserConfigSync(): Config {
             val defaults = getDefaultUserConfigSync()
@@ -86,7 +87,10 @@ class Repository
             )
         }
 
-        fun getEffectiveConfig(userConfig: Config): Config = userConfig.withManagedOverrides()
+        internal fun getEffectiveConfig(
+            userConfig: Config,
+            managedConfiguration: ManagedConfiguration,
+        ): Config = managedConfiguration.applyTo(userConfig)
 
         fun mergeUnmanagedConfig(
             userConfig: Config,
@@ -115,7 +119,7 @@ class Repository
                 emit(getConfigSync())
             }.flowOn(coroutineDispatcher)
 
-        fun getDefaultConfigSync(): Config = getEffectiveConfig(getDefaultUserConfigSync())
+        fun getDefaultConfigSync(): Config = getDefaultUserConfigSync().withManagedOverrides()
 
         fun getDefaultUserConfigSync(): Config =
             Config(
@@ -135,17 +139,12 @@ class Repository
         fun saveSettings(value: Config): Flow<Unit> =
             flow {
                 val userConfig = mergeUnmanagedConfig(getUserConfigSync(), value, getManagedStatus())
-                emit(
-                    sharedPreferences
-                        .edit()
-                        .putString(AUTH_URL_KEY, userConfig.authUrl)
-                        .putString(API_URL_KEY, userConfig.apiUrl)
-                        .putString(LOG_FILTER_KEY, userConfig.logFilter)
-                        .putString(ACCOUNT_SLUG_KEY, userConfig.accountSlug)
-                        .putBoolean(START_ON_LOGIN_KEY, userConfig.startOnLogin)
-                        .putBoolean(CONNECT_ON_START_KEY, userConfig.connectOnStart)
-                        .apply(),
-                )
+                emit(saveUserConfigSync(userConfig))
+            }.flowOn(coroutineDispatcher)
+
+        fun saveUserConfig(value: Config): Flow<Unit> =
+            flow {
+                emit(saveUserConfigSync(value))
             }.flowOn(coroutineDispatcher)
 
         // TODO: Consider adding support for the legacy managed configuration keys like token,
@@ -301,6 +300,17 @@ class Repository
         fun setNotificationPermissionRequested() {
             sharedPreferences.edit().putBoolean(NOTIFICATION_PERMISSION_REQUESTED_KEY, true).apply()
         }
+
+        private fun saveUserConfigSync(value: Config) =
+            sharedPreferences
+                .edit()
+                .putString(AUTH_URL_KEY, value.authUrl)
+                .putString(API_URL_KEY, value.apiUrl)
+                .putString(LOG_FILTER_KEY, value.logFilter)
+                .putString(ACCOUNT_SLUG_KEY, value.accountSlug)
+                .putBoolean(START_ON_LOGIN_KEY, value.startOnLogin)
+                .putBoolean(CONNECT_ON_START_KEY, value.connectOnStart)
+                .apply()
 
         private fun Config.withManagedOverrides(): Config =
             copy(

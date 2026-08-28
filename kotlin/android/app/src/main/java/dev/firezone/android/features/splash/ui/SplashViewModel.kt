@@ -68,9 +68,9 @@ internal class SplashViewModel
                 }
 
                 val managedConfiguration = managedConfigurationSource.refresh()
-                val token = managedConfiguration.token ?: tokenStore.get()
+                val credential = managedConfiguration.resolveSessionCredential(tokenStore.get())
 
-                if (token.isNullOrBlank()) {
+                if (credential == null) {
                     actionMutableStateFlow.value = ViewAction.NavigateToSignIn
                     return@launch
                 }
@@ -83,7 +83,10 @@ internal class SplashViewModel
                     return@launch
                 }
 
-                val connectOnStart = repo.getConfigSync().connectOnStart
+                val connectOnStart =
+                    repo
+                        .getEffectiveConfig(repo.getUserConfigSync(), managedConfiguration)
+                        .connectOnStart
 
                 // If this is the initial launch and connectOnStart is true, try to connect
                 if (isInitialLaunch && connectOnStart) {

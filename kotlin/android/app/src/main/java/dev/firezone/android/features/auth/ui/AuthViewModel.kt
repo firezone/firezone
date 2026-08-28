@@ -37,12 +37,12 @@ internal class AuthViewModel
             hasStartedAuthFlow = true
 
             viewModelScope.launch {
-                managedConfigurationSource.refresh()
+                val managedConfiguration = managedConfigurationSource.refresh()
                 val state = generateRandomString(NONCE_LENGTH)
                 val nonce = generateRandomString(NONCE_LENGTH)
                 authState = state
                 pendingAuthSession.begin(nonce = nonce, state = state)
-                val config = repo.getConfigSync()
+                val config = repo.getEffectiveConfig(repo.getUserConfigSync(), managedConfiguration)
                 val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=gui-client"
 
                 actionMutableStateFlow.value =
