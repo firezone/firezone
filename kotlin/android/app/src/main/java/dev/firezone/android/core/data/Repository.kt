@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
 import javax.inject.Inject
 
@@ -71,6 +73,7 @@ class Repository
         private val _favorites =
             MutableStateFlow(Favorites(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())))
         val favorites = _favorites.asStateFlow()
+        private val authCallbackMutex = Mutex()
 
         fun getConfigSync(): Config = getUserConfigSync().withManagedOverrides()
 
@@ -292,25 +295,27 @@ class Repository
             actorName: String,
         ): Flow<Boolean> =
             flow {
-                val expectedState = sharedPreferences.getString(STATE_KEY, "").orEmpty()
-                if (!MessageDigest.isEqual(expectedState.toByteArray(), state.toByteArray())) {
-                    emit(false)
-                    return@flow
-                }
+                val didSave =
+                    authCallbackMutex.withLock {
+                        val expectedState = sharedPreferences.getString(STATE_KEY, "").orEmpty()
+                        if (!MessageDigest.isEqual(expectedState.toByteArray(), state.toByteArray())) {
+                            return@withLock false
+                        }
 
-                val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
-                val editor =
-                    sharedPreferences
-                        .edit()
-                        .putString(TOKEN_KEY, nonce.plus(fragment))
-                        .remove(NONCE_KEY)
-                        .remove(STATE_KEY)
+                        val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
+                        sharedPreferences
+                            .edit()
+                            .putString(TOKEN_KEY, nonce.plus(fragment))
+                            .remove(NONCE_KEY)
+                            .remove(STATE_KEY)
+                            .putString(ACCOUNT_SLUG_KEY, accountSlug)
+                            .putString(ACTOR_NAME_KEY, actorName)
+                            .apply()
 
-                editor.putString(ACCOUNT_SLUG_KEY, accountSlug)
-                editor.putString(ACTOR_NAME_KEY, actorName)
+                        true
+                    }
 
-                editor.apply()
-                emit(true)
+                emit(didSave)
             }.flowOn(coroutineDispatcher)
 
         fun clearToken() {
