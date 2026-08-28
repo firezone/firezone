@@ -178,7 +178,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert connected_gateway.last_seen_remote_ip_location_lon == 30.5167
     end
 
-    test "updates an existing multi-owner gateway with its reported metadata" do
+    test "updates an existing multi-owner gateway's hardware metadata without changing its name" do
       account = account_fixture()
       site = site_fixture(account: account)
 
@@ -204,12 +204,12 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
       assert socket.assigns.gateway.id == gateway.id
-      assert socket.assigns.gateway.name == "new-name"
+      assert socket.assigns.gateway.name == "old-name"
       assert socket.assigns.gateway.device_serial == "new-serial"
       assert socket.assigns.gateway.device_uuid == "new-uuid"
 
       persisted = Portal.Repo.get_by!(Portal.Device, account_id: account.id, id: gateway.id)
-      assert persisted.name == "new-name"
+      assert persisted.name == "old-name"
       assert persisted.device_serial == "new-serial"
       assert persisted.device_uuid == "new-uuid"
     end
@@ -289,7 +289,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert socket.assigns.gateway.firezone_id == "reported-id"
     end
 
-    test "single-owner connect updates the reported firezone_id and metadata" do
+    test "single-owner connect updates the reported firezone_id and hardware metadata without changing its name" do
       account = account_fixture()
       site = site_fixture(account: account)
 
@@ -315,13 +315,13 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
       assert socket.assigns.gateway.firezone_id == "different-id"
-      assert socket.assigns.gateway.name == "new-name"
+      assert socket.assigns.gateway.name == "old-name"
       assert socket.assigns.gateway.device_serial == "new-serial"
       assert socket.assigns.gateway.device_uuid == "new-uuid"
 
       persisted = Portal.Repo.get_by!(Portal.Device, account_id: account.id, id: gateway.id)
       assert persisted.firezone_id == "different-id"
-      assert persisted.name == "new-name"
+      assert persisted.name == "old-name"
       assert persisted.device_serial == "new-serial"
       assert persisted.device_uuid == "new-uuid"
     end

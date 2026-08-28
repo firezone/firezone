@@ -12,7 +12,6 @@ defmodule PortalAPI.Gateway.Socket do
   import Portal.Changeset
 
   @reported_metadata_fields ~w[
-    name
     device_serial
     device_uuid
   ]a
@@ -134,7 +133,7 @@ defmodule PortalAPI.Gateway.Socket do
     end
   end
 
-  # Device metadata is self-reported on every connection. Only fields present
+  # Hardware metadata is self-reported on every connection. Only fields present
   # in the socket params are cast, so an older gateway that omits a field keeps
   # the value already stored on its device row.
   defp put_reported_metadata(%Device{} = gateway, attrs) do
@@ -184,7 +183,7 @@ defmodule PortalAPI.Gateway.Socket do
   defp maybe_put_firezone_id(%Device{} = gateway, _attrs), do: {:ok, gateway}
 
   defp insert_changeset(site, attrs) do
-    insert_fields = [:firezone_id | @reported_metadata_fields]
+    insert_fields = [:firezone_id, :name | @reported_metadata_fields]
     required_fields = ~w[firezone_id name]a
 
     %Device{}
