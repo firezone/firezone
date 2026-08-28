@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,9 +30,10 @@ internal class SplashViewModel
         private val repo: Repository,
         private val applicationRestrictions: Bundle,
         private val applicationMode: ApplicationMode,
+        savedStateHandle: SavedStateHandle,
     ) : ViewModel() {
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
-        private val launchFlow = SplashLaunchFlow()
+        private val launchFlow = SplashLaunchFlow(savedStateHandle)
         private var checkTunnelStateJob: Job? = null
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
