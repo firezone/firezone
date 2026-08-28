@@ -88,7 +88,7 @@ private fun PermissionScreen(
                 Text(stringResource(R.string.request_permission))
             }
             if (onSkip != null) {
-                // M3 labels text buttons with `primary`, which the brand makes orange.
+                // Brand orange marks the call to action, which here is granting the permission.
                 TextButton(
                     onClick = onSkip,
                     modifier = Modifier.fillMaxWidth(),
