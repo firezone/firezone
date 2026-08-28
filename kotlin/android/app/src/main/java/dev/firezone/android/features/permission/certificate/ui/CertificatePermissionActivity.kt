@@ -44,24 +44,28 @@ class CertificatePermissionActivity : AppCompatActivity() {
     }
 
     private fun chooseCertificate() {
+        val configuredAlias = repository.getX509CertificateAliasSync(applicationRestrictions)
+
         // Android answers on a binder thread, so anything touching the UI hops back itself.
         KeyChain.choosePrivateKeyAlias(
             this,
             { alias ->
-                if (alias == null) {
+                // KeyChain takes the configured alias as a pre-selection only, so the user can
+                // hand back a different one, which leaves the configured certificate still refused.
+                if (alias != null && alias == configuredAlias) {
+                    finish()
+                } else {
                     runOnUiThread {
                         Toast
                             .makeText(this, R.string.x509_no_certificate_selected, Toast.LENGTH_LONG)
                             .show()
                     }
-                } else {
-                    finish()
                 }
             },
             arrayOf("RSA", "EC"),
             null,
             requestUri(),
-            repository.getX509CertificateAliasSync(applicationRestrictions),
+            configuredAlias,
         )
     }
 
