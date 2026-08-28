@@ -94,7 +94,7 @@ class Repository
 
         internal fun getEffectiveConfigFromPersistedManaged(userConfig: Config): Config = userConfig.withManagedOverrides()
 
-        fun mergeUnmanagedConfig(
+        private fun mergeUnmanagedConfig(
             userConfig: Config,
             editedConfig: Config,
             managedStatus: ManagedConfigStatus,

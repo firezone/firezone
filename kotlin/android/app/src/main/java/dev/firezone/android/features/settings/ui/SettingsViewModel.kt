@@ -107,27 +107,45 @@ internal class SettingsViewModel
         }
 
         fun onValidateAuthUrl(authUrl: String) {
-            updateUserConfig(config.copy(authUrl = authUrl))
+            updateUserConfig(
+                isManaged = { it.isAuthUrlManaged },
+                update = { copy(authUrl = authUrl) },
+            )
         }
 
         fun onValidateApiUrl(apiUrl: String) {
-            updateUserConfig(config.copy(apiUrl = apiUrl))
+            updateUserConfig(
+                isManaged = { it.isApiUrlManaged },
+                update = { copy(apiUrl = apiUrl) },
+            )
         }
 
         fun onValidateLogFilter(logFilter: String) {
-            updateUserConfig(config.copy(logFilter = logFilter))
+            updateUserConfig(
+                isManaged = { it.isLogFilterManaged },
+                update = { copy(logFilter = logFilter) },
+            )
         }
 
         fun onValidateAccountSlug(accountSlug: String) {
-            updateUserConfig(config.copy(accountSlug = accountSlug))
+            updateUserConfig(
+                isManaged = { it.isAccountSlugManaged },
+                update = { copy(accountSlug = accountSlug) },
+            )
         }
 
         fun onStartOnLoginChanged(isChecked: Boolean) {
-            updateUserConfig(config.copy(startOnLogin = isChecked))
+            updateUserConfig(
+                isManaged = { it.isStartOnLoginManaged },
+                update = { copy(startOnLogin = isChecked) },
+            )
         }
 
         fun onConnectOnStartChanged(isChecked: Boolean) {
-            updateUserConfig(config.copy(connectOnStart = isChecked))
+            updateUserConfig(
+                isManaged = { it.isConnectOnStartManaged },
+                update = { copy(connectOnStart = isChecked) },
+            )
         }
 
         fun deleteLogDirectory(context: Context) {
@@ -232,12 +250,17 @@ internal class SettingsViewModel
                 )
         }
 
-        private fun updateUserConfig(editedConfig: Config) {
+        private fun updateUserConfig(
+            isManaged: (ManagedConfigStatus) -> Boolean,
+            update: Config.() -> Config,
+        ) {
             val managedStatus =
                 _managedStatusStateFlow.value
                     ?: managedConfiguration?.managedStatus()
                     ?: repo.getManagedStatus()
-            userConfig = repo.mergeUnmanagedConfig(userConfig, editedConfig, managedStatus)
+            if (!isManaged(managedStatus)) {
+                userConfig = userConfig.update()
+            }
             publishEffectiveConfig()
         }
 

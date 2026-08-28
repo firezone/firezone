@@ -157,6 +157,26 @@ class SettingsManagedConfigurationTest {
         }
 
     @Test
+    fun `editing another field after policy removal preserves the raw user value`() =
+        runBlocking {
+            source.applyRestrictions(
+                Bundle().apply {
+                    putString("authUrl", "https://managed.example.com")
+                },
+            )
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals("https://managed.example.com", viewModel.configStateFlow.value.authUrl)
+
+            source.applyRestrictions(Bundle())
+            shadowOf(Looper.getMainLooper()).idle()
+            viewModel.onValidateLogFilter("trace")
+            viewModel.onSaveSettingsCompleted()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertEquals(userConfig.copy(logFilter = "trace"), repository.getUserConfigSync())
+        }
+
+    @Test
     fun `saving a reset clears favorites`() {
         repository.addFavoriteResource(FAVORITE_ID)
 
