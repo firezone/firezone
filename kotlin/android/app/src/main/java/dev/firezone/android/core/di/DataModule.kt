@@ -25,12 +25,10 @@ class DataModule {
     @Singleton
     @Provides
     internal fun provideRepository(
-        @ApplicationContext context: Context,
         @IoDispatcher coroutineDispatcher: CoroutineDispatcher,
         sharedPreferences: SharedPreferences,
     ): Repository =
         Repository(
-            context,
             coroutineDispatcher,
             sharedPreferences,
         )

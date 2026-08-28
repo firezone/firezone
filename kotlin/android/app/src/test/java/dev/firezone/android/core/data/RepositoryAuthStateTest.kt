@@ -5,7 +5,6 @@ import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -67,7 +66,7 @@ class RepositoryAuthStateTest {
                         fragment = "fragment",
                         accountSlug = "account",
                         actorName = "Actor",
-                    ).first(),
+                    ),
             )
 
             assertEquals(
@@ -89,11 +88,11 @@ class RepositoryAuthStateTest {
                         fragment = "replacement-fragment",
                         accountSlug = "replacement-account",
                         actorName = "Replacement Actor",
-                    ).first(),
+                    ),
             )
             assertEquals(1, recordingPreferences.appliedTransactions.size)
             assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
-            assertEquals("account", recreatedRepository.getAccountSlug().first())
+            assertEquals("account", recreatedRepository.getUserConfigSync().accountSlug)
             assertEquals("Actor", recreatedRepository.getActorNameSync())
             assertNull(recreatedRepository.getNonceSync())
             assertNull(recreatedRepository.getStateSync())
@@ -115,10 +114,10 @@ class RepositoryAuthStateTest {
                         fragment = "replacement-fragment",
                         accountSlug = "replacement-account",
                         actorName = "Replacement Actor",
-                    ).first(),
+                    ),
             )
             assertEquals("nonce-fragment", repository.getTokenSync())
-            assertEquals("account", repository.getAccountSlug().first())
+            assertEquals("account", repository.getUserConfigSync().accountSlug)
             assertEquals("Actor", repository.getActorNameSync())
             assertEquals("new-nonce-", repository.getNonceSync())
             assertEquals("new-state", repository.getStateSync())
@@ -141,10 +140,10 @@ class RepositoryAuthStateTest {
                         fragment = "replacement-fragment",
                         accountSlug = "replacement-account",
                         actorName = "Replacement Actor",
-                    ).first(),
+                    ),
             )
             assertNull(recreatedRepository.getTokenSync())
-            assertEquals("account", recreatedRepository.getAccountSlug().first())
+            assertEquals("account", recreatedRepository.getUserConfigSync().accountSlug)
             assertEquals("Actor", recreatedRepository.getActorNameSync())
         }
 
@@ -167,14 +166,14 @@ class RepositoryAuthStateTest {
                         fragment = "replacement-fragment",
                         accountSlug = "replacement-account",
                         actorName = "Replacement Actor",
-                    ).first(),
+                    ),
             )
             assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
-            assertEquals("account", recreatedRepository.getAccountSlug().first())
+            assertEquals("account", recreatedRepository.getUserConfigSync().accountSlug)
             assertEquals("Actor", recreatedRepository.getActorNameSync())
         }
 
-    private fun newRepository(preferences: SharedPreferences): Repository = Repository(context, Dispatchers.Unconfined, preferences)
+    private fun newRepository(preferences: SharedPreferences): Repository = Repository(Dispatchers.Unconfined, preferences)
 
     private suspend fun completeAuth(
         repository: Repository,
@@ -189,7 +188,7 @@ class RepositoryAuthStateTest {
                     fragment = "fragment",
                     accountSlug = "account",
                     actorName = "Actor",
-                ).first(),
+                ),
         )
     }
 }

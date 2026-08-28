@@ -14,7 +14,6 @@ import dev.firezone.android.core.di.ApplicationScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -95,7 +94,7 @@ internal class ManagedConfigurationSource
             }
 
         private suspend fun applyRestrictionsLocked(bundle: Bundle): ManagedConfigurationUpdate {
-            repository.saveManagedConfiguration(bundle).first()
+            repository.saveManagedConfiguration(bundle)
 
             val configuration = ManagedConfiguration.from(bundle)
             val update = ManagedConfigurationUpdate(++revision, configuration)

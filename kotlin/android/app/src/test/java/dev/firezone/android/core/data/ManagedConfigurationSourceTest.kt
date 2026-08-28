@@ -13,7 +13,6 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -38,7 +37,7 @@ class ManagedConfigurationSourceTest {
         val context: Application = RuntimeEnvironment.getApplication()
         sharedPreferences = context.getSharedPreferences("managed-configuration-source-test", Context.MODE_PRIVATE)
         sharedPreferences.edit().clear().commit()
-        repository = Repository(context, Dispatchers.Unconfined, sharedPreferences)
+        repository = Repository(Dispatchers.Unconfined, sharedPreferences)
         source =
             ManagedConfigurationSource(
                 context,
@@ -51,7 +50,7 @@ class ManagedConfigurationSourceTest {
     @Test
     fun `updates and revokes token and managed settings`() =
         runBlocking {
-            repository.saveSettings(userConfig).first()
+            repository.saveUserConfig(userConfig)
 
             source.applyRestrictions(
                 Bundle().apply {
@@ -66,12 +65,11 @@ class ManagedConfigurationSourceTest {
             assertTrue(repository.getManagedStatus().isAuthUrlManaged)
             assertTrue(repository.getManagedStatus().isConnectOnStartManaged)
 
-            repository
-                .saveSettings(
-                    repository.getConfigSync().copy(
-                        logFilter = "trace",
-                    ),
-                ).first()
+            repository.saveUserConfig(
+                repository.getUserConfigSync().copy(
+                    logFilter = "trace",
+                ),
+            )
 
             source.applyRestrictions(
                 Bundle().apply {
@@ -126,7 +124,7 @@ class ManagedConfigurationSourceTest {
     @Test
     fun `user draft survives policy removal across recreation`() =
         runBlocking {
-            repository.saveSettings(userConfig).first()
+            repository.saveUserConfig(userConfig)
             val managedConfiguration =
                 source.applyRestrictions(
                     Bundle().apply {

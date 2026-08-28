@@ -12,7 +12,6 @@ import dev.firezone.android.core.data.AuthCallbackResult
 import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -87,13 +86,12 @@ internal class CustomUriViewModel
             checkNotNull(fragment)
 
             val result =
-                repo
-                    .saveAuthCallbackIfStateValid(
-                        state = state,
-                        fragment = fragment,
-                        accountSlug = accountSlug,
-                        actorName = actorName,
-                    ).firstOrNull()
+                repo.saveAuthCallbackIfStateValid(
+                    state = state,
+                    fragment = fragment,
+                    accountSlug = accountSlug,
+                    actorName = actorName,
+                )
             return when (result) {
                 AuthCallbackResult.NEW_HANDOFF,
                 AuthCallbackResult.PENDING_HANDOFF,
@@ -102,9 +100,7 @@ internal class CustomUriViewModel
                     ViewAction.AuthFlowComplete
                 }
 
-                AuthCallbackResult.INVALID,
-                null,
-                -> {
+                AuthCallbackResult.INVALID -> {
                     ViewAction.AuthFlowError("Invalid state parameter")
                 }
             }

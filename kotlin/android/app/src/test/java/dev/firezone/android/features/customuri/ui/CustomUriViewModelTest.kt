@@ -12,8 +12,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -42,7 +40,7 @@ class CustomUriViewModelTest {
         context = RuntimeEnvironment.getApplication()
         preferences = context.getSharedPreferences("custom-uri-view-model", Context.MODE_PRIVATE)
         preferences.edit().clear().commit()
-        repository = Repository(context, Dispatchers.Unconfined, preferences)
+        repository = Repository(Dispatchers.Unconfined, preferences)
         viewModel = CustomUriViewModel(repository)
     }
 
@@ -54,8 +52,8 @@ class CustomUriViewModelTest {
             val action = viewModel.handleCustomUri(callbackIntent(state = EXPECTED_STATE, fragment = "fragment"))
 
             assertEquals(CustomUriViewModel.ViewAction.AuthFlowComplete, action)
-            assertEquals("new-account", repository.getAccountSlug().first())
-            assertEquals("New Actor", repository.getActorName().first())
+            assertEquals("new-account", repository.getUserConfigSync().accountSlug)
+            assertEquals("New Actor", repository.getActorNameSync())
             assertEquals("nonce-fragment", repository.getTokenSync())
             assertNull(repository.getNonceSync())
             assertNull(repository.getStateSync())
@@ -83,7 +81,7 @@ class CustomUriViewModelTest {
             val callback = callbackIntent(state = EXPECTED_STATE, fragment = "fragment")
             assertEquals(CustomUriViewModel.ViewAction.AuthFlowComplete, viewModel.handleCustomUri(callback))
 
-            val recreatedRepository = Repository(context, Dispatchers.Unconfined, preferences)
+            val recreatedRepository = Repository(Dispatchers.Unconfined, preferences)
             val recreatedViewModel = CustomUriViewModel(recreatedRepository)
             val replay =
                 callbackIntent(
@@ -97,20 +95,20 @@ class CustomUriViewModelTest {
 
             assertEquals(CustomUriViewModel.ViewAction.AuthFlowComplete, recreatedViewModel.actionStateFlow.value)
             assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
-            assertEquals("new-account", recreatedRepository.getAccountSlug().first())
+            assertEquals("new-account", recreatedRepository.getUserConfigSync().accountSlug)
             assertEquals("New Actor", recreatedRepository.getActorNameSync())
             assertNull(recreatedRepository.getNonceSync())
             assertNull(recreatedRepository.getStateSync())
 
             recreatedViewModel.acknowledgeAuthFlowComplete()
 
-            val laterRepository = Repository(context, Dispatchers.Unconfined, preferences)
+            val laterRepository = Repository(Dispatchers.Unconfined, preferences)
             val laterViewModel = CustomUriViewModel(laterRepository)
             val laterAction = laterViewModel.handleCustomUri(replay)
 
             assertTrue(laterAction is CustomUriViewModel.ViewAction.AuthFlowError)
             assertEquals("nonce-fragment", laterRepository.getTokenSync())
-            assertEquals("new-account", laterRepository.getAccountSlug().first())
+            assertEquals("new-account", laterRepository.getUserConfigSync().accountSlug)
             assertEquals("New Actor", laterRepository.getActorNameSync())
         }
 
@@ -121,7 +119,7 @@ class CustomUriViewModelTest {
             val callback = callbackIntent(state = EXPECTED_STATE, fragment = "fragment")
             assertEquals(CustomUriViewModel.ViewAction.AuthFlowComplete, viewModel.handleCustomUri(callback))
 
-            val recreatedRepository = Repository(context, Dispatchers.Unconfined, preferences)
+            val recreatedRepository = Repository(Dispatchers.Unconfined, preferences)
             val recreatedViewModel = CustomUriViewModel(recreatedRepository)
 
             val action =
@@ -131,7 +129,7 @@ class CustomUriViewModelTest {
 
             assertTrue(action is CustomUriViewModel.ViewAction.AuthFlowError)
             assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
-            assertEquals("new-account", recreatedRepository.getAccountSlug().first())
+            assertEquals("new-account", recreatedRepository.getUserConfigSync().accountSlug)
             assertEquals("New Actor", recreatedRepository.getActorNameSync())
             assertNull(recreatedRepository.getNonceSync())
             assertNull(recreatedRepository.getStateSync())
@@ -178,7 +176,7 @@ class CustomUriViewModelTest {
             val dispatcher = executor.asCoroutineDispatcher()
 
             try {
-                val repository = Repository(context, dispatcher, coordinatedPreferences)
+                val repository = Repository(dispatcher, coordinatedPreferences)
                 val viewModel = CustomUriViewModel(repository)
                 repository.saveNonceAndStateSync(nonce = "nonce-", state = EXPECTED_STATE)
                 coordinatedPreferences.resetAppliedTransactions()
@@ -215,19 +213,22 @@ class CustomUriViewModelTest {
             val action = viewModel.handleCustomUri(intent)
 
             check(action is CustomUriViewModel.ViewAction.AuthFlowError)
-            assertEquals("existing-account", repository.getAccountSlug().first())
-            assertEquals("Existing Actor", repository.getActorName().first())
+            assertEquals("existing-account", repository.getUserConfigSync().accountSlug)
+            assertEquals("Existing Actor", repository.getActorNameSync())
             assertEquals("existing-nonce-existing-fragment", repository.getTokenSync())
             assertEquals("existing-nonce-", repository.getNonceSync())
             assertEquals(EXPECTED_STATE, repository.getStateSync())
         }
 
-    private suspend fun seedExistingCredentials() {
+    private fun seedExistingCredentials() {
         preferences.edit().clear().commit()
-        repository.saveAccountSlug("existing-account").collect()
-        repository.saveActorName("Existing Actor").collect()
+        preferences
+            .edit()
+            .putString("accountSlug", "existing-account")
+            .putString("actorName", "Existing Actor")
+            .putString("token", "existing-nonce-existing-fragment")
+            .apply()
         repository.saveNonceAndStateSync(nonce = "existing-nonce-", state = EXPECTED_STATE)
-        repository.saveToken("existing-fragment").collect()
     }
 
     private fun callbackIntent(

@@ -87,15 +87,14 @@ internal class SettingsViewModel
         fun onSaveSettingsCompleted() {
             val configToSave = userConfig
             viewModelScope.launch {
-                repo.saveUserConfig(configToSave).collect {
-                    if (shouldResetFavoritesOnSave) {
-                        repo.resetFavorites()
-                        shouldResetFavoritesOnSave = false
-                    }
-                    savedStateHandle.remove<Config>(DRAFT_USER_CONFIG_KEY)
-                    savedStateHandle.remove<Boolean>(RESET_FAVORITES_ON_SAVE_KEY)
-                    actionMutableStateFlow.value = ViewAction.NavigateBack
+                repo.saveUserConfig(configToSave)
+                if (shouldResetFavoritesOnSave) {
+                    repo.resetFavorites()
+                    shouldResetFavoritesOnSave = false
                 }
+                savedStateHandle.remove<Config>(DRAFT_USER_CONFIG_KEY)
+                savedStateHandle.remove<Boolean>(RESET_FAVORITES_ON_SAVE_KEY)
+                actionMutableStateFlow.value = ViewAction.NavigateBack
             }
         }
 
