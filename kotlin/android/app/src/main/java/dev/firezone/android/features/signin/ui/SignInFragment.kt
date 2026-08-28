@@ -38,7 +38,7 @@ internal class SignInFragment : Fragment() {
 
                 FirezoneTheme {
                     SignInScreen(
-                        signInLabel = startSessionLabel(identity),
+                        signInLabel = startSessionLabel(requireContext(), identity),
                         onSignIn = { startSession(identity) },
                         onSettings = {
                             val bundle = Bundle().apply { putBoolean("isUserSignedIn", false) }
@@ -55,12 +55,6 @@ internal class SignInFragment : Fragment() {
         // The administrator can grant the certificate while this screen is open.
         viewModel.refreshCertificateIdentity()
     }
-
-    private fun startSessionLabel(identity: Identity): String =
-        when (identity) {
-            Identity.Absent -> getString(R.string.sign_in)
-            is Identity.Claimed -> identity.email?.let { getString(R.string.connect_as, it) } ?: getString(R.string.connect)
-        }
 
     private fun startSession(identity: Identity) {
         when (identity) {
