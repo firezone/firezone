@@ -17,6 +17,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -68,6 +69,11 @@ fun SettingsScreen(
         modifier = modifier,
         topBar = {
             CenterAlignedTopAppBar(
+                // M3 defaults the bar to `surface`, which seams against the canvas the page is painted with.
+                colors =
+                    TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                    ),
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     // Brand orange marks the call to action, which on this bar is Save.
