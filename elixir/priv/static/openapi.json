@@ -896,6 +896,9 @@
           },
           "client_session_lifetime_secs": {
             "description": "Client session lifetime in seconds",
+            "maximum": 7776000,
+            "minimum": 3600,
+            "nullable": true,
             "type": "integer"
           },
           "context": {
@@ -944,6 +947,9 @@
           },
           "portal_session_lifetime_secs": {
             "description": "Portal session lifetime in seconds",
+            "maximum": 86400,
+            "minimum": 300,
+            "nullable": true,
             "type": "integer"
           },
           "updated_at": {
@@ -2041,23 +2047,26 @@
           },
           "disabled_reason": {
             "description": "Reason for disabling",
+            "nullable": true,
             "type": "string"
           },
           "domain": {
             "description": "Google Workspace domain",
             "type": "string"
           },
-          "error": {
-            "description": "Last error message",
-            "type": "string"
-          },
-          "error_count": {
-            "description": "Error count",
+          "error_email_count": {
+            "description": "Number of error emails sent for this directory",
             "type": "integer"
           },
-          "error_emailed_at": {
-            "description": "Error email timestamp",
+          "error_message": {
+            "description": "Last error message",
+            "nullable": true,
+            "type": "string"
+          },
+          "errored_at": {
+            "description": "Last error timestamp",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           },
           "group_sync_mode": {
@@ -2098,6 +2107,7 @@
           "synced_at": {
             "description": "Last sync timestamp",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           },
           "updated_at": {
@@ -2741,19 +2751,22 @@
           },
           "disabled_reason": {
             "description": "Reason for disabling",
+            "nullable": true,
             "type": "string"
           },
-          "error": {
-            "description": "Last error message",
-            "type": "string"
-          },
-          "error_count": {
-            "description": "Error count",
+          "error_email_count": {
+            "description": "Number of error emails sent for this directory",
             "type": "integer"
           },
-          "error_emailed_at": {
-            "description": "Error email timestamp",
+          "error_message": {
+            "description": "Last error message",
+            "nullable": true,
+            "type": "string"
+          },
+          "errored_at": {
+            "description": "Last error timestamp",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           },
           "id": {
@@ -2785,6 +2798,7 @@
           "synced_at": {
             "description": "Last sync timestamp",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           },
           "updated_at": {
@@ -4214,6 +4228,7 @@
           },
           "disabled_reason": {
             "description": "Reason for disabling",
+            "nullable": true,
             "type": "string"
           },
           "email_field": {
@@ -4224,17 +4239,19 @@
             ],
             "type": "string"
           },
-          "error": {
-            "description": "Last error message",
-            "type": "string"
-          },
-          "error_count": {
-            "description": "Error count",
+          "error_email_count": {
+            "description": "Number of error emails sent for this directory",
             "type": "integer"
           },
-          "error_emailed_at": {
-            "description": "Error email timestamp",
+          "error_message": {
+            "description": "Last error message",
+            "nullable": true,
+            "type": "string"
+          },
+          "errored_at": {
+            "description": "Last error timestamp",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           },
           "id": {
@@ -4262,11 +4279,11 @@
           "synced_at": {
             "description": "Last sync timestamp",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           },
           "tenant_id": {
             "description": "Microsoft Entra tenant ID",
-            "format": "uuid",
             "type": "string"
           },
           "updated_at": {

@@ -15,19 +15,32 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
         name: %Schema{type: :string, description: "Directory name"},
         domain: %Schema{type: :string, description: "Google Workspace domain"},
         impersonation_email: %Schema{type: :string, description: "Impersonation email"},
-        error_count: %Schema{type: :integer, description: "Error count"},
+        error_email_count: %Schema{
+          type: :integer,
+          description: "Number of error emails sent for this directory"
+        },
         is_disabled: %Schema{type: :boolean, description: "Whether directory is disabled"},
-        disabled_reason: %Schema{type: :string, description: "Reason for disabling"},
+        disabled_reason: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Reason for disabling"
+        },
         synced_at: %Schema{
           type: :string,
           format: :"date-time",
+          nullable: true,
           description: "Last sync timestamp"
         },
-        error: %Schema{type: :string, description: "Last error message"},
-        error_emailed_at: %Schema{
+        error_message: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Last error message"
+        },
+        errored_at: %Schema{
           type: :string,
           format: :"date-time",
-          description: "Error email timestamp"
+          nullable: true,
+          description: "Last error timestamp"
         },
         group_sync_mode: %Schema{
           type: :string,

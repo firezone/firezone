@@ -21,10 +21,16 @@ defmodule PortalAPI.Schemas.EntraAuthProvider do
         },
         client_session_lifetime_secs: %Schema{
           type: :integer,
+          nullable: true,
+          minimum: 3_600,
+          maximum: 7_776_000,
           description: "Client session lifetime in seconds"
         },
         portal_session_lifetime_secs: %Schema{
           type: :integer,
+          nullable: true,
+          minimum: 300,
+          maximum: 86_400,
           description: "Portal session lifetime in seconds"
         },
         email_claim: %Schema{

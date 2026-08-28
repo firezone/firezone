@@ -162,6 +162,34 @@ defmodule PortalAPI.EntraAuthProviderControllerTest do
       assert data["issuer"] == provider.issuer
     end
 
+    test "response keys match the OpenAPI schema properties", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = entra_provider_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/entra_auth_providers/#{provider.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+
+      documented =
+        PortalAPI.Schemas.EntraAuthProvider.Schema.schema().properties
+        |> Map.keys()
+        |> Enum.map(&Atom.to_string/1)
+        |> MapSet.new()
+
+      assert MapSet.new(Map.keys(data)) == documented
+
+      # Session lifetimes are nullable in the DB and unset by default.
+      assert is_nil(data["client_session_lifetime_secs"])
+      assert is_nil(data["portal_session_lifetime_secs"])
+    end
+
     test "returns not found for unknown id", %{conn: conn, actor: actor} do
       conn =
         conn

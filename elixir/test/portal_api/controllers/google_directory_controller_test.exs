@@ -144,6 +144,30 @@ defmodule PortalAPI.GoogleDirectoryControllerTest do
       assert data["orgunit_sync_enabled"] == true
     end
 
+    test "response keys match the OpenAPI schema properties", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = google_directory_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/google_directories/#{directory.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+
+      documented =
+        PortalAPI.Schemas.GoogleDirectory.Schema.schema().properties
+        |> Map.keys()
+        |> Enum.map(&Atom.to_string/1)
+        |> MapSet.new()
+
+      assert MapSet.new(Map.keys(data)) == documented
+    end
+
     test "returns not found for unknown id", %{conn: conn, actor: actor} do
       conn =
         conn

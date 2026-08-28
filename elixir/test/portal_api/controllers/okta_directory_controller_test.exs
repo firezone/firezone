@@ -158,6 +158,30 @@ defmodule PortalAPI.OktaDirectoryControllerTest do
       assert data["okta_domain"] == directory.okta_domain
     end
 
+    test "response keys match the OpenAPI schema properties", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = okta_directory_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/okta_directories/#{directory.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+
+      documented =
+        PortalAPI.Schemas.OktaDirectory.Schema.schema().properties
+        |> Map.keys()
+        |> Enum.map(&Atom.to_string/1)
+        |> MapSet.new()
+
+      assert MapSet.new(Map.keys(data)) == documented
+    end
+
     test "returns not found for unknown id", %{conn: conn, actor: actor} do
       conn =
         conn
