@@ -49,11 +49,11 @@ internal class CustomUriViewModel
             val fragment = uri.getQueryParameter(QUERY_CLIENT_AUTH_FRAGMENT)
             val missingParameterErrors =
                 buildList {
-                    if (accountSlug == null) {
-                        add("Account slug was missing")
+                    if (accountSlug.isNullOrBlank()) {
+                        add("Account slug was missing or empty")
                     }
-                    if (actorName == null) {
-                        add("Actor name was missing")
+                    if (actorName.isNullOrBlank()) {
+                        add("Actor name was missing or empty")
                     }
                     if (state.isNullOrBlank()) {
                         add("State parameter was missing or empty")
