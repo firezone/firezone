@@ -10,13 +10,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.Log
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.ManagedConfiguration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
@@ -32,14 +35,20 @@ internal class SettingsViewModel
     @Inject
     constructor(
         private val repo: Repository,
+        private val managedConfigurationSource: ManagedConfigurationSource,
         private val savedStateHandle: SavedStateHandle,
     ) : ViewModel() {
-        private val initialConfig = savedStateHandle[DRAFT_CONFIG_KEY] ?: repo.getConfigSync()
+        private var userConfig: Config = savedStateHandle[DRAFT_USER_CONFIG_KEY] ?: repo.getUserConfigSync()
+        private var managedConfiguration: ManagedConfiguration? = managedConfigurationSource.configuration.value
+        private var shouldResetFavoritesOnSave: Boolean =
+            savedStateHandle[RESET_FAVORITES_ON_SAVE_KEY] ?: false
+
+        private val initialConfig = getEffectiveConfig()
         private val _uiState =
             MutableStateFlow(
                 UiState(
                     config = initialConfig,
-                    managedStatus = repo.getManagedStatus(),
+                    managedStatus = getManagedStatus(),
                     isSaveButtonEnabled = areFieldsValid(initialConfig),
                 ),
             )
@@ -48,9 +57,18 @@ internal class SettingsViewModel
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
-        private val config: Config get() = _uiState.value.config
-        private var shouldResetFavoritesOnSave: Boolean =
-            savedStateHandle[RESET_FAVORITES_ON_SAVE_KEY] ?: false
+        init {
+            viewModelScope.launch {
+                managedConfigurationSource.configuration.filterNotNull().collect { configuration ->
+                    managedConfiguration = configuration
+                    publishEffectiveConfig()
+                }
+            }
+        }
+
+        fun populateFieldsFromConfig() {
+            viewModelScope.launch { managedConfigurationSource.refresh() }
+        }
 
         fun onViewResume(context: Context) {
             val directory = File(context.cacheDir.absolutePath + "/logs")
@@ -62,22 +80,19 @@ internal class SettingsViewModel
                         .map { it.length() }
                         .sum()
 
-                _uiState.update {
-                    it.copy(
-                        logSizeBytes = totalSize,
-                    )
-                }
+                _uiState.update { it.copy(logSizeBytes = totalSize) }
             }
         }
 
         fun onSaveSettingsCompleted() {
+            val configToSave = userConfig
             viewModelScope.launch {
-                repo.saveSettings(config).collect {
+                repo.saveUserConfig(configToSave).collect {
                     if (shouldResetFavoritesOnSave) {
                         repo.resetFavorites()
                         shouldResetFavoritesOnSave = false
                     }
-                    savedStateHandle.remove<Config>(DRAFT_CONFIG_KEY)
+                    savedStateHandle.remove<Config>(DRAFT_USER_CONFIG_KEY)
                     savedStateHandle.remove<Boolean>(RESET_FAVORITES_ON_SAVE_KEY)
                     actionMutableStateFlow.value = ViewAction.NavigateBack
                 }
@@ -86,19 +101,15 @@ internal class SettingsViewModel
 
         fun onCancel() {
             shouldResetFavoritesOnSave = false
-            savedStateHandle.remove<Config>(DRAFT_CONFIG_KEY)
+            savedStateHandle.remove<Config>(DRAFT_USER_CONFIG_KEY)
             savedStateHandle.remove<Boolean>(RESET_FAVORITES_ON_SAVE_KEY)
             actionMutableStateFlow.value = ViewAction.NavigateBack
         }
 
         fun onConfigChanged(config: Config) {
-            savedStateHandle[DRAFT_CONFIG_KEY] = config
-            _uiState.update {
-                it.copy(
-                    config = config,
-                    isSaveButtonEnabled = areFieldsValid(config),
-                )
-            }
+            userConfig = repo.mergeUnmanagedConfig(userConfig, config, getManagedStatus())
+            savedStateHandle[DRAFT_USER_CONFIG_KEY] = userConfig
+            publishEffectiveConfig()
         }
 
         fun deleteLogDirectory(context: Context) {
@@ -108,11 +119,7 @@ internal class SettingsViewModel
                 directory.walkTopDown().forEach { file ->
                     file.delete()
                 }
-                _uiState.update {
-                    it.copy(
-                        logSizeBytes = 0,
-                    )
-                }
+                _uiState.update { it.copy(logSizeBytes = 0) }
             }
         }
 
@@ -124,29 +131,23 @@ internal class SettingsViewModel
 
                 runCatching { zipFolder(sourceFolder, zipFile) }
                     .onSuccess {
-                        val fileURI =
+                        val fileUri =
                             FileProvider.getUriForFile(
                                 context,
                                 "${context.applicationContext.packageName}.provider",
                                 zipFile,
                             )
-                        actionMutableStateFlow.value = ViewAction.ShareLogs(fileURI)
+                        actionMutableStateFlow.value = ViewAction.ShareLogs(fileUri)
                     }.onFailure { Log.e(TAG, "Failed to create diagnostic log archive", it) }
             }
         }
 
         fun resetSettingsToDefaults() {
-            val config = repo.getDefaultConfigSync()
-            savedStateHandle[DRAFT_CONFIG_KEY] = config
-            savedStateHandle[RESET_FAVORITES_ON_SAVE_KEY] = true
+            userConfig = repo.getDefaultUserConfigSync()
             shouldResetFavoritesOnSave = true
-            _uiState.update {
-                it.copy(
-                    config = config,
-                    managedStatus = repo.getManagedStatus(),
-                    isSaveButtonEnabled = areFieldsValid(config),
-                )
-            }
+            savedStateHandle[DRAFT_USER_CONFIG_KEY] = userConfig
+            savedStateHandle[RESET_FAVORITES_ON_SAVE_KEY] = true
+            publishEffectiveConfig()
         }
 
         fun clearAction() {
@@ -181,7 +182,23 @@ internal class SettingsViewModel
             }
         }
 
-        private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/logs.zip"
+        private fun publishEffectiveConfig() {
+            val config = getEffectiveConfig()
+            _uiState.update {
+                it.copy(
+                    config = config,
+                    managedStatus = getManagedStatus(),
+                    isSaveButtonEnabled = areFieldsValid(config),
+                )
+            }
+        }
+
+        private fun getEffectiveConfig(): Config =
+            managedConfiguration?.let { repo.getEffectiveConfig(userConfig, it) }
+                ?: repo.getEffectiveConfig(userConfig)
+
+        private fun getManagedStatus(): ManagedConfigStatus =
+            managedConfiguration?.managedStatus() ?: repo.getManagedStatus()
 
         private fun areFieldsValid(config: Config): Boolean =
             URLUtil.isValidUrl(config.authUrl) &&
@@ -212,7 +229,7 @@ internal class SettingsViewModel
         }
 
         companion object {
-            private const val DRAFT_CONFIG_KEY = "settingsDraftConfig"
+            private const val DRAFT_USER_CONFIG_KEY = "settingsUserDraftConfig"
             private const val RESET_FAVORITES_ON_SAVE_KEY = "resetFavoritesOnSave"
             private const val TAG = "SettingsViewModel"
         }

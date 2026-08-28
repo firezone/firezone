@@ -1,13 +1,12 @@
 // Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.core.presentation
 
-import android.content.Context
-import android.content.RestrictionsManager
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope // For launching coroutines
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.ui.AppNavHost
 import dev.firezone.android.ui.theme.FirezoneTheme
@@ -17,7 +16,10 @@ import javax.inject.Inject
 @AndroidEntryPoint
 internal class MainActivity : AppCompatActivity() {
     @Inject
-    lateinit var repository: Repository
+    internal lateinit var repository: Repository
+
+    @Inject
+    internal lateinit var managedConfigurationSource: ManagedConfigurationSource
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,16 +37,6 @@ internal class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
 
-        // Apply managed configurations when the app resumes since it's not guaranteed
-        // the TunnelService is running when the app starts or is backgrounded.
-        applyManagedConfigurations()
-    }
-
-    private fun applyManagedConfigurations() {
-        val restrictionsManager = getSystemService(Context.RESTRICTIONS_SERVICE) as RestrictionsManager
-        val appRestrictions: Bundle = restrictionsManager.applicationRestrictions
-        lifecycleScope.launch {
-            repository.saveManagedConfiguration(appRestrictions).collect {}
-        }
+        lifecycleScope.launch { managedConfigurationSource.refresh() }
     }
 }
