@@ -1759,6 +1759,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp init(socket, resources, relays) do
     push(socket, "init", %{
       flow_logs: flow_logs_config(),
+      account_slug: socket.assigns.subject.account.slug,
       resources: Views.Resource.render_many(resources, socket.assigns.client),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
       relays:
