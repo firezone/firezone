@@ -1892,7 +1892,7 @@ defmodule PortalWeb.Settings.DevicePosture do
     def sentinelone_device_counts(subject) do
       from(d in SentinelOne.Device,
         group_by: [d.posture_provider_id, d.is_active],
-        select: {d.posture_provider_id, d.is_active, count(d.sentinelone_id)}
+        select: {d.posture_provider_id, d.is_active, count(d.uuid)}
       )
       |> Safe.scoped(subject)
       |> Safe.all()

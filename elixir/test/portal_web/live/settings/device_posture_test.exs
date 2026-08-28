@@ -1228,6 +1228,12 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     sentinelone_provider =
       sentinelone_posture_provider_fixture(account: account, name: "Production S1")
 
+    sentinelone_device_fixture(
+      provider: sentinelone_provider,
+      sentinelone_id: nil,
+      is_active: true
+    )
+
     sentinelone_device_fixture(provider: sentinelone_provider, is_active: true)
     sentinelone_device_fixture(provider: sentinelone_provider, is_active: false)
 
@@ -1249,7 +1255,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     assert summary =~ ~r/1.*Sensor active/s
     assert summary =~ ~r/1.*Sensor inactive/s
     assert summary =~ ~r/1.*Santa Lockdown/s
-    assert summary =~ ~r/1.*S1 agent active/s
+    assert summary =~ ~r/2.*S1 agent active/s
     assert summary =~ ~r/1.*S1 agent inactive/s
   end
 
