@@ -6,6 +6,8 @@
 
     <style name="AppTheme.Base" parent="Theme.Material3.Light.NoActionBar">
         <item name="colorPrimary">@color/neutral_900</item>
+        <item name="android:colorBackground">@color/portal_canvas</item>
+        <item name="android:windowBackground">@color/portal_canvas</item>
     </style>
 
     <style name="AppTheme.Base.HeaderText">
