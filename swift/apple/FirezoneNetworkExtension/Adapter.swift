@@ -639,15 +639,6 @@ actor Adapter {
 
     // The portal accepts every client certificate at the TLS layer and judges it at the
     // application layer, so whether this one is acceptable is not ours to decide.
-    guard parsed != nil else {
-      guard token != nil else {
-        throw AdapterError.authenticationUnavailable(
-          "the client certificate could not be read")
-      }
-
-      return nil
-    }
-
     return AppleClientTlsIdentity(identity)
   }
 
@@ -655,7 +646,7 @@ actor Adapter {
     _ identity: X509ClientIdentity, _ parsed: ParsedCertificate?
   ) {
     guard let parsed else {
-      Log.warning("Withholding a client certificate that could not be parsed")
+      Log.warning("Presenting a client certificate we could not parse")
       return
     }
 
