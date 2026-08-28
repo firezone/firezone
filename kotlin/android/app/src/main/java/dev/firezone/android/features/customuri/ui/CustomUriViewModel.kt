@@ -8,6 +8,7 @@ import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.Log
+import dev.firezone.android.core.data.AuthCallbackResult
 import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +28,7 @@ internal class CustomUriViewModel
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
         private val callbackMutex = Mutex()
         private var hasPublishedTerminalAction = false
+        private var pendingHandoffState: String? = null
 
         fun parseCustomUri(intent: Intent) {
             viewModelScope.launch { processCustomUri(intent) }
@@ -84,7 +86,7 @@ internal class CustomUriViewModel
             checkNotNull(state)
             checkNotNull(fragment)
 
-            val isValid =
+            val result =
                 repo
                     .saveAuthCallbackIfStateValid(
                         state = state,
@@ -92,11 +94,26 @@ internal class CustomUriViewModel
                         accountSlug = accountSlug,
                         actorName = actorName,
                     ).firstOrNull()
-            if (isValid != true) {
-                return ViewAction.AuthFlowError("Invalid state parameter")
-            }
+            return when (result) {
+                AuthCallbackResult.NEW_HANDOFF,
+                AuthCallbackResult.PENDING_HANDOFF,
+                -> {
+                    pendingHandoffState = state
+                    ViewAction.AuthFlowComplete
+                }
 
-            return ViewAction.AuthFlowComplete
+                AuthCallbackResult.INVALID,
+                null,
+                -> {
+                    ViewAction.AuthFlowError("Invalid state parameter")
+                }
+            }
+        }
+
+        fun acknowledgeAuthFlowComplete() {
+            val state = pendingHandoffState ?: return
+            repo.acknowledgeAuthCallbackHandoff(state)
+            pendingHandoffState = null
         }
 
         fun clearAction() {
