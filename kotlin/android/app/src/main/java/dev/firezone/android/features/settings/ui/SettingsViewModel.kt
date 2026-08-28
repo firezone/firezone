@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
@@ -61,10 +62,11 @@ internal class SettingsViewModel
                         .map { it.length() }
                         .sum()
 
-                _uiState.value =
-                    _uiState.value.copy(
+                _uiState.update {
+                    it.copy(
                         logSizeBytes = totalSize,
                     )
+                }
             }
         }
 
@@ -88,11 +90,12 @@ internal class SettingsViewModel
 
         fun onConfigChanged(config: Config) {
             savedStateHandle[DRAFT_CONFIG_KEY] = config
-            _uiState.value =
-                _uiState.value.copy(
+            _uiState.update {
+                it.copy(
                     config = config,
                     isSaveButtonEnabled = areFieldsValid(config),
                 )
+            }
         }
 
         fun deleteLogDirectory(context: Context) {
@@ -102,10 +105,11 @@ internal class SettingsViewModel
                 directory.walkTopDown().forEach { file ->
                     file.delete()
                 }
-                _uiState.value =
-                    _uiState.value.copy(
+                _uiState.update {
+                    it.copy(
                         logSizeBytes = 0,
                     )
+                }
             }
         }
 
@@ -132,12 +136,13 @@ internal class SettingsViewModel
             val config = repo.getDefaultConfigSync()
             savedStateHandle[DRAFT_CONFIG_KEY] = config
             shouldResetFavoritesOnSave = true
-            _uiState.value =
-                _uiState.value.copy(
+            _uiState.update {
+                it.copy(
                     config = config,
                     managedStatus = repo.getManagedStatus(),
                     isSaveButtonEnabled = areFieldsValid(config),
                 )
+            }
         }
 
         fun clearAction() {
