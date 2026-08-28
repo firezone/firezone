@@ -106,11 +106,9 @@ class CustomUriViewModelTest {
 
             val laterRepository = Repository(context, Dispatchers.Unconfined, preferences)
             val laterViewModel = CustomUriViewModel(laterRepository)
-            laterViewModel.processCustomUri(replay)
+            val laterAction = laterViewModel.handleCustomUri(replay)
 
-            assertTrue(
-                laterViewModel.actionStateFlow.value is CustomUriViewModel.ViewAction.AuthFlowError,
-            )
+            assertTrue(laterAction is CustomUriViewModel.ViewAction.AuthFlowError)
             assertEquals("nonce-fragment", laterRepository.getTokenSync())
             assertEquals("new-account", laterRepository.getAccountSlug().first())
             assertEquals("New Actor", laterRepository.getActorNameSync())
@@ -269,6 +267,19 @@ private class CoordinatedStateReads(
     override fun edit(): SharedPreferences.Editor {
         val editor = delegate.edit()
         return object : SharedPreferences.Editor by editor {
+            override fun putString(
+                key: String?,
+                value: String?,
+            ): SharedPreferences.Editor {
+                editor.putString(key, value)
+                return this
+            }
+
+            override fun remove(key: String?): SharedPreferences.Editor {
+                editor.remove(key)
+                return this
+            }
+
             override fun apply() {
                 applyCount.incrementAndGet()
                 editor.apply()
