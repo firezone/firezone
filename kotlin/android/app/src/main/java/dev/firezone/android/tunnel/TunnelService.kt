@@ -390,11 +390,9 @@ class TunnelService : VpnService() {
                                 isInternetResourceActive = resourceState.isEnabled(),
                                 deviceInfo = deviceInfo,
                             ),
-                            // The portal accepts every client certificate at the TLS layer and
-                            // judges it at the application layer, so whether this one is
-                            // acceptable is not ours to decide. One we cannot read is another
-                            // matter: there is nothing to present.
-                            tlsIdentity = identity?.takeIf { it.certificate != null }?.tlsIdentity,
+                            // The portal judges a client certificate at the application layer, so
+                            // whether this one is acceptable is not ours to decide.
+                            tlsIdentity = identity?.tlsIdentity,
                         ).use { session ->
                             startNetworkMonitoring()
                             startLogCleanup()
