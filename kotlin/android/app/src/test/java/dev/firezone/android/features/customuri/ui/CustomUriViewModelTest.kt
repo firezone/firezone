@@ -67,12 +67,18 @@ class CustomUriViewModelTest {
     }
 
     @Test
-    fun `missing profile fields do not mutate credentials`() {
+    fun `missing and blank profile fields do not mutate credentials`() {
         assertInvalidCallbackDoesNotMutateCredentials(
             callbackIntent(state = EXPECTED_STATE, fragment = "new-fragment", accountSlug = null),
         )
         assertInvalidCallbackDoesNotMutateCredentials(
+            callbackIntent(state = EXPECTED_STATE, fragment = "new-fragment", accountSlug = " "),
+        )
+        assertInvalidCallbackDoesNotMutateCredentials(
             callbackIntent(state = EXPECTED_STATE, fragment = "new-fragment", actorName = null),
+        )
+        assertInvalidCallbackDoesNotMutateCredentials(
+            callbackIntent(state = EXPECTED_STATE, fragment = "new-fragment", actorName = " "),
         )
     }
 
