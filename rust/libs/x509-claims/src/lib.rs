@@ -115,7 +115,7 @@ pub enum ValidationError {
 }
 
 impl ValidationError {
-    /// A phrase that reads on its own and after the claim it explains.
+    /// A phrase that reads on its own and after the value it explains.
     pub fn label(self) -> &'static str {
         match self {
             Self::Empty => "empty",
