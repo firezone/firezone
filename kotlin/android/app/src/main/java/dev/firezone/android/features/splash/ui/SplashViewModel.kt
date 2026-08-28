@@ -73,6 +73,12 @@ internal class SplashViewModel
             actionMutableStateFlow.value = null
         }
 
+        internal fun cancelTunnelStateCheck() {
+            checkTunnelStateJob?.cancel()
+            checkTunnelStateJob = null
+            clearAction()
+        }
+
         private fun publish(
             action: SplashLaunchFlow.Action,
             context: Context,

@@ -65,7 +65,7 @@ private fun SplashRoute(
     // while the app is in the background, so the check runs on every resume rather than once.
     LifecycleResumeEffect(Unit) {
         viewModel.checkTunnelState(context)
-        onPauseOrDispose {}
+        onPauseOrDispose { viewModel.cancelTunnelStateCheck() }
     }
 
     LaunchedEffect(action) {
