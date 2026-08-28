@@ -30,7 +30,7 @@ class SettingsViewModelTest {
 
     @Before
     fun setUp() {
-        val context = RuntimeEnvironment.getApplication<Application>()
+        val context = RuntimeEnvironment.getApplication()
         sharedPreferences = context.getSharedPreferences("settings-view-model-test", Context.MODE_PRIVATE)
         sharedPreferences.edit().clear().commit()
         repository = Repository(context, Dispatchers.Unconfined, sharedPreferences)
