@@ -24,17 +24,22 @@ class X509IdentityException(
 /**
  * The client identity Firezone presents to the portal, together with what its leaf certificate says.
  *
- * [certificate] is `null` when the leaf is not a certificate the parser understands, which leaves
- * nothing to present.
+ * [certificate] is `null` when the parser did not understand the leaf, which limits what we can say
+ * about the identity, not what we present.
  */
 data class LoadedX509Identity(
     val alias: String,
     val tlsIdentity: ClientTlsIdentity,
     val certificate: ParsedCertificate?,
 ) {
-    /** Who the certificate says is connecting, which decides what the sign-in screen offers. */
+    /**
+     * Who the certificate says is connecting, which decides what the sign-in screen offers.
+     *
+     * A leaf we could not parse still claims whoever holds it: [Identity.Absent] is a missing
+     * [LoadedX509Identity], not one we failed to read.
+     */
     val identity: Identity
-        get() = certificate?.identity ?: Identity.Absent
+        get() = certificate?.identity ?: Identity.Claimed(email = null)
 }
 
 /**
