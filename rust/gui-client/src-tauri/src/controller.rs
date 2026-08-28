@@ -16,7 +16,7 @@ use futures::{
     stream::{self, BoxStream},
 };
 use logging::FilterReloadHandle;
-use secrecy::{ExposeSecret as _, SecretString};
+use secrecy::ExposeSecret as _;
 use std::{
     ops::ControlFlow,
     path::{Path, PathBuf},
@@ -354,7 +354,8 @@ impl<I: GuiIntegration> Controller<I> {
 
         // For backwards-compatibility prior to MDM-config, also call `start_session` if not configured.
         if self.connect_on_start().is_none_or(|c| c) {
-            self.start_session(token).await?;
+            self.start_session(service::Authentication::TokenAndCertificate(token))
+                .await?;
         }
 
         Ok(())
@@ -391,7 +392,7 @@ impl<I: GuiIntegration> Controller<I> {
         .await
     }
 
-    async fn start_session(&mut self, token: SecretString) -> Result<()> {
+    async fn start_session(&mut self, authentication: service::Authentication) -> Result<()> {
         match self.status {
             Status::Disconnected => {}
             Status::Quitting => Err(anyhow!("Can't connect to Firezone, we're quitting"))?,
@@ -406,7 +407,7 @@ impl<I: GuiIntegration> Controller<I> {
         tracing::info!(api_url = %self.api_url(), "Starting connlib...");
 
         self.send_ipc(&service::ClientMsg::Connect {
-            token,
+            authentication,
             is_internet_resource_active: self.general_settings.internet_resource_enabled(),
         })
         .await?;
@@ -452,7 +453,8 @@ impl<I: GuiIntegration> Controller<I> {
             .context("Couldn't handle auth response")?;
 
         self.update_telemetry_context().await?;
-        self.start_session(token).await?;
+        self.start_session(service::Authentication::TokenAndCertificate(token))
+            .await?;
 
         Ok(())
     }
