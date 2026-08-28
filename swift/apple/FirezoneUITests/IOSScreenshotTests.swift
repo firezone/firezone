@@ -78,25 +78,27 @@
       deliver(app, as: "session-scrolled", in: appearance)
     }
 
-    /// A session a certificate claims. Its heading and the control that ends it
-    /// both sit in the account menu, so the capture opens it.
+    /// A running session, and the account menu that carries its heading and the
+    /// control that ends it.
+    func testSessionMenu() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "connected")
+      defer { app.terminate() }
+
+      try waitFor(app.staticTexts["Office network"], on: "session-menu")
+      try openAccountMenu(showing: "Sign out", in: app, on: "session-menu")
+      deliver(app, as: "session-menu", in: appearance)
+    }
+
+    /// The same menu in a session a certificate claims, which is disconnected
+    /// from rather than signed out of.
     func testSessionCertificate() throws {
       let appearance = try currentAppearance()
       let app = launchApp(scenario: "connected-unreadable-certificate")
       defer { app.terminate() }
 
       try waitFor(app.staticTexts["Office network"], on: "session-certificate")
-
-      // The account menu is an icon carrying no text, so it is taken as the
-      // navigation bar button that is not Settings.
-      let account = app.navigationBars.buttons.matching(
-        NSPredicate(format: "label != %@", "Settings")
-      ).firstMatch
-      try waitFor(account, on: "session-certificate")
-      account.tap()
-
-      // SwiftUI has drawn menu items as different controls across releases.
-      try waitFor(app.descendants(matching: .any)["Disconnect"], on: "session-certificate")
+      try openAccountMenu(showing: "Disconnect", in: app, on: "session-certificate")
       deliver(app, as: "session-certificate", in: appearance)
     }
 
@@ -218,6 +220,25 @@
       }
 
       tab.tap()
+    }
+
+    /// Opens the account menu and waits for `item`, one of the controls it holds.
+    ///
+    /// The menu itself is an icon carrying no text, so it is taken as the
+    /// navigation bar button that is not Settings, and SwiftUI has drawn the items
+    /// it holds as different controls across releases.
+    private func openAccountMenu(
+      showing item: String,
+      in app: XCUIApplication,
+      on screen: String
+    ) throws {
+      let account = app.navigationBars.buttons.matching(
+        NSPredicate(format: "label != %@", "Settings")
+      ).firstMatch
+
+      try waitFor(account, on: screen)
+      account.tap()
+      try waitFor(app.descendants(matching: .any)[item], on: screen)
     }
 
     /// Blocks until `element` is on screen, so a capture cannot catch the spinner
