@@ -54,7 +54,8 @@ class SettingsViewModelTest {
             val savedState = SavedStateHandle()
             val viewModel = SettingsViewModel(repository, managedConfigurationSource, savedState)
 
-            viewModel.onConfigChanged(draftConfig)
+            viewModel.onAccountSlugChanged(draftConfig.accountSlug)
+            viewModel.onConnectOnStartChanged(draftConfig.connectOnStart)
 
             val recreatedViewModel = SettingsViewModel(repository, managedConfigurationSource, savedState)
             assertEquals(draftConfig, recreatedViewModel.uiState.value.config)
@@ -67,7 +68,8 @@ class SettingsViewModelTest {
             repository.saveUserConfig(savedConfig)
             val savedState = SavedStateHandle()
             val viewModel = SettingsViewModel(repository, managedConfigurationSource, savedState)
-            viewModel.onConfigChanged(draftConfig)
+            viewModel.onAccountSlugChanged(draftConfig.accountSlug)
+            viewModel.onConnectOnStartChanged(draftConfig.connectOnStart)
 
             viewModel.onCancel()
 

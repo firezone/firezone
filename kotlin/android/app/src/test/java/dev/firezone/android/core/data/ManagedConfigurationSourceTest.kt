@@ -133,11 +133,9 @@ class ManagedConfigurationSourceTest {
                 )
 
             val userDraft = repository.getUserConfigSync()
-            val managedStatus = managedConfiguration.managedStatus()
             val editedEffectiveConfig =
                 repository.getEffectiveConfig(userDraft, managedConfiguration).copy(logFilter = "trace")
-            val retainedUserDraft =
-                repository.mergeUnmanagedConfig(userDraft, editedEffectiveConfig, managedStatus)
+            val retainedUserDraft = userDraft.copy(logFilter = editedEffectiveConfig.logFilter)
             assertEquals(userConfig.copy(logFilter = "trace"), retainedUserDraft)
             assertEquals(
                 "https://managed.example.com",

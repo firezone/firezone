@@ -105,10 +105,46 @@ internal class SettingsViewModel
             actionMutableStateFlow.value = ViewAction.NavigateBack
         }
 
-        fun onConfigChanged(config: Config) {
-            userConfig = repo.mergeUnmanagedConfig(userConfig, config, getManagedStatus())
-            savedStateHandle[DRAFT_USER_CONFIG_KEY] = userConfig
-            publishEffectiveConfig()
+        fun onAuthUrlChanged(authUrl: String) {
+            updateUserConfig(
+                isManaged = { it.isAuthUrlManaged },
+                update = { copy(authUrl = authUrl) },
+            )
+        }
+
+        fun onApiUrlChanged(apiUrl: String) {
+            updateUserConfig(
+                isManaged = { it.isApiUrlManaged },
+                update = { copy(apiUrl = apiUrl) },
+            )
+        }
+
+        fun onLogFilterChanged(logFilter: String) {
+            updateUserConfig(
+                isManaged = { it.isLogFilterManaged },
+                update = { copy(logFilter = logFilter) },
+            )
+        }
+
+        fun onAccountSlugChanged(accountSlug: String) {
+            updateUserConfig(
+                isManaged = { it.isAccountSlugManaged },
+                update = { copy(accountSlug = accountSlug) },
+            )
+        }
+
+        fun onStartOnLoginChanged(isChecked: Boolean) {
+            updateUserConfig(
+                isManaged = { it.isStartOnLoginManaged },
+                update = { copy(startOnLogin = isChecked) },
+            )
+        }
+
+        fun onConnectOnStartChanged(isChecked: Boolean) {
+            updateUserConfig(
+                isManaged = { it.isConnectOnStartManaged },
+                update = { copy(connectOnStart = isChecked) },
+            )
         }
 
         fun deleteLogDirectory(context: Context) {
@@ -160,6 +196,8 @@ internal class SettingsViewModel
             }
         }
 
+        private fun getLogZipPath(context: Context): String = "${context.cacheDir.absolutePath}/logs.zip"
+
         private fun zipFolder(
             sourceFolder: File,
             zipFile: File,
@@ -192,12 +230,22 @@ internal class SettingsViewModel
             }
         }
 
+        private fun updateUserConfig(
+            isManaged: (ManagedConfigStatus) -> Boolean,
+            update: Config.() -> Config,
+        ) {
+            if (!isManaged(getManagedStatus())) {
+                userConfig = userConfig.update()
+                savedStateHandle[DRAFT_USER_CONFIG_KEY] = userConfig
+            }
+            publishEffectiveConfig()
+        }
+
         private fun getEffectiveConfig(): Config =
             managedConfiguration?.let { repo.getEffectiveConfig(userConfig, it) }
                 ?: repo.getEffectiveConfigFromPersistedManaged(userConfig)
 
-        private fun getManagedStatus(): ManagedConfigStatus =
-            managedConfiguration?.managedStatus() ?: repo.getManagedStatus()
+        private fun getManagedStatus(): ManagedConfigStatus = managedConfiguration?.managedStatus() ?: repo.getManagedStatus()
 
         private fun areFieldsValid(config: Config): Boolean =
             URLUtil.isValidUrl(config.authUrl) &&
