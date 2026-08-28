@@ -728,11 +728,6 @@ class TunnelService : VpnService() {
                                     // discard it when connlib says a new sign-in is required.
                                     if (event.error.requiresSignIn()) {
                                         repo.clearToken()
-                                    } else if (event.error.isCertificateError()) {
-                                        showErrorNotification(
-                                            "Your Firezone session has ended",
-                                            event.error.message(),
-                                        )
                                     }
 
                                     stopReason = StopReason.Disconnected(event.error.message())
