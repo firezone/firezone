@@ -97,7 +97,7 @@ fun SettingsScreen(
         bottomBar = {
             // The tabs jump without smooth scrolling, so that crossing the bar does not drag
             // every page in between across the screen.
-            NavigationBar {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
                 SettingsTab(
                     selected = pagerState.currentPage == PAGE_GENERAL,
                     labelRes = R.string.general_settings_title,
