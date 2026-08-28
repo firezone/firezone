@@ -159,5 +159,20 @@ internal class ManagedConnectionState<T : Any> {
 
     fun isCurrent(expectedOwner: T): Boolean = synchronized(lock) { owner === expectedOwner }
 
+    fun isActive(expectedOwner: T): Boolean = synchronized(lock) { owner === expectedOwner && desiredRunning && !finishing }
+
+    fun runIfActive(
+        expectedOwner: T,
+        action: () -> Unit,
+    ): Boolean =
+        synchronized(lock) {
+            if (owner !== expectedOwner || !desiredRunning || finishing) {
+                return@synchronized false
+            }
+
+            action()
+            true
+        }
+
     fun managedConfiguration(): ManagedConfiguration = synchronized(lock) { managedConfiguration }
 }

@@ -86,14 +86,19 @@ class ManagedConnectionStateTest {
     }
 
     @Test
-    fun `new start request during completion starts a replacement owner`() {
+    fun `start claimed after completion begins starts a replacement owner`() {
         val state = ManagedConnectionState<Any>()
         val firstOwner = Any()
         val replacementOwner = Any()
 
         state.claim(state.requestStart()) { firstOwner }
         state.beginCompletion(firstOwner)
-        state.requestStart()
+        val startRequest = state.requestStart()
+
+        assertEquals(
+            ConnectionClaim.Existing(firstOwner),
+            state.claim(startRequest) { Any() },
+        )
 
         assertEquals(
             ConnectionCompletion.Restarted(replacementOwner),
@@ -125,5 +130,22 @@ class ManagedConnectionStateTest {
         )
         assertTrue(state.stopIfIdle {})
         assertNull(state.owner())
+    }
+
+    @Test
+    fun `completion rejects new work for the old owner`() {
+        val state = ManagedConnectionState<Any>()
+        val owner = Any()
+        var ran = false
+
+        state.claim(state.requestStart()) { owner }
+        assertTrue(state.runIfActive(owner) { ran = true })
+        assertTrue(ran)
+
+        state.beginCompletion(owner)
+        ran = false
+
+        assertFalse(state.runIfActive(owner) { ran = true })
+        assertFalse(ran)
     }
 }
