@@ -63,9 +63,8 @@ const advancedSettings: AdvancedSettingsViewModel = {
 // `x509_keystore::SUBJECT_COMMON_NAME`.
 const SUBJECT_CN = "dev.firezone.device-trust";
 
-// What the keystore backends title the certificate they picked and one they skipped.
+// What the keystore backends title every certificate they describe.
 const CERTIFICATE = "Certificate";
-const UNUSED_CERTIFICATE = "Unused Certificate";
 
 // The actor the provisioned certificate names, which the overview offers to connect as.
 const ACTOR_EMAIL = "jane.doe@example.com";
@@ -102,10 +101,11 @@ function present(value: string): Row {
   return { value };
 }
 
-// The rows in the order `x509_claims::ParsedCertificate::detail_fields` builds them.
+// The rows in the order `x509_claims::ParsedCertificate::detail_fields` builds them, led by the
+// row `x509_keystore::certificate_sections` adds when the keystore cannot sign with the key.
 function certificateSection(
-  title: string,
-  certificate: Certificate
+  certificate: Certificate,
+  cause?: X509UnusableCause
 ): X509DetailSection {
   // `x509_claims::ParsedCertificate::detail_fields` reads the rows with a problem first, so a
   // mock that left them in place would draw a screen the client cannot produce.
@@ -124,29 +124,20 @@ function certificateSection(
     row("SHA-256 Fingerprint", present(certificate.fingerprint)),
   ];
 
-  return {
-    title,
-    fields: [
-      ...fields.filter((field) => field.problem !== null),
-      ...fields.filter((field) => field.problem === null),
-    ],
-  };
-}
-
-// `x509_keystore::certificate_sections` leads a certificate it cannot present with the row
-// saying why, under a label no X.509 attribute carries.
-function unusedCertificateSection(
-  certificate: Certificate,
-  cause: X509UnusableCause
-): X509DetailSection {
-  const section = certificateSection(UNUSED_CERTIFICATE, certificate);
+  const rows = [
+    ...fields.filter((field) => field.problem !== null),
+    ...fields.filter((field) => field.problem === null),
+  ];
 
   return {
-    ...section,
-    fields: [
-      { label: "Private Key", value: null, problem: { Unusable: cause } },
-      ...section.fields,
-    ],
+    title: CERTIFICATE,
+    fields:
+      cause === undefined
+        ? rows
+        : [
+            { label: "Private Key", value: null, problem: { Unusable: cause } },
+            ...rows,
+          ],
   };
 }
 
@@ -258,7 +249,7 @@ const screens: Record<string, Screen> = {
     x509: {
       identity: "Absent",
       problems: [],
-      sections: [certificateSection(CERTIFICATE, windowsCertificate)],
+      sections: [certificateSection(windowsCertificate)],
     },
   },
   "x509-missing-package-linux": {
@@ -274,7 +265,7 @@ const screens: Record<string, Screen> = {
     x509: {
       identity: "Absent",
       problems: [],
-      sections: [certificateSection(CERTIFICATE, invalidAttributeCertificate)],
+      sections: [certificateSection(invalidAttributeCertificate)],
     },
   },
   // The certificate is past its validity window, which the page shows without
@@ -284,7 +275,7 @@ const screens: Record<string, Screen> = {
     x509: {
       identity: "Absent",
       problems: [],
-      sections: [unusedCertificateSection(expiredCertificate, "KeyMissing")],
+      sections: [certificateSection(expiredCertificate, "KeyMissing")],
     },
   },
   "diagnostics-no-logs": { route: "/diagnostics" },

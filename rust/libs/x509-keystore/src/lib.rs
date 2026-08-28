@@ -142,10 +142,7 @@ pub(crate) fn certificate_sections<C: CandidateCertificate>(
             });
 
             DetailSection {
-                title: match Some(index) == selected {
-                    true => "Certificate".to_owned(),
-                    false => "Unused Certificate".to_owned(),
-                },
+                title: "Certificate".to_owned(),
                 fields: unusable
                     .into_iter()
                     .chain(certificate.detail_fields())
@@ -581,7 +578,7 @@ mod tests {
 
         assert_eq!(
             status.text_description(),
-            "[Certificate]\nNot Before:\n  2\n\n[Unused Certificate]\nPrivate Key:\n  Not present\n  (the keystore holds no private key for this certificate)\nNot Before:\n  3\n"
+            "[Certificate]\nNot Before:\n  2\n\n[Certificate]\nPrivate Key:\n  Not present\n  (the keystore holds no private key for this certificate)\nNot Before:\n  3\n"
         );
     }
 }
