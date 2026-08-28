@@ -27,7 +27,6 @@ public enum ConfigurationDefaults {
   #endif
 
   public static let accountSlug = ""
-  public static let actorName = "Unknown user"
   public static let supportURL = "https://www.firezone.dev/support"
   public static let connectOnStart = false
   public static let startOnLogin = false
@@ -50,7 +49,6 @@ public class Configuration: ObservableObject {
     public static let apiURL = "apiURL"
     public static let logFilter = "logFilter"
     public static let accountSlug = "accountSlug"
-    public static let actorName = "actorName"
     public static let internetResourceEnabled = "internetResourceEnabled"
     public static let hideAdminPortalMenuItem = "hideAdminPortalMenuItem"
     public static let hideResourceList = "hideResourceList"
@@ -88,7 +86,6 @@ public class Configuration: ObservableObject {
     .string(key: Keys.apiURL, default: ConfigurationDefaults.apiURL),
     .string(key: Keys.logFilter, default: ConfigurationDefaults.logFilter),
     .string(key: Keys.accountSlug, default: ConfigurationDefaults.accountSlug),
-    .string(key: Keys.actorName, default: ConfigurationDefaults.actorName),
     .bool(key: Keys.connectOnStart, default: ConfigurationDefaults.connectOnStart),
     .bool(key: Keys.startOnLogin, default: ConfigurationDefaults.startOnLogin),
     .bool(
@@ -135,10 +132,6 @@ public class Configuration: ObservableObject {
   var accountSlug: String {
     get { effectiveString(Keys.accountSlug, default: ConfigurationDefaults.accountSlug) }
     set { setProviderValue(newValue, forKey: Keys.accountSlug) }
-  }
-  var actorName: String {
-    get { providerString(Keys.actorName, default: ConfigurationDefaults.actorName) }
-    set { setProviderValue(newValue, forKey: Keys.actorName) }
   }
   var connectOnStart: Bool {
     get { effectiveBool(Keys.connectOnStart, default: ConfigurationDefaults.connectOnStart) }

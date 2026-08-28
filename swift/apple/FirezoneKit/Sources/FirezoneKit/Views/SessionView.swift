@@ -31,7 +31,9 @@ import SwiftUI
       switch store.vpnStatus {
       case .connected:
         if store.configuration.publishedHideResourceList {
-          Text("Signed in as \(store.actorName)")
+          if let actorName = store.actorName {
+            Text("Signed in as \(actorName)")
+          }
         } else {
           switch store.resourceList {
           case .loaded(let resources):

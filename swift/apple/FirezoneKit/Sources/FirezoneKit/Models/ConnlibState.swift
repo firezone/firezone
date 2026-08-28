@@ -12,26 +12,30 @@ public struct ConnlibState: Encodable, Decodable {
   public let resources: [FirezoneKit.Resource]?
   public let connectedDevices: [FirezoneKit.ConnectedDevice]
   public let isLogStreamingActive: Bool
-  /// The account the portal named in `init`, `nil` until it arrives.
+  /// The account and actor the portal named in `init`, `nil` until it arrives.
   public let accountSlug: String?
+  public let actorName: String?
 
   private enum CodingKeys: String, CodingKey {
     case resources
     case connectedDevices
     case isLogStreamingActive
     case accountSlug
+    case actorName
   }
 
   private init(
     resources: [FirezoneKit.Resource]?,  // swiftlint:disable:this discouraged_optional_collection
     connectedDevices: [FirezoneKit.ConnectedDevice],
     isLogStreamingActive: Bool,
-    accountSlug: String?
+    accountSlug: String?,
+    actorName: String?
   ) {
     self.resources = resources
     self.connectedDevices = connectedDevices
     self.isLogStreamingActive = isLogStreamingActive
     self.accountSlug = accountSlug
+    self.actorName = actorName
   }
 
   public init(from decoder: Decoder) throws {
@@ -43,6 +47,7 @@ public struct ConnlibState: Encodable, Decodable {
     isLogStreamingActive =
       try container.decodeIfPresent(Bool.self, forKey: .isLogStreamingActive) ?? false
     accountSlug = try container.decodeIfPresent(String.self, forKey: .accountSlug)
+    actorName = try container.decodeIfPresent(String.self, forKey: .actorName)
   }
 
   /// A state snapshot that is known to differ from the hash it was compared against.
@@ -62,13 +67,15 @@ public struct ConnlibState: Encodable, Decodable {
     connectedDevices: [FirezoneKit.ConnectedDevice],
     isLogStreamingActive: Bool,
     accountSlug: String? = nil,
+    actorName: String? = nil,
     comparedTo currentHash: Data
   ) throws -> Change? {
     let state = ConnlibState(
       resources: resources,
       connectedDevices: connectedDevices,
       isLogStreamingActive: isLogStreamingActive,
-      accountSlug: accountSlug
+      accountSlug: accountSlug,
+      actorName: actorName
     )
     let encodedData = try PropertyListEncoder().encode(state)
     let hash = Data(SHA256.hash(data: encodedData))

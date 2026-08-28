@@ -79,8 +79,10 @@
 
       case .connected, .reasserting, .connecting:
         Group {
-          Text("Signed in as \(store.actorName)")
-            .foregroundStyle(.secondary)
+          if let actorName = store.actorName {
+            Text("Signed in as \(actorName)")
+              .foregroundStyle(.secondary)
+          }
 
           Button("Sign Out") {
             signOut()

@@ -127,8 +127,9 @@ actor Adapter {
   private var resources: [Resource]?  // swiftlint:disable:this discouraged_optional_collection
   private var connectedDevices: [ConnectedDevice] = []
 
-  /// The account the portal named in `init`, reported up to the app process.
+  /// The account and actor the portal named in `init`, reported up to the app process.
   private var accountSlug: String?
+  private var actorName: String?
 
   /// Resource notifications waiting for the UI process to poll them.
   private var pendingUnreachableResources: [PendingUnreachableResource]
@@ -326,6 +327,7 @@ actor Adapter {
         connectedDevices: self.connectedDevices.map { FirezoneKit.ConnectedDevice($0) },
         isLogStreamingActive: Log.isStreamingActive,
         accountSlug: self.accountSlug,
+        actorName: self.actorName,
         comparedTo: request.stateHash
       )
 
@@ -462,10 +464,11 @@ actor Adapter {
         }
       }
 
-    case .connectedToPortal(let accountSlug):
+    case .connectedToPortal(let accountSlug, let actorName):
       Log.log("Received ConnectedToPortal event")
 
       self.accountSlug = accountSlug
+      self.actorName = actorName
       Telemetry.setUser(
         firezoneId: FirezoneId(uuid: deviceId).encoded,
         accountSlug: accountSlug

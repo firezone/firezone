@@ -7,9 +7,6 @@
 import Foundation
 
 struct AuthResponse {
-  // The user associated with this authResponse.
-  let actorName: String
-
   // The account slug of the account the user signed in to.
   let accountSlug: String
 
