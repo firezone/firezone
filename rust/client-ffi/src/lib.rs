@@ -210,6 +210,7 @@ pub enum Event {
     },
     ConnectedToPortal {
         account_slug: String,
+        actor_name: String,
     },
     AllGatewaysOffline {
         resource_id: String,
@@ -487,12 +488,20 @@ impl Session {
                     connected_devices,
                 })
             }
-            client_shared::Event::ConnectedToPortal { account_slug } => {
-                telemetry::set_account_slug(account_slug.clone());
+            client_shared::Event::ConnectedToPortal(connected) => {
+                telemetry::set_account_slug(connected.account_slug.clone());
 
-                analytics::identify(RELEASE.to_owned(), account_slug.clone(), None, None);
+                analytics::identify(
+                    RELEASE.to_owned(),
+                    connected.account_slug.clone(),
+                    None,
+                    None,
+                );
 
-                Some(Event::ConnectedToPortal { account_slug })
+                Some(Event::ConnectedToPortal {
+                    account_slug: connected.account_slug,
+                    actor_name: connected.actor_name,
+                })
             }
             client_shared::Event::AllGatewaysOffline { resource_id } => {
                 Some(Event::AllGatewaysOffline {

@@ -143,6 +143,7 @@ pub struct InitClient {
     pub authorizations: Vec<Authorization>,
     pub flow_logs: FlowLogsConfig,
     pub account_slug: String,
+    pub actor_name: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -433,6 +434,7 @@ mod tests {
         let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
             "account_slug": "acme",
+            "actor_name": "Jane Doe",
             "flow_logs": {
                 "api_url": "https://flow-api.firezone.dev",
                 "upload_interval_secs": 60,
@@ -453,6 +455,7 @@ mod tests {
         let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
             "account_slug": "acme",
+            "actor_name": "Jane Doe",
             "flow_logs": {
                 "api_url": "https://flow-api.firezone.dev",
                 "upload_interval_secs": 60,
@@ -469,6 +472,40 @@ mod tests {
     fn init_without_account_slug_is_rejected() {
         let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "actor_name": "Jane Doe",
+            "flow_logs": {
+                "api_url": "https://flow-api.firezone.dev",
+                "upload_interval_secs": 60,
+                "upload_batch_size": 1000
+            }
+        }"#;
+
+        serde_json::from_str::<InitClient>(init).unwrap_err();
+    }
+
+    #[test]
+    fn can_deserialize_init_with_actor_name() {
+        let init = r#"{
+            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "account_slug": "acme",
+            "actor_name": "Jane Doe",
+            "flow_logs": {
+                "api_url": "https://flow-api.firezone.dev",
+                "upload_interval_secs": 60,
+                "upload_batch_size": 1000
+            }
+        }"#;
+
+        let init = serde_json::from_str::<InitClient>(init).unwrap();
+
+        assert_eq!(init.actor_name, "Jane Doe");
+    }
+
+    #[test]
+    fn init_without_actor_name_is_rejected() {
+        let init = r#"{
+            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "account_slug": "acme",
             "flow_logs": {
                 "api_url": "https://flow-api.firezone.dev",
                 "upload_interval_secs": 60,
@@ -483,7 +520,8 @@ mod tests {
     fn init_without_flow_logs_config_is_rejected() {
         let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
-            "account_slug": "acme"
+            "account_slug": "acme",
+            "actor_name": "Jane Doe"
         }"#;
 
         serde_json::from_str::<InitClient>(init).unwrap_err();
@@ -695,6 +733,7 @@ mod tests {
                     "upstream_dns": []
                 },
                 "account_slug": "acme",
+                "actor_name": "Jane Doe",
                 "resources": [
                     {
                         "address": "172.172.0.0/16",
@@ -756,6 +795,7 @@ mod tests {
                     "upstream_dns": []
                 },
                 "account_slug": "acme",
+                "actor_name": "Jane Doe",
                 "resources": [
                     {
                         "address_foobar": "172.172.0.0/16",

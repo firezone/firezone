@@ -14,6 +14,7 @@ use bin_shared::{
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
+use client_shared::ConnectedToPortal;
 use connlib_model::{ResourceId, ResourceList};
 use futures::{
     Future as _, FutureExt, SinkExt as _, Stream, StreamExt,
@@ -100,10 +101,8 @@ pub enum ServerMsg {
         resource_id: ResourceId,
     },
     OnUpdateResources(ResourceList),
-    /// Connlib connected to the portal, which named the account this session belongs to.
-    ConnectedToPortal {
-        account_slug: String,
-    },
+    /// Connlib connected to the portal, which named the account and actor this session belongs to.
+    ConnectedToPortal(ConnectedToPortal),
     /// Result of an `ApplyAdvancedSettings` from the GUI. `Ok` echoes the
     /// persisted struct so the GUI is certain about what landed.
     AdvancedSettingsApplied(Result<AdvancedSettings, String>),
@@ -655,14 +654,14 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::OnUpdateResources(resources))
                     .await?;
             }
-            client_shared::Event::ConnectedToPortal { account_slug } => {
-                telemetry::set_account_slug(account_slug.clone());
+            client_shared::Event::ConnectedToPortal(connected) => {
+                telemetry::set_account_slug(connected.account_slug.clone());
 
                 if let Some(release) = self.telemetry_release.clone() {
-                    analytics::identify(release, account_slug.clone(), None, None);
+                    analytics::identify(release, connected.account_slug.clone(), None, None);
                 }
 
-                self.send_ipc(ServerMsg::ConnectedToPortal { account_slug })
+                self.send_ipc(ServerMsg::ConnectedToPortal(connected))
                     .await?;
             }
         }
