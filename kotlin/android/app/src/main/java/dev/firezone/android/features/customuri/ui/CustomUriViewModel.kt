@@ -39,9 +39,6 @@ internal class CustomUriViewModel
                         intent.data?.getQueryParameter(QUERY_ACCOUNT_SLUG)?.let { accountSlug ->
                             repo.saveAccountSlug(accountSlug).collect()
                         }
-                        intent.data?.getQueryParameter(QUERY_ACTOR_NAME)?.let { actorName ->
-                            repo.saveActorName(actorName).collect()
-                        }
                         intent.data?.getQueryParameter(QUERY_CLIENT_STATE)?.let { state ->
                             if (repo.validateState(state).firstOrNull() != true) {
                                 error("Invalid state parameter $state")
@@ -81,7 +78,6 @@ internal class CustomUriViewModel
             private const val QUERY_ACCOUNT_SLUG = "account_slug"
             private const val QUERY_CLIENT_STATE = "state"
             private const val QUERY_CLIENT_AUTH_FRAGMENT = "fragment"
-            private const val QUERY_ACTOR_NAME = "actor_name"
 
             private const val TAG = "CustomUriViewModel"
         }

@@ -214,13 +214,6 @@ class Repository
                 emit(sharedPreferences.getString(ACCOUNT_SLUG_KEY, null))
             }.flowOn(coroutineDispatcher)
 
-        fun getActorName(): Flow<String?> =
-            flow {
-                emit(getActorNameSync())
-            }.flowOn(coroutineDispatcher)
-
-        fun getActorNameSync(): String? = sharedPreferences.getString(ACTOR_NAME_KEY, null)?.takeIf { it.isNotEmpty() }
-
         fun getNonceSync(): String? = sharedPreferences.getString(NONCE_KEY, null)
 
         fun saveAccountSlug(value: String): Flow<Unit> =
@@ -276,16 +269,6 @@ class Repository
                 )
             }.flowOn(coroutineDispatcher)
 
-        fun saveActorName(value: String): Flow<Unit> =
-            flow {
-                emit(
-                    sharedPreferences
-                        .edit()
-                        .putString(ACTOR_NAME_KEY, value)
-                        .apply(),
-                )
-            }.flowOn(coroutineDispatcher)
-
         fun validateState(value: String): Flow<Boolean> =
             flow {
                 val state = sharedPreferences.getString(STATE_KEY, "").orEmpty()
@@ -309,13 +292,6 @@ class Repository
         fun clearState() {
             sharedPreferences.edit().apply {
                 remove(STATE_KEY)
-                apply()
-            }
-        }
-
-        fun clearActorName() {
-            sharedPreferences.edit().apply {
-                remove(ACTOR_NAME_KEY)
                 apply()
             }
         }
@@ -350,7 +326,6 @@ class Repository
 
         companion object {
             private const val AUTH_URL_KEY = "authUrl"
-            private const val ACTOR_NAME_KEY = "actorName"
             private const val API_URL_KEY = "apiUrl"
             private const val FAVORITE_RESOURCES_KEY = "favoriteResources"
             private const val LOG_FILTER_KEY = "logFilter"
