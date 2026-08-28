@@ -193,7 +193,9 @@ class Repository
                     .getString(X509_CERTIFICATE_ALIAS_RESTRICTION)
                     ?.takeUnless(String::isBlank)
             } else {
-                sharedPreferences.getString(X509_CERTIFICATE_ALIAS_KEY, null)
+                sharedPreferences
+                    .getString(X509_CERTIFICATE_ALIAS_KEY, null)
+                    ?.takeUnless(String::isBlank)
             }
 
         fun isX509CertificateAliasManaged(applicationRestrictions: Bundle): Boolean =
