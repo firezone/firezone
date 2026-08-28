@@ -33,11 +33,26 @@ jobs:
       # narrowing to one ABI keeps coverage identical while avoiding the 4-ABI build.
       - name: Run Android Lint
         run: ./gradlew lint -Pandroid.injected.build.abi=x86_64
-      # AGP 9 only creates unit test components for the tested build type
-      # (debug). Narrowing to one ABI reuses the cargo build from lint above.
+
+  # AGP 9 only creates unit test components for the tested build type (debug).
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-android
+        with:
+          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest -Pandroid.injected.build.abi=x86_64
-      # Renders the app's screens to PNGs; nothing is compared against a reference.
+
+  # Renders the app's screens to PNGs; nothing is compared against a reference.
+  screenshots:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-android
+        with:
+          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - name: Record screenshots
         run: ./gradlew recordRoborazziDebug -Pandroid.injected.build.abi=x86_64
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
