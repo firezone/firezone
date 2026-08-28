@@ -8,6 +8,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
@@ -32,6 +34,7 @@ internal class SettingsViewModel
     @Inject
     constructor(
         private val repo: Repository,
+        private val managedConfigurationSource: ManagedConfigurationSource,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(UiState())
         val uiState: StateFlow<UiState> = _uiState
@@ -59,15 +62,24 @@ internal class SettingsViewModel
 
         private var shouldResetFavoritesOnSave = false
 
-        fun populateFieldsFromConfig() {
+        init {
             viewModelScope.launch {
-                repo.getConfig().collect {
-                    config = it
-                    _configStateFlow.value = it
-                    _managedStatusStateFlow.value = repo.getManagedStatus()
+                managedConfigurationSource.configuration.filterNotNull().collect {
+                    val effectiveConfig = repo.getConfigSync()
+                    val managedStatus = repo.getManagedStatus()
+                    config =
+                        _managedStatusStateFlow.value?.let { previousManagedStatus ->
+                            config.withManagedUpdates(effectiveConfig, previousManagedStatus, managedStatus)
+                        } ?: effectiveConfig
+                    _configStateFlow.value = config
+                    _managedStatusStateFlow.value = managedStatus
                     onFieldUpdated()
                 }
             }
+        }
+
+        fun populateFieldsFromConfig() {
+            viewModelScope.launch { managedConfigurationSource.refresh() }
         }
 
         fun onViewResume(context: Context) {
@@ -235,6 +247,42 @@ internal class SettingsViewModel
                     isSaveButtonEnabled = areFieldsValid(),
                 )
         }
+
+        private fun Config.withManagedUpdates(
+            effectiveConfig: Config,
+            previousStatus: ManagedConfigStatus,
+            currentStatus: ManagedConfigStatus,
+        ): Config =
+            copy(
+                authUrl =
+                    effectiveConfig.authUrl.takeIf {
+                        previousStatus.isAuthUrlManaged || currentStatus.isAuthUrlManaged
+                    } ?: authUrl,
+                apiUrl =
+                    effectiveConfig.apiUrl.takeIf {
+                        previousStatus.isApiUrlManaged || currentStatus.isApiUrlManaged
+                    } ?: apiUrl,
+                logFilter =
+                    effectiveConfig.logFilter.takeIf {
+                        previousStatus.isLogFilterManaged || currentStatus.isLogFilterManaged
+                    } ?: logFilter,
+                accountSlug =
+                    effectiveConfig.accountSlug.takeIf {
+                        previousStatus.isAccountSlugManaged || currentStatus.isAccountSlugManaged
+                    } ?: accountSlug,
+                startOnLogin =
+                    if (previousStatus.isStartOnLoginManaged || currentStatus.isStartOnLoginManaged) {
+                        effectiveConfig.startOnLogin
+                    } else {
+                        startOnLogin
+                    },
+                connectOnStart =
+                    if (previousStatus.isConnectOnStartManaged || currentStatus.isConnectOnStartManaged) {
+                        effectiveConfig.connectOnStart
+                    } else {
+                        connectOnStart
+                    },
+            )
 
         private fun areFieldsValid(): Boolean =
             URLUtil.isValidUrl(config.authUrl) &&

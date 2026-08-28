@@ -10,17 +10,24 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import dagger.hilt.android.HiltAndroidApp
 import dev.firezone.android.BuildConfig
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.tunnel.TunnelService
 import uniffi.connlib.ConnlibException
 import uniffi.connlib.configureLogger
 import uniffi.connlib.drainFlowLogs
 import java.io.IOException
+import javax.inject.Inject
 import kotlin.concurrent.thread
 
 @HiltAndroidApp
 class FirezoneApp : Application() {
+    @Inject
+    internal lateinit var managedConfigurationSource: ManagedConfigurationSource
+
     override fun onCreate() {
         super.onCreate()
+
+        managedConfigurationSource.start()
 
         // Initialize Telemetry as early as possible
         Telemetry.start(this)

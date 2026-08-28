@@ -5,7 +5,6 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Bundle
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -13,6 +12,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.ApplicationMode
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.x509.CertificateAccess
@@ -31,7 +31,7 @@ internal class SplashViewModel
     constructor(
         private val repo: Repository,
         private val tokenStore: TokenStore,
-        private val applicationRestrictions: Bundle,
+        private val managedConfigurationSource: ManagedConfigurationSource,
         private val applicationMode: ApplicationMode,
         private val certificateAccess: CertificateAccess,
     ) : ViewModel() {
@@ -67,7 +67,8 @@ internal class SplashViewModel
                     return@launch
                 }
 
-                val token = applicationRestrictions.getString("token") ?: tokenStore.get()
+                val managedConfiguration = managedConfigurationSource.refresh()
+                val token = managedConfiguration.token ?: tokenStore.get()
 
                 if (token.isNullOrBlank()) {
                     actionMutableStateFlow.value = ViewAction.NavigateToSignIn

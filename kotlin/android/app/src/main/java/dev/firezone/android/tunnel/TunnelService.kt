@@ -3,17 +3,14 @@ package dev.firezone.android.tunnel
 
 import NetworkMonitor
 import android.app.ActivityManager
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Binder
 import android.os.Build
-import android.os.Bundle
 import android.os.IBinder
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.installations.FirebaseInstallations
@@ -23,12 +20,13 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.Log
 import dev.firezone.android.core.Telemetry
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.data.isEnabled
+import dev.firezone.android.core.data.model.ManagedConfiguration
 import dev.firezone.android.core.x509.X509Identity
-import dev.firezone.android.core.x509.X509IdentityException
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.ConnectedDevice
 import dev.firezone.android.tunnel.model.Resource
@@ -50,6 +48,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
@@ -83,7 +83,7 @@ class TunnelService : VpnService() {
     internal lateinit var tokenStore: TokenStore
 
     @Inject
-    internal lateinit var appRestrictions: Bundle
+    internal lateinit var managedConfigurationSource: ManagedConfigurationSource
 
     @Inject
     internal lateinit var moshi: Moshi
@@ -131,6 +131,12 @@ class TunnelService : VpnService() {
     val connectedDevicesState: StateFlow<List<ConnectedDevice>> = _connectedDevicesState.asStateFlow()
     val actorNameState: StateFlow<String?> = _actorNameState.asStateFlow()
 
+    @Volatile
+    private var managedConfiguration = ManagedConfiguration()
+
+    @Volatile
+    private var reconnectAfterDisconnect = false
+
     var tunnelResources: List<Resource>
         get() = _resourcesState.value
         set(value) {
@@ -170,11 +176,10 @@ class TunnelService : VpnService() {
 
     private fun buildVpnService() {
         fun handleApplications(
-            appRestrictions: Bundle,
-            key: String,
+            applications: String?,
             action: (String) -> Unit,
         ) {
-            appRestrictions.getString(key)?.takeIf { it.isNotBlank() }?.split(",")?.forEach { p ->
+            applications?.takeIf { it.isNotBlank() }?.split(",")?.forEach { p ->
                 p.trim().takeIf { it.isNotBlank() }?.let(action)
             }
         }
@@ -196,10 +201,9 @@ class TunnelService : VpnService() {
                 setSession(SESSION_NAME)
                 setMtu(MTU)
 
-                handleApplications(appRestrictions, "allowedApplications") { addAllowedApplication(it) }
+                handleApplications(managedConfiguration.allowedApplications) { addAllowedApplication(it) }
                 handleApplications(
-                    appRestrictions,
-                    "disallowedApplications",
+                    managedConfiguration.disallowedApplications,
                 ) { addDisallowedApplication(it) }
 
                 // Never route GCM notifications through the tunnel.
@@ -233,29 +237,34 @@ class TunnelService : VpnService() {
             }
     }
 
-    private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
+    private fun applyManagedConfiguration(configuration: ManagedConfiguration) {
+        val previous = managedConfiguration
+        managedConfiguration = configuration
 
-    private val restrictionsReceiver =
-        object : BroadcastReceiver() {
-            override fun onReceive(
-                context: Context,
-                intent: Intent,
-            ) {
-                // Only change VPN if appRestrictions have changed
-                val restrictionsManager = context.getSystemService(Context.RESTRICTIONS_SERVICE) as android.content.RestrictionsManager
-                val newAppRestrictions = restrictionsManager.applicationRestrictions
-                serviceScope.launch { repo.saveManagedConfiguration(newAppRestrictions).collect {} }
-                val changed = MANAGED_CONFIGURATIONS.any { newAppRestrictions.getString(it) != appRestrictions.getString(it) }
-                // The next `connect()` reads the token and the certificate alias off this bundle,
-                // so refresh it even when the tunnel itself stays as it is.
-                appRestrictions = newAppRestrictions
-                if (!changed) {
-                    return
-                }
-
-                buildVpnService()
-            }
+        if (configuration == previous || commandChannel == null) {
+            return
         }
+        if (configuration.requiresSessionReconnect(previous)) {
+            reconnect()
+            return
+        }
+        if (configuration.logFilter != previous.logFilter) {
+            sendTunnelCommand(TunnelCommand.SetLogDirectives(repo.getConfigSync().logFilter))
+        }
+        if (
+            configuration.requiresVpnRebuild(previous) &&
+            tunnelIpv4Address != null &&
+            tunnelIpv6Address != null
+        ) {
+            buildVpnService()
+        }
+    }
+
+    private fun reconnect() {
+        Log.i(TAG, "Reconnecting to apply managed configuration")
+        reconnectAfterDisconnect = true
+        sendTunnelCommand(TunnelCommand.Disconnect)
+    }
 
     // Primary callback used to start and stop the VPN service
     // This can be called either from the UI or from the system
@@ -268,14 +277,24 @@ class TunnelService : VpnService() {
         if (intent?.getBooleanExtra("startedByUser", false) == true) {
             startedByUser = true
         }
-        connect()
+        serviceScope.launch {
+            applyManagedConfiguration(managedConfigurationSource.refresh())
+            if (!connect()) {
+                stopSelf(startId)
+            }
+        }
         return START_STICKY
     }
 
     override fun onCreate() {
         super.onCreate()
         activeService = this
-        registerReceiver(restrictionsReceiver, restrictionsFilter)
+
+        serviceScope.launch {
+            managedConfigurationSource.configuration.filterNotNull().collect {
+                applyManagedConfiguration(it)
+            }
+        }
 
         // `Telemetry.start` honours this for the Kotlin side; connlib's telemetry is a separate
         // client, so without this a build stamped as not reporting still reports.
@@ -286,7 +305,6 @@ class TunnelService : VpnService() {
 
     override fun onDestroy() {
         activeService = null
-        unregisterReceiver(restrictionsReceiver)
         serviceScope.cancel()
 
         if (!BuildConfig.NO_TELEMETRY) {
@@ -321,6 +339,7 @@ class TunnelService : VpnService() {
 
     // Call this to stop the tunnel and shutdown the service, leaving the token intact.
     fun disconnect() {
+        reconnectAfterDisconnect = false
         sendTunnelCommand(TunnelCommand.Disconnect)
     }
 
@@ -332,113 +351,117 @@ class TunnelService : VpnService() {
         sendTunnelCommand(TunnelCommand.Reset)
     }
 
-    private fun connect() {
+    private fun connect(): Boolean {
+        if (commandChannel != null) {
+            return true
+        }
+
         val token =
-            (appRestrictions.getString("token") ?: tokenStore.get())
+            (managedConfiguration.token ?: tokenStore.get())
                 ?.takeUnless(String::isBlank)
-        val certificateAlias = repo.getX509CertificateAliasSync(appRestrictions)
+        if (token == null) {
+            return false
+        }
         val config = repo.getConfigSync()
         resourceState = repo.getInternetResourceStateSync()
 
-        if (token != null) {
-            tunnelState = State.CONNECTING
-            // Dismiss any previous disconnected notifications
-            TunnelNotification.dismissDisconnectedNotification(this)
+        tunnelState = State.CONNECTING
+        // Dismiss any previous disconnected notifications
+        TunnelNotification.dismissDisconnectedNotification(this)
 
-            commandChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
+        val firebaseInstallationId =
+            runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
+                .getOrElse { exception ->
+                    Log.d(TAG, "Failed to obtain firebase installation id: $exception")
+                    null
+                }
 
-            val context = this
+        val deviceInfo =
+            DeviceInfo(
+                firebaseInstallationId = firebaseInstallationId,
+                deviceUuid = null,
+                deviceSerial = null,
+                identifierForVendor = null,
+            )
 
-            serviceScope.launch {
-                try {
-                    // Set telemetry environment and user context
-                    val deviceIdValue = deviceId()
-                    Telemetry.setEnvironmentOrClose(config.apiUrl)
-                    Telemetry.setFirezoneId(deviceIdValue)
-                    // The portal names the account in `init`; until then this session has none.
-                    Telemetry.setAccountSlug(null)
+        commandChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
 
-                    configureLogger(
-                        logDir(this@TunnelService),
-                        config.logFilter,
-                        flowLogsDir(this@TunnelService),
-                    )
+        val context = this
 
-                    val deviceInfo =
-                        DeviceInfo(
-                            firebaseInstallationId = firebaseInstallationId(),
-                            deviceUuid = null,
-                            deviceSerial = null,
-                            identifierForVendor = null,
-                        )
+        serviceScope.launch {
+            try {
+                // Set telemetry environment and user context
+                val deviceIdValue = deviceId()
+                Telemetry.setEnvironmentOrClose(config.apiUrl)
+                Telemetry.setFirezoneId(deviceIdValue)
+                Telemetry.setAccountSlug(config.accountSlug)
 
-                    // The KeyChain blocks on a system service and connlib reads the identity while
-                    // it constructs the session, so load it before we get there.
-                    val certificate =
-                        withContext(Dispatchers.IO) { x509Identity.load(certificateAlias) }
+                configureLogger(
+                    logDir(this@TunnelService),
+                    config.logFilter,
+                    flowLogsDir(this@TunnelService),
+                )
 
-                    sessionFactory
-                        .open(
+                Session
+                    .newAndroid(
+                        config =
                             AndroidSessionConfig(
                                 apiUrl = config.apiUrl,
                                 token = token,
+                                accountSlug = config.accountSlug,
                                 deviceId = deviceIdValue,
                                 deviceName = getDeviceName(),
                                 isInternetResourceActive = resourceState.isEnabled(),
                                 deviceInfo = deviceInfo,
                             ),
-                            // The token authenticates the user. A configured certificate attests
-                            // the device, and the portal decides whether to accept it.
-                            tlsIdentity = certificate?.tlsIdentity,
-                        ).use { session ->
-                            startNetworkMonitoring()
-                            startLogCleanup()
-                            startFeatureFlagPoll()
+                        protectSocket = protectSocketCallback,
+                        tlsIdentity = null,
+                    ).use { session ->
+                        startNetworkMonitoring()
+                        startLogCleanup()
+                        startFeatureFlagPoll()
 
-                            val stopReason = eventLoop(session, commandChannel!!)
+                        val stopReason = eventLoop(session, commandChannel!!)
 
-                            Log.i(TAG, "Event-loop finished: $stopReason")
+                        Log.i(TAG, "Event-loop finished: $stopReason")
 
-                            val message =
-                                when (stopReason) {
-                                    is StopReason.Disconnected -> stopReason.message
+                        val message =
+                            when (stopReason) {
+                                is StopReason.Disconnected -> stopReason.message
 
-                                    StopReason.Error -> UNRECOVERABLE_ERROR
+                                StopReason.Error -> UNRECOVERABLE_ERROR
 
-                                    StopReason.ExplicitDisconnect,
-                                    StopReason.EventChannelClosed,
-                                    StopReason.CommandChannelClosed,
-                                    -> null
-                                }
-
-                            if (startedByUser && message != null) {
-                                TunnelNotification.showDisconnectedNotification(context, message)
+                                StopReason.ExplicitDisconnect,
+                                StopReason.EventChannelClosed,
+                                StopReason.CommandChannelClosed,
+                                -> null
                             }
+
+                        if (startedByUser && message != null) {
+                            TunnelNotification.showDisconnectedNotification(context, message)
                         }
-                } catch (e: ConnlibException) {
-                    Log.e(TAG, "Failed to start session", e)
-                    e.close()
-                } catch (e: X509IdentityException) {
-                    Log.e(TAG, "Failed to load the client certificate", e)
-                    val advice = "Contact your administrator for support."
-                    showErrorNotification(
-                        "Client certificate unavailable",
-                        e.message?.takeUnless(String::isBlank)?.let { "$it $advice" } ?: advice,
-                    )
-                } finally {
-                    commandChannel = null
-                    tunnelState = State.DOWN
+                    }
+            } catch (e: ConnlibException) {
+                Log.e(TAG, "Failed to start session", e)
+                e.close()
+            } finally {
+                commandChannel = null
+                tunnelState = State.DOWN
 
-                    stopNetworkMonitoring()
-                    stopFeatureFlagPoll()
+                stopNetworkMonitoring()
+                stopFeatureFlagPoll()
+                stopLogCleanup()
 
-                    // Stop the foreground notification
+                val shouldReconnect = reconnectAfterDisconnect
+                reconnectAfterDisconnect = false
+                if (!shouldReconnect || !connect()) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopLogCleanup()
                     stopSelf()
                 }
             }
         }
+
+        return true
     }
 
     private fun sendTunnelCommand(command: TunnelCommand) {
@@ -560,7 +583,7 @@ class TunnelService : VpnService() {
     }
 
     private fun getDeviceName(): String {
-        val deviceName = appRestrictions.getString("deviceName")
+        val deviceName = managedConfiguration.deviceName
         return if (deviceName.isNullOrBlank() || deviceName == "null") {
             Build.MODEL
         } else {
@@ -854,9 +877,6 @@ class TunnelService : VpnService() {
             Files.createDirectories(Paths.get(flowLogsDir))
             return flowLogsDir
         }
-
-        private val MANAGED_CONFIGURATIONS =
-            arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
 
         @Volatile
         private var activeService: TunnelService? = null
