@@ -16,8 +16,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
 import javax.inject.Inject
 
@@ -73,7 +71,7 @@ class Repository
         private val _favorites =
             MutableStateFlow(Favorites(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())))
         val favorites = _favorites.asStateFlow()
-        private val authCallbackMutex = Mutex()
+        private val authStateLock = Any()
 
         fun getConfigSync(): Config = getUserConfigSync().withManagedOverrides()
 
@@ -264,11 +262,14 @@ class Repository
             nonce: String,
             state: String,
         ) {
-            sharedPreferences
-                .edit()
-                .putString(NONCE_KEY, nonce)
-                .putString(STATE_KEY, state)
-                .apply()
+            synchronized(authStateLock) {
+                sharedPreferences
+                    .edit()
+                    .putString(NONCE_KEY, nonce)
+                    .putString(STATE_KEY, state)
+                    .remove(CONSUMED_AUTH_STATE_HASH_KEY)
+                    .apply()
+            }
         }
 
         fun saveState(value: String): Flow<Unit> =
@@ -307,32 +308,47 @@ class Repository
         ): Flow<Boolean> =
             flow {
                 val didSave =
-                    authCallbackMutex.withLock {
+                    synchronized(authStateLock) {
+                        val stateHash = hashAuthState(state)
+                        val consumedStateHash = sharedPreferences.getString(CONSUMED_AUTH_STATE_HASH_KEY, null)
+                        val isConsumedState =
+                            consumedStateHash?.let {
+                                MessageDigest.isEqual(
+                                    it.toByteArray(Charsets.UTF_8),
+                                    stateHash.toByteArray(Charsets.UTF_8),
+                                )
+                            } ?: false
                         val expectedState = sharedPreferences.getString(STATE_KEY, "").orEmpty()
-                        if (!MessageDigest.isEqual(expectedState.toByteArray(), state.toByteArray())) {
-                            return@withLock false
+                        when {
+                            isConsumedState -> true
+                            !MessageDigest.isEqual(expectedState.toByteArray(), state.toByteArray()) -> false
+                            else -> {
+                                val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
+                                sharedPreferences
+                                    .edit()
+                                    .putString(TOKEN_KEY, nonce.plus(fragment))
+                                    .remove(NONCE_KEY)
+                                    .remove(STATE_KEY)
+                                    .putString(ACCOUNT_SLUG_KEY, accountSlug)
+                                    .putString(ACTOR_NAME_KEY, actorName)
+                                    .putString(CONSUMED_AUTH_STATE_HASH_KEY, stateHash)
+                                    .apply()
+
+                                true
+                            }
                         }
-
-                        val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
-                        sharedPreferences
-                            .edit()
-                            .putString(TOKEN_KEY, nonce.plus(fragment))
-                            .remove(NONCE_KEY)
-                            .remove(STATE_KEY)
-                            .putString(ACCOUNT_SLUG_KEY, accountSlug)
-                            .putString(ACTOR_NAME_KEY, actorName)
-                            .apply()
-
-                        true
                     }
 
                 emit(didSave)
             }.flowOn(coroutineDispatcher)
 
         fun clearToken() {
-            sharedPreferences.edit().apply {
-                remove(TOKEN_KEY)
-                apply()
+            synchronized(authStateLock) {
+                sharedPreferences.edit().apply {
+                    remove(TOKEN_KEY)
+                    remove(CONSUMED_AUTH_STATE_HASH_KEY)
+                    apply()
+                }
             }
         }
 
@@ -421,6 +437,12 @@ class Repository
                     },
             )
 
+        private fun hashAuthState(state: String): String =
+            MessageDigest
+                .getInstance("SHA-256")
+                .digest(state.toByteArray(Charsets.UTF_8))
+                .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
+
         companion object {
             private const val AUTH_URL_KEY = "authUrl"
             private const val API_URL_KEY = "apiUrl"
@@ -439,6 +461,7 @@ class Repository
             private const val TOKEN_KEY = "token"
             private const val NONCE_KEY = "nonce"
             private const val STATE_KEY = "state"
+            private const val CONSUMED_AUTH_STATE_HASH_KEY = "consumedAuthStateHash"
             private const val DEVICE_ID_KEY = "deviceId"
             private const val ENABLED_INTERNET_RESOURCE_KEY = "enabledInternetResource"
             private const val NOTIFICATION_PERMISSION_REQUESTED_KEY = "notificationPermissionRequested"
