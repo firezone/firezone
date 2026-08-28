@@ -329,7 +329,8 @@ class TunnelService : VpnService() {
                     val deviceIdValue = deviceId()
                     Telemetry.setEnvironmentOrClose(config.apiUrl)
                     Telemetry.setFirezoneId(deviceIdValue)
-                    Telemetry.setAccountSlug(config.accountSlug)
+                    // The portal names the account in `init`; until then this session has none.
+                    Telemetry.setAccountSlug(null)
 
                     configureLogger(
                         logDir(this@TunnelService),
@@ -678,6 +679,17 @@ class TunnelService : VpnService() {
                                         },
                                     )
                                     buildVpnService()
+                                }
+
+                                is Event.AccountSlugUpdated -> {
+                                    Telemetry.setAccountSlug(event.accountSlug)
+
+                                    // A slug forced through managed configuration already wins
+                                    // every read, so caching over it would only surface once the
+                                    // admin stops forcing one.
+                                    if (!repo.isAccountSlugManaged()) {
+                                        repo.saveAccountSlug(event.accountSlug).collect {}
+                                    }
                                 }
 
                                 is Event.Disconnected -> {
