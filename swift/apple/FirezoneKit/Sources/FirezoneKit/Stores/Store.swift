@@ -512,10 +512,16 @@ public final class Store: ObservableObject {
     let source = x509CertificateSource ?? keychain
 
     do {
-      let certificate = try await source.read().certificate
-      let summary = certificate.flatMap { X509CertificateParser.summary(of: $0) }
+      guard let certificate = try await source.read().certificate else {
+        certificateIdentity = .absent
 
-      certificateIdentity = summary?.identity ?? .absent
+        return
+      }
+
+      // A certificate we cannot parse is still presented to the portal, it just names nobody.
+      let summary = X509CertificateParser.summary(of: certificate)
+
+      certificateIdentity = summary?.identity ?? .claimed(email: nil)
     } catch {
       Log.error("Failed to read the client certificate: \(error.localizedDescription)")
 
