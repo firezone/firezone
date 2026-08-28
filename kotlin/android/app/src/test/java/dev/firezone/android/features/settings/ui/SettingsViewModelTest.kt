@@ -92,7 +92,10 @@ class SettingsViewModelTest {
         viewModel.onSaveSettingsCompleted()
         shadowOf(Looper.getMainLooper()).idle()
 
-        assertTrue(repository.favorites.value.inner.isEmpty())
+        assertTrue(
+            repository.favorites.value.inner
+                .isEmpty(),
+        )
     }
 
     @Test
@@ -107,7 +110,10 @@ class SettingsViewModelTest {
         assertTrue(FAVORITE_ID in repository.favorites.value.inner)
         recreatedViewModel.onSaveSettingsCompleted()
         shadowOf(Looper.getMainLooper()).idle()
-        assertTrue(repository.favorites.value.inner.isEmpty())
+        assertTrue(
+            repository.favorites.value.inner
+                .isEmpty(),
+        )
     }
 
     private companion object {
