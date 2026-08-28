@@ -258,10 +258,32 @@ class Repository
                 )
             }.flowOn(coroutineDispatcher)
 
-        fun validateState(value: String): Flow<Boolean> =
+        fun saveAuthCallbackIfStateValid(
+            state: String,
+            fragment: String,
+            accountSlug: String,
+            actorName: String,
+        ): Flow<Boolean> =
             flow {
-                val state = sharedPreferences.getString(STATE_KEY, "").orEmpty()
-                emit(MessageDigest.isEqual(state.toByteArray(), value.toByteArray()))
+                val expectedState = sharedPreferences.getString(STATE_KEY, "").orEmpty()
+                if (!MessageDigest.isEqual(expectedState.toByteArray(), state.toByteArray())) {
+                    emit(false)
+                    return@flow
+                }
+
+                val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
+                val editor =
+                    sharedPreferences
+                        .edit()
+                        .putString(TOKEN_KEY, nonce.plus(fragment))
+                        .remove(NONCE_KEY)
+                        .remove(STATE_KEY)
+
+                editor.putString(ACCOUNT_SLUG_KEY, accountSlug)
+                editor.putString(ACTOR_NAME_KEY, actorName)
+
+                editor.apply()
+                emit(true)
             }.flowOn(coroutineDispatcher)
 
         fun clearToken() {
