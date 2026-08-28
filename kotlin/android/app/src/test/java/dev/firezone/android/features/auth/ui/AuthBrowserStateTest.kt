@@ -9,7 +9,7 @@ class AuthBrowserStateTest {
     fun `starts authentication before launching a browser`() {
         val action = AuthBrowserState.NOT_STARTED.resumeAction()
 
-        assertEquals(AuthBrowserState.ResumeAction.START_AUTH_FLOW, action)
+        assertEquals(AuthBrowserState.Action.START_AUTH_FLOW, action)
     }
 
     @Test
@@ -17,7 +17,7 @@ class AuthBrowserStateTest {
         val restoredState = AuthBrowserState.restore(AuthBrowserState.LAUNCHED.name)
 
         assertEquals(AuthBrowserState.LAUNCHED, restoredState)
-        assertEquals(AuthBrowserState.ResumeAction.NAVIGATE_TO_SIGN_IN, restoredState.resumeAction())
+        assertEquals(AuthBrowserState.Action.NAVIGATE_TO_SIGN_IN, restoredState.resumeAction())
     }
 
     @Test
@@ -25,7 +25,17 @@ class AuthBrowserStateTest {
         val restoredState = AuthBrowserState.restore(AuthBrowserState.UNAVAILABLE.name)
 
         assertEquals(AuthBrowserState.UNAVAILABLE, restoredState)
-        assertEquals(AuthBrowserState.ResumeAction.NONE, restoredState.resumeAction())
+        assertEquals(AuthBrowserState.Action.NONE, restoredState.resumeAction())
+    }
+
+    @Test
+    fun `acknowledging browser unavailable returns to sign in`() {
+        val restoredState = AuthBrowserState.restore(AuthBrowserState.UNAVAILABLE.name)
+
+        assertEquals(
+            AuthBrowserState.Action.NAVIGATE_TO_SIGN_IN,
+            restoredState.browserRequiredAcknowledgementAction(),
+        )
     }
 
     @Test
