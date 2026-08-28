@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.Resource do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "Resource",
       description: "Resource",
       type: :object,
@@ -37,7 +36,6 @@ defmodule PortalAPI.Schemas.Resource do
           items: PortalAPI.Schemas.Resource.Filter
         }
       },
-      required: [:name, :type],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "Prod DB",
@@ -49,7 +47,8 @@ defmodule PortalAPI.Schemas.Resource do
         ],
         "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
       }
-    })
+    },
+      optional: [:ip_stack, :site_id])
   end
 
   defmodule Filter do

@@ -1,4 +1,10 @@
 defmodule PortalAPI.ResourceJSON do
+  use PortalAPI.JSON,
+    struct: Portal.Resource,
+    schema: PortalAPI.Schemas.Resource.Schema,
+    computed: [:filters],
+    internal: [:account_id, :inserted_at, :updated_at]
+
   alias PortalAPI.Pagination
   alias Portal.Resource
 
@@ -20,16 +26,9 @@ defmodule PortalAPI.ResourceJSON do
   end
 
   defp data(%Resource{} = resource) do
-    %{
-      id: resource.id,
-      name: resource.name,
-      address: resource.address,
-      address_description: resource.address_description,
-      type: resource.type,
-      filters: Enum.map(resource.filters, &filter/1)
-    }
-    |> maybe_put_ip_stack(resource)
-    |> maybe_put_site_id(resource)
+    resource
+    |> render_fields(%{filters: Enum.map(resource.filters, &filter/1)})
+    |> PortalAPI.JSON.omit_nils([:ip_stack, :site_id])
   end
 
   defp filter(%Resource.Filter{} = filter) do
@@ -37,21 +36,5 @@ defmodule PortalAPI.ResourceJSON do
       protocol: filter.protocol,
       ports: filter.ports
     }
-  end
-
-  defp maybe_put_ip_stack(attrs, %{ip_stack: nil}) do
-    attrs
-  end
-
-  defp maybe_put_ip_stack(attrs, resource) do
-    Map.put(attrs, :ip_stack, resource.ip_stack)
-  end
-
-  defp maybe_put_site_id(attrs, %{site_id: nil}) do
-    attrs
-  end
-
-  defp maybe_put_site_id(attrs, resource) do
-    Map.put(attrs, :site_id, resource.site_id)
   end
 end

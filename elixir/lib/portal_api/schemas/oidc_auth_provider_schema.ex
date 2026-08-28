@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "OIDCAuthProvider",
       description: "OIDC Auth Provider",
       type: :object,
@@ -43,7 +42,6 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       },
-      required: [:id, :name],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "OIDC Provider",

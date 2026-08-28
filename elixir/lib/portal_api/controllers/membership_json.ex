@@ -1,4 +1,21 @@
 defmodule PortalAPI.MembershipJSON do
+  use PortalAPI.JSON,
+    struct: Portal.Actor,
+    schema: PortalAPI.Schemas.Membership.Schema,
+    internal: [
+      :account_id,
+      :allow_email_otp_sign_in,
+      :created_by_directory_id,
+      :email,
+      :identity_count,
+      :inserted_at,
+      :is_disabled,
+      :last_seen_at,
+      :password_hash,
+      :preferences,
+      :updated_at
+    ]
+
   alias PortalAPI.Pagination
   alias Portal.Actor
 
@@ -19,11 +36,5 @@ defmodule PortalAPI.MembershipJSON do
     %{data: %{actor_ids: actor_ids}}
   end
 
-  defp data(%Actor{} = actor) do
-    %{
-      id: actor.id,
-      name: actor.name,
-      type: actor.type
-    }
-  end
+  defp data(%Actor{} = actor), do: render_fields(actor)
 end

@@ -1,4 +1,9 @@
 defmodule PortalAPI.OIDCAuthProviderJSON do
+  use PortalAPI.JSON,
+    struct: Portal.OIDC.AuthProvider,
+    schema: PortalAPI.Schemas.OIDCAuthProvider.Schema,
+    internal: [:client_secret, :is_legacy, :is_verified]
+
   alias Portal.OIDC
   alias PortalAPI.Pagination
 
@@ -10,22 +15,5 @@ defmodule PortalAPI.OIDCAuthProviderJSON do
     %{data: data(provider)}
   end
 
-  defp data(%OIDC.AuthProvider{} = provider) do
-    %{
-      id: provider.id,
-      account_id: provider.account_id,
-      name: provider.name,
-      issuer: provider.issuer,
-      context: provider.context,
-      client_session_lifetime_secs: provider.client_session_lifetime_secs,
-      portal_session_lifetime_secs: provider.portal_session_lifetime_secs,
-      is_disabled: provider.is_disabled,
-      is_default: provider.is_default,
-      client_id: provider.client_id,
-      discovery_document_uri: provider.discovery_document_uri,
-      email_verification_method: provider.email_verification_method,
-      inserted_at: provider.inserted_at,
-      updated_at: provider.updated_at
-    }
-  end
+  defp data(%OIDC.AuthProvider{} = provider), do: render_fields(provider)
 end

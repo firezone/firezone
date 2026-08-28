@@ -1,4 +1,34 @@
 defmodule PortalAPI.LogJSON do
+  use PortalAPI.JSON,
+    variants: [
+      [
+        struct: Portal.ChangeLog,
+        schema: PortalAPI.Schemas.Log.Change,
+        computed: [:type],
+        internal: [:account_id, :lsn, :seq, :vsn]
+      ],
+      [
+        struct: Portal.SessionLog,
+        schema: PortalAPI.Schemas.Log.Session,
+        computed: [:type],
+        internal: [:account_id, :seq]
+      ],
+      [
+        struct: Portal.FlowLog,
+        schema: PortalAPI.Schemas.Log.Flow,
+        computed: [:type, :inner_src_ip, :inner_dst_ip, :outers],
+        aliases: [timestamp: :inserted_at, inner_domain: :domain],
+        internal: [:account_id, :seq, :start_seq]
+      ],
+      [
+        struct: Portal.APIRequestLog,
+        schema: PortalAPI.Schemas.Log.APIRequest,
+        computed: [:type, :ip],
+        aliases: [timestamp: :inserted_at],
+        internal: [:account_id, :seq]
+      ]
+    ]
+
   alias PortalAPI.Pagination
   alias Portal.APIRequestLog
   alias Portal.ChangeLog
@@ -18,91 +48,21 @@ defmodule PortalAPI.LogJSON do
 
   def flow_log(%FlowLog{} = log), do: data(log)
 
-  defp data(%ChangeLog{} = log) do
-    %{
-      type: "change",
-      log_id: log.log_id,
-      timestamp: log.timestamp,
-      object: log.object,
-      operation: log.operation,
-      before: log.before,
-      after: log.after,
-      subject: log.subject
-    }
-  end
+  defp data(%ChangeLog{} = log), do: render_fields(log, %{type: "change"})
 
-  defp data(%SessionLog{} = log) do
-    %{
-      type: "session",
-      log_id: log.log_id,
-      timestamp: log.timestamp,
-      context: log.context,
-      subject: log.subject
-    }
-  end
+  defp data(%SessionLog{} = log), do: render_fields(log, %{type: "session"})
 
   defp data(%FlowLog{} = log) do
-    %{
+    render_fields(log, %{
       type: "flow",
-      log_id: log.log_id,
-      timestamp: log.inserted_at,
-      initiator_device_id: log.initiator_device_id,
-      responder_device_id: log.responder_device_id,
-      role: log.role,
-      policy_authorization_id: log.policy_authorization_id,
-      policy_id: log.policy_id,
-      protocol: log.protocol,
-      flow_start: log.flow_start,
-      flow_end: log.flow_end,
-      last_packet: log.last_packet,
-      authorized_at: log.authorized_at,
-      authorization_expires_at: log.authorization_expires_at,
-      initiator_auth_provider_id: log.initiator_auth_provider_id,
-      initiator_actor_id: log.initiator_actor_id,
-      initiator_actor_name: log.initiator_actor_name,
-      initiator_actor_email: log.initiator_actor_email,
-      initiator_client_version: log.initiator_client_version,
-      initiator_device_os_name: log.initiator_device_os_name,
-      initiator_device_os_version: log.initiator_device_os_version,
-      initiator_device_serial: log.initiator_device_serial,
-      initiator_device_uuid: log.initiator_device_uuid,
-      initiator_device_identifier_for_vendor: log.initiator_device_identifier_for_vendor,
-      initiator_device_firebase_installation_id:
-        log.initiator_device_firebase_installation_id,
-      resource_id: log.resource_id,
-      resource_name: log.resource_name,
-      resource_address: log.resource_address,
       inner_src_ip: log.inner_src_ip && "#{log.inner_src_ip}",
       inner_dst_ip: log.inner_dst_ip && "#{log.inner_dst_ip}",
-      inner_src_port: log.inner_src_port,
-      inner_dst_port: log.inner_dst_port,
-      inner_domain: log.domain,
-      outers: flow_outers(log),
-      rx_packets: log.rx_packets,
-      tx_packets: log.tx_packets,
-      rx_bytes: log.rx_bytes,
-      tx_bytes: log.tx_bytes
-    }
+      outers: flow_outers(log)
+    })
   end
 
   defp data(%APIRequestLog{} = log) do
-    %{
-      type: "api_request",
-      log_id: log.log_id,
-      timestamp: log.inserted_at,
-      actor_id: log.actor_id,
-      api_token_id: log.api_token_id,
-      method: log.method,
-      path: log.path,
-      content_length: log.content_length,
-      request_id: log.request_id,
-      user_agent: log.user_agent,
-      ip: log.ip && "#{log.ip}",
-      ip_region: log.ip_region,
-      ip_city: log.ip_city,
-      ip_lat: log.ip_lat,
-      ip_lon: log.ip_lon
-    }
+    render_fields(log, %{type: "api_request", ip: log.ip && "#{log.ip}"})
   end
 
   defp flow_outers(%FlowLog{flow_end: nil}), do: nil

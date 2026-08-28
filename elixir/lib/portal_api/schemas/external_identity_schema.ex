@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "ExternalIdentity",
       description: "External Identity",
       type: :object,
@@ -23,6 +22,7 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
           format: :uuid,
           description: "Directory UUID reference"
         },
+        email: %Schema{type: :string, description: "Email address, falling back to the IdP identifier when unset"},
         idp_id: %Schema{type: :string, description: "IDP-specific identifier for this identity"},
         name: %Schema{type: :string, description: "Full name"},
         given_name: %Schema{type: :string, description: "Given name"},
@@ -44,7 +44,6 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
           description: "Creation timestamp"
         }
       },
-      required: [:id, :actor_id, :issuer, :idp_id],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "actor_id" => "cdfa97e6-cca1-41db-8fc7-864daedb46df",

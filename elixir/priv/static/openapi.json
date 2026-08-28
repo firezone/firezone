@@ -218,14 +218,20 @@
           }
         },
         "required": [
-          "id",
           "account_id",
-          "type",
-          "name",
-          "subdomain",
-          "region",
+          "disabled_reason",
+          "error_message",
+          "errored_at",
+          "id",
+          "inserted_at",
+          "is_disabled",
           "is_verified",
-          "is_disabled"
+          "name",
+          "region",
+          "subdomain",
+          "synced_at",
+          "type",
+          "updated_at"
         ],
         "title": "IruPostureProvider",
         "type": "object"
@@ -461,10 +467,37 @@
         },
         "required": [
           "account_id",
+          "configured_client_mode",
+          "first_seen_at",
+          "hostname",
           "id",
+          "inserted_at",
+          "last_preflight_at",
+          "last_preflight_ip",
+          "last_seen_client_mode",
+          "last_sync_at",
+          "machine_model",
+          "os_build",
+          "os_type",
+          "os_version",
           "posture_provider_id",
+          "primary_user",
+          "primary_user_groups",
+          "primary_user_locked",
+          "rule_sync_at",
           "santa_id",
-          "synced_at"
+          "santa_version",
+          "santanetd_version",
+          "serial_number",
+          "sip_status",
+          "synced_at",
+          "tags",
+          "tags_locked",
+          "tags_truncated",
+          "temporary_admin_mode_ends_at",
+          "temporary_admin_mode_user",
+          "temporary_monitor_mode_ends_at",
+          "updated_at"
         ],
         "title": "SantaDevice",
         "type": "object"
@@ -542,13 +575,19 @@
           }
         },
         "required": [
-          "id",
           "account_id",
-          "type",
-          "name",
           "api_url",
+          "disabled_reason",
+          "error_message",
+          "errored_at",
+          "id",
+          "inserted_at",
+          "is_disabled",
           "is_verified",
-          "is_disabled"
+          "name",
+          "synced_at",
+          "type",
+          "updated_at"
         ],
         "title": "SantaPostureProvider",
         "type": "object"
@@ -624,8 +663,19 @@
           }
         },
         "required": [
+          "account_id",
+          "client_id",
+          "client_session_lifetime_secs",
+          "context",
           "id",
-          "name"
+          "inserted_at",
+          "is_default",
+          "is_disabled",
+          "issuer",
+          "name",
+          "okta_domain",
+          "portal_session_lifetime_secs",
+          "updated_at"
         ],
         "title": "OktaAuthProvider",
         "type": "object"
@@ -809,13 +859,19 @@
           }
         },
         "required": [
-          "id",
           "account_id",
-          "type",
-          "name",
-          "tenant_id",
+          "disabled_reason",
+          "error_message",
+          "errored_at",
+          "id",
+          "inserted_at",
+          "is_disabled",
           "is_verified",
-          "is_disabled"
+          "name",
+          "synced_at",
+          "tenant_id",
+          "type",
+          "updated_at"
         ],
         "title": "DefenderPostureProvider",
         "type": "object"
@@ -872,9 +928,9 @@
           }
         },
         "required": [
-          "id",
           "actor_id",
           "expires_at",
+          "id",
           "inserted_at",
           "updated_at"
         ],
@@ -959,8 +1015,18 @@
           }
         },
         "required": [
+          "account_id",
+          "client_session_lifetime_secs",
+          "context",
+          "email_claim",
           "id",
-          "name"
+          "inserted_at",
+          "is_default",
+          "is_disabled",
+          "issuer",
+          "name",
+          "portal_session_lifetime_secs",
+          "updated_at"
         ],
         "title": "EntraAuthProvider",
         "type": "object"
@@ -1031,6 +1097,10 @@
             "format": "uuid",
             "type": "string"
           },
+          "email": {
+            "description": "Email address, falling back to the IdP identifier when unset",
+            "type": "string"
+          },
           "family_name": {
             "description": "Family name",
             "type": "string"
@@ -1092,10 +1162,24 @@
           }
         },
         "required": [
-          "id",
+          "account_id",
           "actor_id",
+          "directory_id",
+          "email",
+          "family_name",
+          "firezone_avatar_url",
+          "given_name",
+          "id",
+          "idp_id",
+          "inserted_at",
           "issuer",
-          "idp_id"
+          "middle_name",
+          "name",
+          "nickname",
+          "picture",
+          "preferred_username",
+          "profile",
+          "synced_at"
         ],
         "title": "ExternalIdentity",
         "type": "object"
@@ -1465,9 +1549,90 @@
         },
         "required": [
           "account_id",
-          "posture_provider_id",
+          "activation_lock_allowed_while_supervised",
+          "activation_lock_bypass_code_failed",
+          "activation_lock_collected_at",
+          "activation_lock_supported",
+          "agent_installed",
+          "agent_version",
+          "any_signed_os",
+          "apple_silicon",
+          "asset_tag",
+          "blueprint_id",
+          "blueprint_name",
+          "bootstrap_token_auth",
+          "bootstrap_token_escrowed",
+          "cellular_technology",
+          "data_roaming",
+          "device_activation_lock_enabled",
+          "device_capacity_gb",
+          "device_family",
+          "device_name",
+          "display_os_version",
+          "external_boot_level",
+          "filevault_collected_at",
+          "filevault_enabled",
+          "filevault_key_escrowed",
+          "filevault_key_rotation_scheduled_at",
+          "filevault_key_type",
+          "filevault_regeneration_needed",
+          "firewall_allow_signed_applications",
+          "firewall_block_all_incoming",
+          "firewall_collected_at",
+          "firewall_enabled",
+          "firewall_logging",
+          "firewall_logging_option",
+          "firewall_stealth_mode",
+          "firewall_unloading",
+          "firewall_version",
+          "first_enrolled_at",
+          "gatekeeper_collected_at",
+          "gatekeeper_enabled",
+          "gatekeeper_opaque_version",
+          "gatekeeper_trusted_developers",
+          "gatekeeper_version",
+          "host_name",
+          "hotspot",
+          "inserted_at",
+          "inventory_collected_at",
           "iru_id",
-          "synced_at"
+          "is_missing",
+          "is_removed",
+          "kext_requires_bootstrap_token",
+          "last_check_in_at",
+          "last_enrolled_at",
+          "local_hostname",
+          "lost_mode_status",
+          "malware_removal_tool_version",
+          "mdm_enabled",
+          "mdm_manages_kext",
+          "model",
+          "model_identifier",
+          "model_name",
+          "os_build",
+          "os_name",
+          "os_version",
+          "platform",
+          "posture_provider_id",
+          "secure_boot_level",
+          "serial_number",
+          "shared_ipad",
+          "sip_enabled",
+          "software_update_requires_bootstrap_token",
+          "ssv_enabled",
+          "startup_settings_collected_at",
+          "supplemental_build_version",
+          "supplemental_os_version_extra",
+          "synced_at",
+          "tags",
+          "updated_at",
+          "user_activation_lock_enabled",
+          "user_email",
+          "user_id",
+          "user_is_archived",
+          "user_manages_kext",
+          "user_name",
+          "xprotect_version"
         ],
         "title": "IruDevice",
         "type": "object"
@@ -1670,11 +1835,11 @@
           }
         },
         "required": [
-          "type",
-          "log_id",
-          "timestamp",
           "context",
-          "subject"
+          "log_id",
+          "subject",
+          "timestamp",
+          "type"
         ],
         "title": "SessionLog",
         "type": "object"
@@ -1743,11 +1908,14 @@
           }
         },
         "required": [
-          "type",
+          "after",
+          "before",
           "log_id",
-          "timestamp",
           "object",
-          "operation"
+          "operation",
+          "subject",
+          "timestamp",
+          "type"
         ],
         "title": "ChangeLog",
         "type": "object"
@@ -2054,10 +2222,6 @@
             "description": "Google Workspace domain",
             "type": "string"
           },
-          "error_email_count": {
-            "description": "Number of error emails sent for this directory",
-            "type": "integer"
-          },
           "error_message": {
             "description": "Last error message",
             "nullable": true,
@@ -2117,8 +2281,20 @@
           }
         },
         "required": [
+          "account_id",
+          "disabled_reason",
+          "domain",
+          "error_message",
+          "errored_at",
+          "group_sync_mode",
           "id",
-          "name"
+          "impersonation_email",
+          "inserted_at",
+          "is_disabled",
+          "name",
+          "orgunit_sync_enabled",
+          "synced_at",
+          "updated_at"
         ],
         "title": "GoogleDirectory",
         "type": "object"
@@ -2332,6 +2508,11 @@
             "type": "string"
           }
         },
+        "required": [
+          "id",
+          "name",
+          "type"
+        ],
         "title": "Membership",
         "type": "object"
       },
@@ -2416,8 +2597,20 @@
           }
         },
         "required": [
+          "account_id",
+          "client_id",
+          "client_session_lifetime_secs",
+          "context",
+          "discovery_document_uri",
+          "email_verification_method",
           "id",
-          "name"
+          "inserted_at",
+          "is_default",
+          "is_disabled",
+          "issuer",
+          "name",
+          "portal_session_lifetime_secs",
+          "updated_at"
         ],
         "title": "OIDCAuthProvider",
         "type": "object"
@@ -2754,10 +2947,6 @@
             "nullable": true,
             "type": "string"
           },
-          "error_email_count": {
-            "description": "Number of error emails sent for this directory",
-            "type": "integer"
-          },
           "error_message": {
             "description": "Last error message",
             "nullable": true,
@@ -2808,8 +2997,19 @@
           }
         },
         "required": [
+          "account_id",
+          "client_id",
+          "disabled_reason",
+          "error_message",
+          "errored_at",
           "id",
-          "name"
+          "inserted_at",
+          "is_disabled",
+          "kid",
+          "name",
+          "okta_domain",
+          "synced_at",
+          "updated_at"
         ],
         "title": "OktaDirectory",
         "type": "object"
@@ -3096,11 +3296,13 @@
           }
         },
         "required": [
-          "id",
           "account_id",
-          "name",
           "context",
-          "is_disabled"
+          "id",
+          "inserted_at",
+          "is_disabled",
+          "name",
+          "updated_at"
         ],
         "title": "X509AuthProvider",
         "type": "object"
@@ -3360,9 +3562,16 @@
           }
         },
         "required": [
-          "name",
+          "allow_email_otp_sign_in",
+          "created_by_directory_id",
           "email",
-          "type"
+          "id",
+          "inserted_at",
+          "is_disabled",
+          "last_seen_at",
+          "name",
+          "type",
+          "updated_at"
         ],
         "title": "Actor",
         "type": "object"
@@ -3613,9 +3822,43 @@
         },
         "required": [
           "account_id",
-          "posture_provider_id",
+          "agent_version",
+          "computer_dns_name",
           "defender_id",
-          "synced_at"
+          "device_value",
+          "entra_device_id",
+          "entra_joined",
+          "exclusion_reason",
+          "exposure_level",
+          "first_seen_at",
+          "health_status",
+          "inserted_at",
+          "ip_addresses",
+          "is_excluded",
+          "is_potential_duplication",
+          "last_external_ip_address",
+          "last_ip_address",
+          "last_seen_at",
+          "machine_tags",
+          "managed_by",
+          "managed_by_status",
+          "merged_into_machine_id",
+          "onboarding_status",
+          "os_architecture",
+          "os_build",
+          "os_platform",
+          "os_processor",
+          "posture_provider_id",
+          "rbac_group_id",
+          "rbac_group_name",
+          "risk_score",
+          "synced_at",
+          "updated_at",
+          "version",
+          "vm_cloud_provider",
+          "vm_id",
+          "vm_resource_id",
+          "vm_subscription_id"
         ],
         "title": "DefenderDevice",
         "type": "object"
@@ -4087,9 +4330,109 @@
         },
         "required": [
           "account_id",
+          "account_name",
+          "active_protection",
+          "active_threats",
+          "ad_computer_distinguished_name",
+          "ad_computer_member_of",
+          "ad_last_user_distinguished_name",
+          "ad_last_user_member_of",
+          "ad_mail",
+          "ad_user_principal_name",
+          "agent_version",
+          "allow_remote_shell",
+          "apps_vulnerability_status",
+          "cloud_providers",
+          "computer_name",
+          "console_migration_status",
+          "core_count",
+          "cpu_count",
+          "cpu_id",
+          "detection_state",
+          "domain",
+          "encrypted_applications",
+          "external_id",
+          "external_ip",
+          "firewall_enabled",
+          "first_full_mode_at",
+          "full_disk_scan_updated_at",
+          "group_id",
+          "group_ip",
+          "group_name",
+          "group_updated_at",
+          "has_containerized_workload",
+          "in_remote_shell_session",
+          "infected",
+          "inserted_at",
+          "installer_type",
+          "is_active",
+          "is_ad_connector",
+          "is_decommissioned",
+          "is_hyper_automate",
+          "is_pending_uninstall",
+          "is_uninstalled",
+          "is_up_to_date",
+          "last_active_at",
+          "last_ip_to_management",
+          "last_logged_in_user_name",
+          "last_successful_scan_at",
+          "location_enabled",
+          "location_type",
+          "locations",
+          "machine_sid",
+          "machine_type",
+          "missing_permissions",
+          "mitigation_mode",
+          "mitigation_mode_suspicious",
+          "model_name",
+          "network_interfaces",
+          "network_quarantine_enabled",
+          "network_status",
+          "operational_state",
+          "operational_state_expires_at",
+          "os_arch",
+          "os_name",
+          "os_revision",
+          "os_start_time",
+          "os_type",
+          "os_username",
+          "policy_updated_at",
           "posture_provider_id",
-          "uuid",
-          "synced_at"
+          "protected_containers_count",
+          "protected_pods_count",
+          "protected_tasks_count",
+          "proxy_console",
+          "proxy_console_address",
+          "proxy_deep_visibility",
+          "proxy_deep_visibility_address",
+          "proxy_method",
+          "proxy_pac_file_usage",
+          "ranger_status",
+          "ranger_version",
+          "registered_at",
+          "remote_profiling_state",
+          "remote_profiling_state_expires_at",
+          "scan_aborted_at",
+          "scan_finished_at",
+          "scan_started_at",
+          "scan_status",
+          "sentinelone_account_id",
+          "sentinelone_id",
+          "serial_number",
+          "show_alert_icon",
+          "site_id",
+          "site_name",
+          "source_created_at",
+          "source_updated_at",
+          "storage_name",
+          "storage_type",
+          "synced_at",
+          "tags",
+          "threat_reboot_required",
+          "total_memory",
+          "updated_at",
+          "user_actions_needed",
+          "uuid"
         ],
         "title": "SentinelOneDevice",
         "type": "object"
@@ -4164,6 +4507,10 @@
           }
         },
         "required": [
+          "address",
+          "address_description",
+          "filters",
+          "id",
           "name",
           "type"
         ],
@@ -4239,10 +4586,6 @@
             ],
             "type": "string"
           },
-          "error_email_count": {
-            "description": "Number of error emails sent for this directory",
-            "type": "integer"
-          },
           "error_message": {
             "description": "Last error message",
             "nullable": true,
@@ -4293,8 +4636,19 @@
           }
         },
         "required": [
+          "account_id",
+          "disabled_reason",
+          "email_field",
+          "error_message",
+          "errored_at",
           "id",
-          "name"
+          "inserted_at",
+          "is_disabled",
+          "name",
+          "sync_all_groups",
+          "synced_at",
+          "tenant_id",
+          "updated_at"
         ],
         "title": "EntraDirectory",
         "type": "object"
@@ -4569,15 +4923,36 @@
           }
         },
         "required": [
-          "id",
           "actor_id",
+          "created_at",
+          "device_serial",
+          "device_uuid",
+          "firebase_installation_id",
           "firezone_id",
-          "name",
+          "hostname",
+          "id",
+          "identifier_for_vendor",
           "ipv4",
           "ipv6",
+          "last_attested_at",
+          "last_attested_cert_fingerprint",
+          "last_attested_cert_serial",
+          "last_attested_device_serial",
+          "last_attested_device_uuid",
+          "last_attested_mdm_device_id",
+          "last_seen_at",
+          "last_seen_remote_ip",
+          "last_seen_remote_ip_location_city",
+          "last_seen_remote_ip_location_lat",
+          "last_seen_remote_ip_location_lon",
+          "last_seen_remote_ip_location_region",
+          "last_seen_user_agent",
+          "last_seen_version",
+          "name",
           "online",
-          "created_at",
-          "updated_at"
+          "public_key",
+          "updated_at",
+          "verified_at"
         ],
         "title": "Client",
         "type": "object"
@@ -4756,13 +5131,19 @@
           }
         },
         "required": [
-          "id",
           "account_id",
-          "type",
-          "name",
-          "tenant_id",
+          "disabled_reason",
+          "error_message",
+          "errored_at",
+          "id",
+          "inserted_at",
+          "is_disabled",
           "is_verified",
-          "is_disabled"
+          "name",
+          "synced_at",
+          "tenant_id",
+          "type",
+          "updated_at"
         ],
         "title": "IntunePostureProvider",
         "type": "object"
@@ -4922,11 +5303,22 @@
           }
         },
         "required": [
+          "gateway_token_id",
           "id",
-          "name",
           "ipv4",
           "ipv6",
-          "online"
+          "last_seen_at",
+          "last_seen_remote_ip",
+          "last_seen_remote_ip_location_city",
+          "last_seen_remote_ip_location_lat",
+          "last_seen_remote_ip_location_lon",
+          "last_seen_remote_ip_location_region",
+          "last_seen_user_agent",
+          "last_seen_version",
+          "name",
+          "online",
+          "public_key",
+          "rotated_at"
         ],
         "title": "Gateway",
         "type": "object"
@@ -5063,10 +5455,14 @@
           }
         },
         "required": [
-          "id",
-          "name",
+          "directory_id",
+          "email",
           "entity_type",
+          "id",
+          "idp_id",
           "inserted_at",
+          "name",
+          "synced_at",
           "updated_at"
         ],
         "title": "Group",
@@ -5427,6 +5823,11 @@
             "type": "string"
           }
         },
+        "required": [
+          "id",
+          "last_seen_at",
+          "name"
+        ],
         "title": "PoolMember",
         "type": "object"
       },
@@ -5489,13 +5890,13 @@
           }
         },
         "required": [
-          "id",
-          "group_id",
-          "resource_id",
+          "conditions",
           "description",
           "flow_log_uploads_enabled",
+          "group_id",
+          "id",
           "is_disabled",
-          "conditions"
+          "resource_id"
         ],
         "title": "Policy",
         "type": "object"
@@ -5572,8 +5973,16 @@
           }
         },
         "required": [
+          "account_id",
+          "client_session_lifetime_secs",
+          "context",
           "id",
-          "name"
+          "inserted_at",
+          "is_disabled",
+          "issuer",
+          "name",
+          "portal_session_lifetime_secs",
+          "updated_at"
         ],
         "title": "EmailOTPAuthProvider",
         "type": "object"
@@ -5629,7 +6038,7 @@
         "type": "object"
       },
       "ValidationProblemDetails": {
-        "description": "RFC 9457 error response for request validation failures. The `validation_errors` member maps each invalid field to a list of human-readable messages.",
+        "description": "RFC 9457 error response for request validation failures. The `validation_errors` member maps each invalid field to a list of human-readable messages.\n\nUniqueness collisions are reported here rather than as `409 Conflict`: creating a resource whose name is already taken within the account returns `422` with `has already been taken` against the conflicting field.",
         "example": {
           "detail": "The request body failed validation.",
           "status": 422,
@@ -5710,9 +6119,11 @@
         },
         "required": [
           "id",
-          "slug",
           "key",
-          "name"
+          "legal_name",
+          "limits",
+          "name",
+          "slug"
         ],
         "title": "Account",
         "type": "object"
@@ -5817,8 +6228,17 @@
           }
         },
         "required": [
+          "account_id",
+          "client_session_lifetime_secs",
+          "context",
           "id",
-          "name"
+          "inserted_at",
+          "is_default",
+          "is_disabled",
+          "issuer",
+          "name",
+          "portal_session_lifetime_secs",
+          "updated_at"
         ],
         "title": "GoogleAuthProvider",
         "type": "object"
@@ -5935,15 +6355,21 @@
           }
         },
         "required": [
-          "type",
-          "log_id",
-          "timestamp",
           "actor_id",
           "api_token_id",
+          "content_length",
+          "ip",
+          "ip_city",
+          "ip_lat",
+          "ip_lon",
+          "ip_region",
+          "log_id",
           "method",
           "path",
           "request_id",
-          "ip"
+          "timestamp",
+          "type",
+          "user_agent"
         ],
         "title": "APIRequestLog",
         "type": "object"
@@ -6067,13 +6493,19 @@
           }
         },
         "required": [
-          "id",
           "account_id",
-          "type",
-          "name",
-          "management_url",
+          "disabled_reason",
+          "error_message",
+          "errored_at",
+          "id",
+          "inserted_at",
+          "is_disabled",
           "is_verified",
-          "is_disabled"
+          "management_url",
+          "name",
+          "synced_at",
+          "type",
+          "updated_at"
         ],
         "title": "SentinelOnePostureProvider",
         "type": "object"
@@ -6379,32 +6811,44 @@
           }
         },
         "required": [
-          "type",
-          "log_id",
-          "timestamp",
+          "authorization_expires_at",
+          "authorized_at",
+          "flow_end",
+          "flow_start",
+          "initiator_actor_email",
+          "initiator_actor_id",
+          "initiator_actor_name",
+          "initiator_auth_provider_id",
+          "initiator_client_version",
+          "initiator_device_firebase_installation_id",
           "initiator_device_id",
-          "responder_device_id",
-          "role",
+          "initiator_device_identifier_for_vendor",
+          "initiator_device_os_name",
+          "initiator_device_os_version",
+          "initiator_device_serial",
+          "initiator_device_uuid",
+          "inner_domain",
+          "inner_dst_ip",
+          "inner_dst_port",
+          "inner_src_ip",
+          "inner_src_port",
+          "last_packet",
+          "log_id",
+          "outers",
           "policy_authorization_id",
           "policy_id",
           "protocol",
-          "flow_start",
-          "flow_end",
-          "last_packet",
-          "authorized_at",
-          "authorization_expires_at",
+          "resource_address",
           "resource_id",
           "resource_name",
-          "resource_address",
-          "inner_src_ip",
-          "inner_dst_ip",
-          "inner_src_port",
-          "inner_dst_port",
-          "outers",
-          "rx_packets",
-          "tx_packets",
+          "responder_device_id",
+          "role",
           "rx_bytes",
-          "tx_bytes"
+          "rx_packets",
+          "timestamp",
+          "tx_bytes",
+          "tx_packets",
+          "type"
         ],
         "title": "FlowLog",
         "type": "object"
@@ -6990,9 +7434,99 @@
         },
         "required": [
           "account_id",
-          "posture_provider_id",
+          "android_security_patch_level",
+          "attestation_bit_locker_status",
+          "attestation_boot_app_security_version",
+          "attestation_boot_debugging",
+          "attestation_boot_manager_security_version",
+          "attestation_boot_manager_version",
+          "attestation_boot_revision_list_info",
+          "attestation_code_integrity",
+          "attestation_code_integrity_check_version",
+          "attestation_code_integrity_policy",
+          "attestation_content_namespace_url",
+          "attestation_content_version",
+          "attestation_data_execution_policy",
+          "attestation_early_launch_anti_malware_driver_protection",
+          "attestation_health_status_mismatch_info",
+          "attestation_identity_key",
+          "attestation_issued_at",
+          "attestation_last_update_date_time",
+          "attestation_operating_system_kernel_debugging",
+          "attestation_operating_system_rev_list_info",
+          "attestation_pcr0",
+          "attestation_pcr_hash_algorithm",
+          "attestation_reset_count",
+          "attestation_restart_count",
+          "attestation_safe_mode",
+          "attestation_secure_boot",
+          "attestation_secure_boot_config_policy_fingerprint",
+          "attestation_status",
+          "attestation_supported_status",
+          "attestation_test_signing",
+          "attestation_tpm_version",
+          "attestation_virtual_secure_mode",
+          "attestation_windows_pe",
+          "compliance_grace_period_expiration_at",
+          "compliance_state",
+          "config_manager_compliance_policy",
+          "config_manager_device_configuration",
+          "config_manager_inventory",
+          "config_manager_modern_apps",
+          "config_manager_resource_access",
+          "config_manager_windows_update_for_business",
+          "device_action_results",
+          "device_category_display_name",
+          "device_enrollment_type",
+          "device_name",
+          "device_registration_state",
+          "eas_activated",
+          "eas_activated_at",
+          "eas_device_id",
+          "email_address",
+          "enrolled_at",
+          "enrollment_profile_name",
+          "entra_device_id",
+          "entra_registered",
+          "ethernet_mac_address",
+          "exchange_access_state",
+          "exchange_access_state_reason",
+          "exchange_last_successful_sync_at",
+          "free_storage_space_bytes",
+          "iccid",
+          "imei",
+          "inserted_at",
           "intune_id",
-          "synced_at"
+          "is_encrypted",
+          "is_supervised",
+          "jail_broken",
+          "last_sync_at",
+          "managed_device_name",
+          "managed_device_owner_type",
+          "management_agent",
+          "management_certificate_expires_at",
+          "management_state",
+          "manufacturer",
+          "meid",
+          "model",
+          "notes",
+          "operating_system",
+          "os_version",
+          "partner_reported_threat_state",
+          "phone_number",
+          "physical_memory_bytes",
+          "posture_provider_id",
+          "require_user_enrollment_approval",
+          "serial_number",
+          "subscriber_carrier",
+          "synced_at",
+          "total_storage_space_bytes",
+          "udid",
+          "updated_at",
+          "user_display_name",
+          "user_id",
+          "user_principal_name",
+          "wifi_mac_address"
         ],
         "title": "IntuneDevice",
         "type": "object"

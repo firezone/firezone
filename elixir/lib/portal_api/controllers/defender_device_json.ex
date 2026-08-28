@@ -1,8 +1,10 @@
 defmodule PortalAPI.DefenderDeviceJSON do
+  use PortalAPI.JSON,
+    struct: Portal.Defender.Device,
+    schema: PortalAPI.Schemas.DefenderDevice.Schema
+
   alias Portal.Defender
   alias PortalAPI.Pagination
-
-  @fields Defender.Device.__schema__(:fields)
 
   def index(%{devices: devices, metadata: metadata}) do
     %{data: Enum.map(devices, &data/1), metadata: Pagination.metadata(metadata)}
@@ -10,5 +12,5 @@ defmodule PortalAPI.DefenderDeviceJSON do
 
   def show(%{device: device}), do: %{data: data(device)}
 
-  defp data(%Defender.Device{} = device), do: Map.take(device, @fields)
+  defp data(%Defender.Device{} = device), do: render_fields(device)
 end

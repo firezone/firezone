@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.SantaPostureProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "SantaPostureProvider",
       description: "Santa posture provider backed by North Pole Security Workshop",
       type: :object,

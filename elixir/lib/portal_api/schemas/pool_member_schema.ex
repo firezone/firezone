@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.PoolMember do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "PoolMember",
       description: "A Client belonging to a static device pool Resource",
       type: :object,

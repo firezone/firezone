@@ -1,4 +1,9 @@
 defmodule PortalAPI.SiteJSON do
+  use PortalAPI.JSON,
+    struct: Portal.Site,
+    schema: PortalAPI.Schemas.Site.Schema,
+    internal: [:account_id, :health_threshold, :inserted_at, :managed_by, :updated_at]
+
   alias PortalAPI.Pagination
 
   @doc """
@@ -18,10 +23,5 @@ defmodule PortalAPI.SiteJSON do
     %{data: data(site)}
   end
 
-  defp data(%Portal.Site{} = site) do
-    %{
-      id: site.id,
-      name: site.name
-    }
-  end
+  defp data(%Portal.Site{} = site), do: render_fields(site)
 end

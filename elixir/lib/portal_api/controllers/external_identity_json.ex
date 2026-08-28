@@ -1,4 +1,13 @@
 defmodule PortalAPI.ExternalIdentityJSON do
+  use PortalAPI.JSON,
+    struct: Portal.ExternalIdentity,
+    schema: PortalAPI.Schemas.ExternalIdentity.Schema,
+    computed: [:email, :idp_id, :synced_at],
+    internal: [
+      :directory_name,
+      :updated_at
+    ]
+
   alias PortalAPI.Pagination
   alias Portal.ExternalIdentity
 
@@ -20,26 +29,11 @@ defmodule PortalAPI.ExternalIdentityJSON do
   end
 
   defp data(%ExternalIdentity{} = external_identity) do
-    %{
-      id: external_identity.id,
-      actor_id: external_identity.actor_id,
-      account_id: external_identity.account_id,
-      issuer: external_identity.issuer,
-      directory_id: external_identity.directory_id,
+    render_fields(external_identity, %{
       email: external_identity.email || external_identity.idp_id,
       idp_id: extract_idp_id(external_identity.idp_id),
-      name: external_identity.name,
-      given_name: external_identity.given_name,
-      family_name: external_identity.family_name,
-      middle_name: external_identity.middle_name,
-      nickname: external_identity.nickname,
-      preferred_username: external_identity.preferred_username,
-      profile: external_identity.profile,
-      picture: external_identity.picture,
-      firezone_avatar_url: external_identity.firezone_avatar_url,
-      synced_at: synced_at_from_state(external_identity.sync_state),
-      inserted_at: external_identity.inserted_at
-    }
+      synced_at: synced_at_from_state(external_identity.sync_state)
+    })
   end
 
   defp synced_at_from_state(%Portal.ExternalIdentitySyncState{synced_at: t}), do: t

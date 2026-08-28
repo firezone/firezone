@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.Site do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "Site",
       description: "Site",
       type: :object,
@@ -13,7 +12,6 @@ defmodule PortalAPI.Schemas.Site do
         id: %Schema{type: :string, format: :uuid, description: "Site ID"},
         name: %Schema{type: :string, description: "Site Name"}
       },
-      required: [:id, :name],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "vpc-us-east"

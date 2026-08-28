@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.Group do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "Group",
       description: "Group",
       type: :object,
@@ -50,7 +49,6 @@ defmodule PortalAPI.Schemas.Group do
           description: "Last update timestamp"
         }
       },
-      required: [:id, :name, :entity_type, :inserted_at, :updated_at],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "Engineering",

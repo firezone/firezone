@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.Gateway do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "Gateway",
       description: "Gateway",
       type: :object,
@@ -94,7 +93,6 @@ defmodule PortalAPI.Schemas.Gateway do
           description: "Remote IP longitude from the latest session"
         }
       },
-      required: [:id, :name, :ipv4, :ipv6, :online],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "vpc-us-east",

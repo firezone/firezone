@@ -1,4 +1,22 @@
 defmodule PortalAPI.ClientJSON do
+  use PortalAPI.JSON,
+    struct: Portal.Device,
+    schema: PortalAPI.Schemas.Client.GetSchema,
+    aliases: [online: :online?, created_at: :inserted_at],
+    # psk_base is key material and must never leave the portal.
+    internal: [
+      :account_id,
+      :attested?,
+      :client_token_id,
+      :firezone_id_merged?,
+      :gateway_token_id,
+      :gateway_token_rotated_at,
+      :last_attested_cert_issuer,
+      :psk_base,
+      :site_id,
+      :type
+    ]
+
   alias PortalAPI.Pagination
   alias Portal.Device
 
@@ -19,38 +37,5 @@ defmodule PortalAPI.ClientJSON do
     %{data: data(client)}
   end
 
-  defp data(%Device{} = device) do
-    %{
-      id: device.id,
-      firezone_id: device.firezone_id,
-      actor_id: device.actor_id,
-      name: device.name,
-      ipv4: device.ipv4,
-      ipv6: device.ipv6,
-      online: device.online?,
-      device_serial: device.device_serial,
-      device_uuid: device.device_uuid,
-      identifier_for_vendor: device.identifier_for_vendor,
-      firebase_installation_id: device.firebase_installation_id,
-      hostname: device.hostname,
-      last_attested_device_serial: device.last_attested_device_serial,
-      last_attested_device_uuid: device.last_attested_device_uuid,
-      last_attested_mdm_device_id: device.last_attested_mdm_device_id,
-      last_attested_cert_serial: device.last_attested_cert_serial,
-      last_attested_cert_fingerprint: device.last_attested_cert_fingerprint,
-      last_attested_at: device.last_attested_at,
-      verified_at: device.verified_at,
-      public_key: device.public_key,
-      last_seen_at: device.last_seen_at,
-      last_seen_version: device.last_seen_version,
-      last_seen_user_agent: device.last_seen_user_agent,
-      last_seen_remote_ip: device.last_seen_remote_ip,
-      last_seen_remote_ip_location_region: device.last_seen_remote_ip_location_region,
-      last_seen_remote_ip_location_city: device.last_seen_remote_ip_location_city,
-      last_seen_remote_ip_location_lat: device.last_seen_remote_ip_location_lat,
-      last_seen_remote_ip_location_lon: device.last_seen_remote_ip_location_lon,
-      created_at: device.inserted_at,
-      updated_at: device.updated_at
-    }
-  end
+  defp data(%Device{} = device), do: render_fields(device)
 end

@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.ClientToken do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "ClientToken",
       description: "Client Token metadata",
       type: :object,
@@ -16,7 +15,6 @@ defmodule PortalAPI.Schemas.ClientToken do
         inserted_at: %Schema{type: :string, format: :"date-time", description: "Creation timestamp"},
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       },
-      required: [:id, :actor_id, :expires_at, :inserted_at, :updated_at],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "actor_id" => "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",

@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.EntraDirectory do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "EntraDirectory",
       description: "Entra Directory",
       type: :object,
@@ -14,10 +13,6 @@ defmodule PortalAPI.Schemas.EntraDirectory do
         account_id: %Schema{type: :string, format: :uuid, description: "Account ID"},
         name: %Schema{type: :string, description: "Directory name"},
         tenant_id: %Schema{type: :string, description: "Microsoft Entra tenant ID"},
-        error_email_count: %Schema{
-          type: :integer,
-          description: "Number of error emails sent for this directory"
-        },
         is_disabled: %Schema{type: :boolean, description: "Whether directory is disabled"},
         disabled_reason: %Schema{
           type: :string,
@@ -54,7 +49,6 @@ defmodule PortalAPI.Schemas.EntraDirectory do
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       },
-      required: [:id, :name],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "Entra",

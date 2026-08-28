@@ -2,12 +2,49 @@ defmodule PortalAPI.Schemas.SantaDevice do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
     @required [:account_id, :id, :posture_provider_id, :santa_id, :synced_at]
 
-    @properties Map.new(Portal.Santa.Device.__schema__(:fields), fn field ->
+    @exposed [
+                :account_id,
+                :id,
+                :santa_id,
+                :posture_provider_id,
+                :serial_number,
+                :machine_model,
+                :hostname,
+                :os_version,
+                :os_build,
+                :os_type,
+                :sip_status,
+                :primary_user,
+                :primary_user_locked,
+                :primary_user_groups,
+                :santa_version,
+                :santanetd_version,
+                :last_seen_client_mode,
+                :last_sync_at,
+                :rule_sync_at,
+                :last_preflight_at,
+                :last_preflight_ip,
+                :tags,
+                :tags_locked,
+                :tags_truncated,
+                :configured_client_mode,
+                :temporary_monitor_mode_ends_at,
+                :first_seen_at,
+                :temporary_admin_mode_ends_at,
+                :temporary_admin_mode_user,
+                :synced_at,
+                :inserted_at,
+                :updated_at
+             ]
+    @internal []
+
+    PortalAPI.Schemas.Object.assert_classified!(Portal.Santa.Device, @exposed, @internal)
+
+    @properties Map.new(@exposed, fn field ->
                   nullable = field not in @required
 
                   schema =
@@ -47,12 +84,11 @@ defmodule PortalAPI.Schemas.SantaDevice do
                   {field, schema}
                 end)
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "SantaDevice",
       description: "Santa host synced from North Pole Security Workshop",
       type: :object,
-      properties: @properties,
-      required: @required
+      properties: @properties
     })
   end
 

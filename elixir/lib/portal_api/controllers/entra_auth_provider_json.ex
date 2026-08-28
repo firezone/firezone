@@ -1,4 +1,9 @@
 defmodule PortalAPI.EntraAuthProviderJSON do
+  use PortalAPI.JSON,
+    struct: Portal.Entra.AuthProvider,
+    schema: PortalAPI.Schemas.EntraAuthProvider.Schema,
+    internal: [:is_verified]
+
   alias Portal.Entra
   alias PortalAPI.Pagination
 
@@ -10,20 +15,5 @@ defmodule PortalAPI.EntraAuthProviderJSON do
     %{data: data(provider)}
   end
 
-  defp data(%Entra.AuthProvider{} = provider) do
-    %{
-      id: provider.id,
-      account_id: provider.account_id,
-      name: provider.name,
-      issuer: provider.issuer,
-      context: provider.context,
-      client_session_lifetime_secs: provider.client_session_lifetime_secs,
-      portal_session_lifetime_secs: provider.portal_session_lifetime_secs,
-      email_claim: provider.email_claim,
-      is_disabled: provider.is_disabled,
-      is_default: provider.is_default,
-      inserted_at: provider.inserted_at,
-      updated_at: provider.updated_at
-    }
-  end
+  defp data(%Entra.AuthProvider{} = provider), do: render_fields(provider)
 end

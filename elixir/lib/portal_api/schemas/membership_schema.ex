@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.Membership do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "Membership",
       description: "Membership",
       type: :object,

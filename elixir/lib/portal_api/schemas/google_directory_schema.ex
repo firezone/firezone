@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "GoogleDirectory",
       description: "Google Directory",
       type: :object,
@@ -15,10 +14,6 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
         name: %Schema{type: :string, description: "Directory name"},
         domain: %Schema{type: :string, description: "Google Workspace domain"},
         impersonation_email: %Schema{type: :string, description: "Impersonation email"},
-        error_email_count: %Schema{
-          type: :integer,
-          description: "Number of error emails sent for this directory"
-        },
         is_disabled: %Schema{type: :boolean, description: "Whether directory is disabled"},
         disabled_reason: %Schema{
           type: :string,
@@ -58,7 +53,6 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       },
-      required: [:id, :name],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "Google",

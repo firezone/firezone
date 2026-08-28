@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.Client do
   alias OpenApiSpex.Schema
 
   defmodule GetSchema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "Client",
       description: "Client",
       type: :object,
@@ -153,17 +152,6 @@ defmodule PortalAPI.Schemas.Client do
           description: "Client update timestamp"
         }
       },
-      required: [
-        :id,
-        :actor_id,
-        :firezone_id,
-        :name,
-        :ipv4,
-        :ipv6,
-        :online,
-        :created_at,
-        :updated_at
-      ],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "firezone_id" => "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",

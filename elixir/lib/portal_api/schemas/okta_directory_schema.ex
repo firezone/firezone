@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.OktaDirectory do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "OktaDirectory",
       description: "Okta Directory",
       type: :object,
@@ -16,10 +15,6 @@ defmodule PortalAPI.Schemas.OktaDirectory do
         client_id: %Schema{type: :string, description: "Client ID"},
         kid: %Schema{type: :string, description: "Key ID"},
         okta_domain: %Schema{type: :string, description: "Okta domain"},
-        error_email_count: %Schema{
-          type: :integer,
-          description: "Number of error emails sent for this directory"
-        },
         is_disabled: %Schema{type: :boolean, description: "Whether directory is disabled"},
         disabled_reason: %Schema{
           type: :string,
@@ -50,7 +45,6 @@ defmodule PortalAPI.Schemas.OktaDirectory do
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       },
-      required: [:id, :name],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "Okta",

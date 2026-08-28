@@ -1,4 +1,9 @@
 defmodule PortalAPI.EntraDirectoryJSON do
+  use PortalAPI.JSON,
+    struct: Portal.Entra.Directory,
+    schema: PortalAPI.Schemas.EntraDirectory.Schema,
+    internal: [:error_email_count, :is_verified]
+
   alias Portal.Entra
   alias PortalAPI.Pagination
 
@@ -10,22 +15,5 @@ defmodule PortalAPI.EntraDirectoryJSON do
     %{data: data(directory)}
   end
 
-  defp data(%Entra.Directory{} = directory) do
-    %{
-      id: directory.id,
-      account_id: directory.account_id,
-      name: directory.name,
-      tenant_id: directory.tenant_id,
-      error_email_count: directory.error_email_count,
-      is_disabled: directory.is_disabled,
-      disabled_reason: directory.disabled_reason,
-      synced_at: directory.synced_at,
-      error_message: directory.error_message,
-      errored_at: directory.errored_at,
-      email_field: directory.email_field,
-      sync_all_groups: directory.sync_all_groups,
-      inserted_at: directory.inserted_at,
-      updated_at: directory.updated_at
-    }
-  end
+  defp data(%Entra.Directory{} = directory), do: render_fields(directory)
 end

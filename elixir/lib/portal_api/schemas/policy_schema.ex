@@ -161,11 +161,11 @@ defmodule PortalAPI.Schemas.Policy do
   end
 
   defmodule ResponseSchema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
+
     alias PortalAPI.Schemas.Policy
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "Policy",
       description: "Policy",
       type: :object,
@@ -197,15 +197,6 @@ defmodule PortalAPI.Schemas.Policy do
           items: Policy.Condition
         }
       },
-      required: [
-        :id,
-        :group_id,
-        :resource_id,
-        :description,
-        :flow_log_uploads_enabled,
-        :is_disabled,
-        :conditions
-      ],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",

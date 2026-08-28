@@ -1,10 +1,10 @@
 defmodule PortalAPI.Schemas.Log do
   defmodule Change do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
+
     alias PortalAPI.Schemas
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "ChangeLog",
       description: """
       A single entry from the account audit log.
@@ -61,7 +61,6 @@ defmodule PortalAPI.Schemas.Log do
         },
         subject: Schemas.Subject
       },
-      required: [:type, :log_id, :timestamp, :object, :operation],
       example: %{
         "type" => "change",
         "log_id" => "c00060db0c2c8eb400000000",
@@ -76,11 +75,11 @@ defmodule PortalAPI.Schemas.Log do
   end
 
   defmodule Session do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
+
     alias PortalAPI.Schemas
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "SessionLog",
       description: """
       A single Session Log entry, recording one Client, Gateway, or Portal
@@ -110,7 +109,6 @@ defmodule PortalAPI.Schemas.Log do
         },
         subject: Schemas.Subject
       },
-      required: [:type, :log_id, :timestamp, :context, :subject],
       example: %{
         "type" => "session",
         "log_id" => "500060db0c2c8eb400000000",
@@ -133,10 +131,9 @@ defmodule PortalAPI.Schemas.Log do
   end
 
   defmodule Flow do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "FlowLog",
       description: """
       A single Flow Log entry, recording one network flow as accounted by one
@@ -366,34 +363,6 @@ defmodule PortalAPI.Schemas.Log do
             "Bytes sent initiator-to-responder, as counted by the reporting side. Null while the flow is open."
         }
       },
-      required: [
-        :type,
-        :log_id,
-        :timestamp,
-        :initiator_device_id,
-        :responder_device_id,
-        :role,
-        :policy_authorization_id,
-        :policy_id,
-        :protocol,
-        :flow_start,
-        :flow_end,
-        :last_packet,
-        :authorized_at,
-        :authorization_expires_at,
-        :resource_id,
-        :resource_name,
-        :resource_address,
-        :inner_src_ip,
-        :inner_dst_ip,
-        :inner_src_port,
-        :inner_dst_port,
-        :outers,
-        :rx_packets,
-        :tx_packets,
-        :rx_bytes,
-        :tx_bytes
-      ],
       example: %{
         "type" => "flow",
         "log_id" => "f00060db0c2c8eb400000000",
@@ -437,10 +406,9 @@ defmodule PortalAPI.Schemas.Log do
   end
 
   defmodule APIRequest do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "APIRequestLog",
       description: """
       A single API Request Log entry, recording one authenticated REST API
@@ -482,17 +450,6 @@ defmodule PortalAPI.Schemas.Log do
         ip_lat: %Schema{type: :number, nullable: true},
         ip_lon: %Schema{type: :number, nullable: true}
       },
-      required: [
-        :type,
-        :log_id,
-        :timestamp,
-        :actor_id,
-        :api_token_id,
-        :method,
-        :path,
-        :request_id,
-        :ip
-      ],
       example: %{
         "type" => "api_request",
         "log_id" => "a00060db0c2c8eb400000000",

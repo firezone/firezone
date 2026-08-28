@@ -1,4 +1,21 @@
 defmodule PortalAPI.ClientTokenJSON do
+  use PortalAPI.JSON,
+    struct: Portal.ClientToken,
+    schema: PortalAPI.Schemas.ClientToken.Schema,
+    # secret_* fields are credential material and must never leave the portal.
+    internal: [
+      :account_id,
+      :auth_provider_id,
+      :auth_provider_name,
+      :auth_provider_type,
+      :last_used_device,
+      :online?,
+      :secret_fragment,
+      :secret_hash,
+      :secret_nonce,
+      :secret_salt
+    ]
+
   alias PortalAPI.Pagination
 
   def index(%{tokens: tokens, metadata: metadata}) do
@@ -38,13 +55,5 @@ defmodule PortalAPI.ClientTokenJSON do
     }
   end
 
-  defp data(token) do
-    %{
-      id: token.id,
-      actor_id: token.actor_id,
-      expires_at: token.expires_at,
-      inserted_at: token.inserted_at,
-      updated_at: token.updated_at
-    }
-  end
+  defp data(%Portal.ClientToken{} = token), do: render_fields(token)
 end

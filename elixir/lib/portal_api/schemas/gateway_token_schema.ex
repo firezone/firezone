@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.GatewayToken do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "GatewayToken",
       description: "Gateway Token",
       type: :object,
@@ -13,7 +12,6 @@ defmodule PortalAPI.Schemas.GatewayToken do
         id: %Schema{type: :string, format: :uuid, description: "Gateway Token ID"},
         token: %Schema{type: :string, description: "Gateway Token"}
       },
-      required: [:id, :token],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "token" => "secret-token-here"

@@ -1,4 +1,28 @@
 defmodule PortalAPI.AccountJSON do
+  use PortalAPI.JSON,
+    struct: Portal.Account,
+    schema: PortalAPI.Schemas.Account.Schema,
+    computed: [:limits],
+    # ingest_signing_key is credential material and must never leave the portal.
+    internal: [
+      :admins_limit_exceeded,
+      :config,
+      :disabled_reason,
+      :features,
+      :ingest_signing_key,
+      :inserted_at,
+      :is_disabled,
+      :lock_enabled_at,
+      :metadata,
+      :scheduled_deletion_at,
+      :seats_limit_exceeded,
+      :service_accounts_limit_exceeded,
+      :sites_limit_exceeded,
+      :updated_at,
+      :users_limit_exceeded,
+      :warning_last_sent_at
+    ]
+
   alias __MODULE__.Database
 
   @doc """
@@ -9,14 +33,7 @@ defmodule PortalAPI.AccountJSON do
   end
 
   defp data(%Portal.Account{} = account) do
-    %{
-      id: account.id,
-      slug: account.slug,
-      key: account.key,
-      name: account.name,
-      legal_name: account.legal_name,
-      limits: build_limits(account)
-    }
+    render_fields(account, %{limits: build_limits(account)})
   end
 
   defp build_limits(account) do

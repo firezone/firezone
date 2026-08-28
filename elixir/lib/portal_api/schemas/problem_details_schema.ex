@@ -58,7 +58,10 @@ defmodule PortalAPI.Schemas.ProblemDetails do
       title: "ValidationProblemDetails",
       description:
         "RFC 9457 error response for request validation failures. The `validation_errors` " <>
-          "member maps each invalid field to a list of human-readable messages.",
+          "member maps each invalid field to a list of human-readable messages.\n\n" <>
+          "Uniqueness collisions are reported here rather than as `409 Conflict`: creating a " <>
+          "resource whose name is already taken within the account returns `422` with " <>
+          "`has already been taken` against the conflicting field.",
       type: :object,
       properties: %{
         type: %Schema{type: :string, example: "about:blank"},

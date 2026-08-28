@@ -1,4 +1,36 @@
 defmodule PortalAPI.GatewayJSON do
+  use PortalAPI.JSON,
+    struct: Portal.Device,
+    schema: PortalAPI.Schemas.Gateway.Schema,
+    aliases: [online: :online?, rotated_at: :gateway_token_rotated_at],
+    # psk_base is key material and must never leave the portal.
+    internal: [
+      :account_id,
+      :actor_id,
+      :attested?,
+      :client_token_id,
+      :device_serial,
+      :device_uuid,
+      :firebase_installation_id,
+      :firezone_id,
+      :firezone_id_merged?,
+      :hostname,
+      :identifier_for_vendor,
+      :inserted_at,
+      :last_attested_at,
+      :last_attested_cert_fingerprint,
+      :last_attested_cert_issuer,
+      :last_attested_cert_serial,
+      :last_attested_device_serial,
+      :last_attested_device_uuid,
+      :last_attested_mdm_device_id,
+      :psk_base,
+      :site_id,
+      :type,
+      :updated_at,
+      :verified_at
+    ]
+
   alias PortalAPI.Pagination
   alias Portal.Device
 
@@ -26,24 +58,5 @@ defmodule PortalAPI.GatewayJSON do
     %{data: Map.put(data(gateway), :token, encoded_token)}
   end
 
-  defp data(%Device{} = device) do
-    %{
-      id: device.id,
-      name: device.name,
-      ipv4: device.ipv4,
-      ipv6: device.ipv6,
-      online: device.online?,
-      public_key: device.public_key,
-      gateway_token_id: device.gateway_token_id,
-      rotated_at: device.gateway_token_rotated_at,
-      last_seen_at: device.last_seen_at,
-      last_seen_version: device.last_seen_version,
-      last_seen_user_agent: device.last_seen_user_agent,
-      last_seen_remote_ip: device.last_seen_remote_ip,
-      last_seen_remote_ip_location_region: device.last_seen_remote_ip_location_region,
-      last_seen_remote_ip_location_city: device.last_seen_remote_ip_location_city,
-      last_seen_remote_ip_location_lat: device.last_seen_remote_ip_location_lat,
-      last_seen_remote_ip_location_lon: device.last_seen_remote_ip_location_lon
-    }
-  end
+  defp data(%Device{} = device), do: render_fields(device)
 end

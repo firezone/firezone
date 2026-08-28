@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.IntunePostureProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "IntunePostureProvider",
       description: "Microsoft Intune posture provider",
       type: :object,

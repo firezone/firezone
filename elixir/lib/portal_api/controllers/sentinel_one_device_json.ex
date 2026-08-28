@@ -1,10 +1,12 @@
 defmodule PortalAPI.SentinelOneDeviceJSON do
+  use PortalAPI.JSON,
+    struct: Portal.SentinelOne.Device,
+    schema: PortalAPI.Schemas.SentinelOneDevice.Schema,
+    # The endpoint license key is credential-like and never published.
+    internal: [:license_key]
+
   alias Portal.SentinelOne
   alias PortalAPI.Pagination
-
-  # The endpoint license key is inventory data in SentinelOne's source schema,
-  # but it is credential-like and therefore never returned from Firezone's API.
-  @fields SentinelOne.Device.__schema__(:fields) -- [:license_key]
 
   def index(%{devices: devices, metadata: metadata}) do
     %{data: Enum.map(devices, &data/1), metadata: Pagination.metadata(metadata)}
@@ -12,5 +14,5 @@ defmodule PortalAPI.SentinelOneDeviceJSON do
 
   def show(%{device: device}), do: %{data: data(device)}
 
-  defp data(%SentinelOne.Device{} = device), do: Map.take(device, @fields)
+  defp data(%SentinelOne.Device{} = device), do: render_fields(device)
 end

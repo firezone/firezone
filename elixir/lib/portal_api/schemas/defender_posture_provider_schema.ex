@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.DefenderPostureProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "DefenderPostureProvider",
       description: "Microsoft Defender for Endpoint posture provider",
       type: :object,

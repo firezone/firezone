@@ -2,10 +2,9 @@ defmodule PortalAPI.Schemas.SentinelOnePostureProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "SentinelOnePostureProvider",
       description: "SentinelOne posture provider",
       type: :object,
@@ -24,15 +23,6 @@ defmodule PortalAPI.Schemas.SentinelOnePostureProvider do
         inserted_at: %Schema{type: :string, format: :"date-time"},
         updated_at: %Schema{type: :string, format: :"date-time"}
       },
-      required: [
-        :id,
-        :account_id,
-        :type,
-        :name,
-        :management_url,
-        :is_verified,
-        :is_disabled
-      ]
     })
   end
 
