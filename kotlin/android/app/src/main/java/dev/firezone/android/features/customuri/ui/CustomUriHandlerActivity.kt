@@ -36,6 +36,12 @@ class CustomUriHandlerActivity : AppCompatActivity() {
         viewModel.parseCustomUri(intent)
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        viewModel.parseCustomUri(intent)
+    }
+
     private fun setupActionObservers() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {

@@ -24,10 +24,11 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class AuthActivity : AppCompatActivity() {
     private val viewModel: AuthViewModel by viewModels()
-    private var hasLaunchedCustomTab = false
+    private var hasLaunchedBrowser = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        hasLaunchedBrowser = savedInstanceState?.getBoolean(BROWSER_LAUNCHED_KEY) == true
 
         setContent {
             FirezoneTheme {
@@ -38,10 +39,15 @@ class AuthActivity : AppCompatActivity() {
         setupActionObservers()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean(BROWSER_LAUNCHED_KEY, hasLaunchedBrowser)
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onResume() {
         super.onResume()
 
-        if (hasLaunchedCustomTab) {
+        if (hasLaunchedBrowser) {
             // User returned from Custom Tab without completing auth, navigate back to main app
             navigateToSignIn()
         } else {
@@ -65,13 +71,12 @@ class AuthActivity : AppCompatActivity() {
     }
 
     private fun setupWebView(url: String) {
-        hasLaunchedCustomTab = true
-
         val url = Uri.parse(url)
 
         // Try to use Custom Tabs with the default browser first
         try {
             launchCustomTabsIntent(url)
+            hasLaunchedBrowser = true
             return
         } catch (e: ActivityNotFoundException) {
             Log.d(TAG, "CustomTabs don't appear to be available, falling back to ACTION_VIEW intent")
@@ -80,6 +85,7 @@ class AuthActivity : AppCompatActivity() {
         // Fallback to default browser if Custom Tabs unavailable
         try {
             launchActionViewIntent(url)
+            hasLaunchedBrowser = true
         } catch (e: ActivityNotFoundException) {
             showBrowserRequiredError()
         }
@@ -121,6 +127,7 @@ class AuthActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val BROWSER_LAUNCHED_KEY = "browserLaunched"
         private const val TAG = "AuthActivity"
     }
 }
