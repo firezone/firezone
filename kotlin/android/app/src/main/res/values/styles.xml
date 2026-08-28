@@ -2,8 +2,6 @@
 
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-    <style name="AppTheme" parent="AppTheme.Base" />
-
     <style name="AppTheme.Base" parent="Theme.Material3.Light.NoActionBar">
         <item name="colorPrimary">@color/neutral_900</item>
         <item name="android:colorBackground">@color/portal_canvas</item>

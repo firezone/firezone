@@ -106,9 +106,7 @@ class SessionActivity : AppCompatActivity() {
                     onAddFavorite = { id -> viewModel.addFavoriteResource(id) },
                     onRemoveFavorite = { id -> viewModel.removeFavoriteResource(id) },
                     onSettings = {
-                        val settings = Intent(this@SessionActivity, SettingsActivity::class.java)
-                        settings.putExtra("isUserSignedIn", true)
-                        startActivity(settings)
+                        startActivity(SettingsActivity.createIntent(this@SessionActivity, isUserSignedIn = true))
                     },
                     onEndSession = {
                         viewModel.clearToken()
