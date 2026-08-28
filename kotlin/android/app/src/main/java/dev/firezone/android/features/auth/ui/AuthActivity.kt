@@ -45,11 +45,7 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
     override fun onResume() {
         super.onResume()
 
-        when (browserState.resumeAction()) {
-            AuthBrowserState.ResumeAction.START_AUTH_FLOW -> viewModel.onActivityResume()
-            AuthBrowserState.ResumeAction.NAVIGATE_TO_SIGN_IN -> navigateToSignIn()
-            AuthBrowserState.ResumeAction.NONE -> Unit
-        }
+        handleAction(browserState.resumeAction())
     }
 
     private fun setupActionObservers() {
@@ -115,6 +111,14 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
         finish()
     }
 
+    private fun handleAction(action: AuthBrowserState.Action) {
+        when (action) {
+            AuthBrowserState.Action.START_AUTH_FLOW -> viewModel.onActivityResume()
+            AuthBrowserState.Action.NAVIGATE_TO_SIGN_IN -> navigateToSignIn()
+            AuthBrowserState.Action.NONE -> Unit
+        }
+    }
+
     private fun showBrowserRequiredError() {
         AlertDialog
             .Builder(this)
@@ -123,7 +127,7 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
             .setPositiveButton(
                 R.string.error_dialog_button_text,
             ) { _, _ ->
-                this@AuthActivity.finish()
+                handleAction(browserState.browserRequiredAcknowledgementAction())
             }.setIcon(R.drawable.ic_firezone_logo)
             .show()
     }

@@ -7,14 +7,20 @@ internal enum class AuthBrowserState {
     UNAVAILABLE,
     ;
 
-    fun resumeAction(): ResumeAction =
+    fun resumeAction(): Action =
         when (this) {
-            NOT_STARTED -> ResumeAction.START_AUTH_FLOW
-            LAUNCHED -> ResumeAction.NAVIGATE_TO_SIGN_IN
-            UNAVAILABLE -> ResumeAction.NONE
+            NOT_STARTED -> Action.START_AUTH_FLOW
+            LAUNCHED -> Action.NAVIGATE_TO_SIGN_IN
+            UNAVAILABLE -> Action.NONE
         }
 
-    enum class ResumeAction {
+    fun browserRequiredAcknowledgementAction(): Action =
+        when (this) {
+            UNAVAILABLE -> Action.NAVIGATE_TO_SIGN_IN
+            NOT_STARTED, LAUNCHED -> Action.NONE
+        }
+
+    enum class Action {
         START_AUTH_FLOW,
         NAVIGATE_TO_SIGN_IN,
         NONE,
