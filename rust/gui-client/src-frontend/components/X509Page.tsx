@@ -12,8 +12,6 @@ import {
 import RemixIcon from "./RemixIcon";
 
 const CERTIFICATE_SECTION = "Certificate";
-// What the keystore backends title a certificate they found and would not present.
-const UNUSED_CERTIFICATE_SECTION = "Unused Certificate";
 
 const VALIDATION_ERROR_TEXT: Record<X509ValidationError, string> = {
   Empty: "empty",
@@ -135,15 +133,9 @@ function Warning({ problem }: { problem: X509Problem }) {
 // and the mark that leads it.
 //
 function SummaryCard({ status }: { status: X509Status }) {
-  const used = status.sections.find(
+  const certificate = status.sections.find(
     (section) => section.title === CERTIFICATE_SECTION
   );
-  // A keystore that turned its only candidate down still has a certificate to describe.
-  const certificate =
-    used ??
-    status.sections.find(
-      (section) => section.title === UNUSED_CERTIFICATE_SECTION
-    );
   const commonName = presentField(certificate, "Common Name");
   const subject = presentField(certificate, "Subject");
   const issuer = presentField(certificate, "Issuer");
