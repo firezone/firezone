@@ -118,8 +118,7 @@ internal class SettingsViewModel
                                 zipFile,
                             )
                         actionMutableStateFlow.value = ViewAction.ShareLogs(fileURI)
-                    }
-                    .onFailure { Log.e(TAG, "Failed to create diagnostic log archive", it) }
+                    }.onFailure { Log.e(TAG, "Failed to create diagnostic log archive", it) }
             }
         }
 
