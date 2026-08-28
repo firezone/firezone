@@ -14,7 +14,7 @@ use bin_shared::{
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
-use client_shared::ConnectedToPortal;
+use client_shared::ConnectedAs;
 use connlib_model::{ResourceId, ResourceList};
 use futures::{
     Future as _, FutureExt, SinkExt as _, Stream, StreamExt,
@@ -102,7 +102,7 @@ pub enum ServerMsg {
     },
     OnUpdateResources(ResourceList),
     /// Connlib connected to the portal, which named the account and actor this session belongs to.
-    ConnectedToPortal(ConnectedToPortal),
+    ConnectedToPortal(ConnectedAs),
     /// Result of an `ApplyAdvancedSettings` from the GUI. `Ok` echoes the
     /// persisted struct so the GUI is certain about what landed.
     AdvancedSettingsApplied(Result<AdvancedSettings, String>),

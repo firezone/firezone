@@ -1,4 +1,4 @@
-use crate::{ConnectedToPortal, PHOENIX_TOPIC};
+use crate::{ConnectedAs, PHOENIX_TOPIC};
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
@@ -66,7 +66,7 @@ pub struct Eventloop {
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<ResourceList>,
     tun_config_sender: watch::Sender<Option<TunConfig>>,
-    connected_to_portal_sender: watch::Sender<Option<ConnectedToPortal>>,
+    connected_as_sender: watch::Sender<Option<ConnectedAs>>,
     user_notification_sender: mpsc::Sender<UserNotification>,
 
     portal_event_rx: mpsc::Receiver<Result<PortalEvent, phoenix_channel::Error>>,
@@ -144,7 +144,7 @@ impl Eventloop {
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<ResourceList>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
-        connected_to_portal_sender: watch::Sender<Option<ConnectedToPortal>>,
+        connected_as_sender: watch::Sender<Option<ConnectedAs>>,
         user_notification_sender: mpsc::Sender<UserNotification>,
     ) -> Self {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
@@ -184,7 +184,7 @@ impl Eventloop {
             portal_cmd_tx,
             resource_list_sender,
             tun_config_sender,
-            connected_to_portal_sender,
+            connected_as_sender,
             user_notification_sender,
         }
     }
@@ -513,8 +513,8 @@ impl Eventloop {
                 account_slug,
                 actor_name,
             }) => {
-                self.connected_to_portal_sender
-                    .send(Some(ConnectedToPortal {
+                self.connected_as_sender
+                    .send(Some(ConnectedAs {
                         account_slug,
                         actor_name,
                     }))

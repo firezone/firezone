@@ -47,7 +47,7 @@ pub struct EventStream {
     eventloop: Fuse<JoinHandle<Result<(), DisconnectError>>>,
     resource_list_receiver: WatchStream<ResourceList>,
     tun_config_receiver: WatchStream<Option<TunConfig>>,
-    connected_to_portal_receiver: WatchStream<Option<ConnectedToPortal>>,
+    connected_as_receiver: WatchStream<Option<ConnectedAs>>,
     user_notification_receiver: mpsc::Receiver<UserNotification>,
 
     seen_notifications: HashSet<UserNotification>,
@@ -61,7 +61,7 @@ pub enum Event {
     /// The resource list has been updated.
     ResourcesUpdated(ResourceList),
     /// Connlib connected to the portal, which named the account and actor this session belongs to.
-    ConnectedToPortal(ConnectedToPortal),
+    ConnectedToPortal(ConnectedAs),
     /// Establishing a tunnel for a resource failed because all Gateways are offline in the corresponding site.
     AllGatewaysOffline { resource_id: ResourceId },
     /// Establishing a tunnel for a resource failed because there are no version-compatible Gateways in the corresponding site.
@@ -72,7 +72,7 @@ pub enum Event {
 
 /// Who the portal says this session belongs to.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ConnectedToPortal {
+pub struct ConnectedAs {
     pub account_slug: String,
     pub actor_name: String,
 }
@@ -92,7 +92,7 @@ impl Session {
         let event_stream = EventStream::new(
             |resource_list_sender,
              tun_config_sender,
-             connected_to_portal_sender,
+             connected_as_sender,
              user_notification_sender| {
                 Eventloop::new(
                     tcp_socket_factory,
@@ -105,7 +105,7 @@ impl Session {
                     cmd_rx,
                     resource_list_sender,
                     tun_config_sender,
-                    connected_to_portal_sender,
+                    connected_as_sender,
                     user_notification_sender,
                 )
                 .run()
@@ -157,7 +157,7 @@ impl EventStream {
             // Polled first so the account and actor are known before anything else the
             // same `init` produced.
             if let Poll::Ready(Some(Some(connected))) =
-                self.connected_to_portal_receiver.poll_next_unpin(cx)
+                self.connected_as_receiver.poll_next_unpin(cx)
             {
                 return Poll::Ready(Some(Event::ConnectedToPortal(connected)));
             }
@@ -234,7 +234,7 @@ impl EventStream {
         make_event_loop: impl FnOnce(
             watch::Sender<ResourceList>,
             watch::Sender<Option<TunConfig>>,
-            watch::Sender<Option<ConnectedToPortal>>,
+            watch::Sender<Option<ConnectedAs>>,
             mpsc::Sender<UserNotification>,
         ) -> E,
         handle: tokio::runtime::Handle,
@@ -245,13 +245,13 @@ impl EventStream {
         let (tun_config_sender, tun_config_receiver) = watch::channel(None);
         let (resource_list_sender, resource_list_receiver) =
             watch::channel(ResourceList::default());
-        let (connected_to_portal_sender, connected_to_portal_receiver) = watch::channel(None);
+        let (connected_as_sender, connected_as_receiver) = watch::channel(None);
         let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
 
         let event_loop = make_event_loop(
             resource_list_sender,
             tun_config_sender,
-            connected_to_portal_sender,
+            connected_as_sender,
             user_notification_sender,
         );
 
@@ -261,7 +261,7 @@ impl EventStream {
             eventloop: eventloop.fuse(),
             resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
             tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
-            connected_to_portal_receiver: WatchStream::from_changes(connected_to_portal_receiver),
+            connected_as_receiver: WatchStream::from_changes(connected_as_receiver),
             user_notification_receiver,
             seen_notifications: Default::default(),
         }
@@ -319,9 +319,9 @@ mod tests {
     #[tokio::test]
     async fn connected_to_portal_precedes_resources_from_the_same_init() {
         let mut stream = EventStream::new(
-            |resource_list, _, connected_to_portal, _| async move {
-                connected_to_portal
-                    .send(Some(ConnectedToPortal {
+            |resource_list, _, connected_as, _| async move {
+                connected_as
+                    .send(Some(ConnectedAs {
                         account_slug: "acme".to_owned(),
                         actor_name: "Jane Doe".to_owned(),
                     }))

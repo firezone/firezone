@@ -9,7 +9,7 @@ use crate::{
     view::{GeneralSettingsForm, SessionViewModel},
 };
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
-use client_shared::ConnectedToPortal;
+use client_shared::ConnectedAs;
 use connlib_model::{ResourceId, ResourceList, ResourceView, Site};
 use futures::{
     FutureExt, SinkExt, StreamExt,
@@ -54,7 +54,7 @@ pub struct Controller<I: GuiIntegration> {
     ctrl_rx: ReceiverStream<ControllerRequest>,
     status: Status,
     /// Who the portal said we are in the current session's `init`.
-    connected_to_portal: Option<ConnectedToPortal>,
+    connected_as: Option<ConnectedAs>,
     quit_timeout: Option<Pin<Box<tokio::time::Sleep>>>,
     telemetry_allowed: bool,
     updates_rx: Option<ReceiverStream<Option<updates::Release>>>,
@@ -241,7 +241,7 @@ impl<I: GuiIntegration> Controller<I> {
             release: None,
             ctrl_rx: ReceiverStream::new(ctrl_rx),
             status: Default::default(),
-            connected_to_portal: None,
+            connected_as: None,
             quit_timeout: None,
             telemetry_allowed,
             updates_rx,
@@ -406,7 +406,7 @@ impl<I: GuiIntegration> Controller<I> {
         // Change the status after we begin connecting
         self.status = Status::WaitingForPortal;
 
-        self.connected_to_portal = None;
+        self.connected_as = None;
 
         self.refresh_ui_state();
 
@@ -688,7 +688,7 @@ impl<I: GuiIntegration> Controller<I> {
                     self.notify_settings_changed()?;
                 }
 
-                self.connected_to_portal = Some(connected);
+                self.connected_as = Some(connected);
                 self.refresh_ui_state();
             }
             service::ServerMsg::OnUpdateResources(resources) => {
@@ -884,7 +884,7 @@ impl<I: GuiIntegration> Controller<I> {
                 system_tray::ConnlibState::Quitting,
                 SessionViewModel::Loading,
             ),
-            Status::TunnelReady { resources } => match &self.connected_to_portal {
+            Status::TunnelReady { resources } => match &self.connected_as {
                 Some(connected) => (
                     system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
                         actor_name: connected.actor_name.clone(),
@@ -943,7 +943,7 @@ impl<I: GuiIntegration> Controller<I> {
             | Status::WaitingForTunnel => {}
         }
         self.status = Status::Disconnected;
-        self.connected_to_portal = None;
+        self.connected_as = None;
         telemetry::set_account_slug(None);
         tracing::debug!("disconnecting connlib");
         // This is redundant if the token is expired, in that case
