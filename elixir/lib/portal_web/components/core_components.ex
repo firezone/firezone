@@ -59,7 +59,7 @@ defmodule PortalWeb.CoreComponents do
   def device_name(%Portal.Device{name: name}) when not is_nil(name), do: name
 
   defp device_path(account, %Portal.Device{type: :client, id: id}),
-    do: ~p"/#{account}/clients/#{id}"
+    do: ~p"/#{account}/devices/#{id}"
 
   defp device_path(account, %Portal.Device{type: :gateway}),
     do: ~p"/#{account}"

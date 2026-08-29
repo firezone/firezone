@@ -9,7 +9,7 @@ defmodule PortalWeb.Settings.Profile do
     %{value: "resources", label: "Resources", icon: "ri-server-line"},
     %{value: "groups", label: "Groups", icon: "ri-team-line"},
     %{value: "policies", label: "Policies", icon: "ri-shield-check-line"},
-    %{value: "clients", label: "Clients", icon: "ri-computer-line"},
+    %{value: "devices", label: "Devices", icon: "ri-computer-line"},
     %{value: "actors", label: "Actors", icon: "ri-user-line"}
   ]
 

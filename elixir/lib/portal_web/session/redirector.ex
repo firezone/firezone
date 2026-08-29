@@ -220,7 +220,7 @@ defmodule PortalWeb.Session.Redirector do
       :resources -> ~p"/#{account}/resources"
       :groups -> ~p"/#{account}/groups"
       :policies -> ~p"/#{account}/policies"
-      :clients -> ~p"/#{account}/clients"
+      :devices -> ~p"/#{account}/devices"
       :actors -> ~p"/#{account}/actors"
       :sites -> ~p"/#{account}/sites"
       _ -> ~p"/#{account}/sites"

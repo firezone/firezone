@@ -9,7 +9,7 @@ defmodule PortalWeb.Logs.Components do
   """
   use Phoenix.Component
   use PortalWeb, :verified_routes
-  alias PortalWeb.Clients
+  alias PortalWeb.Devices
   alias PortalWeb.CoreComponents
 
   @doc """
@@ -114,7 +114,7 @@ defmodule PortalWeb.Logs.Components do
 
   def format_ip(other), do: to_string(other)
 
-  @doc "Renders an initiating Client and its first observed outer source IP."
+  @doc "Renders an initiating device and its first observed outer source IP."
   attr :device_name, :string, required: true
   attr :ip, :any, required: true
 
@@ -426,7 +426,7 @@ defmodule PortalWeb.Logs.Components do
 
   def session_context_icon(%{context: :client} = assigns) do
     assigns =
-      assign(assigns, :icon_name, Clients.Components.client_os_icon_name(assigns.user_agent))
+      assign(assigns, :icon_name, Devices.Components.os_icon_name(assigns.user_agent))
 
     ~H"""
     <CoreComponents.icon name={@icon_name} title={@user_agent || "Client"} class={@class} />
