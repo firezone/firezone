@@ -200,6 +200,8 @@ defmodule PortalWeb.Clients.Components do
   attr :confirm_state, :map, required: true
   attr :query_params, :map, default: %{}
   attr :device_pools, :list, default: []
+  attr :posture, :list, default: []
+  attr :certificate, :map, default: nil
   attr :policy_authorizations, :list, default: []
   attr :policy_authorizations_page, :integer, default: 1
   attr :policy_authorizations_has_next, :boolean, default: false
@@ -238,6 +240,8 @@ defmodule PortalWeb.Clients.Components do
           confirm_delete_client={@confirm_delete_client}
           confirm_unverify_client={@confirm_unverify_client}
           device_pools={@device_pools}
+          posture={@posture}
+          certificate={@certificate}
           policy_authorizations={@policy_authorizations}
           policy_authorizations_page={@policy_authorizations_page}
           policy_authorizations_has_next={@policy_authorizations_has_next}
@@ -312,12 +316,16 @@ defmodule PortalWeb.Clients.Components do
   attr :confirm_delete_client, :boolean, default: false
   attr :confirm_unverify_client, :boolean, default: false
   attr :device_pools, :list, default: []
+  attr :posture, :list, default: []
+  attr :certificate, :map, default: nil
   attr :policy_authorizations, :list, default: []
   attr :policy_authorizations_page, :integer, default: 1
   attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
 
   def client_details_view(assigns) do
+    assigns = assign(assigns, :tab, visible_client_tab(assigns.tab, assigns.posture))
+
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
       <.client_details_header client={@client} />
@@ -327,36 +335,18 @@ defmodule PortalWeb.Clients.Components do
             role="tablist"
             class="flex items-end gap-0 px-5 border-b border-border bg-raised shrink-0"
           >
-            <button
-              role="tab"
-              aria-selected={@tab == :overview}
-              phx-click="switch_client_tab"
-              phx-value-tab="overview"
-              class={[
-                "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
-                if(@tab == :overview,
-                  do: "border-brand text-brand",
-                  else: "border-transparent text-body hover:text-heading"
-                )
-              ]}
-            >
-              Overview
-            </button>
-            <button
-              role="tab"
-              aria-selected={@tab == :authorizations}
-              phx-click="switch_client_tab"
-              phx-value-tab="authorizations"
-              class={[
-                "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
-                if(@tab == :authorizations,
-                  do: "border-brand text-brand",
-                  else: "border-transparent text-body hover:text-heading"
-                )
-              ]}
-            >
-              Authorizations
-            </button>
+            <.client_tab tab="overview" label="Overview" selected={@tab == :overview} />
+            <.client_tab
+              tab="authorizations"
+              label="Authorizations"
+              selected={@tab == :authorizations}
+            />
+            <.client_tab
+              :if={@posture != []}
+              tab="posture"
+              label="Posture"
+              selected={@tab == :posture}
+            />
           </div>
           <div :if={@tab == :overview} class="flex-1 overflow-y-auto">
             <.client_owner_section account={@account} client={@client} />
@@ -366,8 +356,14 @@ defmodule PortalWeb.Clients.Components do
               device_pools={@device_pools}
             />
             <.client_device_section client={@client} />
+            <.client_certificate_section
+              :if={@client.last_attested_cert_fingerprint}
+              client={@client}
+              certificate={@certificate}
+            />
             <.client_network_section client={@client} />
           </div>
+          <.client_posture_tab :if={@tab == :posture} account={@account} posture={@posture} />
           <.client_policy_authorizations_tab
             :if={@tab == :authorizations}
             account={@account}
@@ -680,6 +676,267 @@ defmodule PortalWeb.Clients.Components do
     """
   end
 
+  attr :tab, :string, required: true
+  attr :label, :string, required: true
+  attr :selected, :boolean, required: true
+
+  def client_tab(assigns) do
+    ~H"""
+    <button
+      role="tab"
+      aria-selected={@selected}
+      phx-click="switch_client_tab"
+      phx-value-tab={@tab}
+      class={[
+        "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
+        if(@selected,
+          do: "border-brand text-brand",
+          else: "border-transparent text-body hover:text-heading"
+        )
+      ]}
+    >
+      {@label}
+    </button>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :posture, :list, required: true
+
+  def client_posture_tab(assigns) do
+    ~H"""
+    <div class="flex-1 overflow-y-auto">
+      <.client_posture_section
+        :for={entry <- @posture}
+        account={@account}
+        entry={entry}
+      />
+    </div>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :entry, :map, required: true
+
+  def client_posture_section(assigns) do
+    assigns =
+      assigns
+      |> assign(:attributes, posture_attributes(assigns.entry.type, assigns.entry.device))
+      |> assign(:dom_id, "posture-#{assigns.entry.type}-#{assigns.entry.provider.id}")
+
+    ~H"""
+    <div class="px-5 pt-4 pb-3 border-b border-border">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <div class="flex items-center gap-2 min-w-0">
+          <.provider_icon provider={to_string(@entry.type)} size="sm" />
+          <span class="text-sm font-medium text-heading truncate">{@entry.provider.name}</span>
+          <span class="text-xs text-subtle shrink-0">
+            {posture_provider_label(@entry.type)}
+          </span>
+        </div>
+        <.posture_match_badge account={@account} matched_on={@entry.matched_on} />
+      </div>
+
+      <dl class="grid grid-cols-2 gap-x-6 gap-y-3 mb-4">
+        <.client_detail_row :for={{label, value} <- @attributes} label={label}>
+          <.posture_value value={value} />
+        </.client_detail_row>
+      </dl>
+
+      <.json_view
+        id={@dom_id}
+        value={posture_record(@entry.device)}
+        label="Provider record"
+        hint="Empty fields omitted"
+      />
+    </div>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :matched_on, :atom, required: true
+
+  def posture_match_badge(%{matched_on: :device_serial} = assigns) do
+    ~H"""
+    <.popover placement="left">
+      <:target>
+        <span class="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-warning bg-warning-light">
+          <.icon name="ri-error-warning-line" class="w-2.5 h-2.5" /> Reported serial
+        </span>
+      </:target>
+      <:content>
+        <p>
+          Matched on the serial number the device reports about itself. This field could be
+          spoofed by a malicious actor.
+        </p>
+        <p class="mt-1">
+          Set up
+          <.link
+            navigate={~p"/#{@account}/settings/trust_anchors"}
+            class="text-brand hover:underline"
+          >
+            X.509 Device Trust
+          </.link>
+          so devices prove their identity with an MDM-issued certificate instead.
+        </p>
+      </:content>
+    </.popover>
+    """
+  end
+
+  def posture_match_badge(assigns) do
+    assigns = assign(assigns, :label, posture_match_label(assigns.matched_on))
+
+    ~H"""
+    <.popover placement="left">
+      <:target>
+        <span class="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light">
+          <.icon name="ri-shield-keyhole-line" class="w-2.5 h-2.5" />{@label}
+        </span>
+      </:target>
+      <:content>
+        Matched on an identifier this device proved with an MDM-issued device certificate.
+      </:content>
+    </.popover>
+    """
+  end
+
+  attr :value, :any, required: true
+
+  def posture_value(%{value: value} = assigns) when is_struct(value, DateTime) do
+    ~H"""
+    <span class="text-xs text-body">
+      <.relative_datetime datetime={@value} />
+    </span>
+    """
+  end
+
+  def posture_value(%{value: value} = assigns) when is_boolean(value) do
+    ~H"""
+    <span class="text-xs text-body">{if @value, do: "Yes", else: "No"}</span>
+    """
+  end
+
+  def posture_value(assigns) do
+    ~H"""
+    <span class="font-mono text-xs text-body break-all">{@value}</span>
+    """
+  end
+
+  attr :types, :list, required: true
+
+  def client_posture_icons(assigns) do
+    ~H"""
+    <div :if={@types != []} class="flex items-center gap-1.5">
+      <.popover :for={type <- @types} placement="right">
+        <:target>
+          <.provider_icon provider={to_string(type)} size="xs" />
+        </:target>
+        <:content>
+          {posture_provider_label(type)} holds posture for this Client.
+        </:content>
+      </.popover>
+    </div>
+    <span :if={@types == []} class="text-xs text-muted">—</span>
+    """
+  end
+
+  attr :client, :any, required: true
+  attr :certificate, :map, default: nil
+
+  def client_certificate_section(assigns) do
+    assigns = assign(assigns, :issuer, describe_issuer(assigns.client.last_attested_cert_issuer))
+
+    ~H"""
+    <div class="px-5 pt-4 pb-3 border-b border-border">
+      <.section_heading title="Certificate" />
+      <dl class="space-y-3">
+        <.client_detail_row label="Status">
+          <.certificate_status_badge certificate={@certificate} />
+        </.client_detail_row>
+        <.client_detail_row :if={@issuer} label="Issuer">
+          <span class="text-xs text-body break-all">{@issuer}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={@client.last_attested_cert_serial} label="Serial">
+          <span class="font-mono text-xs text-body break-all">
+            {@client.last_attested_cert_serial}
+          </span>
+        </.client_detail_row>
+        <.client_detail_row :if={@client.last_attested_cert_fingerprint} label="SHA-256 Fingerprint">
+          <span class="font-mono text-xs text-body break-all">
+            {@client.last_attested_cert_fingerprint}
+          </span>
+        </.client_detail_row>
+        <.client_detail_row :if={@certificate && @certificate.revoked_at} label="Revoked">
+          <span class="text-xs text-body">
+            <.relative_datetime datetime={@certificate.revoked_at} />
+          </span>
+        </.client_detail_row>
+        <.client_detail_row :if={@certificate && @certificate.reason} label="Revocation Reason">
+          <span class="text-xs text-body">{@certificate.reason}</span>
+        </.client_detail_row>
+        <.client_detail_row :if={@client.last_attested_at} label="Last Attested">
+          <span class="text-xs text-body">
+            <.relative_datetime datetime={@client.last_attested_at} />
+          </span>
+        </.client_detail_row>
+      </dl>
+    </div>
+    """
+  end
+
+  attr :certificate, :map, default: nil
+
+  def certificate_status_badge(%{certificate: %{state: :revoked}} = assigns) do
+    ~H"""
+    <.popover>
+      <:target>
+        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-error bg-error-light">
+          <.icon name="ri-close-circle-line" class="w-2.5 h-2.5" /> Revoked
+        </span>
+      </:target>
+      <:content>
+        {certificate_source_label(@certificate.source)} reports this certificate as revoked.
+      </:content>
+    </.popover>
+    """
+  end
+
+  def certificate_status_badge(%{certificate: %{state: :good}} = assigns) do
+    ~H"""
+    <.popover>
+      <:target>
+        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light">
+          <.icon name="ri-check-line" class="w-2.5 h-2.5" /> Valid
+        </span>
+      </:target>
+      <:content>
+        <p>The issuer's OCSP responder reports this certificate as good.</p>
+        <p :if={@certificate.next_update} class="mt-1">
+          That answer stands until
+          <.relative_datetime datetime={@certificate.next_update} popover={false} />.
+        </p>
+      </:content>
+    </.popover>
+    """
+  end
+
+  def certificate_status_badge(assigns) do
+    ~H"""
+    <.popover>
+      <:target>
+        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-raised">
+          <.icon name="ri-question-line" class="w-2.5 h-2.5" /> Unknown
+        </span>
+      </:target>
+      <:content>
+        Neither a published revocation list nor an OCSP responder has said anything about this
+        certificate.
+      </:content>
+    </.popover>
+    """
+  end
+
   attr :client, :any, required: true
   attr :confirm_delete_client, :boolean, default: false
   attr :confirm_unverify_client, :boolean, default: false
@@ -956,4 +1213,137 @@ defmodule PortalWeb.Clients.Components do
   end
 
   defp trust_state(_client), do: nil
+
+  # The tab is only offered when a provider has a record to put in it, so a
+  # link into it for a device with none lands on the overview rather than on
+  # blank space.
+  defp visible_client_tab(:posture, []), do: :overview
+  defp visible_client_tab(tab, _posture), do: tab
+
+  defp posture_provider_label(:intune), do: "Microsoft Intune"
+  defp posture_provider_label(:iru), do: "Iru"
+  defp posture_provider_label(:defender), do: "Microsoft Defender"
+  defp posture_provider_label(:santa), do: "Santa"
+  defp posture_provider_label(:sentinelone), do: "SentinelOne"
+
+  defp posture_match_label(:mdm_device_id), do: "Attested device ID"
+  defp posture_match_label(:attested_serial), do: "Attested serial"
+
+  defp certificate_source_label(:crl), do: "The issuer's revocation list"
+  defp certificate_source_label(:ocsp), do: "The issuer's OCSP responder"
+
+  defp describe_issuer(nil), do: nil
+  defp describe_issuer(issuer_der), do: Portal.Crypto.X509.describe_name(issuer_der)
+
+  # The handful of columns worth reading at a glance. Everything the provider
+  # reported is in the JSON blob underneath, so this list stays short and is
+  # ordered identity first, posture second.
+  defp posture_attributes(:intune, device) do
+    drop_empty([
+      {"Device name", device.device_name},
+      {"Serial number", device.serial_number},
+      {"Compliance", device.compliance_state},
+      {"Operating system", join_present([device.operating_system, device.os_version])},
+      {"Model", join_present([device.manufacturer, device.model])},
+      {"Primary user", device.user_principal_name},
+      {"Ownership", device.managed_device_owner_type},
+      {"Encrypted", device.is_encrypted},
+      {"Intune ID", device.intune_id},
+      {"Entra device ID", device.entra_device_id},
+      {"Last check-in", device.last_sync_at},
+      {"Last synced", device.synced_at}
+    ])
+  end
+
+  defp posture_attributes(:iru, device) do
+    drop_empty([
+      {"Device name", device.device_name},
+      {"Serial number", device.serial_number},
+      {"Model", device.model_name || device.model},
+      {"Operating system", join_present([device.os_name || device.platform, device.os_version])},
+      {"User", device.user_email || device.user_name},
+      {"Blueprint", device.blueprint_name},
+      {"MDM enrolled", device.mdm_enabled},
+      {"FileVault", device.filevault_enabled},
+      {"Agent version", device.agent_version},
+      {"Iru ID", device.iru_id},
+      {"Last check-in", device.last_check_in_at},
+      {"Last synced", device.synced_at}
+    ])
+  end
+
+  defp posture_attributes(:defender, device) do
+    drop_empty([
+      {"DNS name", device.computer_dns_name},
+      {"Operating system", join_present([device.os_platform, device.version])},
+      {"Sensor health", device.health_status},
+      {"Onboarding", device.onboarding_status},
+      {"Risk score", device.risk_score},
+      {"Exposure level", device.exposure_level},
+      {"Managed by", device.managed_by},
+      {"Agent version", device.agent_version},
+      {"Defender ID", device.defender_id},
+      {"Entra device ID", device.entra_device_id},
+      {"Last seen", device.last_seen_at},
+      {"Last synced", device.synced_at}
+    ])
+  end
+
+  defp posture_attributes(:santa, device) do
+    drop_empty([
+      {"Hostname", device.hostname},
+      {"Serial number", device.serial_number},
+      {"Model", device.machine_model},
+      {"Operating system", join_present([device.os_type, device.os_version])},
+      {"Client mode", device.last_seen_client_mode || device.configured_client_mode},
+      {"Primary user", device.primary_user},
+      {"Santa version", device.santa_version},
+      {"Santa ID", device.santa_id},
+      {"Last sync", device.last_sync_at},
+      {"Last synced", device.synced_at}
+    ])
+  end
+
+  defp posture_attributes(:sentinelone, device) do
+    drop_empty([
+      {"Computer name", device.computer_name},
+      {"Serial number", device.serial_number},
+      {"Model", device.model_name},
+      {"Operating system", join_present([device.os_name, device.os_revision])},
+      {"Agent version", device.agent_version},
+      {"Network status", device.network_status},
+      {"Infected", device.infected},
+      {"Active threats", device.active_threats},
+      {"Last logged in user", device.last_logged_in_user_name},
+      {"Site", device.site_name},
+      {"SentinelOne UUID", device.uuid},
+      {"Last active", device.last_active_at},
+      {"Last synced", device.synced_at}
+    ])
+  end
+
+  # Everything the provider reported about the device, for copying into a
+  # ticket. Columns it left empty are dropped rather than rendered as a wall of
+  # nulls above the ones it filled in, and the two keys that are Firezone's own
+  # bookkeeping rather than the provider's data go with them.
+  defp posture_record(device) do
+    device
+    |> PortalWeb.JSONComponents.encodable()
+    |> Map.drop(["account_id", "posture_provider_id"])
+    |> Map.reject(fn {_key, value} -> is_nil(value) end)
+  end
+
+  defp drop_empty(attributes) do
+    Enum.reject(attributes, fn {_label, value} -> value in [nil, ""] end)
+  end
+
+  defp join_present(values) do
+    values
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" ")
+    |> case do
+      "" -> nil
+      joined -> joined
+    end
+  end
 end

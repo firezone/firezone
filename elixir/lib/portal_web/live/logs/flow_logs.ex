@@ -4,11 +4,9 @@ defmodule PortalWeb.Logs.FlowLogs do
   import PortalWeb.Logs.Components
 
   alias __MODULE__.Database
-  alias PortalWeb.Logs.JSONDiff
 
   @table_id "flow_logs"
   @filter_key "flow_logs_filter"
-  @json_token_regex ~r/"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b/
 
   def mount(_params, _session, socket) do
     browser_tz = browser_tz_from_connect(socket)
@@ -152,7 +150,7 @@ defmodule PortalWeb.Logs.FlowLogs do
           </:col>
           <:col :let={row} label="Client" class="w-52">
             <.flow_client_cell
-              device_name={device_name(row.initiator_device, "Deleted client")}
+              device_name={device_name(row.initiator_device, "Deleted device")}
               ip={first_outer_src_ip(row.log)}
             />
           </:col>
@@ -377,7 +375,7 @@ defmodule PortalWeb.Logs.FlowLogs do
             </div>
           </section>
 
-          <.json_view id="flow-log-json" value={@selected_report_json} />
+          <.json_view id="flow-log-json" value={@selected_report_json} label="Flow log JSON" />
         </div>
 
         <.show_panel_sidebar :if={@selected_report}>
@@ -425,7 +423,7 @@ defmodule PortalWeb.Logs.FlowLogs do
               </.detail_row>
               <.detail_row label="Initiator device">
                 <div class="text-xs text-[var(--text-secondary)]">
-                  {device_name(@selected_report.initiator_device, "Deleted client")}
+                  {device_name(@selected_report.initiator_device, "Deleted device")}
                 </div>
                 <.identifier value={@selected_report.log.initiator_device_id} />
               </.detail_row>
@@ -561,89 +559,6 @@ defmodule PortalWeb.Logs.FlowLogs do
     </span>
     """
   end
-
-  attr :id, :string, required: true
-  attr :value, :map, required: true
-
-  defp json_view(assigns) do
-    encoded = JSONDiff.pretty(assigns.value)
-
-    assigns = assign(assigns, :tokens, json_tokens(encoded))
-
-    ~H"""
-    <section id={@id} phx-hook="CopyClipboard">
-      <.section_heading label="Flow log JSON" />
-      <div class="relative">
-        <pre class="max-h-96 overflow-auto rounded border border-[var(--border)] bg-[var(--surface-raised)] p-4 pr-24 text-xs leading-5"><code id={"#{@id}-code"} class="block min-w-max" phx-no-format><span :for={token <- @tokens} class={json_token_class(token.kind)}><%= token.text %></span></code></pre>
-        <button
-          type="button"
-          data-copy-to-clipboard-target={"#{@id}-code"}
-          title="Copy JSON to clipboard"
-          class="absolute end-2 top-2 inline-flex h-8 items-center gap-1.5 rounded border border-[var(--control-border)] bg-[var(--surface)] px-2.5 text-xs text-[var(--text-secondary)] shadow-sm hover:text-[var(--text-primary)]"
-        >
-          <span id={"#{@id}-default-message"} class="inline-flex items-center gap-1.5">
-            <.icon name="ri-clipboard-line" data-icon class="h-3.5 w-3.5" /> Copy
-          </span>
-          <span id={"#{@id}-success-message"} class="hidden items-center gap-1.5">
-            <.icon name="ri-check-line" data-icon class="h-3.5 w-3.5 text-emerald-600" /> Copied
-          </span>
-        </button>
-      </div>
-    </section>
-    """
-  end
-
-  defp json_tokens(json) do
-    {groups, cursor} =
-      @json_token_regex
-      |> Regex.scan(json, return: :index, capture: :first)
-      |> Enum.map_reduce(0, fn [{start, length}], cursor ->
-        token_end = start + length
-        leading = binary_part(json, cursor, start - cursor)
-        token = binary_part(json, start, length)
-
-        {[
-           %{kind: :plain, text: leading},
-           %{kind: json_token_kind(token, json, token_end), text: token}
-         ], token_end}
-      end)
-
-    trailing = binary_part(json, cursor, byte_size(json) - cursor)
-
-    groups
-    |> List.flatten()
-    |> Kernel.++([%{kind: :plain, text: trailing}])
-    |> Enum.reject(&(&1.text == ""))
-  end
-
-  defp json_token_kind(<<"\"", _::binary>>, json, token_end) do
-    remainder = binary_part(json, token_end, byte_size(json) - token_end)
-
-    if remainder |> String.trim_leading() |> String.starts_with?(":"),
-      do: :key,
-      else: :string
-  end
-
-  defp json_token_kind(token, _json, _token_end) when token in ["true", "false"],
-    do: :boolean
-
-  defp json_token_kind("null", _json, _token_end), do: :null
-  defp json_token_kind(_token, _json, _token_end), do: :number
-
-  defp json_token_class(:key),
-    do: "json-key text-sky-700 dark:text-sky-300"
-
-  defp json_token_class(:string),
-    do: "json-string text-emerald-700 dark:text-emerald-300"
-
-  defp json_token_class(:number),
-    do: "json-number text-violet-700 dark:text-violet-300"
-
-  defp json_token_class(:boolean),
-    do: "json-boolean text-amber-700 dark:text-amber-300"
-
-  defp json_token_class(:null), do: "json-null text-[var(--text-tertiary)]"
-  defp json_token_class(:plain), do: nil
 
   attr :matching_logs, :list, required: true
   attr :selected_role, :atom, required: true
@@ -920,7 +835,7 @@ defmodule PortalWeb.Logs.FlowLogs do
   end
 
   defp reporter_device_name(%{log: %{role: :initiator}, initiator_device: device}),
-    do: device_name(device, "Deleted client")
+    do: device_name(device, "Deleted device")
 
   defp reporter_device_name(%{log: %{role: :responder}, responder_device: device}),
     do: device_name(device, "Deleted responder")

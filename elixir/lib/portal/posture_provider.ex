@@ -5,6 +5,13 @@ defmodule Portal.PostureProvider do
   @primary_key false
   @foreign_key_type :binary_id
 
+  @type t :: %__MODULE__{
+          account_id: Ecto.UUID.t(),
+          id: Ecto.UUID.t(),
+          type: :intune | :iru | :defender | :santa | :sentinelone,
+          name: String.t()
+        }
+
   schema "posture_providers" do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true
