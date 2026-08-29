@@ -314,7 +314,9 @@ defmodule Portal.DeviceFixtures do
       %Portal.Device{}
       |> Ecto.Changeset.cast(device_attrs, [
         :name,
-        :firezone_id
+        :firezone_id,
+        :device_serial,
+        :device_uuid
       ])
       |> Ecto.Changeset.put_change(:type, :gateway)
       |> Ecto.Changeset.put_change(:account_id, account.id)
