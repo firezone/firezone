@@ -22,8 +22,9 @@ for RUNNING_CONTAINER in $CURRENTLY_RUNNING; do
     if [ "$RUNNING" != "$LATEST" ]; then
         echo -n "Upgrading gateway..."
 
-        # Extract the environment variables from the running container
-        docker container inspect "$RUNNING_CONTAINER" --format '{{join .Config.Env "\n"}}' | grep -v "PATH" >variables.env
+        # Extract the environment variables from the running container.
+        # FIREZONE_NAME is no longer used, so it is dropped instead of carried over.
+        docker container inspect "$RUNNING_CONTAINER" --format '{{join .Config.Env "\n"}}' | grep -v -e "PATH" -e "FIREZONE_NAME" >variables.env
 
         # Due to issues like https://github.com/firezone/firezone/issues/8471 we prefer to use the FIREZONE_ID
         # env var instead of volume-mapped id files on all deployment methods. This attempts to migrate the
