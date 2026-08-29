@@ -43,6 +43,38 @@ defmodule PortalAPI.Router do
     get "/", OpenApiSpex.Plug.SwaggerUI, path: "/openapi.json"
   end
 
+  # The MCP endpoint is deliberately thinner than the :api pipeline. Rate
+  # limiting and request logging are charged once per call inside
+  # PortalAPI.MCPController - a tools/call re-enters this router, and metering
+  # here as well would charge every tool call twice.
+  pipeline :mcp do
+    plug Plug.Parsers,
+      parsers: [:json],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library()
+
+    plug :accepts, ["json"]
+    plug PortalAPI.Plugs.MCPAuth
+  end
+
+  # Read before the client holds any credential, so it cannot be authenticated.
+  # Both paths are served: a client tries the one scoped to the MCP endpoint's
+  # path first and falls back to the root.
+  scope "/.well-known", PortalAPI do
+    pipe_through :public
+
+    get "/oauth-protected-resource/mcp", OAuthMetadataController, :show
+    get "/oauth-protected-resource", OAuthMetadataController, :show
+  end
+
+  scope "/mcp", PortalAPI do
+    pipe_through :mcp
+
+    post "/", MCPController, :handle
+    get "/", MCPController, :method_not_allowed
+    delete "/", MCPController, :method_not_allowed
+  end
+
   pipeline :ingestion do
     plug :accepts, ["json"]
     # Rate limiting is keyed on the source IP and runs before token
