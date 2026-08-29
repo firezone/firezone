@@ -1,7 +1,7 @@
 defmodule PortalWeb.Devices do
   use PortalWeb, :live_view
   import PortalWeb.Devices.Components
-  alias Portal.{Presence.Clients, ComponentVersions}
+  alias Portal.{Presence.Devices, ComponentVersions}
   alias Portal.Changes.Change
   alias Portal.Device
   alias Portal.PubSub
@@ -12,7 +12,7 @@ defmodule PortalWeb.Devices do
     subject = socket.assigns.subject
 
     if connected?(socket) do
-      :ok = Clients.Account.subscribe(subject.account.id)
+      :ok = Devices.Account.subscribe(subject.account.id)
       :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :devices)
     end
 
@@ -539,7 +539,7 @@ defmodule PortalWeb.Devices do
   def handle_info(%Change{old_struct: %Device{type: :gateway}}, socket), do: {:noreply, socket}
 
   def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "presences:account_clients:" <> _account_id} = event,
+        %Phoenix.Socket.Broadcast{topic: "presences:account_devices:" <> _account_id} = event,
         socket
       ) do
     rendered_client_ids = Enum.map(socket.assigns.devices, & &1.id)
@@ -567,7 +567,7 @@ defmodule PortalWeb.Devices do
     import Ecto.Query
     import Portal.Changeset
     import Portal.Repo.Query
-    alias Portal.{Presence.Clients, Safe}
+    alias Portal.{Presence.Devices, Safe}
     alias Portal.Device
     alias Portal.Policy
     alias Portal.PolicyAuthorization
@@ -620,11 +620,11 @@ defmodule PortalWeb.Devices do
     defp maybe_filter_by_presence(base_query, presence, subject) do
       case presence do
         "online" ->
-          ids = Clients.online_client_ids(subject.account.id)
+          ids = Devices.online_ids(subject.account.id, :client)
           where(base_query, [devices: d], d.id in ^ids)
 
         "offline" ->
-          ids = Clients.online_client_ids(subject.account.id)
+          ids = Devices.online_ids(subject.account.id, :client)
           where(base_query, [devices: d], d.id not in ^ids)
 
         _ ->
@@ -663,7 +663,7 @@ defmodule PortalWeb.Devices do
           Safe.preload(devices, :actor)
 
         :online?, devices ->
-          Clients.preload_clients_presence(devices)
+          Devices.preload_presence(devices)
 
         _other, devices ->
           devices
@@ -685,7 +685,7 @@ defmodule PortalWeb.Devices do
     def update_device(changeset, subject) do
       case Safe.scoped(changeset, subject) |> Safe.update() do
         {:ok, updated_client} ->
-          {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
+          {:ok, Devices.preload_presence([updated_client]) |> List.first()}
 
         {:error, reason} ->
           {:error, reason}
@@ -715,7 +715,7 @@ defmodule PortalWeb.Devices do
     def delete_device(device, subject) do
       case Safe.scoped(device, subject) |> Safe.delete() do
         {:ok, deleted_client} ->
-          {:ok, Clients.preload_clients_presence([deleted_client]) |> List.first()}
+          {:ok, Devices.preload_presence([deleted_client]) |> List.first()}
 
         {:error, reason} ->
           {:error, reason}
@@ -735,7 +735,7 @@ defmodule PortalWeb.Devices do
 
       case device do
         %Device{type: :client} ->
-          Clients.preload_clients_presence([device]) |> List.first()
+          Devices.preload_presence([device]) |> List.first()
 
         _ ->
           nil
@@ -773,7 +773,7 @@ defmodule PortalWeb.Devices do
     def preloads do
       [
         :actor,
-        online?: &Clients.preload_clients_presence/1
+        online?: &Devices.preload_presence/1
       ]
     end
 

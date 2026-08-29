@@ -34,7 +34,7 @@ defmodule PortalAPI.Relay.ChannelTest do
 
   describe "join/3" do
     test "tracks presence after join", %{relay: relay} do
-      presence = Portal.Presence.Relays.Global.list()
+      presence = Portal.Presence.Relays.list()
 
       assert %{metas: [%{ipv4: _, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
     end
@@ -131,7 +131,7 @@ defmodule PortalAPI.Relay.ChannelTest do
       test_pid = self()
 
       # Capture the test-specific topic before spawning
-      topic = Portal.Presence.Relays.Global.topic()
+      topic = Portal.Presence.Relays.topic()
 
       # First "connection" - spawn a process that tracks presence directly
       first_pid =
@@ -157,7 +157,7 @@ defmodule PortalAPI.Relay.ChannelTest do
       assert_receive :first_connected, 1000
 
       # Verify first connection is tracked
-      presence = Portal.Presence.Relays.Global.list()
+      presence = Portal.Presence.Relays.list()
       assert %{metas: [%{ipv4: _}]} = Map.fetch!(presence, relay.id)
 
       # Monitor the first process

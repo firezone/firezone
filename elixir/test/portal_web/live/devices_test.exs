@@ -206,8 +206,8 @@ defmodule PortalWeb.DevicesTest do
       offline =
         client_fixture(account: account, actor: actor, last_attested_at: DateTime.utc_now())
 
-      :ok = Portal.Presence.Clients.Account.track(account.id, attested.id)
-      :ok = Portal.Presence.Clients.Account.track(account.id, plain.id)
+      :ok = Portal.Presence.Devices.Account.track(attested)
+      :ok = Portal.Presence.Devices.Account.track(plain)
 
       conn = authorize_conn(conn, actor)
       {:ok, lv, _html} = live(conn, ~p"/#{account}/devices")

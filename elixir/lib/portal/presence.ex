@@ -6,169 +6,220 @@ defmodule Portal.Presence do
   alias Portal.PubSub
   alias Portal.Device
 
-  defmodule Clients do
-    def connect(device, token_id, session_meta \\ %{})
+  defmodule Devices do
+    @moduledoc """
+    Presence for everything running Firezone in an account.
 
-    def connect(%Device{type: :client} = device, token_id, session_meta) do
-      with :ok <- __MODULE__.Account.track(device.account_id, device.id, session_meta),
-           :ok <- __MODULE__.Actor.track(device.actor_id, device.id, token_id) do
-        :ok
+    Clients and gateways used to be tracked apart, on two account topics whose
+    metadata had grown into two different shapes. They are one tracker now:
+    one account topic, and one meta shape built in one place, so a reader that
+    does not care which kind it is looking at does not have to know.
+    """
+    alias Portal.Device
+
+    @doc """
+    What every device puts in its presence, whichever kind it is.
+
+    The same keys either way, `nil` where a kind has no answer, so a reader
+    never has to know which one it is holding.
+    """
+    def session_meta(%Device{} = device, extra \\ %{}) do
+      %{
+        type: device.type,
+        name: device.name,
+        actor_id: device.actor_id,
+        ipv4: device.ipv4 && device.ipv4.address,
+        ipv6: device.ipv6 && device.ipv6.address,
+        public_key: device.public_key,
+        psk_base: device.psk_base,
+        site_id: device.site_id,
+        version: device.last_seen_version,
+        user_agent: device.last_seen_user_agent,
+        remote_ip: device.last_seen_remote_ip,
+        remote_ip_location_lat: device.last_seen_remote_ip_location_lat,
+        remote_ip_location_lon: device.last_seen_remote_ip_location_lon,
+        attested?: device.attested?
+      }
+      |> Map.merge(extra)
+    end
+
+    def connect(%Device{} = device, token_id, session_meta \\ %{}) do
+      __MODULE__.Account.track(device, Map.put(session_meta, :token_id, token_id))
+    end
+
+    @doc """
+    Fills in `online?` for a list holding either kind of device.
+    """
+    def preload_presence([device]) do
+      case __MODULE__.Account.get(device.account_id, device.id) do
+        [] -> [%{device | online?: false}]
+        %{metas: [_ | _]} -> [%{device | online?: true}]
       end
     end
 
-    @doc false
-    def preload_clients_presence([client]) do
-      __MODULE__.Account.get(client.account_id, client.id)
-      |> case do
-        [] -> %{client | online?: false}
-        %{metas: [_ | _]} -> %{client | online?: true}
-      end
-      |> List.wrap()
-    end
-
-    def preload_clients_presence(clients) do
-      connected_clients =
-        clients
+    def preload_presence(devices) do
+      online =
+        devices
         |> Enum.map(& &1.account_id)
         |> Enum.reject(&is_nil/1)
         |> Enum.uniq()
-        |> Enum.reduce([], fn account_id, acc ->
-          connected_client_ids = online_client_ids(account_id)
-          connected_client_ids ++ acc
-        end)
+        |> Enum.flat_map(&online_ids/1)
+        |> MapSet.new()
 
-      Enum.map(clients, fn client ->
-        %{client | online?: client.id in connected_clients}
-      end)
+      Enum.map(devices, &%{&1 | online?: MapSet.member?(online, &1.id)})
     end
 
-    def online_client_ids(account_id) do
+    @doc "The ids of every device of either kind connected to an account."
+    def online_ids(account_id) do
       account_id
       |> __MODULE__.Account.list()
       |> Map.keys()
     end
 
-    defmodule Account do
-      def track(account_id, client_id, session_meta \\ %{}) do
-        meta = Map.merge(session_meta, %{online_at: System.system_time(:second)})
+    @doc "The ids of the connected devices of one kind."
+    def online_ids(account_id, type) do
+      account_id
+      |> __MODULE__.Account.list()
+      |> Enum.filter(fn {_id, %{metas: [meta | _]}} -> meta.type == type end)
+      |> Enum.map(&elem(&1, 0))
+    end
 
-        case Portal.Presence.track(self(), topic(account_id), client_id, meta) do
+    @doc "How many gateways are connected to each site, keyed by site id."
+    def online_gateway_counts(account_id) do
+      account_id
+      |> __MODULE__.Account.list()
+      |> Enum.reduce(%{}, fn
+        {_id, %{metas: [%{type: :gateway, site_id: site_id} | _]}}, acc ->
+          Map.update(acc, site_id, 1, &(&1 + 1))
+
+        _client, acc ->
+          acc
+      end)
+    end
+
+    @doc "The ids of the sites with at least one gateway connected."
+    def online_site_ids(account_id) do
+      account_id |> online_gateway_counts() |> Map.keys() |> MapSet.new()
+    end
+
+    @doc "The ids of the tokens that a connected device of one actor is using."
+    def online_token_ids(account_id, actor_id) do
+      account_id
+      |> __MODULE__.Account.list()
+      |> Enum.flat_map(fn {_id, %{metas: metas}} ->
+        for %{actor_id: ^actor_id, token_id: token_id} <- metas, do: token_id
+      end)
+    end
+
+    @doc "Whether a presence diff carries a device of the actor."
+    def diff_includes_actor?(%{joins: joins, leaves: leaves}, actor_id) do
+      [joins, leaves]
+      |> Enum.flat_map(&Map.values/1)
+      |> Enum.any?(fn %{metas: metas} -> Enum.any?(metas, &(Map.get(&1, :actor_id) == actor_id)) end)
+    end
+
+    def fetch_gateway(account_id, gateway_id) do
+      case __MODULE__.Account.get(account_id, gateway_id) do
+        %{metas: [%{type: :gateway} = meta | _]} ->
+          {:ok, from_meta(gateway_id, account_id, meta)}
+
+        _offline_or_not_a_gateway ->
+          {:error, :offline}
+      end
+    end
+
+    def all_connected_gateways(account_id) do
+      account_id
+      |> __MODULE__.Account.list()
+      |> Enum.flat_map(fn
+        {id, %{metas: [%{type: :gateway} = meta | _]}} -> [from_meta(id, account_id, meta)]
+        _other_kind -> []
+      end)
+    end
+
+    defp from_meta(id, account_id, meta) do
+      %Device{
+        id: id,
+        account_id: account_id,
+        type: meta.type,
+        site_id: meta.site_id,
+        psk_base: meta.psk_base,
+        online?: true,
+        public_key: meta.public_key,
+        last_seen_version: meta.version,
+        last_seen_remote_ip: normalize_ip(meta.remote_ip),
+        last_seen_remote_ip_location_lat: meta.remote_ip_location_lat,
+        last_seen_remote_ip_location_lon: meta.remote_ip_location_lon
+      }
+    end
+
+    defp normalize_ip(%Postgrex.INET{} = inet), do: inet
+    defp normalize_ip(tuple) when is_tuple(tuple), do: %Postgrex.INET{address: tuple}
+    defp normalize_ip(nil), do: nil
+
+    @doc """
+    Preloads `online?` for client tokens.
+
+    A token is online when any device is connected using it.
+    """
+    def preload_client_tokens_presence(tokens) when is_list(tokens) do
+      online_token_ids =
+        tokens
+        |> Enum.map(&{&1.account_id, &1.actor_id})
+        |> Enum.uniq()
+        |> Enum.flat_map(fn {account_id, actor_id} -> online_token_ids(account_id, actor_id) end)
+        |> MapSet.new()
+
+      Enum.map(tokens, &%{&1 | online?: MapSet.member?(online_token_ids, &1.id)})
+    end
+
+    defmodule Account do
+      alias Portal.Presence.Devices
+
+      def track(device, extra \\ %{}) do
+        meta =
+          device
+          |> Devices.session_meta(extra)
+          |> Map.put(:online_at, System.system_time(:second))
+
+        case Portal.Presence.track(self(), topic(device.account_id), device.id, meta) do
           {:ok, _} ->
             :ok
 
           {:error, {:already_tracked, _, _, _}} ->
-            Portal.Presence.update(self(), topic(account_id), client_id, meta)
+            Portal.Presence.update(self(), topic(device.account_id), device.id, meta)
             :ok
         end
       end
 
-      def subscribe(account_id) do
-        account_id
-        |> topic()
-        |> PubSub.subscribe()
+      def subscribe(account_id), do: account_id |> topic() |> PubSub.subscribe()
+
+      def get(account_id, device_id) do
+        account_id |> topic() |> Portal.Presence.get_by_key(device_id)
       end
 
-      def get(account_id, client_id) do
-        account_id
-        |> topic()
-        |> Portal.Presence.get_by_key(client_id)
-      end
-
-      def list(account_id) do
-        account_id
-        |> topic()
-        |> Portal.Presence.list()
-      end
+      def list(account_id), do: account_id |> topic() |> Portal.Presence.list()
 
       def find_by_ipv4(account_id, ipv4_tuple) when is_tuple(ipv4_tuple) do
-        account_id
-        |> list()
-        |> Enum.find_value(fn {client_id, %{metas: [meta | _]}} ->
-          if meta.ipv4 == ipv4_tuple, do: {client_id, meta}
-        end)
+        find_by_address(account_id, :ipv4, ipv4_tuple)
       end
 
       def find_by_ipv6(account_id, ipv6_tuple) when is_tuple(ipv6_tuple) do
+        find_by_address(account_id, :ipv6, ipv6_tuple)
+      end
+
+      # Both kinds share this topic and both hold tunnel addresses, so the
+      # lookup says which kind it wants rather than trusting the address to
+      # belong to only one.
+      defp find_by_address(account_id, key, address) do
         account_id
         |> list()
-        |> Enum.find_value(fn {client_id, %{metas: [meta | _]}} ->
-          if meta.ipv6 == ipv6_tuple, do: {client_id, meta}
+        |> Enum.find_value(fn {device_id, %{metas: [meta | _]}} ->
+          if meta.type == :client and Map.get(meta, key) == address, do: {device_id, meta}
         end)
       end
 
-      defp topic(account_id) do
-        "presences:account_clients:" <> account_id
-      end
-    end
-
-    defmodule Actor do
-      def track(actor_id, client_id, token_id) do
-        meta = %{token_id: token_id}
-
-        case Portal.Presence.track(self(), topic(actor_id), client_id, meta) do
-          {:ok, _} ->
-            :ok
-
-          {:error, {:already_tracked, _, _, _}} ->
-            Portal.Presence.update(self(), topic(actor_id), client_id, meta)
-            :ok
-        end
-      end
-
-      def get(actor_id, client_id) do
-        actor_id
-        |> topic()
-        |> Portal.Presence.get_by_key(client_id)
-      end
-
-      def list(actor_id) do
-        actor_id
-        |> topic()
-        |> Portal.Presence.list()
-      end
-
-      def subscribe(actor_id) do
-        actor_id
-        |> topic()
-        |> PubSub.subscribe()
-      end
-
-      def unsubscribe(actor_id) do
-        actor_id
-        |> topic()
-        |> PubSub.unsubscribe()
-      end
-
-      def online_token_ids(actor_id) do
-        actor_id
-        |> list()
-        |> Enum.flat_map(fn {_client_id, %{metas: metas}} ->
-          Enum.map(metas, & &1.token_id)
-        end)
-      end
-
-      defp topic(actor_id) do
-        "presences:actor_clients:" <> actor_id
-      end
-    end
-
-    @doc """
-    Preloads the online? virtual field for client tokens based on actor presence.
-    A token is considered online if any client is connected using that token.
-    """
-    def preload_client_tokens_presence(tokens) when is_list(tokens) do
-      # Group tokens by actor_id to batch presence lookups
-      online_token_ids =
-        tokens
-        |> Enum.map(& &1.actor_id)
-        |> Enum.reject(&is_nil/1)
-        |> Enum.uniq()
-        |> Enum.flat_map(&Actor.online_token_ids/1)
-        |> MapSet.new()
-
-      Enum.map(tokens, fn token ->
-        %{token | online?: MapSet.member?(online_token_ids, token.id)}
-      end)
+      def topic(account_id), do: "presences:account_devices:" <> account_id
     end
   end
 
@@ -224,148 +275,6 @@ defmodule Portal.Presence do
     end
   end
 
-  defmodule Gateways do
-    def connect(device, token_id, session_meta \\ %{})
-
-    def connect(%Device{type: :gateway} = device, token_id, session_meta) do
-      with :ok <- __MODULE__.Site.track(device.site_id, device.id, token_id),
-           :ok <- __MODULE__.Account.track(device.account_id, device.id, session_meta) do
-        :ok
-      end
-    end
-
-    def fetch_gateway(account_id, gateway_id) do
-      case __MODULE__.Account.get(account_id, gateway_id) do
-        %{metas: [meta | _]} ->
-          {:ok, gateway_from_presence_meta(gateway_id, account_id, meta)}
-
-        [] ->
-          {:error, :offline}
-      end
-    end
-
-    def all_connected_gateways(account_id) do
-      __MODULE__.Account.list(account_id)
-      |> Enum.map(fn {gateway_id, %{metas: [meta | _]}} ->
-        gateway_from_presence_meta(gateway_id, account_id, meta)
-      end)
-    end
-
-    defp gateway_from_presence_meta(gateway_id, account_id, meta) do
-      %Device{
-        id: gateway_id,
-        account_id: account_id,
-        type: :gateway,
-        site_id: meta.site_id,
-        psk_base: meta.psk_base,
-        online?: true,
-        public_key: meta.public_key,
-        last_seen_version: meta.version,
-        last_seen_remote_ip: normalize_ip(meta.remote_ip),
-        last_seen_remote_ip_location_lat: meta.remote_ip_location_lat,
-        last_seen_remote_ip_location_lon: meta.remote_ip_location_lon
-      }
-    end
-
-    defp normalize_ip(%Postgrex.INET{} = inet), do: inet
-    defp normalize_ip(tuple) when is_tuple(tuple), do: %Postgrex.INET{address: tuple}
-    defp normalize_ip(nil), do: nil
-
-    @doc false
-    def preload_gateways_presence([gateway]) do
-      __MODULE__.Account.get(gateway.account_id, gateway.id)
-      |> case do
-        [] -> %{gateway | online?: false}
-        %{metas: [_ | _]} -> %{gateway | online?: true}
-      end
-      |> List.wrap()
-    end
-
-    def preload_gateways_presence(gateways) do
-      connected_gateways =
-        gateways
-        |> Enum.map(& &1.account_id)
-        |> Enum.reject(&is_nil/1)
-        |> Enum.uniq()
-        |> Enum.reduce(%{}, fn account_id, acc ->
-          connected_gateways = __MODULE__.Account.list(account_id)
-          Map.merge(acc, connected_gateways)
-        end)
-
-      Enum.map(gateways, fn gateway ->
-        %{gateway | online?: Map.has_key?(connected_gateways, gateway.id)}
-      end)
-    end
-
-    defmodule Account do
-      def track(account_id, gateway_id, session_meta \\ %{}) do
-        meta = Map.merge(session_meta, %{online_at: System.system_time(:second)})
-
-        case Portal.Presence.track(self(), topic(account_id), gateway_id, meta) do
-          {:ok, _} ->
-            :ok
-
-          {:error, {:already_tracked, _, _, _}} ->
-            Portal.Presence.update(self(), topic(account_id), gateway_id, meta)
-            :ok
-        end
-      end
-
-      def subscribe(account_id) do
-        account_id
-        |> topic()
-        |> PubSub.subscribe()
-      end
-
-      def get(account_id, gateway_id) do
-        account_id
-        |> topic()
-        |> Portal.Presence.get_by_key(gateway_id)
-      end
-
-      def list(account_id) do
-        account_id
-        |> topic()
-        |> Portal.Presence.list()
-      end
-
-      defp topic(account_id) do
-        "presences:account_gateways:" <> account_id
-      end
-    end
-
-    defmodule Site do
-      def track(site_id, gateway_id, token_id) do
-        meta = %{token_id: token_id}
-
-        case Portal.Presence.track(self(), topic(site_id), gateway_id, meta) do
-          {:ok, _} ->
-            :ok
-
-          {:error, {:already_tracked, _, _, _}} ->
-            Portal.Presence.update(self(), topic(site_id), gateway_id, meta)
-            :ok
-        end
-      end
-
-      def subscribe(site_id) do
-        site_id
-        |> topic()
-        |> PubSub.subscribe()
-      end
-
-      def list(site_id) do
-        site_id
-        |> topic()
-        |> Portal.Presence.list()
-      end
-
-      defp topic(site_id) do
-        "presences:sites:" <> site_id
-      end
-    end
-  end
-
   defmodule Relays do
     @moduledoc """
     Presence tracking for relays. Relays are ephemeral and only exist while connected.
@@ -375,7 +284,7 @@ defmodule Portal.Presence do
     alias Portal.Relay
 
     def send_metrics do
-      count = __MODULE__.Global.list() |> Enum.count()
+      count = list() |> Enum.count()
 
       :telemetry.execute([:portal, :relays], %{
         online_relays_count: count
@@ -389,7 +298,7 @@ defmodule Portal.Presence do
       disconnect_by_id(relay.id)
 
       with {:ok, _} <-
-             Portal.Presence.track(self(), __MODULE__.Global.topic(), relay.id, %{
+             Portal.Presence.track(self(), topic(), relay.id, %{
                stamp_secret: relay.stamp_secret,
                ipv4: relay.ipv4,
                ipv6: relay.ipv6,
@@ -403,7 +312,7 @@ defmodule Portal.Presence do
     end
 
     defp disconnect_by_id(id) do
-      topic = __MODULE__.Global.topic()
+      topic = topic()
 
       # Phoenix.Tracker.get_by_key returns [{pid, meta}] for each presence
       Phoenix.Tracker.get_by_key(Portal.Presence, topic, id)
@@ -418,11 +327,11 @@ defmodule Portal.Presence do
     Disconnects a relay from presence.
     """
     def disconnect(%Relay{id: id}) do
-      Portal.Presence.untrack(self(), __MODULE__.Global.topic(), id)
+      Portal.Presence.untrack(self(), topic(), id)
     end
 
     def all_connected_relays(except_ids \\ []) do
-      connected_relays = __MODULE__.Global.list()
+      connected_relays = list()
 
       relays =
         connected_relays
@@ -443,22 +352,12 @@ defmodule Portal.Presence do
       {:ok, relays}
     end
 
-    defmodule Global do
-      def topic do
-        Portal.Config.get_env(:portal, :relay_presence_topic, "presences:global_relays")
-      end
-
-      def list do
-        Portal.Presence.list(topic())
-      end
-
-      def subscribe do
-        PubSub.subscribe(topic())
-      end
-
-      def unsubscribe do
-        PubSub.unsubscribe(topic())
-      end
+    def topic do
+      Portal.Config.get_env(:portal, :relay_presence_topic, "presences:relays")
     end
+
+    def list, do: Portal.Presence.list(topic())
+    def subscribe, do: PubSub.subscribe(topic())
+    def unsubscribe, do: PubSub.unsubscribe(topic())
   end
 end
