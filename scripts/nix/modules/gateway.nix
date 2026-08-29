@@ -36,13 +36,6 @@ in
       '';
     };
 
-    name = lib.mkOption {
-      type = lib.types.str;
-      default = config.networking.hostName;
-      defaultText = lib.literalExpression "config.networking.hostName";
-      description = "Friendly name for this Gateway as shown in the admin portal.";
-    };
-
     id = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -140,7 +133,6 @@ in
 
       environment = {
         FIREZONE_API_URL = cfg.apiUrl;
-        FIREZONE_NAME = cfg.name;
         RUST_LOG = cfg.logLevel;
       }
       // lib.optionalAttrs (cfg.id != null) { FIREZONE_ID = cfg.id; }

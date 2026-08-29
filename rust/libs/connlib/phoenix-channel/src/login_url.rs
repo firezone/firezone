@@ -131,7 +131,6 @@ impl LoginUrl<PublicKeyParam> {
     pub fn gateway<E>(
         url: impl TryInto<Url, Error = E>,
         device_id: String,
-        device_name: Option<String>,
         device_serial: Option<String>,
         device_uuid: Option<String>,
     ) -> Result<Self, LoginUrlError<E>> {
@@ -140,16 +139,13 @@ impl LoginUrl<PublicKeyParam> {
         } else {
             device_id
         };
-        let device_name = device_name
-            .or(get_host_name())
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
 
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
             "gateway",
             Some("v2"),
             Some(external_id),
-            Some(device_name),
+            None,
             None,
             None,
             None,
@@ -527,16 +523,14 @@ mod tests {
     }
 
     #[test]
-    fn gateway_uses_v2_endpoint() {
+    fn gateway_uses_v2_endpoint_without_reporting_a_name() {
         let login_url = LoginUrl::gateway(
             "wss://api.firez.one",
             "some-id".to_owned(),
-            Some("some-name".to_owned()),
             Some("serial".to_owned()),
             Some("uuid".to_owned()),
         )
         .unwrap();
-
         let url = login_url.to_url(PublicKeyParam([0; 32]));
 
         assert_eq!(url.path(), "/gateway/v2/websocket");
@@ -545,7 +539,6 @@ mod tests {
                 .collect::<std::collections::HashMap<_, _>>(),
             std::collections::HashMap::from([
                 (Cow::Borrowed("external_id"), Cow::Borrowed("some-id")),
-                (Cow::Borrowed("name"), Cow::Borrowed("some-name")),
                 (Cow::Borrowed("device_serial"), Cow::Borrowed("serial")),
                 (Cow::Borrowed("device_uuid"), Cow::Borrowed("uuid")),
                 (

@@ -319,7 +319,7 @@ defmodule PortalWeb.SitesTest do
 
       html = render_click(lv, "deploy_tab_selected", %{"tab" => "docker-instructions"})
       assert html =~ "docker run"
-      # The portal ignores FIREZONE_NAME for single-owner gateways
+      # Gateway names are configured remotely.
       refute html =~ "FIREZONE_NAME"
 
       html = render_click(lv, "deploy_tab_selected", %{"tab" => "terraform-instructions"})
