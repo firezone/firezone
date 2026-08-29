@@ -125,8 +125,8 @@ impl ValidationError {
             Self::Ambiguous => "more than one value was given",
             Self::PlaceholderIdentifier => "a placeholder identifier",
             Self::UnknownAttribute => "not an attribute we understand",
-            Self::NotYetValid => "in the future, so this certificate is not valid yet",
-            Self::Expired => "in the past, so this certificate has expired",
+            Self::NotYetValid => "not yet valid",
+            Self::Expired => "expired",
         }
     }
 }
