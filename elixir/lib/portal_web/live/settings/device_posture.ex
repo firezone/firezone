@@ -866,11 +866,6 @@ defmodule PortalWeb.Settings.DevicePosture do
                   </span>
                 </.link>
               </li>
-              <li class="pt-3 pb-1">
-                <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
-                  Coming soon
-                </p>
-              </li>
               <li :for={provider <- @coming_soon_providers}>
                 <button
                   id={"register-interest-#{provider.type}"}

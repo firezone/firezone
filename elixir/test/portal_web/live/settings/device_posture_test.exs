@@ -167,6 +167,8 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert html =~ provider
     end
 
+    refute html =~ "Coming soon"
+
     assert has_element?(lv, ~s(img[src="/images/logo-crowdstrike.svg"]))
     assert has_element?(lv, ~s(img[src="/images/logo-sophos.svg"]))
     assert has_element?(lv, ~s(img[src="/images/logo-jamf.svg"]))
@@ -192,7 +194,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
              "We&#39;ve registered your interest in CrowdStrike Falcon support in Firezone."
 
     assert_email_sent(fn email ->
-      assert email.to == [{"", "support@firezone.dev"}]
+      assert email.to == [{"", "engineering@firezone.dev"}]
       assert email.subject == "Posture Provider interest"
       assert email.text_body =~ "Actor ID: #{context.actor.id}"
       assert email.text_body =~ "Account ID: #{context.account.id}"
@@ -212,7 +214,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     refute html =~ "Send feedback"
 
     assert_email_sent(fn email ->
-      assert email.to == [{"", "support@firezone.dev"}]
+      assert email.to == [{"", "engineering@firezone.dev"}]
       assert email.subject == "Posture Provider interest"
       assert email.text_body =~ "Actor ID: #{context.actor.id}"
       assert email.text_body =~ "Account ID: #{context.account.id}"

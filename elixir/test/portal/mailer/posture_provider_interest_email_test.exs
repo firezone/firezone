@@ -15,10 +15,10 @@ defmodule Portal.Mailer.PostureProviderInterestEmailTest do
     %{account: account, actor: actor, subject: subject}
   end
 
-  test "builds an interest email for support", context do
+  test "builds an interest email for engineering", context do
     email = PostureProviderInterestEmail.interest_email(context.subject, "Jamf Pro")
 
-    assert email.to == [{"", "support@firezone.dev"}]
+    assert email.to == [{"", "engineering@firezone.dev"}]
     assert email.subject == "Posture Provider interest"
     assert email.text_body =~ "Actor ID: #{context.actor.id}"
     assert email.text_body =~ "Account ID: #{context.account.id}"
@@ -26,7 +26,7 @@ defmodule Portal.Mailer.PostureProviderInterestEmailTest do
     refute email.text_body =~ "Feedback:"
   end
 
-  test "builds a separate feedback email for support", context do
+  test "builds a separate feedback email for engineering", context do
     email =
       PostureProviderInterestEmail.feedback_email(
         context.subject,
@@ -34,7 +34,7 @@ defmodule Portal.Mailer.PostureProviderInterestEmailTest do
         "We need device compliance and encryption status."
       )
 
-    assert email.to == [{"", "support@firezone.dev"}]
+    assert email.to == [{"", "engineering@firezone.dev"}]
     assert email.subject == "Posture Provider interest"
     assert email.text_body =~ "Actor ID: #{context.actor.id}"
     assert email.text_body =~ "Account ID: #{context.account.id}"
