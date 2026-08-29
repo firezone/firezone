@@ -1116,7 +1116,8 @@ defmodule PortalAPI.Client.ChannelTest do
       credential = %Portal.Authentication.Credential{
         id: Ecto.UUID.generate(),
         type: :x509,
-        auth_provider_id: provider.id
+        auth_provider_id: provider.id,
+        scopes: nil
       }
 
       join_channel(client, %{subject | credential: credential})
@@ -1153,7 +1154,8 @@ defmodule PortalAPI.Client.ChannelTest do
       credential = %Portal.Authentication.Credential{
         id: Ecto.UUID.generate(),
         type: :x509,
-        auth_provider_id: provider.id
+        auth_provider_id: provider.id,
+        scopes: nil
       }
 
       join_channel(client, %{subject | credential: credential})

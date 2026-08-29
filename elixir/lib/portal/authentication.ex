@@ -75,7 +75,7 @@ defmodule Portal.Authentication do
       secret_salt: secret_salt,
       secret_hash: secret_hash
     }
-    |> cast(attrs, [:name, :expires_at])
+    |> cast(attrs, [:name, :expires_at, :scopes])
     |> validate_required([:expires_at])
     |> validate_datetime(:expires_at, greater_than: DateTime.utc_now())
     |> Database.insert_api_token(subject)
@@ -429,14 +429,15 @@ defmodule Portal.Authentication do
     credential = %Credential{
       type: :client_token,
       id: token.id,
-      auth_provider_id: token.auth_provider_id
+      auth_provider_id: token.auth_provider_id,
+      scopes: nil
     }
 
     do_build_subject(token, context, credential)
   end
 
   def build_subject(%Portal.APIToken{} = token, %Context{} = context) do
-    credential = %Credential{type: :api_token, id: token.id}
+    credential = %Credential{type: :api_token, id: token.id, scopes: token.scopes}
     do_build_subject(token, context, credential)
   end
 
@@ -444,7 +445,8 @@ defmodule Portal.Authentication do
     credential = %Credential{
       type: :portal_session,
       id: session.id,
-      auth_provider_id: session.auth_provider_id
+      auth_provider_id: session.auth_provider_id,
+      scopes: nil
     }
 
     do_build_subject(session, context, credential)

@@ -215,7 +215,8 @@ defmodule PortalAPI.Client.DeviceTrust do
            credential: %Credential{
              type: :x509,
              id: Ecto.UUID.generate(),
-             auth_provider_id: auth_provider.id
+             auth_provider_id: auth_provider.id,
+             scopes: nil
            },
            expires_at: expires_at,
            context: context

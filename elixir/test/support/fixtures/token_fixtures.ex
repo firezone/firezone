@@ -112,7 +112,8 @@ defmodule Portal.TokenFixtures do
       name: "Test API Token",
       secret_fragment: generate_secret_fragment(),
       secret_salt: generate_salt(),
-      expires_at: DateTime.utc_now() |> DateTime.add(30, :day)
+      expires_at: DateTime.utc_now() |> DateTime.add(30, :day),
+      scopes: Portal.Scope.all()
     }
   end
 

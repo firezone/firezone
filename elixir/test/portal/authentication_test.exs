@@ -135,7 +135,7 @@ defmodule Portal.AuthenticationTest do
       assert {:ok, encoded_token} =
                create_api_token(
                  api_client,
-                 %{"name" => "test-token", "expires_at" => one_day},
+                 %{"name" => "test-token", "expires_at" => one_day, "scopes" => Portal.Scope.all()},
                  admin_subject
                )
 
@@ -159,7 +159,7 @@ defmodule Portal.AuthenticationTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :day)
 
       assert {:ok, encoded_token} =
-               create_api_token(api_client, %{expires_at: expires_at}, admin_subject)
+               create_api_token(api_client, %{expires_at: expires_at, scopes: Portal.Scope.all()}, admin_subject)
 
       context = build_context(type: :api_client)
 
@@ -591,7 +591,7 @@ defmodule Portal.AuthenticationTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :day)
 
       assert {:ok, encoded_token} =
-               create_api_token(api_client, %{expires_at: expires_at}, admin_subject)
+               create_api_token(api_client, %{expires_at: expires_at, scopes: Portal.Scope.all()}, admin_subject)
 
       assert is_binary(encoded_token)
     end

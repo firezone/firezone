@@ -10,9 +10,19 @@ defmodule Portal.Authentication.Credential do
   - `:portal_session` - Portal sessions for web users. `auth_provider_id` is always set.
   - `:x509` - Ephemeral credentials authenticated by a client certificate. These
     have an `auth_provider_id`, but no persisted client token.
+
+  `scopes` narrows what the credential may reach through the public API. An
+  API token always carries an explicit list - the column is not null and the
+  tokens that predate scopes were backfilled - so `nil` here means only that
+  the credential type does not participate in scopes at all, which is the case
+  for every type governed purely by its actor. See `Portal.Scope`.
   """
 
-  @type api_token :: %__MODULE__{type: :api_token, id: Ecto.UUID.t()}
+  @type api_token :: %__MODULE__{
+          type: :api_token,
+          id: Ecto.UUID.t(),
+          scopes: [String.t()]
+        }
 
   @type non_interactive_client_token :: %__MODULE__{type: :client_token, id: Ecto.UUID.t()}
 
@@ -41,6 +51,8 @@ defmodule Portal.Authentication.Credential do
           | portal_session()
           | x509()
 
-  @enforce_keys [:type, :id]
-  defstruct [:type, :id, :auth_provider_id]
+  # Enforced rather than defaulted: a nil default made a scope-governed
+  # credential built without scopes read as unrestricted.
+  @enforce_keys [:type, :id, :scopes]
+  defstruct [:type, :id, :auth_provider_id, :scopes]
 end

@@ -37,9 +37,17 @@ defmodule PortalAPI.ConnCase do
     {:ok, conn: conn, user_agent: user_agent}
   end
 
-  def authorize_conn(conn, %Portal.Actor{account: account} = actor) do
+  def authorize_conn(conn, %Portal.Actor{account: account} = actor, scopes \\ Portal.Scope.all()) do
     expires_at = DateTime.utc_now() |> DateTime.add(300, :second)
-    api_token = api_token_fixture(actor: actor, account: account, expires_at: expires_at)
+
+    api_token =
+      api_token_fixture(
+        actor: actor,
+        account: account,
+        expires_at: expires_at,
+        scopes: scopes
+      )
+
     encoded_fragment = encode_api_token(api_token)
 
     Plug.Conn.put_req_header(conn, "authorization", "Bearer " <> encoded_fragment)

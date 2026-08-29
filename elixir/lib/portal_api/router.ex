@@ -15,6 +15,7 @@ defmodule PortalAPI.Router do
       json_decoder: Phoenix.json_library()
 
     plug PortalAPI.Plugs.RequestLog
+    plug PortalAPI.Plugs.Scope
     plug PortalAPI.Plugs.ValidateUUIDParams
   end
 
