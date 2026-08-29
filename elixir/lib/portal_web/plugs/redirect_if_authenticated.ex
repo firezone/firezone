@@ -22,8 +22,9 @@ defmodule PortalWeb.Plugs.RedirectIfAuthenticated do
         } = conn,
         _opts
       )
-      when as in ["client", "gui-client", "headless-client"] do
-    # Client sign-in flow should proceed even if user has a portal session
+      when as in ["client", "gui-client", "headless-client", "oauth"] do
+    # Client and app-approval sign-ins proceed even with a portal session. The
+    # approval flow needs its own, so being signed in must not skip it.
     conn
   end
 

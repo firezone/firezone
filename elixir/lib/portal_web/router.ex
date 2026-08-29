@@ -86,6 +86,33 @@ defmodule PortalWeb.Router do
     end
   end
 
+  # Machine to machine, so no CSRF protection and no session: the client
+  # authenticates with the code and its PKCE verifier, not with a cookie.
+  pipeline :oauth do
+    plug :accepts, ["json"]
+  end
+
+  scope "/", PortalWeb do
+    pipe_through :oauth
+
+    get "/.well-known/oauth-authorization-server", OAuthMetadataController, :show
+    post "/oauth/token", OAuthController, :token
+    post "/oauth/revoke", OAuthController, :revoke
+  end
+
+  # The authorization endpoint clients are told about. It only picks an account
+  # and hands off to the account scoped one below, which is where sign-in and
+  # consent actually happen.
+  scope "/", PortalWeb do
+    pipe_through :public
+
+    get "/oauth/authorize", OAuthController, :start
+
+    # The account chooser posts the slug back here, the same way the sign-in
+    # chooser posts to /sign_in. It only picks an account and redirects.
+    post "/oauth/authorize", OAuthController, :start
+  end
+
   scope "/auth", PortalWeb do
     pipe_through :public
 
@@ -194,6 +221,29 @@ defmodule PortalWeb.Router do
     ]
 
     post "/sign_out", SignOutController, :sign_out
+  end
+
+  # Granting an app access is not an admin action: the token can only ever do
+  # what the person approving it can already do, so any signed-in actor may.
+  scope "/:account_id_or_slug", PortalWeb do
+    pipe_through [
+      :public,
+      PortalWeb.Plugs.FetchAccount,
+      {PortalWeb.Plugs.FetchSubject,
+       cookie: PortalWeb.Cookie.OAuthSession, session_key: :oauth_session_id},
+      {PortalWeb.Plugs.EnsureAuthenticated, as: "oauth"}
+    ]
+
+    live_session :oauth_consent,
+      on_mount: [
+        PortalWeb.LiveHooks.PutDynamicRepo,
+        PortalWeb.LiveHooks.AllowEctoSandbox,
+        PortalWeb.LiveHooks.FetchAccount,
+        {PortalWeb.LiveHooks.FetchSubject, :oauth},
+        {PortalWeb.LiveHooks.EnsureAuthenticated, :oauth}
+      ] do
+      live "/oauth/authorize", OAuthConsent
+    end
   end
 
   # Authenticated admin routes
