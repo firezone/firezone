@@ -4,7 +4,7 @@ defmodule Portal.Mailer.PostureProviderInterestEmail do
   import Portal.Mailer
   import Swoosh.Email
 
-  @support_email "support@firezone.dev"
+  @engineering_email "engineering@firezone.dev"
   @subject "Posture Provider interest"
 
   def interest_email(%Portal.Authentication.Subject{} = subject, provider) do
@@ -37,7 +37,7 @@ defmodule Portal.Mailer.PostureProviderInterestEmail do
   defp base_email(subject) do
     default_email()
     |> subject(@subject)
-    |> to(@support_email)
+    |> to(@engineering_email)
     |> with_account_id(subject.account.id)
   end
 end
