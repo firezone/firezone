@@ -11,12 +11,14 @@ partition_suffix =
     ""
   end
 
+database = "#{System.get_env("DATABASE_NAME", "firezone")}_test#{partition_suffix}"
+
 config :portal, sql_sandbox: true
 
 config :portal, run_manual_migrations: true
 
 config :portal, Portal.Repo,
-  database: "firezone_test#{partition_suffix}",
+  database: database,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: 5,
   queue_target: 1000
@@ -28,7 +30,7 @@ for repo <- [
       Portal.Repo.Poller
     ] do
   config :portal, repo,
-    database: "firezone_test#{partition_suffix}",
+    database: database,
     pool: Ecto.Adapters.SQL.Sandbox,
     pool_size: 5,
     queue_target: 1000
