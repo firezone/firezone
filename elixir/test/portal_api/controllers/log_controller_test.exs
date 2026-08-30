@@ -194,7 +194,7 @@ defmodule PortalAPI.LogControllerTest do
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/logs?type=session")
+        |> get(~p"/logs?type=session&begin=2026-05-31T00:00:00Z&end=2026-06-04T00:00:00Z")
 
       assert %{"data" => data} = json_response(conn, 200)
 
@@ -305,7 +305,7 @@ defmodule PortalAPI.LogControllerTest do
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/logs?type=flow")
+        |> get(~p"/logs?type=flow&begin=2026-05-31T00:00:00Z&end=2026-06-04T00:00:00Z")
 
       assert %{"data" => data} = json_response(conn, 200)
       assert Enum.map(data, & &1["log_id"]) == [newer.log_id, older.log_id]
