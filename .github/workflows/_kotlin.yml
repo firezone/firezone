@@ -62,17 +62,27 @@ jobs:
           # set up for itself. Splitting them wants `--notAnnotation`/`--annotation` rather than
           # a package, so that every test lands in exactly one suite by construction.
           - suite: unmanaged
+            script: >-
+              ./kotlin/android/mise-tasks/emulator-tests.sh
+              --notAnnotation dev.firezone.android.RequiresManagedDevice
+          # Provisioning makes the test DPC the device owner, which is what lets these tests
+          # drive the KeyChain into every X.509 state.
+          - suite: managed
+            script: >-
+              ./kotlin/android/mise-tasks/managed-device/provision.sh &&
+              ./kotlin/android/mise-tasks/emulator-tests.sh
+              --annotation dev.firezone.android.RequiresManagedDevice
     name: emulator-tests (${{ matrix.suite }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk-space
         with:
           keep-android: "true"
-      # Where a local build leaves them, so the task below finds them the same way here.
+      # Where a local build leaves them, so the tasks below find them the same way here.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: Android debug APK
-          path: kotlin/android/app/build/outputs/apk
+          path: kotlin/android
       # The runner ships /dev/kvm but leaves it readable only by root.
       - name: Grant access to KVM
         run: |
@@ -86,13 +96,12 @@ jobs:
           api-level: 34
           arch: x86_64
           # An image without Play Services boots faster, and a device owner can only be
-          # set while a device carries no accounts, which a test DPC would need.
+          # set while a device carries no accounts, which the managed suite's DPC needs.
           target: default
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           # `script` is not a `run:` step, so it does not pick up the workflow's
           # `working-directory` default and starts at the repository root.
-          script: >-
-            ./kotlin/android/mise-tasks/emulator-tests.sh
+          script: ${{ matrix.script }}
 
   update-release-draft:
     name: update-release-draft
@@ -254,10 +263,12 @@ jobs:
       # test suite a Rust build of its own. The APK is universal, so it installs on the emulator.
       - name: Build debug APK
         run: |
-          ./gradlew assembleDebug assembleDebugAndroidTest
+          ./gradlew assembleDebug assembleDebugAndroidTest :dpc:assembleDebug
       - name: Upload debug APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Android debug APK
+          # Two paths, so the artifact is rooted at kotlin/android rather than inside app/.
           path: |
             ./kotlin/android/app/build/outputs/apk/*
+            ./kotlin/android/dpc/build/outputs/apk/*

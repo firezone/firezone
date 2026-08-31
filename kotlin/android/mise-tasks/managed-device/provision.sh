@@ -18,13 +18,18 @@ if [ -n "$owned" ]; then
     exit 0
 fi
 
-echo "==> Building the DPC..."
-./gradlew --quiet :dpc:assembleDebug
-
-dpc_apk="$(find dpc/build -type f -name '*.apk' -exec ls -t {} + | head -1)"
+# CI restores a prebuilt APK where a build would cost the emulator job a toolchain.
+dpc_apk="$(find dpc/build -type f -name '*.apk' -exec ls -t {} + 2>/dev/null | head -1)"
 
 if [ -z "$dpc_apk" ]; then
-    echo "error: the build produced no APK under dpc/build" >&2
+    echo "==> Building the DPC..."
+    ./gradlew --quiet :dpc:assembleDebug
+
+    dpc_apk="$(find dpc/build -type f -name '*.apk' -exec ls -t {} + | head -1)"
+fi
+
+if [ -z "$dpc_apk" ]; then
+    echo "error: no APK under dpc/build" >&2
     exit 1
 fi
 
