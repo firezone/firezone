@@ -33,8 +33,15 @@ jobs:
       # narrowing to one ABI keeps coverage identical while avoiding the 4-ABI build.
       - name: Run Android Lint
         run: ./gradlew lint -Pandroid.injected.build.abi=x86_64
-      # AGP 9 only creates unit test components for the tested build type
-      # (debug). Narrowing to one ABI reuses the cargo build from lint above.
+
+  unit-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-android
+        with:
+          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      # AGP 9 only creates unit test components for the tested build type (debug).
       # The report task runs the tests, so it stands in for them rather than following them.
       - name: Run unit tests and report coverage
         run: ./gradlew createDebugUnitTestCoverageReport -Pandroid.injected.build.abi=x86_64
@@ -58,6 +65,14 @@ jobs:
           format: jacoco
           flag-name: kotlin-test
           parallel: true
+
+  screenshots:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-android
+        with:
+          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       # Renders the app's screens to PNGs; nothing is compared against a reference.
       - name: Record screenshots
         run: ./gradlew recordRoborazziDebug -Pandroid.injected.build.abi=x86_64
