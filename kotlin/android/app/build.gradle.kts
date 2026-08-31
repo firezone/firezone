@@ -39,6 +39,12 @@ spotless {
     }
 }
 
+// Execution data is only readable by the JaCoCo that wrote it. The report is generated outside
+// Gradle, so rather than name this version again there, the build hands over the matching tool.
+val jacocoToolVersion = "0.8.13"
+
+val jacocoCli by configurations.creating
+
 android {
     buildFeatures {
         buildConfig = true
@@ -153,10 +159,8 @@ android {
         }
     }
 
-    // Execution data is only readable by the same JaCoCo that wrote it, and the workflow reports
-    // on it with a standalone CLI, so the version is pinned here rather than left to AGP.
     testCoverage {
-        jacocoVersion = "0.8.13"
+        jacocoVersion = jacocoToolVersion
     }
 
     // Escalate Slack's Compose lint checks (added via `lintChecks`) to build-failing
@@ -189,7 +193,13 @@ android {
     }
 }
 
+tasks.register<Copy>("copyJacocoCli") {
+    from(jacocoCli)
+    into(layout.buildDirectory.dir("jacoco-cli"))
+}
+
 dependencies {
+    "jacocoCli"("org.jacoco:org.jacoco.cli:$jacocoToolVersion:nodeps")
     implementation("androidx.core:core-ktx:1.19.0")
     // Desugaring - needed for Java 8+ APIs on older Android versions
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")

@@ -130,14 +130,17 @@ jobs:
           path: kotlin/android/classes
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
+          name: android-jacoco-cli
+          path: kotlin/android/jacoco-cli
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
           pattern: android-coverage-*
           path: kotlin/android/execution-data
-      # Matched against `jacocoVersion` in `app/build.gradle.kts`: execution data is only readable
-      # by the JaCoCo that wrote it.
+      # The build hands over the JaCoCo that wrote the execution data, which is the only one that
+      # can read it, so no version is named here.
       - name: Report on the execution data
         run: |
-          curl -sSfL -o jacoco-cli.jar \
-            https://repo1.maven.org/maven2/org/jacoco/org.jacoco.cli/0.8.13/org.jacoco.cli-0.8.13-nodeps.jar
+          jacoco_cli=$(find jacoco-cli -name '*.jar' | head -1)
 
           mapfile -t execution_data < <(find execution-data -name '*.ec')
 
@@ -147,7 +150,7 @@ jobs:
             exit 1
           fi
 
-          java -jar jacoco-cli.jar report "${execution_data[@]}" \
+          java -jar "$jacoco_cli" report "${execution_data[@]}" \
             --classfiles classes \
             --sourcefiles app/src/main/java \
             --xml coverage.xml
@@ -327,7 +330,7 @@ jobs:
       # test suite a Rust build of its own. The APK is universal, so it installs on the emulator.
       - name: Build debug APK
         run: |
-          ./gradlew assembleDebug assembleDebugAndroidTest
+          ./gradlew assembleDebug assembleDebugAndroidTest copyJacocoCli
       - name: Upload debug APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -343,3 +346,10 @@ jobs:
           path: |
             ./kotlin/android/app/build/tmp/kotlin-classes/debug
             ./kotlin/android/app/build/intermediates/javac/debug/classes
+      # Kept apart from the classes: the report reads that directory as the code under test, and
+      # would happily measure JaCoCo itself if the tool sat in it.
+      - name: Upload the reporting tool
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-jacoco-cli
+          path: ./kotlin/android/app/build/jacoco-cli
