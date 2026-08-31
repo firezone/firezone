@@ -6671,10 +6671,6 @@
             "nullable": true,
             "type": "string"
           },
-          "remote_assistance_session_url": {
-            "nullable": true,
-            "type": "string"
-          },
           "attestation_health_status_mismatch_info": {
             "nullable": true,
             "type": "string"
@@ -6737,10 +6733,6 @@
             "type": "string"
           },
           "attestation_virtual_secure_mode": {
-            "nullable": true,
-            "type": "string"
-          },
-          "remote_assistance_session_error_details": {
             "nullable": true,
             "type": "string"
           },
