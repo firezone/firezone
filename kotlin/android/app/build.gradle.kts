@@ -427,22 +427,26 @@ abstract class CargoBuildTask
             val api = apiLevel.get()
             val archiver = File(binDir, "llvm-ar")
 
-            for ((abi, triple) in triples) {
-                val clangPrefix = clangPrefixes.getValue(abi)
-                val clang = File(binDir, "$clangPrefix$api-clang$suffix")
-                val clangxx = File(binDir, "$clangPrefix$api-clang++$suffix")
-                val envTriple = triple.uppercase().replace('-', '_')
+            // Cargo holds an exclusive lock on the target directory, so one invocation per ABI
+            // cannot overlap with the next. Passing every target to a single invocation lets it
+            // schedule all of them against one jobserver instead.
+            execOperations.exec {
+                workingDir = clientFfiDir.get().asFile
+                environment("CARGO_TARGET_DIR", cargoTarget)
+                if (release.get()) {
+                    // Compile the whole dependency graph with line tables so
+                    // Crashlytics gets file/line info in native stack traces.
+                    // AGP strips them from the packaged lib; Crashlytics uploads
+                    // the unstripped one (see unstrippedNativeLibsDir).
+                    environment("CARGO_PROFILE_RELEASE_DEBUG", "line-tables-only")
+                }
 
-                execOperations.exec {
-                    workingDir = clientFfiDir.get().asFile
-                    environment("CARGO_TARGET_DIR", cargoTarget)
-                    if (release.get()) {
-                        // Compile the whole dependency graph with line tables so
-                        // Crashlytics gets file/line info in native stack traces.
-                        // AGP strips them from the packaged lib; Crashlytics uploads
-                        // the unstripped one (see unstrippedNativeLibsDir).
-                        environment("CARGO_PROFILE_RELEASE_DEBUG", "line-tables-only")
-                    }
+                for ((abi, triple) in triples) {
+                    val clangPrefix = clangPrefixes.getValue(abi)
+                    val clang = File(binDir, "$clangPrefix$api-clang$suffix")
+                    val clangxx = File(binDir, "$clangPrefix$api-clang++$suffix")
+                    val envTriple = triple.uppercase().replace('-', '_')
+
                     // Linker for the Rust target plus the C/C++ toolchain for `cc`-built
                     // dependencies such as ring.
                     environment("CARGO_TARGET_${envTriple}_LINKER", clang.absolutePath)
@@ -456,12 +460,16 @@ abstract class CargoBuildTask
                     environment("CC_$triple", clang.absolutePath)
                     environment("CXX_$triple", clangxx.absolutePath)
                     environment("AR_$triple", archiver.absolutePath)
-                    val cargoArgs = mutableListOf("cargo", "build", "--lib", "--target", triple)
-                    if (release.get()) {
-                        cargoArgs.add("--release")
-                    }
-                    commandLine(cargoArgs)
                 }
+
+                val cargoArgs = mutableListOf("cargo", "build", "--lib")
+                for (triple in triples.values) {
+                    cargoArgs.addAll(listOf("--target", triple))
+                }
+                if (release.get()) {
+                    cargoArgs.add("--release")
+                }
+                commandLine(cargoArgs)
             }
 
             // Stage libconnlib.so per ABI.
