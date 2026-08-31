@@ -228,11 +228,11 @@ defmodule PortalWeb.Logs.FlowLogs do
           :if={@selected_report}
           class="flex-1 min-w-0 overflow-y-auto p-5 space-y-5"
         >
-          <section>
-            <.section_heading
-              label="Connection details"
-              hint="Directions are normalized to initiator → responder"
-            />
+          <.role_fieldset
+            role={@selected_report.log.role}
+            label="Connection details"
+            hint="Directions are normalized to initiator → responder"
+          >
             <div class="space-y-3">
               <div class="overflow-hidden rounded border border-[var(--border)] bg-[var(--surface)]">
                 <div class="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2">
@@ -358,10 +358,12 @@ defmodule PortalWeb.Logs.FlowLogs do
                 display_tz={@display_tz}
               />
             </div>
-          </section>
+          </.role_fieldset>
 
-          <section>
-            <.section_heading label={matching_heading(@selected_report.matching_logs)} />
+          <.role_fieldset
+            role={counterpart_role(@selected_report.log.role)}
+            label={matching_heading(@selected_report.matching_logs)}
+          >
             <.match_notice
               matching_logs={@selected_report.matching_logs}
               selected_role={@selected_report.log.role}
@@ -375,7 +377,7 @@ defmodule PortalWeb.Logs.FlowLogs do
                 display_tz={@display_tz}
               />
             </div>
-          </section>
+          </.role_fieldset>
 
           <.json_view id="flow-log-json" value={@selected_report_json} />
         </div>
@@ -538,6 +540,27 @@ defmodule PortalWeb.Logs.FlowLogs do
     """
   end
 
+  attr :role, :atom, required: true
+  attr :label, :string, required: true
+  attr :hint, :string, default: nil
+
+  slot :inner_block, required: true
+
+  defp role_fieldset(assigns) do
+    ~H"""
+    <fieldset class={["rounded-lg border px-4 pb-4 pt-3", role_fieldset_class(@role)]}>
+      <legend class={[
+        "px-1.5 text-[10px] font-semibold uppercase tracking-widest",
+        role_legend_class(@role)
+      ]}>
+        {@label}
+      </legend>
+      <p :if={@hint} class="mb-3 text-[10px] text-[var(--text-tertiary)]">{@hint}</p>
+      {render_slot(@inner_block)}
+    </fieldset>
+    """
+  end
+
   attr :log, :any, required: true
 
   defp flow_state(assigns) do
@@ -652,7 +675,7 @@ defmodule PortalWeb.Logs.FlowLogs do
     assigns =
       assign(assigns,
         count: length(assigns.matching_logs),
-        other_role: if(assigns.selected_role == :initiator, do: "responder", else: "initiator")
+        other_role: to_string(counterpart_role(assigns.selected_role))
       )
 
     ~H"""
@@ -764,98 +787,94 @@ defmodule PortalWeb.Logs.FlowLogs do
     assigns = assign(assigns, :path_count, length(assigns.outers))
 
     ~H"""
-    <div
-      id={@id}
-      class="rounded border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
-    >
-      <div class="mb-3 flex items-start justify-between gap-3">
-        <div class="flex min-w-0 items-start gap-2">
-          <.icon name="ri-route-line" class="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand)]" />
-          <div class="min-w-0">
-            <div class="text-xs font-medium text-[var(--text-primary)]">
-              WireGuard path history
-            </div>
-            <div class="text-[10px] text-[var(--text-tertiary)]">
-              Ordered from first to last observed
-            </div>
-          </div>
+    <div id={@id} class="overflow-hidden rounded border border-[var(--border)] bg-[var(--surface)]">
+      <div class="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2">
+        <div class="flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]">
+          <.icon name="ri-route-line" class="h-3.5 w-3.5 text-[var(--brand)]" />
+          WireGuard path history
         </div>
         <.badge :if={@path_count > 0} type="neutral" size="xs">
           {@path_count} {if(@path_count == 1, do: "path", else: "paths")}
         </.badge>
       </div>
 
-      <div
-        :if={@path_count == 0}
-        class="flex items-center gap-2 rounded bg-[var(--surface-raised)] px-3 py-2 text-xs text-[var(--text-tertiary)]"
-      >
-        <.icon name="ri-time-line" class="h-3.5 w-3.5 shrink-0" />
-        Paths are reported when the flow closes.
-      </div>
-
-      <ol :if={@path_count > 0} class="space-y-2" aria-label="WireGuard path history">
-        <li
-          :for={{outer, index} <- Enum.with_index(@outers, 1)}
-          data-wireguard-path={index}
-          class="relative flex gap-3 pb-2 last:pb-0"
+      <div class="px-4 py-3">
+        <div
+          :if={@path_count == 0}
+          class="flex items-center gap-2 rounded bg-[var(--surface-raised)] px-3 py-2 text-xs text-[var(--text-tertiary)]"
         >
-          <div class="relative flex w-6 shrink-0 justify-center">
-            <span
-              :if={index < @path_count}
-              class="absolute left-1/2 top-6 -bottom-2 w-px -translate-x-1/2 bg-[var(--border)]"
-            >
-            </span>
-            <span class="relative z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-brand/30 bg-brand-subtle font-mono text-[10px] font-semibold text-brand">
-              {index}
-            </span>
-          </div>
+          <.icon name="ri-time-line" class="h-3.5 w-3.5 shrink-0" />
+          Paths are reported when the flow closes.
+        </div>
 
-          <div class="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5">
-            <div class="mb-2 flex items-center justify-between gap-2">
-              <div class="text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">
-                {if(index == 1, do: "Initial path", else: "Path change")}
-              </div>
-              <.timestamp_cell
-                :if={outer.path_activated_at}
-                id_prefix={"path-activated-#{index}"}
-                log_id={@log_id}
-                timestamp={outer.path_activated_at}
-                tz_mode={@tz_mode}
-                display_tz={@display_tz}
-              />
+        <div :if={@path_count > 0} class="mb-2 text-[10px] text-[var(--text-tertiary)]">
+          Ordered from first to last observed
+        </div>
+
+        <ol :if={@path_count > 0} class="space-y-2" aria-label="WireGuard path history">
+          <li
+            :for={{outer, index} <- Enum.with_index(@outers, 1)}
+            data-wireguard-path={index}
+            class="relative flex gap-3 pb-2 last:pb-0"
+          >
+            <div class="relative flex w-6 shrink-0 justify-center">
+              <span
+                :if={index < @path_count}
+                class="absolute left-1/2 top-6 -bottom-2 w-px -translate-x-1/2 bg-[var(--border)]"
+              >
+              </span>
+              <span class="relative z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-brand/30 bg-brand-subtle font-mono text-[10px] font-semibold text-brand">
+                {index}
+              </span>
             </div>
-            <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-              <div class="min-w-0">
-                <div class="text-[10px] text-[var(--text-tertiary)]">Initiator</div>
-                <div
-                  :if={outer.src_ip}
-                  data-wireguard-endpoint="initiator"
-                  class="mt-0.5 break-all font-mono text-xs text-[var(--text-primary)]"
-                >
-                  {format_endpoint(outer.src_ip, outer.src_port)}
+
+            <div class="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5">
+              <div class="mb-2 flex items-center justify-between gap-2">
+                <div class="text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">
+                  {if(index == 1, do: "Initial path", else: "Path change")}
                 </div>
-                <div
-                  :if={is_nil(outer.src_ip)}
-                  data-wireguard-endpoint="initiator"
-                  class="mt-0.5 text-xs italic text-[var(--text-tertiary)]"
-                >
-                  Not observed
-                </div>
+                <.timestamp_cell
+                  :if={outer.path_activated_at}
+                  id_prefix={"path-activated-#{index}"}
+                  log_id={@log_id}
+                  timestamp={outer.path_activated_at}
+                  tz_mode={@tz_mode}
+                  display_tz={@display_tz}
+                />
               </div>
-              <.icon name="ri-arrow-right-line" class="h-4 w-4 shrink-0 text-[var(--brand)]" />
-              <div class="min-w-0 text-right">
-                <div class="text-[10px] text-[var(--text-tertiary)]">Responder</div>
-                <div
-                  data-wireguard-endpoint="responder"
-                  class="mt-0.5 break-all font-mono text-xs text-[var(--text-primary)]"
-                >
-                  {format_endpoint(outer.dst_ip, outer.dst_port)}
+              <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                <div class="min-w-0">
+                  <div class="text-[10px] text-[var(--text-tertiary)]">Initiator</div>
+                  <div
+                    :if={outer.src_ip}
+                    data-wireguard-endpoint="initiator"
+                    class="mt-0.5 break-all font-mono text-xs text-[var(--text-primary)]"
+                  >
+                    {format_endpoint(outer.src_ip, outer.src_port)}
+                  </div>
+                  <div
+                    :if={is_nil(outer.src_ip)}
+                    data-wireguard-endpoint="initiator"
+                    class="mt-0.5 text-xs italic text-[var(--text-tertiary)]"
+                  >
+                    Not observed
+                  </div>
+                </div>
+                <.icon name="ri-arrow-right-line" class="h-4 w-4 shrink-0 text-[var(--brand)]" />
+                <div class="min-w-0 text-right">
+                  <div class="text-[10px] text-[var(--text-tertiary)]">Responder</div>
+                  <div
+                    data-wireguard-endpoint="responder"
+                    class="mt-0.5 break-all font-mono text-xs text-[var(--text-primary)]"
+                  >
+                    {format_endpoint(outer.dst_ip, outer.dst_port)}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </li>
-      </ol>
+          </li>
+        </ol>
+      </div>
     </div>
     """
   end
@@ -894,6 +913,15 @@ defmodule PortalWeb.Logs.FlowLogs do
 
   defp matching_heading([_, _ | _]), do: "Matching logs"
   defp matching_heading(_matching_logs), do: "Matching log"
+
+  defp counterpart_role(:initiator), do: :responder
+  defp counterpart_role(:responder), do: :initiator
+
+  defp role_fieldset_class(:initiator), do: "border-brand/40"
+  defp role_fieldset_class(:responder), do: "border-accent/40 dark:border-accent-light/50"
+
+  defp role_legend_class(:initiator), do: "text-brand"
+  defp role_legend_class(:responder), do: "text-accent dark:text-accent-light"
 
   defp role_row_class(%{log: %{role: :initiator}}),
     do:
