@@ -2,7 +2,6 @@
 package dev.firezone.android.features.settings.ui
 
 import android.os.Bundle
-import android.security.KeyChain
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -15,12 +14,17 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
+import dev.firezone.android.core.x509.KeyChain
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.settings.ui.compose.X509SettingsScreen
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class X509SettingsFragment : Fragment() {
     private val viewModel: X509SettingsViewModel by viewModels()
+
+    @Inject
+    lateinit var keyChain: KeyChain
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -54,23 +58,20 @@ class X509SettingsFragment : Fragment() {
 
         // Android answers on a binder thread, so the ViewModel takes the alias directly and only
         // the toast has to hop onto the main thread.
-        KeyChain.choosePrivateKeyAlias(
+        keyChain.choosePrivateKeyAlias(
             activity,
-            { alias ->
-                if (alias == null) {
-                    activity.runOnUiThread {
-                        Toast
-                            .makeText(activity, R.string.x509_no_certificate_selected, Toast.LENGTH_LONG)
-                            .show()
-                    }
-                } else {
-                    viewModel.onAliasSelected(alias)
-                }
-            },
-            arrayOf("RSA", "EC"),
-            null,
             viewModel.keyChainRequestUri(),
             viewModel.uiStateFlow.value.alias,
-        )
+        ) { alias ->
+            if (alias == null) {
+                activity.runOnUiThread {
+                    Toast
+                        .makeText(activity, R.string.x509_no_certificate_selected, Toast.LENGTH_LONG)
+                        .show()
+                }
+            } else {
+                viewModel.onAliasSelected(alias)
+            }
+        }
     }
 }

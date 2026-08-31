@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class X509IdentityTest {
-    private val x509Identity = X509Identity(ApplicationProvider.getApplicationContext<Context>())
+    private val x509Identity = X509Identity(SystemKeyChain(ApplicationProvider.getApplicationContext<Context>()))
 
     @Test
     fun noConfiguredAliasLoadsNothing() {

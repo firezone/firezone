@@ -1,9 +1,6 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.core.x509
 
-import android.content.Context
-import android.security.KeyChain
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.firezone.android.core.Log
 import uniffi.connlib.ClientTlsIdentity
 import uniffi.x509claims.Identity
@@ -43,7 +40,7 @@ data class LoadedX509Identity(
 }
 
 /**
- * Reads client identities out of Android's system KeyChain.
+ * Reads client identities out of the system KeyChain.
  *
  * Every call reaches the KeyChain system service and blocks, so callers must stay off the main
  * thread.
@@ -52,7 +49,7 @@ data class LoadedX509Identity(
 class X509Identity
     @Inject
     constructor(
-        @param:ApplicationContext private val context: Context,
+        private val keyChain: KeyChain,
     ) {
         /**
          * Loads the identity stored under [alias], or `null` when no alias is configured.
@@ -103,7 +100,7 @@ class X509Identity
         private fun certificateChain(alias: String): List<X509Certificate> {
             val chain =
                 try {
-                    KeyChain.getCertificateChain(context, alias)
+                    keyChain.certificateChain(alias)
                 } catch (exception: InterruptedException) {
                     Thread.currentThread().interrupt()
 
@@ -124,13 +121,13 @@ class X509Identity
                 )
             }
 
-            return chain.toList()
+            return chain
         }
 
         private fun privateKey(alias: String): PrivateKey {
             val privateKey =
                 try {
-                    KeyChain.getPrivateKey(context, alias)
+                    keyChain.privateKey(alias)
                 } catch (exception: InterruptedException) {
                     Thread.currentThread().interrupt()
 
