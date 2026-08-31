@@ -18,10 +18,13 @@ defmodule PortalWeb.JSONComponents do
 
   `value` must already hold JSON-encodable terms; see `encodable/1` for turning
   an Ecto struct into one.
+
+  A blob rendered under a heading of its own needs no `label`; without one the
+  header row is dropped rather than left blank.
   """
   attr :id, :string, required: true
   attr :value, :any, required: true
-  attr :label, :string, required: true
+  attr :label, :string, default: nil
   attr :hint, :string, default: nil
 
   def json_view(assigns) do
@@ -31,7 +34,7 @@ defmodule PortalWeb.JSONComponents do
 
     ~H"""
     <section id={@id} phx-hook="CopyClipboard">
-      <div class="mb-3 flex items-center justify-between gap-3">
+      <div :if={@label || @hint} class="mb-3 flex items-center justify-between gap-3">
         <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
           {@label}
         </h3>
