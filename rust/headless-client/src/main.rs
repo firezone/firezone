@@ -363,12 +363,7 @@ fn try_main() -> Result<()> {
 
     tracing::info!(arch = std::env::consts::ARCH, version = VERSION);
 
-    let token = get_token(token_env_var, &cli.token_path)?.with_context(|| {
-        format!(
-            "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
-            cli.token_path.display()
-        )
-    })?;
+    let token = get_token(token_env_var, &cli.token_path)?;
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
@@ -388,6 +383,11 @@ fn try_main() -> Result<()> {
             .transpose()
     })
     .context("Failed to read the platform keystore")?;
+
+    if token.is_none() && certificate.is_none() {
+        anyhow::bail!("Cannot authenticate without a token or a client certificate");
+    }
+
     let url = LoginUrl::client(
         cli.api_url.clone(),
         firezone_id.clone(),
