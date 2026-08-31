@@ -42,15 +42,22 @@ pub struct AdvancedSettingsChanged(pub AdvancedSettingsViewModel);
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct LogsRecounted(pub FileCount);
 
-/// The keystore diagnostics as the settings page renders them.
+/// The platform keystore's certificate as the X.509 page renders it.
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct X509StatusChanged(pub X509Status);
+pub struct X509CertificateChanged(pub X509Certificate);
 
+/// What the Tunnel service last loaded from the platform keystore.
 #[derive(Clone, serde::Serialize, specta::Type)]
-pub struct X509Status {
-    pub problems: Vec<X509Problem>,
-    pub sections: Vec<X509DetailSection>,
-    pub identity: X509Identity,
+pub enum X509Certificate {
+    /// The keystore holds this certificate, described by the parser's rows.
+    Loaded {
+        identity: X509Identity,
+        fields: Vec<X509DetailField>,
+    },
+    /// The keystore holds no client certificate.
+    Absent,
+    /// The keystore could not hand out a client identity.
+    Error(X509Error),
 }
 
 /// Mirrors [`x509_keystore::ClientIdentity`], which decides what the sign-in control says.
@@ -60,22 +67,15 @@ pub enum X509Identity {
     Claimed { email: Option<String> },
 }
 
-/// Mirrors [`x509_keystore::Problem`] so the frontend writes the sentence it shows.
+/// Mirrors [`x509_keystore::Error`] so the frontend writes the sentence it shows.
 #[derive(Clone, serde::Serialize, specta::Type)]
-pub enum X509Problem {
-    NoWindowsCertificate { subject_cn: String },
-    UnreadableWindowsStores { stores: Vec<X509UnreadableStore> },
-    NoPkcs11Certificate { subject_cn: String },
-    UnreadablePkcs11Keystore,
-    UnreadableKeystore,
-    MissingPackage { package: X509Package },
-    UnsupportedPlatform,
-}
-
-/// Mirrors [`x509_keystore::Package`].
-#[derive(Clone, serde::Serialize, specta::Type)]
-pub enum X509Package {
-    P11Kit,
+pub enum X509Error {
+    UnreadableStore { store: String, error: String },
+    MissingP11Kit,
+    UnreadablePkcs11Keystore { modules: Vec<String> },
+    NoUsableIdentity { causes: Vec<X509UnusableCause> },
+    IdentityUnavailable { message: String },
+    UnreadableKeystore { message: String },
 }
 
 /// Mirrors [`x509_keystore::UnusableCause`].
@@ -86,32 +86,14 @@ pub enum X509UnusableCause {
     KeyMissing,
 }
 
-/// Mirrors [`x509_keystore::UnreadableStore`].
-#[derive(Clone, serde::Serialize, specta::Type)]
-pub struct X509UnreadableStore {
-    pub store: String,
-    pub error: String,
-}
-
-#[derive(Clone, serde::Serialize, specta::Type)]
-pub struct X509DetailSection {
-    pub title: String,
-    pub fields: Vec<X509DetailField>,
-}
-
+/// A label-value row of the certificate, and what is wrong with it.
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub struct X509DetailField {
     pub label: String,
+    /// What the row carries, [`None`] when it carries nothing.
     pub value: Option<String>,
-    pub problem: Option<X509FieldProblem>,
-}
-
-/// Mirrors [`x509_keystore::FieldProblem`] so the frontend writes the sentence it shows.
-#[derive(Clone, serde::Serialize, specta::Type)]
-pub enum X509FieldProblem {
-    Invalid(X509ValidationError),
-    Unreadable(String),
-    Unusable(X509UnusableCause),
+    /// Why the value is not usable as what the row names, [`None`] when it is.
+    pub problem: Option<X509ValidationError>,
 }
 
 /// Mirrors [`x509_keystore::ValidationError`].
@@ -130,6 +112,27 @@ pub enum X509ValidationError {
     DigitalSignatureNotAllowed,
 }
 
+impl From<&std::result::Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>>
+    for X509Certificate
+{
+    fn from(
+        x509: &std::result::Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+    ) -> Self {
+        match x509 {
+            Ok(Some(certificate)) => Self::Loaded {
+                identity: X509Identity::from(&certificate.identity()),
+                fields: certificate
+                    .detail_fields()
+                    .into_iter()
+                    .map(X509DetailField::from)
+                    .collect(),
+            },
+            Ok(None) => Self::Absent,
+            Err(error) => Self::Error(X509Error::from(error)),
+        }
+    }
+}
+
 impl From<&x509_keystore::ClientIdentity> for X509Identity {
     fn from(identity: &x509_keystore::ClientIdentity) -> Self {
         match identity {
@@ -141,64 +144,32 @@ impl From<&x509_keystore::ClientIdentity> for X509Identity {
     }
 }
 
-impl From<&x509_keystore::Status> for X509Status {
-    fn from(status: &x509_keystore::Status) -> Self {
-        Self {
-            identity: X509Identity::from(&status.identity),
-            problems: status
-                .problems
-                .iter()
-                .cloned()
-                .map(X509Problem::from)
-                .collect(),
-            sections: status
-                .sections
-                .iter()
-                .map(|section| X509DetailSection {
-                    title: section.title.clone(),
-                    fields: section
-                        .fields
-                        .iter()
-                        .map(|field| X509DetailField {
-                            label: field.label.clone(),
-                            value: field.value.clone(),
-                            problem: field.problem.clone().map(X509FieldProblem::from),
-                        })
-                        .collect(),
-                })
-                .collect(),
-        }
-    }
-}
-
-impl From<x509_keystore::Problem> for X509Problem {
-    fn from(problem: x509_keystore::Problem) -> Self {
-        match problem {
-            x509_keystore::Problem::NoWindowsCertificate { subject_cn } => {
-                Self::NoWindowsCertificate { subject_cn }
-            }
-            x509_keystore::Problem::UnreadableWindowsStores { stores } => {
-                Self::UnreadableWindowsStores {
-                    stores: stores.into_iter().map(Into::into).collect(),
+impl From<&x509_keystore::Error> for X509Error {
+    fn from(error: &x509_keystore::Error) -> Self {
+        match error {
+            x509_keystore::Error::UnreadableStore { store, error } => Self::UnreadableStore {
+                store: store.clone(),
+                error: error.clone(),
+            },
+            x509_keystore::Error::MissingP11Kit => Self::MissingP11Kit,
+            x509_keystore::Error::UnreadablePkcs11Keystore { modules } => {
+                Self::UnreadablePkcs11Keystore {
+                    modules: modules.clone(),
                 }
             }
-            x509_keystore::Problem::NoPkcs11Certificate { subject_cn } => {
-                Self::NoPkcs11Certificate { subject_cn }
-            }
-            x509_keystore::Problem::UnreadablePkcs11Keystore => Self::UnreadablePkcs11Keystore,
-            x509_keystore::Problem::UnreadableKeystore => Self::UnreadableKeystore,
-            x509_keystore::Problem::MissingPackage { package } => Self::MissingPackage {
-                package: package.into(),
+            x509_keystore::Error::NoUsableIdentity { causes } => Self::NoUsableIdentity {
+                causes: causes
+                    .iter()
+                    .cloned()
+                    .map(X509UnusableCause::from)
+                    .collect(),
             },
-            x509_keystore::Problem::UnsupportedPlatform => Self::UnsupportedPlatform,
-        }
-    }
-}
-
-impl From<x509_keystore::Package> for X509Package {
-    fn from(package: x509_keystore::Package) -> Self {
-        match package {
-            x509_keystore::Package::P11Kit => Self::P11Kit,
+            x509_keystore::Error::IdentityUnavailable { message } => Self::IdentityUnavailable {
+                message: message.clone(),
+            },
+            x509_keystore::Error::UnreadableKeystore { message } => Self::UnreadableKeystore {
+                message: message.clone(),
+            },
         }
     }
 }
@@ -213,21 +184,12 @@ impl From<x509_keystore::UnusableCause> for X509UnusableCause {
     }
 }
 
-impl From<x509_keystore::UnreadableStore> for X509UnreadableStore {
-    fn from(store: x509_keystore::UnreadableStore) -> Self {
+impl From<x509_keystore::DetailField> for X509DetailField {
+    fn from(field: x509_keystore::DetailField) -> Self {
         Self {
-            store: store.store,
-            error: store.error,
-        }
-    }
-}
-
-impl From<x509_keystore::FieldProblem> for X509FieldProblem {
-    fn from(problem: x509_keystore::FieldProblem) -> Self {
-        match problem {
-            x509_keystore::FieldProblem::Invalid(error) => Self::Invalid(error.into()),
-            x509_keystore::FieldProblem::Unreadable(message) => Self::Unreadable(message),
-            x509_keystore::FieldProblem::Unusable(cause) => Self::Unusable(cause.into()),
+            label: field.label,
+            value: field.value,
+            problem: field.problem.map(X509ValidationError::from),
         }
     }
 }

@@ -104,13 +104,13 @@ export const events = __makeEvents__<{
   generalSettingsChanged: GeneralSettingsChanged;
   logsRecounted: LogsRecounted;
   sessionChanged: SessionChanged;
-  x509StatusChanged: X509StatusChanged;
+  x509CertificateChanged: X509CertificateChanged;
 }>({
   advancedSettingsChanged: "advanced-settings-changed",
   generalSettingsChanged: "general-settings-changed",
   logsRecounted: "logs-recounted",
   sessionChanged: "session-changed",
-  x509StatusChanged: "x509-status-changed",
+  x509CertificateChanged: "x509-certificate-changed",
 });
 
 /** user-defined constants **/
@@ -154,48 +154,39 @@ export type SessionViewModel =
   | { SignedIn: { account_slug: string; actor_name: string } }
   | "Loading"
   | "SignedOut";
+/**
+ * What the Tunnel service last loaded from the platform keystore.
+ */
+export type X509Certificate =
+  | { Loaded: { identity: X509Identity; fields: X509DetailField[] } }
+  | "Absent"
+  | { Error: X509Error };
+/**
+ * The platform keystore's certificate as the X.509 page renders it.
+ */
+export type X509CertificateChanged = X509Certificate;
+/**
+ * A label-value row of the certificate, and what is wrong with it.
+ */
 export type X509DetailField = {
   label: string;
   value: string | null;
-  problem: X509FieldProblem | null;
-};
-export type X509DetailSection = { title: string; fields: X509DetailField[] };
-/**
- * Mirrors [`x509_keystore::FieldProblem`] so the frontend writes the sentence it shows.
- */
-export type X509FieldProblem =
-  | { Invalid: X509ValidationError }
-  | { Unreadable: string }
-  | { Unusable: X509UnusableCause };
-/**
- * Mirrors [`x509_keystore::Package`].
- */
-export type X509Package = "P11Kit";
-/**
- * Mirrors [`x509_keystore::Problem`] so the frontend writes the sentence it shows.
- */
-export type X509Problem =
-  | { NoWindowsCertificate: { subject_cn: string } }
-  | { UnreadableWindowsStores: { stores: X509UnreadableStore[] } }
-  | { NoPkcs11Certificate: { subject_cn: string } }
-  | "UnreadablePkcs11Keystore"
-  | "UnreadableKeystore"
-  | { MissingPackage: { package: X509Package } }
-  | "UnsupportedPlatform";
-export type X509Status = {
-  problems: X509Problem[];
-  sections: X509DetailSection[];
-  identity: X509Identity;
+  problem: X509ValidationError | null;
 };
 /**
- * Mirrors [`x509_keystore::ClientIdentity`].
+ * Mirrors [`x509_keystore::Error`] so the frontend writes the sentence it shows.
+ */
+export type X509Error =
+  | { UnreadableStore: { store: string; error: string } }
+  | "MissingP11Kit"
+  | { UnreadablePkcs11Keystore: { modules: string[] } }
+  | { NoUsableIdentity: { causes: X509UnusableCause[] } }
+  | { IdentityUnavailable: { message: string } }
+  | { UnreadableKeystore: { message: string } };
+/**
+ * Mirrors [`x509_keystore::ClientIdentity`], which decides what the sign-in control says.
  */
 export type X509Identity = "Absent" | { Claimed: { email: string | null } };
-export type X509StatusChanged = X509Status;
-/**
- * Mirrors [`x509_keystore::UnreadableStore`].
- */
-export type X509UnreadableStore = { store: string; error: string };
 /**
  * Mirrors [`x509_keystore::UnusableCause`].
  */

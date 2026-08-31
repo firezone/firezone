@@ -109,8 +109,8 @@ pub enum ServerMsg {
     /// What the platform keystore holds, pushed whenever it may have changed.
     ///
     /// The GUI never asks for this: it arrives after `Hello` and again whenever we read the
-    /// keystore to sign in, which covers everything the diagnostics screen renders.
-    X509Status(Result<x509_keystore::Status, String>),
+    /// keystore to sign in, which covers everything the certificate screen renders.
+    X509Certificate(Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>),
     /// The Tunnel service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -326,13 +326,16 @@ impl Session {
     }
 }
 
-/// Reads what the platform keystore holds, off the runtime because it may block on a TPM.
-async fn x509_status() -> Result<x509_keystore::Status, String> {
-    tokio::task::spawn_blocking(x509_keystore::status)
+/// Reads the keystore off the runtime, because it can block on a TPM or a smart card and the
+/// connlib eventloop shares this runtime's single worker.
+async fn load_identity() -> Result<Option<x509_keystore::Identity>, x509_keystore::Error> {
+    let identity = tokio::task::spawn_blocking(x509_keystore::identity)
         .await
-        .context("Failed to join the keystore task")
-        .and_then(|result| result)
-        .map_err(|error| format!("{error:#}"))
+        .map_err(|error| x509_keystore::Error::UnreadableKeystore {
+            message: format!("Failed to join the keystore task: {error}"),
+        })??;
+
+    Ok(identity)
 }
 
 /// Shuts down the session and waits until its eventloop has exited.
@@ -452,9 +455,11 @@ impl<'a> Handler<'a> {
             .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
 
         ipc_tx
-            .send(&ServerMsg::X509Status(x509_status().await))
+            .send(&ServerMsg::X509Certificate(load_identity().await.map(
+                |identity| identity.map(|identity| identity.certificate),
+            )))
             .await
-            .context("Failed to send the keystore status to the new GUI process")?;
+            .context("Failed to send the keystore certificate to the new GUI process")?;
 
         Ok(Self {
             device_id,
@@ -712,11 +717,6 @@ impl<'a> Handler<'a> {
                     .try_connect(token.clone(), is_internet_resource_active)
                     .await;
 
-                // Connecting is the only other moment the keystore is read, so it is also the
-                // only one where the diagnostics the GUI holds can have gone stale.
-                self.send_ipc(ServerMsg::X509Status(x509_status().await))
-                    .await?;
-
                 if let Some(e) = result
                     .as_ref()
                     .err()
@@ -812,8 +812,8 @@ impl<'a> Handler<'a> {
             .unwrap_or_else(|| self.advanced_settings.api_url.as_str())
     }
 
-    /// Reads the keystore off the runtime, because it can block on a TPM or a smart card and the
-    /// connlib eventloop shares this runtime's single worker.
+    /// One keystore read serves the whole attempt: the certificate presented to the portal and
+    /// the one pushed to the GUI come from the same walk, so they cannot diverge.
     async fn try_connect(
         &mut self,
         token: SecretString,
@@ -824,11 +824,39 @@ impl<'a> Handler<'a> {
         let device_id =
             device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
+        let loaded = load_identity().await;
+
+        self.send_ipc(ServerMsg::X509Certificate(
+            loaded
+                .as_ref()
+                .map(|identity| {
+                    identity
+                        .as_ref()
+                        .map(|identity| identity.certificate.clone())
+                })
+                .map_err(Clone::clone),
+        ))
+        .await?;
+
+        // A keystore we cannot read must not keep the Client from connecting: without p11-kit,
+        // or with only broken PKCS#11 modules, we connect without a certificate while the GUI
+        // shows the error pushed above. Anything else that keeps an identity from being handed
+        // over still fails the connect.
+        let certificate = match loaded {
+            Err(
+                x509_keystore::Error::MissingP11Kit
+                | x509_keystore::Error::UnreadablePkcs11Keystore { .. },
+            ) => Ok(None),
+            other => other,
+        }
+        .and_then(|identity| {
+            identity
+                .map(|identity| identity.client_certificate())
+                .transpose()
+        })
+        .context("Failed to read the platform keystore")?;
+
         let api_url = self.api_url().to_string();
-        let certificate = tokio::task::spawn_blocking(x509_keystore::certificate)
-            .await
-            .context("Failed to join the keystore task")?
-            .context("Failed to read the platform keystore")?;
         let url = LoginUrl::client(
             Url::parse(&api_url).context("Failed to parse URL")?,
             device_id.id.clone(),

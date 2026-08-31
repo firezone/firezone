@@ -17,7 +17,7 @@ import {
   FileCount,
   GeneralSettingsViewModel,
   SessionViewModel,
-  X509Status,
+  X509Certificate,
 } from "../generated/bindings";
 
 export default function App() {
@@ -27,7 +27,7 @@ export default function App() {
     useState<GeneralSettingsViewModel | null>(null);
   const [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSettingsViewModel | null>(null);
-  const [x509Status, setX509Status] = useState<X509Status | null>(null);
+  const [x509, setX509] = useState<X509Certificate | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(true);
 
   useEffect(() => {
@@ -52,10 +52,10 @@ export default function App() {
       console.log("logs_recounted", { file_count: event.payload });
       setLogCount(event.payload);
     });
-    const x509StatusChangedUnlisten = events.x509StatusChanged.listen(
+    const x509CertificateChangedUnlisten = events.x509CertificateChanged.listen(
       (event) => {
-        console.log("x509_status_changed", { status: event.payload });
-        setX509Status(event.payload);
+        console.log("x509_certificate_changed", { certificate: event.payload });
+        setX509(event.payload);
       }
     );
 
@@ -66,7 +66,7 @@ export default function App() {
       generalSettingsChangedUnlisten.then((unlisten) => unlisten());
       advancedSettingsChangedUnlisten.then((unlisten) => unlisten());
       logsRecountedUnlisten.then((unlisten) => unlisten());
-      x509StatusChangedUnlisten.then((unlisten) => unlisten());
+      x509CertificateChangedUnlisten.then((unlisten) => unlisten());
     };
   }, []);
 
@@ -174,7 +174,13 @@ export default function App() {
               path="/overview"
               element={
                 <Overview
-                  identity={x509Status?.identity ?? "Absent"}
+                  identity={
+                    x509 !== null &&
+                    typeof x509 === "object" &&
+                    "Loaded" in x509
+                      ? x509.Loaded.identity
+                      : "Absent"
+                  }
                   session={session}
                   signIn={commands.signIn}
                   signOut={commands.signOut}
@@ -201,7 +207,7 @@ export default function App() {
                 />
               }
             />
-            <Route path="/x509" element={<X509Page status={x509Status} />} />
+            <Route path="/x509" element={<X509Page certificate={x509} />} />
             <Route
               path="/diagnostics"
               element={

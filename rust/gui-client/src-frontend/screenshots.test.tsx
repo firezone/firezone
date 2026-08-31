@@ -13,11 +13,9 @@ import {
   FileCount,
   GeneralSettingsViewModel,
   SessionViewModel,
+  X509Certificate,
   X509DetailField,
-  X509DetailSection,
-  X509FieldProblem,
-  X509Status,
-  X509UnusableCause,
+  X509ValidationError,
 } from "./generated/bindings";
 import "./main.css";
 
@@ -34,8 +32,8 @@ interface Screen {
   session?: SessionViewModel;
   generalSettings?: GeneralSettingsViewModel;
   advancedSettings?: AdvancedSettingsViewModel;
-  /// What the keystore holds, as the typed problems the screen turns into sentences.
-  x509?: X509Status;
+  /// What the keystore holds, as the typed states the screen turns into sentences.
+  x509?: X509Certificate;
   logCount?: FileCount;
   // Label of a field to leave the pointer over, for a screen whose tooltip is the point.
   hover?: string;
@@ -63,9 +61,6 @@ const advancedSettings: AdvancedSettingsViewModel = {
 // `x509_keystore::SUBJECT_COMMON_NAME`.
 const SUBJECT_CN = "dev.firezone.device-trust";
 
-// What the keystore backends title every certificate they describe.
-const CERTIFICATE = "Certificate";
-
 // The actor the provisioned certificate names, which the overview offers to connect as.
 const ACTOR_EMAIL = "jane.doe@example.com";
 
@@ -90,7 +85,7 @@ interface Certificate {
 // One row as the parser hands it over: what the certificate said, and what is wrong with it.
 interface Row {
   value: string | null;
-  problem?: X509FieldProblem;
+  problem?: X509ValidationError;
 }
 
 function row(label: string, { value, problem }: Row): X509DetailField {
@@ -101,12 +96,8 @@ function present(value: string): Row {
   return { value };
 }
 
-// The rows in the order `x509_claims::ParsedCertificate::detail_fields` builds them, led by the
-// row `x509_keystore::certificate_sections` adds when the keystore cannot sign with the key.
-function certificateSection(
-  certificate: Certificate,
-  cause?: X509UnusableCause
-): X509DetailSection {
+// The rows in the order `x509_claims::ParsedCertificate::detail_fields` builds them.
+function loadedCertificate(certificate: Certificate): X509Certificate {
   // `x509_claims::ParsedCertificate::detail_fields` reads the rows with a problem first, so a
   // mock that left them in place would draw a screen the client cannot produce.
   const fields = [
@@ -124,20 +115,18 @@ function certificateSection(
     row("SHA-256 Fingerprint", present(certificate.fingerprint)),
   ];
 
-  const rows = [
-    ...fields.filter((field) => field.problem !== null),
-    ...fields.filter((field) => field.problem === null),
-  ];
-
   return {
-    title: CERTIFICATE,
-    fields:
-      cause === undefined
-        ? rows
-        : [
-            { label: "Private Key", value: null, problem: { Unusable: cause } },
-            ...rows,
-          ],
+    Loaded: {
+      identity:
+        certificate.actorEmail.value !== null &&
+        certificate.actorEmail.problem === undefined
+          ? { Claimed: { email: certificate.actorEmail.value } }
+          : "Absent",
+      fields: [
+        ...fields.filter((field) => field.problem !== null),
+        ...fields.filter((field) => field.problem === null),
+      ],
+    },
   };
 }
 
@@ -164,18 +153,9 @@ const invalidAttributeCertificate: Certificate = {
   ...windowsCertificate,
   actorEmail: {
     value: "jane.doe(at)example.com",
-    problem: { Invalid: "NotAnEmailAddress" },
+    problem: "NotAnEmailAddress",
   },
-  accountId: { value: null, problem: { Invalid: "Empty" } },
-};
-
-const expiredCertificate: Certificate = {
-  ...windowsCertificate,
-  serialNumber: "7d:f2:02:1f:e6:58:05:32:af:9c:0f:07:46:91:15:24",
-  notBefore: "Feb 14 08:30:00 2023 +00:00",
-  notAfter: present("May 19 08:30:00 2025 +00:00"),
-  fingerprint:
-    "DA:A5:4F:C1:B7:D1:F0:DA:C3:AC:A5:F1:07:16:4E:DA:AE:63:15:BC:CB:7E:59:AA:FC:1D:E3:C0:63:C2:3C:AC",
+  accountId: { value: null, problem: "Empty" },
 };
 
 // Every screen the client can show, in the states worth eyeballing.
@@ -191,22 +171,14 @@ const screens: Record<string, Screen> = {
   "overview-certificate-signed-out": {
     route: "/overview",
     session: "SignedOut",
-    x509: {
-      problems: [],
-      sections: [],
-      identity: { Claimed: { email: ACTOR_EMAIL } },
-    },
+    x509: loadedCertificate(windowsCertificate),
   },
   "overview-certificate-signed-in": {
     route: "/overview",
     session: {
       SignedIn: { account_slug: "example-corp", actor_name: "Jane Doe" },
     },
-    x509: {
-      problems: [],
-      sections: [],
-      identity: { Claimed: { email: ACTOR_EMAIL } },
-    },
+    x509: loadedCertificate(windowsCertificate),
   },
   "general-settings": { route: "/general-settings", generalSettings },
   "general-settings-managed": {
@@ -228,55 +200,25 @@ const screens: Record<string, Screen> = {
     },
     hover: "Auth Base URL",
   },
-  "x509-empty-windows": {
+  "x509-empty": {
     route: "/x509",
-    x509: {
-      identity: "Absent",
-      problems: [{ NoWindowsCertificate: { subject_cn: SUBJECT_CN } }],
-      sections: [],
-    },
-  },
-  "x509-empty-linux": {
-    route: "/x509",
-    x509: {
-      identity: "Absent",
-      problems: [{ NoPkcs11Certificate: { subject_cn: SUBJECT_CN } }],
-      sections: [],
-    },
+    x509: "Absent",
   },
   "x509-happy": {
     route: "/x509",
-    x509: {
-      identity: "Absent",
-      problems: [],
-      sections: [certificateSection(windowsCertificate)],
-    },
+    x509: loadedCertificate(windowsCertificate),
   },
   "x509-missing-package-linux": {
     route: "/x509",
-    x509: {
-      identity: "Absent",
-      problems: [{ MissingPackage: { package: "P11Kit" } }],
-      sections: [],
-    },
+    x509: { Error: "MissingP11Kit" },
   },
   "x509-invalid-attribute": {
     route: "/x509",
-    x509: {
-      identity: "Absent",
-      problems: [],
-      sections: [certificateSection(invalidAttributeCertificate)],
-    },
+    x509: loadedCertificate(invalidAttributeCertificate),
   },
-  // The certificate is past its validity window, which the page shows without
-  // remarking on: what stops it being presented is that the keystore holds no key.
   "x509-unusable": {
     route: "/x509",
-    x509: {
-      identity: "Absent",
-      problems: [],
-      sections: [certificateSection(expiredCertificate, "KeyMissing")],
-    },
+    x509: { Error: { NoUsableIdentity: { causes: ["KeyMissing"] } } },
   },
   "diagnostics-no-logs": { route: "/diagnostics" },
   diagnostics: {
@@ -358,7 +300,7 @@ for (const [name, screen] of Object.entries(screens)) {
           await events.generalSettingsChanged.emit(screen.generalSettings);
         if (screen.advancedSettings)
           await events.advancedSettingsChanged.emit(screen.advancedSettings);
-        if (screen.x509) await events.x509StatusChanged.emit(screen.x509);
+        if (screen.x509) await events.x509CertificateChanged.emit(screen.x509);
         if (screen.logCount) await events.logsRecounted.emit(screen.logCount);
       });
 

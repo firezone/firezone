@@ -244,7 +244,7 @@ fn try_main() -> Result<()> {
             return Ok(());
         }
         Some(Cmd::X509) => {
-            handle_x509_status()?;
+            handle_x509()?;
 
             return Ok(());
         }
@@ -372,8 +372,22 @@ fn try_main() -> Result<()> {
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
-    let certificate =
-        x509_keystore::certificate().context("Failed to read the platform keystore")?;
+    // A keystore we cannot read must not keep the Client from connecting: without p11-kit, or
+    // with only broken PKCS#11 modules, we connect without a certificate. Anything else that
+    // keeps an identity from being handed over still fails the connect.
+    let certificate = match x509_keystore::identity() {
+        Err(
+            x509_keystore::Error::MissingP11Kit
+            | x509_keystore::Error::UnreadablePkcs11Keystore { .. },
+        ) => Ok(None),
+        other => other,
+    }
+    .and_then(|identity| {
+        identity
+            .map(|identity| identity.client_certificate())
+            .transpose()
+    })
+    .context("Failed to read the platform keystore")?;
     let url = LoginUrl::client(
         cli.api_url.clone(),
         firezone_id.clone(),
@@ -568,12 +582,40 @@ fn try_main() -> Result<()> {
 
 #[expect(
     clippy::print_stdout,
-    reason = "This status command is designed to print to stdout"
+    reason = "This diagnostics command is designed to print to stdout"
 )]
-fn handle_x509_status() -> Result<()> {
-    let status = x509_keystore::status()?;
+fn handle_x509() -> Result<()> {
+    let Some(identity) = x509_keystore::identity()? else {
+        println!("The platform keystore holds no Firezone client certificate.");
 
-    print!("{}", status.text_description());
+        return Ok(());
+    };
+    let certificate = identity.certificate;
+
+    for field in certificate.detail_fields() {
+        println!("{}:", field.label);
+
+        for line in field.value.as_deref().unwrap_or("Not present").split('\n') {
+            println!("  {line}");
+        }
+
+        if let Some(problem) = field.problem {
+            println!("  ({})", problem.label());
+        }
+    }
+
+    match certificate.identity() {
+        x509_keystore::ClientIdentity::Absent => {}
+        x509_keystore::ClientIdentity::Claimed { email } => {
+            let named = email
+                .map(|email| format!(" for {email}"))
+                .unwrap_or_default();
+
+            println!(
+                "\nThe certificate claims an identity{named}, so the client presents it instead of signing in with a token."
+            );
+        }
+    }
 
     Ok(())
 }
