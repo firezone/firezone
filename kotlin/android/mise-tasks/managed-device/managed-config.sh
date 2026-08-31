@@ -11,7 +11,7 @@ source "${SCRIPT_DIR}/lib.sh"
 RESTRICTION_KEY="x509CertificateAlias"
 
 require_adb
-require_device_owner
+require_owner
 
 if [ -z "${usage_alias:-}" ]; then
     echo "==> Clearing the app's managed configuration..."

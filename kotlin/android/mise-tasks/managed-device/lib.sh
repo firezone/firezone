@@ -22,12 +22,26 @@ require_adb() {
     }
 }
 
-require_device_owner() {
-    if ! adb shell dpm list-owners | grep -q "$DPC_PACKAGE"; then
-        echo "error: ${DPC_PACKAGE} does not own this device" >&2
+# The user the DPC owns: a work profile when `provision --work-profile` created one, and the
+# device's own user otherwise. Everything downstream targets it, so a task reads the same whichever
+# topology is in place.
+managed_user() {
+    adb shell dpm list-owners |
+        tr -d '\r' |
+        sed -n "s/^User  *\([0-9][0-9]*\):.*${DPC_PACKAGE}.*/\1/p" |
+        head -1
+}
+
+require_owner() {
+    if [ -z "$(managed_user)" ]; then
+        echo "error: ${DPC_PACKAGE} owns no user on this device" >&2
         echo "       run 'mise run //kotlin/android:managed-device:provision' first" >&2
         exit 1
     fi
+}
+
+find_apk() {
+    find ../../app/build/outputs/apk -type f -name "$1" -exec ls -t {} + 2>/dev/null | head -1
 }
 
 # Installing a key pair and pushing managed configuration are owner-only APIs that no `adb` command
@@ -35,7 +49,7 @@ require_device_owner() {
 provision() {
     local out
     # FLAG_INCLUDE_STOPPED_PACKAGES: a freshly installed app receives no broadcast otherwise.
-    out="$(adb shell am broadcast -f 0x00000020 -n "${DPC_PACKAGE}/.ProvisionReceiver" "$@")"
+    out="$(adb shell am broadcast --user "$(managed_user)" -f 0x00000020 -n "${DPC_PACKAGE}/.ProvisionReceiver" "$@")"
 
     case "$out" in
     *"result=0"*)
