@@ -3,12 +3,14 @@ package dev.firezone.android.tunnel
 
 import kotlinx.coroutines.channels.Channel
 import uniffi.connlib.AndroidSessionConfig
+import uniffi.connlib.ClientTlsIdentity
 import uniffi.connlib.Event
 
 // Stands in for a connlib session. `disconnect` ends the event stream, which is the part of the
 // real session's behaviour the service's event loop is built around.
 class FakeSession(
     val config: AndroidSessionConfig,
+    val tlsIdentity: ClientTlsIdentity?,
 ) : TunnelSession {
     private val events = Channel<Event>(Channel.UNLIMITED)
 

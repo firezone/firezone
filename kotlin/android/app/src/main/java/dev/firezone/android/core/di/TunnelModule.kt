@@ -16,12 +16,12 @@ import uniffi.connlib.SessionInterface
 object TunnelModule {
     @Provides
     internal fun provideSessionFactory(): SessionFactory =
-        SessionFactory { config ->
+        SessionFactory { config, tlsIdentity ->
             val session =
                 Session.newAndroid(
                     config = config,
                     protectSocket = TunnelService.protectSocketCallback,
-                    tlsIdentity = null,
+                    tlsIdentity = tlsIdentity,
                 )
 
             object : TunnelSession, SessionInterface by session {

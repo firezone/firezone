@@ -3,6 +3,7 @@ package dev.firezone.android.tunnel
 
 import kotlinx.coroutines.channels.Channel
 import uniffi.connlib.AndroidSessionConfig
+import uniffi.connlib.ClientTlsIdentity
 import java.util.concurrent.CopyOnWriteArrayList
 
 // Deliberately outlives the per-test object graph: a service can still be running when the graph
@@ -19,11 +20,14 @@ object FakeSessionFactory : SessionFactory {
     var opened: Int = 0
         private set
 
-    override fun open(config: AndroidSessionConfig): TunnelSession {
+    override fun open(
+        config: AndroidSessionConfig,
+        tlsIdentity: ClientTlsIdentity?,
+    ): TunnelSession {
         opened++
         failWith?.let { throw it() }
 
-        return FakeSession(config).also {
+        return FakeSession(config, tlsIdentity).also {
             handedOut += it
             sessions.trySend(it).getOrThrow()
         }

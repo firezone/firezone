@@ -359,6 +359,7 @@ class TunnelService : VpnService() {
                                 isInternetResourceActive = resourceState.isEnabled(),
                                 deviceInfo = deviceInfo,
                             ),
+                            tlsIdentity = null,
                         ).use { session ->
                             startNetworkMonitoring()
                             startLogCleanup()
