@@ -53,9 +53,21 @@ done
 
 echo "==> Running the tests..."
 # Guarded because bash 3.2, which macOS still ships, treats an empty array as unset.
-result="$(adb shell am instrument -w ${filter[@]+"${filter[@]}"} "$RUNNER")"
+result="$(adb shell am instrument -w \
+    -e coverage true -e coverageFile "$COVERAGE_ON_DEVICE" \
+    ${filter[@]+"${filter[@]}"} "$RUNNER")"
 
 echo "$result"
+
+# `am instrument` reports failures in its output and exits 0 regardless.
+case "$result" in
+*"OK ("*) ;;
+*)
+    echo >&2
+    echo "error: the instrumented tests did not pass" >&2
+    exit 1
+    ;;
+esac
 
 # The execution data is written into the app's private directory, which only `run-as` reaches,
 # and only for a debuggable build.
@@ -68,13 +80,3 @@ if [ ! -s coverage.ec ]; then
 fi
 
 echo "    $(wc -c <coverage.ec) bytes"
-
-# `am instrument` reports failures in its output and exits 0 regardless.
-case "$result" in
-*"OK ("*) ;;
-*)
-    echo >&2
-    echo "error: the instrumented tests did not pass" >&2
-    exit 1
-    ;;
-esac
