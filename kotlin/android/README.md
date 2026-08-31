@@ -85,44 +85,33 @@ directly. For example:
 export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
-## Work profile test device
+## Managed test device
 
-The `work-profile:*` tasks stand up an emulator that behaves like a personally
-owned phone carrying a work profile: an administrator has configured a client
-certificate, but only the user can grant the app access to the key. That is the
-state the certificate selection screen exists for, and it is awkward to reach on
-real hardware.
+The `managed-device:*` tasks drive the test Device Policy Controller in `dpc/`
+by broadcast, which puts an attached emulator into every state an X.509-managed
+device can be in without a human at the screen: a certificate the app may use,
+one installed without a grant, an alias with nothing behind it, or nothing
+configured. The ungranted state is what a personally-owned device carrying a
+work profile looks like, and it is what sends the app to the certificate screen.
 
 ```bash
-mise run //kotlin/android:work-profile:setup
+mise run //kotlin/android:managed-device:provision
+mise run //kotlin/android:managed-device:install-certificate --no-grant
+mise run //kotlin/android:managed-device:managed-config --alias firezone-client
 ```
 
-That chains building Google's [TestDPC](https://github.com/googlesamples/android-testdpc),
-booting an account-free AOSP emulator, creating the managed profile, installing
-the app into it, staging the certificate and pointing the managed configuration
-at it. Each step also runs on its own; `mise tasks` lists them.
-
-Two steps are yours, because only a profile owner can install a key pair or push
-managed configuration and neither has an `adb` equivalent. The tasks print
-instructions when they get there:
-
-1. TestDPC, "Manage certificates", "Install KeyPair", pick the staged `.p12`. Do
-   **not** grant the key to the app afterwards: withholding that grant is the
-   point of the exercise.
-1. TestDPC, "Manage app restrictions", `dev.firezone.android`, add the string
-   `x509CertificateAlias` with the certificate's alias as its value.
-
-The certificate comes from the shared X.509 tasks rather than from this
-directory, so issue one before the setup gets to it:
+`provision` makes the DPC the owner of the device, or of a work profile with
+`--work-profile`; a device owner can only be set on an emulator that carries no
+accounts, so pick an image without Play Services. The certificate comes from
+the shared X.509 tasks, so issue one first:
 
 ```bash
 mise run //:x509:create-ca
 mise run //:x509:gen-certificate device
 ```
 
-`gen-certificate user --email <email> --account-id <account-id>` issues one that
-carries an actor as well; whichever of the two ran last is the one the work
-profile stages. Override `TESTDPC_APK` to install a DPC you built yourself.
+`gen-certificate user --email <email> --account-id <account-id>` issues one
+that carries an actor as well. `reset` gives the device back.
 
 ## Release Setup
 

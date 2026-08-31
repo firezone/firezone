@@ -24,45 +24,6 @@ url = "https://github.com/firebase/firebase-tools/releases/download/v15.18.0/fir
 checksum = "sha256:423c18774488ad5476cefef2a36b91014672ab81e4bead8d7d623f519ffaca61"
 url = "https://github.com/firebase/firebase-tools/releases/download/v15.18.0/firebase-tools-win.exe"
 
-[[tools.bazelisk]]
-version = "1.29.0"
-backend = "aqua:bazelbuild/bazelisk"
-
-[tools.bazelisk."platforms.linux-arm64"]
-checksum = "sha256:e20e8b0f4f240091b7a55bf17b9398bd4f40ee70ae0208dff95dd4c445fb4010"
-url = "https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-linux-arm64"
-url_api = "https://api.github.com/repos/bazelbuild/bazelisk/releases/assets/406879161"
-
-[tools.bazelisk."platforms.linux-arm64-musl"]
-checksum = "sha256:e20e8b0f4f240091b7a55bf17b9398bd4f40ee70ae0208dff95dd4c445fb4010"
-url = "https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-linux-arm64"
-url_api = "https://api.github.com/repos/bazelbuild/bazelisk/releases/assets/406879161"
-
-[tools.bazelisk."platforms.linux-x64"]
-checksum = "sha256:5a408715e932c0250d28bd84555f12edbf70117de42f9181691c736eacc4a992"
-url = "https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-linux-amd64"
-url_api = "https://api.github.com/repos/bazelbuild/bazelisk/releases/assets/406879103"
-
-[tools.bazelisk."platforms.linux-x64-musl"]
-checksum = "sha256:5a408715e932c0250d28bd84555f12edbf70117de42f9181691c736eacc4a992"
-url = "https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-linux-amd64"
-url_api = "https://api.github.com/repos/bazelbuild/bazelisk/releases/assets/406879103"
-
-[tools.bazelisk."platforms.macos-arm64"]
-checksum = "sha256:cee851f726789227d5561004e9904a52be45c3efb56f8b38b6993d6adbaa0409"
-url = "https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-darwin-arm64"
-url_api = "https://api.github.com/repos/bazelbuild/bazelisk/releases/assets/406879037"
-
-[tools.bazelisk."platforms.macos-x64"]
-checksum = "sha256:16c3d7aa15323a9fb69f56c7ec5733ed18bedb786680d0ba13bb12a3c8083007"
-url = "https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-darwin-amd64"
-url_api = "https://api.github.com/repos/bazelbuild/bazelisk/releases/assets/406878970"
-
-[tools.bazelisk."platforms.windows-x64"]
-checksum = "sha256:092a8738d5b41aae7a85c42cc961b1034e3389aba43ffc20c0fabda7b43e095b"
-url = "https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-windows-amd64.exe"
-url_api = "https://api.github.com/repos/bazelbuild/bazelisk/releases/assets/406879211"
-
 [[tools.java]]
 version = "openjdk-17.0.2"
 backend = "core:java"
