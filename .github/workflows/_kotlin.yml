@@ -35,8 +35,29 @@ jobs:
         run: ./gradlew lint -Pandroid.injected.build.abi=x86_64
       # AGP 9 only creates unit test components for the tested build type
       # (debug). Narrowing to one ABI reuses the cargo build from lint above.
-      - name: Run unit tests
-        run: ./gradlew testDebugUnitTest -Pandroid.injected.build.abi=x86_64
+      # The report task runs the tests, so it stands in for them rather than following them.
+      - name: Run unit tests and report coverage
+        run: ./gradlew createDebugUnitTestCoverageReport -Pandroid.injected.build.abi=x86_64
+      # AGP writes the report under a variant path this pins nothing to, so failing here names
+      # what it did write instead of leaving Coveralls to upload nothing.
+      - name: Find the coverage report
+        run: |
+          report=$(find app/build/reports/coverage -name '*.xml' | head -1)
+
+          if [ -z "$report" ]; then
+            echo "No coverage report was written. What is under app/build/reports:"
+            find app/build/reports -name '*.xml'
+            exit 1
+          fi
+
+          echo "COVERAGE_REPORT=kotlin/android/${report}" >> "$GITHUB_ENV"
+      - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ env.COVERAGE_REPORT }}
+          format: jacoco
+          flag-name: kotlin-test
+          parallel: true
       # Renders the app's screens to PNGs; nothing is compared against a reference.
       - name: Record screenshots
         run: ./gradlew recordRoborazziDebug -Pandroid.injected.build.abi=x86_64
