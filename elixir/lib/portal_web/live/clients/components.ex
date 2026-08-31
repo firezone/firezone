@@ -201,6 +201,7 @@ defmodule PortalWeb.Clients.Components do
   attr :query_params, :map, default: %{}
   attr :device_pools, :list, default: []
   attr :posture, :list, default: []
+  attr :posture_providers_connected?, :boolean, default: false
   attr :certificate, :map, default: nil
   attr :policy_authorizations, :list, default: []
   attr :policy_authorizations_page, :integer, default: 1
@@ -241,6 +242,7 @@ defmodule PortalWeb.Clients.Components do
           confirm_unverify_client={@confirm_unverify_client}
           device_pools={@device_pools}
           posture={@posture}
+          posture_providers_connected?={@posture_providers_connected?}
           certificate={@certificate}
           policy_authorizations={@policy_authorizations}
           policy_authorizations_page={@policy_authorizations_page}
@@ -317,6 +319,7 @@ defmodule PortalWeb.Clients.Components do
   attr :confirm_unverify_client, :boolean, default: false
   attr :device_pools, :list, default: []
   attr :posture, :list, default: []
+  attr :posture_providers_connected?, :boolean, default: false
   attr :certificate, :map, default: nil
   attr :policy_authorizations, :list, default: []
   attr :policy_authorizations_page, :integer, default: 1
@@ -324,8 +327,6 @@ defmodule PortalWeb.Clients.Components do
   attr :policy_authorizations_expanded_id, :string, default: nil
 
   def client_details_view(assigns) do
-    assigns = assign(assigns, :tab, visible_client_tab(assigns.tab, assigns.posture))
-
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
       <.client_details_header client={@client} />
@@ -341,12 +342,7 @@ defmodule PortalWeb.Clients.Components do
               label="Authorizations"
               selected={@tab == :authorizations}
             />
-            <.client_tab
-              :if={@posture != []}
-              tab="posture"
-              label="Posture"
-              selected={@tab == :posture}
-            />
+            <.client_tab tab="posture" label="Posture" selected={@tab == :posture} />
           </div>
           <div :if={@tab == :overview} class="flex-1 overflow-y-auto">
             <.client_owner_section account={@account} client={@client} />
@@ -355,7 +351,7 @@ defmodule PortalWeb.Clients.Components do
               account={@account}
               device_pools={@device_pools}
             />
-            <.client_device_section client={@client} />
+            <.client_device_section account={@account} client={@client} />
             <.client_certificate_section
               :if={@client.last_attested_cert_fingerprint}
               client={@client}
@@ -363,7 +359,12 @@ defmodule PortalWeb.Clients.Components do
             />
             <.client_network_section client={@client} />
           </div>
-          <.client_posture_tab :if={@tab == :posture} account={@account} posture={@posture} />
+          <.client_posture_tab
+            :if={@tab == :posture}
+            account={@account}
+            posture={@posture}
+            providers_connected?={@posture_providers_connected?}
+          />
           <.client_policy_authorizations_tab
             :if={@tab == :authorizations}
             account={@account}
@@ -614,12 +615,27 @@ defmodule PortalWeb.Clients.Components do
     """
   end
 
+  attr :account, :any, required: true
   attr :client, :any, required: true
 
   def client_device_section(assigns) do
     ~H"""
     <div class="px-5 pt-4 pb-3 border-b border-border">
-      <.section_heading title="Device" />
+      <.section_heading title="Reported by this Client" />
+      <p class="mb-3 text-xs text-subtle">
+        The Firezone Client reports these fields about itself, so a malicious actor could spoof
+        them.
+        <span :if={is_nil(@client.last_attested_at)}>
+          Set up
+          <.link
+            navigate={~p"/#{@account}/settings/trust_anchors"}
+            class="text-brand hover:underline"
+          >
+            X.509 Device Trust
+          </.link>
+          to strongly identify this device and associate it with posture data.
+        </span>
+      </p>
       <dl class="space-y-3">
         <.client_detail_row :if={@client.last_seen_at} label="Operating System">
           <.client_os client={@client} />
@@ -702,15 +718,35 @@ defmodule PortalWeb.Clients.Components do
 
   attr :account, :any, required: true
   attr :posture, :list, required: true
+  attr :providers_connected?, :boolean, default: false
 
   def client_posture_tab(assigns) do
+    assigns = assign(assigns, :state, posture_tab_state(assigns))
+
     ~H"""
     <div class="flex-1 overflow-y-auto">
-      <.client_posture_section
-        :for={entry <- @posture}
-        account={@account}
-        entry={entry}
-      />
+      <div :if={@state == :records}>
+        <.client_posture_section :for={entry <- @posture} account={@account} entry={entry} />
+      </div>
+      <.posture_locked :if={@state == :locked} account={@account} />
+      <div
+        :if={@state in [:no_records, :no_providers]}
+        class="flex flex-col items-center justify-center gap-2 px-5 py-16 text-center text-subtle"
+      >
+        <.icon name="ri-shield-star-line" class="w-8 h-8" />
+        <p :if={@state == :no_records} class="text-xs">
+          No posture data was found for this device.
+        </p>
+        <p :if={@state == :no_providers} class="text-xs">
+          <.link
+            navigate={~p"/#{@account}/settings/device_posture/new"}
+            class="text-brand hover:underline"
+          >
+            Connect a posture provider
+          </.link>
+          to view posture data for this device.
+        </p>
+      </div>
     </div>
     """
   end
@@ -734,7 +770,7 @@ defmodule PortalWeb.Clients.Components do
             {posture_provider_label(@entry.type)}
           </span>
         </div>
-        <.posture_match_badge account={@account} matched_on={@entry.matched_on} />
+        <.posture_match_badge account={@account} matched_on={@entry.matched_on} via={@entry.via} />
       </div>
 
       <dl class="grid grid-cols-2 gap-x-6 gap-y-3 mb-4">
@@ -755,6 +791,7 @@ defmodule PortalWeb.Clients.Components do
 
   attr :account, :any, required: true
   attr :matched_on, :atom, required: true
+  attr :via, :atom, default: nil
 
   def posture_match_badge(%{matched_on: :device_serial} = assigns) do
     ~H"""
@@ -768,6 +805,10 @@ defmodule PortalWeb.Clients.Components do
         <p>
           Matched on the serial number the device reports about itself. This field could be
           spoofed by a malicious actor.
+        </p>
+        <p :if={@via == :intune} class="mt-1">
+          Reached through the Microsoft Intune record that serial matched, which holds the same
+          Entra device ID as this machine.
         </p>
         <p class="mt-1">
           Set up
@@ -795,7 +836,11 @@ defmodule PortalWeb.Clients.Components do
         </span>
       </:target>
       <:content>
-        Matched on an identifier this device proved with an MDM-issued device certificate.
+        <p>Matched on an identifier this device proved with an MDM-issued device certificate.</p>
+        <p :if={@via == :intune} class="mt-1">
+          Reached through the Microsoft Intune record for that identifier, which holds the same
+          Entra device ID as this machine.
+        </p>
       </:content>
     </.popover>
     """
@@ -820,6 +865,56 @@ defmodule PortalWeb.Clients.Components do
   def posture_value(assigns) do
     ~H"""
     <span class="font-mono text-xs text-body break-all">{@value}</span>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :serial, :map, default: nil
+
+  def client_serial_badge(%{serial: nil} = assigns) do
+    ~H"""
+    <span class="text-xs text-muted">—</span>
+    """
+  end
+
+  def client_serial_badge(%{serial: %{source: :reported}} = assigns) do
+    ~H"""
+    <.popover placement="right">
+      <:target>
+        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[10px] font-medium text-warning bg-warning-light">
+          <.icon name="ri-lock-unlock-line" class="w-2.5 h-2.5 shrink-0" />{@serial.value}
+        </span>
+      </:target>
+      <:content>
+        <p>
+          The serial number this Client reports about itself. This field could be spoofed by a
+          malicious actor.
+        </p>
+        <p class="mt-1">
+          Set up
+          <.link
+            navigate={~p"/#{@account}/settings/trust_anchors"}
+            class="text-brand hover:underline"
+          >
+            X.509 Device Trust
+          </.link>
+          so devices prove their serial with an MDM-issued certificate instead.
+        </p>
+      </:content>
+    </.popover>
+    """
+  end
+
+  def client_serial_badge(assigns) do
+    ~H"""
+    <.popover placement="right">
+      <:target>
+        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[10px] font-medium text-success bg-success-light">
+          <.icon name="ri-shield-keyhole-line" class="w-2.5 h-2.5 shrink-0" />{@serial.value}
+        </span>
+      </:target>
+      <:content>{serial_source_hint(@serial.source)}</:content>
+    </.popover>
     """
   end
 
@@ -1214,11 +1309,88 @@ defmodule PortalWeb.Clients.Components do
 
   defp trust_state(_client), do: nil
 
-  # The tab is only offered when a provider has a record to put in it, so a
-  # link into it for a device with none lands on the overview rather than on
-  # blank space.
-  defp visible_client_tab(:posture, []), do: :overview
-  defp visible_client_tab(tab, _posture), do: tab
+  attr :account, :any, required: true
+
+  defp posture_locked(assigns) do
+    ~H"""
+    <div class="px-5 py-4">
+      <.upgrade_locked_section
+        account={@account}
+        message="Upgrade to unlock Device Posture"
+        description="See what your MDM and EDR hold for this device, matched to the identity its certificate proved."
+      >
+        <.posture_preview />
+      </.upgrade_locked_section>
+    </div>
+    """
+  end
+
+  defp posture_preview(assigns) do
+    assigns = assign(assigns, :samples, posture_preview_samples())
+
+    ~H"""
+    <div class="space-y-4">
+      <div :for={sample <- @samples}>
+        <div class="flex items-center justify-between gap-3 mb-3">
+          <div class="flex items-center gap-2">
+            <.provider_icon provider={sample.provider} size="sm" />
+            <span class="text-sm font-medium text-heading">{sample.name}</span>
+          </div>
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light">
+            <.icon name="ri-shield-keyhole-line" class="w-2.5 h-2.5" /> Attested device ID
+          </span>
+        </div>
+        <dl class="grid grid-cols-2 gap-x-6 gap-y-3">
+          <.client_detail_row :for={{label, value} <- sample.attributes} label={label}>
+            <span class="font-mono text-xs text-body">{value}</span>
+          </.client_detail_row>
+        </dl>
+      </div>
+    </div>
+    """
+  end
+
+  defp posture_tab_state(assigns) do
+    cond do
+      not Portal.Account.device_posture_enabled?(assigns.account) -> :locked
+      assigns.posture != [] -> :records
+      assigns.providers_connected? -> :no_records
+      true -> :no_providers
+    end
+  end
+
+  defp posture_preview_samples do
+    [
+      %{
+        provider: "intune",
+        name: "Microsoft Intune",
+        attributes: [
+          {"Device name", "DESKTOP-4KJ21"},
+          {"Serial number", "5CD2419T7K"},
+          {"Compliance", "compliant"},
+          {"Encrypted", "Yes"}
+        ]
+      },
+      %{
+        provider: "defender",
+        name: "Microsoft Defender",
+        attributes: [
+          {"Sensor health", "Active"},
+          {"Risk score", "Low"},
+          {"Exposure level", "Low"},
+          {"Agent version", "10.8760.19041"}
+        ]
+      }
+    ]
+  end
+
+  defp serial_source_hint(:attested) do
+    "The serial number this device proved with an MDM-issued device certificate."
+  end
+
+  defp serial_source_hint(:mdm) do
+    "The serial number your MDM holds for the device ID this device proved with its certificate."
+  end
 
   defp posture_provider_label(:intune), do: "Microsoft Intune"
   defp posture_provider_label(:iru), do: "Iru"

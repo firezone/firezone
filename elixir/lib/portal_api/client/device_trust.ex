@@ -55,7 +55,6 @@ defmodule PortalAPI.Client.DeviceTrust do
     "apple-udid" => :last_attested_device_uuid,
     "smbios-uuid" => :last_attested_device_uuid,
     "intune-id" => :last_attested_mdm_device_id,
-    "entra-id" => :last_attested_mdm_device_id,
     "ws1-uuid" => :last_attested_mdm_device_id,
     "jamf-id" => :last_attested_mdm_device_id,
     "kandji-id" => :last_attested_mdm_device_id

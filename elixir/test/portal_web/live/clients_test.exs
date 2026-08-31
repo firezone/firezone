@@ -7,6 +7,7 @@ defmodule PortalWeb.ClientsTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DefenderFixtures
+  import Portal.DevicePostureFixtures
   import Portal.IntuneFixtures
   import Portal.IruFixtures
   import Portal.SantaFixtures
@@ -148,6 +149,46 @@ defmodule PortalWeb.ClientsTest do
   end
 
   describe ":show action" do
+    test "cautions that the client reports its own device fields", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor, device_serial: "SN-SPOOFABLE")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}")
+
+      assert html =~ "Reported by this Client"
+      assert html =~ "a malicious actor could spoof"
+      assert html =~ "X.509 Device Trust"
+      assert html =~ ~p"/#{account}/settings/trust_anchors"
+    end
+
+    test "drops the device trust call to action once the client has attested", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          device_serial: "SN-ATTESTED",
+          last_attested_at: DateTime.utc_now()
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}")
+
+      assert html =~ "Reported by this Client"
+      refute html =~ "to strongly identify this device"
+    end
+
     test "renders client detail panel with device and network details", %{
       conn: conn,
       account: account,
@@ -716,11 +757,14 @@ defmodule PortalWeb.ClientsTest do
   end
 
   describe ":show action posture tab" do
-    test "hides the tab when no posture provider knows this client", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
+    setup do
+      enable_device_posture()
+      account = device_posture_account_fixture()
+      actor = admin_actor_fixture(account: account)
+      %{account: account, actor: actor}
+    end
+
+    test "offers the tab to every client", %{conn: conn, account: account, actor: actor} do
       client = client_fixture(account: account, actor: actor, device_serial: "UNKNOWN-SERIAL")
 
       {:ok, _lv, html} =
@@ -728,10 +772,26 @@ defmodule PortalWeb.ClientsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/clients/#{client.id}")
 
-      refute html =~ "phx-value-tab=\"posture\""
+      assert html =~ "phx-value-tab=\"posture\""
     end
 
-    test "falls back to the overview when the tab is requested with no posture", %{
+    test "says so when a connected provider holds no record for the client", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      intune_posture_provider_fixture(account: account)
+      client = client_fixture(account: account, actor: actor, device_serial: "UNKNOWN-SERIAL")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}?tab=posture")
+
+      assert html =~ "No posture data was found for this device."
+    end
+
+    test "points at connecting a provider when the account has none", %{
       conn: conn,
       account: account,
       actor: actor
@@ -743,7 +803,23 @@ defmodule PortalWeb.ClientsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/clients/#{client.id}?tab=posture")
 
-      assert html =~ "Tunnel IPv4"
+      assert html =~ "Connect a posture provider"
+      assert html =~ ~p"/#{account}/settings/device_posture/new"
+    end
+
+    test "offers an upgrade when the account lacks the feature", %{conn: conn} do
+      account = account_fixture(features: %{device_posture: false})
+      actor = admin_actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}?tab=posture")
+
+      assert html =~ "Upgrade to unlock Device Posture"
+      assert html =~ "Upgrade to Unlock"
+      refute html =~ "No posture data was found for this device."
     end
 
     test "shows the Intune record matched on the attested MDM device id", %{
@@ -790,7 +866,7 @@ defmodule PortalWeb.ClientsTest do
       refute html =~ "android_security_patch_level"
     end
 
-    test "matches Intune on the Entra device id the certificate attested", %{
+    test "does not match Intune on the Entra device id of a record", %{
       conn: conn,
       account: account,
       actor: actor
@@ -817,8 +893,8 @@ defmodule PortalWeb.ClientsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/clients/#{client.id}?tab=posture")
 
-      assert html =~ "ENTRA-JOINED-01"
-      assert html =~ "Attested device ID"
+      refute html =~ "ENTRA-JOINED-01"
+      assert html =~ "No posture data was found for this device."
     end
 
     test "cautions when the match rests on the serial the client reports", %{
@@ -880,16 +956,21 @@ defmodule PortalWeb.ClientsTest do
       refute html =~ "Reported serial"
     end
 
-    test "shows the Defender record matched on the attested Entra device id", %{
+    test "reaches the Defender record through the Intune record's Entra device id", %{
       conn: conn,
       account: account,
       actor: actor
     } do
       entra_device_id = Ecto.UUID.generate()
-      provider = defender_posture_provider_fixture(account: account, name: "Defender Prod")
+
+      intune_device_fixture(
+        provider: intune_posture_provider_fixture(account: account, name: "Contoso Intune"),
+        intune_id: "managed-device-4",
+        entra_device_id: entra_device_id
+      )
 
       defender_device_fixture(
-        provider: provider,
+        provider: defender_posture_provider_fixture(account: account, name: "Defender Prod"),
         computer_dns_name: "eng-laptop-01.contoso.com",
         entra_device_id: entra_device_id,
         health_status: "Active"
@@ -899,7 +980,7 @@ defmodule PortalWeb.ClientsTest do
         client_fixture(
           account: account,
           actor: actor,
-          last_attested_mdm_device_id: entra_device_id,
+          last_attested_mdm_device_id: "managed-device-4",
           last_attested_cert_fingerprint: "fp-4"
         )
 
@@ -911,6 +992,34 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "Defender Prod"
       assert html =~ "eng-laptop-01.contoso.com"
       assert html =~ "Active"
+    end
+
+    test "leaves out a Defender record no Intune record links to the client", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      defender_device_fixture(
+        provider: defender_posture_provider_fixture(account: account, name: "Defender Prod"),
+        computer_dns_name: "unlinked-laptop.contoso.com",
+        entra_device_id: Ecto.UUID.generate()
+      )
+
+      client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_mdm_device_id: Ecto.UUID.generate(),
+          last_attested_cert_fingerprint: "fp-8"
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}?tab=posture")
+
+      refute html =~ "unlinked-laptop.contoso.com"
+      assert html =~ "No posture data was found for this device."
     end
 
     test "shows the Santa record matched on serial", %{
@@ -1015,7 +1124,9 @@ defmodule PortalWeb.ClientsTest do
       account: account,
       actor: actor
     } do
-      other_account = account_fixture()
+      other_account = device_posture_account_fixture()
+
+      intune_posture_provider_fixture(account: account)
 
       intune_device_fixture(
         provider: intune_posture_provider_fixture(account: other_account),
@@ -1028,10 +1139,10 @@ defmodule PortalWeb.ClientsTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients/#{client.id}")
+        |> live(~p"/#{account}/clients/#{client.id}?tab=posture")
 
       refute html =~ "OTHER-ACCOUNT-01"
-      refute html =~ "phx-value-tab=\"posture\""
+      assert html =~ "No posture data was found for this device."
     end
 
     test "does not match a serial against a remote device id", %{
@@ -1095,6 +1206,112 @@ defmodule PortalWeb.ClientsTest do
         |> live(~p"/#{account}/clients")
 
       refute html =~ "logo-intune.svg"
+    end
+  end
+
+  describe "index serial column" do
+    setup do
+      enable_device_posture()
+      account = device_posture_account_fixture()
+      actor = admin_actor_fixture(account: account)
+      %{account: account, actor: actor}
+    end
+
+    test "shows the attested serial as proven", %{conn: conn, account: account, actor: actor} do
+      client_fixture(
+        account: account,
+        actor: actor,
+        last_attested_device_serial: "ATTESTED-SERIAL-1",
+        device_serial: "REPORTED-SERIAL-1"
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients")
+
+      assert html =~ "ATTESTED-SERIAL-1"
+      refute html =~ "ri-lock-unlock-line"
+    end
+
+    test "shows the serial the MDM holds for the attested device id", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      intune_device_fixture(
+        provider: intune_posture_provider_fixture(account: account),
+        intune_id: "managed-device-serial",
+        serial_number: "MDM-HELD-SERIAL"
+      )
+
+      client_fixture(
+        account: account,
+        actor: actor,
+        last_attested_mdm_device_id: "managed-device-serial",
+        device_serial: "REPORTED-SERIAL-2"
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients")
+
+      assert html =~ "MDM-HELD-SERIAL"
+      refute html =~ "ri-lock-unlock-line"
+    end
+
+    test "cautions about a serial the client reports about itself", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client_fixture(account: account, actor: actor, device_serial: "REPORTED-SERIAL-3")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients")
+
+      assert html =~ "REPORTED-SERIAL-3"
+      assert html =~ "ri-lock-unlock-line"
+    end
+
+    test "falls back to the reported serial when the MDM holds none", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client_fixture(
+        account: account,
+        actor: actor,
+        last_attested_mdm_device_id: "managed-device-unknown",
+        device_serial: "REPORTED-SERIAL-4"
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients")
+
+      assert html =~ "REPORTED-SERIAL-4"
+      assert html =~ "ri-lock-unlock-line"
+    end
+
+    test "leaves the column empty for a client with no serial at all", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client_fixture(account: account, actor: actor, name: "No Serial Client", device_serial: nil)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients")
+
+      assert html =~ "No Serial Client"
+      refute html =~ "ri-lock-unlock-line"
     end
   end
 

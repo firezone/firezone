@@ -30,7 +30,8 @@ defmodule PortalWeb.Clients do
         policy_authorizations_expanded_id: nil,
         client_posture: [],
         client_certificate: nil,
-        posture_types_by_client: %{}
+        posture_providers_connected?: false,
+        posture_by_client: %{}
       )
       |> assign(base_client_assigns())
       |> assign_live_table("clients",
@@ -73,7 +74,9 @@ defmodule PortalWeb.Clients do
            policy_authorizations_has_next: has_next,
            policy_authorizations_expanded_id: nil,
            client_posture: Database.list_posture_for_client(client, socket.assigns.subject),
-           client_certificate: Database.certificate_status(client, socket.assigns.subject)
+           client_certificate: Database.certificate_status(client, socket.assigns.subject),
+           posture_providers_connected?:
+             Database.posture_providers_connected?(socket.assigns.subject)
          )}
     end
   end
@@ -117,7 +120,7 @@ defmodule PortalWeb.Clients do
        assign(socket,
          clients: clients,
          clients_metadata: metadata,
-         posture_types_by_client: Database.posture_types_by_client(clients, socket.assigns.subject)
+         posture_by_client: Database.posture_index(clients, socket.assigns.subject)
        )}
     end
   end
@@ -186,6 +189,12 @@ defmodule PortalWeb.Clients do
               return_to={@return_to}
             />
           </:col>
+          <:col :let={client} label="Serial" class="w-44">
+            <.client_serial_badge
+              account={@account}
+              serial={row_posture(@posture_by_client, client).serial}
+            />
+          </:col>
           <:col :let={client} field={{:devices, :last_seen_version}} label="Version" class="w-32">
             <.version
               current={client.last_seen_version}
@@ -196,7 +205,7 @@ defmodule PortalWeb.Clients do
             <.client_verified_status client={client} />
           </:col>
           <:col :let={client} label="Posture" class="w-28">
-            <.client_posture_icons types={Map.get(@posture_types_by_client, client.id, [])} />
+            <.client_posture_icons types={row_posture(@posture_by_client, client).types} />
           </:col>
           <:col :let={client} label="Status" class="w-28">
             <.client_status_badge online?={client.online?} />
@@ -245,6 +254,7 @@ defmodule PortalWeb.Clients do
         query_params={@query_params}
         device_pools={@client_device_pools}
         posture={@client_posture}
+        posture_providers_connected?={@posture_providers_connected?}
         certificate={@client_certificate}
         policy_authorizations={@policy_authorizations}
         policy_authorizations_page={@policy_authorizations_page}
@@ -253,6 +263,10 @@ defmodule PortalWeb.Clients do
       />
     </div>
     """
+  end
+
+  defp row_posture(posture_by_client, client) do
+    Map.get(posture_by_client, client.id, %{types: [], serial: nil})
   end
 
   defp client_panel_state(assigns) do
@@ -906,6 +920,7 @@ defmodule PortalWeb.Clients do
           {Enum.take(rows, @page_size), has_next}
       end
     end
+
     @doc """
     Records from the account's posture providers that describe this device.
 
@@ -918,6 +933,12 @@ defmodule PortalWeb.Clients do
     Only the first two prove anything. The third is whatever the Client said
     about itself, so the panel cautions about rows matched that way.
 
+    Defender for Endpoint issues no device id of its own for a certificate to
+    attest and its machines report no hardware serial, so a Defender row is
+    reached through the Intune row already matched to this device: both carry
+    the same Entra device id. A row reached that way is only as well matched as
+    the Intune row that led to it.
+
     One row per configured provider rather than per provider type, so an
     account running two Intune tenants sees the device in both.
     """
@@ -926,7 +947,8 @@ defmodule PortalWeb.Clients do
               type: atom(),
               provider: PostureProvider.t(),
               device: struct(),
-              matched_on: :mdm_device_id | :attested_serial | :device_serial
+              matched_on: :mdm_device_id | :attested_serial | :device_serial,
+              via: :intune | nil
             }
           ]
     def list_posture_for_client(%Device{type: :client} = device, subject) do
@@ -936,11 +958,12 @@ defmodule PortalWeb.Clients do
       if keys == [] or providers == [] do
         []
       else
-        providers
-        |> Enum.map(& &1.type)
-        |> Enum.uniq()
-        |> Enum.flat_map(&match_posture(&1, keys, subject))
-        |> Enum.flat_map(&posture_entry(&1, Map.new(providers, fn p -> {p.id, p} end)))
+        types = providers |> Enum.map(& &1.type) |> Enum.uniq()
+        matched = Enum.flat_map(types, &match_posture(&1, keys, subject))
+        providers_by_id = Map.new(providers, &{&1.id, &1})
+
+        (matched ++ link_defender_posture(types, matched, subject))
+        |> Enum.flat_map(&posture_entry(&1, providers_by_id))
         |> Enum.group_by(& &1.provider.id)
         |> Enum.map(fn {_provider_id, entries} -> best_posture_entry(entries) end)
         |> Enum.sort_by(&{provider_type_rank(&1.type), String.downcase(&1.provider.name)})
@@ -949,45 +972,202 @@ defmodule PortalWeb.Clients do
 
     def list_posture_for_client(_client, _subject), do: []
 
-    defp posture_entry({type, device, matched_on}, providers_by_id) do
+    defp posture_entry({type, device, matched_on, via}, providers_by_id) do
       case Map.fetch(providers_by_id, device.posture_provider_id) do
-        {:ok, provider} -> [%{type: type, provider: provider, device: device, matched_on: matched_on}]
-        :error -> []
+        {:ok, provider} ->
+          [%{type: type, provider: provider, device: device, matched_on: matched_on, via: via}]
+
+        :error ->
+          []
       end
     end
 
     defp best_posture_entry(entries), do: Enum.min_by(entries, &rung_rank(&1.matched_on))
 
     @doc """
-    Which posture providers hold a record for each device in a list.
+    Whether the account has connected a posture provider at all.
 
-    One query per configured provider type for the whole page, so the Clients
-    list can badge every row without a lookup per Client.
+    The panel offers its Posture tab to every Client, so it has to tell a
+    device no provider holds a record for apart from an account that has no
+    provider to hold one.
     """
-    @spec posture_types_by_client([Device.t()], Portal.Authentication.Subject.t()) ::
-            %{Ecto.UUID.t() => [atom()]}
-    def posture_types_by_client(devices, subject) do
-      keys_by_client =
-        for device <- devices, keys = match_keys(device), keys != [], do: {device.id, keys}
+    @spec posture_providers_connected?(Portal.Authentication.Subject.t()) :: boolean()
+    def posture_providers_connected?(subject) do
+      from(p in PostureProvider)
+      |> Safe.scoped(subject)
+      |> Safe.exists?()
+      |> case do
+        connected? when is_boolean(connected?) -> connected?
+        _refused -> false
+      end
+    end
+
+    @doc """
+    What the Clients list badges each row with.
+
+    Returns the posture provider types that hold a record for the Client, and
+    the serial number to show for it alongside how well that serial is proven.
+
+    One query per configured provider type for the whole page, so the list can
+    badge every row without a lookup per Client.
+    """
+    @spec posture_index([Device.t()], Portal.Authentication.Subject.t()) ::
+            %{
+              Ecto.UUID.t() => %{
+                types: [atom()],
+                serial: %{value: String.t(), source: :attested | :mdm | :reported} | nil
+              }
+            }
+    def posture_index(devices, subject) do
+      keys_by_device =
+        for device <- devices, keys = match_keys(device), keys != [], into: %{} do
+          {device.id, keys}
+        end
 
       types = subject |> list_posture_providers() |> Enum.map(& &1.type) |> Enum.uniq()
+      loaded = load_posture_rows(types, keys_by_device, subject)
 
-      if keys_by_client == [] or types == [] do
-        %{}
-      else
-        Enum.reduce(types, %{}, &credit_posture_type(&1, &2, keys_by_client, subject))
+      Map.new(devices, fn device ->
+        matches = posture_matches(Map.get(keys_by_device, device.id, []), loaded)
+
+        {device.id,
+         %{
+           types: Enum.sort_by(matches.types, &provider_type_rank/1),
+           serial: serial_badge(device, matches.mdm_serial)
+         }}
+      end)
+    end
+
+    defp load_posture_rows(types, keys_by_device, subject) do
+      values =
+        keys_by_device
+        |> Enum.flat_map(fn {_device_id, keys} -> Keyword.values(keys) end)
+        |> Enum.uniq()
+
+      rows_by_type =
+        for type <- types, type != :defender, into: %{} do
+          {type, posture_rows(type, values, subject)}
+        end
+
+      defender_entra_ids =
+        if :defender in types do
+          defender_entra_ids(Map.get(rows_by_type, :intune, []), subject)
+        else
+          MapSet.new()
+        end
+
+      %{rows_by_type: rows_by_type, defender_entra_ids: defender_entra_ids}
+    end
+
+    defp posture_rows(_type, [], _subject), do: []
+
+    defp posture_rows(type, values, subject) do
+      conditions =
+        for field_name <- posture_match_fields(type),
+            do: dynamic([d], field(d, ^field_name) in ^values)
+
+      case conditions do
+        [] ->
+          []
+
+        conditions ->
+          from(d in posture_schema(type),
+            where: ^Enum.reduce(conditions, &dynamic(^&1 or ^&2)),
+            select: map(d, ^posture_index_fields(type))
+          )
+          |> Safe.scoped(subject)
+          |> Safe.all()
+          |> case do
+            rows when is_list(rows) -> rows
+            _refused -> []
+          end
       end
     end
 
-    defp credit_posture_type(type, acc, keys_by_client, subject) do
-      known = known_posture_values(type, keys_by_client, subject)
+    defp defender_entra_ids([], _subject), do: MapSet.new()
 
-      for {client_id, keys} <- keys_by_client,
-          posture_known?(type, keys, known),
-          reduce: acc do
-        acc -> Map.update(acc, client_id, [type], &(&1 ++ [type]))
+    defp defender_entra_ids(intune_rows, subject) do
+      entra_ids =
+        intune_rows
+        |> Enum.map(& &1.entra_device_id)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.uniq()
+
+      case entra_ids do
+        [] ->
+          MapSet.new()
+
+        entra_ids ->
+          from(d in Defender.Device,
+            where: d.entra_device_id in ^entra_ids,
+            select: d.entra_device_id
+          )
+          |> Safe.scoped(subject)
+          |> Safe.all()
+          |> case do
+            ids when is_list(ids) -> MapSet.new(ids)
+            _refused -> MapSet.new()
+          end
       end
     end
+
+    defp posture_matches([], _loaded), do: %{types: [], mdm_serial: nil}
+
+    defp posture_matches(keys, loaded) do
+      matched =
+        for {type, rows} <- loaded.rows_by_type, into: %{} do
+          {type, matching_posture_rows(type, keys, rows)}
+        end
+
+      types = for {type, [_ | _]} <- matched, do: type
+
+      types =
+        if defender_linked?(Map.get(matched, :intune, []), loaded.defender_entra_ids) do
+          [:defender | types]
+        else
+          types
+        end
+
+      %{types: types, mdm_serial: mdm_serial(matched)}
+    end
+
+    defp matching_posture_rows(type, keys, rows) do
+      for row <- rows, rung = matched_rung(type, keys, row), do: {row, rung}
+    end
+
+    defp defender_linked?(intune_matches, entra_ids) do
+      Enum.any?(intune_matches, fn {row, _rung} ->
+        MapSet.member?(entra_ids, row.entra_device_id)
+      end)
+    end
+
+    # The serial an MDM holds for the device id a certificate attested is as
+    # well proven as that id, so it beats the one the Client reports about
+    # itself.
+    defp mdm_serial(matched) do
+      [:intune, :iru]
+      |> Enum.flat_map(&Map.get(matched, &1, []))
+      |> Enum.find_value(fn
+        {%{serial_number: serial}, :mdm_device_id} when is_binary(serial) -> serial
+        _other -> nil
+      end)
+    end
+
+    defp serial_badge(%Device{last_attested_device_serial: serial}, _mdm_serial)
+         when is_binary(serial) do
+      %{value: serial, source: :attested}
+    end
+
+    defp serial_badge(%Device{last_attested_mdm_device_id: mdm_id}, mdm_serial)
+         when is_binary(mdm_id) and is_binary(mdm_serial) do
+      %{value: mdm_serial, source: :mdm}
+    end
+
+    defp serial_badge(%Device{device_serial: serial}, _mdm_serial) when is_binary(serial) do
+      %{value: serial, source: :reported}
+    end
+
+    defp serial_badge(_device, _mdm_serial), do: nil
 
     @doc """
     What the account knows about the certificate this Client last attested with.
@@ -1112,11 +1292,48 @@ defmodule PortalWeb.Clients do
           |> Safe.all()
           |> case do
             rows when is_list(rows) ->
-              Enum.map(rows, &{type, &1, matched_rung(type, keys, &1)})
+              Enum.map(rows, &{type, &1, matched_rung(type, keys, &1), nil})
 
             _refused ->
               []
           end
+      end
+    end
+
+    defp link_defender_posture(types, matched, subject) do
+      if :defender in types do
+        matched
+        |> Enum.flat_map(fn
+          {:intune, %{entra_device_id: entra_id}, rung, _via} when is_binary(entra_id) ->
+            [{entra_id, rung}]
+
+          _other ->
+            []
+        end)
+        |> Enum.sort_by(fn {_entra_id, rung} -> rung_rank(rung) end)
+        |> Enum.uniq_by(fn {entra_id, _rung} -> entra_id end)
+        |> match_defender_by_entra_id(subject)
+      else
+        []
+      end
+    end
+
+    defp match_defender_by_entra_id([], _subject), do: []
+
+    defp match_defender_by_entra_id(entra_ids, subject) do
+      rung_by_entra_id = Map.new(entra_ids)
+
+      from(d in Defender.Device, where: d.entra_device_id in ^Map.keys(rung_by_entra_id))
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        rows when is_list(rows) ->
+          for row <- rows, rung = Map.get(rung_by_entra_id, row.entra_device_id) do
+            {:defender, row, rung, :intune}
+          end
+
+        _refused ->
+          []
       end
     end
 
@@ -1132,49 +1349,16 @@ defmodule PortalWeb.Clients do
       end)
     end
 
-    defp known_posture_values(type, keys_by_client, subject) do
-      fields = type |> posture_match_fields() |> Enum.uniq()
-
-      values =
-        keys_by_client
-        |> Enum.flat_map(fn {_client_id, keys} -> Keyword.values(keys) end)
-        |> Enum.uniq()
-
-      conditions = for field_name <- fields, do: dynamic([d], field(d, ^field_name) in ^values)
-
-      case conditions do
-        [] ->
-          MapSet.new()
-
-        conditions ->
-          from(d in posture_schema(type),
-            where: ^Enum.reduce(conditions, &dynamic(^&1 or ^&2)),
-            select: map(d, ^fields)
-          )
-          |> Safe.scoped(subject)
-          |> Safe.all()
-          |> index_posture_values()
-      end
-    end
-
-    defp index_posture_values(rows) when is_list(rows) do
-      for row <- rows, {field_name, value} <- row, not is_nil(value), into: MapSet.new() do
-        {field_name, value}
-      end
-    end
-
-    # A refused read leaves the list with no badges rather than with wrong ones.
-    defp index_posture_values(_refused), do: MapSet.new()
-
-    defp posture_known?(type, keys, known) do
-      Enum.any?(keys, fn {rung, value} ->
-        Enum.any?(rung_fields(type, rung), &MapSet.member?(known, {&1, value}))
-      end)
-    end
-
     defp posture_match_fields(type) do
-      Enum.flat_map([:mdm_device_id, :attested_serial, :device_serial], &rung_fields(type, &1))
+      [:mdm_device_id, :attested_serial, :device_serial]
+      |> Enum.flat_map(&rung_fields(type, &1))
+      |> Enum.uniq()
     end
+
+    # The list also needs the serial Intune holds and the Entra device id that
+    # reaches a Defender machine, neither of which it matches on.
+    defp posture_index_fields(:intune), do: posture_match_fields(:intune) ++ [:entra_device_id]
+    defp posture_index_fields(type), do: posture_match_fields(type)
 
     defp posture_schema(:intune), do: Intune.Device
     defp posture_schema(:iru), do: Iru.Device
@@ -1186,16 +1370,15 @@ defmodule PortalWeb.Clients do
     # against. Both the query and the credit given to a row it returns are
     # built from this, so they can never disagree.
     #
-    # Intune and Defender both carry the Entra device id, which is the value a
-    # certificate issued through Entra attests. Defender's machine entity
-    # reports no hardware serial at all, and neither of the two EDRs carries an
-    # MDM device id, so each of those has one rung it cannot answer.
-    defp rung_fields(:intune, :mdm_device_id), do: [:intune_id, :entra_device_id]
+    # Only an MDM issues a device id a certificate attests, so neither EDR
+    # answers that rung. Defender answers none of them: its machine entity
+    # carries no hardware serial either, which is why it is reached through
+    # Intune instead.
+    defp rung_fields(:intune, :mdm_device_id), do: [:intune_id]
     defp rung_fields(:intune, _serial_rung), do: [:serial_number]
     defp rung_fields(:iru, :mdm_device_id), do: [:iru_id]
     defp rung_fields(:iru, _serial_rung), do: [:serial_number]
-    defp rung_fields(:defender, :mdm_device_id), do: [:defender_id, :entra_device_id]
-    defp rung_fields(:defender, _serial_rung), do: []
+    defp rung_fields(:defender, _rung), do: []
     defp rung_fields(:santa, :mdm_device_id), do: []
     defp rung_fields(:santa, _serial_rung), do: [:serial_number]
     defp rung_fields(:sentinelone, :mdm_device_id), do: []

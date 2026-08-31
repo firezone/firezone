@@ -1032,15 +1032,18 @@ defmodule Portal.Repo.Seeds do
       )
 
     # The identifiers the seeded certificates attest. Each is also written into
-    # the provider row that should match on it, so the Inventory tab of a
-    # seeded Client demonstrates one rung of the matching ladder.
+    # the provider row that should match on it, so the Posture tab of a seeded
+    # Client demonstrates one rung of the matching ladder. The Surface also
+    # carries an Entra device id on its Intune row and on a Defender machine,
+    # which is how a Defender record is reached at all.
     issuer = posture_issuer_der("Contoso Device CA")
     admin_intune_id = "5f3c1a90-7d24-4b8e-9a61-c0d2e4f68b31"
+    surface_intune_id = "1d84b7e0-92af-4c35-b6d1-70e5a3c8f429"
     surface_entra_id = "b71d2e88-3f56-4c09-8ad4-6e19f7c2a5d0"
     iphone_iru_id = "0c9a4f61-8b23-4de7-95f0-31a8c6b74e29"
 
     admin = attest_posture_client(clients.admin_laptop, admin_intune_id, "FVFHF246Q72Z", issuer, "3A7F2C91", now)
-    surface = attest_posture_client(clients.user_surface, surface_entra_id, "046120283253", issuer, "5B1D8E04", now)
+    surface = attest_posture_client(clients.user_surface, surface_intune_id, "046120283253", issuer, "5B1D8E04", now)
     iphone = attest_posture_client(clients.user_iphone, iphone_iru_id, "DX3QK7WPL9GH", issuer, "9E4C6A72", now)
 
     # The rendering station never attested anything, so the only serial it has
@@ -1070,16 +1073,16 @@ defmodule Portal.Repo.Seeds do
       reason: "keyCompromise"
     })
 
-    seed_intune_devices(account, intune, now, admin, surface)
+    seed_intune_devices(account, intune, now, admin, surface, surface_entra_id)
     seed_iru_devices(account, iru, now, iphone)
-    seed_defender_devices(account, defender, now, surface)
+    seed_defender_devices(account, defender, now, surface_entra_id)
     seed_santa_devices(account, santa, now, admin)
     seed_sentinelone_devices(account, sentinelone, now, admin, rendering)
 
     IO.puts("Device posture providers created")
     IO.puts("  Contoso Intune, Iru Apple Fleet, Defender for Endpoint, Santa Workshop, SentinelOne Production")
     IO.puts("  #{admin.name}: attested, matched by MDM device id")
-    IO.puts("  #{surface.name}: attested, matched by Entra device id")
+    IO.puts("  #{surface.name}: attested, matched by MDM device id and linked into Defender")
     IO.puts("  #{iphone.name}: attested with a revoked certificate")
     IO.puts("  #{rendering.name}: unattested, matched by the serial it reports")
     IO.puts("")
@@ -1129,7 +1132,7 @@ defmodule Portal.Repo.Seeds do
     |> Repo.update!()
   end
 
-  defp seed_intune_devices(account, provider, now, admin, surface) do
+  defp seed_intune_devices(account, provider, now, admin, surface, surface_entra_id) do
     matched = [
       %{
         intune_id: admin.last_attested_mdm_device_id,
@@ -1144,8 +1147,8 @@ defmodule Portal.Repo.Seeds do
         person: 0
       },
       %{
-        intune_id: "1d84b7e0-92af-4c35-b6d1-70e5a3c8f429",
-        entra_device_id: surface.last_attested_mdm_device_id,
+        intune_id: surface.last_attested_mdm_device_id,
+        entra_device_id: surface_entra_id,
         device_name: "ENG-SURFACE-07",
         serial_number: surface.last_attested_device_serial,
         operating_system: "Windows",
@@ -1336,11 +1339,11 @@ defmodule Portal.Repo.Seeds do
     end
   end
 
-  defp seed_defender_devices(account, provider, now, surface) do
+  defp seed_defender_devices(account, provider, now, surface_entra_id) do
     matched = [
       %{
         defender_id: "2f8c1b47ad9e05c3716b4d820ea935f1c6d704b8",
-        entra_device_id: surface.last_attested_mdm_device_id,
+        entra_device_id: surface_entra_id,
         computer_dns_name: "eng-surface-07.#{@posture_domain}",
         os_platform: "Windows11",
         version: "24H2",
