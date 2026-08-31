@@ -84,8 +84,6 @@ defmodule Portal.Intune.SyncTest do
     assert device.exchange_last_successful_sync_at == ~U[2017-01-01 08:00:45.880308Z]
     assert device.exchange_access_state == "unknown"
     assert device.exchange_access_state_reason == "unknown"
-    assert device.remote_assistance_session_url == "https://example.com/session/"
-    assert device.remote_assistance_session_error_details == "Remote Assistance Error value"
     assert device.is_encrypted == true
     assert device.user_principal_name == "User Principal Name value"
     assert device.model == "Model value"
@@ -483,8 +481,6 @@ defmodule Portal.Intune.SyncTest do
       "exchangeLastSuccessfulSyncDateTime" => "2017-01-01T00:00:45.8803083-08:00",
       "exchangeAccessState" => "unknown",
       "exchangeAccessStateReason" => "unknown",
-      "remoteAssistanceSessionUrl" => "https://example.com/session/",
-      "remoteAssistanceSessionErrorDetails" => "Remote Assistance Error value",
       "isEncrypted" => true,
       "userPrincipalName" => "User Principal Name value",
       "model" => "Model value",

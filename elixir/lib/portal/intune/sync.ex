@@ -134,8 +134,6 @@ defmodule Portal.Intune.Sync do
     {:device_category_display_name, "deviceCategoryDisplayName"},
     {:exchange_access_state, "exchangeAccessState"},
     {:exchange_access_state_reason, "exchangeAccessStateReason"},
-    {:remote_assistance_session_url, "remoteAssistanceSessionUrl"},
-    {:remote_assistance_session_error_details, "remoteAssistanceSessionErrorDetails"},
     {:user_principal_name, "userPrincipalName"},
     {:model, "model"},
     {:manufacturer, "manufacturer"},
