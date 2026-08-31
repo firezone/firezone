@@ -200,8 +200,6 @@ jobs:
   commit-screenshots:
     name: commit-screenshots
     needs: [kotlin, swift, tauri]
-    # Dependabot runs read their secrets from the separate Dependabot store, which
-    # holds no signing key, so the commit below could not be signed.
     if: "!cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'"
     runs-on: ubuntu-24.04
     permissions:
