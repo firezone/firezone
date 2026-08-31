@@ -141,7 +141,7 @@ defmodule PortalWeb.ClientsTest do
 
       assert has_element?(lv, "button[disabled]", "Verify")
       refute has_element?(lv, "button[phx-click='verify_client']")
-      assert render(lv) =~ "This device is already attested through X.509 Device Trust."
+      assert render(lv) =~ "This device is already attested through an X.509 certificate."
     end
 
     test "orders by name and opens the panel from row click", %{
@@ -192,8 +192,8 @@ defmodule PortalWeb.ClientsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/clients/#{client.id}")
 
-      assert html =~ "Self-Reported"
-      assert html =~ "The Firezone Client supplies these values"
+      assert html =~ "Reported by Client"
+      assert html =~ "The Firezone Client reads and reports these values."
       assert html =~ "X.509 Device Trust"
       assert html =~ ~p"/#{account}/settings/trust_anchors"
     end
@@ -216,7 +216,7 @@ defmodule PortalWeb.ClientsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/clients/#{client.id}")
 
-      assert html =~ "Self-Reported"
+      assert html =~ "Reported by Client"
       refute html =~ "to strongly identify this device"
     end
 
@@ -269,7 +269,7 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "Open remote IP location in Google Maps"
       assert html =~ "Tunnel IPv4"
       assert html =~ "Tunnel IPv6"
-      assert html =~ "Verification"
+      assert html =~ "Trust Status"
       assert html =~ "Verified"
       assert html =~ session.last_seen_version
 

@@ -621,21 +621,31 @@ defmodule PortalWeb.Clients.Components do
   def client_device_section(assigns) do
     ~H"""
     <div class="px-5 pt-4 pb-3 border-b border-border">
-      <.section_heading title="Self-Reported" />
-      <p class="mb-3 text-xs text-subtle">
-        The Firezone Client supplies these values, so they are only as trustworthy as the actor
-        and the device it runs on.
-        <span :if={is_nil(@client.last_attested_at)}>
-          Set up
-          <.link
-            navigate={~p"/#{@account}/settings/trust_anchors"}
-            class="text-brand hover:underline"
-          >
-            X.509 Device Trust
-          </.link>
-          to strongly identify this device and associate it with posture data.
-        </span>
-      </p>
+      <.section_heading title="Reported by Client">
+        <:info>
+          <.popover placement="right">
+            <:target>
+              <.icon name="ri-information-line" class="w-3 h-3" />
+            </:target>
+            <:content>
+              <p>
+                The Firezone Client reads and reports these values. Only trust them if you trust
+                the actor and device.
+              </p>
+              <p :if={is_nil(@client.last_attested_at)} class="mt-1">
+                Set up
+                <.link
+                  navigate={~p"/#{@account}/settings/trust_anchors"}
+                  class="text-brand hover:underline"
+                >
+                  X.509 Device Trust
+                </.link>
+                to strongly identify this device and associate it with posture data.
+              </p>
+            </:content>
+          </.popover>
+        </:info>
+      </.section_heading>
       <dl class="space-y-3">
         <.client_detail_row :if={@client.last_seen_at} label="Operating System">
           <.client_os client={@client} />
@@ -1045,7 +1055,7 @@ defmodule PortalWeb.Clients.Components do
             <.relative_datetime datetime={@client.last_attested_at} />
           </span>
         </.client_detail_row>
-        <.client_detail_row label="Verification">
+        <.client_detail_row label="Trust Status">
           <.client_verified_status client={@client} />
         </.client_detail_row>
         <.client_detail_row label="Version">
@@ -1090,7 +1100,7 @@ defmodule PortalWeb.Clients.Components do
             </.action_button>
           </:target>
           <:content>
-            This device is already attested through X.509 Device Trust.
+            This device is already attested through an X.509 certificate.
           </:content>
         </.popover>
         <.action_button
@@ -1215,11 +1225,13 @@ defmodule PortalWeb.Clients.Components do
   end
 
   attr :title, :string, required: true
+  slot :info, doc: "Rendered beside the title, for a popover explaining the section"
 
   def section_heading(assigns) do
     ~H"""
-    <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
+    <h3 class="flex items-center gap-1 text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
       {@title}
+      {render_slot(@info)}
     </h3>
     """
   end
