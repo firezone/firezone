@@ -11,8 +11,6 @@ defmodule Portal.Authentication do
   alias Portal.Authentication.Credential
   alias Portal.Authentication.Subject
   alias __MODULE__.Database
-  require Logger
-
   # Client Tokens
 
   # Interactive client token - created during an interactive sign-in flow
@@ -382,11 +380,7 @@ defmodule Portal.Authentication do
          :ok <- verify_secret_hash(token, nonce, fragment) do
       {:ok, token}
     else
-      error ->
-        trace = Process.info(self(), :current_stacktrace)
-        Logger.info("Token use failed", stacktrace: trace, error: error)
-
-        {:error, :invalid_token}
+      _ -> {:error, :invalid_token}
     end
   end
 
@@ -427,11 +421,7 @@ defmodule Portal.Authentication do
          {:ok, subject} <- build_subject(token, context) do
       {:ok, subject}
     else
-      error ->
-        trace = Process.info(self(), :current_stacktrace)
-        Logger.info("Authentication failed", stacktrace: trace, error: error)
-
-        {:error, :invalid_token}
+      _ -> {:error, :invalid_token}
     end
   end
 
