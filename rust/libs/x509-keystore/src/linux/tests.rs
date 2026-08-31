@@ -23,34 +23,30 @@ use secrecy::ExposeSecret as _;
 use x509_parser::prelude::{FromDer as _, X509Certificate};
 
 use super::*;
+use crate::DetailField;
 use crate::sign::{der_encode_ecdsa_signature, der_integer, encode_der_length};
 
 #[test]
-fn an_unloadable_module_is_no_identity_rather_than_an_error() {
+fn an_unloadable_module_is_an_unreadable_keystore() {
     let modules = [PathBuf::from("/nonexistent/example-pkcs11.so")];
     let pin_file = Path::new("/nonexistent/pkcs11-pin");
 
-    let identity = identity_on(&modules, pin_file, "dev.firezone.device-trust")
-        .expect("an unreadable keystore is a machine without one, not an error");
-    assert!(identity.is_none());
+    let Err(error) = load_on(&modules, pin_file, "dev.firezone.device-trust") else {
+        panic!("a keystore whose every module failed should be reported as unreadable");
+    };
 
-    let status = status_on(&modules, pin_file, "dev.firezone.device-trust")
-        .expect("an unreadable keystore is a machine without one, not an error");
-    assert_eq!(status.problems, [Problem::UnreadablePkcs11Keystore]);
-    let warning = status.text_description();
+    let Error::UnreadablePkcs11Keystore { modules } = &error else {
+        panic!("expected an unreadable keystore, got {error:?}");
+    };
+    assert_eq!(
+        modules[..],
+        ["/nonexistent/example-pkcs11.so: Failed to load /nonexistent/example-pkcs11.so"],
+        "the entries show the short cause; the log carries the full chain"
+    );
+    let warning = error.to_string();
     assert!(
-        warning.contains("https://www.firezone.dev/kb/reference/device-certificates"),
+        warning.contains("https://www.firezone.dev/kb/install/linux"),
         "{warning} should point at the knowledge base"
-    );
-    let section = section(&status, "PKCS#11 Module");
-    assert_eq!(
-        field_value(section, "Module Path"),
-        Some("/nonexistent/example-pkcs11.so")
-    );
-    assert_eq!(
-        field_value(section, "Error"),
-        Some("Failed to load /nonexistent/example-pkcs11.so"),
-        "the diagnostics show the short cause; the log carries the full chain"
     );
 }
 
@@ -121,8 +117,9 @@ fn signs_with_the_token_key_of_an_rsa_certificate() {
     let token = provision_token("rsa", KeyAlgorithm::Rsa);
 
     let identity = token
-        .identity()
+        .load()
         .expect("the SoftHSM token should be readable")
+        .identity
         .expect("the provisioned certificate should be selected as the client identity");
 
     assert_eq!(leaf_of(&identity), token.certificate);
@@ -137,8 +134,9 @@ fn signs_with_the_token_key_of_an_ecdsa_certificate() {
     let token = provision_token("ecdsa", KeyAlgorithm::EcdsaP256);
 
     let identity = token
-        .identity()
+        .load()
         .expect("the SoftHSM token should be readable")
+        .identity
         .expect("the provisioned certificate should be selected as the client identity");
 
     assert_eq!(leaf_of(&identity), token.certificate);
@@ -152,24 +150,23 @@ fn signs_with_the_token_key_of_an_ecdsa_certificate() {
 
 #[test]
 #[ignore = "Requires the SoftHSM PKCS#11 module and writes to a temporary token store"]
-fn describes_a_provisioned_certificate_in_the_diagnostics() {
+fn describes_the_provisioned_certificate_it_loads() {
     let _serialized = serialize_token_access();
-    let token = provision_token("status", KeyAlgorithm::Rsa);
+    let token = provision_token("describe", KeyAlgorithm::Rsa);
 
-    let status = token
-        .status()
-        .expect("the SoftHSM token should be readable");
+    let report = token
+        .load()
+        .expect("the SoftHSM token should be readable")
+        .certificate
+        .expect("the provisioned certificate should be selected as the client identity");
 
-    assert_eq!(status.problems, []);
-    let certificate = section(&status, "Certificate");
+    let fields = report.certificate.detail_fields();
     assert_eq!(
-        field_value(certificate, "Common Name"),
+        field_value(&fields, "Common Name"),
         Some(token.subject_cn.as_str())
     );
-    // The diagnostics describe the certificate, not where the token keeps it.
-    assert_eq!(field_value(certificate, "Object Label"), None);
     assert_eq!(
-        field_value(certificate, "Signing Algorithm"),
+        field_value(&fields, "Signing Algorithm"),
         Some("SHA256withRSA")
     );
 }
@@ -181,18 +178,12 @@ fn reports_no_identity_when_no_certificate_matches() {
     let token = provision_token("absent", KeyAlgorithm::Rsa);
     let subject_cn = unique_subject_cn("absent-other");
 
-    let identity = token
-        .identity_of(&subject_cn)
-        .expect("the SoftHSM token should be readable");
-    let status = token
-        .status_of(&subject_cn)
+    let loaded = token
+        .load_of(&subject_cn)
         .expect("the SoftHSM token should be readable");
 
-    assert!(identity.is_none());
-    assert_eq!(
-        status.problems,
-        [Problem::NoPkcs11Certificate { subject_cn }]
-    );
+    assert!(loaded.certificate.is_none());
+    assert!(loaded.identity.is_none());
 }
 
 #[test]
@@ -202,14 +193,17 @@ fn signs_after_a_second_session_read_the_token() {
     let token = provision_token("overlapping", KeyAlgorithm::Rsa);
 
     let identity = token
-        .identity()
+        .load()
         .expect("the SoftHSM token should be readable")
+        .identity
         .expect("the provisioned certificate should be selected as the client identity");
-    // Stands in for the diagnostics screen, which opens and closes its own session on the token
-    // the identity holds one on.
+    // Stands in for the certificate screen's re-read, which opens and closes its own session on
+    // the token the identity holds one on.
     token
-        .status()
-        .expect("the token should be readable while an identity holds a session on it");
+        .load()
+        .expect("the token should be readable while an identity holds a session on it")
+        .identity
+        .expect("the second read should select the same certificate");
 
     identity
         .key
@@ -232,7 +226,7 @@ fn refuses_an_identity_whose_token_it_cannot_unlock() {
     let token = provision_token("no-pin", KeyAlgorithm::Rsa);
     fs::remove_file(&token.pin_file).expect("the PIN file should be removable");
 
-    let Err(refused) = token.identity() else {
+    let Err(refused) = token.load() else {
         panic!("a token that wants a PIN it cannot read should not yield an identity");
     };
 
@@ -249,7 +243,7 @@ fn refuses_an_identity_whose_pin_the_token_rejects() {
     let token = provision_token("wrong-pin", KeyAlgorithm::Rsa);
     write_pin_file(&token.pin_file, "not-the-pin");
 
-    let Err(refused) = token.identity() else {
+    let Err(refused) = token.load() else {
         panic!("a token that rejects the PIN should not yield an identity");
     };
 
@@ -437,17 +431,9 @@ fn leaf_of(identity: &Identity) -> Vec<u8> {
 }
 
 /// Returns the diagnostics section titled `title`.
-fn section<'a>(status: &'a Status, title: &str) -> &'a DetailSection {
-    status
-        .sections
-        .iter()
-        .find(|section| section.title == title)
-        .unwrap_or_else(|| panic!("the diagnostics should have a '{title}' section"))
-}
-
-/// Returns the value of the diagnostics row labelled `label`, if the section has one.
-fn field_value<'a>(section: &'a DetailSection, label: &str) -> Option<&'a str> {
-    let field = section.fields.iter().find(|field| field.label == label)?;
+/// Returns the value of the row labelled `label`, if the certificate's rows have one.
+fn field_value<'a>(fields: &'a [DetailField], label: &str) -> Option<&'a str> {
+    let field = fields.iter().find(|field| field.label == label)?;
 
     field.value.as_deref()
 }
@@ -508,24 +494,12 @@ struct Token {
 }
 
 impl Token {
-    fn identity(&self) -> Result<Option<Identity>> {
-        self.identity_of(&self.subject_cn)
+    fn load(&self) -> Result<Loaded, Error> {
+        self.load_of(&self.subject_cn)
     }
 
-    fn identity_of(&self, subject_cn: &str) -> Result<Option<Identity>> {
-        super::identity_on(
-            std::slice::from_ref(&self.module),
-            &self.pin_file,
-            subject_cn,
-        )
-    }
-
-    fn status(&self) -> Result<Status> {
-        self.status_of(&self.subject_cn)
-    }
-
-    fn status_of(&self, subject_cn: &str) -> Result<Status> {
-        super::status_on(
+    fn load_of(&self, subject_cn: &str) -> Result<Loaded, Error> {
+        super::load_on(
             std::slice::from_ref(&self.module),
             &self.pin_file,
             subject_cn,

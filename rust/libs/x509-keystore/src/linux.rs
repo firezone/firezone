@@ -32,9 +32,8 @@ use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
 use x509_credential::SigningError;
 
 use crate::{
-    CandidateCertificate, ClientIdentity, DetailField, DetailSection, Identity, Package, Problem,
-    Status, UnusableCause, certificate_sections, field, join, selected_certificate, sign,
-    unusable_causes,
+    CandidateCertificate, Error, Identity, Loaded, ReportedCertificate, UnusableCause,
+    selected_certificate, sign,
 };
 
 /// The directories p11-kit module configuration is read from, the administrator's first.
@@ -47,162 +46,92 @@ const MODULE_CONFIGURATION_DIRECTORIES: [&str; 2] =
 /// The file a token's PIN is read from.
 const PIN_FILE: &str = "/etc/firezone/pkcs11-pin";
 
-pub(crate) fn status(subject_cn: &str) -> Result<Status> {
+pub(crate) fn load(subject_cn: &str) -> Result<Loaded, Error> {
     let modules = registered_modules();
 
     if modules.is_empty() {
-        return Ok(Status {
-            problems: vec![Problem::MissingPackage {
-                package: Package::P11Kit,
-            }],
-            sections: Vec::new(),
-            identity: ClientIdentity::Absent,
-        });
+        return Err(Error::MissingP11Kit);
     }
 
-    status_on(&modules, Path::new(PIN_FILE), subject_cn)
+    load_on(&modules, Path::new(PIN_FILE), subject_cn)
 }
 
-pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
-    // A machine with no PKCS#11 stack has nowhere to hold a client identity, which is how most
-    // of them are set up rather than a misconfiguration. A token that does hold a certificate
-    // and cannot sign with it still fails the connect.
-    let modules = registered_modules();
-
-    if modules.is_empty() {
-        return Ok(None);
-    }
-
-    identity_on(&modules, Path::new(PIN_FILE), subject_cn)
-}
-
-fn status_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<Status> {
-    let mut sections = Vec::new();
-    let mut failures = 0;
+fn load_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<Loaded, Error> {
+    let mut failures = Vec::new();
 
     for module in modules {
         // A module that cannot be read leaves its tokens out of reach, the same as holding
         // none: it may be unloadable, as for a statically linked client, or fail to enumerate,
         // as when the service behind a driver is not running. One broken module must not hide
         // the tokens of the others.
-        let found = match find_token(module, subject_cn) {
-            Ok(found) => found,
-            Err(error) => {
-                tracing::debug!(module = %module.display(), "Skipping a PKCS#11 module: {error:#}");
-                sections.push(module_section(module, &error));
-                failures += 1;
-
-                continue;
-            }
-        };
-
-        let Some(candidate) = found else {
-            continue;
-        };
-
-        let token = unlock_token(candidate, pin_file)?;
-
-        return Ok(token_status(token));
-    }
-
-    // A machine whose every module failed has an unreadable keystore, not a missing
-    // certificate, and which of the two the administrator reads decides what they fix.
-    let problem = if failures == modules.len() {
-        Problem::UnreadablePkcs11Keystore
-    } else {
-        Problem::NoPkcs11Certificate {
-            subject_cn: subject_cn.to_owned(),
-        }
-    };
-
-    Ok(Status {
-        problems: vec![problem],
-        sections,
-        identity: ClientIdentity::Absent,
-    })
-}
-
-/// The diagnostics for the token that holds a matching certificate.
-fn token_status(token: Token) -> Status {
-    let selected = selected_certificate(&token.certificates);
-    let sections = certificate_sections(&token.certificates, selected);
-
-    Status {
-        problems: Vec::new(),
-        sections,
-        identity: selected
-            .map(|index| token.certificates[index].metadata.identity())
-            .unwrap_or(ClientIdentity::Absent),
-    }
-}
-
-/// The diagnostics section for a module that could not be read.
-///
-/// The error row shows only the short top-level cause: the raw loader and driver messages
-/// behind it are long, and the log carries the full chain.
-fn module_section(module: &Path, error: &anyhow::Error) -> DetailSection {
-    let fields = vec![
-        field("Module Path", module.display().to_string()),
-        field("Error", error.to_string()),
-    ];
-
-    DetailSection {
-        title: "PKCS#11 Module".to_owned(),
-        fields,
-    }
-}
-
-fn identity_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<Option<Identity>> {
-    for module in modules {
         let candidate = match find_token(module, subject_cn) {
             Ok(Some(candidate)) => candidate,
             Ok(None) => continue,
             Err(error) => {
                 tracing::debug!(module = %module.display(), "Skipping a PKCS#11 module: {error:#}");
+                // Only the short top-level cause: the raw loader and driver messages behind it
+                // are long, and the log carries the full chain.
+                failures.push(format!("{}: {error}", module.display()));
 
                 continue;
             }
         };
 
         // A matching token's verdict is final: a certificate that was provisioned for Firezone
-        // and cannot be used fails the connect rather than falling through to another module.
-        let identity = select_identity(candidate, pin_file)?;
+        // and cannot be used is reported rather than falling through to another module.
+        return select_identity(candidate, pin_file);
+    }
 
-        return Ok(Some(identity));
+    // A machine whose every module failed has an unreadable keystore, not a missing
+    // certificate, and which of the two the administrator reads decides what they fix.
+    if failures.len() == modules.len() {
+        return Err(Error::UnreadablePkcs11Keystore { modules: failures });
     }
 
     tracing::debug!("No PKCS#11 token holds a Firezone client identity");
 
-    Ok(None)
+    Ok(Loaded::default())
 }
 
 /// Unlocks the candidate's token and selects the certificate it presents for mutual TLS.
-fn select_identity(candidate: Candidate, pin_file: &Path) -> Result<Identity> {
+fn select_identity(candidate: Candidate, pin_file: &Path) -> Result<Loaded, Error> {
     let Token {
         session,
         objects,
         mut certificates,
         ..
-    } = unlock_token(candidate, pin_file)?;
-    let unusable = unusable_causes(&certificates);
+    } = unlock_token(candidate, pin_file).map_err(Error::identity_unavailable)?;
 
     let Some(index) = selected_certificate(&certificates) else {
-        // Skipping a certificate that was provisioned for Firezone reads to an administrator as if
-        // none had been, so say which rule it failed instead of connecting without it.
-        bail!(
-            "The PKCS#11 token holds no usable Firezone client identity: {}",
-            join(&unusable, "; ")
-        );
+        return Ok(Loaded::default());
     };
     let certificate = certificates.swap_remove(index);
 
-    let algorithm = certificate
-        .metadata
-        .signing_algorithm
-        .context("The selected PKCS#11 certificate uses an unsupported key algorithm")?;
-    let private_key = certificate
-        .key
-        .context("The PKCS#11 token holds no private key for the selected certificate")?;
+    // A certificate that was provisioned for Firezone but fails one of our rules must not read
+    // to an administrator as if none had been: it is reported with the rule it failed, and
+    // nothing is presented.
+    if let Some(cause) = certificate.unusable() {
+        return Ok(Loaded {
+            certificate: Some(ReportedCertificate {
+                certificate: certificate.metadata,
+                unusable: Some(cause),
+            }),
+            identity: None,
+        });
+    }
+
+    let Some(algorithm) = certificate.metadata.signing_algorithm else {
+        return Err(Error::IdentityUnavailable {
+            message: "The selected PKCS#11 certificate uses an unsupported key algorithm"
+                .to_owned(),
+        });
+    };
+    let Some(private_key) = certificate.key else {
+        return Err(Error::IdentityUnavailable {
+            message: "The PKCS#11 token holds no private key for the selected certificate"
+                .to_owned(),
+        });
+    };
     let chain = certificate_chain(&certificate.der, &objects)
         .into_iter()
         .map(CertificateDer::from)
@@ -220,7 +149,13 @@ fn select_identity(candidate: Candidate, pin_file: &Path) -> Result<Identity> {
         "Selected a PKCS#11 X.509 identity for mutual TLS"
     );
 
-    Ok(Identity { chain, key })
+    Ok(Loaded {
+        certificate: Some(ReportedCertificate {
+            certificate: certificate.metadata,
+            unusable: None,
+        }),
+        identity: Some(Identity { chain, key }),
+    })
 }
 
 /// A private key on a PKCS#11 token, reached through the session that unlocked it.
@@ -799,14 +734,6 @@ impl CandidateCertificate for Certificate {
 
     fn not_before_timestamp(&self) -> i64 {
         self.metadata.not_before_timestamp
-    }
-
-    fn detail_fields(&self) -> Vec<DetailField> {
-        self.metadata
-            .detail_fields()
-            .into_iter()
-            .map(DetailField::from)
-            .collect()
     }
 }
 
