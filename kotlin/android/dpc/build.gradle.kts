@@ -8,7 +8,9 @@ android {
 
     defaultConfig {
         applicationId = "dev.firezone.dpc"
-        minSdk = 26
+        // Higher than the app's: `grantKeyPairToApp` arrived in 30, and this only ever runs on
+        // emulators we pick.
+        minSdk = 30
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
