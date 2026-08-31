@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Run the instrumented tests on an attached device from already-built APKs"
-#USAGE arg "[package]" help="Only run tests in this package; runs all of them when omitted"
+#USAGE arg "[filter]..." help="AndroidJUnitRunner arguments to narrow what runs, e.g. --annotation <class> or --notAnnotation <class>"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -29,14 +29,28 @@ adb install -r -g -t "$app_apk"
 echo "==> Installing ${test_apk}"
 adb install -r -g -t "$test_apk"
 
+# Flags are AndroidJUnitRunner's own argument names, so `--notAnnotation X` reaches it as
+# `-e notAnnotation X` and its documentation reads across. Read positionally rather than through
+# `#USAGE`, which only binds under `mise run` and would leave a filter silently unset when a
+# workflow calls this directly.
+filter=()
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --*)
+        filter+=(-e "${1#--}" "$2")
+        shift 2
+        ;;
+    *)
+        echo "error: expected a flag like '--annotation <class>', got '$1'" >&2
+        exit 1
+        ;;
+    esac
+done
+
 echo "==> Running the tests..."
-# Read positionally rather than through `#USAGE`, which only binds under `mise run` and would
-# leave the filter silently unset when a workflow calls this directly.
-if [ -n "${1:-}" ]; then
-    result="$(adb shell am instrument -w -e package "$1" "$RUNNER")"
-else
-    result="$(adb shell am instrument -w "$RUNNER")"
-fi
+# Guarded because bash 3.2, which macOS still ships, treats an empty array as unset.
+result="$(adb shell am instrument -w ${filter[@]+"${filter[@]}"} "$RUNNER")"
 
 echo "$result"
 

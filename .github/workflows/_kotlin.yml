@@ -58,8 +58,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - suite: app
-            package: dev.firezone.android.e2e
+          # A suite is a device the tests need, since ownership is the one thing a test cannot
+          # set up for itself. Splitting them wants `--notAnnotation`/`--annotation` rather than
+          # a package, so that every test lands in exactly one suite by construction.
+          - suite: unmanaged
     name: emulator-tests (${{ matrix.suite }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -91,7 +93,6 @@ jobs:
           # `working-directory` default and starts at the repository root.
           script: >-
             ./kotlin/android/mise-tasks/emulator-tests.sh
-            ${{ matrix.package }}
 
   update-release-draft:
     name: update-release-draft
