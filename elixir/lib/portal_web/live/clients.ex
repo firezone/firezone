@@ -931,10 +931,11 @@ defmodule PortalWeb.Clients do
 
       1. the MDM device id the Client's certificate attested,
       2. the hardware serial that certificate attested,
-      3. the hardware serial the Client reports about itself.
+      3. the self-reported hardware serial.
 
-    Only the first two prove anything. The third is whatever the Client said
-    about itself, so the panel cautions about rows matched that way.
+    Only the first two prove anything. The third is only as trustworthy as the
+    actor and the device running the Client, so the panel labels rows matched
+    that way.
 
     Defender for Endpoint issues no device id of its own for a certificate to
     attest and its machines report no hardware serial, so a Defender row is
@@ -1010,8 +1011,8 @@ defmodule PortalWeb.Clients do
 
     A Client that attested a serial shows that one. Failing that, the serial the
     account's MDM holds for the device id the Client did attest, which is as
-    well proven as that id. Failing both, the serial the Client reports about
-    itself, which nothing vouches for.
+    well proven as that id. Failing both, the self-reported serial, which
+    nothing vouches for.
 
     One query per MDM the account has connected, for the whole page.
     """

@@ -192,8 +192,8 @@ defmodule PortalWeb.ClientsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/clients/#{client.id}")
 
-      assert html =~ "Reported by this Client"
-      assert html =~ "a malicious actor could spoof"
+      assert html =~ "Self-Reported"
+      assert html =~ "The Firezone Client supplies these values"
       assert html =~ "X.509 Device Trust"
       assert html =~ ~p"/#{account}/settings/trust_anchors"
     end
@@ -216,7 +216,7 @@ defmodule PortalWeb.ClientsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/clients/#{client.id}")
 
-      assert html =~ "Reported by this Client"
+      assert html =~ "Self-Reported"
       refute html =~ "to strongly identify this device"
     end
 
@@ -888,7 +888,7 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "INTUNE-1234"
       assert html =~ "compliant"
       assert html =~ "Attested device ID"
-      refute html =~ "Reported serial"
+      refute html =~ "Self-reported serial"
 
       # Columns the summary grid leaves out are still in the copy-paste blob.
       assert html =~ "Provider record"
@@ -949,8 +949,8 @@ defmodule PortalWeb.ClientsTest do
         |> live(~p"/#{account}/clients/#{client.id}?tab=posture")
 
       assert html =~ "SELF-REPORTED-01"
-      assert html =~ "Reported serial"
-      assert html =~ "spoofed by a malicious actor"
+      assert html =~ "Self-reported serial"
+      assert html =~ "Matched on a self-reported serial number"
       assert html =~ ~p"/#{account}/settings/trust_anchors"
     end
 
@@ -984,7 +984,7 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "Iru Prod"
       assert html =~ "MACBOOK-01"
       assert html =~ "Attested serial"
-      refute html =~ "Reported serial"
+      refute html =~ "Self-reported serial"
     end
 
     test "reaches the Defender record through the Intune record's Entra device id", %{

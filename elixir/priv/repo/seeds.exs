@@ -1041,14 +1041,23 @@ defmodule Portal.Repo.Seeds do
     surface_intune_id = "1d84b7e0-92af-4c35-b6d1-70e5a3c8f429"
     surface_entra_id = "b71d2e88-3f56-4c09-8ad4-6e19f7c2a5d0"
     iphone_iru_id = "0c9a4f61-8b23-4de7-95f0-31a8c6b74e29"
+    kiosk_intune_id = "7e4a9c13-2b68-4f05-a3d7-16c8e0b492f5"
+    macbook_air_iru_id = "d3927f5a-6c40-4e81-b2a9-5087c1d6e34b"
 
     admin = attest_posture_client(clients.admin_laptop, admin_intune_id, "FVFHF246Q72Z", issuer, "3A7F2C91", now)
     surface = attest_posture_client(clients.user_surface, surface_intune_id, "046120283253", issuer, "5B1D8E04", now)
     iphone = attest_posture_client(clients.user_iphone, iphone_iru_id, "DX3QK7WPL9GH", issuer, "9E4C6A72", now)
 
-    # The rendering station never attested anything, so the only serial it has
-    # is the one it reports about itself. Its SentinelOne match is the case the
-    # panel cautions about.
+    # An MDM template that stamps a device id and nothing else. Neither of these
+    # attests a serial, so the only serial the list can show for them is the one
+    # their provider record holds against that device id.
+    kiosk = attest_mdm_device_id(clients.user_kiosk, kiosk_intune_id, issuer, "7C0B3F15", now)
+
+    macbook_air =
+      attest_mdm_device_id(clients.user_macbook_air, macbook_air_iru_id, issuer, "2D9A5E68", now)
+
+    # The rendering station never attested anything, so its only serial is
+    # self-reported. Its SentinelOne match is the case the panel labels.
     rendering = Repo.update!(change(clients.user_rendering_station, device_serial: "PF0J4KX2"))
 
     # Valid, revoked, and unknown, so the panel's three certificate states are
@@ -1073,8 +1082,8 @@ defmodule Portal.Repo.Seeds do
       reason: "keyCompromise"
     })
 
-    seed_intune_devices(account, intune, now, admin, surface, surface_entra_id)
-    seed_iru_devices(account, iru, now, iphone)
+    seed_intune_devices(account, intune, now, admin, surface, surface_entra_id, kiosk)
+    seed_iru_devices(account, iru, now, iphone, macbook_air)
     seed_defender_devices(account, defender, now, surface_entra_id)
     seed_santa_devices(account, santa, now, admin)
     seed_sentinelone_devices(account, sentinelone, now, admin, rendering)
@@ -1084,7 +1093,9 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{admin.name}: attested, matched by MDM device id")
     IO.puts("  #{surface.name}: attested, matched by MDM device id and linked into Defender")
     IO.puts("  #{iphone.name}: attested with a revoked certificate")
-    IO.puts("  #{rendering.name}: unattested, matched by the serial it reports")
+    IO.puts("  #{rendering.name}: unattested, matched by a self-reported serial")
+    IO.puts("  #{kiosk.name}: attested a device id only, serial comes from Intune")
+    IO.puts("  #{macbook_air.name}: attested a device id only, serial comes from Iru")
     IO.puts("")
   end
 
@@ -1132,7 +1143,19 @@ defmodule Portal.Repo.Seeds do
     |> Repo.update!()
   end
 
-  defp seed_intune_devices(account, provider, now, admin, surface, surface_entra_id) do
+  defp attest_mdm_device_id(client, mdm_device_id, issuer, cert_serial, now) do
+    client
+    |> change(
+      last_attested_mdm_device_id: mdm_device_id,
+      last_attested_cert_serial: cert_serial,
+      last_attested_cert_fingerprint: posture_fingerprint(cert_serial),
+      last_attested_cert_issuer: issuer,
+      last_attested_at: DateTime.add(now, -3, :hour)
+    )
+    |> Repo.update!()
+  end
+
+  defp seed_intune_devices(account, provider, now, admin, surface, surface_entra_id, kiosk) do
     matched = [
       %{
         intune_id: admin.last_attested_mdm_device_id,
@@ -1158,6 +1181,18 @@ defmodule Portal.Repo.Seeds do
         device_enrollment_type: "windowsAzureADJoin",
         compliance_state: "compliant",
         person: 1
+      },
+      %{
+        intune_id: kiosk.last_attested_mdm_device_id,
+        device_name: "ENG-KIOSK-03",
+        serial_number: dell_tag(77),
+        operating_system: "Windows",
+        os_version: "10.0.26100.2894",
+        model: "OptiPlex 7010",
+        manufacturer: "Dell Inc.",
+        device_enrollment_type: "windowsAzureADJoin",
+        compliance_state: "compliant",
+        person: 6
       },
       %{
         intune_id: "6b02f5c4-1e79-4a63-8d50-92fb37e6c184",
@@ -1239,7 +1274,7 @@ defmodule Portal.Repo.Seeds do
     end
   end
 
-  defp seed_iru_devices(account, provider, now, iphone) do
+  defp seed_iru_devices(account, provider, now, iphone, macbook_air) do
     matched = [
       %{
         iru_id: iphone.last_attested_mdm_device_id,
@@ -1252,6 +1287,19 @@ defmodule Portal.Repo.Seeds do
         model_identifier: "iPhone17,1",
         blueprint_name: "Mobile Standard",
         person: 2
+      },
+      %{
+        iru_id: macbook_air.last_attested_mdm_device_id,
+        device_name: "ENG-MBA-021",
+        # Deliberately not the stale serial the Client still reports.
+        serial_number: "C02XY1CDKH6J",
+        platform: "Mac",
+        os_name: "macOS",
+        os_version: "15.6.1",
+        model: "MacBook Air 15-inch (M4, 2025)",
+        model_identifier: "Mac16,12",
+        blueprint_name: "Standard Laptop",
+        person: 3
       }
     ]
 
@@ -2340,6 +2388,39 @@ defmodule Portal.Repo.Seeds do
         @ua_ubuntu
       )
 
+    {:ok, user_kiosk} =
+      create_client(
+        %{
+          name: "FZ User Kiosk",
+          firezone_id: Ecto.UUID.generate(),
+          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+          device_uuid: "WIN-#{Ecto.UUID.generate()}",
+          ipv4: "100.64.0.15",
+          ipv6: "fd00:2021:1111::15"
+        },
+        unprivileged_subject,
+        unprivileged_client_token.id,
+        @ua_windows
+      )
+
+    {:ok, user_macbook_air} =
+      create_client(
+        %{
+          name: "FZ User MacBook Air",
+          firezone_id: Ecto.UUID.generate(),
+          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+          device_uuid: "MAC-#{Ecto.UUID.generate()}",
+          # Stale: the machine was reimaged and the Client never picked up the
+          # new serial, so the one Iru holds is the current one.
+          device_serial: "C02WX0ABJG5H",
+          ipv4: "100.64.0.16",
+          ipv6: "fd00:2021:1111::16"
+        },
+        unprivileged_subject,
+        unprivileged_client_token.id,
+        @ua_macos
+      )
+
     {:ok, admin_laptop} =
       create_client(
         %{
@@ -2388,7 +2469,9 @@ defmodule Portal.Repo.Seeds do
       admin_laptop: admin_laptop,
       user_surface: user_windows_laptop,
       user_iphone: user_iphone,
-      user_rendering_station: user_linux_laptop
+      user_rendering_station: user_linux_laptop,
+      user_kiosk: user_kiosk,
+      user_macbook_air: user_macbook_air
     })
 
     IO.puts("Created Groups: ")

@@ -621,10 +621,10 @@ defmodule PortalWeb.Clients.Components do
   def client_device_section(assigns) do
     ~H"""
     <div class="px-5 pt-4 pb-3 border-b border-border">
-      <.section_heading title="Reported by this Client" />
+      <.section_heading title="Self-Reported" />
       <p class="mb-3 text-xs text-subtle">
-        The Firezone Client reports these fields about itself, so a malicious actor could spoof
-        them.
+        The Firezone Client supplies these values, so they are only as trustworthy as the actor
+        and the device it runs on.
         <span :if={is_nil(@client.last_attested_at)}>
           Set up
           <.link
@@ -798,13 +798,13 @@ defmodule PortalWeb.Clients.Components do
     <.popover placement="left">
       <:target>
         <span class="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-warning bg-warning-light">
-          <.icon name="ri-error-warning-line" class="w-2.5 h-2.5" /> Reported serial
+          <.icon name="ri-error-warning-line" class="w-2.5 h-2.5" /> Self-reported serial
         </span>
       </:target>
       <:content>
         <p>
-          Matched on the serial number the device reports about itself. This field could be
-          spoofed by a malicious actor.
+          Matched on a self-reported serial number, which is only as trustworthy as the actor
+          and the device running the Client.
         </p>
         <p :if={@via == :intune} class="mt-1">
           Reached through the Microsoft Intune record that serial matched, which holds the same
@@ -1378,12 +1378,12 @@ defmodule PortalWeb.Clients.Components do
   end
 
   defp serial_source_hint(%{source: :attested}) do
-    "The serial number this device proved with an MDM-issued device certificate."
+    "This serial is attested directly through an X.509 certificate."
   end
 
   defp serial_source_hint(%{source: :mdm, provider: provider}) do
-    "#{posture_provider_label(provider)} holds this serial number for the device ID " <>
-      "this device proved with its certificate."
+    "This serial is reported by #{posture_provider_label(provider)} and matches " <>
+      "the attested device ID from an X.509 certificate."
   end
 
   defp posture_provider_label(:intune), do: "Microsoft Intune"
