@@ -213,7 +213,11 @@ export type X509ValidationError =
   | "NotAUuid"
   | "Ambiguous"
   | "PlaceholderIdentifier"
-  | "UnknownAttribute";
+  | "UnknownAttribute"
+  | "NotYetValid"
+  | "Expired"
+  | "MissingClientAuthEku"
+  | "DigitalSignatureNotAllowed";
 
 /** tauri-specta globals **/
 

@@ -124,6 +124,10 @@ pub enum X509ValidationError {
     Ambiguous,
     PlaceholderIdentifier,
     UnknownAttribute,
+    NotYetValid,
+    Expired,
+    MissingClientAuthEku,
+    DigitalSignatureNotAllowed,
 }
 
 impl From<&x509_keystore::ClientIdentity> for X509Identity {
@@ -238,6 +242,12 @@ impl From<x509_keystore::ValidationError> for X509ValidationError {
             x509_keystore::ValidationError::Ambiguous => Self::Ambiguous,
             x509_keystore::ValidationError::PlaceholderIdentifier => Self::PlaceholderIdentifier,
             x509_keystore::ValidationError::UnknownAttribute => Self::UnknownAttribute,
+            x509_keystore::ValidationError::NotYetValid => Self::NotYetValid,
+            x509_keystore::ValidationError::Expired => Self::Expired,
+            x509_keystore::ValidationError::MissingClientAuthEku => Self::MissingClientAuthEku,
+            x509_keystore::ValidationError::DigitalSignatureNotAllowed => {
+                Self::DigitalSignatureNotAllowed
+            }
         }
     }
 }

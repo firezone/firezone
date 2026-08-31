@@ -21,6 +21,10 @@ const VALIDATION_ERROR_TEXT: Record<X509ValidationError, string> = {
   Ambiguous: "more than one value was given",
   PlaceholderIdentifier: "a placeholder identifier",
   UnknownAttribute: "not an attribute we understand",
+  NotYetValid: "not yet valid",
+  Expired: "expired",
+  MissingClientAuthEku: "required for mutual TLS",
+  DigitalSignatureNotAllowed: "required to sign the TLS handshake",
 };
 
 const MISSING_PACKAGE_TEXT: Record<X509Package, string> = {
