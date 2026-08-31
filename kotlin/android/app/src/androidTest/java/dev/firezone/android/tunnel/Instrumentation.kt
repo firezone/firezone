@@ -5,24 +5,72 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.UiDevice
+import dev.firezone.android.core.presentation.MainActivity
 import java.util.concurrent.TimeUnit
 
 // The tunnel runs as a `systemExempted` foreground service, which the platform only lets an app
 // start while it holds VPN consent. Without this the first `startForeground` throws and takes the
 // whole instrumentation process with it.
 fun grantVpnConsent() {
-    val instrumentation = InstrumentationRegistry.getInstrumentation()
-
-    UiDevice
-        .getInstance(instrumentation)
-        .executeShellCommand("appops set ${instrumentation.targetContext.packageName} ACTIVATE_VPN allow")
+    shell("appops set ${packageName()} ACTIVATE_VPN allow")
 }
 
+// Without it the splash screen sends the app to the permission prompt instead of the session, and
+// nothing the tunnel posts on disconnect ever reaches the shade.
+fun grantNotificationPermission() {
+    shell("pm grant ${packageName()} android.permission.POST_NOTIFICATIONS")
+}
+
+// The same entry point the splash screen and the boot receiver use, so `startedByUser` is set
+// the way it is in production.
 fun startTunnelService() {
+    TunnelService.start(InstrumentationRegistry.getInstrumentation().targetContext)
+}
+
+// Enters through the launcher, so that the splash screen's own routing decides which screen the
+// test ends up on.
+fun launchApp() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
 
-    context.startService(Intent(context, TunnelService::class.java))
+    context.startActivity(
+        Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
+    )
+}
+
+// The app spans several activities and the test only starts the first, so it cannot clean up by
+// handle. Whatever is left standing would otherwise show the previous test's screen to the next.
+fun finishAllActivities() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
+
+    while (true) {
+        var remaining = emptyList<String>()
+
+        instrumentation.runOnMainSync {
+            val activities =
+                Stage
+                    .values()
+                    .filter { it != Stage.DESTROYED }
+                    .flatMap { ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(it) }
+
+            remaining = activities.map { it::class.java.simpleName }
+            activities.forEach { it.finish() }
+        }
+
+        if (remaining.isEmpty()) {
+            return
+        }
+
+        if (System.nanoTime() > deadline) {
+            throw AssertionError("Activities are still up: $remaining")
+        }
+
+        Thread.sleep(50)
+    }
 }
 
 // A started service outlives the test that started it, so without this the next test would drive
@@ -40,6 +88,12 @@ fun stopTunnelService() {
 
         Thread.sleep(50)
     }
+}
+
+private fun packageName() = InstrumentationRegistry.getInstrumentation().targetContext.packageName
+
+private fun shell(command: String) {
+    UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).executeShellCommand(command)
 }
 
 @Suppress("DEPRECATION")

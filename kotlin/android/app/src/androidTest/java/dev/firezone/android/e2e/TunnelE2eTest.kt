@@ -1,26 +1,31 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.e2e
 
+import android.app.Notification
+import android.app.NotificationManager
+import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.lifecycle.Lifecycle
-import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.features.session.ui.SessionActivity
 import dev.firezone.android.tunnel.FakeDisconnectError
 import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
+import dev.firezone.android.tunnel.TunnelNotification
 import dev.firezone.android.tunnel.connectedDevice
 import dev.firezone.android.tunnel.dnsResource
+import dev.firezone.android.tunnel.finishAllActivities
+import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
 import dev.firezone.android.tunnel.internetResource
+import dev.firezone.android.tunnel.launchApp
 import dev.firezone.android.tunnel.startTunnelService
 import dev.firezone.android.tunnel.stopTunnelService
 import kotlinx.coroutines.flow.first
@@ -36,9 +41,10 @@ import uniffi.connlib.Event
 import uniffi.connlib.NoHandle
 import javax.inject.Inject
 
-// End-to-end through the real app: a signed-in device starts the real `TunnelService`, and the
-// only thing standing in for production is connlib itself. What the fake session emits has to
-// come out the other end on screen, and what the screen does has to reach the fake session.
+// End-to-end through the real app, entered the way a user enters it: the launcher activity, the
+// splash screen's own routing and the real `TunnelService`. The only thing standing in for
+// production is connlib. What the fake session emits has to come out on screen, and what the
+// screen does has to reach the fake session.
 @HiltAndroidTest
 class TunnelE2eTest {
     @get:Rule(order = 0)
@@ -57,9 +63,13 @@ class TunnelE2eTest {
     fun setUp() {
         hiltRule.inject()
         grantVpnConsent()
-        // Ending the last test's sessions first is what lets its service finish and stop.
+        grantNotificationPermission()
+        // Order matters: ending the last test's sessions lets its service finish, and finishing
+        // its activities releases the binding that would otherwise keep the service alive.
         FakeSessionFactory.reset()
+        finishAllActivities()
         stopTunnelService()
+        notificationManager().cancelAll()
         preferences.edit().clear().commit()
         TestRestrictions.bundle.clear()
     }
@@ -74,11 +84,10 @@ class TunnelE2eTest {
                 connectedDevices = emptyList(),
             ),
         )
+        launchApp()
 
-        onSessionScreen {
-            awaitText("GitLab")
-            composeRule.onNodeWithText("gitlab.example.com").assertIsDisplayed()
-        }
+        awaitText("GitLab")
+        composeRule.onNodeWithText("gitlab.example.com").assertIsDisplayed()
     }
 
     @Test
@@ -91,11 +100,10 @@ class TunnelE2eTest {
                 connectedDevices = listOf(connectedDevice(name = "Ada's Laptop")),
             ),
         )
+        launchApp()
 
-        onSessionScreen {
-            awaitText("Ada's Laptop")
-            composeRule.onNodeWithText("Connected Devices").assertIsDisplayed()
-        }
+        awaitText("Ada's Laptop")
+        composeRule.onNodeWithText("Connected Devices").assertIsDisplayed()
     }
 
     @Test
@@ -103,28 +111,28 @@ class TunnelE2eTest {
         val session = signInAndConnect()
 
         session.emit(Event.ConnectedToPortal(accountSlug = "acme", actorName = "Ada Lovelace"))
+        launchApp()
 
-        onSessionScreen {
-            // The top bar shows the initial; the name itself is behind the menu.
-            awaitText("A")
-            composeRule.onNodeWithText("A").performClick()
-            awaitText("Ada Lovelace")
-        }
+        // The top bar shows the initial; the name itself is behind the menu.
+        awaitText("A")
+        composeRule.onNodeWithText("A").performClick()
+        awaitText("Ada Lovelace")
     }
 
     @Test
     fun aResourceUpdateAfterTheScreenIsOpenReachesIt() {
         val session = signInAndConnect()
+        launchApp()
+        awaitSessionScreen()
 
-        onSessionScreen {
-            session.emit(
-                Event.ResourcesUpdated(
-                    resources = listOf(dnsResource(name = "GitLab")),
-                    connectedDevices = emptyList(),
-                ),
-            )
-            awaitText("GitLab")
-        }
+        session.emit(
+            Event.ResourcesUpdated(
+                resources = listOf(dnsResource(name = "GitLab")),
+                connectedDevices = emptyList(),
+            ),
+        )
+
+        awaitText("GitLab")
     }
 
     @Test
@@ -137,56 +145,52 @@ class TunnelE2eTest {
                 connectedDevices = emptyList(),
             ),
         )
+        launchApp()
 
-        onSessionScreen {
-            awaitText("Internet Resource", substring = true)
-            composeRule.onNodeWithText("Internet Resource", substring = true).performClick()
-            awaitText("Enable this resource")
-            composeRule.onNodeWithText("Enable this resource").performClick()
+        awaitText("Internet Resource", substring = true)
+        composeRule.onNodeWithText("Internet Resource", substring = true).performClick()
+        awaitText("Enable this resource")
+        composeRule.onNodeWithText("Enable this resource").performClick()
 
-            runBlocking {
-                withTimeout(TIMEOUT_MS) { session.awaitCommand("setInternetResourceState=true") }
-            }
-        }
+        runBlocking { withTimeout(TIMEOUT_MS) { session.awaitCommand("setInternetResourceState=true") } }
     }
 
     @Test
-    fun aShutdownClosesTheScreen() {
+    fun aDisconnectErrorReturnsToTheSignInScreenAndNotifies() {
         val session = signInAndConnect()
+        launchApp()
+        awaitSessionScreen()
 
-        ActivityScenario.launch(SessionActivity::class.java).use { scenario ->
-            composeRule.waitUntil(TIMEOUT_MS) { scenario.state == Lifecycle.State.RESUMED }
+        session.emit(Event.Disconnected(FakeDisconnectError(signInRequired = false, text = "the portal hung up")))
 
-            session.emit(Event.Disconnected(FakeDisconnectError(signInRequired = false)))
-
-            composeRule.waitUntil(TIMEOUT_MS) { scenario.state == Lifecycle.State.DESTROYED }
-            assertEquals(TOKEN, repo.getTokenSync())
-        }
+        awaitSignInScreen()
+        assertEquals("the portal hung up", awaitDisconnectedNotification())
+        // The token is still good, so the disconnect must not have discarded it.
+        assertEquals(TOKEN, repo.getTokenSync())
     }
 
     @Test
-    fun aShutdownThatRequiresSigningInAgainDiscardsTheToken() {
+    fun aDisconnectErrorThatRequiresSigningInAgainAlsoDiscardsTheToken() {
         val session = signInAndConnect()
+        launchApp()
+        awaitSessionScreen()
 
-        ActivityScenario.launch(SessionActivity::class.java).use { scenario ->
-            composeRule.waitUntil(TIMEOUT_MS) { scenario.state == Lifecycle.State.RESUMED }
+        session.emit(Event.Disconnected(FakeDisconnectError(signInRequired = true, text = "your session expired")))
 
-            session.emit(Event.Disconnected(FakeDisconnectError(signInRequired = true)))
-
-            composeRule.waitUntil(TIMEOUT_MS) { scenario.state == Lifecycle.State.DESTROYED }
-            assertNull(repo.getTokenSync())
-        }
+        awaitSignInScreen()
+        assertEquals("your session expired", awaitDisconnectedNotification())
+        assertNull(repo.getTokenSync())
     }
 
     @Test
-    fun aConnlibThatRefusesToStartClosesTheScreen() {
+    fun aConnlibThatRefusesToStartLeavesTheUserOnTheSignInScreen() {
         FakeSessionFactory.failWith = { ConnlibException(NoHandle) }
         signIn()
-        startTunnelService()
 
-        ActivityScenario.launch(SessionActivity::class.java).use { scenario ->
-            composeRule.waitUntil(TIMEOUT_MS) { scenario.state == Lifecycle.State.DESTROYED }
-        }
+        startTunnelService()
+        launchApp()
+
+        awaitSignInScreen()
     }
 
     @Test
@@ -213,9 +217,9 @@ class TunnelE2eTest {
 
     private fun awaitSession(): FakeSession = runBlocking { withTimeout(TIMEOUT_MS) { FakeSessionFactory.awaitSession() } }
 
-    private fun onSessionScreen(block: () -> Unit) {
-        ActivityScenario.launch(SessionActivity::class.java).use { block() }
-    }
+    private fun awaitSessionScreen() = awaitText("Resources")
+
+    private fun awaitSignInScreen() = awaitText("Sign in to access Resources.")
 
     private fun awaitText(
         text: String,
@@ -225,6 +229,25 @@ class TunnelE2eTest {
             composeRule.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty()
         }
     }
+
+    private fun awaitDisconnectedNotification(): String? {
+        composeRule.waitUntil(TIMEOUT_MS) { disconnectedNotification() != null }
+
+        return disconnectedNotification()
+    }
+
+    private fun disconnectedNotification(): String? =
+        notificationManager()
+            .activeNotifications
+            .firstOrNull { it.id == TunnelNotification.DISCONNECTED_NOTIFICATION_ID }
+            ?.notification
+            ?.extras
+            ?.getString(Notification.EXTRA_TEXT)
+
+    private fun notificationManager(): NotificationManager =
+        ApplicationProvider
+            .getApplicationContext<Context>()
+            .getSystemService(NotificationManager::class.java)
 
     private companion object {
         const val TOKEN = "stored-token"
