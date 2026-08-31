@@ -46,6 +46,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.withContext
 import uniffi.connlib.AndroidSessionConfig
 import uniffi.connlib.ConnlibException
 import uniffi.connlib.DeviceInfo
@@ -314,21 +315,6 @@ class TunnelService : VpnService() {
             // Dismiss any previous disconnected notifications
             TunnelNotification.dismissDisconnectedNotification(this)
 
-            val firebaseInstallationId =
-                runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
-                    .getOrElse { exception ->
-                        Log.d(TAG, "Failed to obtain firebase installation id: $exception")
-                        null
-                    }
-
-            val deviceInfo =
-                DeviceInfo(
-                    firebaseInstallationId = firebaseInstallationId,
-                    deviceUuid = null,
-                    deviceSerial = null,
-                    identifierForVendor = null,
-                )
-
             commandChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
 
             val context = this
@@ -347,6 +333,14 @@ class TunnelService : VpnService() {
                         config.logFilter,
                         flowLogsDir(this@TunnelService),
                     )
+
+                    val deviceInfo =
+                        DeviceInfo(
+                            firebaseInstallationId = firebaseInstallationId(),
+                            deviceUuid = null,
+                            deviceSerial = null,
+                            identifierForVendor = null,
+                        )
 
                     sessionFactory
                         .open(
@@ -532,6 +526,17 @@ class TunnelService : VpnService() {
     private fun updateActorNameStateFlow(actorName: String?) {
         actorNameMutableStateFlow?.value = actorName
     }
+
+    // `Tasks.await` throws when called on the main thread, which is the thread `onStartCommand`
+    // runs `connect` on.
+    private suspend fun firebaseInstallationId(): String? =
+        withContext(Dispatchers.IO) {
+            runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
+                .getOrElse { exception ->
+                    Log.d(TAG, "Failed to obtain firebase installation id: $exception")
+                    null
+                }
+        }
 
     private fun deviceId(): String {
         // Get the deviceId from the preferenceRepository, or save a new UUIDv4 and return that if it doesn't exist
