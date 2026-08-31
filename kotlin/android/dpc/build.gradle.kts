@@ -1,5 +1,18 @@
 plugins {
     id("com.android.application")
+    id("com.diffplug.spotless") version "8.9.0"
+}
+
+spotless {
+    kotlin {
+        ktlint()
+        target("**/*.kt")
+        licenseHeader("// Licensed under Apache 2.0 (C) \$YEAR Firezone, Inc.", "^(package |import |@file)")
+    }
+    kotlinGradle {
+        ktlint()
+        target("**/*.gradle.kts")
+    }
 }
 
 android {

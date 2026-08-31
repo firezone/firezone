@@ -79,7 +79,8 @@ jobs:
           # Narrowing the ABI reuses the cargo build the other jobs already do.
           script: >-
             cd kotlin/android &&
-            ./dpc/provision-and-probe.sh
+            ./gradlew connectedDebugAndroidTest
+            -Pandroid.injected.build.abi=x86_64
 
   update-release-draft:
     name: update-release-draft
