@@ -35,11 +35,11 @@ data class LoadedX509Identity(
     /**
      * Who the certificate says is connecting, which decides what the sign-in screen offers.
      *
-     * A leaf we could not parse still claims whoever holds it: [Identity.Absent] is a missing
-     * [LoadedX509Identity], not one we failed to read.
+     * A leaf we could not parse claims nobody: the certificate is still presented, but the
+     * session signs in with a token and the portal judges what it was handed.
      */
     val identity: Identity
-        get() = certificate?.identity ?: Identity.Claimed(email = null)
+        get() = certificate?.identity ?: Identity.Absent
 }
 
 /**
