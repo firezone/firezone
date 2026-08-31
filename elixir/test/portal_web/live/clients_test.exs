@@ -797,6 +797,23 @@ defmodule PortalWeb.ClientsTest do
       %{account: account, actor: actor}
     end
 
+    test "hides the tab while the feature is off for the deployment", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      enable_device_posture(false)
+      client = client_fixture(account: account, actor: actor)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}?tab=posture")
+
+      refute html =~ "phx-value-tab=\"posture\""
+      assert html =~ "Tunnel IPv4"
+    end
+
     test "offers the tab to every client", %{conn: conn, account: account, actor: actor} do
       client = client_fixture(account: account, actor: actor, device_serial: "UNKNOWN-SERIAL")
 

@@ -327,6 +327,13 @@ defmodule PortalWeb.Clients.Components do
   attr :policy_authorizations_expanded_id, :string, default: nil
 
   def client_details_view(assigns) do
+    posture_tab? = device_posture_enabled?()
+
+    assigns =
+      assigns
+      |> assign(:posture_tab?, posture_tab?)
+      |> assign(:tab, visible_client_tab(assigns.tab, posture_tab?))
+
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
       <.client_details_header client={@client} />
@@ -342,7 +349,12 @@ defmodule PortalWeb.Clients.Components do
               label="Authorizations"
               selected={@tab == :authorizations}
             />
-            <.client_tab tab="posture" label="Posture" selected={@tab == :posture} />
+            <.client_tab
+              :if={@posture_tab?}
+              tab="posture"
+              label="Posture"
+              selected={@tab == :posture}
+            />
           </div>
           <div :if={@tab == :overview} class="flex-1 overflow-y-auto">
             <.client_owner_section account={@account} client={@client} />
@@ -1373,6 +1385,12 @@ defmodule PortalWeb.Clients.Components do
 
   defp attested_action_label(:attested_verify), do: "Verify"
   defp attested_action_label(_action), do: "Revoke verification"
+
+  # The Posture tab is hidden while the feature is off for the whole
+  # deployment, so a link into it lands on the overview rather than on blank
+  # space.
+  defp visible_client_tab(:posture, false), do: :overview
+  defp visible_client_tab(tab, _posture_tab?), do: tab
 
   defp posture_tab_state(assigns) do
     cond do
