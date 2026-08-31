@@ -312,6 +312,10 @@ private fun ValidationError.phrase(): Int =
         ValidationError.AMBIGUOUS -> R.string.x509_claim_ambiguous
         ValidationError.PLACEHOLDER_IDENTIFIER -> R.string.x509_claim_placeholder_identifier
         ValidationError.UNKNOWN_ATTRIBUTE -> R.string.x509_claim_unknown_attribute
+        ValidationError.NOT_YET_VALID -> R.string.x509_claim_not_yet_valid
+        ValidationError.EXPIRED -> R.string.x509_claim_expired
+        ValidationError.MISSING_CLIENT_AUTH_EKU -> R.string.x509_claim_missing_client_auth_eku
+        ValidationError.DIGITAL_SIGNATURE_NOT_ALLOWED -> R.string.x509_claim_digital_signature_not_allowed
     }
 
 private fun List<DetailField>.valueOf(label: String): String? = firstOrNull { it.label == label }?.value

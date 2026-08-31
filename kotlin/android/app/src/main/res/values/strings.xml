@@ -54,6 +54,10 @@
 	<string name="x509_claim_ambiguous">More than one value was given</string>
 	<string name="x509_claim_placeholder_identifier">Placeholder identifier</string>
 	<string name="x509_claim_unknown_attribute">Unrecognised attribute</string>
+	<string name="x509_claim_not_yet_valid">Not yet valid</string>
+	<string name="x509_claim_expired">Expired</string>
+	<string name="x509_claim_missing_client_auth_eku">Required for mutual TLS</string>
+	<string name="x509_claim_digital_signature_not_allowed">Required to sign the TLS handshake</string>
 
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>
