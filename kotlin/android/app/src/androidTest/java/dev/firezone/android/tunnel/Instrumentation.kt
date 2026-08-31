@@ -73,6 +73,23 @@ fun finishAllActivities() {
     }
 }
 
+// Names what the user would be looking at, which is what tells a screen that has not arrived yet
+// apart from an app that has closed.
+fun resumedActivity(): String {
+    var name = "nothing"
+
+    InstrumentationRegistry.getInstrumentation().runOnMainSync {
+        name =
+            ActivityLifecycleMonitorRegistry
+                .getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .joinToString { it::class.java.simpleName }
+                .ifEmpty { "nothing" }
+    }
+
+    return name
+}
+
 // A started service outlives the test that started it, so without this the next test would drive
 // whatever the previous one left running.
 fun stopTunnelService() {

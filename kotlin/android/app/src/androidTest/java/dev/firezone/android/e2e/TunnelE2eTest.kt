@@ -26,6 +26,7 @@ import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
 import dev.firezone.android.tunnel.internetResource
 import dev.firezone.android.tunnel.launchApp
+import dev.firezone.android.tunnel.resumedActivity
 import dev.firezone.android.tunnel.startTunnelService
 import dev.firezone.android.tunnel.stopTunnelService
 import kotlinx.coroutines.flow.first
@@ -39,6 +40,7 @@ import org.junit.Test
 import uniffi.connlib.ConnlibException
 import uniffi.connlib.Event
 import uniffi.connlib.NoHandle
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 // End-to-end through the real app, entered the way a user enters it: the launcher activity, the
@@ -224,16 +226,33 @@ class TunnelE2eTest {
     private fun awaitText(
         text: String,
         substring: Boolean = false,
-    ) {
-        composeRule.waitUntil(TIMEOUT_MS) {
+    ) = await("\"$text\" on screen") {
+        // The splash screen is a View, so there are moments with no Compose content at all, which
+        // `fetchSemanticsNodes` reports as an error rather than as an empty screen.
+        runCatching {
             composeRule.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty()
-        }
+        }.getOrDefault(false)
     }
 
     private fun awaitDisconnectedNotification(): String? {
-        composeRule.waitUntil(TIMEOUT_MS) { disconnectedNotification() != null }
+        await("the disconnected notification") { disconnectedNotification() != null }
 
         return disconnectedNotification()
+    }
+
+    private fun await(
+        what: String,
+        condition: () -> Boolean,
+    ) {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(TIMEOUT_MS)
+
+        while (!condition()) {
+            if (System.nanoTime() > deadline) {
+                throw AssertionError("Timed out waiting for $what, showing ${resumedActivity()}")
+            }
+
+            Thread.sleep(50)
+        }
     }
 
     private fun disconnectedNotification(): String? =
