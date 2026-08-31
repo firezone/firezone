@@ -18,6 +18,10 @@ public enum X509ValidationError: Hashable, Sendable {
   case ambiguous
   case placeholderIdentifier
   case unknownAttribute
+  case notYetValid
+  case expired
+  case missingClientAuthEku
+  case digitalSignatureNotAllowed
 
   /// A phrase that reads after the claim it explains.
   public var label: String {
@@ -29,6 +33,10 @@ public enum X509ValidationError: Hashable, Sendable {
     case .ambiguous: return "more than one value was given"
     case .placeholderIdentifier: return "a placeholder identifier"
     case .unknownAttribute: return "not an attribute we understand"
+    case .notYetValid: return "not yet valid"
+    case .expired: return "expired"
+    case .missingClientAuthEku: return "required for mutual TLS"
+    case .digitalSignatureNotAllowed: return "required to sign the TLS handshake"
     }
   }
 }

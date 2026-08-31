@@ -174,6 +174,10 @@ extension X509ValidationError {
     case .ambiguous: self = .ambiguous
     case .placeholderIdentifier: self = .placeholderIdentifier
     case .unknownAttribute: self = .unknownAttribute
+    case .notYetValid: self = .notYetValid
+    case .expired: self = .expired
+    case .missingClientAuthEku: self = .missingClientAuthEku
+    case .digitalSignatureNotAllowed: self = .digitalSignatureNotAllowed
     }
   }
 }
