@@ -94,6 +94,8 @@ defmodule PortalAPI.LogController do
         Inclusive start of the time window. RFC 3339 timestamp; non-UTC
         offsets are accepted and converted to UTC. Defaults to 90 days
         before the current time when omitted.
+
+        For `flow` entries the window applies to when the flow started.
         """,
         type: :string,
         example: "2026-02-25T00:00:00Z"
@@ -104,6 +106,8 @@ defmodule PortalAPI.LogController do
         Inclusive end of the time window. RFC 3339 timestamp; non-UTC
         offsets are accepted and converted to UTC. Defaults to the current
         time when omitted.
+
+        For `flow` entries the window applies to when the flow started.
         """,
         type: :string,
         example: "2026-05-26T00:00:00Z"
@@ -466,36 +470,18 @@ defmodule PortalAPI.LogController do
         ]
       end
 
-      # The window matches flows that were active at any point inside it:
-      # the flow's [flow_start, flow_end) range must overlap [begin, end].
-      # Each bound is written as a range-overlap against
-      # tstzrange(flow_start, flow_end, '[)') so it matches the expression
-      # indexed by the flow_logs_unique_flow_per_window exclusion constraint
-      # and can be served by its GiST index.
+      # The window is a plain range over flow_start, the same way the other log
+      # types filter on their one timestamp. flow_end is reported by the
+      # gateway from its own clock and is never queried, so a flow whose
+      # reported end precedes its start is listed like any other.
+      #
+      # flow_start is also the partition key, so both bounds prune.
       defp filter_by_begin(queryable, %DateTime{} = begin_at) do
-        {queryable,
-         dynamic(
-           [logs: l],
-           fragment(
-             "tstzrange(?, ?, '[)') && tstzrange(?, NULL, '[)')",
-             l.flow_start,
-             l.flow_end,
-             ^begin_at
-           )
-         )}
+        {queryable, dynamic([logs: l], l.flow_start >= ^begin_at)}
       end
 
       defp filter_by_end(queryable, %DateTime{} = end_at) do
-        {queryable,
-         dynamic(
-           [logs: l],
-           fragment(
-             "tstzrange(?, ?, '[)') && tstzrange(NULL, ?, '(]')",
-             l.flow_start,
-             l.flow_end,
-             ^end_at
-           )
-         )}
+        {queryable, dynamic([logs: l], l.flow_start <= ^end_at)}
       end
 
       # The `actor_id` / `actor_email` filter names are shared across all four
