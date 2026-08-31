@@ -1055,7 +1055,15 @@ defmodule PortalWeb.Clients.Components do
             <.relative_datetime datetime={@client.last_attested_at} />
           </span>
         </.client_detail_row>
-        <.client_detail_row label="Trust Status">
+        <.client_detail_row label="Trust level">
+          <:info>
+            <.popover placement="left">
+              <:target>
+                <.icon name="ri-information-line" class="w-3 h-3" />
+              </:target>
+              <:content>{trust_hint(@client)}</:content>
+            </.popover>
+          </:info>
           <.client_verified_status client={@client} />
         </.client_detail_row>
         <.client_detail_row label="Version">
@@ -1238,11 +1246,15 @@ defmodule PortalWeb.Clients.Components do
 
   slot :inner_block, required: true
   attr :label, :string, required: true
+  slot :info, doc: "Rendered beside the label, for a popover explaining the row"
 
   def client_detail_row(assigns) do
     ~H"""
     <div>
-      <dt class="text-[10px] text-subtle mb-0.5">{@label}</dt>
+      <dt class="flex items-center gap-1 text-[10px] text-subtle mb-0.5">
+        {@label}
+        {render_slot(@info)}
+      </dt>
       <dd>{render_slot(@inner_block)}</dd>
     </div>
     """
@@ -1281,7 +1293,7 @@ defmodule PortalWeb.Clients.Components do
       label: "Attested",
       icon: "ri-shield-keyhole-line",
       class: "text-success bg-success-light",
-      title: "This device proved possession of an MDM-issued client certificate"
+      title: "This device is attested through an X.509 certificate."
     }
   end
 
@@ -1290,11 +1302,18 @@ defmodule PortalWeb.Clients.Components do
       label: "Verified",
       icon: "ri-shield-check-line",
       class: "text-success bg-success-light",
-      title: "Device attributes of this client are manually verified"
+      title: "An admin vouched for the values this Client reports."
     }
   end
 
   defp trust_state(_client), do: nil
+
+  defp trust_hint(client) do
+    case trust_state(client) do
+      %{title: title} -> title
+      nil -> "No certificate or admin has vouched for the values this Client reports."
+    end
+  end
 
   attr :account, :any, required: true
 

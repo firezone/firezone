@@ -142,6 +142,7 @@ defmodule PortalWeb.ClientsTest do
       assert has_element?(lv, "button[disabled]", "Verify")
       refute has_element?(lv, "button[phx-click='verify_client']")
       assert render(lv) =~ "This device is already attested through an X.509 certificate."
+      assert render(lv) =~ "This device is attested through an X.509 certificate."
     end
 
     test "orders by name and opens the panel from row click", %{
@@ -269,7 +270,8 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "Open remote IP location in Google Maps"
       assert html =~ "Tunnel IPv4"
       assert html =~ "Tunnel IPv6"
-      assert html =~ "Trust Status"
+      assert html =~ "Trust level"
+      assert html =~ "An admin vouched for the values this Client reports."
       assert html =~ "Verified"
       assert html =~ session.last_seen_version
 

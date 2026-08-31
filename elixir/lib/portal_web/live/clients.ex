@@ -787,7 +787,7 @@ defmodule PortalWeb.Clients do
         },
         %Portal.Repo.Filter{
           name: :attestation,
-          title: "Attestation level",
+          title: "Trust level",
           type: {:string, :select},
           values: [
             {"Verified", "verified"},
