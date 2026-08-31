@@ -8,6 +8,22 @@ source "${SCRIPT_DIR}/lib.sh"
 
 require_adb
 
+user_id="$(managed_user)"
+
+if [ -z "$user_id" ]; then
+    echo "==> ${DPC_PACKAGE} owns nothing on this device."
+    exit 0
+fi
+
+# A work profile takes its owner, the app inside it and its KeyChain with it, which is the whole
+# difference: the device's own user keeps everything that was ever installed into it.
+if [ "$user_id" != "0" ]; then
+    echo "==> Removing work profile ${user_id}..."
+    adb shell pm remove-user "$user_id"
+    adb shell dpm list-owners
+    exit 0
+fi
+
 echo "==> Clearing the app's managed configuration..."
 provision -a dev.firezone.dpc.SET_RESTRICTIONS --es package "$APP_PACKAGE" || true
 

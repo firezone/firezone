@@ -3,7 +3,7 @@
 #USAGE flag "--alias <alias>" help="KeyChain alias to install under, and the name `//:x509:gen-certificate` stored it as [default: firezone-client]"
 #USAGE flag "--password <password>" help="PKCS#12 password the certificate was packed with [default: firezone]"
 #USAGE flag "--file <file>" help="PKCS#12 to install; read from the certificate cache when omitted"
-#USAGE flag "--no-grant" help="Withhold the key from the app, the state a personally-owned device with a work profile is in"
+#USAGE flag "--no-grant" help="Withhold the key from the app, which is what an administrator of a personally-owned device can do"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -15,7 +15,7 @@ password="${usage_password:-firezone}"
 p12="${usage_file:-$(certificate_dir)/${alias_name}.p12}"
 
 require_adb
-require_device_owner
+require_owner
 
 if [ ! -f "$p12" ]; then
     echo "error: no certificate at ${p12}. Issue one:" >&2
