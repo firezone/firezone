@@ -895,8 +895,8 @@ fn a_clock_that_cannot_be_read() -> SystemTime {
     SystemTime::UNIX_EPOCH - Duration::from_secs(1)
 }
 
-/// Claiming an identity at all is what suppresses signing in with a token, so the client has to
-/// tell "claims nobody" from "claims somebody it cannot name".
+/// Claiming an identity is what suppresses signing in with a token, so the boundary between
+/// "claims nobody" and "claims somebody" has to sit exactly on the carried identity attributes.
 #[test]
 fn an_identity_is_absent_or_claimed() {
     let identity_of = |uris: &[&str]| {
@@ -935,18 +935,28 @@ fn an_identity_is_absent_or_claimed() {
         );
     }
 
+    assert_eq!(
+        identity_of(&["firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"]),
+        Identity::Absent,
+        "an account alone names no actor"
+    );
+
     for uris in [
-        vec!["firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"],
         vec!["firezone://actor-id/9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64"],
-        // An address no user could have is a claim on nobody the client can name.
+        // A carried identity attribute claims somebody even where the parser cannot use it:
+        // whether to reject it is the portal's policy, not the client's.
         vec!["firezone://email/jane.doe"],
         vec![
             "firezone://email/jane.doe@example.com",
             "firezone://email/john.doe@example.com",
         ],
-        // An attribute written with no value at all still claims the certificate is somebody's.
         vec!["firezone://email/"],
         vec!["firezone://email"],
+        vec!["firezone://actor-id/not-a-uuid"],
+        vec![
+            "firezone://actor-id/9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64",
+            "firezone://email/jane.doe",
+        ],
     ] {
         assert_eq!(
             identity_of(&uris),

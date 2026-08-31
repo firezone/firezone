@@ -256,12 +256,12 @@ impl ParsedCertificate {
 
     /// Who the certificate claims is connecting.
     ///
-    /// Carrying an account, actor or email claim at all commits the session to mutual TLS,
-    /// whatever the claim says: what the portal makes of it is the portal's answer.
+    /// A carried actor email or actor ID adopts the certificate as the session, whether or not
+    /// the client can read a valid value out of it: rejecting a claim is policy, and policy is
+    /// the portal's to make. An account ID scopes an account and names no actor, so it claims
+    /// nobody on its own.
     pub fn identity(&self) -> Identity {
-        let claims_somebody = [&self.account_id, &self.actor_id, &self.actor_email]
-            .into_iter()
-            .any(Claim::is_carried);
+        let claims_somebody = self.actor_email.is_carried() || self.actor_id.is_carried();
 
         if !claims_somebody {
             return Identity::Absent;
@@ -1000,4 +1000,68 @@ fn split_claim_attribute(claim: &str) -> (&str, Option<&str>) {
     };
 
     (&claim[..separator], Some(&claim[separator + 1..]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_valid_actor_id_claims_an_identity_without_an_email() {
+        let mut certificate = certificate();
+        certificate.actor_id = Claim::present("31b57ec2-8a02-4d5e-9b41-5c1f7a0e6f21".to_owned());
+
+        assert_eq!(certificate.identity(), Identity::Claimed { email: None });
+    }
+
+    #[test]
+    fn an_account_id_alone_claims_nobody() {
+        let mut certificate = certificate();
+        certificate.account_id = Claim::present("6f3f8a2c-0b74-4f8a-9b1f-1c2d3e4f5a6b".to_owned());
+
+        assert_eq!(certificate.identity(), Identity::Absent);
+    }
+
+    #[test]
+    fn a_carried_but_invalid_email_still_claims_an_identity() {
+        let mut certificate = certificate();
+        certificate.actor_email = Claim::invalid(
+            "jane.doe(at)example.com",
+            ValidationError::NotAnEmailAddress,
+        );
+
+        assert_eq!(certificate.identity(), Identity::Claimed { email: None });
+    }
+
+    #[test]
+    fn no_identity_attribute_claims_nobody() {
+        assert_eq!(certificate().identity(), Identity::Absent);
+    }
+
+    fn certificate() -> ParsedCertificate {
+        ParsedCertificate {
+            subject_cn: None,
+            subject: String::new(),
+            subject_alternative_names: Vec::new(),
+            actor_email: Claim::absent(),
+            account_id: Claim::absent(),
+            actor_id: Claim::absent(),
+            mdm_device_id: Claim::absent(),
+            device_serial: Claim::absent(),
+            unrecognised_claims: Vec::new(),
+            issuer: String::new(),
+            serial: String::new(),
+            has_client_auth_eku: true,
+            digital_signature_allowed: true,
+            checked_at_timestamp: None,
+            not_before: String::new(),
+            not_before_timestamp: 0,
+            not_after: String::new(),
+            not_after_timestamp: 0,
+            signing_algorithm: None,
+            key_algorithm_oid: String::new(),
+            fingerprint: String::new(),
+            der_bytes: 0,
+        }
+    }
 }
