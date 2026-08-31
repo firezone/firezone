@@ -45,19 +45,32 @@ jobs:
           name: android-screenshots
           path: kotlin/android/screenshots
 
-  instrumented-tests:
+  emulator-tests:
+    # The tests run against what `build-debug` already produced, so a suite costs an emulator
+    # rather than another Rust build. Adding one is a matrix entry.
+    needs: build_debug
     # The emulator needs KVM, which only the Linux runners provide.
     runs-on: ubuntu-24.04
     # An emulator that never boots would otherwise hold the run open for six hours.
     timeout-minutes: 30
+    strategy:
+      # One suite failing says nothing about the others.
+      fail-fast: false
+      matrix:
+        include:
+          - suite: app
+            package: dev.firezone.android.e2e
+    name: emulator-tests (${{ matrix.suite }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk-space
         with:
           keep-android: "true"
-      - uses: ./.github/actions/setup-android
+      # Where a local build leaves them, so the task below finds them the same way here.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+          name: Android debug APK
+          path: kotlin/android/app/build/outputs/apk
       # The runner ships /dev/kvm but leaves it readable only by root.
       - name: Grant access to KVM
         run: |
@@ -65,7 +78,7 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run instrumented tests
+      - name: Run the tests
         uses: reactivecircus/android-emulator-runner@c9c93e6ba9c4194322e114c40970d5983d9a07cc # v2.38.0
         with:
           api-level: 34
@@ -76,11 +89,9 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           # `script` is not a `run:` step, so it does not pick up the workflow's
           # `working-directory` default and starts at the repository root.
-          # Narrowing the ABI reuses the cargo build the other jobs already do.
           script: >-
-            cd kotlin/android &&
-            ./gradlew connectedDebugAndroidTest
-            -Pandroid.injected.build.abi=x86_64
+            ./kotlin/android/mise-tasks/emulator-tests.sh
+            ${{ matrix.package }}
 
   update-release-draft:
     name: update-release-draft
@@ -238,9 +249,11 @@ jobs:
       - uses: ./.github/actions/setup-android
         with:
           sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      # The instrumented tests run against these, so building them here is what spares every
+      # test suite a Rust build of its own. The APK is universal, so it installs on the emulator.
       - name: Build debug APK
         run: |
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug assembleDebugAndroidTest
       - name: Upload debug APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
