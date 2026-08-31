@@ -345,7 +345,7 @@ jobs:
       # test suite a Rust build of its own. The APK is universal, so it installs on the emulator.
       - name: Build debug APK
         run: |
-          ./gradlew assembleDebug assembleDebugAndroidTest copyJacocoCli
+          ./gradlew assembleDebug assembleDebugAndroidTest copyJacocoCli collectDebugClasses
       - name: Upload debug APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -358,9 +358,10 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: android-debug-classes
-          path: |
-            ./kotlin/android/app/build/tmp/kotlin-classes/debug
-            ./kotlin/android/app/build/intermediates/javac/debug/classes
+          # The default is to warn and upload nothing, which only surfaces much later as a
+          # missing artifact in the job that reports on it.
+          if-no-files-found: error
+          path: ./kotlin/android/app/build/debug-classes
       # Kept apart from the classes: the report reads that directory as the code under test, and
       # would happily measure JaCoCo itself if the tool sat in it.
       - name: Upload the reporting tool

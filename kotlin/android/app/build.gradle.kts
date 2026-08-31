@@ -198,6 +198,13 @@ tasks.register<Copy>("copyJacocoCli") {
     into(layout.buildDirectory.dir("jacoco-cli"))
 }
 
+// Reporting on the execution data needs the classes the tests were built from. Taken from the
+// compile tasks because their names are stable across AGP versions where their output paths are not.
+tasks.register<Copy>("collectDebugClasses") {
+    from(tasks.named("compileDebugKotlin"), tasks.named("compileDebugJavaWithJavac"))
+    into(layout.buildDirectory.dir("debug-classes"))
+}
+
 dependencies {
     "jacocoCli"("org.jacoco:org.jacoco.cli:$jacocoToolVersion:nodeps")
     implementation("androidx.core:core-ktx:1.19.0")
