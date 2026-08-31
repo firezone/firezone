@@ -518,10 +518,11 @@ public final class Store: ObservableObject {
         return
       }
 
-      // A certificate we cannot parse is still presented to the portal, it just names nobody.
+      // A certificate we cannot parse claims nobody: it is still presented to the portal,
+      // but the session signs in with a token and the portal judges what it was handed.
       let summary = X509CertificateParser.summary(of: certificate)
 
-      certificateIdentity = summary?.identity ?? .claimed(email: nil)
+      certificateIdentity = summary?.identity ?? .absent
     } catch {
       Log.error("Failed to read the client certificate: \(error.localizedDescription)")
 

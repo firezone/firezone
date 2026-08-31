@@ -94,7 +94,7 @@
     /// from rather than signed out of.
     func testSessionCertificate() throws {
       let appearance = try currentAppearance()
-      let app = launchApp(scenario: "connected-unreadable-certificate")
+      let app = launchApp(scenario: "connected-usable-certificate")
       defer { app.terminate() }
 
       try waitFor(app.staticTexts["Office network"], on: "session-certificate")
