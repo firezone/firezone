@@ -151,6 +151,15 @@ android {
         }
     }
 
+    // The BouncyCastle jars behind the instrumented tests each ship these, and the androidTest
+    // resource merge refuses duplicates.
+    packaging {
+        resources {
+            excludes += "META-INF/LICENSE.md"
+            excludes += "META-INF/versions/*/OSGI-INF/MANIFEST.MF"
+        }
+    }
+
     // Escalate Slack's Compose lint checks (added via `lintChecks`) to build-failing
     // errors so Compose issues block CI. Other checks keep their default severity.
     // `ComposeM2Api` is intentionally omitted: it is opt-in in the library and this
@@ -220,6 +229,8 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.7.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
+    // Mints the test certificates; the platform offers no way to build one.
+    androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.85")
     // Unit Tests
     testImplementation("com.google.dagger:hilt-android-testing:2.60.1")
 
