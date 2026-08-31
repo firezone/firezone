@@ -14,13 +14,15 @@ import androidx.test.core.app.ApplicationProvider
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.tunnel.ACCOUNT_SLUG
+import dev.firezone.android.tunnel.ACTOR_NAME
 import dev.firezone.android.tunnel.FakeDisconnectError
 import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.TunnelNotification
-import dev.firezone.android.tunnel.connectedDevice
-import dev.firezone.android.tunnel.dnsResource
+import dev.firezone.android.tunnel.benchController
+import dev.firezone.android.tunnel.engineeringWiki
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
@@ -82,14 +84,14 @@ class TunnelE2eTest {
 
         session.emit(
             Event.ResourcesUpdated(
-                resources = listOf(dnsResource(name = "GitLab")),
+                resources = listOf(engineeringWiki),
                 connectedDevices = emptyList(),
             ),
         )
         launchApp()
 
-        awaitText("GitLab")
-        composeRule.onNodeWithText("gitlab.example.com").assertIsDisplayed()
+        awaitText("Engineering wiki")
+        composeRule.onNodeWithText("wiki.example.com").assertIsDisplayed()
     }
 
     @Test
@@ -98,27 +100,29 @@ class TunnelE2eTest {
 
         session.emit(
             Event.ResourcesUpdated(
-                resources = listOf(dnsResource(name = "GitLab")),
-                connectedDevices = listOf(connectedDevice(name = "Ada's Laptop")),
+                resources = listOf(engineeringWiki),
+                connectedDevices = listOf(benchController),
             ),
         )
         launchApp()
 
-        awaitText("Ada's Laptop")
+        awaitText("bench-controller-01")
         composeRule.onNodeWithText("Connected Devices").assertIsDisplayed()
     }
 
     @Test
-    fun theActorNameReachesTheProfileMenu() {
+    fun signingInReachesTheProfileMenuAndTheStoredAccount() {
         val session = signInAndConnect()
 
-        session.emit(Event.ConnectedToPortal(accountSlug = "acme", actorName = "Ada Lovelace"))
+        session.emit(Event.ConnectedToPortal(accountSlug = ACCOUNT_SLUG, actorName = ACTOR_NAME))
         launchApp()
 
         // The top bar shows the initial; the name itself is behind the menu.
-        awaitText("A")
-        composeRule.onNodeWithText("A").performClick()
-        awaitText("Ada Lovelace")
+        awaitText("J")
+        composeRule.onNodeWithText("J").performClick()
+        awaitText(ACTOR_NAME)
+
+        await("the account slug to be stored") { repo.getConfigSync().accountSlug == ACCOUNT_SLUG }
     }
 
     @Test
@@ -129,12 +133,12 @@ class TunnelE2eTest {
 
         session.emit(
             Event.ResourcesUpdated(
-                resources = listOf(dnsResource(name = "GitLab")),
+                resources = listOf(engineeringWiki),
                 connectedDevices = emptyList(),
             ),
         )
 
-        awaitText("GitLab")
+        awaitText("Engineering wiki")
     }
 
     @Test
@@ -143,7 +147,7 @@ class TunnelE2eTest {
 
         session.emit(
             Event.ResourcesUpdated(
-                resources = listOf(internetResource()),
+                resources = listOf(internetResource),
                 connectedDevices = emptyList(),
             ),
         )
