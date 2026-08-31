@@ -61,9 +61,7 @@ import SwiftUI
     private var authMenu: some View {
       Menu {
         if store.vpnStatus == .connected {
-          if let actorName = store.actorName {
-            Text("Signed in as \(actorName)")
-          }
+          Text(store.sessionHeading)
           Button(
             action: {
               signOutButtonTapped()

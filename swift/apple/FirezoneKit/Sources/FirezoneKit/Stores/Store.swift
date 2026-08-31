@@ -22,6 +22,14 @@ import UserNotifications
 public final class Store: ObservableObject {
   /// The actor the portal named in `init`, `nil` until it arrives.
   @Published private(set) var actorName: String?
+
+  /// How the session names itself, which is only the actor when the portal named one.
+  var sessionHeading: String {
+    guard let actorName else { return "Signed in" }
+
+    return "Signed in as \(actorName)"
+  }
+
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
   @Published private(set) var connectedDevices: [ConnectedDevice] = []
@@ -856,6 +864,10 @@ public final class Store: ObservableObject {
       }
 
       connectedDevices = state.connectedDevices
+
+      if state.actorName == nil, actorName != nil {
+        Log.warning("Portal did not name the actor on `init`")
+      }
 
       actorName = state.actorName
 

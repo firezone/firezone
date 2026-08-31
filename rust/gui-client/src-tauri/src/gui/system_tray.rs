@@ -269,8 +269,14 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         .iter()
         .any(|res| favorite_resources.contains(&res.id()));
 
+    let heading = if actor_name.is_empty() {
+        "Signed in".to_owned()
+    } else {
+        format!("Signed in as {actor_name}")
+    };
+
     let mut menu = Menu::default()
-        .disabled(format!("Signed in as {actor_name}"))
+        .disabled(heading)
         .item(Event::SignOut, SIGN_OUT)
         .separator();
 

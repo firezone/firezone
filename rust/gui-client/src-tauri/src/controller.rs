@@ -676,6 +676,10 @@ impl<I: GuiIntegration> Controller<I> {
                 dialog::error(&error_msg)?;
             }
             service::ServerMsg::ConnectedToPortal(connected) => {
+                if connected.actor_name.is_empty() {
+                    tracing::warn!("Portal did not name the actor on `init`");
+                }
+
                 telemetry::set_account_slug(connected.account_slug.clone());
 
                 // An MDM-forced slug is the admin's answer to the same question and wins
