@@ -89,28 +89,59 @@ defmodule PortalWeb.ClientsTest do
       end
     end
 
-    test "renders verified and unverified client states", %{
+    test "filters by attestation level", %{conn: conn, account: account, actor: actor} do
+      verified_actor = actor_fixture(account: account, name: "Verified Owner")
+
+      verified = verified_client_fixture(%{account: account, actor: verified_actor, name: "Work Mac"})
+
+      attested =
+        client_fixture(
+          account: account,
+          actor: actor,
+          name: "Attested Mac",
+          last_attested_at: DateTime.utc_now()
+        )
+
+      plain = client_fixture(account: account, actor: actor, name: "Lab Box")
+      conn = authorize_conn(conn, actor)
+
+      for {level, shown, hidden} <- [
+            {"verified", verified, [attested, plain]},
+            {"attested", attested, [verified, plain]},
+            {"none", plain, [verified, attested]}
+          ] do
+        {:ok, _lv, html} =
+          live(conn, ~p"/#{account}/clients?#{%{"clients_filter[attestation]" => level}}")
+
+        assert html =~ shown.name
+
+        for client <- hidden do
+          refute html =~ client.name
+        end
+      end
+    end
+
+    test "a client that attested cannot be verified by hand", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      verified_actor = actor_fixture(account: account, name: "Verified Owner")
-
-      verified_client =
-        verified_client_fixture(%{account: account, actor: verified_actor, name: "Work Mac"})
-
-      unverified_client = client_fixture(account: account, actor: actor, name: "Lab Box")
+      client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          name: "Attested Mac",
+          last_attested_at: DateTime.utc_now()
+        )
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients")
+        |> live(~p"/#{account}/clients/#{client.id}")
 
-      html = render(lv)
-      assert html =~ verified_client.name
-      assert html =~ unverified_client.name
-      assert has_element?(lv, "#client-#{verified_client.id}", "Verified")
-      assert has_element?(lv, "#client-#{unverified_client.id}", "Unverified")
+      assert has_element?(lv, "button[disabled]", "Verify")
+      refute has_element?(lv, "button[phx-click='verify_client']")
+      assert render(lv) =~ "This device is already attested through X.509 Device Trust."
     end
 
     test "orders by name and opens the panel from row click", %{
@@ -1167,46 +1198,6 @@ defmodule PortalWeb.ClientsTest do
       refute html =~ "WRONG-COLUMN-01"
     end
 
-    test "badges the providers that know each client in the list", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      intune_device_fixture(
-        provider: intune_posture_provider_fixture(account: account),
-        serial_number: "LIST-SERIAL-1"
-      )
-
-      client_fixture(
-        account: account,
-        actor: actor,
-        name: "Inventoried Client",
-        device_serial: "LIST-SERIAL-1"
-      )
-
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients")
-
-      assert html =~ "logo-intune.svg"
-    end
-
-    test "leaves the list badge empty for a client no provider knows", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      intune_posture_provider_fixture(account: account)
-      client_fixture(account: account, actor: actor, device_serial: "NOT-IN-INVENTORY")
-
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/clients")
-
-      refute html =~ "logo-intune.svg"
-    end
   end
 
   describe "index serial column" do
@@ -1217,24 +1208,30 @@ defmodule PortalWeb.ClientsTest do
       %{account: account, actor: actor}
     end
 
-    test "shows the attested serial as proven", %{conn: conn, account: account, actor: actor} do
-      client_fixture(
-        account: account,
-        actor: actor,
-        last_attested_device_serial: "ATTESTED-SERIAL-1",
-        device_serial: "REPORTED-SERIAL-1"
-      )
+    test "marks an attested serial with the device trust icon", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "ATTESTED-SERIAL-1",
+          device_serial: "REPORTED-SERIAL-1"
+        )
 
-      {:ok, _lv, html} =
+      {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/clients")
 
       assert html =~ "ATTESTED-SERIAL-1"
-      refute html =~ "ri-lock-unlock-line"
+      refute html =~ "REPORTED-SERIAL-1"
+      assert has_element?(lv, "#client-#{client.id} .ri-shield-keyhole-line")
     end
 
-    test "shows the serial the MDM holds for the attested device id", %{
+    test "marks a serial the MDM holds with that provider's icon", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1245,36 +1242,40 @@ defmodule PortalWeb.ClientsTest do
         serial_number: "MDM-HELD-SERIAL"
       )
 
-      client_fixture(
-        account: account,
-        actor: actor,
-        last_attested_mdm_device_id: "managed-device-serial",
-        device_serial: "REPORTED-SERIAL-2"
-      )
+      client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_mdm_device_id: "managed-device-serial",
+          device_serial: "REPORTED-SERIAL-2"
+        )
 
-      {:ok, _lv, html} =
+      {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/clients")
 
       assert html =~ "MDM-HELD-SERIAL"
-      refute html =~ "ri-lock-unlock-line"
+      refute html =~ "REPORTED-SERIAL-2"
+      assert has_element?(lv, "#client-#{client.id} img[src*='logo-intune']")
+      refute has_element?(lv, "#client-#{client.id} .ri-shield-keyhole-line")
     end
 
-    test "cautions about a serial the client reports about itself", %{
+    test "leaves a serial the client reports about itself unmarked", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client_fixture(account: account, actor: actor, device_serial: "REPORTED-SERIAL-3")
+      client = client_fixture(account: account, actor: actor, device_serial: "REPORTED-SERIAL-3")
 
-      {:ok, _lv, html} =
+      {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/clients")
 
       assert html =~ "REPORTED-SERIAL-3"
-      assert html =~ "ri-lock-unlock-line"
+      refute has_element?(lv, "#client-#{client.id} .ri-shield-keyhole-line")
+      refute has_element?(lv, "#client-#{client.id} img[src*='logo-intune']")
     end
 
     test "falls back to the reported serial when the MDM holds none", %{
@@ -1282,20 +1283,21 @@ defmodule PortalWeb.ClientsTest do
       account: account,
       actor: actor
     } do
-      client_fixture(
-        account: account,
-        actor: actor,
-        last_attested_mdm_device_id: "managed-device-unknown",
-        device_serial: "REPORTED-SERIAL-4"
-      )
+      client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_mdm_device_id: "managed-device-unknown",
+          device_serial: "REPORTED-SERIAL-4"
+        )
 
-      {:ok, _lv, html} =
+      {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/clients")
 
       assert html =~ "REPORTED-SERIAL-4"
-      assert html =~ "ri-lock-unlock-line"
+      refute has_element?(lv, "#client-#{client.id} .ri-shield-keyhole-line")
     end
 
     test "leaves the column empty for a client with no serial at all", %{
@@ -1303,15 +1305,16 @@ defmodule PortalWeb.ClientsTest do
       account: account,
       actor: actor
     } do
-      client_fixture(account: account, actor: actor, name: "No Serial Client", device_serial: nil)
+      client =
+        client_fixture(account: account, actor: actor, name: "No Serial Client", device_serial: nil)
 
-      {:ok, _lv, html} =
+      {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/clients")
 
       assert html =~ "No Serial Client"
-      refute html =~ "ri-lock-unlock-line"
+      refute has_element?(lv, "#client-#{client.id} .ri-shield-keyhole-line")
     end
   end
 

@@ -868,71 +868,30 @@ defmodule PortalWeb.Clients.Components do
     """
   end
 
-  attr :account, :any, required: true
   attr :serial, :map, default: nil
 
-  def client_serial_badge(%{serial: nil} = assigns) do
+  def client_serial(%{serial: nil} = assigns) do
     ~H"""
     <span class="text-xs text-muted">—</span>
     """
   end
 
-  def client_serial_badge(%{serial: %{source: :reported}} = assigns) do
+  def client_serial(assigns) do
     ~H"""
-    <.popover placement="right">
-      <:target>
-        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[10px] font-medium text-warning bg-warning-light">
-          <.icon name="ri-lock-unlock-line" class="w-2.5 h-2.5 shrink-0" />{@serial.value}
-        </span>
-      </:target>
-      <:content>
-        <p>
-          The serial number this Client reports about itself. This field could be spoofed by a
-          malicious actor.
-        </p>
-        <p class="mt-1">
-          Set up
-          <.link
-            navigate={~p"/#{@account}/settings/trust_anchors"}
-            class="text-brand hover:underline"
-          >
-            X.509 Device Trust
-          </.link>
-          so devices prove their serial with an MDM-issued certificate instead.
-        </p>
-      </:content>
-    </.popover>
-    """
-  end
-
-  def client_serial_badge(assigns) do
-    ~H"""
-    <.popover placement="right">
-      <:target>
-        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[10px] font-medium text-success bg-success-light">
-          <.icon name="ri-shield-keyhole-line" class="w-2.5 h-2.5 shrink-0" />{@serial.value}
-        </span>
-      </:target>
-      <:content>{serial_source_hint(@serial.source)}</:content>
-    </.popover>
-    """
-  end
-
-  attr :types, :list, required: true
-
-  def client_posture_icons(assigns) do
-    ~H"""
-    <div :if={@types != []} class="flex items-center gap-1.5">
-      <.popover :for={type <- @types} placement="right">
+    <div class="flex items-center gap-1.5">
+      <.popover :if={@serial.source != :reported} placement="right">
         <:target>
-          <.provider_icon provider={to_string(type)} size="xs" />
+          <.provider_icon :if={@serial.provider} provider={to_string(@serial.provider)} size="xs" />
+          <.icon
+            :if={is_nil(@serial.provider)}
+            name="ri-shield-keyhole-line"
+            class="w-3 h-3 shrink-0 text-success"
+          />
         </:target>
-        <:content>
-          {posture_provider_label(type)} holds posture for this Client.
-        </:content>
+        <:content>{serial_source_hint(@serial)}</:content>
       </.popover>
+      <span class="font-mono text-xs text-body truncate">{@serial.value}</span>
     </div>
-    <span :if={@types == []} class="text-xs text-muted">—</span>
     """
   end
 
@@ -1114,26 +1073,42 @@ defmodule PortalWeb.Clients.Components do
   attr :confirm_unverify_client, :boolean, default: false
 
   def client_actions(assigns) do
+    assigns = assign(assigns, :action, client_action(assigns))
+
     ~H"""
     <section>
       <.section_heading title="Actions" />
       <div class="space-y-1.5">
+        <.popover :if={@action in [:attested_verify, :attested_unverify]} class="block" placement="left">
+          <:target>
+            <.action_button
+              icon={attested_action_icon(@action)}
+              disabled
+              class="opacity-50 cursor-not-allowed"
+            >
+              {attested_action_label(@action)}
+            </.action_button>
+          </:target>
+          <:content>
+            This device is already attested through X.509 Device Trust.
+          </:content>
+        </.popover>
         <.action_button
-          :if={is_nil(@client.verified_at)}
+          :if={@action == :verify}
           icon="ri-shield-check-line"
           phx-click="verify_client"
         >
           Verify
         </.action_button>
         <.action_button
-          :if={not is_nil(@client.verified_at) and not @confirm_unverify_client}
+          :if={@action == :unverify}
           icon="ri-prohibited-line"
           phx-click="confirm_unverify_client"
         >
           Revoke verification
         </.action_button>
         <div
-          :if={not is_nil(@client.verified_at) and @confirm_unverify_client}
+          :if={@action == :confirm_unverify}
           class="px-3 py-2.5 rounded border border-border bg-raised"
         >
           <p class="text-xs font-medium text-heading mb-1">
@@ -1350,6 +1325,24 @@ defmodule PortalWeb.Clients.Components do
     """
   end
 
+  # Attestation supersedes manual verification, so an attested device offers the
+  # button it would otherwise offer, disabled, rather than hiding it.
+  defp client_action(%{client: %{last_attested_at: at, verified_at: nil}}) when not is_nil(at),
+    do: :attested_verify
+
+  defp client_action(%{client: %{last_attested_at: at}}) when not is_nil(at),
+    do: :attested_unverify
+
+  defp client_action(%{client: %{verified_at: nil}}), do: :verify
+  defp client_action(%{confirm_unverify_client: true}), do: :confirm_unverify
+  defp client_action(_assigns), do: :unverify
+
+  defp attested_action_icon(:attested_verify), do: "ri-shield-check-line"
+  defp attested_action_icon(_action), do: "ri-prohibited-line"
+
+  defp attested_action_label(:attested_verify), do: "Verify"
+  defp attested_action_label(_action), do: "Revoke verification"
+
   defp posture_tab_state(assigns) do
     cond do
       not Portal.Account.device_posture_enabled?(assigns.account) -> :locked
@@ -1384,12 +1377,13 @@ defmodule PortalWeb.Clients.Components do
     ]
   end
 
-  defp serial_source_hint(:attested) do
+  defp serial_source_hint(%{source: :attested}) do
     "The serial number this device proved with an MDM-issued device certificate."
   end
 
-  defp serial_source_hint(:mdm) do
-    "The serial number your MDM holds for the device ID this device proved with its certificate."
+  defp serial_source_hint(%{source: :mdm, provider: provider}) do
+    "#{posture_provider_label(provider)} holds this serial number for the device ID " <>
+      "this device proved with its certificate."
   end
 
   defp posture_provider_label(:intune), do: "Microsoft Intune"

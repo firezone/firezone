@@ -784,6 +784,7 @@ defmodule PortalWeb.CoreComponents do
   """
   attr :placement, :string, default: "top"
   attr :trigger, :string, default: "hover"
+  attr :class, :string, default: nil, doc: "Classes for the element wrapping the target"
   slot :target, required: true
   slot :content, required: true
 
@@ -801,6 +802,7 @@ defmodule PortalWeb.CoreComponents do
     <span
       phx-hook="Popover"
       id={@target_id <> "-trigger"}
+      class={@class}
       data-popover-target-id={@target_id}
       data-popover-placement={@placement}
       data-popover-trigger={@trigger}
