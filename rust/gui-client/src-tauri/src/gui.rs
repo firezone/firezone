@@ -16,7 +16,7 @@ use crate::{
     updates,
     view::{
         AdvancedSettingsChanged, GeneralSettingsChanged, LogsRecounted, SessionChanged,
-        SessionViewModel, X509StatusChanged,
+        SessionViewModel, X509CertificateChanged,
     },
 };
 use anyhow::{Context, Result, bail};
@@ -144,10 +144,13 @@ impl GuiIntegration for TauriIntegration {
         Ok(())
     }
 
-    fn notify_x509_status_changed(&self, status: &x509_keystore::Status) -> Result<()> {
-        X509StatusChanged(status.into())
+    fn notify_x509_changed(
+        &self,
+        x509: &Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+    ) -> Result<()> {
+        X509CertificateChanged(x509.into())
             .emit(&self.app)
-            .context("Failed to emit `x509_status_changed` event")?;
+            .context("Failed to emit `x509_certificate_changed` event")?;
 
         Ok(())
     }
@@ -404,7 +407,7 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
             crate::view::GeneralSettingsChanged,
             crate::view::AdvancedSettingsChanged,
             crate::view::LogsRecounted,
-            crate::view::X509StatusChanged,
+            crate::view::X509CertificateChanged,
         ])
         .commands(tauri_specta::collect_commands![
             crate::view::clear_logs,

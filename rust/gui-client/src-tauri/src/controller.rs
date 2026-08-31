@@ -45,11 +45,11 @@ pub struct Controller<I: GuiIntegration> {
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
-    /// What the Tunnel service last reported about the platform keystore.
+    /// What the Tunnel service last loaded from the platform keystore.
     ///
     /// The service pushes this; we keep it so the GUI can be told again whenever it asks for the
     /// current state, e.g. after a window reload.
-    x509_status: Option<x509_keystore::Status>,
+    x509: Option<Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>>,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
     ipc_rx: ipc::ClientRead<service::ServerMsg>,
     integration: I,
@@ -83,7 +83,10 @@ pub trait GuiIntegration {
         advanced_settings: AdvancedSettings,
     ) -> Result<()>;
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
-    fn notify_x509_status_changed(&self, status: &x509_keystore::Status) -> Result<()>;
+    fn notify_x509_changed(
+        &self,
+        x509: &Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+    ) -> Result<()>;
 
     /// Also opens non-URLs
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
@@ -240,7 +243,7 @@ impl<I: GuiIntegration> Controller<I> {
             legacy_advanced_settings_path,
             auth,
             clear_logs_callback: None,
-            x509_status: None,
+            x509: None,
             ipc_client,
             ipc_rx,
             integration,
@@ -621,7 +624,7 @@ impl<I: GuiIntegration> Controller<I> {
             }
             UpdateState => {
                 self.notify_settings_changed()?;
-                self.notify_x509_status_changed()?;
+                self.notify_x509_changed()?;
 
                 let file_count = logging::count_logs().await?;
                 self.integration.notify_logs_recounted(&file_count)?;
@@ -762,23 +765,14 @@ impl<I: GuiIntegration> Controller<I> {
                 self.integration
                     .show_notification("Failed to save settings", &err)?;
             }
-            service::ServerMsg::X509Status(result) => {
-                match result {
-                    Ok(status) => self.x509_status = Some(status),
-                    // A keystore we cannot read is not a reason to bring the GUI down; the
-                    // diagnostics screen keeps showing whatever we last knew.
-                    Err(e) => {
-                        tracing::warn!("Failed to read the platform keystore: {e}");
-
-                        // With nothing last known, the diagnostics screen would keep
-                        // waiting for a first status, so the failure has to become one.
-                        if self.x509_status.is_none() {
-                            self.x509_status = Some(unreadable_keystore_status(e));
-                        }
-                    }
+            service::ServerMsg::X509Certificate(result) => {
+                if let Err(error) = &result {
+                    tracing::debug!("Failed to read the platform keystore: {error}");
                 }
 
-                self.notify_x509_status_changed()?;
+                self.x509 = Some(result);
+
+                self.notify_x509_changed()?;
                 self.refresh_ui_state();
             }
             service::ServerMsg::GatewayVersionMismatch { resource_id } => {
@@ -951,11 +945,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         self.integration.set_tray_menu(system_tray::AppState {
             connlib,
-            identity: self
-                .x509_status
-                .as_ref()
-                .map(|status| status.identity.clone())
-                .unwrap_or(x509_keystore::ClientIdentity::Absent),
+            identity: self.client_identity(),
             release: self.release.clone(),
             hide_admin_portal_menu_item: self
                 .mdm_settings
@@ -1039,14 +1029,24 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     /// Tells the GUI what the keystore holds, if the Tunnel service has said so yet.
-    fn notify_x509_status_changed(&self) -> Result<()> {
-        let Some(status) = self.x509_status.as_ref() else {
+    fn notify_x509_changed(&self) -> Result<()> {
+        let Some(x509) = self.x509.as_ref() else {
             return Ok(());
         };
 
-        self.integration.notify_x509_status_changed(status)?;
+        self.integration.notify_x509_changed(x509)?;
 
         Ok(())
+    }
+
+    /// Who the certificate the Tunnel service last loaded claims is connecting.
+    fn client_identity(&self) -> x509_keystore::ClientIdentity {
+        match &self.x509 {
+            Some(Ok(Some(certificate))) => certificate.identity(),
+            Some(Ok(None)) => x509_keystore::ClientIdentity::Absent,
+            Some(Err(_)) => x509_keystore::ClientIdentity::Absent,
+            None => x509_keystore::ClientIdentity::Absent,
+        }
     }
 
     fn auth_url(&self) -> &Url {
@@ -1132,22 +1132,6 @@ async fn try_migrate_advanced_settings(
     Ok(())
 }
 
-/// The status the diagnostics screen shows when the Tunnel service could not read the keystore.
-fn unreadable_keystore_status(error: String) -> x509_keystore::Status {
-    x509_keystore::Status {
-        problems: vec![x509_keystore::Problem::UnreadableKeystore],
-        sections: vec![x509_keystore::DetailSection {
-            title: "Keystore".to_owned(),
-            fields: vec![x509_keystore::DetailField {
-                label: "Error".to_owned(),
-                value: Some(error),
-                problem: None,
-            }],
-        }],
-        identity: x509_keystore::ClientIdentity::Absent,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, time::Instant};
@@ -1192,30 +1176,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn forwards_the_pushed_x509_status_to_the_gui() {
+    async fn forwards_the_pushed_x509_certificate_to_the_gui() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
         mock_tunnel.send_hello().await;
 
-        let expected = x509_keystore::Status {
-            problems: vec![],
-            sections: vec![],
-            identity: x509_keystore::ClientIdentity::Absent,
-        };
+        let expected = Ok(Some(parsed_certificate(None)));
         mock_tunnel
             .tx
-            .send(&service::ServerMsg::X509Status(Ok(expected.clone())))
+            .send(&service::ServerMsg::X509Certificate(expected.clone()))
             .await
             .unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        assert_eq!(test_controller.integration().x509_statuses, vec![expected]);
+        assert_eq!(test_controller.integration().x509, vec![expected]);
     }
 
     #[tokio::test]
-    async fn a_keystore_read_failure_without_a_prior_status_is_shown_as_one() {
+    async fn forwards_a_keystore_failure_to_the_gui() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
@@ -1223,30 +1203,23 @@ mod tests {
 
         mock_tunnel
             .tx
-            .send(&service::ServerMsg::X509Status(Err(
-                "Failed to enumerate PKCS#11 tokens".to_owned(),
+            .send(&service::ServerMsg::X509Certificate(Err(
+                x509_keystore::Error::UnreadableKeystore {
+                    message: "Failed to enumerate PKCS#11 tokens".to_owned(),
+                },
             )))
             .await
             .unwrap();
 
-        let status = test_controller
-            .wait_integration(|i| i.x509_statuses.first().cloned())
+        let x509 = test_controller
+            .wait_integration(|i| i.x509.first().cloned())
             .await;
 
         assert_eq!(
-            status.problems,
-            [x509_keystore::Problem::UnreadableKeystore]
-        );
-        assert!(
-            status
-                .sections
-                .iter()
-                .flat_map(|section| &section.fields)
-                .any(|field| field
-                    .value
-                    .as_deref()
-                    .is_some_and(|value| value.contains("Failed to enumerate PKCS#11 tokens"))),
-            "the diagnostics should carry the error"
+            x509,
+            Err(x509_keystore::Error::UnreadableKeystore {
+                message: "Failed to enumerate PKCS#11 tokens".to_owned(),
+            })
         );
     }
 
@@ -1618,7 +1591,7 @@ mod tests {
         general_settings: Vec<GeneralSettings>,
         advanced_settings: Vec<AdvancedSettings>,
         file_counts: Vec<FileCount>,
-        x509_statuses: Vec<x509_keystore::Status>,
+        x509: Vec<Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>>,
         opened_urls: Vec<String>,
         tray_icons: Vec<system_tray::Icon>,
         tray_states: Vec<system_tray::AppState>,
@@ -1664,8 +1637,11 @@ mod tests {
             Ok(())
         }
 
-        fn notify_x509_status_changed(&self, status: &x509_keystore::Status) -> Result<()> {
-            self.lock().x509_statuses.push(status.clone());
+        fn notify_x509_changed(
+            &self,
+            x509: &Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+        ) -> Result<()> {
+            self.lock().x509.push(x509.clone());
 
             Ok(())
         }
@@ -1847,6 +1823,39 @@ mod tests {
                 legacy_advanced_settings_path,
                 _settings_dir: settings_dir,
             }
+        }
+    }
+
+    /// A parsed certificate claiming the actor `email` names, or nobody for [`None`].
+    fn parsed_certificate(email: Option<&str>) -> x509_keystore::ParsedCertificate {
+        let claim = |value: Option<&str>| x509_keystore::Claim {
+            value: value.map(str::to_owned),
+            error: None,
+        };
+
+        x509_keystore::ParsedCertificate {
+            subject_cn: Some("dev.firezone.device-trust".to_owned()),
+            subject: "CN=dev.firezone.device-trust".to_owned(),
+            subject_alternative_names: vec![],
+            actor_email: claim(email),
+            account_id: claim(email.map(|_| "6f3f8a2c-0b74-4f8a-9b1f-1c2d3e4f5a6b")),
+            actor_id: claim(None),
+            mdm_device_id: claim(None),
+            device_serial: claim(None),
+            unrecognised_claims: vec![],
+            issuer: "CN=Example Corp Issuing CA 1".to_owned(),
+            serial: "01".to_owned(),
+            has_client_auth_eku: true,
+            digital_signature_allowed: true,
+            checked_at_timestamp: Some(1_700_000_000),
+            not_before: "Jan  1 00:00:00 2020 +00:00".to_owned(),
+            not_before_timestamp: 1_577_836_800,
+            not_after: "Dec 31 23:59:59 2049 +00:00".to_owned(),
+            not_after_timestamp: 2_524_607_999,
+            signing_algorithm: None,
+            key_algorithm_oid: "1.2.840.113549.1.1.1".to_owned(),
+            fingerprint: "90:E4:45:C9:E2:8E:8F:5B".to_owned(),
+            der_bytes: 1024,
         }
     }
 

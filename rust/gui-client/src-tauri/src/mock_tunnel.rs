@@ -75,13 +75,7 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
         })
         .await?;
 
-    ipc_tx
-        .send(&ServerMsg::X509Status(Ok(x509_keystore::Status {
-            problems: vec![x509_keystore::Problem::UnsupportedPlatform],
-            sections: vec![],
-            identity: x509_keystore::ClientIdentity::Absent,
-        })))
-        .await?;
+    ipc_tx.send(&ServerMsg::X509Certificate(Ok(None))).await?;
 
     while let Some(msg) = ipc_rx.next().await {
         match msg? {
