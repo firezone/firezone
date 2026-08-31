@@ -30,14 +30,10 @@ use windows::{
     },
     core::w,
 };
-use x509_claims::{ParsedCertificate, parse_certificate};
+use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
 use x509_credential::SigningError;
 
-use crate::{
-    CandidateCertificate, ClientIdentity, DetailField, Identity, Problem, Status, UnreadableStore,
-    UnusableCause, certificate_sections, failed_field, join, selected_certificate, sign,
-    unusable_causes,
-};
+use crate::{CandidateCertificate, Error, Identity, selected_certificate, sign};
 
 /// The store MDM-provisioned identities land in.
 ///
@@ -46,75 +42,19 @@ use crate::{
 /// certificates nobody provisioned there. Device-scope profiles write here.
 const STORE: (u32, &str) = (CERT_SYSTEM_STORE_LOCAL_MACHINE, "LocalMachine\\My");
 
-pub(crate) fn status(subject_cn: &str) -> Result<Status> {
-    let (certificates, store_errors) = enumerate_matching(subject_cn);
-    if certificates.is_empty() && !store_errors.is_empty() {
-        bail!(
-            "The Windows certificate store could not be read: {}",
-            join(&store_errors, "; ")
-        );
-    }
-
-    let selected = selected_certificate(&certificates);
-    let sections = certificate_sections(&certificates, selected);
-
-    let certificate_problem = certificates
-        .is_empty()
-        .then(|| Problem::NoWindowsCertificate {
-            subject_cn: subject_cn.to_owned(),
-        });
-    let store_problem = (!store_errors.is_empty()).then_some(Problem::UnreadableWindowsStores {
-        stores: store_errors,
-    });
-    let problems = certificate_problem
-        .into_iter()
-        .chain(store_problem)
-        .collect();
-
-    let identity = selected
-        .map(|index| certificates[index].metadata.identity())
-        .unwrap_or(ClientIdentity::Absent);
-
-    Ok(Status {
-        problems,
-        sections,
-        identity,
-    })
-}
-
-pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
-    let (mut certificates, store_errors) = enumerate_matching(subject_cn);
-    if certificates.is_empty() && !store_errors.is_empty() {
-        bail!(
-            "The Windows certificate store could not be read: {}",
-            join(&store_errors, "; ")
-        );
-    }
-
-    let unusable = unusable_causes(&certificates);
+pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>, Error> {
+    let mut certificates = enumerate_matching(subject_cn)?;
 
     let Some(index) = selected_certificate(&certificates) else {
-        // Only a store that holds nothing for us is the ordinary no-certificate case. Skipping a
-        // certificate that was provisioned for Firezone reads to an administrator as if none had
-        // been, so say which rule it failed instead of connecting without it.
-        if !unusable.is_empty() {
-            bail!(
-                "The Windows certificate store holds no usable Firezone client identity: {}",
-                join(&unusable, "; ")
-            );
-        }
-
         return Ok(None);
     };
     let certificate = certificates.swap_remove(index);
 
-    let algorithm = certificate
-        .metadata
-        .signing_algorithm
-        .context("The selected Windows certificate uses an unsupported key algorithm")?;
     let signing_context = unsafe { CertDuplicateCertificateContext(Some(certificate.context)) };
     if signing_context.is_null() {
-        bail!("Failed to retain the selected Windows certificate context");
+        return Err(Error::IdentityUnavailable {
+            message: "Failed to retain the selected Windows certificate context".to_owned(),
+        });
     }
 
     let chain = certificate
@@ -124,19 +64,23 @@ pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>> {
         .map(CertificateDer::from)
         .collect();
     let key = Arc::new(sign::Key::new(
-        algorithm,
+        certificate.algorithm,
         CngKey {
             context: Arc::new(CertificateContext(signing_context)),
         },
     ));
 
     tracing::debug!(
-        store = certificate.store,
+        store = STORE.1,
         fingerprint = %certificate.metadata.fingerprint,
         "Selected a Windows X.509 identity for mutual TLS"
     );
 
-    Ok(Some(Identity { chain, key }))
+    Ok(Some(Identity {
+        chain,
+        key,
+        certificate: certificate.metadata.clone(),
+    }))
 }
 
 /// A certificate context whose CNG private key signs the TLS handshake.
@@ -326,52 +270,17 @@ unsafe fn sign_hash(
     Ok(signature)
 }
 
-/// A certificate in one of the searched stores whose subject CN is the one we look for.
+/// A matching certificate we can present: CNG signs with its private key.
 struct Certificate {
-    store: &'static str,
     context: *mut CERT_CONTEXT,
     chain: Vec<Vec<u8>>,
-    chain_error: Option<String>,
     metadata: ParsedCertificate,
-    key_error: Option<String>,
-    usable: bool,
+    algorithm: SigningAlgorithm,
 }
 
 impl CandidateCertificate for Certificate {
-    fn unusable(&self) -> Option<UnusableCause> {
-        // CNG refuses a key held by a legacy CSP rather than a KSP, which is what an older
-        // certificate template provisions.
-        match (
-            &self.key_error,
-            self.metadata.signing_algorithm,
-            self.usable,
-        ) {
-            (Some(error), _, _) => Some(UnusableCause::KeyRefused {
-                error: error.clone(),
-            }),
-            (None, None, _) => Some(UnusableCause::UnsupportedKeyAlgorithm),
-            (None, Some(_), false) => Some(UnusableCause::KeyMissing),
-            (None, Some(_), true) => None,
-        }
-    }
-
     fn not_before_timestamp(&self) -> i64 {
         self.metadata.not_before_timestamp
-    }
-
-    fn detail_fields(&self) -> Vec<DetailField> {
-        let mut fields = self
-            .metadata
-            .detail_fields()
-            .into_iter()
-            .map(DetailField::from)
-            .collect::<Vec<_>>();
-
-        if let Some(error) = &self.chain_error {
-            fields.push(failed_field("Certificate Chain Error", error));
-        }
-
-        fields
     }
 }
 
@@ -383,28 +292,26 @@ impl Drop for Certificate {
     }
 }
 
-fn enumerate_matching(subject_cn: &str) -> (Vec<Certificate>, Vec<UnreadableStore>) {
-    let mut certificates = Vec::new();
-    let mut errors = Vec::new();
-
+fn enumerate_matching(subject_cn: &str) -> Result<Vec<Certificate>, Error> {
     let (location, label) = STORE;
 
-    match unsafe { enumerate_store(location, label, subject_cn) } {
-        Ok(mut found) => certificates.append(&mut found),
+    let certificates = match unsafe { enumerate_store(location, label, subject_cn) } {
+        Ok(found) => found,
         Err(error) => {
             tracing::warn!(
                 store = label,
                 ?error,
                 "Failed to read Windows certificate store"
             );
-            errors.push(UnreadableStore {
+
+            return Err(Error::UnreadableStore {
                 store: label.to_owned(),
                 error: format!("{error:#}"),
             });
         }
-    }
+    };
 
-    (certificates, errors)
+    Ok(certificates)
 }
 
 unsafe fn enumerate_store(
@@ -439,19 +346,36 @@ unsafe fn enumerate_store(
             continue;
         }
 
-        let (key_available, key_error) = match unsafe { acquire_key(context) } {
-            Ok(_) => (true, None),
-            Err(error) => (false, Some(error.to_string())),
+        // A certificate we cannot sign a TLS handshake with authenticates nothing; selecting
+        // it anyway would only shadow an older certificate that still works.
+        let Some(algorithm) = metadata.signing_algorithm else {
+            tracing::debug!(
+                store = label,
+                fingerprint = %metadata.fingerprint,
+                "Skipping a matching certificate: no scheme we sign with holds its key algorithm"
+            );
+            continue;
         };
-        let (chain, chain_error) = match unsafe { certificate_chain(context) } {
-            Ok(chain) => (chain, None),
+        if let Err(error) = unsafe { acquire_key(context) } {
+            tracing::debug!(
+                store = label,
+                fingerprint = %metadata.fingerprint,
+                %error,
+                "Skipping a matching certificate: CNG will not hand over its private key"
+            );
+            continue;
+        }
+
+        let chain = match unsafe { certificate_chain(context) } {
+            Ok(chain) => chain,
             Err(error) => {
                 tracing::warn!(
                     store = label,
                     ?error,
                     "Failed to build the Windows certificate chain; sending the leaf only"
                 );
-                (vec![der.clone()], Some(format!("{error:#}")))
+
+                vec![der.clone()]
             }
         };
         let owned_context = unsafe { CertDuplicateCertificateContext(Some(context)) };
@@ -464,13 +388,10 @@ unsafe fn enumerate_store(
         }
 
         certificates.push(Certificate {
-            store: label,
             context: owned_context,
             chain,
-            chain_error,
-            usable: metadata.signing_algorithm.is_some() && key_available,
             metadata,
-            key_error,
+            algorithm,
         });
     }
 

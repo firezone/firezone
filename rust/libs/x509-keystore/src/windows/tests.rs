@@ -20,7 +20,7 @@ use rustls::SignatureAlgorithm;
 use x509_parser::prelude::{FromDer as _, X509Certificate};
 
 use super::*;
-use crate::DetailSection;
+use crate::DetailField;
 
 #[test]
 #[ignore = "Writes to the LocalMachine certificate store"]
@@ -60,30 +60,24 @@ fn signs_with_the_cng_key_of_an_ecdsa_certificate() {
 
 #[test]
 #[ignore = "Writes to the LocalMachine certificate store"]
-fn describes_a_minted_certificate_in_the_diagnostics() {
+fn describes_the_minted_certificate_it_loads() {
     let _serialized = serialize_certificate_store_access();
-    let subject_cn = unique_subject_cn("status");
+    let subject_cn = unique_subject_cn("describe");
     let _minted = mint_certificate(&subject_cn, KeyAlgorithm::Rsa);
 
-    let status =
-        super::status(&subject_cn).expect("the Windows certificate stores should be readable");
+    let identity = super::identity(&subject_cn)
+        .expect("the Windows certificate stores should be readable")
+        .expect("the minted certificate should be selected as the client identity");
 
-    assert_eq!(status.problems, []);
-    let section = status
-        .sections
-        .iter()
-        .find(|section| section.title == "Certificate")
-        .expect("the diagnostics should describe the minted certificate");
+    let fields = identity.certificate.detail_fields();
     assert_eq!(
-        field_value(section, "Common Name"),
+        field_value(&fields, "Common Name"),
         Some(subject_cn.as_str())
     );
-    // Only a certificate we cannot present carries a Private Key row.
-    assert!(!section.fields.iter().any(|row| row.label == "Private Key"));
-    assert_eq!(field_value(section, "Certificate Chain Error"), None);
-    // The diagnostics describe the certificate, not where Windows keeps it.
-    assert_eq!(field_value(section, "Store"), None);
-    assert_eq!(field_value(section, "Private Key Provider"), None);
+    assert_eq!(
+        field_value(&fields, "Signing Algorithm"),
+        Some("SHA256withRSA")
+    );
 }
 
 #[test]
@@ -94,14 +88,8 @@ fn reports_no_identity_when_no_certificate_matches() {
 
     let identity =
         super::identity(&subject_cn).expect("the Windows certificate stores should be readable");
-    let status =
-        super::status(&subject_cn).expect("the Windows certificate stores should be readable");
 
     assert!(identity.is_none());
-    assert_eq!(
-        status.problems,
-        [Problem::NoWindowsCertificate { subject_cn }]
-    );
 }
 
 #[test]
@@ -159,9 +147,9 @@ fn leaf_of(identity: &Identity) -> Vec<u8> {
     leaf.to_vec()
 }
 
-/// Returns the value of the diagnostics row labelled `label`, if the section has one.
-fn field_value<'a>(section: &'a DetailSection, label: &str) -> Option<&'a str> {
-    let field = section.fields.iter().find(|field| field.label == label)?;
+/// Returns the value of the row labelled `label`, if the certificate's rows have one.
+fn field_value<'a>(fields: &'a [DetailField], label: &str) -> Option<&'a str> {
+    let field = fields.iter().find(|field| field.label == label)?;
 
     field.value.as_deref()
 }
