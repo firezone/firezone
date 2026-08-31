@@ -43,10 +43,11 @@ class ProvisionReceiver : BroadcastReceiver() {
     }
 
     /**
-     * Installs [P12] under [ALIAS], granting it to [GRANT_TO] only when asked.
+     * Installs a key pair under an alias, granting it to a package only when asked.
      *
      * Withholding the grant is the state a personally-owned device with a work profile is in: the
-     * alias exists, and the app still cannot get a key for it.
+     * alias exists, and the app still cannot get a key for it. Any earlier key pair under the alias
+     * goes first, so that the state this leaves behind does not depend on the state it found.
      */
     private fun installKeyPair(
         policy: DevicePolicyManager,
@@ -65,6 +66,8 @@ class ProvisionReceiver : BroadcastReceiver() {
         val privateKey = keyStore.getKey(entryAlias, password) as PrivateKey
         val chain: Array<Certificate> = keyStore.getCertificateChain(entryAlias)
 
+        policy.removeKeyPair(admin, alias)
+
         if (!policy.installKeyPair(admin, privateKey, chain, alias, false)) {
             error("installKeyPair refused alias '$alias'")
         }
@@ -78,20 +81,22 @@ class ProvisionReceiver : BroadcastReceiver() {
         return "installed '$alias' (certificates=${chain.size}, granted=${grantTo ?: "nobody"})"
     }
 
+    /** Sets one managed-configuration entry on a package, or clears its configuration entirely. */
     private fun setRestrictions(
         policy: DevicePolicyManager,
         admin: android.content.ComponentName,
         intent: Intent,
     ): String {
         val target = intent.requireString(PACKAGE)
+        val key = intent.getStringExtra(KEY)
         val restrictions =
             Bundle().apply {
-                putString(intent.requireString(KEY), intent.requireString(VALUE))
+                if (key != null) putString(key, intent.requireString(VALUE))
             }
 
         policy.setApplicationRestrictions(admin, target, restrictions)
 
-        return "set ${restrictions.keySet()} on $target"
+        return "set ${restrictions.keySet().joinToString().ifEmpty { "nothing" }} on $target"
     }
 
     private fun Intent.requireString(name: String) = getStringExtra(name) ?: error("missing extra '$name'")
