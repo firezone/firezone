@@ -817,9 +817,9 @@ defmodule PortalWeb.CoreComponents do
       id={@target_id}
       role={if @menu?, do: "menu", else: "tooltip"}
       class={~w[
-        fixed z-10 invisible inline-block
-        text-xs text-body transition-opacity
-        duration-50 bg-elevated border border-border
+        fixed z-10 invisible inline-block max-w-xs
+        text-xs font-normal normal-case tracking-normal text-body
+        transition-opacity duration-50 bg-elevated border border-border
         rounded-md shadow-xs opacity-0
       ]}
     >
