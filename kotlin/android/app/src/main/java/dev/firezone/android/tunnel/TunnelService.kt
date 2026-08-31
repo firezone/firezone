@@ -53,7 +53,6 @@ import uniffi.connlib.ConnlibException
 import uniffi.connlib.DeviceInfo
 import uniffi.connlib.Event
 import uniffi.connlib.ProtectSocket
-import uniffi.connlib.Session
 import uniffi.connlib.SessionInterface
 import uniffi.connlib.configureLogger
 import uniffi.connlib.enforceLogSizeCap
@@ -79,6 +78,9 @@ class TunnelService : VpnService() {
 
     @Inject
     internal lateinit var moshi: Moshi
+
+    @Inject
+    internal lateinit var sessionFactory: SessionFactory
 
     private var tunnelIpv4Address: String? = null
     private var tunnelIpv6Address: String? = null
@@ -347,18 +349,16 @@ class TunnelService : VpnService() {
                             identifierForVendor = null,
                         )
 
-                    Session
-                        .newAndroid(
-                            config =
-                                AndroidSessionConfig(
-                                    apiUrl = config.apiUrl,
-                                    token = token,
-                                    deviceId = deviceIdValue,
-                                    deviceName = getDeviceName(),
-                                    isInternetResourceActive = resourceState.isEnabled(),
-                                    deviceInfo = deviceInfo,
-                                ),
-                            protectSocket = protectSocketCallback,
+                    sessionFactory
+                        .open(
+                            AndroidSessionConfig(
+                                apiUrl = config.apiUrl,
+                                token = token,
+                                deviceId = deviceIdValue,
+                                deviceName = getDeviceName(),
+                                isInternetResourceActive = resourceState.isEnabled(),
+                                deviceInfo = deviceInfo,
+                            ),
                             tlsIdentity = null,
                         ).use { session ->
                             startNetworkMonitoring()
