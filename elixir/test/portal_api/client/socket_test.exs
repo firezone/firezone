@@ -529,6 +529,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert socket.assigns.subject.actor.id == actor.id
       assert socket.assigns.subject.credential.type == :x509
       assert socket.assigns.subject.credential.auth_provider_id == provider.id
+      assert socket.assigns.subject.expires_at.microsecond == {0, 6}
       assert socket.assigns.client.attested?
       assert is_nil(socket.assigns.client.client_token_id)
     end

@@ -205,7 +205,11 @@ defmodule PortalAPI.Client.DeviceTrust do
          :ok <- ensure_account_enabled(account),
          {:ok, auth_provider} <- ensure_x509_authentication_enabled(auth_provider),
          {:ok, actor} <- Database.fetch_x509_actor(account, identity),
-         %DateTime{} = expires_at <- X509.not_after(leaf),
+         %DateTime{} = certificate_expires_at <- X509.not_after(leaf),
+         expires_at = %{
+           certificate_expires_at
+           | microsecond: {elem(certificate_expires_at.microsecond, 0), 6}
+         },
          subject = %Subject{
            account: account,
            actor: actor,
