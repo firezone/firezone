@@ -17307,7 +17307,7 @@
             }
           },
           {
-            "description": "Inclusive start of the time window. RFC 3339 timestamp; non-UTC\noffsets are accepted and converted to UTC. Defaults to 90 days\nbefore the current time when omitted.\n",
+            "description": "Inclusive start of the time window. RFC 3339 timestamp; non-UTC\noffsets are accepted and converted to UTC. Defaults to 90 days\nbefore the current time when omitted.\n\nFor `flow` entries the window applies to when the flow started.\n",
             "example": "2026-02-25T00:00:00Z",
             "in": "query",
             "name": "begin",
@@ -17317,7 +17317,7 @@
             }
           },
           {
-            "description": "Inclusive end of the time window. RFC 3339 timestamp; non-UTC\noffsets are accepted and converted to UTC. Defaults to the current\ntime when omitted.\n",
+            "description": "Inclusive end of the time window. RFC 3339 timestamp; non-UTC\noffsets are accepted and converted to UTC. Defaults to the current\ntime when omitted.\n\nFor `flow` entries the window applies to when the flow started.\n",
             "example": "2026-05-26T00:00:00Z",
             "in": "query",
             "name": "end",
