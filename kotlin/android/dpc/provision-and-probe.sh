@@ -44,6 +44,9 @@ adb install -r -g -t "$app_apk"
 adb install -r -g -t "$test_apk"
 adb install -r -g -t "$dpc_apk"
 
+echo "==> Firezone packages on the device:"
+adb shell pm list packages | grep firezone || echo "    none"
+
 echo "==> Owners before:"
 adb shell dpm list-owners || true
 
