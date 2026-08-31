@@ -114,6 +114,58 @@ jobs:
           # `working-directory` default and starts at the repository root.
           script: >-
             ./kotlin/android/mise-tasks/emulator-tests.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-coverage-${{ matrix.suite }}
+          path: kotlin/android/coverage.ec
+
+  emulator-coverage:
+    needs: emulator-tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-debug-classes
+          path: kotlin/android/classes
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: android-coverage-*
+          path: kotlin/android/execution-data
+      # Matched against `jacocoVersion` in `app/build.gradle.kts`: execution data is only readable
+      # by the JaCoCo that wrote it.
+      - name: Report on the execution data
+        run: |
+          curl -sSfL -o jacoco-cli.jar \
+            https://repo1.maven.org/maven2/org/jacoco/org.jacoco.cli/0.8.13/org.jacoco.cli-0.8.13-nodeps.jar
+
+          mapfile -t execution_data < <(find execution-data -name '*.ec')
+
+          if [ ${#execution_data[@]} -eq 0 ]; then
+            echo "No suite recorded any execution data. What was downloaded:"
+            find execution-data
+            exit 1
+          fi
+
+          java -jar jacoco-cli.jar report "${execution_data[@]}" \
+            --classfiles classes \
+            --sourcefiles app/src/main/java \
+            --xml coverage.xml
+
+          # A report that resolved no classes still writes valid XML, so it is worth saying so
+          # here rather than uploading an empty one.
+          if ! grep -q '<counter' coverage.xml; then
+            echo "The report counted nothing. The classes it was given:"
+            find classes -name '*.class' | head
+            exit 1
+          fi
+      - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: kotlin/android/coverage.xml
+          format: jacoco
+          flag-name: kotlin-emulator
+          parallel: true
 
   update-release-draft:
     name: update-release-draft
@@ -282,3 +334,12 @@ jobs:
           name: Android debug APK
           path: |
             ./kotlin/android/app/build/outputs/apk/*
+      # Execution data records which probes ran, and says nothing about what they belong to, so
+      # reporting on it later needs the classes these tests were built from.
+      - name: Upload the compiled classes
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-debug-classes
+          path: |
+            ./kotlin/android/app/build/tmp/kotlin-classes/debug
+            ./kotlin/android/app/build/intermediates/javac/debug/classes

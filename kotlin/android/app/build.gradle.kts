@@ -83,6 +83,7 @@ android {
         getByName("debug") {
             isDebuggable = true
             enableUnitTestCoverage = true
+            enableAndroidTestCoverage = true
             resValue("string", "app_name", "\"Firezone (Dev)\"")
 
             buildConfigField("String", "AUTH_URL", "\"https://app.firez.one\"")
@@ -150,6 +151,12 @@ android {
         unitTests {
             isIncludeAndroidResources = true
         }
+    }
+
+    // Execution data is only readable by the same JaCoCo that wrote it, and the workflow reports
+    // on it with a standalone CLI, so the version is pinned here rather than left to AGP.
+    testCoverage {
+        jacocoVersion = "0.8.13"
     }
 
     // Escalate Slack's Compose lint checks (added via `lintChecks`) to build-failing
