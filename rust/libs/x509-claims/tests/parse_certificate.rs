@@ -233,7 +233,7 @@ fn diagnostics_show_derived_firezone_attributes() {
 }
 
 #[test]
-fn diagnostics_show_what_a_certificate_lacks_without_judging_it() {
+fn diagnostics_flag_the_requirements_a_certificate_fails() {
     let der = certificate_without_client_identity_extensions();
 
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
@@ -243,20 +243,60 @@ fn diagnostics_show_what_a_certificate_lacks_without_judging_it() {
         Some("No")
     );
     assert_eq!(
+        detail_problem(&metadata, "TLS Client Authentication EKU"),
+        Some(ValidationError::MissingClientAuthEku)
+    );
+    assert_eq!(
         detail_value(&metadata, "Digital Signature Key Usage").as_deref(),
         Some("Not allowed")
     );
     assert_eq!(
+        detail_problem(&metadata, "Digital Signature Key Usage"),
+        Some(ValidationError::DigitalSignatureNotAllowed)
+    );
+
+    let fields = metadata.detail_fields();
+
+    assert_eq!(
+        labels(&fields.iter().take(2).collect::<Vec<_>>()),
+        [
+            "TLS Client Authentication EKU",
+            "Digital Signature Key Usage"
+        ],
+        "a requirement the certificate fails is why it cannot be used, so it reads first"
+    );
+}
+
+#[test]
+fn diagnostics_omit_the_requirements_a_certificate_meets() {
+    let metadata = parse_certificate(RSA_LEAF, now()).expect("fixture should parse");
+    assert!(metadata.has_client_auth_eku);
+    assert!(metadata.digital_signature_allowed);
+
+    for label in [
+        "TLS Client Authentication EKU",
+        "Digital Signature Key Usage",
+    ] {
+        assert!(
+            !metadata
+                .detail_fields()
+                .iter()
+                .any(|field| field.label == label),
+            "a requirement the certificate meets says nothing, so {label} has no row"
+        );
+    }
+}
+
+#[test]
+fn diagnostics_show_an_algorithm_the_parser_cannot_name() {
+    let der = certificate_without_client_identity_extensions();
+
+    let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+
+    assert_eq!(
         detail_value(&metadata, "Signing Algorithm").as_deref(),
         Some("1.3.101.112"),
         "an algorithm the parser has no name for should still be shown"
-    );
-    assert!(
-        metadata
-            .detail_fields()
-            .iter()
-            .all(|field| field.problem.is_none()),
-        "what the portal makes of these rows is not a problem with them"
     );
 }
 
@@ -564,8 +604,6 @@ fn diagnostics_read_from_the_identity_down_to_the_encoding() {
             "Serial Number",
             "Not Before",
             "Not After",
-            "TLS Client Authentication EKU",
-            "Digital Signature Key Usage",
             "Signing Algorithm",
             "SHA-256 Fingerprint",
         ],
@@ -674,8 +712,6 @@ fn sparse_diagnostics_keep_the_order_without_leaving_gaps() {
             "Serial Number",
             "Not Before",
             "Not After",
-            "TLS Client Authentication EKU",
-            "Digital Signature Key Usage",
             "Signing Algorithm",
             "SHA-256 Fingerprint",
         ],
