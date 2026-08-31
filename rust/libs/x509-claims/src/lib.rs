@@ -25,7 +25,7 @@ use x509_parser::{
     prelude::{FromDer as _, X509Certificate},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 pub enum SigningAlgorithm {
     RsaSha256,
     EcdsaSha256,
@@ -45,7 +45,7 @@ impl SigningAlgorithm {
 }
 
 /// What a certificate says about one of the claims the clients read.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Claim {
     /// What the certificate carries, [`None`] when it carries nothing.
     pub value: Option<String>,
@@ -136,7 +136,7 @@ impl ValidationError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ParsedCertificate {
     pub subject_cn: Option<String>,
     pub subject: String,
