@@ -54,6 +54,8 @@ pub enum ValidationError {
     UnknownAttribute,
     NotYetValid,
     Expired,
+    MissingClientAuthEku,
+    DigitalSignatureNotAllowed,
 }
 
 /// Metadata parsed from a client certificate, mirroring [`x509_claims::ParsedCertificate`].
@@ -175,6 +177,10 @@ impl From<x509_claims::ValidationError> for ValidationError {
             x509_claims::ValidationError::UnknownAttribute => Self::UnknownAttribute,
             x509_claims::ValidationError::NotYetValid => Self::NotYetValid,
             x509_claims::ValidationError::Expired => Self::Expired,
+            x509_claims::ValidationError::MissingClientAuthEku => Self::MissingClientAuthEku,
+            x509_claims::ValidationError::DigitalSignatureNotAllowed => {
+                Self::DigitalSignatureNotAllowed
+            }
         }
     }
 }
