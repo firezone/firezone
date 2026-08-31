@@ -206,7 +206,9 @@ tasks.register<Copy>("collectDebugClasses") {
 }
 
 dependencies {
-    "jacocoCli"("org.jacoco:org.jacoco.cli:$jacocoToolVersion:nodeps")
+    // The `nodeps` jar is already shaded, so its declared dependencies would only add jars for the
+    // report step to pick the wrong one from.
+    "jacocoCli"("org.jacoco:org.jacoco.cli:$jacocoToolVersion:nodeps") { isTransitive = false }
     implementation("androidx.core:core-ktx:1.19.0")
     // Desugaring - needed for Java 8+ APIs on older Android versions
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
