@@ -23,8 +23,10 @@ import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.session.ui.compose.SessionScreen
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
+import dev.firezone.android.tunnel.TunnelService.Companion.State
 import dev.firezone.android.tunnel.model.isInternetResource
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.flow.emptyFlow
 
 @AndroidEntryPoint
 class SessionActivity : AppCompatActivity() {
@@ -40,13 +42,6 @@ class SessionActivity : AppCompatActivity() {
             ) {
                 val binder = service as TunnelService.LocalBinder
                 tunnelService = binder.getService()
-
-                tunnelService?.let {
-                    it.setServiceStateMutableStateFlow(viewModel.getServiceStatusMutableStateFlow())
-                    it.setResourcesMutableStateFlow(viewModel.getResourcesMutableStateFlow())
-                    it.setConnectedDevicesMutableStateFlow(viewModel.getConnectedDevicesMutableStateFlow())
-                    it.setActorNameMutableStateFlow(viewModel.getActorNameMutableStateFlow())
-                }
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -66,15 +61,15 @@ class SessionActivity : AppCompatActivity() {
 
         setContent {
             FirezoneTheme {
-                val resourcesState by viewModel.resourcesStateFlow.collectAsStateWithLifecycle()
-                val connectedDevicesState by viewModel.connectedDevicesStateFlow.collectAsStateWithLifecycle()
+                val resourcesState by (tunnelService?.resourcesState ?: emptyFlow()).collectAsStateWithLifecycle(emptyList())
+                val connectedDevicesState by (tunnelService?.connectedDevicesState ?: emptyFlow()).collectAsStateWithLifecycle(emptyList())
                 val favorites by viewModel.favorites.collectAsStateWithLifecycle()
-                val serviceStatus by viewModel.serviceStatusStateFlow.collectAsStateWithLifecycle()
-                val actorName by viewModel.actorNameStateFlow.collectAsStateWithLifecycle()
+                val serviceStatus by (tunnelService?.serviceState ?: emptyFlow()).collectAsStateWithLifecycle<State?>(null)
+                val actorName by (tunnelService?.actorNameState ?: emptyFlow()).collectAsStateWithLifecycle(null)
 
                 // Finish if the tunnel service dies.
                 LaunchedEffect(serviceStatus) {
-                    if (serviceStatus == TunnelService.Companion.State.DOWN) finish()
+                    if (serviceStatus == State.DOWN) finish()
                 }
 
                 var internetState by remember { mutableStateOf(ResourceState.UNSET) }
