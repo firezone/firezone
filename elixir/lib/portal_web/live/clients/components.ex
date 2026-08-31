@@ -891,11 +891,11 @@ defmodule PortalWeb.Clients.Components do
     <div class="flex items-center gap-1.5">
       <.popover :if={@serial.source != :reported} placement="right">
         <:target>
-          <.provider_icon :if={@serial.provider} provider={to_string(@serial.provider)} size="xs" />
+          <.provider_icon :if={@serial.provider} provider={to_string(@serial.provider)} size="sm" />
           <.icon
             :if={is_nil(@serial.provider)}
             name="ri-shield-keyhole-line"
-            class="w-3 h-3 shrink-0 text-success"
+            class="w-4 h-4 shrink-0 text-success"
           />
         </:target>
         <:content>{serial_source_hint(@serial)}</:content>
