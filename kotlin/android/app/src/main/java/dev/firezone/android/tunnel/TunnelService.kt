@@ -20,6 +20,7 @@ import com.google.firebase.installations.FirebaseInstallations
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.Log
 import dev.firezone.android.core.Telemetry
 import dev.firezone.android.core.data.Repository
@@ -253,7 +254,11 @@ class TunnelService : VpnService() {
         activeService = this
         registerReceiver(restrictionsReceiver, restrictionsFilter)
 
-        startTelemetry(protectSocketCallback)
+        // `Telemetry.start` honours this for the Kotlin side; connlib's telemetry is a separate
+        // client, so without this a build stamped as not reporting still reports.
+        if (!BuildConfig.NO_TELEMETRY) {
+            startTelemetry(protectSocketCallback)
+        }
     }
 
     override fun onDestroy() {
@@ -261,7 +266,9 @@ class TunnelService : VpnService() {
         unregisterReceiver(restrictionsReceiver)
         serviceScope.cancel()
 
-        stopTelemetry()
+        if (!BuildConfig.NO_TELEMETRY) {
+            stopTelemetry()
+        }
         super.onDestroy()
     }
 
