@@ -9,6 +9,7 @@ use crate::{
     view::{GeneralSettingsForm, SessionViewModel},
 };
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
+use client_shared::ConnectedAs;
 use connlib_model::{ResourceId, ResourceList, ResourceView, Site};
 use futures::{
     FutureExt, SinkExt, StreamExt,
@@ -52,6 +53,8 @@ pub struct Controller<I: GuiIntegration> {
     release: Option<updates::Release>,
     ctrl_rx: ReceiverStream<ControllerRequest>,
     status: Status,
+    /// Who the portal said we are in the current session's `init`.
+    connected_as: Option<ConnectedAs>,
     quit_timeout: Option<Pin<Box<tokio::time::Sleep>>>,
     telemetry_allowed: bool,
     updates_rx: Option<ReceiverStream<Option<updates::Release>>>,
@@ -238,6 +241,7 @@ impl<I: GuiIntegration> Controller<I> {
             release: None,
             ctrl_rx: ReceiverStream::new(ctrl_rx),
             status: Default::default(),
+            connected_as: None,
             quit_timeout: None,
             telemetry_allowed,
             updates_rx,
@@ -335,12 +339,8 @@ impl<I: GuiIntegration> Controller<I> {
     /// Resume a session at startup: if a token is available and connect-on-start
     /// is enabled, reconnect.
     async fn maybe_start_session(&mut self) -> Result<()> {
-        let Some(token) = self
-            .auth
-            .token()
-            .context("Failed to load token from disk during app start")?
-        else {
-            tracing::info!("No token / actor_name on disk, starting in signed-out state");
+        let Some(token) = self.auth.token() else {
+            tracing::info!("No token in the keyring, starting in signed-out state");
             return Ok(());
         };
 
@@ -406,13 +406,7 @@ impl<I: GuiIntegration> Controller<I> {
         // Change the status after we begin connecting
         self.status = Status::WaitingForPortal;
 
-        let session = self.auth.session().context("Missing session")?;
-
-        self.general_settings.account_slug = Some(session.account_slug.clone());
-        self.integration
-            .save_general_settings(&self.general_settings)
-            .await?;
-        self.notify_settings_changed()?;
+        self.connected_as = None;
 
         self.refresh_ui_state();
 
@@ -421,9 +415,6 @@ impl<I: GuiIntegration> Controller<I> {
 
     async fn update_telemetry_context(&mut self) -> Result<()> {
         let environment = self.api_url().to_string();
-        let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
-
-        telemetry::set_account_slug(account_slug.clone());
 
         if !self.telemetry_allowed {
             return Ok(());
@@ -434,7 +425,6 @@ impl<I: GuiIntegration> Controller<I> {
         self.send_ipc(&service::ClientMsg::StartTelemetry {
             environment: environment.clone(),
             release: crate::RELEASE.to_string(),
-            account_slug,
         })
         .await?;
 
@@ -685,6 +675,26 @@ impl<I: GuiIntegration> Controller<I> {
 
                 dialog::error(&error_msg)?;
             }
+            service::ServerMsg::ConnectedToPortal(connected) => {
+                if connected.actor_name.is_empty() {
+                    tracing::warn!("Portal did not name the actor on `init`");
+                }
+
+                telemetry::set_account_slug(connected.account_slug.clone());
+
+                // An MDM-forced slug is the admin's answer to the same question and wins
+                // every read of it, so it is left alone rather than cached over.
+                if self.mdm_settings.account_slug.is_none() {
+                    self.general_settings.account_slug = Some(connected.account_slug.clone());
+                    self.integration
+                        .save_general_settings(&self.general_settings)
+                        .await?;
+                    self.notify_settings_changed()?;
+                }
+
+                self.connected_as = Some(connected);
+                self.refresh_ui_state();
+            }
             service::ServerMsg::OnUpdateResources(resources) => {
                 if !self.status.needs_resource_updates() {
                     return Ok(ControlFlow::Continue(()));
@@ -861,56 +871,50 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     fn build_ui_state(&self) -> (system_tray::ConnlibState, SessionViewModel) {
-        // TODO: Refactor `Controller` and the auth module so that "Are we logged in?"
-        // doesn't require such complicated control flow to answer.
-        if let Some(auth_session) = self.auth.session() {
-            match &self.status {
-                Status::Disconnected => {
-                    // If we have an `auth_session` but no connlib session, we are most likely configured to
-                    // _not_ auto-connect on startup. Thus, we treat this the same as being signed out.
+        // A browser round-trip is in flight, which is the one state connlib knows nothing about.
+        if self.auth.ongoing_request().is_some() {
+            return (
+                system_tray::ConnlibState::WaitingForBrowser,
+                SessionViewModel::Loading,
+            );
+        }
 
-                    (
-                        system_tray::ConnlibState::SignedOut,
-                        SessionViewModel::SignedOut,
-                    )
-                }
-                Status::Quitting => (
-                    system_tray::ConnlibState::Quitting,
-                    SessionViewModel::Loading,
-                ),
-                Status::TunnelReady { resources } => (
+        match &self.status {
+            Status::Disconnected => (
+                system_tray::ConnlibState::SignedOut,
+                SessionViewModel::SignedOut,
+            ),
+            Status::Quitting => (
+                system_tray::ConnlibState::Quitting,
+                SessionViewModel::Loading,
+            ),
+            Status::TunnelReady { resources } => match &self.connected_as {
+                Some(connected) => (
                     system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
-                        actor_name: auth_session.actor_name.clone(),
+                        actor_name: connected.actor_name.clone(),
                         favorite_resources: self.general_settings.favorite_resources.clone(),
                         internet_resource_enabled: self.general_settings.internet_resource_enabled,
                         resources: resources.resources.clone(),
                         connected_devices: resources.connected_devices.clone(),
                     }),
                     SessionViewModel::SignedIn {
-                        account_slug: auth_session.account_slug.clone(),
-                        actor_name: auth_session.actor_name.clone(),
+                        account_slug: connected.account_slug.clone(),
+                        actor_name: connected.actor_name.clone(),
                     },
                 ),
-                Status::WaitingForPortal => (
+                None => (
                     system_tray::ConnlibState::WaitingForPortal,
                     SessionViewModel::Loading,
                 ),
-                Status::WaitingForTunnel => (
-                    system_tray::ConnlibState::WaitingForTunnel,
-                    SessionViewModel::Loading,
-                ),
-            }
-        } else if self.auth.ongoing_request().is_some() {
-            // Signing in, waiting on deep link callback
-            (
-                system_tray::ConnlibState::WaitingForBrowser,
+            },
+            Status::WaitingForPortal => (
+                system_tray::ConnlibState::WaitingForPortal,
                 SessionViewModel::Loading,
-            )
-        } else {
-            (
-                system_tray::ConnlibState::SignedOut,
-                SessionViewModel::SignedOut,
-            )
+            ),
+            Status::WaitingForTunnel => (
+                system_tray::ConnlibState::WaitingForTunnel,
+                SessionViewModel::Loading,
+            ),
         }
     }
 
@@ -943,6 +947,8 @@ impl<I: GuiIntegration> Controller<I> {
             | Status::WaitingForTunnel => {}
         }
         self.status = Status::Disconnected;
+        self.connected_as = None;
+        telemetry::set_account_slug(None);
         tracing::debug!("disconnecting connlib");
         // This is redundant if the token is expired, in that case
         // connlib already disconnected itself.

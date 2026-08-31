@@ -116,16 +116,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let logFilter =
       providerConfiguration.withMDMOverride(forKey: Configuration.Keys.logFilter)
       ?? ConfigurationDefaults.logFilter
-    let accountSlug =
-      providerConfiguration.withMDMOverride(forKey: Configuration.Keys.accountSlug)
-      ?? ConfigurationDefaults.accountSlug
     let internetResourceEnabled = Configuration.parseBool(
       providerConfiguration[Configuration.Keys.internetResourceEnabled],
       default: ConfigurationDefaults.internetResourceEnabled
     )
 
     Telemetry.setEnvironmentOrClose(apiURL)
-    Telemetry.setUser(firezoneId: firezoneId.encoded, accountSlug: accountSlug)
 
     // Create command channel for Adapter -> Provider communication
     let (commandSender, commandReceiver): (Sender<ProviderCommand>, Receiver<ProviderCommand>) =
@@ -136,7 +132,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       token: token,
       deviceId: firezoneId.uuid,
       logFilter: logFilter,
-      accountSlug: accountSlug,
       internetResourceEnabled: internetResourceEnabled,
       providerCommandSender: commandSender
     )

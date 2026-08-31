@@ -56,9 +56,6 @@ actor Adapter {
   private static let featureFlagPollInterval: Duration = .seconds(5)
   private static let resourceNotificationTTL: Duration = .seconds(15)
 
-  // Our local copy of the accountSlug
-  private let accountSlug: String
-
   /// Current network settings for tunnel configuration.
   private var networkSettings = NetworkSettings()
 
@@ -130,6 +127,10 @@ actor Adapter {
   private var resources: [Resource]?  // swiftlint:disable:this discouraged_optional_collection
   private var connectedDevices: [ConnectedDevice] = []
 
+  /// The account and actor the portal named in `init`, reported up to the app process.
+  private var accountSlug: String?
+  private var actorName: String?
+
   /// Resource notifications waiting for the UI process to poll them.
   private var pendingUnreachableResources: [PendingUnreachableResource]
   private let notificationClock = ContinuousClock()
@@ -145,7 +146,6 @@ actor Adapter {
     token: Token,
     deviceId: String,
     logFilter: String,
-    accountSlug: String,
     internetResourceEnabled: Bool,
     providerCommandSender: Sender<ProviderCommand>
   ) {
@@ -153,7 +153,6 @@ actor Adapter {
     self.token = token
     self.deviceId = deviceId
     self.logFilter = logFilter
-    self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
     self.providerCommandSender = providerCommandSender
     self.pendingUnreachableResources = []
@@ -162,7 +161,7 @@ actor Adapter {
   }
 
   func start() async throws {
-    Log.log("Adapter.start: Starting session for account: \(accountSlug)")
+    Log.log("Adapter.start: Starting session")
 
     // Get device metadata - asynchronously get values from MainActor
     let deviceName: String
@@ -208,7 +207,6 @@ actor Adapter {
         apiUrl: apiURL,
         token: token.description,
         deviceId: deviceId,
-        accountSlug: accountSlug,
         deviceName: deviceName,
         deviceInfo: deviceInfo,
         isInternetResourceActive: internetResourceEnabled,
@@ -328,6 +326,8 @@ actor Adapter {
         resources: self.resources?.map { self.convertResource($0) },
         connectedDevices: self.connectedDevices.map { FirezoneKit.ConnectedDevice($0) },
         isLogStreamingActive: Log.isStreamingActive,
+        accountSlug: self.accountSlug,
+        actorName: self.actorName,
         comparedTo: request.stateHash
       )
 
@@ -463,6 +463,16 @@ actor Adapter {
           cancelStartContinuation()
         }
       }
+
+    case .connectedToPortal(let accountSlug, let actorName):
+      Log.log("Received ConnectedToPortal event")
+
+      self.accountSlug = accountSlug
+      self.actorName = actorName
+      Telemetry.setUser(
+        firezoneId: FirezoneId(uuid: deviceId).encoded,
+        accountSlug: accountSlug
+      )
 
     case .resourcesUpdated(let resourceList, let connectedDeviceList):
       Log.log("Received ResourcesUpdated event with \(resourceList.count) resources")

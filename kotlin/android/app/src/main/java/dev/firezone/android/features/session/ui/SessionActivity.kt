@@ -45,6 +45,7 @@ class SessionActivity : AppCompatActivity() {
                     it.setServiceStateMutableStateFlow(viewModel.getServiceStatusMutableStateFlow())
                     it.setResourcesMutableStateFlow(viewModel.getResourcesMutableStateFlow())
                     it.setConnectedDevicesMutableStateFlow(viewModel.getConnectedDevicesMutableStateFlow())
+                    it.setActorNameMutableStateFlow(viewModel.getActorNameMutableStateFlow())
                 }
             }
 
@@ -69,6 +70,7 @@ class SessionActivity : AppCompatActivity() {
                 val connectedDevicesState by viewModel.connectedDevicesStateFlow.collectAsStateWithLifecycle()
                 val favorites by viewModel.favorites.collectAsStateWithLifecycle()
                 val serviceStatus by viewModel.serviceStatusStateFlow.collectAsStateWithLifecycle()
+                val actorName by viewModel.actorNameStateFlow.collectAsStateWithLifecycle()
 
                 // Finish if the tunnel service dies.
                 LaunchedEffect(serviceStatus) {
@@ -96,8 +98,6 @@ class SessionActivity : AppCompatActivity() {
                             }.toImmutableList()
                     }
 
-                val actorName = remember { viewModel.getActorName() }
-
                 SessionScreen(
                     actorName = actorName,
                     resources = resources,
@@ -117,7 +117,6 @@ class SessionActivity : AppCompatActivity() {
                     },
                     onSignOut = {
                         viewModel.clearToken()
-                        viewModel.clearActorName()
                         tunnelService?.disconnect()
                     },
                 )

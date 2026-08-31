@@ -85,6 +85,7 @@ class TunnelService : VpnService() {
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelConnectedDevices: List<ConnectedDevice> = emptyList()
+    private var _tunnelActorName: String? = null
     private var _tunnelState: State = State.DOWN
     private var resourceState: ResourceState = ResourceState.UNSET
 
@@ -110,6 +111,12 @@ class TunnelService : VpnService() {
             _tunnelConnectedDevices = value
             updateConnectedDevicesStateFlow(value)
         }
+    var tunnelActorName: String?
+        get() = _tunnelActorName
+        set(value) {
+            _tunnelActorName = value
+            updateActorNameStateFlow(value)
+        }
     var tunnelState: State
         get() = _tunnelState
         set(value) {
@@ -121,6 +128,7 @@ class TunnelService : VpnService() {
     private var serviceStateMutableStateFlow: MutableStateFlow<State?>? = null
     private var resourcesMutableStateFlow: MutableStateFlow<List<Resource>>? = null
     private var connectedDevicesMutableStateFlow: MutableStateFlow<List<ConnectedDevice>>? = null
+    private var actorNameMutableStateFlow: MutableStateFlow<String?>? = null
 
     // For binding the SessionActivity view to this service
     private val binder = LocalBinder()
@@ -329,7 +337,8 @@ class TunnelService : VpnService() {
                     val deviceIdValue = deviceId()
                     Telemetry.setEnvironmentOrClose(config.apiUrl)
                     Telemetry.setFirezoneId(deviceIdValue)
-                    Telemetry.setAccountSlug(config.accountSlug)
+                    // The portal names the account in `init`; until then this session has none.
+                    Telemetry.setAccountSlug(null)
 
                     configureLogger(
                         logDir(this@TunnelService),
@@ -343,7 +352,6 @@ class TunnelService : VpnService() {
                                 AndroidSessionConfig(
                                     apiUrl = config.apiUrl,
                                     token = token,
-                                    accountSlug = config.accountSlug,
                                     deviceId = deviceIdValue,
                                     deviceName = getDeviceName(),
                                     isInternetResourceActive = resourceState.isEnabled(),
@@ -503,6 +511,13 @@ class TunnelService : VpnService() {
         connectedDevicesMutableStateFlow?.value = tunnelConnectedDevices
     }
 
+    fun setActorNameMutableStateFlow(stateFlow: MutableStateFlow<String?>) {
+        actorNameMutableStateFlow = stateFlow
+
+        // Update the newly bound SessionActivity with our current actor name
+        actorNameMutableStateFlow?.value = tunnelActorName
+    }
+
     private fun updateServiceStateFlow(state: State) {
         serviceStateMutableStateFlow?.value = state
     }
@@ -513,6 +528,10 @@ class TunnelService : VpnService() {
 
     private fun updateConnectedDevicesStateFlow(devices: List<ConnectedDevice>) {
         connectedDevicesMutableStateFlow?.value = devices
+    }
+
+    private fun updateActorNameStateFlow(actorName: String?) {
+        actorNameMutableStateFlow?.value = actorName
     }
 
     private fun deviceId(): String {
@@ -681,10 +700,21 @@ class TunnelService : VpnService() {
                                     buildVpnService()
                                 }
 
+                                is Event.ConnectedToPortal -> {
+                                    Telemetry.setAccountSlug(event.accountSlug)
+                                    tunnelActorName = event.actorName
+
+                                    // A slug forced through managed configuration already wins
+                                    // every read, so caching over it would only surface once the
+                                    // admin stops forcing one.
+                                    if (!repo.isAccountSlugManaged()) {
+                                        repo.saveAccountSlug(event.accountSlug).collect {}
+                                    }
+                                }
+
                                 is Event.Disconnected -> {
                                     if (event.error.requiresSignIn()) {
                                         repo.clearToken()
-                                        repo.clearActorName()
                                     }
 
                                     stopReason = StopReason.Disconnected(event.error.message())

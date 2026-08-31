@@ -1,4 +1,4 @@
-use crate::PHOENIX_TOPIC;
+use crate::{ConnectedAs, PHOENIX_TOPIC};
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
@@ -66,6 +66,7 @@ pub struct Eventloop {
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<ResourceList>,
     tun_config_sender: watch::Sender<Option<TunConfig>>,
+    connected_as_sender: watch::Sender<Option<ConnectedAs>>,
     user_notification_sender: mpsc::Sender<UserNotification>,
 
     portal_event_rx: mpsc::Receiver<Result<PortalEvent, phoenix_channel::Error>>,
@@ -143,6 +144,7 @@ impl Eventloop {
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<ResourceList>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
+        connected_as_sender: watch::Sender<Option<ConnectedAs>>,
         user_notification_sender: mpsc::Sender<UserNotification>,
     ) -> Self {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
@@ -182,6 +184,7 @@ impl Eventloop {
             portal_cmd_tx,
             resource_list_sender,
             tun_config_sender,
+            connected_as_sender,
             user_notification_sender,
         }
     }
@@ -507,7 +510,16 @@ impl Eventloop {
                 relays,
                 authorizations,
                 flow_logs,
+                account_slug,
+                actor_name,
             }) => {
+                self.connected_as_sender
+                    .send(Some(ConnectedAs {
+                        account_slug,
+                        actor_name,
+                    }))
+                    .context("Failed to emit event")?;
+
                 tracing::info!(
                     upload_enabled = flow_logs.upload_enabled(),
                     spool_dir = ?self.flow_logs_dir,

@@ -79,7 +79,7 @@
 
       case .connected, .reasserting, .connecting:
         Group {
-          Text("Signed in as \(store.actorName)")
+          Text(store.sessionHeading)
             .foregroundStyle(.secondary)
 
           Button("Sign Out") {

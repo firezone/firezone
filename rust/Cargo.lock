@@ -1365,6 +1365,7 @@ dependencies = [
  "otel-instruments",
  "parking_lot",
  "phoenix-channel",
+ "serde",
  "snownet",
  "socket-factory",
  "telemetry",

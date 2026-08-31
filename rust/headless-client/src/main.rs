@@ -532,6 +532,11 @@ fn try_main() -> Result<()> {
                         break Ok(());
                     }
                 }
+                client_shared::Event::ConnectedToPortal(connected) => {
+                    telemetry::set_account_slug(connected.account_slug.clone());
+
+                    analytics::identify(RELEASE.to_owned(), connected.account_slug, None, None);
+                }
                 client_shared::Event::GatewayVersionMismatch { .. } | client_shared::Event::AllGatewaysOffline { .. } => {},
             }
         };

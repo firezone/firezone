@@ -22,6 +22,7 @@ internal class SessionViewModel
         private val _serviceStatusStateFlow = MutableStateFlow<State?>(null)
         private val _resourcesStateFlow = MutableStateFlow<List<Resource>>(emptyList())
         private val _connectedDevicesStateFlow = MutableStateFlow<List<ConnectedDevice>>(emptyList())
+        private val _actorNameStateFlow = MutableStateFlow<String?>(null)
 
         val serviceStatusStateFlow: StateFlow<State?>
             get() = _serviceStatusStateFlow
@@ -29,6 +30,8 @@ internal class SessionViewModel
             get() = _resourcesStateFlow
         val connectedDevicesStateFlow: StateFlow<List<ConnectedDevice>>
             get() = _connectedDevicesStateFlow
+        val actorNameStateFlow: StateFlow<String?>
+            get() = _actorNameStateFlow
 
         // Internal getters for TunnelService to update state
         internal fun getServiceStatusMutableStateFlow(): MutableStateFlow<State?> = _serviceStatusStateFlow
@@ -37,13 +40,10 @@ internal class SessionViewModel
 
         internal fun getConnectedDevicesMutableStateFlow(): MutableStateFlow<List<ConnectedDevice>> = _connectedDevicesStateFlow
 
+        internal fun getActorNameMutableStateFlow(): MutableStateFlow<String?> = _actorNameStateFlow
+
         val favorites: StateFlow<Favorites>
             get() = repo.favorites
-
-        // Actor name
-        fun clearActorName() = repo.clearActorName()
-
-        fun getActorName() = repo.getActorNameSync()
 
         fun addFavoriteResource(id: String) {
             repo.addFavoriteResource(id)

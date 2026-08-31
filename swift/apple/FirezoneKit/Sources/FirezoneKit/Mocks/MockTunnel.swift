@@ -29,7 +29,8 @@
     let vpnStatus: VPNStatus
     let systemExtension: SystemExtension
     let notifications: NotificationDecision
-    let actorName: String
+    /// The actor the portal would name on `init`; absent unless the scenario is connected.
+    let actorName: String?
     let resources: [Resource]
     let connectedDevices: [ConnectedDevice]
     let favorites: [String]
@@ -154,7 +155,6 @@
     private static func seedConfiguration(with scenario: MockScenario) {
       let configuration = Configuration.shared
 
-      configuration.actorName = scenario.actorName
       configuration.accountSlug = "example-corp"
 
       // A DEBUG build points these at the staging stack, which a screenshot of the
@@ -333,6 +333,7 @@
             resources: scenario.resources,
             connectedDevices: scenario.connectedDevices,
             isLogStreamingActive: false,
+            actorName: scenario.actorName,
             comparedTo: request.stateHash
           )
 

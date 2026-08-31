@@ -20,7 +20,16 @@ import UserNotifications
 @MainActor
 // TODO: Move some state logic to view models
 public final class Store: ObservableObject {
-  @Published private(set) var actorName: String
+  /// The actor the portal named in `init`, `nil` until it arrives.
+  @Published private(set) var actorName: String?
+
+  /// How the session names itself, which is only the actor when the portal named one.
+  var sessionHeading: String {
+    guard let actorName else { return "Signed in" }
+
+    return "Signed in as \(actorName)"
+  }
+
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
   @Published private(set) var connectedDevices: [ConnectedDevice] = []
@@ -115,7 +124,6 @@ public final class Store: ObservableObject {
       self.logDirectory = logDirectory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
-      self.actorName = self.configuration.actorName
       self.shownAlertIds = Set(userDefaults.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
     }
@@ -134,7 +142,6 @@ public final class Store: ObservableObject {
       self.logDirectory = logDirectory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
-      self.actorName = self.configuration.actorName
       self.shownAlertIds = Set(userDefaults.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
     }
@@ -447,7 +454,6 @@ public final class Store: ObservableObject {
     // Try to load existing configuration
     if let manager = try await VPNConfigurationManager.load(using: tunnelManagerFactory) {
       try await manager.loadConfiguration(into: configuration, userDefaults: userDefaults)
-      actorName = configuration.actorName
       await seedInitialSyncedSnapshot()
       self.vpnConfigurationManager = manager
       SharedAccess.markAppRunning()
@@ -477,7 +483,6 @@ public final class Store: ObservableObject {
     )
 
     try await manager().loadConfiguration(into: configuration, userDefaults: userDefaults)
-    actorName = configuration.actorName
     await seedInitialSyncedSnapshot()
 
     try await setupTunnelObservers()
@@ -599,16 +604,7 @@ public final class Store: ObservableObject {
     session.stopTunnel()
   }
 
-  func signIn(authResponse: AuthResponse) async throws {
-    let actorName = authResponse.actorName
-    let accountSlug = authResponse.accountSlug
-
-    // This is only shown in the GUI.
-    configuration.actorName = actorName
-    self.actorName = actorName
-
-    configuration.accountSlug = accountSlug
-
+  func signIn(token: String) async throws {
     try await manager().save(configuration: configuration)
     try await manager().enable()
 
@@ -620,7 +616,7 @@ public final class Store: ObservableObject {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
-    try IPCClient.start(session: session, token: authResponse.token)
+    try IPCClient.start(session: session, token: token)
   }
 
   func signOut() async throws {
@@ -808,6 +804,7 @@ public final class Store: ObservableObject {
     resourceList = ResourceList.loading
     tunnelStateHash = Data()
     connectedDevices.removeAll()
+    actorName = nil
     Log.setStreamingActive(false)
   }
 
@@ -867,6 +864,18 @@ public final class Store: ObservableObject {
       }
 
       connectedDevices = state.connectedDevices
+
+      if state.actorName == nil, actorName != nil {
+        Log.warning("Portal did not name the actor on `init`")
+      }
+
+      actorName = state.actorName
+
+      // Caching the account we reached keeps the next sign-in URL and the admin portal
+      // link pointing at it, but an MDM profile forcing one is the admin's answer.
+      if let accountSlug = state.accountSlug, !configuration.isAccountSlugForced {
+        configuration.accountSlug = accountSlug
+      }
     }
 
     await showNotificationsForUnreachableResources(
