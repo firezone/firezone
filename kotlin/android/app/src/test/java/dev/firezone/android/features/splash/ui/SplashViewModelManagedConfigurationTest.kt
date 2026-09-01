@@ -25,7 +25,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
-import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [Build.VERSION_CODES.TIRAMISU])
@@ -66,7 +65,7 @@ class SplashViewModelManagedConfigurationTest {
     @Test
     fun `managed token and connect on start launch the tunnel`() {
         viewModel.checkTunnelState(context, isInitialLaunch = true)
-        shadowOf(Looper.getMainLooper()).idleFor(1, TimeUnit.SECONDS)
+        shadowOf(Looper.getMainLooper()).runToEndOfTasks()
 
         assertEquals(SplashViewModel.ViewAction.NavigateToSession, viewModel.actionStateFlow.value)
         val serviceIntent = shadowOf(context).nextStartedService
