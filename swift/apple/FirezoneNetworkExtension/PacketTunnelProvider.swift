@@ -88,42 +88,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let profileIdentityReference =
       (protocolConfiguration as? NETunnelProviderProtocol)?.identityReference
 
-    let token: Token?
-    let identityReference: Data?
-
-    // The app says what this session authenticates with and pins the certificate it
-    // displayed. A start that states no intent, from the system or an older app, keeps
-    // deriving the decision from what can be found.
-    switch options?["authentication"] as? String {
-    case "certificate":
-      guard
-        let reference = options?["identityReference"] as? Data ?? profileIdentityReference
-      else {
-        completionHandler(PacketTunnelProviderError.certificateNotConfigured)
-        return
-      }
-
-      token = nil
-      identityReference = reference
-    case "tokenAndCertificate":
-      // Keychain access is thread-safe, so the token loads synchronously.
-      guard let loaded = loadToken(passedToken: passedToken) else {
-        completionHandler(PacketTunnelProviderError.credentialNotConfigured)
-        return
-      }
-
-      token = loaded
-      identityReference = options?["identityReference"] as? Data ?? profileIdentityReference
-    default:
-      token = loadToken(passedToken: passedToken)
-      identityReference = profileIdentityReference
-
-      guard token != nil || identityReference != nil
-      else {
-        completionHandler(PacketTunnelProviderError.credentialNotConfigured)
-        return
-      }
+    // Keychain access is thread-safe, so the token loads synchronously. Every
+    // session requires one, including starts initiated by the system or an older app.
+    guard let token = loadToken(passedToken: passedToken) else {
+      completionHandler(PacketTunnelProviderError.credentialNotConfigured)
+      return
     }
+
+    let identityReference =
+      options?["identityReference"] as? Data ?? profileIdentityReference
 
     Log.info(
       "VPN client certificate "
@@ -131,7 +104,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           ?? "will not be presented"))
 
     // Try to save the token back to the Keychain but continue if we can't
-    if let token { handleTokenSave(token) }
+    handleTokenSave(token)
 
     // The firezone id should be initialized by now
     guard let rawId = defaults.string(forKey: "firezoneId")

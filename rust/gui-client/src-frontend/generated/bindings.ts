@@ -119,7 +119,7 @@ export type SessionViewModel = { SignedIn: { account_slug: string; actor_name: s
 /**
  * A certificate the Tunnel service loaded from the platform keystore.
  */
-export type X509Certificate = { identity: X509Identity; fields: X509DetailField[] }
+export type X509Certificate = { fields: X509DetailField[] }
 /**
  * The platform keystore's certificate as the device trust page renders it.
  */
@@ -137,13 +137,9 @@ value: string | null;
  */
 problem: X509ValidationError | null }
 /**
- * Mirrors [`x509_keystore::ClientIdentity`], which decides what the sign-in control says.
- */
-export type X509Identity = "Absent" | { Claimed: { email: string | null } }
-/**
  * Mirrors [`x509_keystore::ValidationError`].
  */
-export type X509ValidationError = "Empty" | "TooLong" | "NotAnEmailAddress" | "NotAUuid" | "Ambiguous" | "PlaceholderIdentifier" | "UnknownAttribute" | "NotYetValid" | "Expired" | "MissingClientAuthEku" | "DigitalSignatureNotAllowed"
+export type X509ValidationError = "Empty" | "TooLong" | "Ambiguous" | "PlaceholderIdentifier" | "UnknownAttribute" | "NotYetValid" | "Expired" | "MissingClientAuthEku" | "DigitalSignatureNotAllowed"
 
 /** tauri-specta globals **/
 

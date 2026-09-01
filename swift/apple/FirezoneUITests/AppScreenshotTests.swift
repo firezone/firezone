@@ -79,7 +79,7 @@
           defer { app.terminate() }
 
           let window = try onlyWindow(of: app)
-          try selectTab("X.509", in: window)
+          try selectTab("Device Trust", in: window)
           capture(window, as: scenario, in: appearance)
         }
       }

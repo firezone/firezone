@@ -13,8 +13,6 @@ import Foundation
 public enum X509ValidationError: Hashable, Sendable {
   case empty
   case tooLong
-  case notAnEmailAddress
-  case notAUuid
   case ambiguous
   case placeholderIdentifier
   case unknownAttribute
@@ -28,8 +26,6 @@ public enum X509ValidationError: Hashable, Sendable {
     switch self {
     case .empty: return "empty"
     case .tooLong: return "longer than 255 characters"
-    case .notAnEmailAddress: return "not a valid email address"
-    case .notAUuid: return "not a UUID"
     case .ambiguous: return "more than one value was given"
     case .placeholderIdentifier: return "a placeholder identifier"
     case .unknownAttribute: return "not an attribute we understand"
@@ -55,24 +51,13 @@ public struct X509CertificateField: Hashable, Sendable {
   }
 }
 
-/// Who the certificate says is connecting.
-///
-/// Mirrors `Identity` of the `x509claims` bindings, which FirezoneKit cannot import.
-public enum X509ClaimedIdentity: Hashable, Sendable {
-  case absent
-  case claimed(email: String?)
-}
-
 /// What the parser made of the client certificate the VPN profile references.
 public struct X509CertificateSummary: Equatable, Sendable {
   /// Rows to render, in the order the parser produced them.
   public let fields: [X509CertificateField]
-  /// Who the certificate says is connecting, which decides what the clients offer.
-  public let identity: X509ClaimedIdentity
 
-  public init(fields: [X509CertificateField], identity: X509ClaimedIdentity) {
+  public init(fields: [X509CertificateField]) {
     self.fields = fields
-    self.identity = identity
   }
 }
 

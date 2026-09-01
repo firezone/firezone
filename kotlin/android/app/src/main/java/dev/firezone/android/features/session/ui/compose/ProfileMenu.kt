@@ -35,7 +35,6 @@ fun ProfileMenu(
     onSettings: () -> Unit,
     onEndSession: () -> Unit,
     modifier: Modifier = Modifier,
-    endSessionLabel: String = stringResource(R.string.sign_out),
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
 
@@ -61,7 +60,7 @@ fun ProfileMenu(
                 contentPadding = PaddingValues(horizontal = 16.dp),
             )
             DropdownMenuItem(
-                text = { Text(endSessionLabel) },
+                text = { Text(stringResource(R.string.sign_out)) },
                 onClick = {
                     expanded = false
                     onEndSession()

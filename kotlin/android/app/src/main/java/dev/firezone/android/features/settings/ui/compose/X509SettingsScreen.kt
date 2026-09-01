@@ -36,7 +36,7 @@ import uniffi.x509claims.DetailField
 import uniffi.x509claims.ValidationError
 
 /**
- * Shows which client certificate this device signs in with and what it contains.
+ * Shows which client certificate this device presents for device trust and what it contains.
  *
  * The screen is read-only when an administrator dictates the certificate, which is the case on
  * managed devices; otherwise the user picks one from the system KeyChain.
@@ -302,8 +302,6 @@ private fun ValidationError.phrase(): Int =
     when (this) {
         ValidationError.EMPTY -> R.string.x509_claim_empty
         ValidationError.TOO_LONG -> R.string.x509_claim_too_long
-        ValidationError.NOT_AN_EMAIL_ADDRESS -> R.string.x509_claim_not_an_email_address
-        ValidationError.NOT_A_UUID -> R.string.x509_claim_not_a_uuid
         ValidationError.AMBIGUOUS -> R.string.x509_claim_ambiguous
         ValidationError.PLACEHOLDER_IDENTIFIER -> R.string.x509_claim_placeholder_identifier
         ValidationError.UNKNOWN_ATTRIBUTE -> R.string.x509_claim_unknown_attribute
@@ -335,37 +333,10 @@ private fun X509SettingsScreenPreview() {
                     isUsable = true,
                     details =
                         listOf(
-                            DetailField("Common Name", "jane.doe@example.com", null),
-                            DetailField("Subject", "CN=jane.doe@example.com, O=Example Corp", null),
+                            DetailField("Common Name", "firezone-device", null),
+                            DetailField("Subject", "CN=firezone-device, O=Example Corp", null),
                             DetailField("Issuer", "CN=Example Corp Device CA, O=Example Corp", null),
                             DetailField("Not After", "2027-01-31 23:59:59 UTC", null),
-                            DetailField("Account ID", null, null),
-                        ),
-                ),
-            onSelectCertificate = {},
-            onForgetCertificate = {},
-        )
-    }
-}
-
-@Preview(showSystemUi = true)
-@Composable
-private fun X509SettingsScreenInvalidClaimsPreview() {
-    FirezoneTheme {
-        X509SettingsScreen(
-            state =
-                X509SettingsViewModel.UiState(
-                    alias = "firezone-device",
-                    isManaged = true,
-                    isUsable = true,
-                    // The parser reads the rows with a problem first.
-                    details =
-                        listOf(
-                            DetailField("Actor Email", "jane.doe.example.com", ValidationError.NOT_AN_EMAIL_ADDRESS),
-                            DetailField("Account ID", null, ValidationError.EMPTY),
-                            DetailField("Common Name", "jane.doe@example.com", null),
-                            DetailField("Not After", "2024-01-31 23:59:59 UTC", null),
-                            DetailField("Issuer", "CN=Example Corp Device CA, O=Example Corp", null),
                         ),
                 ),
             onSelectCertificate = {},

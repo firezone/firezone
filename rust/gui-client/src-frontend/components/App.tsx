@@ -179,7 +179,6 @@ export default function App() {
               path="/overview"
               element={
                 <Overview
-                  identity={x509?.identity ?? "Absent"}
                   session={session}
                   signIn={commands.signIn}
                   signOut={commands.signOut}

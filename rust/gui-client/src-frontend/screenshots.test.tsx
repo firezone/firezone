@@ -61,9 +61,6 @@ const advancedSettings: AdvancedSettingsViewModel = {
 // `x509_keystore::SUBJECT_COMMON_NAME`.
 const SUBJECT_CN = "dev.firezone.device-trust";
 
-// The actor the provisioned certificate names, which the overview offers to connect as.
-const ACTOR_EMAIL = "jane.doe@example.com";
-
 // One certificate as the diagnostics describe it. Every value is fixed: a field read from the
 // clock, or from a certificate minted at test time, would put a new image in the gallery on
 // every run.
@@ -71,8 +68,6 @@ interface Certificate {
   commonName: string;
   subject: string;
   issuer: string;
-  actorEmail: Row;
-  accountId: Row;
   mdmDeviceId: Row;
   deviceSerial: Row;
   serialNumber: string;
@@ -104,8 +99,6 @@ function loadedCertificate(certificate: Certificate): X509Certificate {
     row("Common Name", present(certificate.commonName)),
     row("Subject", present(certificate.subject)),
     row("Issuer", present(certificate.issuer)),
-    row("Actor Email", certificate.actorEmail),
-    row("Account ID", certificate.accountId),
     row("MDM Device ID", certificate.mdmDeviceId),
     row("Device Serial", certificate.deviceSerial),
     row("Serial Number", present(certificate.serialNumber)),
@@ -115,23 +108,7 @@ function loadedCertificate(certificate: Certificate): X509Certificate {
     row("SHA-256 Fingerprint", present(certificate.fingerprint)),
   ];
 
-  // An identity is claimed by a carried identity attribute, valid or not:
-  // `x509_claims::ParsedCertificate::identity`.
-  const claimed =
-    certificate.actorEmail.value !== null ||
-    certificate.actorEmail.problem !== undefined;
-
   return {
-    identity: claimed
-      ? {
-          Claimed: {
-            email:
-              certificate.actorEmail.problem === undefined
-                ? certificate.actorEmail.value
-                : null,
-          },
-        }
-      : "Absent",
     fields: [
       ...fields.filter((field) => field.problem !== null),
       ...fields.filter((field) => field.problem === null),
@@ -139,13 +116,11 @@ function loadedCertificate(certificate: Certificate): X509Certificate {
   };
 }
 
-// An identity an MDM enrolled into the Windows certificate stores.
+// A device identity an MDM enrolled into the Windows certificate stores.
 const windowsCertificate: Certificate = {
   commonName: SUBJECT_CN,
   subject: `O=Example Corp, CN=${SUBJECT_CN}`,
   issuer: "DC=com, DC=example, CN=Example Corp Issuing CA 1",
-  actorEmail: present(ACTOR_EMAIL),
-  accountId: present("6f3f8a2c-0b74-4f8a-9b1f-1c2d3e4f5a6b"),
   mdmDeviceId: present("9a1c7d4e-5f60-4b28-8c3a-2d5e7f9b0c14"),
   deviceSerial: present("PF2X9K7L"),
   serialNumber: "3a:68:e8:18:bf:83:6b:20:c4:37:16:ec:96:d2:7a:a4",
@@ -154,17 +129,6 @@ const windowsCertificate: Certificate = {
   signingAlgorithm: present("SHA256withRSA"),
   fingerprint:
     "90:E4:45:C9:E2:8E:8F:5B:57:D2:30:90:8C:6F:B2:3D:CE:A1:61:CA:96:3E:BF:B2:8E:E7:3D:A9:CF:70:DD:B7",
-};
-
-// A certificate the client presents even though two of its claims hold nothing usable: one
-// whose value is not an email address, and one the certificate leaves empty.
-const invalidAttributeCertificate: Certificate = {
-  ...windowsCertificate,
-  actorEmail: {
-    value: "jane.doe(at)example.com",
-    problem: "NotAnEmailAddress",
-  },
-  accountId: { value: null, problem: "Empty" },
 };
 
 // Every screen the client can show, in the states worth eyeballing.
@@ -176,18 +140,6 @@ const screens: Record<string, Screen> = {
     session: {
       SignedIn: { account_slug: "example-corp", actor_name: "Jane Doe" },
     },
-  },
-  "overview-certificate-signed-out": {
-    route: "/overview",
-    session: "SignedOut",
-    x509: loadedCertificate(windowsCertificate),
-  },
-  "overview-certificate-signed-in": {
-    route: "/overview",
-    session: {
-      SignedIn: { account_slug: "example-corp", actor_name: "Jane Doe" },
-    },
-    x509: loadedCertificate(windowsCertificate),
   },
   "general-settings": { route: "/general-settings", generalSettings },
   "general-settings-managed": {
@@ -212,10 +164,6 @@ const screens: Record<string, Screen> = {
   "x509-happy": {
     route: "/x509",
     x509: loadedCertificate(windowsCertificate),
-  },
-  "x509-invalid-attribute": {
-    route: "/x509",
-    x509: loadedCertificate(invalidAttributeCertificate),
   },
   "diagnostics-no-logs": { route: "/diagnostics" },
   diagnostics: {

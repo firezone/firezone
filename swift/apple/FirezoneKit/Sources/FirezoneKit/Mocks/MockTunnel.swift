@@ -61,7 +61,7 @@
 
     /// The certificate the diagnostics screen is handed, named by what it carries.
     ///
-    /// Every case but `absent` and `unreadable` names a certificate this bundle ships under
+    /// Every case but `absent` names a certificate this bundle ships under
     /// `Mocks/Certificates`, whose subject, serial, fingerprint and validity dates are
     /// fixed. A capture of the screen is then the same picture on every run, and the
     /// wording on it comes from the parser rather than from a fixture.
@@ -124,9 +124,8 @@
 
     /// The bytes the certificate screen is handed, `nil` when this state has none.
     ///
-    /// A certificate that will not load ends the process, the way a scenario that
-    /// will not load does: a screen reporting no certificate instead would go
-    /// unnoticed until someone read the screenshots.
+    /// A fixture that will not load ends the process so a capture cannot silently
+    /// omit the Device Trust tab it was meant to exercise.
     private var der: Data? {
       switch self {
       case .absent:

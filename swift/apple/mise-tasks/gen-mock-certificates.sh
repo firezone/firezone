@@ -12,9 +12,7 @@ SUBJECT_CN="dev.firezone.device-trust"
 ORGANISATION="Example Corp"
 ISSUER_CN="Example Corp Device CA"
 
-# The deployment the rest of the mock fixtures describe.
-ACTOR_EMAIL="jane.doe@example.com"
-ACCOUNT_ID="9f9b7e2a-3c4d-4f61-8a0b-2d5e6f7a8b9c"
+# The device the rest of the mock fixtures describe.
 INTUNE_ID="5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3"
 DEVICE_SERIAL="C02XK1ZGJGH5"
 
@@ -104,9 +102,7 @@ subjectAltName = @san
 
 [san]
 URI.1 = firezone://${serial_attribute}/${DEVICE_SERIAL}
-URI.2 = firezone://email/${ACTOR_EMAIL}
-URI.3 = firezone://account-id/${ACCOUNT_ID}
-URI.4 = firezone://intune-id/${INTUNE_ID}
+URI.2 = firezone://intune-id/${INTUNE_ID}
 EOF
 
     echo "$serial_number" >"${WORK_DIR}/serial"

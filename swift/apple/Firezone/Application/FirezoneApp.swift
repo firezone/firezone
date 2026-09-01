@@ -149,18 +149,8 @@ func installCertificateParser() {
           value: field.value,
           problem: field.problem.map { X509ValidationError($0) }
         )
-      },
-      identity: X509ClaimedIdentity(parsed.identity)
+      }
     )
-  }
-}
-
-extension X509ClaimedIdentity {
-  init(_ identity: Identity) {
-    switch identity {
-    case .absent: self = .absent
-    case .claimed(let email): self = .claimed(email: email)
-    }
   }
 }
 
@@ -169,8 +159,6 @@ extension X509ValidationError {
     switch error {
     case .empty: self = .empty
     case .tooLong: self = .tooLong
-    case .notAnEmailAddress: self = .notAnEmailAddress
-    case .notAUuid: self = .notAUuid
     case .ambiguous: self = .ambiguous
     case .placeholderIdentifier: self = .placeholderIdentifier
     case .unknownAttribute: self = .unknownAttribute

@@ -48,7 +48,6 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import uniffi.x509claims.DetailField
-import uniffi.x509claims.ValidationError
 import java.io.File
 import java.io.RandomAccessFile
 import dev.firezone.android.core.data.model.Config as FirezoneConfig
@@ -78,9 +77,6 @@ class SettingsScreenshotTest {
 
     @Test
     fun x509SettingsWithCertificate() = captureX509Page("x509-filled", usableCertificate)
-
-    @Test
-    fun x509SettingsWithInvalidClaim() = captureX509Page("x509-invalid-claim", certificateWithInvalidClaim)
 
     @Test
     fun x509SettingsWithUnusableCertificate() = captureX509Page("x509-unusable", unusableCertificate)
@@ -209,29 +205,12 @@ private val usableCertificate =
     X509SettingsViewModel.UiState(
         alias = CERTIFICATE_ALIAS,
         isUsable = true,
-        details =
-            certificateDetails(
-                actorEmail = row("Actor Email", "jane.doe@example.com"),
-                unmatchedNames = emptyList(),
-            ),
+        details = certificateDetails(),
     )
 
 // The same certificate, handed down by an administrator and released by the KeyChain, which
 // leaves the user nothing to pick or clear.
 private val managedCertificate = usableCertificate.copy(isManaged = true)
-
-// The same certificate, spelling the actor's email in a way that is not usable as one. Claims
-// have no say in whether a certificate can be presented, so Firezone still signs in with it.
-private val certificateWithInvalidClaim =
-    X509SettingsViewModel.UiState(
-        alias = CERTIFICATE_ALIAS,
-        isUsable = true,
-        details =
-            certificateDetails(
-                actorEmail = row("Actor Email", "jane.doe.example.com", ValidationError.NOT_AN_EMAIL_ADDRESS),
-                unmatchedNames = listOf("URI: firezone://email/jane.doe.example.com"),
-            ),
-    )
 
 // An alias the KeyChain holds a certificate for but has not released to Firezone, which leaves
 // the app with nothing to present and nothing to read.
@@ -249,8 +228,6 @@ private val expiredCertificate =
         isUsable = true,
         details =
             certificateDetails(
-                actorEmail = row("Actor Email", "jane.doe@example.com"),
-                unmatchedNames = emptyList(),
                 notBefore = row("Not Before", "Jan  5 09:00:00 2024 +00:00"),
                 notAfter = row("Not After", "Jan  5 09:00:00 2025 +00:00"),
             ),
@@ -267,28 +244,15 @@ private val unreadableCertificate =
 // One certificate as the Rust parser describes it, in the order the screen lists its rows.
 // Every value is pinned, so a capture only moves when the screen does.
 private fun certificateDetails(
-    actorEmail: DetailField,
-    unmatchedNames: List<String>,
     notBefore: DetailField = row("Not Before", "Jan  5 09:00:00 2026 +00:00"),
     notAfter: DetailField = row("Not After", "Jan  5 09:00:00 2027 +00:00"),
 ): List<DetailField> =
-    // `x509_claims::ParsedCertificate::detail_fields` reads the rows with a problem first, so a
-    // mock that left them in place would draw a screen the client cannot produce.
     buildList {
-        add(row("Common Name", "jane.doe@example.com"))
-        add(row("Subject", "CN=jane.doe@example.com, O=Example Corp"))
+        add(row("Common Name", "firezone-device"))
+        add(row("Subject", "CN=firezone-device, O=Example Corp"))
         add(row("Issuer", "CN=Example Corp Device CA, O=Example Corp"))
-        add(actorEmail)
-        add(row("Account ID", "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"))
         add(row("MDM Device ID", "9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64"))
         add(row("Device Serial", "C02XK1ZGJGH5"))
-
-        // The parser lists the alternative names no claim row shows, which is where a name it
-        // could not read a usable claim from ends up.
-        if (unmatchedNames.isNotEmpty()) {
-            add(row("Subject Alternative Names", unmatchedNames.joinToString("\n")))
-        }
-
         add(row("Serial Number", "4a:1f:8c:52:0d:9b:36:e7:11:c4:58:a3:7f:20:6b:d9"))
         add(notBefore)
         add(notAfter)
@@ -300,14 +264,13 @@ private fun certificateDetails(
                     "10:D8:63:4C:B5:27:9E:0A:F1:6D:82:34:C7:5E:19:AB",
             ),
         )
-    }.sortedBy { it.problem == null }
+    }
 
-// A row as the parser hands it over: what the certificate said, and what is wrong with it.
+// A row as the parser hands it over.
 private fun row(
     label: String,
     value: String?,
-    problem: ValidationError? = null,
-): DetailField = DetailField(label, value, problem)
+): DetailField = DetailField(label, value, null)
 
 // Hosts the settings pages the way `SettingsActivity` does, with the Hilt graph replaced by
 // a view model built by hand from preferences seeded with `sampleConfig`.

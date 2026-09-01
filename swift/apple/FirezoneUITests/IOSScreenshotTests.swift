@@ -46,17 +46,6 @@
       deliver(app, as: "welcome", in: appearance)
     }
 
-    func testWelcomeCertificate() throws {
-      let appearance = try currentAppearance()
-      let app = launchApp(scenario: "welcome-usable-certificate")
-      defer { app.terminate() }
-
-      // The control offers whom the certificate claims, and the certificate
-      // `gen-mock-certificates.sh` mints into `usable.der` claims this address.
-      try waitFor(app.buttons["Connect as jane.doe@example.com"], on: "welcome-certificate")
-      deliver(app, as: "welcome-certificate", in: appearance)
-    }
-
     func testSession() throws {
       let appearance = try currentAppearance()
       let app = launchApp(scenario: "connected")
@@ -86,18 +75,6 @@
       try waitFor(app.staticTexts["Office network"], on: "session-menu")
       try openAccountMenu(showing: "Sign out", in: app, on: "session-menu")
       deliver(app, as: "session-menu", in: appearance)
-    }
-
-    /// The same menu in a session a certificate claims, which is disconnected
-    /// from rather than signed out of.
-    func testSessionCertificate() throws {
-      let appearance = try currentAppearance()
-      let app = launchApp(scenario: "connected-usable-certificate")
-      defer { app.terminate() }
-
-      try waitFor(app.staticTexts["Office network"], on: "session-certificate")
-      try openAccountMenu(showing: "Disconnect", in: app, on: "session-certificate")
-      deliver(app, as: "session-certificate", in: appearance)
     }
 
     // Each detail screen takes its own launch: photographed one after another, a
@@ -168,7 +145,7 @@
         try waitFor(app.buttons["Settings"], on: scenario)
         app.buttons["Settings"].tap()
         try waitFor(app.navigationBars["Settings"], on: scenario)
-        try selectTab("X.509", in: app)
+        try selectTab("Device Trust", in: app)
         deliver(app, as: scenario, in: appearance)
       }
     }

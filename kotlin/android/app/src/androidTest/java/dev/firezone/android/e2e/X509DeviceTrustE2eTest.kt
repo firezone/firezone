@@ -32,8 +32,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
@@ -42,13 +40,11 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 /**
- * The sign-in decision matrix, walked the way a user walks it: what the configured certificate
- * claims decides whether the app connects outright, sends the user to the browser, or asks for
- * the certificate first. Only the portal is stood in for, by the scripted session factory; the
- * claims are read by the real parser out of certificates minted per test.
+ * Pins how an optional device certificate combines with the portal token and Android's KeyChain
+ * permission. Only the portal is stood in for, by the scripted session factory.
  */
 @HiltAndroidTest
-class X509SignInE2eTest {
+class X509DeviceTrustE2eTest {
     @get:Rule(order = 0)
     val hiltRule = HiltAndroidRule(this)
 
@@ -75,46 +71,8 @@ class X509SignInE2eTest {
     }
 
     @Test
-    fun aCertificateClaimingAnEmailConnectsWithoutABrowser() {
-        val identity = testIdentity(SERIAL_CLAIM, EMAIL_CLAIM, ACCOUNT_CLAIM)
-        givenTheUserPicked(identity)
-
-        launchApp()
-
-        awaitText("Connect as jane.doe@example.com")
-        composeRule.onNodeWithText("Connect as jane.doe@example.com").performClick()
-
-        val session = awaitSession()
-
-        // The certificate is the credential: the one we configured goes out, no token does, and
-        // no browser sign-in ever opens.
-        assertArrayEquals(identity.chain.first().encoded, session.tlsIdentity?.certificateChain()?.first())
-        assertNull(session.config.token)
-        awaitText("Resources")
-        assertFalse("a browser sign-in was opened", authActivityExists())
-    }
-
-    @Test
-    fun aCertificateClaimingAnActorIdConnectsWithoutABrowser() {
-        givenTheUserPicked(testIdentity(SERIAL_CLAIM, ACTOR_ID_CLAIM))
-
-        launchApp()
-
-        // An actor ID claims somebody without naming them, so the button has no email to offer.
-        awaitText("Connect")
-        composeRule.onNodeWithText("Connect").performClick()
-
-        val session = awaitSession()
-
-        assertNotNull(session.tlsIdentity)
-        assertNull(session.config.token)
-        awaitText("Resources")
-        assertFalse("a browser sign-in was opened", authActivityExists())
-    }
-
-    @Test
-    fun aDeviceOnlyCertificateSendsTheUserToTheBrowser() {
-        givenTheUserPicked(testIdentity(SERIAL_CLAIM))
+    fun aCertificateWithoutATokenStillRequiresBrowserSignIn() {
+        givenCertificate(testIdentity(SERIAL_CLAIM))
 
         launchApp()
 
@@ -126,35 +84,16 @@ class X509SignInE2eTest {
     }
 
     @Test
-    fun aDeviceOnlyCertificateConnectsWithCertificateAndToken() {
-        givenTheUserPicked(testIdentity(SERIAL_CLAIM))
+    fun aDeviceCertificateAccompaniesThePortalToken() {
+        val certificate = testIdentity(SERIAL_CLAIM)
+        givenCertificate(certificate)
         runBlocking { repo.saveToken(TOKEN).first() }
 
         startTunnelService()
         val session = awaitSession()
 
-        // The certificate attests the device and the token names the actor, so both go out.
-        assertNotNull(session.tlsIdentity)
+        assertArrayEquals(certificate.chain.first().encoded, session.tlsIdentity?.certificateChain()?.first())
         assertEquals(TOKEN, session.config.token)
-    }
-
-    @Test
-    fun aCarriedButInvalidIdentityClaimStillConnects() {
-        givenTheUserPicked(testIdentity(SERIAL_CLAIM, INVALID_EMAIL_CLAIM))
-
-        launchApp()
-
-        // The claim is carried but not readable, so the button has no email to offer. Whether
-        // to reject the claim is the portal's policy, so the certificate connects regardless.
-        awaitText("Connect")
-        composeRule.onNodeWithText("Connect").performClick()
-
-        val session = awaitSession()
-
-        assertNotNull(session.tlsIdentity)
-        assertNull(session.config.token)
-        awaitText("Resources")
-        assertFalse("a browser sign-in was opened", authActivityExists())
     }
 
     @Test
@@ -181,7 +120,7 @@ class X509SignInE2eTest {
 
     @Test
     fun anUngrantedManagedCertificateRoutesToTheCertificateScreen() {
-        FakeKeyChain.install(ALIAS, testIdentity(SERIAL_CLAIM, EMAIL_CLAIM, ACCOUNT_CLAIM), granted = false)
+        FakeKeyChain.install(ALIAS, testIdentity(SERIAL_CLAIM), granted = false)
         TestRestrictions.bundle.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, ALIAS)
 
         launchApp()
@@ -189,9 +128,9 @@ class X509SignInE2eTest {
         awaitText("Select your client certificate")
     }
 
-    /** Installs [identity] as granted and records its alias the way the settings screen would. */
-    private fun givenTheUserPicked(identity: TestIdentity) {
-        FakeKeyChain.install(ALIAS, identity, granted = true)
+    /** Installs [certificate] as granted and records its alias the way settings would. */
+    private fun givenCertificate(certificate: TestIdentity) {
+        FakeKeyChain.install(ALIAS, certificate, granted = true)
         repo.saveX509CertificateAliasSync(ALIAS)
     }
 
@@ -242,9 +181,5 @@ class X509SignInE2eTest {
         const val TIMEOUT_MS = 20_000L
 
         const val SERIAL_CLAIM = "firezone://serial/EMU-4711"
-        const val EMAIL_CLAIM = "firezone://email/jane.doe@example.com"
-        const val INVALID_EMAIL_CLAIM = "firezone://email/jane.doe.example.com"
-        const val ACCOUNT_CLAIM = "firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
-        const val ACTOR_ID_CLAIM = "firezone://actor-id/0b9a5e12-6f64-4a2f-8c2e-3d1f2a7b9c01"
     }
 }

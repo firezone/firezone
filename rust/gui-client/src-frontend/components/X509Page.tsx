@@ -9,8 +9,6 @@ import RemixIcon from "./RemixIcon";
 const VALIDATION_ERROR_TEXT: Record<X509ValidationError, string> = {
   Empty: "empty",
   TooLong: "longer than 255 characters",
-  NotAnEmailAddress: "not a valid email address",
-  NotAUuid: "not a UUID",
   Ambiguous: "more than one value was given",
   PlaceholderIdentifier: "a placeholder identifier",
   UnknownAttribute: "not an attribute we understand",

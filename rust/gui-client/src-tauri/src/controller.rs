@@ -16,7 +16,7 @@ use futures::{
     stream::{self, BoxStream},
 };
 use logging::FilterReloadHandle;
-use secrecy::ExposeSecret as _;
+use secrecy::{ExposeSecret as _, SecretString};
 use std::{
     ops::ControlFlow,
     path::{Path, PathBuf},
@@ -344,47 +344,18 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    /// Resume a session at startup: if connect-on-start is enabled and we can authenticate
-    /// ourselves without asking anybody, reconnect.
+    /// Resume a browser-authenticated session at startup when connect-on-start is enabled.
     async fn maybe_start_session(&mut self) -> Result<()> {
         // For backwards-compatibility prior to MDM-config, also connect if not configured.
         if self.connect_on_start().is_some_and(|connect| !connect) {
             return Ok(());
         }
 
-        // A certificate that claims an identity outranks a stored token: it is the identity
-        // this device was provisioned with. It only connects on start when connect-on-start is
-        // explicitly configured; a stored token is used only when the certificate claims
-        // nobody.
-        if let x509_keystore::ClientIdentity::Claimed { .. } = self.client_identity() {
-            if self.connect_on_start() == Some(true) {
-                return self.start_certificate_session().await;
-            }
-
-            tracing::debug!("Certificate claims an identity, waiting to be told to connect");
-
-            return Ok(());
-        }
-
         if let Some(token) = self.auth.token() {
-            return self
-                .start_session(service::Authentication::TokenAndCertificate(token))
-                .await;
+            return self.start_session(token).await;
         }
 
-        tracing::info!("No token and no certificate, starting in signed-out state");
-
-        Ok(())
-    }
-
-    /// Starts a session the platform keystore's certificate authenticates, so nobody has to
-    /// sign in through a browser.
-    async fn start_certificate_session(&mut self) -> Result<()> {
-        self.auth.sign_in_with_certificate();
-
-        self.update_telemetry_context().await?;
-        self.start_session(service::Authentication::Certificate)
-            .await?;
+        tracing::info!("No token, starting in signed-out state");
 
         Ok(())
     }
@@ -420,7 +391,7 @@ impl<I: GuiIntegration> Controller<I> {
         .await
     }
 
-    async fn start_session(&mut self, authentication: service::Authentication) -> Result<()> {
+    async fn start_session(&mut self, token: SecretString) -> Result<()> {
         match self.status {
             Status::Disconnected => {}
             Status::Quitting => Err(anyhow!("Can't connect to Firezone, we're quitting"))?,
@@ -435,7 +406,7 @@ impl<I: GuiIntegration> Controller<I> {
         tracing::info!(api_url = %self.api_url(), "Starting connlib...");
 
         self.send_ipc(&service::ClientMsg::Connect {
-            authentication,
+            token,
             is_internet_resource_active: self.general_settings.internet_resource_enabled(),
         })
         .await?;
@@ -481,8 +452,7 @@ impl<I: GuiIntegration> Controller<I> {
             .context("Couldn't handle auth response")?;
 
         self.update_telemetry_context().await?;
-        self.start_session(service::Authentication::TokenAndCertificate(token))
-            .await?;
+        self.start_session(token).await?;
 
         Ok(())
     }
@@ -546,38 +516,33 @@ impl<I: GuiIntegration> Controller<I> {
             }
             Fail(Failure::Error) => Err(anyhow!("Test error"))?,
             Fail(Failure::Panic) => panic!("Test panic"),
-            SignIn | SystemTrayMenu(system_tray::Event::SignIn) => match self.client_identity() {
-                x509_keystore::ClientIdentity::Claimed { .. } => {
-                    self.start_certificate_session().await?
+            SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
+                let auth_url = self.auth_url().clone();
+                let account_slug = self.account_slug().map(|a| a.to_owned());
+
+                let url = self
+                    .auth
+                    .start_sign_in()
+                    .context("Couldn't start sign-in flow")?
+                    .to_url(&auth_url, account_slug.as_deref());
+                self.refresh_ui_state();
+
+                #[cfg(debug_assertions)]
+                if auth::portal_auth_skipped() {
+                    let callback_url = deep_link::fake_callback_url(&url)
+                        .context("Couldn't fabricate deep-link")?;
+
+                    // Simulate sign-in.
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+
+                    self.handle_deep_link(&callback_url).await?;
+                    return Ok(());
                 }
-                x509_keystore::ClientIdentity::Absent => {
-                    let auth_url = self.auth_url().clone();
-                    let account_slug = self.account_slug().map(|a| a.to_owned());
 
-                    let url = self
-                        .auth
-                        .start_sign_in()
-                        .context("Couldn't start sign-in flow")?
-                        .to_url(&auth_url, account_slug.as_deref());
-                    self.refresh_ui_state();
-
-                    #[cfg(debug_assertions)]
-                    if auth::portal_auth_skipped() {
-                        let callback_url = deep_link::fake_callback_url(&url)
-                            .context("Couldn't fabricate deep-link")?;
-
-                        // Simulate sign-in.
-                        tokio::time::sleep(Duration::from_millis(500)).await;
-
-                        self.handle_deep_link(&callback_url).await?;
-                        return Ok(());
-                    }
-
-                    self.integration
-                        .open_url(url.expose_secret())
-                        .context("Couldn't open auth page")?;
-                }
-            },
+                self.integration
+                    .open_url(url.expose_secret())
+                    .context("Couldn't open auth page")?;
+            }
             SystemTrayMenu(system_tray::Event::AddFavorite(resource_id)) => {
                 self.general_settings.favorite_resources.insert(resource_id);
                 self.refresh_favorite_resources().await?;
@@ -976,7 +941,6 @@ impl<I: GuiIntegration> Controller<I> {
 
         self.integration.set_tray_menu(system_tray::AppState {
             connlib,
-            identity: self.client_identity(),
             release: self.release.clone(),
             hide_admin_portal_menu_item: self
                 .mdm_settings
@@ -1074,15 +1038,6 @@ impl<I: GuiIntegration> Controller<I> {
         self.integration.notify_x509_changed(certificate)?;
 
         Ok(())
-    }
-
-    /// Who the certificate the Tunnel service last loaded claims is connecting.
-    fn client_identity(&self) -> x509_keystore::ClientIdentity {
-        match &self.x509 {
-            Ok(Some(certificate)) => certificate.identity(),
-            Ok(None) => x509_keystore::ClientIdentity::Absent,
-            Err(_) => x509_keystore::ClientIdentity::Absent,
-        }
     }
 
     fn auth_url(&self) -> &Url {
@@ -1252,7 +1207,7 @@ mod tests {
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
         mock_tunnel.send_hello().await;
 
-        let expected = Some(parsed_certificate(x509_keystore::ClientIdentity::Absent));
+        let expected = Some(parsed_certificate());
         mock_tunnel
             .tx
             .send(&service::ServerMsg::X509Certificate(Ok(expected.clone())))
@@ -1286,171 +1241,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_claimed_certificate_connects_without_a_browser() {
+    async fn a_loaded_certificate_still_signs_in_through_the_browser() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
         mock_tunnel
-            .send_hello_claiming(x509_keystore::ClientIdentity::Claimed {
-                email: Some("jane@example.com".to_owned()),
-            })
-            .await;
-        test_controller
-            .wait_integration(|i| i.x509.first().cloned())
-            .await
-            .expect("the greeting's certificate should reach the GUI");
-
-        test_controller
-            .ctrl_tx
-            .send(ControllerRequest::SignIn)
-            .await
-            .unwrap();
-
-        let authentication = tokio::time::timeout(Duration::from_secs(1), mock_tunnel.rx_connect())
-            .await
-            .expect("should connect rather than open a browser");
-        let service::Authentication::Certificate = authentication else {
-            panic!("the certificate should authenticate the session, got {authentication:?}");
-        };
-        assert!(
-            test_controller.integration().opened_urls.is_empty(),
-            "should not have opened a browser"
-        );
-    }
-
-    #[tokio::test]
-    async fn an_actor_id_claim_connects_without_a_browser() {
-        let _guard = logging::test("debug");
-        let mut test_controller = Controller::start_for_test();
-        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
-        mock_tunnel
-            .send_hello_claiming(x509_keystore::ClientIdentity::Claimed { email: None })
-            .await;
-        test_controller
-            .wait_integration(|i| i.x509.first().cloned())
-            .await
-            .expect("the greeting's certificate should reach the GUI");
-
-        test_controller
-            .ctrl_tx
-            .send(ControllerRequest::SignIn)
-            .await
-            .unwrap();
-
-        let authentication = tokio::time::timeout(Duration::from_secs(1), mock_tunnel.rx_connect())
-            .await
-            .expect("should connect rather than open a browser");
-        let service::Authentication::Certificate = authentication else {
-            panic!("the certificate should authenticate the session, got {authentication:?}");
-        };
-        assert!(
-            test_controller.integration().opened_urls.is_empty(),
-            "should not have opened a browser"
-        );
-    }
-
-    #[tokio::test]
-    async fn carried_but_invalid_claims_connect_without_a_browser() {
-        let _guard = logging::test("debug");
-        let mut test_controller = Controller::start_for_test();
-        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
-        mock_tunnel
-            .send_hello_with_x509(Ok(Some(certificate_with_invalid_claims())))
-            .await;
-        test_controller
-            .wait_integration(|i| i.x509.first().cloned())
-            .await
-            .expect("the greeting's certificate should reach the GUI");
-
-        test_controller
-            .ctrl_tx
-            .send(ControllerRequest::SignIn)
-            .await
-            .unwrap();
-
-        let authentication = tokio::time::timeout(Duration::from_secs(1), mock_tunnel.rx_connect())
-            .await
-            .expect("should connect rather than open a browser");
-        let service::Authentication::Certificate = authentication else {
-            panic!("the certificate should authenticate the session, got {authentication:?}");
-        };
-        assert!(
-            test_controller.integration().opened_urls.is_empty(),
-            "should not have opened a browser"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_claimed_certificate_connects_on_start_when_configured() {
-        let _guard = logging::test("debug");
-        let mut test_controller = Controller::start_for_test_with_settings(GeneralSettings {
-            connect_on_start: Some(true),
-            ..Default::default()
-        });
-        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
-        mock_tunnel
-            .send_hello_claiming(x509_keystore::ClientIdentity::Claimed {
-                email: Some("jane@example.com".to_owned()),
-            })
-            .await;
-
-        let authentication = tokio::time::timeout(Duration::from_secs(1), mock_tunnel.rx_connect())
-            .await
-            .expect("should connect without anybody clicking anything");
-        let service::Authentication::Certificate = authentication else {
-            panic!("the certificate should authenticate the session, got {authentication:?}");
-        };
-        assert!(
-            test_controller.integration().opened_urls.is_empty(),
-            "should not have opened a browser"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_claimed_certificate_does_not_connect_on_start_by_default() {
-        let _guard = logging::test("debug");
-        let mut test_controller = Controller::start_for_test();
-        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
-        mock_tunnel
-            .send_hello_claiming(x509_keystore::ClientIdentity::Claimed {
-                email: Some("jane@example.com".to_owned()),
-            })
-            .await;
-
-        let connect =
-            tokio::time::timeout(Duration::from_millis(500), mock_tunnel.rx_connect()).await;
-        assert!(
-            connect.is_err(),
-            "connecting on start with the certificate is opt-in"
-        );
-    }
-
-    #[tokio::test]
-    async fn without_a_token_or_a_certificate_we_stay_signed_out() {
-        let _guard = logging::test("debug");
-        let mut test_controller = Controller::start_for_test();
-        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
-        mock_tunnel
-            .send_hello_claiming(x509_keystore::ClientIdentity::Absent)
-            .await;
-
-        let connect =
-            tokio::time::timeout(Duration::from_millis(500), mock_tunnel.rx_connect()).await;
-        assert!(connect.is_err(), "should not connect on its own");
-
-        assert_eq!(
-            test_controller.integration().shown_overview_page,
-            [SessionViewModel::SignedOut]
-        );
-    }
-
-    #[tokio::test]
-    async fn an_absent_certificate_signs_in_through_the_browser() {
-        let _guard = logging::test("debug");
-        let mut test_controller = Controller::start_for_test();
-        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
-        mock_tunnel
-            .send_hello_claiming(x509_keystore::ClientIdentity::Absent)
+            .send_hello_with_x509(Ok(Some(parsed_certificate())))
             .await;
         test_controller
             .wait_integration(|i| i.x509.first().cloned())
@@ -1473,6 +1269,27 @@ mod tests {
         assert!(
             connect.is_err(),
             "should wait for the browser rather than connect"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_certificate_does_not_connect_on_start_without_a_token() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test_with_settings(GeneralSettings {
+            connect_on_start: Some(true),
+            ..Default::default()
+        });
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel
+            .send_hello_with_x509(Ok(Some(parsed_certificate())))
+            .await;
+
+        let connect =
+            tokio::time::timeout(Duration::from_millis(500), mock_tunnel.rx_connect()).await;
+        assert!(connect.is_err(), "a session requires a stored token");
+        assert_eq!(
+            test_controller.integration().shown_overview_page,
+            [SessionViewModel::SignedOut]
         );
     }
 
@@ -2020,14 +1837,14 @@ mod tests {
             self.send_connect_ok().await;
         }
 
-        /// Awaits the next `Connect` and yields what it authenticates with.
-        async fn rx_connect(&mut self) -> service::Authentication {
+        /// Awaits the next `Connect` and yields its browser-authentication token.
+        async fn rx_connect(&mut self) -> SecretString {
             let msg = self.next_msg().await;
-            let service::ClientMsg::Connect { authentication, .. } = msg else {
+            let service::ClientMsg::Connect { token, .. } = msg else {
                 panic!("expected `Connect` but got {msg:?}");
             };
 
-            authentication
+            token
         }
 
         async fn send_connect_ok(&mut self) {
@@ -2035,12 +1852,6 @@ mod tests {
                 .send(&service::ServerMsg::ConnectResult(Ok(())))
                 .await
                 .unwrap();
-        }
-
-        /// Greets the controller with a keystore whose certificate claims `identity`.
-        async fn send_hello_claiming(&mut self, identity: x509_keystore::ClientIdentity) {
-            self.send_hello_with_x509(Ok(Some(parsed_certificate(identity))))
-                .await
         }
 
         async fn send_resources(&mut self, resources: Vec<ResourceView>) {
@@ -2131,33 +1942,13 @@ mod tests {
         }
     }
 
-    /// A parsed certificate whose claims name `identity`.
-    fn parsed_certificate(
-        identity: x509_keystore::ClientIdentity,
-    ) -> x509_keystore::ParsedCertificate {
+    fn parsed_certificate() -> x509_keystore::ParsedCertificate {
         let claim = |value: Option<String>| x509_keystore::Claim { value, error: None };
-
-        let (account_id, actor_id, email) = match identity {
-            x509_keystore::ClientIdentity::Absent => (None, None, None),
-            x509_keystore::ClientIdentity::Claimed { email: None } => (
-                Some("6f3f8a2c-0b74-4f8a-9b1f-1c2d3e4f5a6b".to_owned()),
-                Some("31b57ec2-8a02-4d5e-9b41-5c1f7a0e6f21".to_owned()),
-                None,
-            ),
-            x509_keystore::ClientIdentity::Claimed { email: Some(email) } => (
-                Some("6f3f8a2c-0b74-4f8a-9b1f-1c2d3e4f5a6b".to_owned()),
-                None,
-                Some(email),
-            ),
-        };
 
         x509_keystore::ParsedCertificate {
             subject_cn: Some("dev.firezone.device-trust".to_owned()),
             subject: "CN=dev.firezone.device-trust".to_owned(),
             subject_alternative_names: vec![],
-            actor_email: claim(email),
-            account_id: claim(account_id),
-            actor_id: claim(actor_id),
             mdm_device_id: claim(None),
             device_serial: claim(None),
             unrecognised_claims: vec![],
@@ -2175,17 +1966,6 @@ mod tests {
             fingerprint: "90:E4:45:C9:E2:8E:8F:5B".to_owned(),
             der_bytes: 1024,
         }
-    }
-
-    /// A parsed certificate that carries an identity attribute the parser cannot use.
-    fn certificate_with_invalid_claims() -> x509_keystore::ParsedCertificate {
-        let mut certificate = parsed_certificate(x509_keystore::ClientIdentity::Absent);
-        certificate.actor_email = x509_keystore::Claim {
-            value: Some("jane.doe(at)example.com".to_owned()),
-            error: Some(x509_keystore::ValidationError::NotAnEmailAddress),
-        };
-
-        certificate
     }
 
     fn dns_resource_foo() -> ResourceView {

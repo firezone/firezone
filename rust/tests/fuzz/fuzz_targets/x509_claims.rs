@@ -13,7 +13,7 @@ use std::{
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use sha2::{Digest as _, Sha256};
-use x509_claims::{Claim, Identity, ParsedCertificate, ValidationError, parse_certificate};
+use x509_claims::{Claim, ParsedCertificate, ValidationError, parse_certificate};
 
 fuzz_target!(|input: Input| {
     let Some(certificate) = parse_certificate(input.der, instant(input.seconds_since_epoch)) else {
@@ -27,9 +27,6 @@ fuzz_target!(|input: Input| {
         input.seconds_since_epoch,
         input.other_seconds_since_epoch,
     );
-    assert_the_identity_answers_the_claims(&certificate);
-    assert_account_id_is_a_uuid(&certificate);
-    assert_actor_email_is_addressable(&certificate);
     assert_mdm_device_id_is_normalised(&certificate);
     assert_device_serial_is_printable(&certificate);
     assert_claims_are_rendered_as_they_were_read(&certificate);
@@ -103,54 +100,6 @@ fn assert_validity_is_contiguous(der: &[u8], first: u32, second: u32) {
     assert!(is_valid_at(der, earlier + (later - earlier) / 2));
 }
 
-/// Asserts that claiming nobody and claiming somebody stay separate answers.
-///
-/// The first signs the session in with a token and the second commits it to mutual TLS with no
-/// token. A carried actor email or actor ID claims somebody whatever it says, since rejecting
-/// a claim is the portal's policy; an account ID names no actor and claims nobody.
-fn assert_the_identity_answers_the_claims(certificate: &ParsedCertificate) {
-    let claims_somebody = [&certificate.actor_email, &certificate.actor_id]
-        .into_iter()
-        .any(|claim| claim.value.is_some() || claim.error.is_some());
-
-    match certificate.identity() {
-        Identity::Absent => assert!(
-            !claims_somebody,
-            "a certificate carrying an identity attribute is not absent"
-        ),
-        Identity::Claimed { email } => {
-            assert!(claims_somebody, "an identity was claimed by nothing");
-            assert_eq!(email.as_deref(), certificate.actor_email.valid());
-        }
-    }
-}
-
-/// Asserts that an account ID reaches the portal as a hyphenated, lower-case UUID.
-fn assert_account_id_is_a_uuid(certificate: &ParsedCertificate) {
-    let Some(account_id) = certificate.account_id.valid() else {
-        return;
-    };
-
-    assert!(uuid::Uuid::parse_str(account_id).is_ok());
-    assert_eq!(account_id, account_id.to_lowercase());
-    assert_eq!(account_id.len(), 36);
-}
-
-/// Asserts that an actor email is a lower-case address the portal can look an actor up by.
-fn assert_actor_email_is_addressable(certificate: &ParsedCertificate) {
-    let Some(actor_email) = certificate.actor_email.valid() else {
-        return;
-    };
-    let (local, domain) = actor_email.split_once('@').expect("an email has a domain");
-
-    assert_eq!(actor_email, actor_email.to_lowercase());
-    assert!(!actor_email.chars().any(char::is_whitespace));
-    assert!(!local.is_empty());
-    assert!(!domain.is_empty());
-    assert!(!domain.contains('@'));
-    assert!(actor_email.len() <= 255);
-}
-
 /// Asserts that an MDM device ID is already in the form devices are matched by.
 fn assert_mdm_device_id_is_normalised(certificate: &ParsedCertificate) {
     let Some(mdm_device_id) = certificate.mdm_device_id.valid() else {
@@ -177,9 +126,7 @@ fn assert_device_serial_is_printable(certificate: &ParsedCertificate) {
 /// from sends an administrator after the wrong part of their certificate template.
 fn assert_claims_are_rendered_as_they_were_read(certificate: &ParsedCertificate) {
     let fields = certificate.detail_fields();
-    let claims: [(&str, &Claim); 4] = [
-        ("Actor Email", &certificate.actor_email),
-        ("Account ID", &certificate.account_id),
+    let claims: [(&str, &Claim); 2] = [
         ("MDM Device ID", &certificate.mdm_device_id),
         ("Device Serial", &certificate.device_serial),
     ];
@@ -195,7 +142,7 @@ fn assert_claims_are_rendered_as_they_were_read(certificate: &ParsedCertificate)
     }
 }
 
-/// Asserts that a `firezone://` name the parser does not read gets a bounded row of its own.
+/// Asserts that an unrecognised `firezone://` name gets a bounded row of its own.
 ///
 /// The name is copied out of the certificate, so one that spends its whole size on a single
 /// name would otherwise take longer to display than to parse.
@@ -226,8 +173,6 @@ fn assert_every_validation_error_reads() {
     let labels = [
         ValidationError::Empty,
         ValidationError::TooLong,
-        ValidationError::NotAnEmailAddress,
-        ValidationError::NotAUuid,
         ValidationError::Ambiguous,
         ValidationError::PlaceholderIdentifier,
         ValidationError::UnknownAttribute,

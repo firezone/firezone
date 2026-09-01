@@ -49,15 +49,7 @@ pub struct X509CertificateChanged(pub Option<X509Certificate>);
 /// A certificate the Tunnel service loaded from the platform keystore.
 #[derive(Clone, serde::Serialize, specta::Type)]
 pub struct X509Certificate {
-    pub identity: X509Identity,
     pub fields: Vec<X509DetailField>,
-}
-
-/// Mirrors [`x509_keystore::ClientIdentity`], which decides what the sign-in control says.
-#[derive(Clone, serde::Serialize, specta::Type)]
-pub enum X509Identity {
-    Absent,
-    Claimed { email: Option<String> },
 }
 
 /// A label-value row of the certificate, and what is wrong with it.
@@ -75,8 +67,6 @@ pub struct X509DetailField {
 pub enum X509ValidationError {
     Empty,
     TooLong,
-    NotAnEmailAddress,
-    NotAUuid,
     Ambiguous,
     PlaceholderIdentifier,
     UnknownAttribute,
@@ -95,23 +85,11 @@ impl From<Option<&x509_keystore::ParsedCertificate>> for X509CertificateChanged 
 impl From<&x509_keystore::ParsedCertificate> for X509Certificate {
     fn from(certificate: &x509_keystore::ParsedCertificate) -> Self {
         Self {
-            identity: X509Identity::from(&certificate.identity()),
             fields: certificate
                 .detail_fields()
                 .into_iter()
                 .map(X509DetailField::from)
                 .collect(),
-        }
-    }
-}
-
-impl From<&x509_keystore::ClientIdentity> for X509Identity {
-    fn from(identity: &x509_keystore::ClientIdentity) -> Self {
-        match identity {
-            x509_keystore::ClientIdentity::Absent => Self::Absent,
-            x509_keystore::ClientIdentity::Claimed { email } => Self::Claimed {
-                email: email.clone(),
-            },
         }
     }
 }
@@ -131,8 +109,6 @@ impl From<x509_keystore::ValidationError> for X509ValidationError {
         match error {
             x509_keystore::ValidationError::Empty => Self::Empty,
             x509_keystore::ValidationError::TooLong => Self::TooLong,
-            x509_keystore::ValidationError::NotAnEmailAddress => Self::NotAnEmailAddress,
-            x509_keystore::ValidationError::NotAUuid => Self::NotAUuid,
             x509_keystore::ValidationError::Ambiguous => Self::Ambiguous,
             x509_keystore::ValidationError::PlaceholderIdentifier => Self::PlaceholderIdentifier,
             x509_keystore::ValidationError::UnknownAttribute => Self::UnknownAttribute,

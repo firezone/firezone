@@ -3027,7 +3027,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tunnel-proto",
- "uuid",
  "x509-claims",
 ]
 

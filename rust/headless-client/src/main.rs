@@ -199,7 +199,7 @@ enum Cmd {
         force: bool,
     },
 
-    /// Show the X.509 client identities the platform keystore holds
+    /// Show the X.509 client certificate the platform keystore holds
     X509,
 }
 
@@ -363,30 +363,27 @@ fn try_main() -> Result<()> {
 
     tracing::info!(arch = std::env::consts::ARCH, version = VERSION);
 
-    let token = get_token(token_env_var, &cli.token_path)?;
+    let token = get_token(token_env_var, &cli.token_path)?
+        .context("Cannot authenticate without a token")?;
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
-    // A keystore we cannot read must not keep the Client from connecting: without p11-kit, or
-    // with only broken PKCS#11 modules, we connect without a certificate. Anything else that
-    // keeps an identity from being handed over still fails the connect.
+    // The certificate is optional device attestation. A keystore or private-key failure must
+    // not prevent a token-authenticated session from reaching the portal.
     let certificate = match x509_keystore::identity() {
-        Err(
-            x509_keystore::Error::MissingP11Kit
-            | x509_keystore::Error::UnreadablePkcs11Keystore { .. },
-        ) => Ok(None),
-        other => other,
-    }
-    .and_then(|identity| {
-        identity
-            .map(|identity| identity.client_certificate())
-            .transpose()
-    })
-    .context("Failed to read the platform keystore")?;
-
-    if token.is_none() && certificate.is_none() {
-        anyhow::bail!("Cannot authenticate without a token or a client certificate");
-    }
+        Ok(Some(identity)) => match identity.client_certificate() {
+            Ok(certificate) => Some(certificate),
+            Err(error) => {
+                tracing::debug!(%error, "Failed to load the device certificate");
+                None
+            }
+        },
+        Ok(None) => None,
+        Err(error) => {
+            tracing::debug!(%error, "Failed to read the platform keystore");
+            None
+        }
+    };
 
     let url = LoginUrl::client(
         cli.api_url.clone(),
@@ -449,7 +446,7 @@ fn try_main() -> Result<()> {
         // When running interactively, it is useful for the user to see that we can't reach the portal.
         let portal = PhoenixChannel::disconnected(
             url,
-            token,
+            Some(token),
             get_user_agent("headless-client", env!("CARGO_PKG_VERSION")),
             "client",
             (),
@@ -601,19 +598,6 @@ fn handle_x509() -> Result<()> {
 
         if let Some(problem) = field.problem {
             println!("  ({})", problem.label());
-        }
-    }
-
-    match certificate.identity() {
-        x509_keystore::ClientIdentity::Absent => {}
-        x509_keystore::ClientIdentity::Claimed { email } => {
-            let named = email
-                .map(|email| format!(" for {email}"))
-                .unwrap_or_default();
-
-            println!(
-                "\nThe certificate claims an identity{named}, so the client presents it instead of signing in with a token."
-            );
         }
     }
 

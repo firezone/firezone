@@ -50,8 +50,6 @@
 	<string name="x509_claim_absent">Not present</string>
 	<string name="x509_claim_empty">Empty</string>
 	<string name="x509_claim_too_long">Longer than 255 characters</string>
-	<string name="x509_claim_not_an_email_address">Not a valid email address</string>
-	<string name="x509_claim_not_a_uuid">Not a UUID</string>
 	<string name="x509_claim_ambiguous">More than one value was given</string>
 	<string name="x509_claim_placeholder_identifier">Placeholder identifier</string>
 	<string name="x509_claim_unknown_attribute">Unrecognised attribute</string>
@@ -62,18 +60,14 @@
 
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>
-	<string name="connect">Connect</string>
-	<string name="connect_as">Connect as %1$s</string>
 	<string name="settings">Settings</string>
 	<string name="sign_in_welcome">Welcome to Firezone.</string>
 	<string name="sign_in_prompt">Sign in to access Resources.</string>
-	<string name="sign_in_certificate_hint">This device has a certificate that identifies you.</string>
 
 	<!-- Sign Out -->
 	<string name="resources">Resources</string>
 	<string name="connected_devices">Connected Devices</string>
 	<string name="sign_out">Sign Out</string>
-	<string name="disconnect">Disconnect</string>
 	<string name="connected_as">Connected as %1$s</string>
 
 	<!-- Profile -->
@@ -161,7 +155,7 @@
 	<string name="config_x509_certificate_alias_description">
 		The system KeyChain alias of the client certificate used for mutual TLS. The device policy
 		controller must install the key pair and grant dev.firezone.android access to it. Leave
-		empty to disable certificate authentication.
+		empty to disable certificate-based device attestation.
 	</string>
 
 	<string name="managed_setting_info_description">

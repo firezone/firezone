@@ -110,8 +110,7 @@ mise run //:x509:create-ca
 mise run //:x509:gen-certificate device
 ```
 
-`gen-certificate user --email <email> --account-id <account-id>` issues one
-that carries an actor as well. `reset` gives the device back.
+`reset` gives the device back.
 
 ## Release Setup
 
