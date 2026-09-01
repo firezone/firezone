@@ -3,7 +3,6 @@ package dev.firezone.android.core.data
 
 import android.app.Application
 import android.content.Context
-import android.content.RestrictionsManager
 import android.content.SharedPreferences
 import android.os.Bundle
 import dev.firezone.android.core.data.model.Config
@@ -42,7 +41,7 @@ class ManagedConfigurationSourceTest {
         source =
             ManagedConfigurationSource(
                 context,
-                context.getSystemService(RestrictionsManager::class.java)!!,
+                ManagedConfigurationReader { Bundle() },
                 repository,
                 CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
             )

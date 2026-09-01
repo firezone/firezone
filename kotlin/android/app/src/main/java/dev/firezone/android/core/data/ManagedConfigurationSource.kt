@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.RestrictionsManager
 import android.os.Bundle
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -26,12 +25,16 @@ internal data class ManagedConfigurationUpdate(
     val configuration: ManagedConfiguration,
 )
 
+internal fun interface ManagedConfigurationReader {
+    fun read(): Bundle
+}
+
 @Singleton
 internal class ManagedConfigurationSource
     @Inject
     constructor(
         @ApplicationContext private val context: Context,
-        private val restrictionsManager: RestrictionsManager,
+        private val managedConfigurationReader: ManagedConfigurationReader,
         private val repository: Repository,
         @ApplicationScope private val applicationScope: CoroutineScope,
     ) {
@@ -81,7 +84,7 @@ internal class ManagedConfigurationSource
 
         internal suspend fun refreshUpdate(): ManagedConfigurationUpdate =
             refreshMutex.withLock {
-                applyRestrictionsLocked(restrictionsManager.applicationRestrictions)
+                applyRestrictionsLocked(managedConfigurationReader.read())
             }
 
         internal suspend fun refresh(readRestrictions: suspend () -> Bundle): ManagedConfiguration =

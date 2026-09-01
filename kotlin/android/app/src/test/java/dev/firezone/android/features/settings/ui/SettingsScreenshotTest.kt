@@ -2,7 +2,6 @@
 package dev.firezone.android.features.settings.ui
 
 import android.app.Application
-import android.content.RestrictionsManager
 import android.os.Bundle
 import android.os.Looper
 import android.view.LayoutInflater
@@ -32,6 +31,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
 import dev.firezone.android.core.data.ManagedConfigurationSource
+import dev.firezone.android.core.data.ManagedConfigurationReader
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.databinding.ActivitySettingsBinding
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
@@ -284,7 +284,7 @@ internal class SettingsScreenshotActivity : AppCompatActivity() {
                 val managedConfigurationSource =
                     ManagedConfigurationSource(
                         applicationContext,
-                        getSystemService(RestrictionsManager::class.java)!!,
+                        ManagedConfigurationReader { Bundle() },
                         repository,
                         CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
                     )

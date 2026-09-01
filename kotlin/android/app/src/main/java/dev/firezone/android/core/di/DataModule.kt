@@ -10,6 +10,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dev.firezone.android.core.data.ManagedConfigurationReader
 import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.CoroutineDispatcher
 import javax.inject.Singleton
@@ -18,9 +19,12 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 class DataModule {
     @Provides
-    internal fun provideRestrictionsManager(
+    internal fun provideManagedConfigurationReader(
         @ApplicationContext context: Context,
-    ): RestrictionsManager = context.getSystemService()!!
+    ): ManagedConfigurationReader =
+        ManagedConfigurationReader {
+            context.getSystemService<RestrictionsManager>()!!.applicationRestrictions
+        }
 
     @Singleton
     @Provides

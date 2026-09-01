@@ -3,10 +3,10 @@ package dev.firezone.android.features.settings.ui
 
 import android.app.Application
 import android.content.Context
-import android.content.RestrictionsManager
 import android.os.Bundle
 import android.os.Looper
 import dev.firezone.android.core.data.ManagedConfigurationSource
+import dev.firezone.android.core.data.ManagedConfigurationReader
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.CoroutineScope
@@ -42,7 +42,7 @@ class SettingsManagedConfigurationTest {
         source =
             ManagedConfigurationSource(
                 context,
-                context.getSystemService(RestrictionsManager::class.java)!!,
+                ManagedConfigurationReader { Bundle() },
                 repository,
                 CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
             )
@@ -174,6 +174,26 @@ class SettingsManagedConfigurationTest {
             shadowOf(Looper.getMainLooper()).idle()
 
             assertEquals(userConfig.copy(logFilter = "trace"), repository.getUserConfigSync())
+        }
+
+    @Test
+    fun `sequential field callbacks preserve earlier draft edits`() =
+        runBlocking {
+            source.applyRestrictions(Bundle())
+            shadowOf(Looper.getMainLooper()).idle()
+
+            viewModel.onValidateAuthUrl("https://edited.example.com")
+            viewModel.onValidateLogFilter("trace")
+            viewModel.onConnectOnStartChanged(true)
+
+            assertEquals(
+                userConfig.copy(
+                    authUrl = "https://edited.example.com",
+                    logFilter = "trace",
+                    connectOnStart = true,
+                ),
+                viewModel.configStateFlow.value,
+            )
         }
 
     @Test
