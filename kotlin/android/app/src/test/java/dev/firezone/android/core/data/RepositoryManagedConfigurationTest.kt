@@ -112,6 +112,28 @@ class RepositoryManagedConfigurationTest {
         }
 
     @Test
+    fun `saving cannot replace any managed underlying field`() =
+        runBlocking {
+            repository.saveSettings(userConfig).first()
+            repository.saveManagedConfiguration(allManagedConfig()).first()
+
+            repository
+                .saveSettings(
+                    FirezoneConfig(
+                        authUrl = "https://attempted.example.com",
+                        apiUrl = "wss://attempted.example.com",
+                        logFilter = "trace",
+                        accountSlug = "attempted-account",
+                        startOnLogin = true,
+                        connectOnStart = false,
+                    ),
+                ).first()
+            repository.saveManagedConfiguration(Bundle()).first()
+
+            assertEquals(userConfig, repository.getConfigSync())
+        }
+
+    @Test
     fun `default configuration keeps managed values`() =
         runBlocking {
             repository
