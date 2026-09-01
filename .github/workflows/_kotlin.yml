@@ -63,6 +63,9 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           file: ${{ env.COVERAGE_REPORT }}
           format: jacoco
+          # A JaCoCo report locates a file by its package, so without the source root in
+          # front of it nothing Coveralls is given resolves to a file in the repository.
+          base-path: kotlin/android/app/src/main/java
           flag-name: kotlin-test
           parallel: true
 
@@ -190,6 +193,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           file: kotlin/android/coverage.xml
           format: jacoco
+          base-path: kotlin/android/app/src/main/java
           flag-name: kotlin-emulator
           parallel: true
 
