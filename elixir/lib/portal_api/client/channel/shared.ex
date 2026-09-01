@@ -1905,6 +1905,29 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   # ACCOUNTS
 
+  # Disabling an account is broadcast as an account deletion. Unlike token-backed
+  # credentials, X.509 credentials have no ClientToken row for the account hook
+  # to delete, so every client channel for the account must be explicitly cut.
+  defp handle_change(
+         %Change{op: :delete, old_struct: %Portal.Account{id: account_id}},
+         %{assigns: %{client: %{account_id: account_id}}} = socket
+       ) do
+    disconnect_account(socket)
+  end
+
+  # Keep the channel fail-closed if an account-disabled update is ever broadcast
+  # directly instead of being normalized to the delete event above.
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Portal.Account{is_disabled: false},
+           struct: %Portal.Account{is_disabled: true}
+         },
+         socket
+       ) do
+    disconnect_account(socket)
+  end
+
   defp handle_change(
          %Change{
            op: :update,
@@ -2197,6 +2220,14 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
+
+  # A channel stop alone can leave the transport available for a reactive rejoin,
+  # which would bypass Socket.connect/3 and its account-enabled check. Drain the
+  # transport so the next attempt must authenticate again.
+  defp disconnect_account(socket) do
+    send(socket.transport_pid, :socket_drain)
+    handle_info(:disconnect, socket)
+  end
 
   # Shared eviction path for the CDC delete handler, the direct `:reject_access`
   # from `Portal.Queue`'s on_failed callback, and the authz durability timeout.
