@@ -105,22 +105,18 @@ fn assert_validity_is_contiguous(der: &[u8], first: u32, second: u32) {
 
 /// Asserts that claiming nobody and claiming somebody stay separate answers.
 ///
-/// The first signs the session in with a token and the second commits it to mutual TLS, so a
-/// certificate that slid from one to the other would authenticate as the wrong thing. A claim
-/// the parser could not use still names somebody: only a usable address reaches the client.
+/// The first signs the session in with a token and the second commits it to mutual TLS with no
+/// token. A carried actor email or actor ID claims somebody whatever it says, since rejecting
+/// a claim is the portal's policy; an account ID names no actor and claims nobody.
 fn assert_the_identity_answers_the_claims(certificate: &ParsedCertificate) {
-    let claims_somebody = [
-        &certificate.account_id,
-        &certificate.actor_id,
-        &certificate.actor_email,
-    ]
-    .into_iter()
-    .any(|claim| claim.value.is_some() || claim.error.is_some());
+    let claims_somebody = [&certificate.actor_email, &certificate.actor_id]
+        .into_iter()
+        .any(|claim| claim.value.is_some() || claim.error.is_some());
 
     match certificate.identity() {
         Identity::Absent => assert!(
             !claims_somebody,
-            "a certificate carrying an identity claim is not absent"
+            "a certificate carrying an identity attribute is not absent"
         ),
         Identity::Claimed { email } => {
             assert!(claims_somebody, "an identity was claimed by nothing");
