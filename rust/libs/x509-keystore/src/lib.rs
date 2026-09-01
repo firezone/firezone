@@ -24,6 +24,11 @@ pub use x509_claims::{
 /// Re-exported because [`Identity::client_certificate`] hands out a [`ClientCertificate`].
 pub use x509_credential::ClientCertificate;
 
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+use linux as keystore;
+
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 mod sign;
 
@@ -32,9 +37,9 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows as keystore;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 mod unsupported;
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 use unsupported as keystore;
 
 /// The subject common name of the certificates Firezone's MDM integrations provision.
@@ -113,7 +118,8 @@ impl Identity {
 pub enum Error {
     /// The Windows certificate store could not be read.
     UnreadableStore { store: String, error: String },
-    /// No PKCS#11 module is registered, so there is no keystore to read certificates through.
+    /// No PKCS#11 module is registered, or p11-kit itself is missing, so there is no keystore
+    /// to read certificates through.
     ///
     /// The clients recommend p11-kit rather than depend on it, so a machine without it is a
     /// supported installation that has to be told what is missing instead of failing to connect.
@@ -154,7 +160,7 @@ impl fmt::Display for Error {
                 "The Windows certificate store {store} could not be read: {error}"
             ),
             Self::MissingP11Kit => formatter.write_str(
-                "No PKCS#11 module is registered, so no X.509 client identity certificate can be found. Firezone reads certificates through PKCS#11 modules registered with p11-kit. See https://www.firezone.dev/kb/install/linux for what to install.",
+                "No PKCS#11 module is registered, or p11-kit is not installed, so no X.509 client identity certificate can be found. Firezone reads certificates through PKCS#11 modules registered with p11-kit. See https://www.firezone.dev/kb/install/linux for what to install.",
             ),
             Self::UnreadablePkcs11Keystore { modules } => write!(
                 formatter,
