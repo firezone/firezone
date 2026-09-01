@@ -8,7 +8,11 @@ import android.os.Looper
 import androidx.lifecycle.SavedStateHandle
 import dev.firezone.android.core.ApplicationMode
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.x509.CertificateUser
+import dev.firezone.android.core.x509.SystemKeyChain
+import dev.firezone.android.core.x509.X509Identity
 import kotlinx.coroutines.Dispatchers
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,24 +33,45 @@ class SplashViewModelTest {
     @Test
     fun `cancelling a tunnel state check prevents delayed navigation`() {
         val context = RuntimeEnvironment.getApplication()
-        val repository =
-            Repository(
-                context = context,
-                coroutineDispatcher = Dispatchers.Unconfined,
-                sharedPreferences = context.getSharedPreferences("splash-view-model-test", Context.MODE_PRIVATE),
-            )
-        val viewModel =
-            SplashViewModel(
-                repo = repository,
-                applicationRestrictions = Bundle(),
-                applicationMode = ApplicationMode.TESTING,
-                savedStateHandle = SavedStateHandle(),
-            )
+        val viewModel = newViewModel(context)
 
         viewModel.checkTunnelState(context)
         viewModel.cancelTunnelStateCheck()
         shadowOf(Looper.getMainLooper()).idleFor(2, TimeUnit.SECONDS)
 
         assertNull(viewModel.actionStateFlow.value)
+    }
+
+    @Test
+    fun `cancelling a tunnel state check clears delayed navigation`() {
+        val context = RuntimeEnvironment.getApplication()
+        val viewModel = newViewModel(context)
+
+        viewModel.checkTunnelState(context)
+        shadowOf(Looper.getMainLooper()).idleFor(2, TimeUnit.SECONDS)
+        assertNotNull(viewModel.actionStateFlow.value)
+
+        viewModel.cancelTunnelStateCheck()
+
+        assertNull(viewModel.actionStateFlow.value)
+    }
+
+    private fun newViewModel(context: Context): SplashViewModel {
+        val repository =
+            Repository(
+                context = context,
+                coroutineDispatcher = Dispatchers.Unconfined,
+                sharedPreferences = context.getSharedPreferences("splash-view-model-test", Context.MODE_PRIVATE),
+            )
+        val applicationRestrictions = Bundle()
+        val certificateUser = CertificateUser(repository, applicationRestrictions, X509Identity(SystemKeyChain(context)))
+
+        return SplashViewModel(
+            repo = repository,
+            applicationRestrictions = applicationRestrictions,
+            applicationMode = ApplicationMode.TESTING,
+            certificateUser = certificateUser,
+            savedStateHandle = SavedStateHandle(),
+        )
     }
 }
