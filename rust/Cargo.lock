@@ -2576,6 +2576,7 @@ dependencies = [
  "windows-security",
  "windows-service",
  "winreg 0.56.0",
+ "x509-keystore",
  "zip",
 ]
 
@@ -2614,6 +2615,7 @@ dependencies = [
  "tracing",
  "tunnel-bypass-resolver",
  "url",
+ "x509-keystore",
 ]
 
 [[package]]
@@ -10318,6 +10320,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "rcgen",
+ "serde",
  "sha2 0.11.0",
  "uuid",
  "x509-parser",
@@ -10337,6 +10340,17 @@ version = "0.1.0"
 dependencies = [
  "rustls",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "x509-keystore"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "rustls",
+ "serde",
+ "x509-claims",
+ "x509-credential",
 ]
 
 [[package]]

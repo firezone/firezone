@@ -1,19 +1,16 @@
 [package]
-name = "x509-claims"
+name = "x509-keystore"
 version = "0.1.0"
 edition = { workspace = true }
 authors = ["Firezone, Inc."]
 license = { workspace = true }
 
 [dependencies]
-base64 = { workspace = true, features = ["std"] }
+anyhow = { workspace = true }
+rustls = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-sha2 = { workspace = true }
-uuid = { workspace = true }
-x509-parser = { workspace = true }
-
-[dev-dependencies]
-rcgen = { workspace = true }
+x509-claims = { workspace = true }
+x509-credential = { workspace = true }
 
 [lints]
 workspace = true

@@ -53,9 +53,12 @@ pub(crate) use platform::ProcessToken;
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
     ClearLogs,
+    /// Reload the held keystore reference; the result arrives as [`ServerMsg::X509Certificate`].
+    ///
+    /// Fire-and-forget: the GUI sends it for every shown window and never awaits it.
+    ReloadX509,
     Connect {
-        #[serde(serialize_with = "serialize_token")]
-        token: SecretString,
+        authentication: Authentication,
         is_internet_resource_active: bool,
     },
     Disconnect,
@@ -69,6 +72,20 @@ pub enum ClientMsg {
     },
     #[cfg(debug_assertions)]
     Panic,
+}
+
+/// What authenticates a session to the portal.
+///
+/// The certificate itself never crosses this message: the Tunnel service loads it from the
+/// platform keystore at connect time, so a variant only states whether to present it.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub enum Authentication {
+    /// The keystore's certificate alone; its claims name who is connecting.
+    Certificate,
+    /// A portal token alone.
+    Token(#[serde(serialize_with = "serialize_token")] SecretString),
+    /// A portal token, with the keystore's certificate alongside for device attestation.
+    TokenAndCertificate(#[serde(serialize_with = "serialize_token")] SecretString),
 }
 
 fn serialize_token<S>(token: &SecretString, serializer: S) -> Result<S::Ok, S::Error>
@@ -85,6 +102,7 @@ pub enum ServerMsg {
         firezone_id: String,
         advanced_settings: AdvancedSettings,
         mdm_settings: MdmSettings,
+        x509_certificate: Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
     },
     /// The Tunnel service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
@@ -106,6 +124,12 @@ pub enum ServerMsg {
     /// Result of an `ApplyAdvancedSettings` from the GUI. `Ok` echoes the
     /// persisted struct so the GUI is certain about what landed.
     AdvancedSettingsApplied(Result<AdvancedSettings, String>),
+    /// What the platform keystore holds, pushed whenever it may have changed.
+    ///
+    /// `Hello` carries the first load; this arrives for every [`ClientMsg::ReloadX509`] and
+    /// whenever we re-read the keystore to sign in, which covers everything the certificate
+    /// screen renders.
+    X509Certificate(Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>),
     /// The Tunnel service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -221,6 +245,8 @@ async fn ipc_listen(
 
 /// Handles one IPC client
 struct Handler<'a> {
+    /// The keystore load this GUI connection displays and presents.
+    keystore: Result<Option<x509_keystore::Identity>, x509_keystore::Error>,
     device_id: DeviceId,
     dns_controller: &'a mut DnsController,
     ipc_rx: ipc::ServerRead<ClientMsg>,
@@ -249,7 +275,7 @@ enum Session {
         connlib: client_shared::Session,
     },
     WaitingForNetwork {
-        token: SecretString,
+        authentication: Authentication,
         is_internet_resource_active: bool,
     },
     #[default]
@@ -319,6 +345,32 @@ impl Session {
     fn is_none(&self) -> bool {
         matches!(self, Self::None)
     }
+}
+
+/// Reads the keystore off the runtime, because it can block on a TPM or a smart card and the
+/// connlib eventloop shares this runtime's single worker.
+async fn load_identity() -> Result<Option<x509_keystore::Identity>, x509_keystore::Error> {
+    let identity = tokio::task::spawn_blocking(x509_keystore::identity)
+        .await
+        .map_err(|error| x509_keystore::Error::UnreadableKeystore {
+            message: format!("Failed to join the keystore task: {error}"),
+        })??;
+
+    Ok(identity)
+}
+
+/// What the GUI shows of a held keystore load.
+fn x509_of(
+    keystore: &Result<Option<x509_keystore::Identity>, x509_keystore::Error>,
+) -> Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error> {
+    keystore
+        .as_ref()
+        .map(|identity| {
+            identity
+                .as_ref()
+                .map(|identity| identity.certificate.clone())
+        })
+        .map_err(Clone::clone)
 }
 
 /// Shuts down the session and waits until its eventloop has exited.
@@ -428,16 +480,29 @@ impl<'a> Handler<'a> {
             .inspect_err(|e| tracing::warn!("Failed to load MDM settings, using defaults: {e:#}"))
             .unwrap_or_default();
 
+        // One load serves this GUI connection: the greeting, the page and every connect all
+        // read the same held reference, so what is shown is what is presented. Bounded,
+        // because a keystore that answers slowly, or never, must not hold up the greeting past
+        // the deadline the GUI gives us to prove we are alive.
+        let keystore = tokio::time::timeout(Duration::from_secs(3), load_identity())
+            .await
+            .map_err(|_| x509_keystore::Error::UnreadableKeystore {
+                message: "Timed out reading the keystore after 3s".to_owned(),
+            })
+            .and_then(std::convert::identity);
+
         ipc_tx
             .send(&ServerMsg::Hello {
                 firezone_id: device_id.id.clone(),
                 advanced_settings: advanced_settings.clone(),
                 mdm_settings: mdm_settings.clone(),
+                x509_certificate: x509_of(&keystore),
             })
             .await
             .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
 
         Ok(Self {
+            keystore,
             device_id,
             dns_controller,
             ipc_rx,
@@ -537,14 +602,14 @@ impl<'a> Handler<'a> {
                 connlib.reset(reason.to_owned());
             }
             Session::WaitingForNetwork {
-                token,
+                authentication,
                 is_internet_resource_active,
             } => {
                 tracing::info!(%reason, "Attempting to re-connect");
 
-                let token = token.clone();
+                let authentication = authentication.clone();
                 let is_internet_resource_active = *is_internet_resource_active;
-                let result = self.try_connect(token, is_internet_resource_active);
+                let result = self.try_connect(authentication, is_internet_resource_active);
 
                 if let Some(e) = result
                     .as_ref()
@@ -676,7 +741,7 @@ impl<'a> Handler<'a> {
                     .await?
             }
             ClientMsg::Connect {
-                token,
+                authentication,
                 is_internet_resource_active,
             } => {
                 if !self.session.is_none() {
@@ -689,7 +754,7 @@ impl<'a> Handler<'a> {
                 // there must not report the previous one's.
                 telemetry::set_account_slug(None);
 
-                let result = self.try_connect(token.clone(), is_internet_resource_active);
+                let result = self.try_connect(authentication.clone(), is_internet_resource_active);
 
                 if let Some(e) = result
                     .as_ref()
@@ -700,7 +765,7 @@ impl<'a> Handler<'a> {
                         "Encountered IO error when connecting to portal, most likely we don't have Internet: {e}"
                     );
                     self.session = Session::WaitingForNetwork {
-                        token,
+                        authentication,
                         is_internet_resource_active,
                     };
 
@@ -708,6 +773,11 @@ impl<'a> Handler<'a> {
                 }
 
                 self.handle_connect_result(result).await?;
+            }
+            ClientMsg::ReloadX509 => {
+                self.keystore = load_identity().await;
+                self.send_ipc(ServerMsg::X509Certificate(x509_of(&self.keystore)))
+                    .await?;
             }
             ClientMsg::Disconnect => {
                 self.session = Session::None;
@@ -786,15 +856,61 @@ impl<'a> Handler<'a> {
             .unwrap_or_else(|| self.advanced_settings.api_url.as_str())
     }
 
+    /// One keystore read serves the whole attempt: the certificate presented to the portal and
+    /// the one pushed to the GUI come from the same walk, so they cannot diverge.
     fn try_connect(
         &mut self,
-        token: SecretString,
+        authentication: Authentication,
         is_internet_resource_active: bool,
     ) -> Result<Session> {
         let started_at = Instant::now();
 
         let device_id =
             device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
+
+        // The certificate the GUI displays is the one this connect presents: both read the
+        // held reference, which only a reload replaces. How much the keystore may fail is the
+        // intent's to say: a token must not be kept from connecting by a keystore we could not
+        // read (without p11-kit, or with only broken PKCS#11 modules, it connects alone while
+        // the GUI shows the greeting's error), while a connect the certificate itself
+        // authenticates has nothing without it.
+        let (token, certificate) = match (authentication, &self.keystore) {
+            (Authentication::Certificate, Ok(Some(identity))) => {
+                let certificate = identity
+                    .client_certificate()
+                    .context("Failed to read the platform keystore")?;
+
+                (None, Some(certificate))
+            }
+            (Authentication::Certificate, Ok(None)) => {
+                bail!("Cannot authenticate: the platform keystore holds no client certificate")
+            }
+            (Authentication::Certificate, Err(error)) => {
+                return Err(anyhow::Error::new(error.clone())
+                    .context("Failed to read the platform keystore"));
+            }
+            (Authentication::Token(token), Ok(_)) => (Some(token), None),
+            (Authentication::Token(token), Err(_)) => (Some(token), None),
+            (Authentication::TokenAndCertificate(token), Ok(Some(identity))) => {
+                let certificate = identity
+                    .client_certificate()
+                    .context("Failed to read the platform keystore")?;
+
+                (Some(token), Some(certificate))
+            }
+            (Authentication::TokenAndCertificate(token), Ok(None)) => (Some(token), None),
+            (
+                Authentication::TokenAndCertificate(token),
+                Err(
+                    x509_keystore::Error::MissingP11Kit
+                    | x509_keystore::Error::UnreadablePkcs11Keystore { .. },
+                ),
+            ) => (Some(token), None),
+            (Authentication::TokenAndCertificate(_), Err(error)) => {
+                return Err(anyhow::Error::new(error.clone())
+                    .context("Failed to read the platform keystore"));
+            }
+        };
 
         let api_url = self.api_url().to_string();
         let url = LoginUrl::client(
@@ -806,7 +922,7 @@ impl<'a> Handler<'a> {
                 device_uuid: device_info::uuid(),
                 ..Default::default()
             },
-            None,
+            certificate,
         )
         .context("Failed to create `LoginUrl`")?;
 
