@@ -339,11 +339,15 @@
     public static func showDisconnectedAlert(_ message: String?) async {
       let alert = NSAlert()
       alert.messageText = "Firezone disconnected"
-      alert.informativeText = message ?? "Firezone has been disconnected."
+      alert.informativeText = disconnectedText(message)
       alert.addButton(withTitle: "OK")
       NSApp.activate(ignoringOtherApps: true)
 
       _ = await show(alert)
+    }
+
+    static func disconnectedText(_ message: String?) -> String {
+      message ?? "Firezone has been disconnected."
     }
   }
 

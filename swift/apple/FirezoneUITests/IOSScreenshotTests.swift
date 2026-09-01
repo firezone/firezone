@@ -20,6 +20,16 @@
       (label: "Diagnostic Logs", name: "logs"),
     ]
 
+    /// The scenarios describing the states of the certificate tab. Each image
+    /// carries the name of the scenario it was taken from.
+    private static let certificateScenarios = [
+      "x509-filled",
+      "x509-empty",
+      "x509-unknown-attribute",
+      "x509-expired",
+      "x509-unreadable",
+    ]
+
     func testGrantVPN() throws {
       let appearance = try currentAppearance()
       let app = launchApp(scenario: "grant-vpn")
@@ -36,6 +46,17 @@
 
       try waitFor(app.buttons["Sign in"], on: "welcome")
       deliver(app, as: "welcome", in: appearance)
+    }
+
+    func testWelcomeCertificate() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "welcome-usable-certificate")
+      defer { app.terminate() }
+
+      // The control offers whom the certificate claims, and the certificate
+      // `gen-mock-certificates.sh` mints into `usable.der` claims this address.
+      try waitFor(app.buttons["Connect as jane.doe@example.com"], on: "welcome-certificate")
+      deliver(app, as: "welcome-certificate", in: appearance)
     }
 
     func testSession() throws {
@@ -55,6 +76,30 @@
       try waitFor(app.staticTexts["Office network"], on: "session-scrolled")
       scrollDown(in: app)
       deliver(app, as: "session-scrolled", in: appearance)
+    }
+
+    /// A running session, and the account menu that carries its heading and the
+    /// control that ends it.
+    func testSessionMenu() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "connected")
+      defer { app.terminate() }
+
+      try waitFor(app.staticTexts["Office network"], on: "session-menu")
+      try openAccountMenu(showing: "Sign out", in: app, on: "session-menu")
+      deliver(app, as: "session-menu", in: appearance)
+    }
+
+    /// The same menu in a session a certificate claims, which is disconnected
+    /// from rather than signed out of.
+    func testSessionCertificate() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "connected-usable-certificate")
+      defer { app.terminate() }
+
+      try waitFor(app.staticTexts["Office network"], on: "session-certificate")
+      try openAccountMenu(showing: "Disconnect", in: app, on: "session-certificate")
+      deliver(app, as: "session-certificate", in: appearance)
     }
 
     // Each detail screen takes its own launch: photographed one after another, a
@@ -114,6 +159,22 @@
       }
     }
 
+    /// The certificate tab, in each of the states a scenario describes.
+    func testCertificate() throws {
+      let appearance = try currentAppearance()
+
+      for scenario in Self.certificateScenarios {
+        let app = launchApp(scenario: scenario)
+        defer { app.terminate() }
+
+        try waitFor(app.buttons["Settings"], on: scenario)
+        app.buttons["Settings"].tap()
+        try waitFor(app.navigationBars["Settings"], on: scenario)
+        try selectTab("X.509", in: app)
+        deliver(app, as: scenario, in: appearance)
+      }
+    }
+
     private func launchApp(scenario: String) -> XCUIApplication {
       let app = XCUIApplication()
       app.launchArguments = ["--mock-tunnel", "--mock-scenario", scenario]
@@ -165,6 +226,25 @@
       }
 
       tab.tap()
+    }
+
+    /// Opens the account menu and waits for `item`, one of the controls it holds.
+    ///
+    /// The menu itself is an icon carrying no text, so it is taken as the
+    /// navigation bar button that is not Settings, and SwiftUI has drawn the items
+    /// it holds as different controls across releases.
+    private func openAccountMenu(
+      showing item: String,
+      in app: XCUIApplication,
+      on screen: String
+    ) throws {
+      let account = app.navigationBars.buttons.matching(
+        NSPredicate(format: "label != %@", "Settings")
+      ).firstMatch
+
+      try waitFor(account, on: screen)
+      account.tap()
+      try waitFor(app.descendants(matching: .any)[item], on: screen)
     }
 
     /// Blocks until `element` is on screen, so a capture cannot catch the spinner

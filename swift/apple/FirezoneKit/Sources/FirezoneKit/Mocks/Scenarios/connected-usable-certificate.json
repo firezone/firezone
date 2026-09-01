@@ -1,0 +1,217 @@
+{
+  "hasVPNConfiguration": true,
+  "vpnStatus": "connected",
+  "systemExtension": "installed",
+  "notifications": "authorized",
+  "clientCertificate": "usable",
+  "actorName": "Jane Doe",
+  "resources": [
+    {
+      "id": "425233f2-a1cb-4b7d-84f3-850367fa122a",
+      "name": "Internet Resource",
+      "address": null,
+      "addressDescription": null,
+      "status": "Online",
+      "sites": [
+        {
+          "id": "1a4f0f4e-8f3f-4a2e-9b6d-3c5e7a1b2d40",
+          "name": "Internet"
+        }
+      ],
+      "type": "internet"
+    },
+    {
+      "id": "0854dca1-2c5b-468a-be85-0eec2f02a211",
+      "name": "Engineering wiki",
+      "address": "wiki.example.com",
+      "addressDescription": "https://wiki.example.com",
+      "status": "Online",
+      "sites": [
+        {
+          "id": "917e9354-26b3-4704-867c-f84c8688d269",
+          "name": "Sydney Office"
+        }
+      ],
+      "type": "dns"
+    },
+    {
+      "id": "92da16a4-0eb2-45c2-b882-8573aad73921",
+      "name": "Git server",
+      "address": "git.example.com",
+      "addressDescription": null,
+      "status": "Unknown",
+      "sites": [
+        {
+          "id": "003a5a77-6813-4c21-bd91-94f39efb04c0",
+          "name": "Production Cloud"
+        }
+      ],
+      "type": "dns"
+    },
+    {
+      "id": "ed3778b9-dd41-4312-b616-028b0bbaff1c",
+      "name": "Internal services",
+      "address": "*.svc.example.com",
+      "addressDescription": null,
+      "status": "Unknown",
+      "sites": [
+        {
+          "id": "003a5a77-6813-4c21-bd91-94f39efb04c0",
+          "name": "Production Cloud"
+        }
+      ],
+      "type": "dns"
+    },
+    {
+      "id": "be575d17-b0b3-40c9-ac34-e1ec3064d75a",
+      "name": "Office network",
+      "address": "192.0.2.0/24",
+      "addressDescription": null,
+      "status": "Online",
+      "sites": [
+        {
+          "id": "917e9354-26b3-4704-867c-f84c8688d269",
+          "name": "Sydney Office"
+        }
+      ],
+      "type": "cidr"
+    },
+    {
+      "id": "8900accd-e39d-4705-ac7c-2189c59b4a1c",
+      "name": "Production VPC",
+      "address": "198.51.100.0/24",
+      "addressDescription": null,
+      "status": "Unknown",
+      "sites": [
+        {
+          "id": "003a5a77-6813-4c21-bd91-94f39efb04c0",
+          "name": "Production Cloud"
+        }
+      ],
+      "type": "cidr"
+    },
+    {
+      "id": "6b15c815-cefc-4128-8ab0-d9d6a526bbc7",
+      "name": "Lab test bench",
+      "address": "203.0.113.0/24",
+      "addressDescription": null,
+      "status": "Offline",
+      "sites": [
+        {
+          "id": "0a93828b-6145-409d-ab6e-92a481ed7b1f",
+          "name": "Hardware Lab"
+        }
+      ],
+      "type": "cidr"
+    }
+  ],
+  "connectedDevices": [
+    {
+      "id": "a21c9663-4d0e-4f4a-a8fa-48790b1e5cef",
+      "name": "bench-controller-01",
+      "tunIPv4": "100.64.3.18",
+      "tunIPv6": "fd00:2021:1111::12",
+      "pools": ["Lab hardware", "Shared storage"]
+    },
+    {
+      "id": "47e9e79b-e4eb-4444-af14-ec24c6a2afc2",
+      "name": "build-runner-02",
+      "tunIPv4": "100.64.7.41",
+      "tunIPv6": "fd00:2021:1111::29",
+      "pools": ["Build farm"]
+    },
+    {
+      "id": "db8221d1-0277-4f05-b0a8-22b32a5a9a46",
+      "name": "build-runner-03",
+      "tunIPv4": "100.64.7.42",
+      "tunIPv6": "fd00:2021:1111::2a",
+      "pools": ["Build farm"]
+    },
+    {
+      "id": "f0442658-4fca-4f53-9323-161fa389a659",
+      "name": "build-runner-04",
+      "tunIPv4": "100.64.7.43",
+      "tunIPv6": "fd00:2021:1111::2b",
+      "pools": ["Build farm"]
+    },
+    {
+      "id": "7392a499-c8f0-4f24-aba0-2f6a00fe3bc0",
+      "name": "build-runner-05",
+      "tunIPv4": "100.64.7.44",
+      "tunIPv6": "fd00:2021:1111::2c",
+      "pools": ["Build farm"]
+    },
+    {
+      "id": "62f5c6e4-46f5-418a-82ff-7d0e612b29a6",
+      "name": "build-runner-06",
+      "tunIPv4": "100.64.7.45",
+      "tunIPv6": "fd00:2021:1111::2d",
+      "pools": ["Build farm"]
+    },
+    {
+      "id": "c951f7eb-6fa7-428b-aecf-10b654ecccf7",
+      "name": "design-nas",
+      "tunIPv4": "100.64.11.5",
+      "tunIPv6": "fd00:2021:1111::1f5",
+      "pools": ["Shared storage"]
+    },
+    {
+      "id": "4a6f80e6-5322-4202-a1ac-1e897aa826a5",
+      "name": "lab-probe-01",
+      "tunIPv4": "100.64.19.87",
+      "tunIPv6": "fd00:2021:1111::3c2",
+      "pools": ["Lab hardware"]
+    },
+    {
+      "id": "99fd7f50-02aa-4ebd-aac3-b9b914c4aebb",
+      "name": "lab-probe-02",
+      "tunIPv4": "100.64.19.88",
+      "tunIPv6": "fd00:2021:1111::3c3",
+      "pools": ["Lab hardware"]
+    },
+    {
+      "id": "3683defa-c0c5-453b-8d06-22fe7f422f05",
+      "name": "media-encoder-01",
+      "tunIPv4": "100.64.11.6",
+      "tunIPv6": "fd00:2021:1111::1f6",
+      "pools": ["Shared storage"]
+    },
+    {
+      "id": "cef0ac7a-c103-4e1a-b937-485d6fc8f00c",
+      "name": "render-node-01",
+      "tunIPv4": "100.64.7.46",
+      "tunIPv6": "fd00:2021:1111::2e",
+      "pools": ["Build farm", "Shared storage"]
+    },
+    {
+      "id": "ef39322d-65e2-4dea-af50-6fd4c61a72a6",
+      "name": "sensor-hub-01",
+      "tunIPv4": "100.64.19.89",
+      "tunIPv6": "fd00:2021:1111::3c4",
+      "pools": ["Lab hardware"]
+    },
+    {
+      "id": "487f8ebe-4b83-4239-8cb9-40d298fe8561",
+      "name": "sensor-hub-02",
+      "tunIPv4": "100.64.19.90",
+      "tunIPv6": "fd00:2021:1111::3c5",
+      "pools": ["Lab hardware"]
+    },
+    {
+      "id": "e8dc5d0d-93ac-4e1b-9532-866dda67ce5b",
+      "name": "vision-rig-01",
+      "tunIPv4": "100.64.19.86",
+      "tunIPv6": "fd00:2021:1111::3c1",
+      "pools": ["Lab hardware"]
+    },
+    {
+      "id": "46b198aa-fcf6-4640-bb23-b20879c52958",
+      "name": "vision-rig-02",
+      "tunIPv4": "100.64.19.91",
+      "tunIPv6": "fd00:2021:1111::3c6",
+      "pools": ["Lab hardware"]
+    }
+  ],
+  "favorites": [],
+  "providerLogFolderSize": 30000000
+}
