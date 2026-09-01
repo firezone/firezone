@@ -553,13 +553,33 @@ defmodule PortalWeb.LiveTable do
 
   defp filter(%{filter: %{type: {:string, :select}}} = assigns) do
     ~H"""
-    <div class="flex items-center order-4">
-      <.input
-        type="select"
-        field={@form[@filter.name]}
-        prompt={"All " <> pluralize(@filter.title)}
-        options={@filter.values}
-      />
+    <div class="relative shrink-0 order-4">
+      <select
+        id={"#{@live_table_id}-#{@filter.name}"}
+        name={@form[@filter.name].name}
+        class={[
+          "appearance-none bg-none h-8 pl-3 pr-8 rounded border text-xs font-medium",
+          "cursor-pointer transition-colors outline-none",
+          "focus:ring-1 focus:ring-[var(--control-focus)]/30",
+          if(@form[@filter.name].value in [nil, ""],
+            do:
+              "border-[var(--control-border)] bg-[var(--control-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
+            else: "border-[var(--brand)]/40 bg-[var(--brand-muted)] text-[var(--text-primary)]"
+          )
+        ]}
+      >
+        <option value="">All {pluralize(String.downcase(@filter.title))}</option>
+        <option
+          :for={{label, value} <- @filter.values}
+          value={value}
+          selected={to_string(@form[@filter.name].value) == to_string(value)}
+        >
+          {label}
+        </option>
+      </select>
+      <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[var(--text-tertiary)]">
+        <.icon name="ri-arrow-down-s-line" class="w-3.5 h-3.5" />
+      </span>
     </div>
     """
   end
