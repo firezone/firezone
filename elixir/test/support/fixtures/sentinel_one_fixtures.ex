@@ -45,6 +45,7 @@ defmodule Portal.SentinelOneFixtures do
       sentinelone_id: Map.get(attrs, :sentinelone_id, Integer.to_string(unique)),
       uuid: Map.get(attrs, :uuid, Ecto.UUID.generate()),
       computer_name: Map.get(attrs, :computer_name, "endpoint-#{unique}"),
+      serial_number: Map.get(attrs, :serial_number, "S1-SERIAL-#{unique}"),
       os_name: Map.get(attrs, :os_name, "Windows 11"),
       os_type: Map.get(attrs, :os_type, "windows"),
       agent_version: Map.get(attrs, :agent_version, "24.1.4.257"),

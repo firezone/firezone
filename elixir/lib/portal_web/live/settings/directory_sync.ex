@@ -1498,16 +1498,8 @@ defmodule PortalWeb.Settings.DirectorySync do
           </div>
 
           <%= if Map.get(assigns, :public_jwk) do %>
-            <% kid = get_in(@public_jwk, ["keys", Access.at(0), "kid"]) %>
             <div class="mt-4">
-              <div id={"okta-public-jwk-wrapper-#{kid}"} phx-hook="FormatJSON">
-                <.code_block
-                  id="okta-public-jwk"
-                  class="text-xs rounded-md [&_code]:h-72 [&_code]:overflow-y-auto [&_code]:whitespace-pre-wrap [&_code]:break-all [&_code]:p-2"
-                >
-                  {JSON.encode!(@public_jwk)}
-                </.code_block>
-              </div>
+              <.json_view id="okta-public-jwk" value={@public_jwk} />
               <p class="mt-2 text-xs text-subtle">
                 Copy this public key and add it to your Okta application's JWKS configuration.
               </p>

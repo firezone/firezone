@@ -230,28 +230,6 @@ Hooks.OpenURL = {
   },
 };
 
-Hooks.FormatJSON = {
-  mounted() {
-    this.formatJSON();
-  },
-
-  updated() {
-    this.formatJSON();
-  },
-
-  formatJSON() {
-    const code = this.el.querySelector("code");
-    if (code && code.textContent.trim()) {
-      try {
-        const json = JSON.parse(code.textContent);
-        code.textContent = JSON.stringify(json, null, 2);
-      } catch (e) {
-        // If parsing fails, leave the content as is
-      }
-    }
-  },
-};
-
 Hooks.Toast = {
   mounted() {
     this.flashKey = this.el.className.match(/flash-(\w+)/)?.[1];

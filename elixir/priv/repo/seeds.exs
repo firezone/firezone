@@ -16,18 +16,23 @@ defmodule Portal.Repo.Seeds do
     Crypto,
     EmailOTP,
     Entra,
+    Defender,
     ExternalIdentity,
     Device,
     FlowLog,
     PolicyAuthorization,
     Google,
     Group,
+    Intune,
+    Iru,
     Membership,
     NameGenerator,
     OIDC,
     Policy,
     Resource,
     Safe,
+    Santa,
+    SentinelOne,
     SessionLog,
     Site,
     ClientToken,
@@ -939,6 +944,809 @@ defmodule Portal.Repo.Seeds do
     }
   end
 
+
+  # ---------------------------------------------------------------------------
+  # Device posture inventory
+  # ---------------------------------------------------------------------------
+
+  # One fleet of people, reused across every provider, so the same person shows
+  # up consistently wherever a device of theirs is inventoried.
+  @posture_people [
+    {"Alice Nguyen", "alice"},
+    {"Ben Okafor", "ben"},
+    {"Carla Ruiz", "carla"},
+    {"Dmitri Volkov", "dmitri"},
+    {"Elena Petrova", "elena"},
+    {"Farhan Ahmed", "farhan"},
+    {"Grace Lim", "grace"},
+    {"Hugo Martins", "hugo"},
+    {"Ingrid Sorensen", "ingrid"},
+    {"Jonas Weber", "jonas"},
+    {"Keiko Tanaka", "keiko"},
+    {"Liam Doyle", "liam"},
+    {"Maya Shah", "maya"},
+    {"Noah Brenner", "noah"},
+    {"Olivia Fontaine", "olivia"},
+    {"Priya Raman", "priya"}
+  ]
+
+  @posture_domain "contoso.com"
+
+  # Serial numbers are generated rather than listed so the fleet can grow
+  # without hand-writing plausible strings. The alphabet drops I and O, which
+  # is what real serials do so they cannot be confused with 1 and 0.
+  @serial_alphabet ~c"0123456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+  defp seed_device_posture(account, clients) do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    intune =
+      create_posture_provider(account, :intune, "Contoso Intune", Intune.PostureProvider, %{
+        tenant_id: "8a1e5f22-4c7b-4a10-9c8e-2f3b6d5a71c4",
+        is_verified: true,
+        synced_at: DateTime.add(now, -11, :minute)
+      })
+
+    iru =
+      create_posture_provider(account, :iru, "Iru Apple Fleet", Iru.PostureProvider, %{
+        subdomain: "contoso",
+        region: :us,
+        api_token: "iru_dev_api_token",
+        is_verified: true,
+        synced_at: DateTime.add(now, -23, :minute)
+      })
+
+    defender =
+      create_posture_provider(
+        account,
+        :defender,
+        "Defender for Endpoint",
+        Defender.PostureProvider,
+        %{
+          tenant_id: "8a1e5f22-4c7b-4a10-9c8e-2f3b6d5a71c4",
+          is_verified: true,
+          synced_at: DateTime.add(now, -7, :minute)
+        }
+      )
+
+    santa =
+      create_posture_provider(account, :santa, "Santa Workshop", Santa.PostureProvider, %{
+        api_url: "https://contoso.workshop.cloud",
+        api_key: "npsws_sk_dev_seed_key",
+        is_verified: true,
+        synced_at: DateTime.add(now, -4, :minute)
+      })
+
+    sentinelone =
+      create_posture_provider(
+        account,
+        :sentinelone,
+        "SentinelOne Production",
+        SentinelOne.PostureProvider,
+        %{
+          management_url: "https://contoso.sentinelone.net",
+          api_token: "s1_dev_api_token",
+          is_verified: true,
+          synced_at: DateTime.add(now, -2, :minute)
+        }
+      )
+
+    # The identifiers the seeded certificates attest. Each is also written into
+    # the provider row that should match on it, so the Posture tab of a seeded
+    # Client demonstrates one rung of the matching ladder. The Surface also
+    # carries an Entra device id on its Intune row and on a Defender machine,
+    # which is how a Defender record is reached at all.
+    issuer = posture_issuer_der("Contoso Device CA")
+    admin_intune_id = "5f3c1a90-7d24-4b8e-9a61-c0d2e4f68b31"
+    surface_intune_id = "1d84b7e0-92af-4c35-b6d1-70e5a3c8f429"
+    surface_entra_id = "b71d2e88-3f56-4c09-8ad4-6e19f7c2a5d0"
+    iphone_iru_id = "0c9a4f61-8b23-4de7-95f0-31a8c6b74e29"
+    kiosk_intune_id = "7e4a9c13-2b68-4f05-a3d7-16c8e0b492f5"
+    macbook_air_iru_id = "d3927f5a-6c40-4e81-b2a9-5087c1d6e34b"
+
+    admin = attest_posture_client(clients.admin_laptop, admin_intune_id, "FVFHF246Q72Z", issuer, "3A7F2C91", now)
+    surface = attest_posture_client(clients.user_surface, surface_intune_id, "046120283253", issuer, "5B1D8E04", now)
+    iphone = attest_posture_client(clients.user_iphone, iphone_iru_id, "DX3QK7WPL9GH", issuer, "9E4C6A72", now)
+
+    # An MDM template that stamps a device id and nothing else. Neither of these
+    # attests a serial, so the only serial the list can show for them is the one
+    # their provider record holds against that device id.
+    kiosk = attest_mdm_device_id(clients.user_kiosk, kiosk_intune_id, issuer, "7C0B3F15", now)
+
+    macbook_air =
+      attest_mdm_device_id(clients.user_macbook_air, macbook_air_iru_id, issuer, "2D9A5E68", now)
+
+    # The rendering station never attested anything, so its only serial is
+    # self-reported. Its SentinelOne match is the case the panel labels.
+    rendering = Repo.update!(change(clients.user_rendering_station, device_serial: "PF0J4KX2"))
+
+    # Valid, revoked, and unknown, so the panel's three certificate states are
+    # all reachable from seeded data.
+    Repo.insert!(%Portal.OcspStatus{
+      account_id: account.id,
+      issuer: issuer,
+      serial: admin.last_attested_cert_serial,
+      status: "good",
+      produced_at: DateTime.add(now, -90, :minute) |> DateTime.truncate(:second),
+      this_update: DateTime.add(now, -90, :minute) |> DateTime.truncate(:second),
+      next_update: DateTime.add(now, 3, :day) |> DateTime.truncate(:second),
+      updated_at: now
+    })
+
+    Repo.insert!(%Portal.CrlRevocation{
+      account_id: account.id,
+      issuer: issuer,
+      serial: iphone.last_attested_cert_serial,
+      distribution_point: "http://crl.contoso.com/device-ca.crl",
+      revoked_at: DateTime.add(now, -2, :day) |> DateTime.truncate(:second),
+      reason: "keyCompromise"
+    })
+
+    seed_intune_devices(account, intune, now, admin, surface, surface_entra_id, kiosk)
+    seed_iru_devices(account, iru, now, iphone, macbook_air)
+    seed_defender_devices(account, defender, now, surface_entra_id)
+    seed_santa_devices(account, santa, now, admin)
+    seed_sentinelone_devices(account, sentinelone, now, admin, rendering)
+
+    IO.puts("Device posture providers created")
+    IO.puts("  Contoso Intune, Iru Apple Fleet, Defender for Endpoint, Santa Workshop, SentinelOne Production")
+    IO.puts("  #{admin.name}: attested, matched by MDM device id")
+    IO.puts("  #{surface.name}: attested, matched by MDM device id and linked into Defender")
+    IO.puts("  #{iphone.name}: attested with a revoked certificate")
+    IO.puts("  #{rendering.name}: unattested, matched by a self-reported serial")
+    IO.puts("  #{kiosk.name}: attested a device id only, serial comes from Intune")
+    IO.puts("  #{macbook_air.name}: attested a device id only, serial comes from Iru")
+    IO.puts("")
+  end
+
+  # Seeded providers are disabled on purpose. Their credentials are made up, so
+  # leaving them enabled would have every scheduler run fire a sync at the real
+  # vendor API and fail. Disabled keeps the rows and the devices they own
+  # visible, which is the whole point of seeding them.
+  defp create_posture_provider(account, type, name, typed_module, typed_attrs) do
+    id = Ecto.UUID.generate()
+
+    typed_attrs =
+      Map.merge(typed_attrs, %{
+        is_disabled: true,
+        disabled_reason: "Seeded for local development"
+      })
+
+    shared =
+      %Portal.PostureProvider{}
+      |> change(%{id: id, account_id: account.id, type: type, name: name})
+      |> Portal.PostureProvider.changeset()
+      |> Repo.insert!()
+
+    attrs = Map.merge(typed_attrs, %{id: id, account_id: account.id, name: name})
+
+    typed_module
+    |> struct(posture_provider: shared)
+    |> cast(attrs, Map.keys(attrs))
+    |> typed_module.changeset()
+    |> Repo.insert!()
+  end
+
+  # Writes what a client certificate would have proved about this device onto
+  # the row, so the seeded Clients cover every rung of the matching ladder.
+  defp attest_posture_client(client, mdm_device_id, serial, issuer, cert_serial, now) do
+    client
+    |> change(
+      device_serial: serial,
+      last_attested_device_serial: serial,
+      last_attested_mdm_device_id: mdm_device_id,
+      last_attested_cert_serial: cert_serial,
+      last_attested_cert_fingerprint: posture_fingerprint(cert_serial),
+      last_attested_cert_issuer: issuer,
+      last_attested_at: DateTime.add(now, -3, :hour)
+    )
+    |> Repo.update!()
+  end
+
+  defp attest_mdm_device_id(client, mdm_device_id, issuer, cert_serial, now) do
+    client
+    |> change(
+      last_attested_mdm_device_id: mdm_device_id,
+      last_attested_cert_serial: cert_serial,
+      last_attested_cert_fingerprint: posture_fingerprint(cert_serial),
+      last_attested_cert_issuer: issuer,
+      last_attested_at: DateTime.add(now, -3, :hour)
+    )
+    |> Repo.update!()
+  end
+
+  defp seed_intune_devices(account, provider, now, admin, surface, surface_entra_id, kiosk) do
+    matched = [
+      %{
+        intune_id: admin.last_attested_mdm_device_id,
+        device_name: "ENG-MBP-014",
+        serial_number: admin.last_attested_device_serial,
+        operating_system: "macOS",
+        os_version: "15.6.1",
+        model: "MacBook Pro 16-inch (M3 Max, 2024)",
+        manufacturer: "Apple",
+        device_enrollment_type: "appleBulkWithUser",
+        compliance_state: "compliant",
+        person: 0
+      },
+      %{
+        intune_id: surface.last_attested_mdm_device_id,
+        entra_device_id: surface_entra_id,
+        device_name: "ENG-SURFACE-07",
+        serial_number: surface.last_attested_device_serial,
+        operating_system: "Windows",
+        os_version: "10.0.26100.2894",
+        model: "Surface Laptop 6",
+        manufacturer: "Microsoft Corporation",
+        device_enrollment_type: "windowsAzureADJoin",
+        compliance_state: "compliant",
+        person: 1
+      },
+      %{
+        intune_id: kiosk.last_attested_mdm_device_id,
+        device_name: "ENG-KIOSK-03",
+        serial_number: dell_tag(77),
+        operating_system: "Windows",
+        os_version: "10.0.26100.2894",
+        model: "OptiPlex 7010",
+        manufacturer: "Dell Inc.",
+        device_enrollment_type: "windowsAzureADJoin",
+        compliance_state: "compliant",
+        person: 6
+      },
+      %{
+        intune_id: "6b02f5c4-1e79-4a63-8d50-92fb37e6c184",
+        device_name: "ENG-WIN-042",
+        serial_number: dell_tag(42),
+        operating_system: "Windows",
+        os_version: "10.0.26100.2894",
+        model: "Latitude 7450",
+        manufacturer: "Dell Inc.",
+        device_enrollment_type: "windowsAzureADJoin",
+        compliance_state: "noncompliant",
+        person: 2
+      }
+    ]
+
+    generated =
+      for i <- 1..15 do
+        {os, version, model, manufacturer, enrollment, serial} = intune_hardware(i)
+
+        %{
+          intune_id: Ecto.UUID.generate(),
+          device_name: "#{intune_prefix(os)}-#{String.pad_leading(Integer.to_string(100 + i), 3, "0")}",
+          serial_number: serial,
+          operating_system: os,
+          os_version: version,
+          model: model,
+          manufacturer: manufacturer,
+          device_enrollment_type: enrollment,
+          compliance_state: Enum.at(~w[compliant compliant compliant noncompliant inGracePeriod], rem(i, 5)),
+          person: i + 2
+        }
+      end
+
+    for {row, i} <- Enum.with_index(matched ++ generated) do
+      {display_name, login} = posture_person(row.person)
+
+      %Intune.Device{}
+      |> Intune.Device.changeset(%{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        intune_id: row.intune_id,
+        device_name: row.device_name,
+        managed_device_name: "#{login}_#{String.replace(row.model, " ", "")}_#{8 + rem(i, 4)}/#{1 + rem(i, 28)}/2026",
+        serial_number: row.serial_number,
+        entra_device_id: Map.get(row, :entra_device_id, Ecto.UUID.generate()),
+        enrollment_profile_name: "Corporate Devices",
+        device_category_display_name: "Engineering",
+        user_id: Ecto.UUID.generate(),
+        user_principal_name: "#{login}@#{@posture_domain}",
+        user_display_name: display_name,
+        email_address: "#{login}@#{@posture_domain}",
+        operating_system: row.operating_system,
+        os_version: row.os_version,
+        model: row.model,
+        manufacturer: row.manufacturer,
+        udid: Ecto.UUID.generate(),
+        wifi_mac_address: posture_mac(i),
+        ethernet_mac_address: posture_mac(i + 128),
+        total_storage_space_bytes: 494_384_795_648 * (1 + rem(i, 3)),
+        free_storage_space_bytes: 121_856_204_800 + i * 1_073_741_824,
+        physical_memory_bytes: 17_179_869_184 * (1 + rem(i, 2)),
+        compliance_state: row.compliance_state,
+        management_state: "managed",
+        management_agent: "mdm",
+        managed_device_owner_type: if(rem(i, 7) == 0, do: "personal", else: "company"),
+        device_enrollment_type: row.device_enrollment_type,
+        device_registration_state: "registered",
+        partner_reported_threat_state: "unknown",
+        jail_broken: "False",
+        is_encrypted: rem(i, 9) != 0,
+        is_supervised: row.operating_system in ["iOS", "macOS"],
+        entra_registered: true,
+        enrolled_at: DateTime.add(now, -(120 + i * 9), :day),
+        last_sync_at: DateTime.add(now, -(17 + i * 13), :minute),
+        management_certificate_expires_at: DateTime.add(now, 240 - i, :day),
+        synced_at: provider.synced_at
+      })
+      |> Repo.insert!()
+    end
+  end
+
+  defp seed_iru_devices(account, provider, now, iphone, macbook_air) do
+    matched = [
+      %{
+        iru_id: iphone.last_attested_mdm_device_id,
+        device_name: "ENG-IPHONE-02",
+        serial_number: iphone.last_attested_device_serial,
+        platform: "iPhone",
+        os_name: "iOS",
+        os_version: "18.6",
+        model: "iPhone 16 Pro",
+        model_identifier: "iPhone17,1",
+        blueprint_name: "Mobile Standard",
+        person: 2
+      },
+      %{
+        iru_id: macbook_air.last_attested_mdm_device_id,
+        device_name: "ENG-MBA-021",
+        # Deliberately not the stale serial the Client still reports.
+        serial_number: "C02XY1CDKH6J",
+        platform: "Mac",
+        os_name: "macOS",
+        os_version: "15.6.1",
+        model: "MacBook Air 15-inch (M4, 2025)",
+        model_identifier: "Mac16,12",
+        blueprint_name: "Standard Laptop",
+        person: 3
+      }
+    ]
+
+    generated =
+      for i <- 1..11 do
+        {platform, os_name, version, model, identifier} = iru_hardware(i)
+
+        %{
+          iru_id: Ecto.UUID.generate(),
+          device_name: "#{posture_person(i + 3) |> elem(1)}-#{String.downcase(String.replace(model, " ", "-"))}",
+          serial_number: apple_serial(i * 31),
+          platform: platform,
+          os_name: os_name,
+          os_version: version,
+          model: model,
+          model_identifier: identifier,
+          blueprint_name: Enum.at(["Standard Laptop", "Engineering Laptop", "Mobile Standard"], rem(i, 3)),
+          person: i + 3
+        }
+      end
+
+    for {row, i} <- Enum.with_index(matched ++ generated) do
+      {display_name, login} = posture_person(row.person)
+      mac? = row.platform == "Mac"
+
+      %Iru.Device{}
+      |> Iru.Device.changeset(%{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        iru_id: row.iru_id,
+        device_name: row.device_name,
+        serial_number: row.serial_number,
+        platform: row.platform,
+        os_name: row.os_name,
+        os_version: row.os_version,
+        display_os_version: row.os_version,
+        os_build: "24G8#{rem(i, 10)}",
+        model: row.model,
+        model_name: row.model,
+        model_identifier: row.model_identifier,
+        device_family: row.platform,
+        device_capacity_gb: 256.0 * (1 + rem(i, 3)),
+        host_name: row.device_name,
+        local_hostname: row.device_name,
+        apple_silicon: true,
+        user_id: Ecto.UUID.generate(),
+        user_name: display_name,
+        user_email: "#{login}@#{@posture_domain}",
+        user_is_archived: false,
+        asset_tag: "CT-#{String.pad_leading(Integer.to_string(4200 + i), 4, "0")}",
+        blueprint_id: Ecto.UUID.generate(),
+        blueprint_name: row.blueprint_name,
+        mdm_enabled: true,
+        agent_installed: mac?,
+        agent_version: if(mac?, do: "5.4.1", else: nil),
+        is_missing: false,
+        is_removed: false,
+        first_enrolled_at: DateTime.add(now, -(200 + i * 11), :day),
+        last_enrolled_at: DateTime.add(now, -(200 + i * 11), :day),
+        last_check_in_at: DateTime.add(now, -(9 + i * 17), :minute),
+        tags: ["engineering"],
+        inventory_collected_at: DateTime.add(now, -(30 + i), :minute),
+        filevault_enabled: mac? and rem(i, 8) != 0,
+        filevault_key_type: if(mac?, do: "Personal", else: nil),
+        filevault_key_escrowed: mac?,
+        filevault_collected_at: if(mac?, do: DateTime.add(now, -(30 + i), :minute), else: nil),
+        firewall_enabled: mac?,
+        firewall_stealth_mode: mac? and rem(i, 3) == 0,
+        firewall_collected_at: if(mac?, do: DateTime.add(now, -(30 + i), :minute), else: nil),
+        gatekeeper_enabled: mac?,
+        gatekeeper_trusted_developers: mac?,
+        xprotect_version: if(mac?, do: "5312", else: nil),
+        gatekeeper_collected_at: if(mac?, do: DateTime.add(now, -(30 + i), :minute), else: nil),
+        sip_enabled: mac?,
+        ssv_enabled: mac?,
+        bootstrap_token_escrowed: mac?,
+        secure_boot_level: if(mac?, do: "full", else: nil),
+        startup_settings_collected_at: if(mac?, do: DateTime.add(now, -(30 + i), :minute), else: nil),
+        activation_lock_supported: true,
+        device_activation_lock_enabled: rem(i, 4) == 0,
+        activation_lock_collected_at: DateTime.add(now, -(30 + i), :minute),
+        synced_at: provider.synced_at
+      })
+      |> Repo.insert!()
+    end
+  end
+
+  defp seed_defender_devices(account, provider, now, surface_entra_id) do
+    matched = [
+      %{
+        defender_id: "2f8c1b47ad9e05c3716b4d820ea935f1c6d704b8",
+        entra_device_id: surface_entra_id,
+        computer_dns_name: "eng-surface-07.#{@posture_domain}",
+        os_platform: "Windows11",
+        version: "24H2",
+        os_build: 26_100,
+        health_status: "Active",
+        risk_score: "Low",
+        exposure_level: "Low"
+      }
+    ]
+
+    generated =
+      for i <- 1..13 do
+        {platform, version, build, health, risk, exposure} = defender_posture(i)
+
+        %{
+          defender_id: Base.encode16(:crypto.hash(:sha, "defender-seed-#{i}"), case: :lower),
+          entra_device_id: Ecto.UUID.generate(),
+          computer_dns_name: "#{defender_prefix(platform)}-#{String.pad_leading(Integer.to_string(200 + i), 3, "0")}.#{@posture_domain}",
+          os_platform: platform,
+          version: version,
+          os_build: build,
+          health_status: health,
+          risk_score: risk,
+          exposure_level: exposure
+        }
+      end
+
+    for {row, i} <- Enum.with_index(matched ++ generated) do
+      %Defender.Device{}
+      |> Defender.Device.changeset(%{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        defender_id: row.defender_id,
+        computer_dns_name: row.computer_dns_name,
+        entra_device_id: row.entra_device_id,
+        entra_joined: true,
+        machine_tags: ["engineering", "corp-managed"],
+        os_platform: row.os_platform,
+        version: row.version,
+        os_build: row.os_build,
+        os_processor: "x64",
+        os_architecture: "64-bit",
+        last_ip_address: "10.20.#{rem(i, 250)}.#{10 + rem(i * 7, 200)}",
+        last_external_ip_address: "203.0.113.#{10 + rem(i * 3, 200)}",
+        agent_version: "10.8760.26100.#{2000 + i}",
+        health_status: row.health_status,
+        onboarding_status: "Onboarded",
+        managed_by: "Intune",
+        managed_by_status: "Success",
+        risk_score: row.risk_score,
+        exposure_level: row.exposure_level,
+        device_value: if(rem(i, 6) == 0, do: "High", else: "Normal"),
+        rbac_group_id: "140",
+        rbac_group_name: "Engineering",
+        is_potential_duplication: false,
+        is_excluded: false,
+        ip_addresses: [
+          %{
+            "ipAddress" => "10.20.#{rem(i, 250)}.#{10 + rem(i * 7, 200)}",
+            "macAddress" => String.replace(posture_mac(i), ":", ""),
+            "operationalStatus" => "Up",
+            "type" => "Ethernet"
+          }
+        ],
+        first_seen_at: DateTime.add(now, -(180 + i * 7), :day),
+        last_seen_at: DateTime.add(now, -(5 + i * 11), :minute),
+        synced_at: provider.synced_at
+      })
+      |> Repo.insert!()
+    end
+  end
+
+  defp seed_santa_devices(account, provider, now, admin) do
+    matched = [
+      %{
+        santa_id: "9C1F4A72-3B6D-4E80-A5C9-27D0F8B1E463",
+        hostname: "eng-mbp-014",
+        serial_number: admin.last_attested_device_serial,
+        machine_model: "Mac16,7",
+        os_version: "15.6.1",
+        client_mode: "LOCKDOWN",
+        person: 0
+      }
+    ]
+
+    generated =
+      for i <- 1..9 do
+        %{
+          santa_id: String.upcase(Ecto.UUID.generate()),
+          hostname: "#{posture_person(i) |> elem(1)}-mbp",
+          serial_number: apple_serial(i * 17),
+          machine_model: Enum.at(~w[Mac16,7 Mac15,3 Mac14,2 MacBookPro18,3], rem(i, 4)),
+          os_version: Enum.at(~w[15.6.1 15.5 14.7.2], rem(i, 3)),
+          client_mode: if(rem(i, 3) == 0, do: "MONITOR", else: "LOCKDOWN"),
+          person: i
+        }
+      end
+
+    for {row, i} <- Enum.with_index(matched ++ generated) do
+      {_display_name, login} = posture_person(row.person)
+
+      %Santa.Device{}
+      |> Santa.Device.changeset(%{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        santa_id: row.santa_id,
+        hostname: row.hostname,
+        serial_number: row.serial_number,
+        machine_model: row.machine_model,
+        os_version: row.os_version,
+        os_build: "24G8#{rem(i, 10)}",
+        os_type: "OS_TYPE_MACOS",
+        sip_status: 1,
+        primary_user: "#{login}@#{@posture_domain}",
+        primary_user_locked: false,
+        primary_user_groups: ["engineering"],
+        santa_version: "2026.7",
+        santanetd_version: "2026.7",
+        last_seen_client_mode: row.client_mode,
+        configured_client_mode: row.client_mode,
+        last_sync_at: DateTime.add(now, -(6 + i * 13), :minute),
+        rule_sync_at: DateTime.add(now, -(6 + i * 13), :minute),
+        last_preflight_at: DateTime.add(now, -(6 + i * 13), :minute),
+        last_preflight_ip: "10.30.#{rem(i, 250)}.#{20 + rem(i * 5, 200)}",
+        tags: ["engineering"],
+        tags_locked: false,
+        tags_truncated: false,
+        first_seen_at: DateTime.add(now, -(150 + i * 8), :day),
+        synced_at: provider.synced_at
+      })
+      |> Repo.insert!()
+    end
+  end
+
+  defp seed_sentinelone_devices(account, provider, now, admin, rendering) do
+    matched = [
+      %{
+        computer_name: "ENG-MBP-014",
+        serial_number: admin.last_attested_device_serial,
+        model_name: "MacBookPro16,7",
+        machine_type: "laptop",
+        os_name: "macOS",
+        os_revision: "15.6.1",
+        os_type: "macos",
+        network_status: "connected",
+        person: 0
+      },
+      %{
+        computer_name: "ENG-RENDER-01",
+        serial_number: rendering.device_serial,
+        model_name: "ThinkStation P620",
+        machine_type: "desktop",
+        os_name: "Ubuntu",
+        os_revision: "24.04.2 LTS",
+        os_type: "linux",
+        network_status: "connected",
+        person: 3
+      }
+    ]
+
+    generated =
+      for i <- 1..13 do
+        {os_name, revision, os_type, model, machine_type, serial} = sentinelone_hardware(i)
+
+        %{
+          computer_name: "#{sentinelone_prefix(os_type)}-#{String.pad_leading(Integer.to_string(300 + i), 3, "0")}",
+          serial_number: serial,
+          model_name: model,
+          machine_type: machine_type,
+          os_name: os_name,
+          os_revision: revision,
+          os_type: os_type,
+          network_status: if(rem(i, 6) == 0, do: "disconnected", else: "connected"),
+          person: i + 4
+        }
+      end
+
+    for {row, i} <- Enum.with_index(matched ++ generated) do
+      {_display_name, login} = posture_person(row.person)
+      infected? = rem(i, 11) == 0 and i > 0
+
+      %SentinelOne.Device{}
+      |> SentinelOne.Device.changeset(%{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        uuid: Ecto.UUID.generate(),
+        sentinelone_id: Integer.to_string(1_845_000_000_000_000_000 + i),
+        sentinelone_account_id: "1845000000000000001",
+        account_name: "Contoso",
+        site_id: "1845000000000000002",
+        site_name: "Default site",
+        group_id: "1845000000000000003",
+        group_name: "Engineering",
+        computer_name: row.computer_name,
+        serial_number: row.serial_number,
+        model_name: row.model_name,
+        machine_type: row.machine_type,
+        domain: @posture_domain,
+        os_name: row.os_name,
+        os_revision: row.os_revision,
+        os_type: row.os_type,
+        os_arch: "64 bit",
+        os_username: login,
+        last_logged_in_user_name: login,
+        agent_version: "24.2.3.#{270 + rem(i, 9)}",
+        total_memory: 16_384 * (1 + rem(i, 2)),
+        cpu_count: 1,
+        core_count: Enum.at([8, 10, 12, 16], rem(i, 4)),
+        cpu_id: "Apple M3 Max",
+        external_ip: "203.0.113.#{20 + rem(i * 5, 200)}",
+        network_status: row.network_status,
+        is_active: row.network_status == "connected",
+        is_up_to_date: rem(i, 7) != 0,
+        infected: infected?,
+        active_threats: if(infected?, do: 1, else: 0),
+        threat_reboot_required: false,
+        encrypted_applications: true,
+        firewall_enabled: true,
+        scan_status: "finished",
+        scan_started_at: DateTime.add(now, -(2 + i), :day),
+        scan_finished_at: DateTime.add(now, -(2 + i), :day) |> DateTime.add(41, :minute),
+        last_successful_scan_at: DateTime.add(now, -(2 + i), :day),
+        mitigation_mode: "protect",
+        mitigation_mode_suspicious: "detect",
+        is_pending_uninstall: false,
+        is_uninstalled: false,
+        is_decommissioned: false,
+        registered_at: DateTime.add(now, -(160 + i * 6), :day),
+        last_active_at: DateTime.add(now, -(3 + i * 9), :minute),
+        network_interfaces: [
+          %{
+            "id" => "1845000000000#{String.pad_leading(Integer.to_string(i), 6, "0")}",
+            "name" => "en0",
+            "physical" => posture_mac(i),
+            "inet" => ["10.40.#{rem(i, 250)}.#{30 + rem(i * 3, 200)}"]
+          }
+        ],
+        tags: [],
+        synced_at: provider.synced_at
+      })
+      |> Repo.insert!()
+    end
+  end
+
+  defp posture_person(index) do
+    Enum.at(@posture_people, rem(index, length(@posture_people)))
+  end
+
+  # A DER-encoded X.509 name, which is how the portal stores a certificate
+  # issuer: a serial only identifies a certificate together with who issued it.
+  defp posture_issuer_der(common_name) do
+    :public_key.der_encode(
+      :Name,
+      {:rdnSequence, [[{:AttributeTypeAndValue, {2, 5, 4, 3}, {:utf8String, common_name}}]]}
+    )
+  end
+
+  defp posture_fingerprint(cert_serial) do
+    :sha256
+    |> :crypto.hash(cert_serial)
+    |> Base.encode16(case: :lower)
+    |> String.to_charlist()
+    |> Enum.chunk_every(2)
+    |> Enum.map_join(":", &List.to_string/1)
+  end
+
+  defp posture_mac(index) do
+    for offset <- 0..5 do
+      :io_lib.format("~2.16.0b", [rem(index * 37 + offset * 61 + 16, 256)]) |> List.to_string()
+    end
+    |> Enum.join(":")
+  end
+
+  defp apple_serial(index), do: "C02" <> serial_chunk(index * 7919, 9)
+  defp dell_tag(index), do: serial_chunk(index * 104_729, 7)
+  defp lenovo_serial(index), do: "PF" <> serial_chunk(index * 65_537, 6)
+
+  defp serial_chunk(value, size) do
+    base = length(@serial_alphabet)
+
+    {_remaining, characters} =
+      Enum.reduce(1..size, {value, []}, fn _position, {remaining, acc} ->
+        {div(remaining, base), [Enum.at(@serial_alphabet, rem(remaining, base)) | acc]}
+      end)
+
+    List.to_string(characters)
+  end
+
+  defp intune_hardware(index) do
+    case rem(index, 4) do
+      0 ->
+        {"Windows", "10.0.26100.2894", "Latitude 7450", "Dell Inc.", "windowsAzureADJoin",
+         dell_tag(index)}
+
+      1 ->
+        {"macOS", "15.6.1", "MacBook Air 15-inch (M3, 2024)", "Apple", "appleBulkWithUser",
+         apple_serial(index)}
+
+      2 ->
+        {"iOS", "18.6", "iPhone 15", "Apple", "appleUserEnrollment", apple_serial(index * 3)}
+
+      _ ->
+        {"Windows", "10.0.22631.4602", "ThinkPad X1 Carbon Gen 12", "LENOVO", "windowsAzureADJoin",
+         lenovo_serial(index)}
+    end
+  end
+
+  defp intune_prefix("Windows"), do: "ENG-WIN"
+  defp intune_prefix("macOS"), do: "ENG-MAC"
+  defp intune_prefix("iOS"), do: "ENG-IOS"
+  defp intune_prefix(_other), do: "ENG-DEV"
+
+  defp iru_hardware(index) do
+    case rem(index, 3) do
+      0 -> {"Mac", "macOS", "15.6.1", "MacBook Pro 14-inch", "Mac16,1"}
+      1 -> {"Mac", "macOS", "14.7.2", "MacBook Air", "Mac14,2"}
+      _ -> {"iPad", "iPadOS", "18.6", "iPad Pro 11-inch", "iPad16,3"}
+    end
+  end
+
+  defp defender_posture(index) do
+    case rem(index, 4) do
+      0 -> {"Windows11", "24H2", 26_100, "Active", "None", "Low"}
+      1 -> {"Windows10", "22H2", 19_045, "Active", "Low", "Medium"}
+      2 -> {"macOS", "15.6.1", 0, "Active", "Medium", "Medium"}
+      _ -> {"Linux", "24.04", 0, "Inactive", "None", "Low"}
+    end
+  end
+
+  defp defender_prefix("Windows11"), do: "eng-win11"
+  defp defender_prefix("Windows10"), do: "eng-win10"
+  defp defender_prefix("macOS"), do: "eng-mac"
+  defp defender_prefix(_other), do: "eng-linux"
+
+  defp sentinelone_hardware(index) do
+    case rem(index, 4) do
+      0 ->
+        {"Windows 11 Pro", "24H2", "windows", "Latitude 7450", "laptop", dell_tag(index * 11)}
+
+      1 ->
+        {"macOS", "15.6.1", "macos", "MacBookPro16,1", "laptop", apple_serial(index * 13)}
+
+      2 ->
+        {"Ubuntu", "24.04.2 LTS", "linux", "PowerEdge R660", "server", dell_tag(index * 19)}
+
+      _ ->
+        {"Windows Server 2022", "21H2", "windows", "PowerEdge R750", "server",
+         dell_tag(index * 23)}
+    end
+  end
+
+  defp sentinelone_prefix("windows"), do: "ENG-WIN"
+  defp sentinelone_prefix("macos"), do: "ENG-MAC"
+  defp sentinelone_prefix(_other), do: "ENG-LNX"
+
   def seed do
     # Seeds can be run both with MIX_ENV=prod and MIX_ENV=test, for test env we don't have
     # an adapter configured and creation of email provider will fail, so we will override it here.
@@ -1549,13 +2357,14 @@ defmodule Portal.Repo.Seeds do
         @ua_android
       )
 
-    {:ok, _user_windows_laptop} =
+    {:ok, user_windows_laptop} =
       create_client(
         %{
           name: "FZ User Surface",
           firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_uuid: "WIN-#{Ecto.UUID.generate()}",
+          device_serial: "046120283253",
           ipv4: "100.64.0.12",
           ipv6: "fd00:2021:1111::12"
         },
@@ -1564,7 +2373,7 @@ defmodule Portal.Repo.Seeds do
         @ua_windows
       )
 
-    {:ok, _user_linux_laptop} =
+    {:ok, user_linux_laptop} =
       create_client(
         %{
           name: "FZ User Rendering Station",
@@ -1579,7 +2388,40 @@ defmodule Portal.Repo.Seeds do
         @ua_ubuntu
       )
 
-    {:ok, _admin_laptop} =
+    {:ok, user_kiosk} =
+      create_client(
+        %{
+          name: "FZ User Kiosk",
+          firezone_id: Ecto.UUID.generate(),
+          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+          device_uuid: "WIN-#{Ecto.UUID.generate()}",
+          ipv4: "100.64.0.15",
+          ipv6: "fd00:2021:1111::15"
+        },
+        unprivileged_subject,
+        unprivileged_client_token.id,
+        @ua_windows
+      )
+
+    {:ok, user_macbook_air} =
+      create_client(
+        %{
+          name: "FZ User MacBook Air",
+          firezone_id: Ecto.UUID.generate(),
+          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+          device_uuid: "MAC-#{Ecto.UUID.generate()}",
+          # Stale: the machine was reimaged and the Client never picked up the
+          # new serial, so the one Iru holds is the current one.
+          device_serial: "C02WX0ABJG5H",
+          ipv4: "100.64.0.16",
+          ipv6: "fd00:2021:1111::16"
+        },
+        unprivileged_subject,
+        unprivileged_client_token.id,
+        @ua_macos
+      )
+
+    {:ok, admin_laptop} =
       create_client(
         %{
           name: "FZ Admin Laptop",
@@ -1622,6 +2464,15 @@ defmodule Portal.Repo.Seeds do
 
     IO.puts("Clients created")
     IO.puts("")
+
+    seed_device_posture(account, %{
+      admin_laptop: admin_laptop,
+      user_surface: user_windows_laptop,
+      user_iphone: user_iphone,
+      user_rendering_station: user_linux_laptop,
+      user_kiosk: user_kiosk,
+      user_macbook_air: user_macbook_air
+    })
 
     IO.puts("Created Groups: ")
 

@@ -1302,7 +1302,9 @@ defmodule PortalWeb.Settings.LogSinks do
             <li>
               In IAM under <strong>Roles</strong>, choose
               <strong>Create role &rarr; Custom trust policy</strong> and paste:
-              <pre class="mt-2 mb-1 p-3 rounded border border-border bg-surface text-xs text-body overflow-x-auto"><code>{trust_policy_json(@form)}</code></pre>
+              <div class="mt-2 mb-1">
+                <.json_view id="s3-trust-policy" value={trust_policy(@form)} />
+              </div>
               Continue without adding permissions and give the role a name, e.g.
               <code class="text-xs">firezone-logs</code>.
             </li>
@@ -1310,7 +1312,9 @@ defmodule PortalWeb.Settings.LogSinks do
               On the new role, choose
               <strong>Add permissions &rarr; Create inline policy &rarr; JSON</strong>
               and paste:
-              <pre class="mt-2 mb-1 p-3 rounded border border-border bg-surface text-xs text-body overflow-x-auto"><code>{s3_permission_policy_json(@form)}</code></pre>
+              <div class="mt-2 mb-1">
+                <.json_view id="s3-permission-policy" value={s3_permission_policy(@form)} />
+              </div>
             </li>
             <li>
               Fill in the fields below: the bucket name, its region, and the role's ARN
@@ -2090,26 +2094,24 @@ defmodule PortalWeb.Settings.LogSinks do
   defp new_sink(S3.LogSink), do: %S3.LogSink{external_id: Ecto.UUID.generate()}
   defp new_sink(schema), do: struct(schema)
 
-  defp trust_policy_json(form) do
+  defp trust_policy(form) do
     external_id = get_field(form.source, :external_id)
     aws_account_id = S3.APIClient.aws_account_id()
 
-    """
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Effect": "Allow",
-          "Principal": { "AWS": "arn:aws:iam::#{aws_account_id}:root" },
-          "Action": "sts:AssumeRole",
-          "Condition": { "StringEquals": { "sts:ExternalId": "#{external_id}" } }
+    %{
+      "Version" => "2012-10-17",
+      "Statement" => [
+        %{
+          "Effect" => "Allow",
+          "Principal" => %{"AWS" => "arn:aws:iam::#{aws_account_id}:root"},
+          "Action" => "sts:AssumeRole",
+          "Condition" => %{"StringEquals" => %{"sts:ExternalId" => "#{external_id}"}}
         }
       ]
-    }\
-    """
+    }
   end
 
-  defp s3_permission_policy_json(form) do
+  defp s3_permission_policy(form) do
     bucket =
       case get_field(form.source, :bucket) do
         bucket when is_binary(bucket) and bucket != "" -> bucket
@@ -2119,18 +2121,16 @@ defmodule PortalWeb.Settings.LogSinks do
     resource =
       "arn:aws:s3:::#{bucket}/#{s3_objects_pattern(get_field(form.source, :key_prefix))}"
 
-    """
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Effect": "Allow",
-          "Action": "s3:PutObject",
-          "Resource": "#{resource}"
+    %{
+      "Version" => "2012-10-17",
+      "Statement" => [
+        %{
+          "Effect" => "Allow",
+          "Action" => "s3:PutObject",
+          "Resource" => resource
         }
       ]
-    }\
-    """
+    }
   end
 
   defp s3_objects_pattern(prefix) when is_binary(prefix) do
