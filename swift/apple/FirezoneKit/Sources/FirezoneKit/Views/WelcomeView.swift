@@ -23,12 +23,8 @@ struct WelcomeView: View {
           .frame(maxWidth: 300)
           .padding(.horizontal, 10)
           .padding(.vertical, 10)
-        Text(
-          """
-            Welcome to Firezone.
-            Sign in to access Resources.
-          """
-        ).multilineTextAlignment(.center)
+        Text(welcomeText)
+          .multilineTextAlignment(.center)
           .padding(.bottom, 10)
         Button(startSessionTitle) {
           startSession()
@@ -38,6 +34,22 @@ struct WelcomeView: View {
         Spacer()
       }
     )
+  }
+
+  /// What the text above the control says, given whether a certificate claims an identity.
+  private var welcomeText: String {
+    switch store.certificateIdentity {
+    case .absent:
+      return """
+        Welcome to Firezone.
+        Sign in to access Resources.
+        """
+    case .claimed:
+      return """
+        Welcome to Firezone.
+        This device has a certificate that identifies you.
+        """
+    }
   }
 
   /// What the control that starts a session reads, given who the certificate names.
