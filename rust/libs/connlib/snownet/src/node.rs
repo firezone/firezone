@@ -765,6 +765,9 @@ where
                 allocations::UpsertResult::Skipped => {
                     tracing::info!(%rid, address = ?server, "Skipping known TURN server")
                 }
+                allocations::UpsertResult::CredentialsUpdated => {
+                    tracing::info!(%rid, address = ?server, "Updated TURN credentials")
+                }
                 allocations::UpsertResult::Replaced(previous) => {
                     invalidate_allocation_candidates(
                         &mut self.connections,

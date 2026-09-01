@@ -23,10 +23,12 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   @session_durability_timeout :timer.seconds(15)
 
-  # Relay credentials must be stable across reconnects so that gateways
-  # don't see credential changes on every websocket connect. We use a fixed
-  # far-future date rather than a dynamic offset from now.
-  @relay_credentials_expire_at ~U[2038-01-01 00:00:00Z]
+  # Credentials are stable for a 10-minute issuance interval, then refreshed
+  # five minutes before they expire. This gives a gateway a short, bounded
+  # relay capability without changing credentials on each websocket reconnect.
+  @relay_credentials_lifetime_seconds :timer.minutes(15) |> div(1_000)
+  @relay_credentials_refresh_before_seconds :timer.minutes(5) |> div(1_000)
+  @relay_credentials_issuance_interval_seconds :timer.minutes(10) |> div(1_000)
 
   @doc """
   Self-heal escape hatch. Pushes `reject_access` to a gateway's data plane
@@ -136,12 +138,16 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
 
-    socket = assign(socket, :account, account)
+    socket =
+      socket
+      |> assign(:account, account)
+      |> assign(:relay_credentials_expires_at, relay_credentials_expires_at())
 
     init(socket, account, relays)
 
     # Cache relay IDs and stamp secrets for tracking
     socket = cache_relays(socket, relays)
+    socket = schedule_relay_credentials_refresh(socket)
 
     {:noreply, socket}
   end
@@ -261,7 +267,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
             Views.Relay.render_many(
               relays,
               socket.assigns.gateway.public_key,
-              @relay_credentials_expire_at
+              socket.assigns.relay_credentials_expires_at
             )
         })
 
@@ -269,6 +275,37 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       else
         {:noreply, socket}
       end
+    end
+  end
+
+  # Refresh relay credentials before the current ones expire. The existing
+  # `relays_presence` message lets current gateways update their allocations
+  # without a protocol-version bump.
+  def handle_info({:refresh_relay_credentials, ref}, socket) do
+    if ref != socket.assigns[:relay_credentials_refresh_ref] do
+      {:noreply, socket}
+    else
+      {:ok, relays, disconnected_ids} = selected_relays_for_credentials_refresh(socket)
+
+      socket =
+        socket
+        |> assign(
+          :relay_credentials_expires_at,
+          next_relay_credentials_expire_at(socket.assigns.relay_credentials_expires_at)
+        )
+        |> cache_relays(relays)
+
+      push(socket, "relays_presence", %{
+        disconnected_ids: disconnected_ids,
+        connected:
+          Views.Relay.render_many(
+            relays,
+            socket.assigns.gateway.public_key,
+            socket.assigns.relay_credentials_expires_at
+          )
+      })
+
+      {:noreply, schedule_relay_credentials_refresh(socket)}
     end
   end
 
@@ -706,7 +743,11 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   def handle_in("no_relays", _payload, socket) do
     {:ok, relays} = select_relays(socket)
-    socket = cache_relays(socket, relays)
+
+    socket =
+      socket
+      |> cache_relays(relays)
+      |> refresh_expired_relay_credentials()
 
     push(socket, "relays_presence", %{
       disconnected_ids: [],
@@ -714,7 +755,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         Views.Relay.render_many(
           relays,
           socket.assigns.gateway.public_key,
-          @relay_credentials_expire_at
+          socket.assigns.relay_credentials_expires_at
         )
     })
 
@@ -788,6 +829,79 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     assign(socket, :cached_relay_ids, cached_relay_ids)
   end
 
+  defp selected_relays_for_credentials_refresh(socket) do
+    cached_relay_ids = socket.assigns[:cached_relay_ids] || MapSet.new()
+    {:ok, online_relays} = Presence.Relays.all_connected_relays()
+    online_relays_by_id = Map.new(online_relays, &{&1.id, &1})
+
+    relays =
+      cached_relay_ids
+      |> Enum.map(&Map.get(online_relays_by_id, &1))
+      |> Enum.reject(&is_nil/1)
+
+    disconnected_ids =
+      cached_relay_ids
+      |> Enum.reject(&Map.has_key?(online_relays_by_id, &1))
+
+    if relays != [] and length(relays) == MapSet.size(cached_relay_ids) do
+      {:ok, relays, []}
+    else
+      with {:ok, relays} <- select_relays(socket) do
+        {:ok, relays, disconnected_ids}
+      end
+    end
+  end
+
+  defp relay_credentials_expires_at(now \\ DateTime.utc_now()) do
+    now_unix = DateTime.to_unix(now, :second)
+
+    issued_at =
+      now_unix - rem(now_unix, @relay_credentials_issuance_interval_seconds)
+
+    DateTime.from_unix!(issued_at + @relay_credentials_lifetime_seconds)
+  end
+
+  defp next_relay_credentials_expire_at(current_expires_at) do
+    candidate = relay_credentials_expires_at()
+
+    if DateTime.compare(candidate, current_expires_at) == :gt do
+      candidate
+    else
+      DateTime.add(current_expires_at, @relay_credentials_issuance_interval_seconds, :second)
+    end
+  end
+
+  defp refresh_expired_relay_credentials(socket) do
+    if DateTime.compare(socket.assigns.relay_credentials_expires_at, DateTime.utc_now()) == :gt do
+      socket
+    else
+      socket
+      |> assign(:relay_credentials_expires_at, relay_credentials_expires_at())
+      |> schedule_relay_credentials_refresh()
+    end
+  end
+
+  defp schedule_relay_credentials_refresh(socket) do
+    if timer_ref = socket.assigns[:relay_credentials_refresh_timer_ref] do
+      Process.cancel_timer(timer_ref)
+    end
+
+    refresh_at =
+      DateTime.add(
+        socket.assigns.relay_credentials_expires_at,
+        -@relay_credentials_refresh_before_seconds,
+        :second
+      )
+
+    delay = max(DateTime.diff(refresh_at, DateTime.utc_now(), :millisecond), 0)
+    ref = make_ref()
+    timer_ref = Process.send_after(self(), {:refresh_relay_credentials, ref}, delay)
+
+    socket
+    |> assign(:relay_credentials_refresh_timer_ref, timer_ref)
+    |> assign(:relay_credentials_refresh_ref, ref)
+  end
+
   defp init(socket, account, relays) do
     push(socket, "init", %{
       flow_logs: flow_logs_config(),
@@ -798,7 +912,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         Views.Relay.render_many(
           relays,
           socket.assigns.gateway.public_key,
-          @relay_credentials_expire_at
+          socket.assigns.relay_credentials_expires_at
         ),
       # These aren't used but needed for API compatibility
       config: %{

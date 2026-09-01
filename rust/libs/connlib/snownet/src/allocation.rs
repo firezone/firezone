@@ -96,6 +96,12 @@ pub struct Allocation {
     buffered_channel_bindings: AllocRingBuffer<SocketAddr>,
 
     credentials: Option<Credentials>,
+    /// The credential that authenticated requests already in flight used.
+    ///
+    /// A portal credential update can race a TURN response. Keep one previous
+    /// credential so such a response still passes message-integrity validation
+    /// while all newly queued requests use the replacement credential.
+    previous_credentials: Option<Credentials>,
 
     explicit_failure: Option<FreeReason>,
 
@@ -250,6 +256,7 @@ impl Allocation {
                 realm,
                 nonce: Default::default(),
             }),
+            previous_credentials: None,
             allocation_lifetime: Default::default(),
             channel_bindings: Default::default(),
             buffered_channel_bindings: AllocRingBuffer::new(100),
@@ -346,6 +353,33 @@ impl Allocation {
         );
     }
 
+    /// Replaces the portal-issued TURN credentials without discarding this
+    /// allocation or any of its candidates.
+    ///
+    /// The relay accepts a valid credential on a Refresh request for an
+    /// existing allocation, so immediately refreshing with the new credential
+    /// extends the allocation without forcing ICE to restart.
+    pub(crate) fn update_credentials(
+        &mut self,
+        username: Username,
+        password: String,
+        realm: Realm,
+        now: Instant,
+    ) {
+        let previous = self.credentials.replace(Credentials {
+            username,
+            password,
+            realm,
+            nonce: Default::default(),
+        });
+
+        self.previous_credentials = previous;
+
+        if self.has_allocation() {
+            self.refresh(now);
+        }
+    }
+
     #[tracing::instrument(level = "debug", skip_all, fields(%from, tid, method, class, rtt))]
     pub fn handle_input(
         &mut self,
@@ -430,6 +464,7 @@ impl Allocation {
                     original_request.method()
                 );
                 self.credentials = None;
+                self.previous_credentials = None;
                 self.invalidate_allocation();
 
                 return true;
@@ -1005,10 +1040,10 @@ impl Allocation {
         self.credentials.is_some()
     }
 
-    pub fn matches_credentials(&self, username: &Username, password: &str) -> bool {
+    pub fn matches_credentials(&self, username: &Username, password: &str, realm: &Realm) -> bool {
         self.credentials
             .as_ref()
-            .is_some_and(|c| &c.username == username && c.password == password)
+            .is_some_and(|c| &c.username == username && c.password == password && &c.realm == realm)
     }
 
     pub fn matches_socket(&self, socket: &RelaySocket) -> bool {
@@ -1250,18 +1285,19 @@ impl Allocation {
             return false;
         };
 
-        let Some(credentials) = &self.credentials else {
-            tracing::debug!("Cannot check message integrity without credentials");
+        let mut credentials = self
+            .credentials
+            .iter()
+            .chain(self.previous_credentials.iter());
 
-            return false;
-        };
-
-        mi.check_long_term_credential(
-            &credentials.username,
-            &credentials.realm,
-            &credentials.password,
-        )
-        .is_ok()
+        credentials.any(|credentials| {
+            mi.check_long_term_credential(
+                &credentials.username,
+                &credentials.realm,
+                &credentials.password,
+            )
+            .is_ok()
+        })
     }
 }
 
@@ -2360,6 +2396,51 @@ mod tests {
 
         let lifetime = refresh.get_attribute::<Lifetime>();
         assert!(lifetime.is_none() || lifetime.is_some_and(|l| l.lifetime() != Duration::ZERO));
+    }
+
+    #[test]
+    fn rotating_credentials_refreshes_without_invalidating_relay_candidates() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now)
+            .with_binding_response(PEER1, now)
+            .with_allocate_response(&[RELAY_ADDR_IP4], now);
+        let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
+
+        allocation.update_credentials(
+            Username::new("rotated".to_owned()).unwrap(),
+            "new-password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+
+        assert_eq!(
+            allocation
+                .credentials
+                .as_ref()
+                .map(|credentials| credentials.username.name()),
+            Some("rotated")
+        );
+        assert_eq!(
+            allocation
+                .previous_credentials
+                .as_ref()
+                .map(|credentials| credentials.username.name()),
+            Some("foobar")
+        );
+        assert_eq!(
+            allocation.current_relay_candidates().collect::<Vec<_>>(),
+            vec![Candidate::relayed(RELAY_ADDR_IP4, PEER1, "udp").unwrap()]
+        );
+        assert!(allocation.poll_event().is_none());
+
+        let refresh = allocation.next_message().unwrap();
+        assert_eq!(refresh.method(), REFRESH);
+        assert_eq!(
+            refresh
+                .get_attribute::<Username>()
+                .map(|username| username.name()),
+            Some("rotated")
+        );
     }
 
     #[test]

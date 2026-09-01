@@ -2922,7 +2922,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                   200
     end
 
-    test "relay credentials are stable across reconnects", %{
+    test "relay credentials use aligned short-lived issuance windows across reconnects", %{
       gateway: gateway,
       site: site,
       token: token
@@ -2944,7 +2944,48 @@ defmodule PortalAPI.Gateway.ChannelTest do
       Process.exit(socket2.channel_pid, :shutdown)
       assert_receive {:EXIT, _, :shutdown}
 
-      assert relays1 == relays2
+      assert Enum.sort(Enum.map(relays1, &{&1.id, &1.addr})) ==
+               Enum.sort(Enum.map(relays2, &{&1.id, &1.addr}))
+
+      expires_at1 = relays1 |> hd() |> Map.fetch!(:expires_at)
+      expires_at2 = relays2 |> hd() |> Map.fetch!(:expires_at)
+      assert expires_at2 - expires_at1 in [0, div(:timer.minutes(10), 1_000)]
+    end
+
+    test "issues short-lived relay credentials and refreshes them before expiry", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      relay = relay_fixture(%{lat: 37.0, lon: -120.0})
+      :ok = Portal.Presence.Relays.connect(relay)
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: relays}
+
+      now = DateTime.to_unix(DateTime.utc_now(), :second)
+      max_expires_at = now + div(:timer.minutes(15), 1_000)
+
+      assert Enum.all?(relays, fn relay ->
+               relay.expires_at > now and relay.expires_at <= max_expires_at
+             end)
+
+      state = :sys.get_state(socket.channel_pid)
+      refresh_ref = state.assigns.relay_credentials_refresh_ref
+
+      send(socket.channel_pid, {:refresh_relay_credentials, refresh_ref})
+
+      assert_push "relays_presence", %{disconnected_ids: [], connected: refreshed_relays}
+
+      assert Enum.sort(Enum.map(relays, & &1.id)) ==
+               Enum.sort(Enum.map(refreshed_relays, & &1.id))
+
+      assert Enum.all?(refreshed_relays, fn relay ->
+               relay.expires_at > now and relay.expires_at > hd(relays).expires_at
+             end)
+
+      refute MapSet.new(Enum.map(relays, & &1.username)) ==
+               MapSet.new(Enum.map(refreshed_relays, & &1.username))
     end
 
     test "pushes ice_candidates message", %{
