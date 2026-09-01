@@ -36,6 +36,11 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
         viewModel.checkTunnelState(requireContext())
     }
 
+    override fun onPause() {
+        viewModel.cancelTunnelStateCheck()
+        super.onPause()
+    }
+
     private fun setupActionObservers() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {

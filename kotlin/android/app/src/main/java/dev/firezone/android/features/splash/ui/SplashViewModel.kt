@@ -82,6 +82,11 @@ internal class SplashViewModel
                 }
         }
 
+        internal fun cancelTunnelStateCheck() {
+            checkTunnelStateJob?.cancel()
+            checkTunnelStateJob = null
+        }
+
         internal fun clearAction() {
             actionMutableStateFlow.value = null
         }
